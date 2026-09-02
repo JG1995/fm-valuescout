@@ -356,9 +356,9 @@ describe("useLoadData", () => {
     };
 
     // Use real queryClient invalidation for history to verify exact key
-    const historySpy = vi.fn((captured: ActiveSaveContext) => {
+    const historySpy = vi.fn((saveId: number) => {
       void queryClient.invalidateQueries({
-        queryKey: ["snapshot", "history", captured.id] as const,
+        queryKey: ["snapshot", "history", saveId] as const,
       });
     });
 
@@ -385,9 +385,7 @@ describe("useLoadData", () => {
     expect(clearExactRoots).not.toHaveBeenCalled();
     expect(invalidateCurrent).not.toHaveBeenCalled();
     expect(historySpy).toHaveBeenCalledOnce();
-    expect(historySpy).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 1, contextToken: "save-token-1" }),
-    );
+    expect(historySpy).toHaveBeenCalledWith(1);
     expect(queryClient.getQueryData(searchPage)).toBeDefined();
     expect(queryClient.getQueryData(squadPage)).toBeDefined();
     expect(queryClient.getQueryState(historyKey)?.isInvalidated).toBe(true);
@@ -471,9 +469,7 @@ describe("useLoadData", () => {
     expect(clearExactRoots).not.toHaveBeenCalled();
     expect(invalidateCurrent).not.toHaveBeenCalled();
     // Effective-current settled while on B: exact history for captured A refreshed, not current roots.
-    expect(invalidateHistory).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 1, contextToken: "save-token-1" }),
-    );
+    expect(invalidateHistory).toHaveBeenCalledWith(1);
     expect(queryClient.getQueryData(searchPage)).toBeDefined();
     // Stale settlement must hide progress and not expose data, and present as idle.
     expect(result.current.progress).toBeNull();
@@ -909,9 +905,7 @@ describe("useLoadData", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(clearExactRoots).not.toHaveBeenCalled();
-    expect(invalidateHistory).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 1, contextToken: "save-token-1" }),
-    );
+    expect(invalidateHistory).toHaveBeenCalledWith(1);
   });
 
   it("active context switch while awaiting clearExactRoots keeps newly established roots and does not invalidate", async () => {
@@ -1004,10 +998,9 @@ describe("useLoadData", () => {
     let currentCtx: ActiveSaveContext | null = { ...activeSaveContext };
     const clearExactRoots = vi.fn(async () => undefined);
     const invalidateCurrent = vi.fn();
-    const invalidateHistory = vi.fn((captured: ActiveSaveContext) => {
+    const invalidateHistory = vi.fn((saveId: number) => {
       // history invalidation should use captured id 1, not switched id 2
-      expect(captured.id).toBe(1);
-      expect(captured.contextToken).toBe("save-token-1");
+      expect(saveId).toBe(1);
     });
 
     const { result, rerender } = renderHook(
@@ -1096,5 +1089,281 @@ describe("useLoadData", () => {
     expect(result.current.data).toBeUndefined();
     expect(clearExactRoots).not.toHaveBeenCalled();
     expect(invalidateCurrent).not.toHaveBeenCalled();
+  });
+
+  it("mismatched effective-current saveId B hides outcome, preserves A/B roots, invalidates B history and bridge, no clear/broad invalidation", async () => {
+    const queryClient = createQueryClient();
+    const searchPage = ["search", "players", { offset: 0, limit: 50 }] as const;
+    const squadPage = [
+      "planner",
+      "squad",
+      "players",
+      { offset: 0, limit: 50 },
+    ] as const;
+    const bridgeKey = ["memory-read", "bridge-status", "status"] as const;
+    const historyBKey = ["snapshot", "history", 2] as const;
+    const historyAKey = ["snapshot", "history", 1] as const;
+    const currentKey = ["snapshot", "current"] as const;
+    const savesKey = ["snapshot", "saves"] as const;
+    queryClient.setQueryData(searchPage, { players: ["search"] });
+    queryClient.setQueryData(squadPage, { players: ["squad"] });
+    queryClient.setQueryData(bridgeKey, { status: "ready" });
+    queryClient.setQueryData(historyAKey, [{ id: 1 }]);
+    queryClient.setQueryData(historyBKey, [{ id: 2 }]);
+    queryClient.setQueryData(currentKey, { id: 99 });
+    queryClient.setQueryData(savesKey, [{ id: 1 }, { id: 2 }]);
+
+    const clearExactRoots = vi.fn(async () => undefined);
+    const invalidateCurrent = vi.fn();
+    const invalidateHistory = vi.fn((saveId: number) => {
+      void queryClient.invalidateQueries({
+        queryKey: ["snapshot", "history", saveId] as const,
+      });
+    });
+
+    const activeSaveContext: ActiveSaveContext = {
+      id: 1,
+      contextToken: "save-token-1",
+    };
+
+    const { result } = renderHook(
+      () =>
+        useLoadData({
+          activeSaveContext,
+          clearExactRoots,
+          invalidateCurrentOwners: invalidateCurrent,
+          invalidateHistoryOwners: invalidateHistory,
+        }),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    setLoadDataIpcMockMode("busy");
+    act(() => {
+      result.current.mutate(null);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    act(() => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "scan",
+      });
+    });
+    expect(result.current.progress).toMatchObject({ phase: "scan" });
+
+    await act(async () => {
+      resolveBusyLoadDataRequest({
+        requestId: "req-mock",
+        playersFound: 3,
+        scanTruncated: false,
+        maxAccepted: null,
+        storedSnapshot: {
+          id: 10,
+          contextToken: "snapshot-token-10",
+          saveId: 2,
+          schemaVersion: 6,
+          generatedAtUtc: "2026-07-28T15:00:00.000Z",
+          gameVersion: "26.0.0",
+          supportedGameVersion: "26.0.0",
+          bridgeVersion: "0.1.0",
+          protocolVersion: 1,
+          gameDate: "2026-07-01",
+          gameDateSource: "inGame",
+          scanTruncated: false,
+          maxAccepted: null,
+          playerCount: 3,
+          loadedAtUtc: "2026-07-28T15:05:00.000Z",
+        },
+        effectiveSnapshot: {
+          id: 10,
+          contextToken: "snapshot-token-10",
+          saveId: 2,
+          schemaVersion: 6,
+          generatedAtUtc: "2026-07-28T15:00:00.000Z",
+          gameVersion: "26.0.0",
+          supportedGameVersion: "26.0.0",
+          bridgeVersion: "0.1.0",
+          protocolVersion: 1,
+          gameDate: "2026-07-01",
+          gameDateSource: "inGame",
+          scanTruncated: false,
+          maxAccepted: null,
+          playerCount: 3,
+          loadedAtUtc: "2026-07-28T15:05:00.000Z",
+        },
+        timings: {
+          scanMs: 1200,
+          prepareMs: 300,
+          scoringMs: 400,
+          saveMs: 200,
+          finalizeMs: 200,
+          totalMs: 2100,
+          ingestMs: 400,
+        },
+      } as never);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(queryClient.getQueryState(bridgeKey)?.isInvalidated).toBe(true);
+    expect(invalidateHistory).toHaveBeenCalledWith(2);
+    expect(invalidateHistory).not.toHaveBeenCalledWith(1);
+    expect(queryClient.getQueryState(historyBKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(historyAKey)?.isInvalidated).not.toBe(
+      true,
+    );
+    expect(clearExactRoots).not.toHaveBeenCalled();
+    expect(invalidateCurrent).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(searchPage)).toBeDefined();
+    expect(queryClient.getQueryData(squadPage)).toBeDefined();
+    expect(queryClient.getQueryState(currentKey)?.isInvalidated).not.toBe(true);
+    expect(queryClient.getQueryState(savesKey)?.isInvalidated).not.toBe(true);
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isIdle).toBe(true);
+    expect(result.current.status).toBe("idle");
+    expect(result.current.progress).toBeNull();
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.isCommandPending).toBe(false);
+    expect(result.current.isError).toBe(false);
+    expect(result.current.error).toBeNull();
+
+    act(() => {
+      emitLoadDataProgress({
+        saveId: 2,
+        contextToken: "save-token-2",
+        phase: "scoring",
+        completed: 5,
+        total: 10,
+      });
+    });
+    expect(result.current.progress).toBeNull();
+    expect(result.current.isSuccess).toBe(false);
+  });
+
+  it("mixed stored/effective saveId corruption hides outcome and invalidates both distinct histories without duplicate", async () => {
+    const queryClient = createQueryClient();
+    const searchPage = ["search", "players", { offset: 0, limit: 50 }] as const;
+    const squadPage = [
+      "planner",
+      "squad",
+      "players",
+      { offset: 0, limit: 50 },
+    ] as const;
+    const bridgeKey = ["memory-read", "bridge-status", "status"] as const;
+    const historyAKey = ["snapshot", "history", 1] as const;
+    const historyBKey = ["snapshot", "history", 2] as const;
+    queryClient.setQueryData(searchPage, { players: ["search"] });
+    queryClient.setQueryData(squadPage, { players: ["squad"] });
+    queryClient.setQueryData(bridgeKey, { status: "ready" });
+    queryClient.setQueryData(historyAKey, [{ id: 1 }]);
+    queryClient.setQueryData(historyBKey, [{ id: 2 }]);
+
+    const clearExactRoots = vi.fn(async () => undefined);
+    const invalidateCurrent = vi.fn();
+    const invalidateHistory = vi.fn((saveId: number) => {
+      void queryClient.invalidateQueries({
+        queryKey: ["snapshot", "history", saveId] as const,
+      });
+    });
+
+    const activeSaveContext: ActiveSaveContext = {
+      id: 1,
+      contextToken: "save-token-1",
+    };
+
+    const { result } = renderHook(
+      () =>
+        useLoadData({
+          activeSaveContext,
+          clearExactRoots,
+          invalidateCurrentOwners: invalidateCurrent,
+          invalidateHistoryOwners: invalidateHistory,
+        }),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    setLoadDataIpcMockMode("busy");
+    act(() => {
+      result.current.mutate(null);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    await act(async () => {
+      resolveBusyLoadDataRequest({
+        requestId: "req-mock",
+        playersFound: 3,
+        scanTruncated: false,
+        maxAccepted: null,
+        storedSnapshot: {
+          id: 10,
+          contextToken: "snapshot-token-10",
+          saveId: 1,
+          schemaVersion: 6,
+          generatedAtUtc: "2026-07-28T15:00:00.000Z",
+          gameVersion: "26.0.0",
+          supportedGameVersion: "26.0.0",
+          bridgeVersion: "0.1.0",
+          protocolVersion: 1,
+          gameDate: "2026-07-01",
+          gameDateSource: "inGame",
+          scanTruncated: false,
+          maxAccepted: null,
+          playerCount: 3,
+          loadedAtUtc: "2026-07-28T15:05:00.000Z",
+        },
+        effectiveSnapshot: {
+          id: 10,
+          contextToken: "snapshot-token-10",
+          saveId: 2,
+          schemaVersion: 6,
+          generatedAtUtc: "2026-07-28T15:00:00.000Z",
+          gameVersion: "26.0.0",
+          supportedGameVersion: "26.0.0",
+          bridgeVersion: "0.1.0",
+          protocolVersion: 1,
+          gameDate: "2026-07-01",
+          gameDateSource: "inGame",
+          scanTruncated: false,
+          maxAccepted: null,
+          playerCount: 3,
+          loadedAtUtc: "2026-07-28T15:05:00.000Z",
+        },
+        timings: {
+          scanMs: 1200,
+          prepareMs: 300,
+          scoringMs: 400,
+          saveMs: 200,
+          finalizeMs: 200,
+          totalMs: 2100,
+          ingestMs: 400,
+        },
+      } as never);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(queryClient.getQueryState(bridgeKey)?.isInvalidated).toBe(true);
+    expect(invalidateHistory).toHaveBeenCalledTimes(2);
+    expect(invalidateHistory).toHaveBeenCalledWith(1);
+    expect(invalidateHistory).toHaveBeenCalledWith(2);
+    expect(queryClient.getQueryState(historyAKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(historyBKey)?.isInvalidated).toBe(true);
+    expect(clearExactRoots).not.toHaveBeenCalled();
+    expect(invalidateCurrent).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(searchPage)).toBeDefined();
+    expect(queryClient.getQueryData(squadPage)).toBeDefined();
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isIdle).toBe(true);
+    expect(result.current.status).toBe("idle");
+    expect(result.current.progress).toBeNull();
   });
 });

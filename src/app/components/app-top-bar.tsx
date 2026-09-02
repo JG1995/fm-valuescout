@@ -1,8 +1,9 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
 import { clearPlayerResultContext } from "@/app/player-result-context";
+import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { fieldClasses } from "@/components/ui/field/field-styles";
 import { academyKeys } from "@/features/academy/api/academy-keys";
@@ -29,6 +30,8 @@ import { cn } from "@/utils/cn";
 export function AppTopBar() {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const isContextMutating =
+    useIsMutating({ mutationKey: playerResultContextMutationKey }) > 0;
   const [historyIndexes, setHistoryIndexes] = useState(() => {
     const index = router.history.location.state.__TSR_index;
     return { current: index, max: index };
@@ -67,9 +70,9 @@ export function AppTopBar() {
     void queryClient.invalidateQueries({ queryKey: staffKeys.all });
   }, [queryClient]);
   const invalidateHistoryOwners = useCallback(
-    (captured: { id: number; contextToken: string }) => {
+    (saveId: number) => {
       void queryClient.invalidateQueries({
-        queryKey: snapshotKeys.history(captured.id),
+        queryKey: snapshotKeys.history(saveId),
       });
     },
     [queryClient],
@@ -189,7 +192,7 @@ export function AppTopBar() {
                     : undefined
             }
             className="min-w-36"
-            disabled={playerCapEnabled && !capValid}
+            disabled={(playerCapEnabled && !capValid) || isContextMutating}
             onClick={() => {
               setLoadedSave(
                 activeSave

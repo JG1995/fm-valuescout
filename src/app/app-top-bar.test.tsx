@@ -39,6 +39,8 @@ import {
   rejectBusyLoadDataRequest,
   resolveBusyLoadDataRequest,
   resolveCreateSaveIpcMock,
+  resolvePendingSetActiveSaveIpcMock,
+  setActiveSaveIpcMockMode,
   setLoadDataIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
 
@@ -909,5 +911,87 @@ describe("app top bar", () => {
       screen.getByRole("button", { name: "Loading…" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("disables Load Data while active-save selection is pending and captures B after settle", async () => {
+    const user = userEvent.setup();
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    const loadButton = await screen.findByRole("button", {
+      name: "Load Data",
+    });
+    expect(loadButton).toBeEnabled();
+
+    await user.type(await screen.findByLabelText("New save"), "Second");
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+    await screen.findByRole("option", { name: "Second" });
+
+    setActiveSaveIpcMockMode("busy");
+    let loadDataInvokedDuringPending = false;
+    observeSnapshotIpcCall("loadData", () => {
+      loadDataInvokedDuringPending = true;
+    });
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Active save" }),
+      "2",
+    );
+
+    await waitFor(() => expect(loadButton).toBeDisabled());
+    expect(loadButton).toHaveAccessibleName("Load Data");
+    expect(screen.queryByRole("button", { name: "Scanning…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Loading…" })).toBeNull();
+
+    await user.click(loadButton);
+    expect(loadDataInvokedDuringPending).toBe(false);
+    expect(getLastLoadDataIpcArgs()).toBeUndefined();
+
+    await act(async () => {
+      resolvePendingSetActiveSaveIpcMock();
+    });
+
+    await waitFor(() => expect(loadButton).toBeEnabled());
+    await screen.findByRole("option", { name: "Second" });
+
+    setLoadDataIpcMockMode("busy");
+    await user.click(loadButton);
+
+    expect(
+      await screen.findByRole("button", { name: "Scanning…" }),
+    ).toBeDisabled();
+
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 2,
+        contextToken: "save-token-2",
+        phase: "scan",
+      });
+    });
+    expect(
+      screen.getByRole("button", { name: "Scanning…" }),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "preparing",
+        completed: 5,
+        total: 10,
+      });
+    });
+    expect(
+      screen.getByRole("button", { name: "Scanning…" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Preparing…" })).toBeNull();
+
+    await act(async () => {
+      resolveBusyLoadDataRequest();
+    });
+    expect(
+      await screen.findByText(/Loaded 3 players into the database/i),
+    ).toBeInTheDocument();
+    expect(loadButton).toBeEnabled();
+    setActiveSaveIpcMockMode("success");
   });
 });

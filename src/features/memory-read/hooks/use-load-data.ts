@@ -10,7 +10,7 @@ type UseLoadDataOptions = {
   activeSaveContext: ActiveSaveContext | null;
   clearExactRoots: (guard?: () => boolean) => Promise<void>;
   invalidateCurrentOwners: () => void;
-  invalidateHistoryOwners: (captured: ActiveSaveContext) => void;
+  invalidateHistoryOwners: (saveId: number) => void;
 };
 
 type MutationContext = {
@@ -114,6 +114,22 @@ export function useLoadData(options: UseLoadDataOptions) {
       if (settledGenerationsRef.current.has(generation)) return;
       settledGenerationsRef.current.add(generation);
 
+      const storedSaveId = data.storedSnapshot.saveId;
+      const effectiveSaveId = data.effectiveSnapshot.saveId;
+      const ownsStored = captured !== null && storedSaveId === captured.id;
+      const ownsEffective =
+        captured !== null && effectiveSaveId === captured.id;
+      const ownsBoth = ownsStored && ownsEffective;
+
+      if (!ownsBoth) {
+        const ids = new Set<number>([storedSaveId, effectiveSaveId]);
+        for (const id of ids) {
+          options.invalidateHistoryOwners(id);
+        }
+        if (generation === generationRef.current) setProgress(null);
+        return;
+      }
+
       const isEffectiveCurrent =
         data.storedSnapshot.contextToken ===
         data.effectiveSnapshot.contextToken;
@@ -124,7 +140,7 @@ export function useLoadData(options: UseLoadDataOptions) {
           if (generation === generationRef.current) setProgress(null);
           return;
         }
-        options.invalidateHistoryOwners(captured);
+        options.invalidateHistoryOwners(captured.id);
         if (generation === generationRef.current) setProgress(null);
         return;
       }
@@ -142,7 +158,7 @@ export function useLoadData(options: UseLoadDataOptions) {
 
       if (!exactContextMatchAtSettlement) {
         // Settled while another save is active: history only, do not clear current roots.
-        options.invalidateHistoryOwners(captured);
+        options.invalidateHistoryOwners(captured.id);
         if (generation === generationRef.current) setProgress(null);
         return;
       }
@@ -195,15 +211,25 @@ export function useLoadData(options: UseLoadDataOptions) {
     activeReq.revision === contextRevisionRef.current &&
     sameContext(activeReq.captured, activeSaveContextRef.current);
 
-  const exposedData = presentationLive ? mutation.data : undefined;
-  const exposedError = presentationLive ? mutation.error : null;
-  const exposedIsSuccess = presentationLive ? mutation.isSuccess : false;
-  const exposedIsError = presentationLive ? mutation.isError : false;
-  const exposedIsIdle = presentationLive ? mutation.isIdle : true;
-  const exposedIsPending = presentationLive ? mutation.isPending : false;
-  const exposedIsPaused = presentationLive ? mutation.isPaused : false;
-  const exposedStatus = presentationLive ? mutation.status : ("idle" as const);
-  const exposedProgress = presentationLive ? progress : null;
+  const isDataOwned =
+    !mutation.data ||
+    (activeReq?.captured !== null &&
+      activeReq?.captured !== undefined &&
+      mutation.data.storedSnapshot.saveId === activeReq.captured.id &&
+      mutation.data.effectiveSnapshot.saveId === activeReq.captured.id);
+  const finalPresentationLive = presentationLive && isDataOwned;
+
+  const exposedData = finalPresentationLive ? mutation.data : undefined;
+  const exposedError = finalPresentationLive ? mutation.error : null;
+  const exposedIsSuccess = finalPresentationLive ? mutation.isSuccess : false;
+  const exposedIsError = finalPresentationLive ? mutation.isError : false;
+  const exposedIsIdle = finalPresentationLive ? mutation.isIdle : true;
+  const exposedIsPending = finalPresentationLive ? mutation.isPending : false;
+  const exposedIsPaused = finalPresentationLive ? mutation.isPaused : false;
+  const exposedStatus = finalPresentationLive
+    ? mutation.status
+    : ("idle" as const);
+  const exposedProgress = finalPresentationLive ? progress : null;
 
   return {
     ...mutation,
