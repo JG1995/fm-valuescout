@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Completed
 
 **Ledger schema:** 2
 
@@ -134,7 +134,7 @@ Load/ingest a current snapshot that has no Moneyball import, open unfiltered Sho
 
 **Required checks:** GitHub strict required status `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -432,7 +432,7 @@ Run feature-level validation and review across the exact implementation refs, re
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Add Player Shortlist tab to Player Search | Commit 1 — Record the approved feature plan | bfb7f15b1586fd636eb6ceef192cfd3ce382dc23 | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; documentation links and `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — Add Player Shortlist tab to Player Search | Commit 2 — Add Shortlist view and cohort-filtered General query | 4a60ceec1bfa02033551e6cd2ef5b7f8157356ce | Added the Shortlist search view, General-family command/query validation, and exact current-snapshot Moneyball cohort join without percentile readiness or new persistence. | `./scripts/dev check-rust`: 729 passed, 0 failed, 2 ignored; `./scripts/dev check`: passed with the same Rust count; primary LSP and `git diff --cached --check`: passed. | Pass | Clear | 1 | None. |
-| PR 1 — Add Player Shortlist tab to Player Search | Commit 3 — Wire Shortlist tab, layout, empty state, and profile mapping | Pending record | Added the third Search tab, General-family Shortlist table and filters, independent version-6 layout, deterministic empty states, Moneyball guidance, and General profile mapping. | Focused route/store/dynamic tests: 86 passed; `./scripts/dev check`: passed with 729 Rust tests passed and 2 ignored; `./scripts/dev smoke`: 53 passed; primary LSP and `git diff --cached --check`: passed. | Pass | Clear | 2 | None. |
+| PR 1 — Add Player Shortlist tab to Player Search | Commit 3 — Wire Shortlist tab, layout, empty state, and profile mapping | 68377bac655075beff9eeb40ae6d07c4f5813a80 | Added the third Search tab, General-family Shortlist table and filters, independent version-6 layout, deterministic empty states, Moneyball guidance, and General profile mapping. | Focused route/store/dynamic tests: 86 passed; `./scripts/dev check`: passed with 729 Rust tests passed and 2 ignored; `./scripts/dev smoke`: 53 passed; primary LSP and `git diff --cached --check`: passed. | Pass | Clear | 2 | None. |
 
 ## Final validation
 
@@ -454,4 +454,62 @@ Manual/native evidence target:
 
 ## Documentation impact
 
-Reconciliation complete before final publication only. `ARCHITECTURE.md` and `DESIGN.md` will be updated to describe the third Search tab in **General, Moneyball, Shortlist** order, Shortlist membership as current-snapshot Moneyball cohort filtering on General read models, independent `shortlist` layout ownership (`shortlist`, version 5→6), and the neutral empty-state contract. `CONCEPT.md` will be assessed and updated to include the implemented Player Shortlist beside current General/Moneyball Search wording. No ADR is warranted: the feature extends the existing `SearchView` seam and the established player-table layout pattern without a competing durable alternative.
+Reconciliation completed after final review and before publication. `ARCHITECTURE.md` updated to describe the third Search tab in **General, Moneyball, Shortlist** order, Shortlist membership as exact current-snapshot `player_moneyball_stats` filtering on the General read model with no `percentiles_json` gate, independent persisted `shortlist` layout and table-layout schema v6, the neutral unfiltered zero vs filtered no-match empty-state contract from `total` and `filters.length`, and General profile mapping for row activation. `DESIGN.md` updated to include the Shortlist view in the Player Search status. `CONCEPT.md` updated to include the implemented Player Shortlist beside General/Moneyball wording. `TODO.md` moved the active Player Shortlist entry to completed with a link to this record. No ADR or debug report is warranted; no feature-created `.work` artifacts exist. Active source `.wiki/features/active/player-shortlist.md` is approved for removal after this destination exists.
+
+## Exact implementation refs
+
+**Base:** `17f164a9876c8213c19cc7373983b9d85f85322d`
+
+| Ref | Subject | Role |
+| --- | --- | --- |
+| `bfb7f15b1586fd636eb6ceef192cfd3ce382dc23` | `docs(shortlist): record approved feature plan` | Planning record |
+| `4a60ceec1bfa02033551e6cd2ef5b7f8157356ce` | `feat(search): add Shortlist view and cohort query` | Cohort-filtered General query |
+| `68377bac655075beff9eeb40ae6d07c4f5813a80` | `feat(search): wire Shortlist tab and table layout` | Tab, layout, empty state, and profile mapping |
+| `Pending record` | `docs(shortlist): reconcile documentation` | Documentation reconciliation |
+
+No correction commit was needed after final review. The close-out documentation commit is `Pending record` until this reconciliation is committed.
+
+## Final publication
+
+```yaml
+status: ready_for_publication
+pr_status: not_published
+merge_status: not_merged
+pr_ref: "Not published"
+merge_ref: "Not merged"
+branch: feature/player-shortlist
+base_branch: main
+base_ref: 17f164a9876c8213c19cc7373983b9d85f85322d
+publication_provider: GitHub
+pr_template: .github/pull_request_template.md
+merge_method: squash
+required_checks: strict_check
+required_check_name: check
+pr_count: 1
+earlier_prs: none
+feature_close_out: current
+feature_review_blocking: false
+feature_review_critical: none
+feature_review_high: none
+feature_review_medium: none
+feature_review_nitpick: none
+project_fit: conforms
+feature_review_action: skip
+feature_review_correction_rounds: 0
+ci_repair_rounds: 0
+implementation_range: "17f164a9876c8213c19cc7373983b9d85f85322d..68377bac655075beff9eeb40ae6d07c4f5813a80"
+feature_review_scope: "bfb7f15b1586fd636eb6ceef192cfd3ce382dc23, 4a60ceec1bfa02033551e6cd2ef5b7f8157356ce, 68377bac655075beff9eeb40ae6d07c4f5813a80"
+final_pr_commit_set:
+  - bfb7f15b1586fd636eb6ceef192cfd3ce382dc23
+  - 4a60ceec1bfa02033551e6cd2ef5b7f8157356ce
+  - 68377bac655075beff9eeb40ae6d07c4f5813a80
+correction_ref: none
+close_out_documentation_ref: Pending record
+delivery_fingerprint: d21c4902558e323535302f7bd43f8ba0c209a7b0f72c211082b559c40db1a63e
+```
+
+## Feature close-out
+
+**State:** Current. The exact implementation set passed final validation, feature review (no CRITICAL/HIGH/MEDIUM/NITPICK findings; Test portfolio Pass; Architecture and Project fit Conform), and documentation reconciliation. The final PR remains not published and not merged; branch `feature/player-shortlist` from `main` is ready for publication with strict required status `check` and squash merge.
+
+Accepted validation gap: Native Windows Tauri at 1280×800 and 1600×900 with representative real FM export was unavailable, so native WebView focus, packaged IPC, real-file import persistence, and overlapping cumulative-import Shortlist membership remain unobserved. Stub browser and temporary-SQLite evidence are not substitutes.

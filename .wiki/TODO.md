@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Player Shortlist](./features/active/player-shortlist.md) — third Search tab filtered to the current Moneyball cohort with General metrics and independent persisted layout (Linear JAY-52).
+_None._
 
 ## Next
 
@@ -60,6 +60,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Completed
 
+- [Player Shortlist](./features/completed/player-shortlist.md) — third Search tab filtered to the current Moneyball cohort with General metrics and independent persisted layout (Linear JAY-52).
 - [Staff Assignment FM26 Layout](./features/completed/staff-assignment-fm26-layout.md) — redesign Configure slots around FM26 staff limits, exact coach composition and lead pools, Recruitment Analyst support, and collapsible assignment results (Linear JAY-44).
 - [Cumulative Moneyball Imports](./features/completed/cumulative-moneyball-imports.md) — cumulative current-snapshot Moneyball upserts with atomic full-cohort percentiles and shared Search/My Club Squad upload entry points (Linear JAY-33).
 - [Ingest-Time Potential Scoring](./features/completed/ingest-potential-scores.md) — current-only eager projected attributes and complete potential role scores with atomic lifecycle and read-only consumers.
