@@ -9,6 +9,7 @@ type SmokeStubOptions = {
   squadOverview?: boolean;
   playerProfile?: boolean;
   moneyballSearch?: boolean;
+  shortlistSearch?: boolean;
   staffWorkspace?: boolean;
   staffShortlist?: boolean;
   staffAssignment?: boolean;
@@ -26,6 +27,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const squadOverview = options.squadOverview ?? false;
   const playerProfile = options.playerProfile ?? false;
   const moneyballSearch = options.moneyballSearch ?? false;
+  const shortlistSearch = options.shortlistSearch ?? false;
   const staffWorkspace = options.staffWorkspace ?? false;
   const staffShortlist = options.staffShortlist ?? false;
   const staffAssignment = options.staffAssignment ?? false;
@@ -52,6 +54,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const staffAssignmentSenior = ${staffAssignmentSenior ? "true" : "false"};
       const staffFamilyConfigured = ${staffFamilyConfigured ? "true" : "false"};
       const snapshotHistoryEnabled = ${snapshotHistory ? "true" : "false"};
+      const shortlistSearchEnabled = ${shortlistSearch ? "true" : "false"};
       let nextSaveId = 2;
       let clubDnaDefinition = null;
       let saves = [{
@@ -325,6 +328,27 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             "moneyball.assists_per_90": 50 + (index % 50),
             "moneyball.xg_per_90": 50 + (index % 50),
             "moneyball.xa_per_90": 50 + (index % 50),
+          },
+        }),
+      ) : [];
+      const shortlistPlayers = shortlistSearchEnabled ? Array.from(
+        { length: 24 },
+        (_, index) => ({
+          uid: 1001 + index,
+          name: "Shortlist player " + String(index + 1).padStart(3, "0"),
+          age: 22 + (index % 10),
+          birthYear: 2000,
+          birthDayOfYear: index + 1,
+          nationalities: ["ENG"],
+          club: "Shortlist FC",
+          division: "Premier Division",
+          ca: 165 - index,
+          pa: 185 - index,
+          marketValueGbp: 5000000 + index * 50000,
+          dynamicValues: {
+            "role.deep_lying_playmaker_ip": 85 - index,
+            "attr.Acceleration": 12 + (index % 8),
+            club_dna: 75 - index,
           },
         }),
       ) : [];
@@ -707,6 +731,66 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             const limit = Number.isInteger(args?.limit)
               ? Math.min(200, Math.max(1, args.limit))
               : 50;
+            if (args?.searchView === "shortlist") {
+              const filterRules = Array.isArray(args?.filters)
+                ? args.filters
+                : [];
+              const filtered = filterRules.length > 0
+                ? shortlistPlayers.filter((player) => {
+                    const matches = filterRules.map((rule) => {
+                      const field = rule.field;
+                      let raw = null;
+                      if (field === "ca") raw = player.ca;
+                      else if (field === "pa") raw = player.pa;
+                      else if (field === "value") raw = player.marketValueGbp;
+                      else raw = player.dynamicValues?.[field] ?? null;
+                      if (typeof raw !== "number" || typeof rule.value !== "number") {
+                        if (typeof raw === "string" && typeof rule.value === "string") {
+                          const hay = String(raw).toLowerCase();
+                          const needle = String(rule.value).toLowerCase();
+                          switch (rule.op) {
+                            case "contains": return hay.includes(needle);
+                            case "is": return hay === needle;
+                            default: return false;
+                          }
+                        }
+                        return false;
+                      }
+                      switch (rule.op) {
+                        case "gt": return raw > rule.value;
+                        case "lt": return raw < rule.value;
+                        case "eq": return raw === rule.value;
+                        case "neq": return raw !== rule.value;
+                        default: return false;
+                      }
+                    });
+                    return args?.filterCombine === "or"
+                      ? matches.some(Boolean)
+                      : matches.every(Boolean);
+                  })
+                : shortlistPlayers;
+              const sorted = [...filtered].sort((left, right) => {
+                const sortBy = typeof args?.sortBy === "string" ? args.sortBy : "ca";
+                let leftVal = null;
+                let rightVal = null;
+                if (sortBy === "ca") { leftVal = left.ca; rightVal = right.ca; }
+                else if (sortBy === "pa") { leftVal = left.pa; rightVal = right.pa; }
+                else { leftVal = left.dynamicValues?.[sortBy] ?? null; rightVal = right.dynamicValues?.[sortBy] ?? null; }
+                if (typeof leftVal !== "number" || typeof rightVal !== "number") {
+                  const l = leftVal === null ? "" : String(leftVal);
+                  const r = rightVal === null ? "" : String(rightVal);
+                  const cmp = l.localeCompare(r);
+                  if (cmp === 0) return left.uid - right.uid;
+                  return args?.sortDir === "asc" ? cmp : -cmp;
+                }
+                if (leftVal === rightVal) return left.uid - right.uid;
+                return args?.sortDir === "asc" ? leftVal - rightVal : rightVal - leftVal;
+              });
+              return {
+                players: sorted.slice(offset, offset + limit),
+                total: sorted.length,
+              };
+            }
             if (args?.searchView === "moneyball") {
               const filterRules = Array.isArray(args?.filters)
                 ? args.filters

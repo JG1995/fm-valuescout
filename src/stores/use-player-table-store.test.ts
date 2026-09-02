@@ -499,6 +499,77 @@ describe("usePlayerTableStore", () => {
     expect(usePlayerTableStore.getState().layouts.search).toEqual(before);
   });
 
+  it("migrates version-5 persisted Shortlist layouts preserving existing orders and widths", async () => {
+    const customSearch = {
+      columnIds: ["name", "age", "ca", "attr.Acceleration"],
+      widths: { name: 240, ca: 104, "attr.Acceleration": 216 },
+    };
+    const customMoneyball = {
+      columnIds: ["name", "moneyball.average_rating", "moneyball.goals_per_90"],
+      widths: { name: 240, "moneyball.average_rating": 128 },
+    };
+    localStorage.setItem(
+      PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          layouts: {
+            search: customSearch,
+            "moneyball-search": customMoneyball,
+            squad: {
+              columnIds: [...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS],
+              widths: {},
+            },
+          },
+        },
+        version: 5,
+      }),
+    );
+
+    await usePlayerTableStore.persist.rehydrate();
+
+    const layouts = usePlayerTableStore.getState().layouts;
+    expect(layouts.search).toEqual(customSearch);
+    expect(layouts["moneyball-search"]).toEqual(customMoneyball);
+    expect(layouts.shortlist).toEqual({
+      columnIds: [...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS],
+      widths: {},
+    });
+  });
+
+  it("preserves version-5 identity-only Club and Division layouts without fallback to Name", async () => {
+    localStorage.setItem(
+      PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          layouts: {
+            search: { columnIds: ["club"], widths: { club: 192 } },
+            "moneyball-search": {
+              columnIds: ["division"],
+              widths: { division: 168 },
+            },
+          },
+        },
+        version: 5,
+      }),
+    );
+
+    await usePlayerTableStore.persist.rehydrate();
+
+    const layouts = usePlayerTableStore.getState().layouts;
+    expect(layouts.search).toEqual({
+      columnIds: ["club"],
+      widths: { club: 192 },
+    });
+    expect(layouts["moneyball-search"]).toEqual({
+      columnIds: ["division"],
+      widths: { division: 168 },
+    });
+    expect(layouts.shortlist).toEqual({
+      columnIds: [...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS],
+      widths: {},
+    });
+  });
+
   it("does not remove the last visible column", () => {
     usePlayerTableStore.setState({
       layouts: {
@@ -507,6 +578,7 @@ describe("usePlayerTableStore", () => {
           columnIds: ["moneyball.average_rating"],
           widths: {},
         },
+        shortlist: { columnIds: ["name"], widths: {} },
         squad: {
           columnIds: [...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS],
           widths: {},

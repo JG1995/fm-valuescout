@@ -58,7 +58,9 @@ export const Route = createFileRoute("/search")({
   validateSearch: (search: Record<string, unknown>): SearchRouteSearch => {
     const parsedView = parseSearchView(search.view);
     const explicitView =
-      search.view === "general" || search.view === "moneyball"
+      search.view === "general" ||
+      search.view === "moneyball" ||
+      search.view === "shortlist"
         ? parsedView
         : undefined;
     const view =
@@ -149,6 +151,7 @@ function SearchPageContent() {
   const tabRefs = useRef<Record<SearchView, HTMLButtonElement | null>>({
     general: null,
     moneyball: null,
+    shortlist: null,
   });
   useEffect(() => {
     if (!snapshotContext) return;
@@ -203,7 +206,7 @@ function SearchPageContent() {
           aria-label="Search view"
           className="inline-flex rounded-full bg-surface-container-high p-0.5"
           onKeyDown={(event) => {
-            const views: SearchView[] = ["general", "moneyball"];
+            const views: SearchView[] = ["general", "moneyball", "shortlist"];
             const index = views.indexOf(view);
             const nextIndex =
               event.key === "ArrowRight" || event.key === "ArrowDown"
@@ -229,7 +232,7 @@ function SearchPageContent() {
             tabRefs.current[next]?.focus();
           }}
         >
-          {(["general", "moneyball"] as const).map((candidate) => (
+          {(["general", "moneyball", "shortlist"] as const).map((candidate) => (
             <button
               key={candidate}
               type="button"
@@ -256,7 +259,11 @@ function SearchPageContent() {
                 })
               }
             >
-              {candidate === "general" ? "General" : "Moneyball"}
+              {candidate === "general"
+                ? "General"
+                : candidate === "moneyball"
+                  ? "Moneyball"
+                  : "Shortlist"}
             </button>
           ))}
         </div>
@@ -303,11 +310,19 @@ function SearchPageContent() {
           updateSearch({ filters: rules });
         }}
         onApply={(rules, nextCombine) => {
-          void updateSearch({ filters: rules, combine: nextCombine }).then(() =>
-            addColumns(
-              view === "moneyball" ? "moneyball-search" : "search",
-              rules.map((rule) => rule.field),
-            ),
+          void updateSearch({ filters: rules, combine: nextCombine }).then(
+            () => {
+              const layoutId =
+                view === "moneyball"
+                  ? "moneyball-search"
+                  : view === "shortlist"
+                    ? "shortlist"
+                    : "search";
+              addColumns(
+                layoutId,
+                rules.map((rule) => rule.field),
+              );
+            },
           );
         }}
         view={view}

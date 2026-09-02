@@ -44,7 +44,11 @@ export function isVisibleSortField(
     return false;
   }
   if ((BASIC_SEARCH_SORT_FIELDS as readonly string[]).includes(value)) {
-    return view === "general" || (value !== "ca" && value !== "pa");
+    return (
+      view === "general" ||
+      view === "shortlist" ||
+      (value !== "ca" && value !== "pa")
+    );
   }
   return getFilterField(value, view) !== undefined;
 }

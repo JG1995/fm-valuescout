@@ -39,6 +39,7 @@ import {
   isBasicSearchSortField,
 } from "../types/search-sort";
 import type { ComparisonPool, SearchView } from "../types/search-view";
+import { defaultSearchSort } from "../types/search-view";
 import { completeFilterRules } from "../utils/filter-registry";
 
 const TEXT_CELL =
@@ -392,7 +393,7 @@ function SearchResultsVirtualTable({
         void navigate({
           to: "/players/$uid",
           params: { uid: String(player.uid) },
-          search: { view },
+          search: { view: view === "shortlist" ? "general" : view },
         });
       }}
     />
@@ -410,7 +411,13 @@ export function SearchResultsPanel({
   comparisonPool,
   pageContext,
 }: SearchResultsPanelProps) {
-  const tableId = view === "moneyball" ? "moneyball-search" : "search";
+  const navigate = useNavigate();
+  const tableId =
+    view === "moneyball"
+      ? "moneyball-search"
+      : view === "shortlist"
+        ? "shortlist"
+        : "search";
   const layout = usePlayerTableStore((state) => state.layouts[tableId]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const removeStoredColumn = usePlayerTableStore((state) => state.removeColumn);
@@ -600,6 +607,43 @@ export function SearchResultsPanel({
         <Panel title="Results" flush>
           <EmptyState icon={SearchX} title="No players match these filters">
             Adjust or clear filters in the strip above to widen the result set.
+          </EmptyState>
+        </Panel>
+      );
+    }
+
+    if (view === "shortlist") {
+      return (
+        <Panel title="Results" flush>
+          <EmptyState
+            icon={SearchX}
+            title="No shortlist yet"
+            action={
+              <button
+                type="button"
+                className="rounded-full bg-primary px-4 py-1.5 text-label-md text-on-primary hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                onClick={() => {
+                  void navigate({
+                    to: "/search",
+                    search: {
+                      view: "moneyball",
+                      sort: defaultSearchSort("moneyball"),
+                      dir: defaultDirForSortField(
+                        defaultSearchSort("moneyball"),
+                      ),
+                      filters: [],
+                      combine: "and",
+                      comparisonPool: "filtered",
+                    },
+                  });
+                }}
+              >
+                Go to Moneyball
+              </button>
+            }
+          >
+            No players have been shortlisted yet. Upload a Moneyball CSV in the
+            Moneyball tab to create your shortlist.
           </EmptyState>
         </Panel>
       );
