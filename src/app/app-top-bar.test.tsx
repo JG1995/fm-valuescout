@@ -33,8 +33,10 @@ import {
 } from "@/testing/academy-ipc-mock";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
+  emitLoadDataProgress,
   getLastLoadDataIpcArgs,
   observeSnapshotIpcCall,
+  rejectBusyLoadDataRequest,
   resolveBusyLoadDataRequest,
   resolveCreateSaveIpcMock,
   setLoadDataIpcMockMode,
@@ -83,6 +85,7 @@ describe("app top bar", () => {
 
   afterEach(() => {
     resolveBusyLoadDataRequest();
+    rejectBusyLoadDataRequest();
   });
 
   it("disables session history controls before navigation", async () => {
@@ -195,7 +198,7 @@ describe("app top bar", () => {
       await screen.findByText(/Loaded 3 players into the database/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Scan 1\.2s, ingest 400ms, total 1\.6s/i),
+      screen.getByText(/Scan 1\.2s, ingest 400ms, total 2\.1s/i),
     ).toBeInTheDocument();
   });
 
@@ -206,7 +209,10 @@ describe("app top bar", () => {
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
     await screen.findByText(/Loaded 3 players into the database/i);
 
-    expect(getLastLoadDataIpcArgs()).toEqual({ maxAccepted: null });
+    const args = getLastLoadDataIpcArgs() as Record<string, unknown>;
+    expect(args).toMatchObject({ maxAccepted: null });
+    expect(args.onProgress).toBeDefined();
+    expect(typeof args.onProgress).toBe("object");
   });
 
   it("sends the configured player cap when the toggle is on", async () => {
@@ -224,21 +230,26 @@ describe("app top bar", () => {
     await user.click(screen.getByRole("button", { name: "Load Data" }));
     await screen.findByText(/Loaded 3 players into the database/i);
 
-    expect(getLastLoadDataIpcArgs()).toEqual({ maxAccepted: 250 });
+    const args250 = getLastLoadDataIpcArgs() as Record<string, unknown>;
+    expect(args250).toMatchObject({ maxAccepted: 250 });
+    expect(args250.onProgress).toBeDefined();
+    expect(typeof args250.onProgress).toBe("object");
   });
 
-  it("clears player pages and exposes the transition before Load Data invokes Tauri", async () => {
+  it("preserves player pages and does not use neutral key during Load Data", async () => {
     const user = userEvent.setup();
     const { queryClient } = renderWithProviders();
     const searchPage = searchKeys.players(0, 50);
     const squadPage = squadKeys.players(0, 50);
     queryClient.setQueryData(searchPage, { players: ["search"] });
     queryClient.setQueryData(squadPage, { players: ["squad"] });
-    let mutationWasVisible = false;
+    let preservedDuringInvoke = false;
+    let neutralDuringInvoke = false;
     observeSnapshotIpcCall("loadData", () => {
-      expect(queryClient.getQueryData(searchPage)).toBeUndefined();
-      expect(queryClient.getQueryData(squadPage)).toBeUndefined();
-      mutationWasVisible =
+      preservedDuringInvoke =
+        queryClient.getQueryData(searchPage) !== undefined &&
+        queryClient.getQueryData(squadPage) !== undefined;
+      neutralDuringInvoke =
         queryClient.isMutating({
           mutationKey: playerResultContextMutationKey,
         }) > 0;
@@ -247,7 +258,10 @@ describe("app top bar", () => {
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
     await screen.findByText(/Loaded 3 players into the database/i);
 
-    expect(mutationWasVisible).toBe(true);
+    expect(preservedDuringInvoke).toBe(true);
+    expect(neutralDuringInvoke).toBe(false);
+    expect(queryClient.getQueryData(searchPage)).toBeUndefined();
+    expect(queryClient.getQueryData(squadPage)).toBeUndefined();
   });
 
   it("clears player pages and exposes the transition before switching active saves", async () => {
@@ -462,5 +476,195 @@ describe("app top bar", () => {
         true,
       );
     });
+  });
+
+  it("A→B→A before settlement hides success outcome, late progress but reconciles DB truth on active A", async () => {
+    setLoadDataIpcMockMode("busy");
+    const user = userEvent.setup();
+    const { queryClient } = renderWithProviders({
+      initialEntries: ["/settings"],
+    });
+    const searchPage = searchKeys.players(0, 50);
+    const squadPage = squadKeys.players(0, 50);
+    queryClient.setQueryData(searchPage, { players: ["old"] });
+    queryClient.setQueryData(squadPage, { players: ["old"] });
+
+    await user.click(await screen.findByRole("button", { name: "Load Data" }));
+    expect(
+      await screen.findByRole("button", { name: "Scanning…" }),
+    ).toBeInTheDocument();
+
+    // Emit progress for original save A
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "scan",
+      });
+    });
+
+    // A→B - stale command stays busy but phase is no longer owned, so generic label
+    await user.type(await screen.findByLabelText("New save"), "Second");
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Active save" }),
+      "2",
+    );
+    await screen.findByRole("option", { name: "Second" });
+    expect(
+      await screen.findByRole("button", { name: "Loading…" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Scanning…" }),
+    ).not.toBeInTheDocument();
+
+    // Late progress for A must be ignored and keep generic busy label
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "preparing",
+        completed: 5,
+        total: 10,
+      });
+    });
+    expect(
+      screen.getByRole("button", { name: "Loading…" }),
+    ).toBeInTheDocument();
+
+    // B→A before settlement - still stale revision, so still generic Loading…
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Active save" }),
+      "1",
+    );
+    await screen.findByRole("option", { name: "Default save" });
+
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "preparing",
+        completed: 10,
+        total: 10,
+      });
+    });
+    expect(
+      screen.getByRole("button", { name: "Loading…" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Scanning…" }),
+    ).not.toBeInTheDocument();
+
+    // New roots after final switch will be reconciled away once effective publication settles on active A
+    queryClient.setQueryData(searchPage, { players: ["new"] });
+    queryClient.setQueryData(squadPage, { players: ["new"] });
+
+    await act(async () => {
+      resolveBusyLoadDataRequest();
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Loading…" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Scanning…" }),
+    ).not.toBeInTheDocument();
+    // Stale presentation stays hidden, but DB truth was reconciled: exact roots cleared / current owners invalidated
+    expect(screen.queryByText(/Loaded 3 players/)).not.toBeInTheDocument();
+    expect(queryClient.getQueryData(searchPage)).toBeUndefined();
+    expect(queryClient.getQueryData(squadPage)).toBeUndefined();
+
+    // Late progress after stale settlement must not revive
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "saving",
+        completed: 10,
+        total: 10,
+      });
+    });
+    expect(screen.queryByText(/Loaded 3 players/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Loading…" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Scanning…" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("A→B→A before settlement hides error outcome and does not clear", async () => {
+    setLoadDataIpcMockMode("busy");
+    const user = userEvent.setup();
+    const { queryClient } = renderWithProviders({
+      initialEntries: ["/settings"],
+    });
+    const searchPage = searchKeys.players(0, 50);
+    queryClient.setQueryData(searchPage, { players: ["old"] });
+
+    await user.click(await screen.findByRole("button", { name: "Load Data" }));
+    await screen.findByRole("button", { name: "Scanning…" });
+
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "scan",
+      });
+    });
+
+    await user.type(await screen.findByLabelText("New save"), "Second");
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Active save" }),
+      "2",
+    );
+    expect(
+      await screen.findByRole("button", { name: "Loading…" }),
+    ).toBeDisabled();
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Active save" }),
+      "1",
+    );
+    expect(
+      screen.getByRole("button", { name: "Loading…" }),
+    ).toBeInTheDocument();
+
+    // New roots after final switch must survive stale error
+    queryClient.setQueryData(searchPage, { players: ["new"] });
+
+    await act(async () => {
+      rejectBusyLoadDataRequest({
+        phase: "ingest",
+        message: "dump validation failed",
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Loading…" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Scanning…" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ingest failed/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/dump validation failed/),
+    ).not.toBeInTheDocument();
+    expect(queryClient.getQueryData(searchPage)).toEqual({ players: ["new"] });
+
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "scoring",
+        completed: 5,
+        total: 10,
+      });
+    });
+    expect(screen.queryByText(/Ingest failed/)).not.toBeInTheDocument();
   });
 });

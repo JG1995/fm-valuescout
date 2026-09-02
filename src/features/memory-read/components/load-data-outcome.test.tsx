@@ -45,7 +45,15 @@ function resultWithHistoricalStoredSnapshot(
       playerCount: 1,
       loadedAtUtc: "2027-08-16T12:00:00.000Z",
     },
-    timings: { scanMs: 1200, ingestMs: 400, totalMs: 1600 },
+    timings: {
+      scanMs: 1200,
+      prepareMs: 300,
+      scoringMs: 400,
+      saveMs: 200,
+      finalizeMs: 200,
+      totalMs: 2100,
+      ingestMs: 400,
+    },
   };
 }
 

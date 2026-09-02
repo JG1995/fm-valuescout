@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { clearPlayerResultContext } from "@/app/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { fieldClasses } from "@/components/ui/field/field-styles";
@@ -44,25 +44,40 @@ export function AppTopBar() {
   );
   const setPlayerCap = useLoadDataPreferences((state) => state.setPlayerCap);
 
-  const clearResults = () => clearPlayerResultContext(queryClient);
-  const load = useLoadData({
-    onBeforeContextChange: clearResults,
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
-      void queryClient.invalidateQueries({ queryKey: searchKeys.all });
-      void queryClient.invalidateQueries({ queryKey: playerKeys.all });
-      void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
-      void queryClient.invalidateQueries({ queryKey: clubDnaKeys.all });
-      void queryClient.invalidateQueries({ queryKey: managedClubKeys.all });
-      void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
-      void queryClient.invalidateQueries({ queryKey: academyKeys.all });
-      void queryClient.invalidateQueries({ queryKey: staffKeys.all });
+  const clearResults = useCallback(
+    (guard?: () => boolean) => clearPlayerResultContext(queryClient, guard),
+    [queryClient],
+  );
+  const activeSaveContext = activeSave
+    ? { id: activeSave.id, contextToken: activeSave.contextToken }
+    : null;
+
+  const invalidateCurrentOwners = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
+    void queryClient.invalidateQueries({ queryKey: searchKeys.all });
+    void queryClient.invalidateQueries({ queryKey: playerKeys.all });
+    void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
+    void queryClient.invalidateQueries({ queryKey: clubDnaKeys.all });
+    void queryClient.invalidateQueries({ queryKey: managedClubKeys.all });
+    void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
+    void queryClient.invalidateQueries({ queryKey: academyKeys.all });
+    void queryClient.invalidateQueries({ queryKey: staffKeys.all });
+  }, [queryClient]);
+  const invalidateHistoryOwners = useCallback(
+    (captured: { id: number; contextToken: string }) => {
+      void queryClient.invalidateQueries({
+        queryKey: snapshotKeys.history(captured.id),
+      });
     },
+    [queryClient],
+  );
+  const load = useLoadData({
+    activeSaveContext,
+    clearExactRoots: clearResults,
+    invalidateCurrentOwners,
+    invalidateHistoryOwners,
   });
 
-  // An outcome for a save the user has since left describes data they are no
-  // longer looking at. One rule covers both banners, because a failure is as
-  // misleading as a stale player count.
   const [loadedSave, setLoadedSave] = useState<
     { id: number; contextToken: string } | undefined
   >();
@@ -160,8 +175,14 @@ export function AppTopBar() {
           <Button
             size="lg"
             icon={RefreshCw}
-            loading={load.isPending}
-            loadingLabel="Scanning…"
+            loading={load.isCommandPending}
+            loadingLabel={
+              load.isPending
+                ? "Scanning…"
+                : load.isCommandPending
+                  ? "Loading…"
+                  : undefined
+            }
             disabled={playerCapEnabled && !capValid}
             onClick={() => {
               setLoadedSave(

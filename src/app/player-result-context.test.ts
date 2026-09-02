@@ -81,4 +81,41 @@ describe("clearPlayerResultContext", () => {
     expect(queryClient.getQueryData(suggestion)).toEqual(["Alex"]);
     expect(queryClient.getQueryData(plannerQuery)).toEqual({ teams: [] });
   });
+
+  it("does not remove exact roots when guard returns false after cancellation delay", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const searchPage = searchKeys.players(0, 50);
+    const squadPage = squadKeys.players(0, 50);
+    queryClient.setQueryData(searchPage, { players: ["keep-search"] });
+    queryClient.setQueryData(squadPage, { players: ["keep-squad"] });
+
+    // Stub cancellation with a delay to simulate async cancel window
+    const originalCancel = queryClient.cancelQueries.bind(queryClient);
+    vi.spyOn(queryClient, "cancelQueries").mockImplementation(
+      async (filters) => {
+        await new Promise((r) => setTimeout(r, 10));
+        return originalCancel(filters);
+      },
+    );
+    const removeSpy = vi.spyOn(queryClient, "removeQueries");
+
+    let guardValue = true;
+    const guard = () => guardValue;
+
+    const clearing = clearPlayerResultContext(queryClient, guard);
+    // Flip guard to false before removal runs (after cancellation delay)
+    guardValue = false;
+    await clearing;
+
+    // Guard false must preserve exact roots
+    expect(removeSpy).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(searchPage)).toEqual({
+      players: ["keep-search"],
+    });
+    expect(queryClient.getQueryData(squadPage)).toEqual({
+      players: ["keep-squad"],
+    });
+  });
 });

@@ -1,3 +1,19 @@
+export type LoadDataPhase =
+  | "scan"
+  | "preparing"
+  | "scoring"
+  | "saving"
+  | "finalizing";
+
+export type LoadDataProgress = {
+  saveId: number;
+  contextToken: string;
+  phase: LoadDataPhase;
+} & (
+  | { completed: number; total: number }
+  | { completed?: never; total?: never }
+);
+
 export type LoadDataSnapshotSummary = {
   id: number;
   contextToken: string;
@@ -18,8 +34,12 @@ export type LoadDataSnapshotSummary = {
 
 export type LoadDataTimings = {
   scanMs: number;
-  ingestMs: number;
+  prepareMs: number;
+  scoringMs: number;
+  saveMs: number;
+  finalizeMs: number;
   totalMs: number;
+  ingestMs: number;
 };
 
 export type LoadDataResult = {

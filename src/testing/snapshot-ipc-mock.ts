@@ -10,8 +10,12 @@ export type { SnapshotMetadata } from "@/features/snapshot/types/snapshot";
 
 type LoadDataTimings = {
   scanMs: number;
-  ingestMs: number;
+  prepareMs: number;
+  scoringMs: number;
+  saveMs: number;
+  finalizeMs: number;
   totalMs: number;
+  ingestMs: number;
 };
 
 type LoadDataResult = {
@@ -26,6 +30,7 @@ type LoadDataResult = {
 
 export type LoadDataIpcMockMode =
   | "success"
+  | "historicalSuccess"
   | "truncatedSuccess"
   | "scanFailed"
   | "ingestFailed"
@@ -53,10 +58,16 @@ let snapshotDeleteMode: SnapshotManagementIpcMockMode = "success";
 let snapshotRenameMode: SnapshotManagementIpcMockMode = "success";
 let activeSaveMode: ActiveSaveIpcMockMode = "success";
 let lastLoadDataArgs: unknown;
+let lastLoadDataProgressChannel: {
+  onmessage?: (progress: unknown) => void;
+} | null = null;
 let lastSnapshotManagementArgs: unknown;
 let busyDeferred: {
   promise: Promise<LoadDataResult>;
   resolve: (value: LoadDataResult) => void;
+  reject: (error: unknown) => void;
+  capturedSave: SaveSummary;
+  capturedNextSnapshotId: number;
 } | null = null;
 let busySnapshotDeleteDeferred: {
   promise: Promise<SnapshotDeleteResult>;
@@ -102,6 +113,16 @@ function buildLoadDataResult(
   const effectiveSnapshot = overrides?.effectiveSnapshot
     ? buildSnapshot(overrides.effectiveSnapshot)
     : storedSnapshot;
+  const defaultTimings: LoadDataTimings = {
+    scanMs: 1200,
+    prepareMs: 300,
+    scoringMs: 400,
+    saveMs: 200,
+    finalizeMs: 200,
+    totalMs: 2100,
+    ingestMs: 400,
+  };
+  const { timings: overrideTimings, ...restOverrides } = overrides ?? {};
   return {
     requestId: "req-mock",
     playersFound: storedSnapshot.playerCount,
@@ -109,8 +130,8 @@ function buildLoadDataResult(
     maxAccepted: storedSnapshot.maxAccepted,
     storedSnapshot,
     effectiveSnapshot,
-    timings: { scanMs: 1200, ingestMs: 400, totalMs: 1600 },
-    ...overrides,
+    timings: { ...defaultTimings, ...(overrideTimings ?? {}) },
+    ...restOverrides,
   };
 }
 
@@ -223,6 +244,7 @@ export function resetSnapshotIpcMock() {
   snapshotRenameMode = "success";
   activeSaveMode = "success";
   lastLoadDataArgs = undefined;
+  lastLoadDataProgressChannel = null;
   lastSnapshotManagementArgs = undefined;
   busyDeferred = null;
   busySnapshotDeleteDeferred = null;
@@ -237,6 +259,16 @@ export function resetSnapshotIpcMock() {
 
 export function getLastLoadDataIpcArgs() {
   return lastLoadDataArgs;
+}
+
+export function getLastLoadDataProgressChannel(): {
+  onmessage?: (progress: unknown) => void;
+} | null {
+  return lastLoadDataProgressChannel;
+}
+
+export function emitLoadDataProgress(progress: unknown) {
+  lastLoadDataProgressChannel?.onmessage?.(progress);
 }
 
 export function getLastSnapshotManagementIpcArgs() {
@@ -296,8 +328,68 @@ export function setSnapshotRenameIpcMockMode(
 }
 
 export function resolveBusyLoadDataRequest(result?: LoadDataResult) {
-  busyDeferred?.resolve(result ?? buildLoadDataResult());
+  if (!busyDeferred) return;
+  const deferred = busyDeferred;
   busyDeferred = null;
+  if (result) {
+    deferred.resolve(result);
+    return;
+  }
+  // Use captured identity at invocation, not current active save
+  const previousNextSnapshotId = nextSnapshotId;
+  nextSnapshotId = deferred.capturedNextSnapshotId;
+  const savesSnapshot = saves;
+  const activeId = deferred.capturedSave.id;
+  // Temporarily restore captured save as active for snapshot building
+  const originalActive = saves.find((s) => s.isActive);
+  saves = saves.map((s) => ({ ...s, isActive: s.id === activeId }));
+  const built = buildLoadDataResult();
+  saves = savesSnapshot;
+  nextSnapshotId = previousNextSnapshotId;
+  // Apply side effects based on built result using captured state
+  const resultToApply = built;
+  // Replicate non-busy side effects but using captured save context
+  // For busy we don't auto-apply history branching; caller supplied result handles it when needed
+  // Here we apply the same logic as non-busy but scoped to captured save
+  snapshotsBySaveId.set(activeId, {
+    snapshot: resultToApply.effectiveSnapshot,
+  });
+  snapshotHistory = [
+    ...snapshotHistory
+      .filter((snapshot) => snapshot.id !== resultToApply.effectiveSnapshot.id)
+      .map((snapshot) =>
+        snapshot.saveId === resultToApply.effectiveSnapshot.saveId
+          ? { ...snapshot, isCurrent: false }
+          : snapshot,
+      ),
+    {
+      id: resultToApply.effectiveSnapshot.id,
+      contextToken: resultToApply.effectiveSnapshot.contextToken,
+      saveId: resultToApply.effectiveSnapshot.saveId,
+      customName: null,
+      gameDate: resultToApply.effectiveSnapshot.gameDate,
+      gameDateSource: resultToApply.effectiveSnapshot.gameDateSource,
+      playerCount: resultToApply.effectiveSnapshot.playerCount,
+      loadedAtUtc: resultToApply.effectiveSnapshot.loadedAtUtc,
+      isCurrent: true,
+    },
+  ];
+  nextSnapshotId = Math.max(
+    nextSnapshotId,
+    resultToApply.effectiveSnapshot.id + 1,
+  );
+  // Restore original active for resolution value but keep captured save id in snapshot
+  void originalActive;
+  deferred.resolve(resultToApply);
+}
+
+export function rejectBusyLoadDataRequest(error?: unknown) {
+  if (!busyDeferred) return;
+  const deferred = busyDeferred;
+  busyDeferred = null;
+  deferred.reject(
+    error ?? { phase: "ingest", message: "dump validation failed" },
+  );
 }
 
 export function resolveBusySnapshotDeleteRequest(
@@ -343,7 +435,7 @@ export function resolveCreateSaveIpcMock(args: unknown) {
       : "";
 
   if (!name) {
-    throw "Save name must not be empty";
+    throw new Error("Save name must not be empty");
   }
 
   const created: SaveSummary = {
@@ -373,7 +465,7 @@ export function resolveRenameSaveIpcMock(args: unknown) {
       : "";
 
   if (!name) {
-    throw "Save name must not be empty";
+    throw new Error("Save name must not be empty");
   }
 
   const index = saves.findIndex((save) => save.id === saveId);
@@ -431,7 +523,7 @@ export function resolveSetActiveSaveIpcMock(args: unknown) {
 export function resolveRenameSnapshotIpcMock(args: unknown) {
   lastSnapshotManagementArgs = args;
   if (snapshotRenameMode === "failure") {
-    throw "Snapshot rename failed";
+    throw new Error("Snapshot rename failed");
   }
 
   const { snapshotId, contextToken } = parseSnapshotMutationArgs(args);
@@ -440,7 +532,7 @@ export function resolveRenameSnapshotIpcMock(args: unknown) {
       ? args.customName
       : null;
   if (customName !== null && typeof customName !== "string") {
-    throw "Snapshot name is invalid";
+    throw new Error("Snapshot name is invalid");
   }
 
   const index = snapshotHistory.findIndex(
@@ -448,7 +540,7 @@ export function resolveRenameSnapshotIpcMock(args: unknown) {
       snapshot.id === snapshotId && snapshot.contextToken === contextToken,
   );
   if (index < 0) {
-    throw "Snapshot changed or no longer exists";
+    throw new Error("Snapshot changed or no longer exists");
   }
 
   const updated = {
@@ -516,7 +608,7 @@ export function resolveDeleteSaveIpcMock(args: unknown): SaveDeleteResult {
     (save) => save.id === saveId && save.contextToken === contextToken,
   );
   if (!target) {
-    throw "Save changed or no longer exists";
+    throw new Error("Save changed or no longer exists");
   }
 
   saves = saves.filter((save) => save.id !== target.id);
@@ -557,14 +649,35 @@ export function resolveLoadDataIpcMock(
 ): Promise<LoadDataResult> {
   onLoadDataCall?.();
   lastLoadDataArgs = args;
+  const channel =
+    typeof args === "object" &&
+    args !== null &&
+    "onProgress" in args &&
+    typeof (args as Record<string, unknown>).onProgress === "object" &&
+    (args as Record<string, unknown>).onProgress !== null
+      ? ((args as Record<string, unknown>).onProgress as {
+          onmessage?: (progress: unknown) => void;
+        })
+      : null;
+  if (channel) {
+    lastLoadDataProgressChannel = channel;
+  }
 
   if (loadDataMode === "busy") {
     if (!busyDeferred) {
       let resolve!: (value: LoadDataResult) => void;
-      const promise = new Promise<LoadDataResult>((res) => {
+      let reject!: (error: unknown) => void;
+      const promise = new Promise<LoadDataResult>((res, rej) => {
         resolve = res;
+        reject = rej;
       });
-      busyDeferred = { promise, resolve };
+      busyDeferred = {
+        promise,
+        resolve,
+        reject,
+        capturedSave: { ...activeSave() },
+        capturedNextSnapshotId: nextSnapshotId,
+      };
     }
     return busyDeferred.promise;
   }
@@ -584,42 +697,129 @@ export function resolveLoadDataIpcMock(
     });
   }
 
+  const isHistorical = loadDataMode === "historicalSuccess";
   const truncated = loadDataMode === "truncatedSuccess";
-  const result = buildLoadDataResult({
-    playersFound: truncated ? 500 : SAMPLE_PLAYER_COUNT,
-    scanTruncated: truncated,
-    maxAccepted: truncated ? 500 : null,
-    storedSnapshot: buildSnapshot({
+  let result: LoadDataResult;
+  if (isHistorical) {
+    const existingCurrent = snapshotHistory.find(
+      (snapshot) => snapshot.isCurrent,
+    );
+    const storedSnapshot = buildSnapshot({
+      scanTruncated: false,
+      maxAccepted: null,
+      playerCount: SAMPLE_PLAYER_COUNT,
+      gameDate: "2026-07-01",
+      loadedAtUtc: "2026-07-28T15:00:00.000Z",
+    });
+    const effectiveSnapshot = existingCurrent
+      ? buildSnapshot({
+          id: existingCurrent.id,
+          contextToken: existingCurrent.contextToken,
+          saveId: existingCurrent.saveId,
+          gameDate: existingCurrent.gameDate,
+          gameDateSource: existingCurrent.gameDateSource,
+          playerCount: existingCurrent.playerCount,
+          loadedAtUtc: existingCurrent.loadedAtUtc,
+        })
+      : buildSnapshot({
+          id: nextSnapshotId + 1,
+          contextToken: `snapshot-token-${nextSnapshotId + 1}`,
+          gameDate: "2027-08-16",
+          loadedAtUtc: "2027-08-16T12:00:00.000Z",
+        });
+    result = buildLoadDataResult({
+      playersFound: storedSnapshot.playerCount,
+      scanTruncated: false,
+      maxAccepted: null,
+      storedSnapshot,
+      effectiveSnapshot,
+    });
+  } else {
+    result = buildLoadDataResult({
+      playersFound: truncated ? 500 : SAMPLE_PLAYER_COUNT,
       scanTruncated: truncated,
       maxAccepted: truncated ? 500 : null,
-      playerCount: truncated ? 500 : SAMPLE_PLAYER_COUNT,
-    }),
-  });
+      storedSnapshot: buildSnapshot({
+        scanTruncated: truncated,
+        maxAccepted: truncated ? 500 : null,
+        playerCount: truncated ? 500 : SAMPLE_PLAYER_COUNT,
+      }),
+    });
+  }
 
-  snapshotsBySaveId.set(activeSave().id, {
-    snapshot: result.effectiveSnapshot,
-  });
-  snapshotHistory = [
-    ...snapshotHistory
-      .filter((snapshot) => snapshot.id !== result.effectiveSnapshot.id)
-      .map((snapshot) =>
-        snapshot.saveId === result.effectiveSnapshot.saveId
-          ? { ...snapshot, isCurrent: false }
-          : snapshot,
+  if (isHistorical) {
+    snapshotHistory = [
+      ...snapshotHistory.filter(
+        (snapshot) => snapshot.id !== result.storedSnapshot.id,
       ),
-    {
-      id: result.effectiveSnapshot.id,
-      contextToken: result.effectiveSnapshot.contextToken,
-      saveId: result.effectiveSnapshot.saveId,
-      customName: null,
-      gameDate: result.effectiveSnapshot.gameDate,
-      gameDateSource: result.effectiveSnapshot.gameDateSource,
-      playerCount: result.effectiveSnapshot.playerCount,
-      loadedAtUtc: result.effectiveSnapshot.loadedAtUtc,
-      isCurrent: true,
-    },
-  ];
-  nextSnapshotId += 1;
+      {
+        id: result.storedSnapshot.id,
+        contextToken: result.storedSnapshot.contextToken,
+        saveId: result.storedSnapshot.saveId,
+        customName: null,
+        gameDate: result.storedSnapshot.gameDate,
+        gameDateSource: result.storedSnapshot.gameDateSource,
+        playerCount: result.storedSnapshot.playerCount,
+        loadedAtUtc: result.storedSnapshot.loadedAtUtc,
+        isCurrent: false,
+      },
+    ];
+    const effectiveAlreadyCurrent = snapshotHistory.some(
+      (snapshot) =>
+        snapshot.id === result.effectiveSnapshot.id && snapshot.isCurrent,
+    );
+    if (!effectiveAlreadyCurrent) {
+      snapshotsBySaveId.set(result.effectiveSnapshot.saveId, {
+        snapshot: result.effectiveSnapshot,
+      });
+      snapshotHistory = [
+        ...snapshotHistory.filter(
+          (snapshot) => snapshot.id !== result.effectiveSnapshot.id,
+        ),
+        {
+          id: result.effectiveSnapshot.id,
+          contextToken: result.effectiveSnapshot.contextToken,
+          saveId: result.effectiveSnapshot.saveId,
+          customName: null,
+          gameDate: result.effectiveSnapshot.gameDate,
+          gameDateSource: result.effectiveSnapshot.gameDateSource,
+          playerCount: result.effectiveSnapshot.playerCount,
+          loadedAtUtc: result.effectiveSnapshot.loadedAtUtc,
+          isCurrent: true,
+        },
+      ];
+    }
+    nextSnapshotId = Math.max(
+      nextSnapshotId,
+      result.storedSnapshot.id + 1,
+      result.effectiveSnapshot.id + 1,
+    );
+  } else {
+    snapshotsBySaveId.set(activeSave().id, {
+      snapshot: result.effectiveSnapshot,
+    });
+    snapshotHistory = [
+      ...snapshotHistory
+        .filter((snapshot) => snapshot.id !== result.effectiveSnapshot.id)
+        .map((snapshot) =>
+          snapshot.saveId === result.effectiveSnapshot.saveId
+            ? { ...snapshot, isCurrent: false }
+            : snapshot,
+        ),
+      {
+        id: result.effectiveSnapshot.id,
+        contextToken: result.effectiveSnapshot.contextToken,
+        saveId: result.effectiveSnapshot.saveId,
+        customName: null,
+        gameDate: result.effectiveSnapshot.gameDate,
+        gameDateSource: result.effectiveSnapshot.gameDateSource,
+        playerCount: result.effectiveSnapshot.playerCount,
+        loadedAtUtc: result.effectiveSnapshot.loadedAtUtc,
+        isCurrent: true,
+      },
+    ];
+    nextSnapshotId += 1;
+  }
 
   return Promise.resolve(result);
 }
