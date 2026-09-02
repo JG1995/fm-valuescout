@@ -241,7 +241,7 @@ The thinnest end-to-end path that proves the approach:
 
 #### Commit 1 — Record the approved feature plan
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(tactic-table-columns): record approved feature plan`
 
@@ -300,7 +300,7 @@ The thinnest end-to-end path that proves the approach:
 
 #### Commit 2 — Add neutral tactic-identity helpers and ordering
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(search): add neutral tactic column helpers`
 
@@ -777,19 +777,19 @@ The thinnest end-to-end path that proves the approach:
 
 **PR:** PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist)
 
-**Commit:** Record the approved feature plan
+**Commit:** Add neutral tactic-identity helpers and ordering
 
 ### RED or removal proof
 
-Not applicable — independently reviewed planning documents only. Validate with `python3 /home/jonas/projects/PI_SETUP/scripts/ledger_state.py .wiki/features/active/tactic-table-columns.md` when available; otherwise record validator absence as a gap and rely on markdown schema inspection.
+Add focused tests that import the missing neutral tactic-ID and ordering modules. Confirm they fail because the modules or exports do not exist.
 
 ### Expected outcome
 
-The ledger at `.wiki/features/active/tactic-table-columns.md` records the full intent (with save-scoped tactic acquisition, no-snapshot composition, and deterministic Moneyball mapping), invariants (with boundary, mapping, recompaction, and sort-acceptance invariants), non-goals, current-state map grounded in `biome.json`/`tactic.rs`/`builtin_role_definitions_v1.json`/`dynamic-columns.ts`/`use-player-table-store.ts`/`search.tsx` evidence, architecture (neutral `src/utils/tactic-ids.ts`, atomic `replaceLayout`, route-owned Planner composition, deterministic `(attribute_role_id, base_position)` Moneyball mapping, and sort validation), uncertainty register, walking skeleton, one PR with seven atomic commits each bearing a complete packet, branch `feat/tactic-table-columns` intended but not yet activated (activation from synchronized `main` reserved for delivery workflow), GitHub via `.github/pull_request_template.md` squash with required checks, and active pointers marking `PR 1` and `Commit 1` as `Active`. `TODO.md` moves this feature to Active.
+`src/utils/tactic-ids.ts` becomes the single neutral owner of the 11 canonical lane IDs, synthetic prefixes, allowlist predicates, group helpers, and default width. Planner re-exports those IDs, and `src/features/search/utils/tactic-columns.ts` builds straight or interleaved lane order without importing Planner or app modules. Tests prove exact TypeScript/Rust lane parity, valid and invalid suffix handling, full-group detection, prefix separation, and tactic-position ordering.
 
 ### Explicit exclusions
 
-Implementation, tests, executable configuration, generated files, and unrelated documentation. No Squad, no Planner matrix, no migration, no metric-picker promotion.
+Store persistence, Rust resolver/query behavior, route composition, toggle UI, Moneyball scoring, metric-picker changes, Squad, migrations, and unrelated refactors.
 
 ## Discoveries and replanning
 
@@ -806,6 +806,7 @@ Implementation, tests, executable configuration, generated files, and unrelated 
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 1 — Record the approved feature plan | 944551c774cb30c0d7f2bcb42f232572680e870d | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`; `delivery_state.py`; `git diff --check 406dca7..944551c` — passed. | Not applicable | Clear | 0 | None |
 
 ## Final validation
 
