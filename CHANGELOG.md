@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-02
+
+### Added
+
+- Player Search now provides a Shortlist tab for the current Moneyball cohort, with General attributes, filters, sorting, profile analysis, and an independent table layout.
+- **Load Data** now reports Scan, Preparing, Scoring, Saving, and Finalizing progress, with phase counts and detailed timing after completion.
+
+### Changed
+
+- Current player and staff role metrics now use compact storage in a fresh `app-v2.db`. The app leaves the legacy `app.db` untouched; verify the new database before manually deleting the old file.
+
+### Fixed
+
+- CSV imports now accept Football Manager exports up to 8 MiB and 10,000 rows.
+
 ## [0.14.3] - 2026-08-30
 
 ### Fixed
