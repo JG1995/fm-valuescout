@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-_None._
+- [Player Shortlist](./features/active/player-shortlist.md) — third Search tab filtered to the current Moneyball cohort with General metrics and independent persisted layout (Linear JAY-52).
 
 ## Next
 
