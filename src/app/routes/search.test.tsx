@@ -1879,6 +1879,382 @@ describe("search route", () => {
     expect(within(firstRow).getByText("Low")).toBeInTheDocument();
   });
 
+  it("validates explicit Shortlist view, strips comparisonPool outside Moneyball and drops Moneyball-only direct-URL filters", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("General Scout", 160),
+        dynamicValues: {
+          "role.deep_lying_playmaker_ip": 80,
+          "attr.Acceleration": 16,
+        },
+      },
+    ]);
+    const encodedFilters = encodeURIComponent(
+      JSON.stringify([
+        { field: "ca", op: "gt", value: 150 },
+        { field: "moneyball.goals", op: "gt", value: 5 },
+        {
+          field: "moneyball_role.wbl_wbr_wing_back_ip",
+          op: "gt",
+          value: 70,
+        },
+        { field: "role.deep_lying_playmaker_ip", op: "gt", value: 70 },
+        { field: "attr.Acceleration", op: "gt", value: 12 },
+      ]),
+    );
+    const { router } = renderSearchRoute(
+      `/search?view=shortlist&comparisonPool=fullCsv&filters=${encodedFilters}`,
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.search.view).toBe("shortlist");
+      expect(router.state.location.search.comparisonPool).toBeUndefined();
+    });
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "shortlist",
+        filters: expect.arrayContaining([
+          expect.objectContaining({ field: "ca" }),
+          expect.objectContaining({ field: "role.deep_lying_playmaker_ip" }),
+          expect.objectContaining({ field: "attr.Acceleration" }),
+        ]),
+      });
+      const filteredFields = (
+        (getLastSearchPlayersArgs()?.filters as Array<{ field: string }>) ?? []
+      ).map((rule) => rule.field);
+      expect(filteredFields).not.toContain("moneyball.goals");
+      expect(filteredFields).not.toContain(
+        "moneyball_role.wbl_wbr_wing_back_ip",
+      );
+    });
+    expect(screen.getByRole("tab", { name: "Shortlist" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("renders three tabs in General Moneyball Shortlist order with roving focus and ArrowRight Left Home End", async () => {
+    await resolveLoadDataIpcMock();
+    renderSearchRoute("/search?view=general");
+
+    const tablist = await screen.findByRole("tablist", {
+      name: "Search view",
+    });
+    const tabs = within(tablist).getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      "General",
+      "Moneyball",
+      "Shortlist",
+    ]);
+    const general = within(tablist).getByRole("tab", { name: "General" });
+    const moneyball = within(tablist).getByRole("tab", { name: "Moneyball" });
+    const shortlist = within(tablist).getByRole("tab", { name: "Shortlist" });
+
+    expect(general).toHaveAttribute("aria-selected", "true");
+    expect(general).toHaveAttribute("tabIndex", "0");
+    expect(moneyball).toHaveAttribute("tabIndex", "-1");
+    expect(shortlist).toHaveAttribute("tabIndex", "-1");
+
+    general.focus();
+    fireEvent.keyDown(tablist, { key: "ArrowRight" });
+    await waitFor(() => expect(moneyball).toHaveFocus());
+    expect(moneyball).toHaveAttribute("aria-selected", "true");
+    expect(general).toHaveAttribute("tabIndex", "-1");
+    expect(moneyball).toHaveAttribute("tabIndex", "0");
+
+    fireEvent.keyDown(tablist, { key: "ArrowRight" });
+    await waitFor(() => expect(shortlist).toHaveFocus());
+    expect(shortlist).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(tablist, { key: "End" });
+    await waitFor(() => expect(shortlist).toHaveFocus());
+
+    fireEvent.keyDown(tablist, { key: "Home" });
+    await waitFor(() => expect(general).toHaveFocus());
+    expect(general).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(tablist, { key: "ArrowLeft" });
+    await waitFor(() => expect(shortlist).toHaveFocus());
+    expect(shortlist).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("clears all filters and resets destination sort and direction when any tab is selected", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("High CA", 180),
+      playerNamed("Low CA", 100),
+    ]);
+    const encodedFilters = encodeURIComponent(
+      JSON.stringify([{ field: "ca", op: "gt", value: 150 }]),
+    );
+    const { router } = renderSearchRoute(
+      `/search?view=general&sort=pa&dir=asc&filters=${encodedFilters}`,
+    );
+    await screen.findByText("High CA");
+    expect(router.state.location.search).toMatchObject({
+      view: "general",
+      sort: "pa",
+      dir: "asc",
+      filters: [expect.objectContaining({ field: "ca" })],
+    });
+
+    await user.click(screen.getByRole("tab", { name: "Moneyball" }));
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        view: "moneyball",
+        sort: "moneyball.average_rating",
+        dir: "desc",
+        filters: [],
+        comparisonPool: "filtered",
+      });
+    });
+
+    // Add a Moneyball filter then switch to Shortlist
+    await user.click(screen.getByRole("button", { name: "Edit filters" }));
+    const moneyballDialog = screen.getByRole("dialog", {
+      name: "Edit filters",
+    });
+    await user.click(
+      within(moneyballDialog).getByRole("button", { name: "Add filter" }),
+    );
+    fireEvent.change(within(moneyballDialog).getByLabelText("Value"), {
+      target: { value: "7" },
+    });
+    await user.click(
+      within(moneyballDialog).getByRole("button", { name: "Done" }),
+    );
+    await waitFor(() =>
+      expect(router.state.location.search.filters).toHaveLength(1),
+    );
+
+    await user.click(screen.getByRole("tab", { name: "Shortlist" }));
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        view: "shortlist",
+        sort: "ca",
+        dir: "desc",
+        filters: [],
+      });
+      expect(router.state.location.search.comparisonPool).toBeUndefined();
+    });
+
+    // Add a Shortlist filter then go back to General
+    await user.click(screen.getByRole("button", { name: "Edit filters" }));
+    const shortlistDialog = screen.getByRole("dialog", {
+      name: "Edit filters",
+    });
+    await user.click(
+      within(shortlistDialog).getByRole("button", { name: "Add filter" }),
+    );
+    fireEvent.change(within(shortlistDialog).getByLabelText("Value"), {
+      target: { value: "10" },
+    });
+    await user.click(
+      within(shortlistDialog).getByRole("button", { name: "Done" }),
+    );
+    await waitFor(() =>
+      expect(router.state.location.search.filters).toHaveLength(1),
+    );
+
+    await user.click(screen.getByRole("tab", { name: "General" }));
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        view: "general",
+        sort: "ca",
+        dir: "desc",
+        filters: [],
+      });
+    });
+  });
+
+  it("applies a Shortlist filter only to the shortlist layout preserving search and moneyball-search", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    usePlayerTableStore.setState({
+      layouts: {
+        search: { columnIds: ["name", "ca"], widths: { name: 240 } },
+        "moneyball-search": {
+          columnIds: ["name", "moneyball.average_rating"],
+          widths: { name: 240 },
+        },
+        shortlist: { columnIds: ["name", "ca"], widths: { name: 240 } },
+        squad: { columnIds: ["name"], widths: {} },
+        "staff-search": { columnIds: [], widths: {} },
+        "my-staff": { columnIds: [], widths: {} },
+        "staff-shortlist": { columnIds: [], widths: {} },
+      },
+    });
+    setSearchPlayersOverride([playerNamed("Isolated", 160)]);
+    renderSearchRoute("/search?view=shortlist");
+    await screen.findByText("Isolated");
+
+    await user.click(screen.getByRole("button", { name: "Edit filters" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Add filter" }),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Field: CA" }));
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "acceleration",
+    );
+    await user.click(
+      within(dialog).getByRole("option", { name: "Acceleration" }),
+    );
+    fireEvent.change(within(dialog).getByLabelText("Value"), {
+      target: { value: "16" },
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+
+    await waitFor(() => {
+      expect(
+        usePlayerTableStore.getState().layouts.shortlist.columnIds,
+      ).toContain("attr.Acceleration");
+    });
+    expect(
+      usePlayerTableStore.getState().layouts.search.columnIds,
+    ).not.toContain("attr.Acceleration");
+    expect(
+      usePlayerTableStore.getState().layouts["moneyball-search"].columnIds,
+    ).not.toContain("attr.Acceleration");
+  });
+
+  it("shows Shortlist neutral empty without upload, filtered standard, and clearing reveals neutral", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([]);
+    renderSearchRoute("/search?view=shortlist");
+
+    expect(await screen.findByText("No shortlist yet")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Go to Moneyball" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Edit filters" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Add filter" }),
+    );
+    fireEvent.change(within(dialog).getByLabelText("Value"), {
+      target: { value: "190" },
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+
+    expect(
+      await screen.findByText("No players match these filters"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No shortlist yet")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Go to Moneyball" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: /Remove filter CA > 190/i }),
+    );
+    expect(await screen.findByText("No shortlist yet")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows filtered standard for a direct-URL Shortlist with a valid General filter yielding total 0", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+    const encoded = encodeURIComponent(
+      JSON.stringify([{ field: "attr.Acceleration", op: "gt", value: 20 }]),
+    );
+    renderSearchRoute(`/search?view=shortlist&filters=${encoded}`);
+
+    expect(
+      await screen.findByText("No players match these filters"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No shortlist yet")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "shortlist",
+        filters: [expect.objectContaining({ field: "attr.Acceleration" })],
+      });
+    });
+  });
+
+  it("renders Shortlist rows with General columns and navigates to General profile", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Shortlist Ace", 170),
+        dynamicValues: { "role.deep_lying_playmaker_ip": 80 },
+      },
+    ]);
+    const { router } = renderSearchRoute("/search?view=shortlist");
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toBeInTheDocument();
+    expect(
+      within(table).queryByRole("columnheader", {
+        name: "Average Rating",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "shortlist",
+        sortBy: "ca",
+      });
+    });
+
+    await user.click(within(table).getByText("Shortlist Ace"));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/players/170");
+      expect(router.state.location.search).toEqual({ view: "general" });
+    });
+  });
+
+  it("keeps Moneyball Name sort from direct URL rather than normalizing to Average Rating", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Name Sorted", 160)]);
+    const { router } = renderSearchRoute(
+      "/search?view=moneyball&sort=name&dir=asc",
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        view: "moneyball",
+        sort: "name",
+        dir: "asc",
+      });
+    });
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(
+      within(table).getByRole("columnheader", { name: "Name" }),
+    ).toHaveAttribute("aria-sort", "ascending");
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        sortBy: "name",
+        sortDir: "asc",
+      });
+    });
+  });
+
   it("keeps active non-basic filter fields hidden until added to the layout", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([

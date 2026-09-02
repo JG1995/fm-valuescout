@@ -31,11 +31,12 @@ const DEFAULT_STAFF_SHORTLIST_COLUMN_IDS = [
 export const PLAYER_TABLE_LAYOUT_STORAGE_KEY =
   "fm-valuescout-player-table-layouts";
 
-const PLAYER_TABLE_LAYOUT_VERSION = 5;
+const PLAYER_TABLE_LAYOUT_VERSION = 6;
 
 export type PlayerTableId =
   | "search"
   | "moneyball-search"
+  | "shortlist"
   | "squad"
   | "staff-search"
   | "my-staff"
@@ -88,7 +89,7 @@ function defaultLayout(table: PlayerTableId): PlayerTableLayout {
     columnIds:
       table === "moneyball-search"
         ? withoutDuplicateIdentityColumns(DEFAULT_MONEYBALL_TABLE_COLUMN_IDS)
-        : table === "search" || table === "squad"
+        : table === "search" || table === "squad" || table === "shortlist"
           ? withoutDuplicateIdentityColumns(DEFAULT_PLAYER_TABLE_COLUMN_IDS)
           : table === "staff-shortlist"
             ? [...DEFAULT_STAFF_SHORTLIST_COLUMN_IDS]
@@ -101,6 +102,7 @@ export function defaultPlayerTableLayouts(): PlayerTableLayouts {
   return {
     search: defaultLayout("search"),
     "moneyball-search": defaultLayout("moneyball-search"),
+    shortlist: defaultLayout("shortlist"),
     squad: defaultLayout("squad"),
     "staff-search": defaultLayout("staff-search"),
     "my-staff": defaultLayout("my-staff"),
@@ -129,14 +131,17 @@ function sanitizeLayout(
                 "division",
                 "value",
               ].includes(metricId)
-          : table === "search" || table === "squad"
+          : table === "search" || table === "squad" || table === "shortlist"
             ? getPlayerMetric(metricId)?.sortable === true
             : metricId.length > 0;
       })
     : [];
   const useNameFallback =
     identityOnlyFallback &&
-    (table === "search" || table === "moneyball-search" || table === "squad") &&
+    (table === "search" ||
+      table === "moneyball-search" ||
+      table === "squad" ||
+      table === "shortlist") &&
     columnIds.length > 0 &&
     withoutDuplicateIdentityColumns(columnIds).length === 0;
   const visibleColumnIds = useNameFallback
@@ -173,6 +178,11 @@ function sanitizePersistedState(
         "moneyball-search",
         identityOnlyFallback,
       ),
+      shortlist: sanitizeLayout(
+        layouts.shortlist,
+        "shortlist",
+        identityOnlyFallback,
+      ),
       squad: sanitizeLayout(layouts.squad, "squad", identityOnlyFallback),
       "staff-search": sanitizeLayout(layouts["staff-search"], "staff-search"),
       "my-staff": sanitizeLayout(layouts["my-staff"], "my-staff"),
@@ -202,23 +212,23 @@ function migratePersistedState(
   persistedState: unknown,
   version: number,
 ): PersistedPlayerTableState {
-  const state = sanitizePersistedState(
-    persistedState,
-    version < PLAYER_TABLE_LAYOUT_VERSION,
-  );
+  const state = sanitizePersistedState(persistedState, version < 5);
   if (version >= PLAYER_TABLE_LAYOUT_VERSION) {
     return state;
   }
-  return {
-    layouts: {
-      ...state.layouts,
-      search: removeDuplicateIdentityColumns(state.layouts.search),
-      "moneyball-search": removeDuplicateIdentityColumns(
-        state.layouts["moneyball-search"],
-      ),
-      squad: removeDuplicateIdentityColumns(state.layouts.squad),
-    },
-  };
+  if (version < 5) {
+    return {
+      layouts: {
+        ...state.layouts,
+        search: removeDuplicateIdentityColumns(state.layouts.search),
+        "moneyball-search": removeDuplicateIdentityColumns(
+          state.layouts["moneyball-search"],
+        ),
+        squad: removeDuplicateIdentityColumns(state.layouts.squad),
+      },
+    };
+  }
+  return state;
 }
 
 export const usePlayerTableStore = create<PlayerTableStore>()(
@@ -240,7 +250,9 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
                     "division",
                     "value",
                   ].includes(metricId)
-                : table === "search" || table === "squad"
+                : table === "search" ||
+                    table === "squad" ||
+                    table === "shortlist"
                   ? getPlayerMetric(metricId)?.sortable === true
                   : metricId.length > 0) &&
               !layout.columnIds.includes(metricId) &&

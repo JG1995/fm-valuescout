@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -116,7 +116,7 @@ Load/ingest a current snapshot that has no Moneyball import, open unfiltered Sho
 
 ### PR 1 — Add Player Shortlist tab to Player Search
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -296,7 +296,7 @@ Load/ingest a current snapshot that has no Moneyball import, open unfiltered Sho
 
 #### Commit 3 — Wire Shortlist tab, layout, empty state, and profile mapping
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(search): wire Shortlist tab and table layout`
 
@@ -400,19 +400,21 @@ Load/ingest a current snapshot that has no Moneyball import, open unfiltered Sho
 
 **PR:** PR 1 — Add Player Shortlist tab to Player Search
 
-**Commit:** Wire Shortlist tab, layout, empty state, and profile mapping
+**Active work:** None — implementation complete
+
+**Commit:** None — implementation complete
 
 ### RED or removal proof
 
-Add focused route, table-store, dynamic-column, and smoke tests that fail because the third view, independent `shortlist` layout, empty-state precedence, keyboard tab order, and General profile mapping do not exist.
+Not applicable — all planned implementation packets are completed and independently reviewed.
 
 ### Expected outcome
 
-Player Search exposes General, Moneyball, and Shortlist in order; Shortlist uses the backend cohort with General columns and filters, owns its version-6 persisted layout, presents zero results from existing `total` and `filters.length`, and opens rows in General profile view.
+Run feature-level validation and review across the exact implementation refs, reconcile current-state documentation, archive the ledger, and prepare the final PR for publication.
 
 ### Explicit exclusions
 
-- Backend query or schema changes, a new IPC path or DTO, a second upload control, Settings default support, Squad or Staff behavior, and Moneyball metrics or roles in Shortlist.
+- New feature behavior, packet changes, release preparation, unrelated refactors, and undocumented manual-validation claims.
 
 ## Discoveries and replanning
 
@@ -429,7 +431,8 @@ Player Search exposes General, Moneyball, and Shortlist in order; Shortlist uses
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Add Player Shortlist tab to Player Search | Commit 1 — Record the approved feature plan | bfb7f15b1586fd636eb6ceef192cfd3ce382dc23 | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; documentation links and `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
-| PR 1 — Add Player Shortlist tab to Player Search | Commit 2 — Add Shortlist view and cohort-filtered General query | Pending record | Added the Shortlist search view, General-family command/query validation, and exact current-snapshot Moneyball cohort join without percentile readiness or new persistence. | `./scripts/dev check-rust`: 729 passed, 0 failed, 2 ignored; `./scripts/dev check`: passed with the same Rust count; primary LSP and `git diff --cached --check`: passed. | Pass | Clear | 1 | None. |
+| PR 1 — Add Player Shortlist tab to Player Search | Commit 2 — Add Shortlist view and cohort-filtered General query | 4a60ceec1bfa02033551e6cd2ef5b7f8157356ce | Added the Shortlist search view, General-family command/query validation, and exact current-snapshot Moneyball cohort join without percentile readiness or new persistence. | `./scripts/dev check-rust`: 729 passed, 0 failed, 2 ignored; `./scripts/dev check`: passed with the same Rust count; primary LSP and `git diff --cached --check`: passed. | Pass | Clear | 1 | None. |
+| PR 1 — Add Player Shortlist tab to Player Search | Commit 3 — Wire Shortlist tab, layout, empty state, and profile mapping | Pending record | Added the third Search tab, General-family Shortlist table and filters, independent version-6 layout, deterministic empty states, Moneyball guidance, and General profile mapping. | Focused route/store/dynamic tests: 86 passed; `./scripts/dev check`: passed with 729 Rust tests passed and 2 ignored; `./scripts/dev smoke`: 53 passed; primary LSP and `git diff --cached --check`: passed. | Pass | Clear | 2 | None. |
 
 ## Final validation
 
