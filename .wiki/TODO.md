@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Compact Snapshot Metrics and Load Progress](./features/active/compact-snapshot-metrics.md) — replace normalized role-score rows with compact current-snapshot player and staff metrics in a fresh database generation, then add truthful command-scoped Load Data progress and detailed timings.
+_None._
 
 ## Next
 
@@ -99,3 +99,4 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 - [In-app bridge plugin install](./features/completed/bridge-plugin-install.md) — install / update / remove `FmDataBridge.dll` for default Steam FM26 from the app
 - [Snapshot ingest + Load Data](./features/completed/snapshot-ingest.md) — app save slots, current snapshot ingest, Load Data scan+ingest, sanity list
 - [Bridge scan performance](./features/completed/bridge-scan-performance.md) — block heap scanning, streaming dump, optimized ingest, unlimited Load Data default, UI cap controls and timings
+- [Compact Snapshot Metrics and Load Progress](./features/completed/compact-snapshot-metrics.md) — compact current-only player and staff role metrics in `app-v2.db` (migrations v38/v39), bounded preparation outside the database mutex, command-scoped best-effort phased Load Data progress, and disjoint timing reporting

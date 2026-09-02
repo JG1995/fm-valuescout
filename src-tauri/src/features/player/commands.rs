@@ -420,7 +420,7 @@ fn report_squad_player_boost_progress<R>(
     let _ = on_progress(progress);
 }
 
-fn acquire_player_boost_gate() -> Result<std::sync::MutexGuard<'static, ()>, PlayerBoostError> {
+fn acquire_player_boost_gate() -> Result<boost_gate::BoostGuard, PlayerBoostError> {
     boost_gate::acquire_boost_gate().map_err(|message| PlayerBoostError::Bridge {
         kind: "inProgress".to_string(),
         message,

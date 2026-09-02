@@ -34,8 +34,8 @@ export function ActiveSaveSelect({
       await onBeforeContextChange();
       return setActiveSave(saveId);
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
       onSwitched?.();
     },
   });

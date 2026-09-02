@@ -9,10 +9,14 @@
 //! lookup followed by safe snake_case validation. WebView input never becomes
 //! an SQL identifier.
 
+use std::collections::HashMap;
+
 use rusqlite::{params, params_from_iter, types::Value, Connection, Transaction};
 
 use super::potential_scores;
-use crate::features::scoring::catalog::all_roles;
+use crate::features::scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS};
+use crate::features::scoring::projection::project_attributes;
+use crate::features::scoring::score::score_role;
 
 /// Model version of the checked-in projection formula. Alias of
 /// `potential_scores::PROJECTION_MODEL_VERSION` so the compact contract keeps
@@ -125,13 +129,70 @@ pub(crate) struct CompactPlayerRow {
     pub(crate) potential_scores: Vec<Option<i64>>,
 }
 
-/// Inserts or replaces one compact row per prepared player for one snapshot,
-/// with the exact checked-in score and projection model versions.
-pub(crate) fn persist_rows(
+/// Pure preparation of player projection and compact scores without any
+/// database read/write or `rusqlite` ownership. Callers build the returned
+/// values outside the `Db(Mutex<Connection>)` lock; `persist_rows` writes
+/// them in the final transaction. Memory is proportional to one player's
+/// 68+68 scores.
+#[allow(clippy::type_complexity)]
+pub(crate) fn prepare_player_derived(
+    uid: i64,
+    attributes_json: &str,
+    positions_json: &str,
+    ca: i64,
+    pa: i64,
+    age: Option<i64>,
+) -> Result<(String, Vec<Option<i64>>, Vec<Option<i64>>), String> {
+    let source_attributes = serde_json::from_str::<HashMap<String, Option<u8>>>(attributes_json)
+        .map_err(|error| format!("invalid player {uid} attributes JSON: {error}"))?;
+    for key in DUMP_ATTRIBUTE_KEYS {
+        if let Some(value) = source_attributes.get(*key).copied().flatten() {
+            if !(1..=20).contains(&value) {
+                return Err(format!(
+                    "player {uid} attribute `{key}` must be between 1 and 20"
+                ));
+            }
+        }
+    }
+    let attributes_for_scoring: HashMap<String, Option<u8>> = DUMP_ATTRIBUTE_KEYS
+        .iter()
+        .map(|key| {
+            (
+                (*key).to_string(),
+                source_attributes.get(*key).copied().flatten(),
+            )
+        })
+        .collect();
+    let positions_map = serde_json::from_str::<HashMap<String, Option<i64>>>(positions_json)
+        .map_err(|error| format!("invalid player {uid} positions JSON: {error}"))?;
+    let projected = project_attributes(
+        &attributes_for_scoring,
+        ca,
+        pa,
+        age,
+        positions_map.iter().map(|(k, v)| (k.as_str(), *v)),
+    );
+    let projected_json = serde_json::to_string(&projected).map_err(|e| e.to_string())?;
+    let mut current_scores = Vec::with_capacity(all_roles().len());
+    let mut potential_scores = Vec::with_capacity(all_roles().len());
+    for role in all_roles() {
+        current_scores.push(score_role(&attributes_for_scoring, role).map(i64::from));
+        potential_scores.push(score_role(&projected, role).map(i64::from));
+    }
+    Ok((projected_json, current_scores, potential_scores))
+}
+
+/// Borrowed persistence implementation: inserts or replaces one compact row per player
+/// without cloning the 136-value score vectors. Accepts any iterator over borrowed
+/// slices directly from `PreparedPlayer`.
+pub(crate) fn persist_rows_borrowed<'a, I>(
     tx: &Transaction<'_>,
     snapshot_id: i64,
-    rows: &[CompactPlayerRow],
-) -> Result<(), String> {
+    rows: I,
+) -> Result<(), String>
+where
+    I: IntoIterator<Item = (i64, &'a [Option<i64>], &'a [Option<i64>])>,
+{
     let roles = all_roles();
     let mut columns = roles
         .iter()
@@ -155,22 +216,22 @@ pub(crate) fn persist_rows(
     );
     let mut statement = tx.prepare(&sql).map_err(|error| error.to_string())?;
 
-    for row in rows {
-        if row.current_scores.len() != roles.len() || row.potential_scores.len() != roles.len() {
+    for (uid, current_scores, potential_scores) in rows {
+        if current_scores.len() != roles.len() || potential_scores.len() != roles.len() {
             return Err("Compact player row has the wrong role count".to_string());
         }
         let mut values = Vec::with_capacity(columns.len() + 4);
         values.push(Value::Integer(snapshot_id));
-        values.push(Value::Integer(row.uid));
+        values.push(Value::Integer(uid));
         values.push(Value::Integer(SCORE_MODEL_VERSION));
         values.push(Value::Integer(PROJECTION_MODEL_VERSION));
         values.extend(
-            row.current_scores
+            current_scores
                 .iter()
                 .map(|score| score.map_or(Value::Null, Value::Integer)),
         );
         values.extend(
-            row.potential_scores
+            potential_scores
                 .iter()
                 .map(|score| score.map_or(Value::Null, Value::Integer)),
         );
@@ -179,6 +240,26 @@ pub(crate) fn persist_rows(
             .map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+/// Inserts or replaces one compact row per prepared player for one snapshot,
+/// with the exact checked-in score and projection model versions.
+pub(crate) fn persist_rows(
+    tx: &Transaction<'_>,
+    snapshot_id: i64,
+    rows: &[CompactPlayerRow],
+) -> Result<(), String> {
+    persist_rows_borrowed(
+        tx,
+        snapshot_id,
+        rows.iter().map(|row| {
+            (
+                row.uid,
+                row.current_scores.as_slice(),
+                row.potential_scores.as_slice(),
+            )
+        }),
+    )
 }
 
 /// Deletes every compact row for one snapshot.

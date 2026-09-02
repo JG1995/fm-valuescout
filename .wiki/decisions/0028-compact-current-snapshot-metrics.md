@@ -4,7 +4,7 @@
 
 Accepted
 
-Implementation status: Planned in [Compact Snapshot Metrics and Load Progress](../features/active/compact-snapshot-metrics.md).
+Implementation status: Implemented and completed in [Compact Snapshot Metrics and Load Progress](../features/completed/compact-snapshot-metrics.md). PR1 merged as `ec2c6f60ab4e136a3c477a969b79bc6f315a0830` (#107); PR2 implementation validated through final content HEAD `5c3a0541dc91baefc59df5554ee55b8fe7fd3dd2` (no PR ref yet) and recorded Windows acceptance at `610cd00` (250k players/2k staff, fresh `app-v2.db` only, legacy `app.db` unchanged); final delta is async-command responsiveness only.
 
 ## Context
 
@@ -81,7 +81,7 @@ These options can improve specific workloads, but they add storage, concurrency,
 
 ## Related work
 
-- Feature plan: [Compact Snapshot Metrics and Load Progress](../features/active/compact-snapshot-metrics.md)
+- Feature plan: [Compact Snapshot Metrics and Load Progress](../features/completed/compact-snapshot-metrics.md)
 - Amends: [ADR-0025 — Selective index-driven player table sorts](./0025-selective-index-driven-player-sorts.md)
 - Supersedes: [ADR-0026 — Eager current-snapshot potential scoring](./0026-eager-current-potential-scoring.md)
 - Supersedes in part: [ADR-0027 — Scoped potential read validation](./0027-scoped-potential-read-validation.md)

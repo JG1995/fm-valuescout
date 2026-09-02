@@ -305,15 +305,17 @@ pub(crate) fn score_all_staff_roles(attributes: &HashMap<String, Option<u8>>) ->
         .collect()
 }
 
-/// Inserts or replaces one compact row per staff member for one snapshot,
-/// with the exact checked-in score model version. The SQL column list comes
-/// only from the closed catalog via `staff_role_column`, never from WebView
-/// input.
-pub(crate) fn persist_rows(
+/// Borrowed persistence implementation: inserts or replaces one compact row per staff member
+/// without cloning the 21-value score vectors. Accepts any iterator over borrowed
+/// slices directly from `PreparedStaff`.
+pub(crate) fn persist_rows_borrowed<'a, I>(
     tx: &Transaction<'_>,
     snapshot_id: i64,
-    rows: &[CompactStaffRow],
-) -> Result<(), String> {
+    rows: I,
+) -> Result<(), String>
+where
+    I: IntoIterator<Item = (i64, &'a [Option<i64>])>,
+{
     let roles = all_staff_roles();
     let columns = roles
         .iter()
@@ -331,16 +333,16 @@ pub(crate) fn persist_rows(
     );
     let mut statement = tx.prepare(&sql).map_err(|error| error.to_string())?;
 
-    for row in rows {
-        if row.scores.len() != roles.len() {
+    for (uid, scores) in rows {
+        if scores.len() != roles.len() {
             return Err("Compact staff row has the wrong role count".to_string());
         }
         let mut values = Vec::with_capacity(columns.len() + 3);
         values.push(Value::Integer(snapshot_id));
-        values.push(Value::Integer(row.uid));
+        values.push(Value::Integer(uid));
         values.push(Value::Integer(SCORE_MODEL_VERSION));
         values.extend(
-            row.scores
+            scores
                 .iter()
                 .map(|score| score.map_or(Value::Null, Value::Integer)),
         );
@@ -349,6 +351,22 @@ pub(crate) fn persist_rows(
             .map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+/// Inserts or replaces one compact row per staff member for one snapshot,
+/// with the exact checked-in score model version. The SQL column list comes
+/// only from the closed catalog via `staff_role_column`, never from WebView
+/// input.
+pub(crate) fn persist_rows(
+    tx: &Transaction<'_>,
+    snapshot_id: i64,
+    rows: &[CompactStaffRow],
+) -> Result<(), String> {
+    persist_rows_borrowed(
+        tx,
+        snapshot_id,
+        rows.iter().map(|row| (row.uid, row.scores.as_slice())),
+    )
 }
 
 /// Deletes every compact staff row for one snapshot.
