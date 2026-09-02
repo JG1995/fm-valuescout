@@ -34,7 +34,7 @@ use super::service::{self, SaveContext};
 /// transaction, or row. Built outside the `Db(Mutex<Connection>)` lock;
 /// `publish_prepared_snapshot` revalidates the captured `SaveContext`
 /// first and publishes it in one final transaction.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PreparedSnapshot {
     pub(crate) schema_version: i64,
     pub(crate) generated_at_utc: String,
@@ -58,7 +58,7 @@ pub struct PreparedSnapshot {
     pub(crate) staff: Vec<PreparedStaff>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PreparedPlayer {
     pub(crate) uid: i64,
     pub(crate) ca: i64,
@@ -98,7 +98,7 @@ pub struct PreparedPlayer {
     pub(crate) compact_potential: Vec<Option<i64>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PreparedStaff {
     pub(crate) uid: i64,
     pub(crate) name: Option<String>,
@@ -118,6 +118,90 @@ pub struct PreparedStaff {
     pub(crate) club: Option<String>,
     pub(crate) division: Option<String>,
     pub(crate) compact_scores: Vec<Option<i64>>,
+}
+
+/// Intermediate raw snapshot without derived projection/scoring. Owns validated raw rows only.
+#[derive(Debug)]
+pub(crate) struct RawPreparedSnapshot {
+    pub(crate) schema_version: i64,
+    pub(crate) generated_at_utc: String,
+    pub(crate) game_version: String,
+    pub(crate) supported_game_version: String,
+    pub(crate) bridge_version: String,
+    pub(crate) protocol_version: i64,
+    pub(crate) game_date: Option<String>,
+    pub(crate) game_date_source: String,
+    pub(crate) game_date_basis: String,
+    pub(crate) player_database_scope: String,
+    pub(crate) scan_truncated: bool,
+    pub(crate) max_accepted: Option<i64>,
+    pub(crate) player_count: i64,
+    pub(crate) staff_count: i64,
+    pub(crate) manager_uid: Option<i64>,
+    pub(crate) manager_name: Option<String>,
+    pub(crate) manager_club: Option<String>,
+    pub(crate) manager_club_reputation: Option<i64>,
+    pub(crate) players: Vec<RawPreparedPlayer>,
+    pub(crate) staff: Vec<RawPreparedStaff>,
+}
+
+#[derive(Debug)]
+pub(crate) struct RawPreparedPlayer {
+    pub(crate) uid: i64,
+    pub(crate) ca: i64,
+    pub(crate) pa: i64,
+    pub(crate) name: String,
+    pub(crate) birth_year: i64,
+    pub(crate) birth_day_of_year: i64,
+    pub(crate) age: Option<i64>,
+    pub(crate) nationalities_json: String,
+    pub(crate) height_cm: Option<i64>,
+    pub(crate) preferred_foot: String,
+    pub(crate) positions_json: String,
+    pub(crate) attributes_json: String,
+    pub(crate) hidden_attributes_json: String,
+    pub(crate) personality_json: String,
+    pub(crate) weekly_wage_gbp: Option<i64>,
+    pub(crate) contract_expiry_year: Option<i64>,
+    pub(crate) contract_expiry_day_of_year: Option<i64>,
+    pub(crate) transfer_listed: Option<i32>,
+    pub(crate) loan_listed: Option<i32>,
+    pub(crate) not_for_sale: Option<i32>,
+    pub(crate) set_for_release: Option<i32>,
+    pub(crate) market_value_gbp: Option<i64>,
+    pub(crate) reputation_current: Option<i64>,
+    pub(crate) reputation_world: Option<i64>,
+    pub(crate) current_club: Option<String>,
+    pub(crate) parent_club: Option<String>,
+    pub(crate) on_loan: Option<i32>,
+    pub(crate) division: Option<String>,
+    pub(crate) team_level: Option<String>,
+    pub(crate) nation_uid: Option<i64>,
+    pub(crate) gender: String,
+    pub(crate) club_reputation: Option<i64>,
+    pub(crate) team_type: Option<i64>,
+}
+
+#[derive(Debug)]
+pub(crate) struct RawPreparedStaff {
+    pub(crate) uid: i64,
+    pub(crate) name: Option<String>,
+    pub(crate) birth_year: Option<i64>,
+    pub(crate) birth_day_of_year: Option<i64>,
+    pub(crate) age: Option<i64>,
+    pub(crate) nationalities_json: String,
+    pub(crate) nation_uid: Option<i64>,
+    pub(crate) gender: String,
+    pub(crate) ca: i64,
+    pub(crate) pa: i64,
+    pub(crate) staff_attributes_json: String,
+    pub(crate) job_id: Option<i64>,
+    pub(crate) weekly_wage_gbp: Option<i64>,
+    pub(crate) contract_expiry_year: Option<i64>,
+    pub(crate) contract_expiry_day_of_year: Option<i64>,
+    pub(crate) club: Option<String>,
+    pub(crate) division: Option<String>,
+    pub(crate) attributes_map: std::collections::HashMap<String, Option<u8>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,15 +310,13 @@ pub fn ingest_dump_file_for_save_timed(
         .map(|(result, timings)| (result.stored_snapshot, timings))
 }
 
-/// Pure preparation: validates dump JSON and builds owned raw + derived state
-/// without any database read/write or `rusqlite` connection. Memory is
-/// proportional to one dump's `players` + `staff` vectors.
-pub fn prepare_dump_json(json: &str) -> Result<PreparedSnapshot, String> {
+/// First sub-phase: validation + raw normalization (no projection/scoring).
+/// Returns bounded owned raw state proportional to one dump.
+pub(crate) fn prepare_dump_json_raw(json: &str) -> Result<RawPreparedSnapshot, String> {
     let root = parse_and_validate_dump(json).map_err(|error| error.to_string())?;
     let object = root
         .as_object()
         .ok_or_else(|| "dump root must be a JSON object".to_string())?;
-
     let schema_version = require_i64(object, "schemaVersion")?;
     let generated_at_utc = require_string(object, "generatedAtUtc")?;
     let game_version = require_string(object, "gameVersion")?;
@@ -253,7 +335,6 @@ pub fn prepare_dump_json(json: &str) -> Result<PreparedSnapshot, String> {
     let manager_name = optional_string(manager_field(object, "name")?)?;
     let manager_club = optional_string(manager_field(object, "club")?)?;
     let manager_club_reputation = optional_i64(manager_field(object, "clubReputation")?)?;
-
     let players_value = object
         .get("players")
         .and_then(Value::as_array)
@@ -262,7 +343,6 @@ pub fn prepare_dump_json(json: &str) -> Result<PreparedSnapshot, String> {
         .get("staff")
         .and_then(Value::as_array)
         .ok_or_else(|| "dump staff must be an array".to_string())?;
-
     let mut players = Vec::with_capacity(players_value.len());
     for player in players_value {
         let player = player
@@ -301,18 +381,7 @@ pub fn prepare_dump_json(json: &str) -> Result<PreparedSnapshot, String> {
         let gender = require_string(player, "gender")?;
         let club_reputation = optional_i64(player.get("clubReputation"))?;
         let team_type = optional_i64(player.get("teamType"))?;
-
-        let (projected_attributes_json, compact_current, compact_potential) =
-            player_compact::prepare_player_derived(
-                uid,
-                &attributes_json,
-                &positions_json,
-                ca,
-                pa,
-                age,
-            )?;
-
-        players.push(PreparedPlayer {
+        players.push(RawPreparedPlayer {
             uid,
             ca,
             pa,
@@ -346,12 +415,8 @@ pub fn prepare_dump_json(json: &str) -> Result<PreparedSnapshot, String> {
             gender,
             club_reputation,
             team_type,
-            projected_attributes_json,
-            compact_current,
-            compact_potential,
         });
     }
-
     let mut staff = Vec::with_capacity(staff_value.len());
     for staff_record in staff_value {
         let staff_record = staff_record
@@ -369,7 +434,7 @@ pub fn prepare_dump_json(json: &str) -> Result<PreparedSnapshot, String> {
         let pa = require_i64(staff_record, "pa")?;
         let raw_attributes = required_value(staff_record, "attributes")?;
         let staff_attributes_json = json_string(raw_attributes)?;
-        let attributes = attributes_map(raw_attributes)?;
+        let attributes_map = attributes_map(raw_attributes)?;
         let job_id = optional_i64(staff_record.get("jobId"))?;
         let weekly_wage_gbp = optional_i64(staff_record.get("weeklyWageGbp"))?;
         let contract_expiry_year = optional_i64(staff_record.get("contractExpiryYear"))?;
@@ -377,8 +442,7 @@ pub fn prepare_dump_json(json: &str) -> Result<PreparedSnapshot, String> {
             optional_i64(staff_record.get("contractExpiryDayOfYear"))?;
         let club = optional_string(staff_record.get("club"))?;
         let division = optional_string(staff_record.get("division"))?;
-        let compact_scores = score_all_staff_roles(&attributes);
-        staff.push(PreparedStaff {
+        staff.push(RawPreparedStaff {
             uid,
             name,
             birth_year,
@@ -396,11 +460,10 @@ pub fn prepare_dump_json(json: &str) -> Result<PreparedSnapshot, String> {
             contract_expiry_day_of_year,
             club,
             division,
-            compact_scores,
+            attributes_map,
         });
     }
-
-    Ok(PreparedSnapshot {
+    Ok(RawPreparedSnapshot {
         schema_version,
         generated_at_utc,
         game_version,
@@ -424,31 +487,148 @@ pub fn prepare_dump_json(json: &str) -> Result<PreparedSnapshot, String> {
     })
 }
 
+/// Second sub-phase: scoring (projection + compact scores) using already
+/// validated raw state. No re-parsing, bounded sequential work.
+pub(crate) fn score_raw_snapshot(raw: RawPreparedSnapshot) -> Result<PreparedSnapshot, String> {
+    let mut players = Vec::with_capacity(raw.players.len());
+    for p in raw.players {
+        let (projected_attributes_json, compact_current, compact_potential) =
+            player_compact::prepare_player_derived(
+                p.uid,
+                &p.attributes_json,
+                &p.positions_json,
+                p.ca,
+                p.pa,
+                p.age,
+            )?;
+        players.push(PreparedPlayer {
+            uid: p.uid,
+            ca: p.ca,
+            pa: p.pa,
+            name: p.name,
+            birth_year: p.birth_year,
+            birth_day_of_year: p.birth_day_of_year,
+            age: p.age,
+            nationalities_json: p.nationalities_json,
+            height_cm: p.height_cm,
+            preferred_foot: p.preferred_foot,
+            positions_json: p.positions_json,
+            attributes_json: p.attributes_json,
+            hidden_attributes_json: p.hidden_attributes_json,
+            personality_json: p.personality_json,
+            weekly_wage_gbp: p.weekly_wage_gbp,
+            contract_expiry_year: p.contract_expiry_year,
+            contract_expiry_day_of_year: p.contract_expiry_day_of_year,
+            transfer_listed: p.transfer_listed,
+            loan_listed: p.loan_listed,
+            not_for_sale: p.not_for_sale,
+            set_for_release: p.set_for_release,
+            market_value_gbp: p.market_value_gbp,
+            reputation_current: p.reputation_current,
+            reputation_world: p.reputation_world,
+            current_club: p.current_club,
+            parent_club: p.parent_club,
+            on_loan: p.on_loan,
+            division: p.division,
+            team_level: p.team_level,
+            nation_uid: p.nation_uid,
+            gender: p.gender,
+            club_reputation: p.club_reputation,
+            team_type: p.team_type,
+            projected_attributes_json,
+            compact_current,
+            compact_potential,
+        });
+    }
+    let mut staff = Vec::with_capacity(raw.staff.len());
+    for s in raw.staff {
+        let compact_scores = score_all_staff_roles(&s.attributes_map);
+        staff.push(PreparedStaff {
+            uid: s.uid,
+            name: s.name,
+            birth_year: s.birth_year,
+            birth_day_of_year: s.birth_day_of_year,
+            age: s.age,
+            nationalities_json: s.nationalities_json,
+            nation_uid: s.nation_uid,
+            gender: s.gender,
+            ca: s.ca,
+            pa: s.pa,
+            staff_attributes_json: s.staff_attributes_json,
+            job_id: s.job_id,
+            weekly_wage_gbp: s.weekly_wage_gbp,
+            contract_expiry_year: s.contract_expiry_year,
+            contract_expiry_day_of_year: s.contract_expiry_day_of_year,
+            club: s.club,
+            division: s.division,
+            compact_scores,
+        });
+    }
+    Ok(PreparedSnapshot {
+        schema_version: raw.schema_version,
+        generated_at_utc: raw.generated_at_utc,
+        game_version: raw.game_version,
+        supported_game_version: raw.supported_game_version,
+        bridge_version: raw.bridge_version,
+        protocol_version: raw.protocol_version,
+        game_date: raw.game_date,
+        game_date_source: raw.game_date_source,
+        game_date_basis: raw.game_date_basis,
+        player_database_scope: raw.player_database_scope,
+        scan_truncated: raw.scan_truncated,
+        max_accepted: raw.max_accepted,
+        player_count: raw.player_count,
+        staff_count: raw.staff_count,
+        manager_uid: raw.manager_uid,
+        manager_name: raw.manager_name,
+        manager_club: raw.manager_club,
+        manager_club_reputation: raw.manager_club_reputation,
+        players,
+        staff,
+    })
+}
+
+/// Pure preparation: validates dump JSON and builds owned raw + derived state
+/// without any database read/write. Delegates to the split phases without duplicate work.
+pub fn prepare_dump_json(json: &str) -> Result<PreparedSnapshot, String> {
+    let raw = prepare_dump_json_raw(json)?;
+    score_raw_snapshot(raw)
+}
+
+#[cfg(test)]
 pub fn prepare_dump_file(path: &Path) -> Result<PreparedSnapshot, String> {
     let json = fs::read_to_string(path).map_err(|error| error.to_string())?;
     prepare_dump_json(&json)
 }
 
-/// Final publication: revalidates the captured `SaveContext` first, then in
-/// one transaction inserts raw rows, Club DNA, selects effective current,
-/// persists only current derived state, clears displaced current derived
-/// state, and commits atomically. Failure rolls back, preserving prior current.
-pub(crate) fn publish_prepared_snapshot(
+/// Final publication: one canonical transaction. Revalidates the captured
+/// `SaveContext` first, then inserts raw rows, selects effective current,
+/// persists derived state (including Club DNA), and commits atomically.
+/// This is the single implementation; all callers delegate here.
+/// `now_ms` is monotonic; `on_save_boundary` is invoked after raw persistence
+/// (save complete / finalizing start) and is non-cancelling.
+pub(crate) fn publish_prepared_snapshot_canonical(
     conn: &mut Connection,
     save_context: &SaveContext,
     prepared: PreparedSnapshot,
     bridge_source_request_id: Option<&str>,
-) -> Result<IngestResult, String> {
+    now_ms: &mut dyn FnMut() -> u64,
+    on_save_boundary: &mut dyn FnMut(),
+) -> Result<(IngestResult, u64, u64), String> {
     let tx = conn.transaction().map_err(|error| error.to_string())?;
     service::ensure_save_context(&tx, save_context)?;
     let save_id = save_context.id;
+    let save_started = now_ms();
     let snapshot_id = insert_prepared_snapshot(&tx, save_id, &prepared, bridge_source_request_id)?;
     insert_prepared_players_raw(&tx, snapshot_id, &prepared.players)?;
     insert_prepared_staff_raw(&tx, snapshot_id, &prepared.staff)?;
+    let save_ms = now_ms().saturating_sub(save_started);
+    // Non-cancelling phase boundary: raw save complete, finalize start.
+    on_save_boundary();
+    let finalize_started = now_ms();
     if let Some(definition) = club_dna_scores::definition_for_save(&tx, save_id)? {
         club_dna_scores::persist_snapshot_scores(&tx, snapshot_id, &definition)?;
     }
-    // Determine effective current snapshot (same ordering as service::select_current_snapshot)
     let effective_snapshot_id = {
         let order = service::SNAPSHOT_ORDER_BY;
         let sql = format!("SELECT id FROM snapshots WHERE save_id = ?1 ORDER BY {order} LIMIT 1");
@@ -468,7 +648,6 @@ pub(crate) fn publish_prepared_snapshot(
             )
             .map_err(|e| e.to_string())?;
         }
-        // Clear derived state from every non-current snapshot (displaced current)
         player_compact::clear_non_current_snapshots(&tx, save_id)?;
         tx.execute(
             "UPDATE players SET potential_attributes_json = NULL, potential_projection_model_version = NULL WHERE snapshot_id IN (SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0)",
@@ -476,13 +655,8 @@ pub(crate) fn publish_prepared_snapshot(
         )
         .map_err(|e| e.to_string())?;
         crate::features::staff::scoring::clear_non_current_snapshots(&tx, save_id)?;
-        // Persist derived state only for the effective current snapshot.
-        // If the new snapshot won, use the prepared derived values (no DB read, no duplicate scoring).
-        // If another snapshot is effective (historical insert), its derived state is already correct;
-        // the new historical snapshot stays raw-only and the promotion rebuild is not needed here.
         if let Some(effective) = current_id {
             if effective == snapshot_id {
-                // Insert projected JSON + compact rows for the winning snapshot from prepared.
                 for player in &prepared.players {
                     tx.execute(
                         "UPDATE players SET potential_attributes_json = ?3, potential_projection_model_version = ?4 WHERE snapshot_id = ?1 AND uid = ?2",
@@ -517,9 +691,6 @@ pub(crate) fn publish_prepared_snapshot(
                     .collect();
                 persist_staff_rows(&tx, snapshot_id, &staff_rows)?;
                 crate::features::staff::scoring::assert_snapshot_complete(&tx, snapshot_id)?;
-            }
-            // Academy: only when the new snapshot is effective current
-            if effective == snapshot_id {
                 academy_service::ensure_class_for_game_date(
                     &tx,
                     save_id,
@@ -539,10 +710,37 @@ pub(crate) fn publish_prepared_snapshot(
         get_snapshot_by_id(&tx, effective_snapshot_id)?
     };
     tx.commit().map_err(|error| error.to_string())?;
-    Ok(IngestResult {
-        stored_snapshot,
-        effective_snapshot,
-    })
+    let finalize_ms = now_ms().saturating_sub(finalize_started);
+    Ok((
+        IngestResult {
+            stored_snapshot,
+            effective_snapshot,
+        },
+        save_ms,
+        finalize_ms,
+    ))
+}
+
+/// Compatibility wrapper without timings/progress. Delegates to the canonical
+/// transaction with real wall-clock and no-op boundary.
+pub(crate) fn publish_prepared_snapshot(
+    conn: &mut Connection,
+    save_context: &SaveContext,
+    prepared: PreparedSnapshot,
+    bridge_source_request_id: Option<&str>,
+) -> Result<IngestResult, String> {
+    let start = Instant::now();
+    let mut now_ms = move || start.elapsed().as_millis() as u64;
+    let mut noop = || {};
+    publish_prepared_snapshot_canonical(
+        conn,
+        save_context,
+        prepared,
+        bridge_source_request_id,
+        &mut now_ms,
+        &mut noop,
+    )
+    .map(|(res, _, _)| res)
 }
 
 fn insert_prepared_snapshot(

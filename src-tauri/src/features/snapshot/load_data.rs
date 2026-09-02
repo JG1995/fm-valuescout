@@ -18,9 +18,20 @@ use super::service;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct LoadDataTimings {
+    /// Scan (bridge wait + dump capture) – indeterminate progress.
     pub scan_ms: u64,
-    pub ingest_ms: u64,
+    /// Validation + raw normalization (determinate).
+    pub prepare_ms: u64,
+    /// Projection + compact scoring (determinate).
+    pub scoring_ms: u64,
+    /// Raw persistence (snapshot + players + staff) inside one transaction.
+    pub save_ms: u64,
+    /// Finalization (selection, derived rows, Club DNA, academy, summaries, commit) inside same transaction.
+    pub finalize_ms: u64,
+    /// Wall-clock total. Disjoint: total >= scan+prepare+scoring+save+finalize.
     pub total_ms: u64,
+    /// Overlapping aggregate DB time for backwards compat: save_ms + finalize_ms.
+    pub ingest_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,7 +104,7 @@ pub fn load_data_from_bridge(
     )
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(test)]
 pub fn load_data_after_scan(
     conn: &mut Connection,
     captured_dump_path: &Path,
@@ -105,43 +116,62 @@ pub fn load_data_after_scan(
     load_data_after_scan_with_context(conn, captured_dump_path, dump_result, &save_context)
 }
 
-/// Pure preparation outside the database mutex: validates and builds owned snapshot state.
-/// No `rusqlite` connection/row/transaction is used.
-pub fn prepare_dump_for_publish(
+/// Adapter: raw file read + validation (no scoring). Production raw read belongs here,
+/// not hardcoded in commands. Used by the orchestrator's raw-prepare callback.
+pub(crate) fn prepare_raw_for_publish(
     captured_dump_path: &Path,
-) -> Result<ingest::PreparedSnapshot, LoadDataError> {
-    ingest::prepare_dump_file(captured_dump_path)
-        .map_err(|message| LoadDataError::Ingest { message })
+) -> Result<ingest::RawPreparedSnapshot, LoadDataError> {
+    let json =
+        std::fs::read_to_string(captured_dump_path).map_err(|error| LoadDataError::Ingest {
+            message: error.to_string(),
+        })?;
+    ingest::prepare_dump_json_raw(&json).map_err(|message| LoadDataError::Ingest { message })
 }
 
-/// Final publication: revalidates captured `SaveContext` first, then in one
-/// transaction inserts raw rows, Club DNA, selects effective current, persists
-/// only current derived state, clears displaced current derived state, and commits.
-pub fn publish_prepared_dump(
+/// Adapter: scoring using already validated raw state. No re-parsing.
+pub(crate) fn score_raw_for_publish(
+    raw: ingest::RawPreparedSnapshot,
+) -> Result<ingest::PreparedSnapshot, LoadDataError> {
+    ingest::score_raw_snapshot(raw).map_err(|message| LoadDataError::Ingest { message })
+}
+
+/// Canonical publish with monotonic clock and non-cancelling phase boundary.
+/// Used by the orchestrator to obtain disjoint save/finalize timings and emit
+/// saving-complete / finalizing-start at the exact raw-persistence boundary.
+pub(crate) fn publish_prepared_with_progress(
     conn: &mut Connection,
-    dump_result: DumpRequestResult,
     save_context: &service::SaveContext,
     prepared: ingest::PreparedSnapshot,
-) -> Result<LoadDataResult, LoadDataError> {
-    ensure_scan_succeeded(&dump_result)?;
-    let ingest_result = ingest::publish_prepared_snapshot(
+    dump_result: &DumpRequestResult,
+    now_ms: &mut dyn FnMut() -> u64,
+    on_save_boundary: &mut dyn FnMut(),
+) -> Result<(LoadDataResult, u64, u64), LoadDataError> {
+    ensure_scan_succeeded(dump_result)?;
+    let (ingest_result, save_ms, finalize_ms) = ingest::publish_prepared_snapshot_canonical(
         conn,
         save_context,
         prepared,
         Some(&dump_result.request_id),
+        now_ms,
+        on_save_boundary,
     )
     .map_err(|message| LoadDataError::Ingest { message })?;
-    Ok(LoadDataResult {
-        request_id: dump_result.request_id,
-        players_found: dump_result.players_found,
-        scan_truncated: dump_result.scan_truncated,
-        max_accepted: dump_result.max_accepted,
-        stored_snapshot: ingest_result.stored_snapshot,
-        effective_snapshot: ingest_result.effective_snapshot,
-        timings: LoadDataTimings::default(),
-    })
+    Ok((
+        LoadDataResult {
+            request_id: dump_result.request_id.clone(),
+            players_found: dump_result.players_found,
+            scan_truncated: dump_result.scan_truncated,
+            max_accepted: dump_result.max_accepted,
+            stored_snapshot: ingest_result.stored_snapshot,
+            effective_snapshot: ingest_result.effective_snapshot,
+            timings: LoadDataTimings::default(),
+        },
+        save_ms,
+        finalize_ms,
+    ))
 }
 
+#[cfg(test)]
 pub(crate) fn load_data_after_scan_with_context(
     conn: &mut Connection,
     captured_dump_path: &Path,
