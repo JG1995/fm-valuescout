@@ -11,6 +11,7 @@ import {
   PLAYER_TABLE_MIN_COLUMN_WIDTH,
 } from "@/utils/player-metrics";
 import { DEFAULT_STAFF_TABLE_COLUMN_IDS } from "@/utils/staff-table-layout";
+import { isTacticColumnId, isValidTacticColumnId } from "@/utils/tactic-ids";
 
 const DEFAULT_STAFF_SHORTLIST_COLUMN_IDS = [
   "name",
@@ -63,6 +64,10 @@ type PlayerTableStore = {
     metricId: string,
     width: number,
   ) => void;
+  replaceLayout: (
+    table: PlayerTableId,
+    nextColumnIds: readonly string[],
+  ) => void;
 };
 
 type PersistedPlayerTableState = Pick<PlayerTableStore, "layouts">;
@@ -76,6 +81,32 @@ function clampWidth(width: number): number {
     PLAYER_TABLE_MAX_COLUMN_WIDTH,
     Math.max(PLAYER_TABLE_MIN_COLUMN_WIDTH, Math.round(width)),
   );
+}
+
+function isAllowedColumnId(table: PlayerTableId, id: string): boolean {
+  if (typeof id !== "string" || id.length === 0) {
+    return false;
+  }
+  if (isValidTacticColumnId(id)) {
+    return (
+      table === "search" ||
+      table === "moneyball-search" ||
+      table === "shortlist"
+    );
+  }
+  if (isTacticColumnId(id)) {
+    return false;
+  }
+  if (table === "moneyball-search") {
+    return (
+      getMoneyballSearchMetric(id)?.sortable === true ||
+      ["name", "age", "nationality", "club", "division", "value"].includes(id)
+    );
+  }
+  if (table === "search" || table === "shortlist" || table === "squad") {
+    return getPlayerMetric(id)?.sortable === true;
+  }
+  return id.length > 0;
 }
 
 function withoutDuplicateIdentityColumns(columnIds: readonly string[]) {
@@ -121,19 +152,7 @@ function sanitizeLayout(
         if (typeof metricId !== "string" || all.indexOf(metricId) !== index) {
           return false;
         }
-        return table === "moneyball-search"
-          ? getMoneyballSearchMetric(metricId)?.sortable === true ||
-              [
-                "name",
-                "age",
-                "nationality",
-                "club",
-                "division",
-                "value",
-              ].includes(metricId)
-          : table === "search" || table === "squad" || table === "shortlist"
-            ? getPlayerMetric(metricId)?.sortable === true
-            : metricId.length > 0;
+        return isAllowedColumnId(table, metricId);
       })
     : [];
   const useNameFallback =
@@ -240,21 +259,7 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
           const layout = state.layouts[table];
           const additions = metricIds.filter(
             (metricId, index) =>
-              (table === "moneyball-search"
-                ? getMoneyballSearchMetric(metricId)?.sortable === true ||
-                  [
-                    "name",
-                    "age",
-                    "nationality",
-                    "club",
-                    "division",
-                    "value",
-                  ].includes(metricId)
-                : table === "search" ||
-                    table === "squad" ||
-                    table === "shortlist"
-                  ? getPlayerMetric(metricId)?.sortable === true
-                  : metricId.length > 0) &&
+              isAllowedColumnId(table, metricId) &&
               !layout.columnIds.includes(metricId) &&
               metricIds.indexOf(metricId) === index,
           );
@@ -330,6 +335,48 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
                 ...layout,
                 widths: { ...layout.widths, [metricId]: clampWidth(width) },
               },
+            },
+          };
+        });
+      },
+      replaceLayout: (table, nextColumnIds) => {
+        set((state) => {
+          const layout = state.layouts[table];
+          const deduped: string[] = [];
+          for (let idx = 0; idx < nextColumnIds.length; idx += 1) {
+            const id = nextColumnIds[idx];
+            if (typeof id !== "string" || deduped.includes(id)) {
+              continue;
+            }
+            if (nextColumnIds.indexOf(id) !== idx) {
+              continue;
+            }
+            if (!isAllowedColumnId(table, id)) {
+              continue;
+            }
+            deduped.push(id);
+          }
+          let finalIds = deduped;
+          if (finalIds.length === 0) {
+            finalIds = [...defaultLayout(table).columnIds];
+            return {
+              layouts: {
+                ...state.layouts,
+                [table]: { columnIds: finalIds, widths: {} },
+              },
+            };
+          }
+          const widths: Record<string, number> = {};
+          for (const id of finalIds) {
+            const width = layout.widths[id];
+            if (typeof width === "number" && Number.isFinite(width)) {
+              widths[id] = clampWidth(width);
+            }
+          }
+          return {
+            layouts: {
+              ...state.layouts,
+              [table]: { columnIds: finalIds, widths },
             },
           };
         });

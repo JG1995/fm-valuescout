@@ -300,7 +300,7 @@ The thinnest end-to-end path that proves the approach:
 
 #### Commit 2 — Add neutral tactic-identity helpers and ordering
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(search): add neutral tactic column helpers`
 
@@ -371,7 +371,7 @@ The thinnest end-to-end path that proves the approach:
 
 #### Commit 3 — Persist synthetic tactic layouts with an atomic replace action
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(search): persist tactic column layouts atomically`
 
@@ -777,19 +777,19 @@ The thinnest end-to-end path that proves the approach:
 
 **PR:** PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist)
 
-**Commit:** Add neutral tactic-identity helpers and ordering
+**Commit:** Persist synthetic tactic layouts with an atomic replace action
 
 ### RED or removal proof
 
-Add focused tests that import the missing neutral tactic-ID and ordering modules. Confirm they fail because the modules or exports do not exist.
+Extend the player-table store tests with valid and invalid tactic layouts and the missing atomic `replaceLayout` action. Confirm the current store drops valid tactic IDs or lacks the action.
 
 ### Expected outcome
 
-`src/utils/tactic-ids.ts` becomes the single neutral owner of the 11 canonical lane IDs, synthetic prefixes, allowlist predicates, group helpers, and default width. Planner re-exports those IDs, and `src/features/search/utils/tactic-columns.ts` builds straight or interleaved lane order without importing Planner or app modules. Tests prove exact TypeScript/Rust lane parity, valid and invalid suffix handling, full-group detection, prefix separation, and tactic-position ordering.
+The `search`, `moneyball-search`, and `shortlist` layouts retain only canonical tactic IDs and clamped widths. One atomic `replaceLayout` action validates and deduplicates the complete next layout, prunes stale widths, preserves order, and falls back to the table default when no valid columns remain. Other table IDs continue to reject tactic IDs.
 
 ### Explicit exclusions
 
-Store persistence, Rust resolver/query behavior, route composition, toggle UI, Moneyball scoring, metric-picker changes, Squad, migrations, and unrelated refactors.
+Rust resolver/query behavior, route composition, toggle UI, tactic scoring, metric-picker changes, default tactic columns, schema migration, Squad support, and unrelated refactors.
 
 ## Discoveries and replanning
 
@@ -807,6 +807,7 @@ Store persistence, Rust resolver/query behavior, route composition, toggle UI, M
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 1 — Record the approved feature plan | 944551c774cb30c0d7f2bcb42f232572680e870d | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`; `delivery_state.py`; `git diff --check 406dca7..944551c` — passed. | Not applicable | Clear | 0 | None |
+| PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 2 — Add neutral tactic-identity helpers and ordering | d8be592b873076aa8611d569ecd8badb38a4e021 | Added the closed 11-lane synthetic ID contract, Planner re-export, and deterministic straight/interleaved tactic ordering. | Focused Vitest: 11 passed; `./scripts/dev check-app`; boundary import search; `git diff --cached --check` — passed. | Pass | Clear | 1 | Corrected constructors and order builders to reject unknown runtime lane IDs. |
 
 ## Final validation
 

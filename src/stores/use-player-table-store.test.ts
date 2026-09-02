@@ -4,6 +4,7 @@ import {
   MONEYBALL_SEARCH_METRICS,
 } from "@/utils/moneyball-search-metrics";
 import { getPlayerMetric, PLAYER_METRICS } from "@/utils/player-metrics";
+import { TACTIC_LANE_IDS } from "@/utils/tactic-ids";
 import {
   defaultPlayerTableLayouts,
   PLAYER_TABLE_LAYOUT_STORAGE_KEY,
@@ -594,5 +595,304 @@ describe("usePlayerTableStore", () => {
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
       "name",
     ]);
+  });
+
+  describe("tactic column persistence (Commit 3)", () => {
+    const currentGroup = TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_current.${laneId}`,
+    );
+    const potentialGroup = TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_potential.${laneId}`,
+    );
+
+    it("hydrates a valid synthetic group round-trip and clamps tactic widths", async () => {
+      localStorage.setItem(
+        PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layouts: {
+              search: {
+                columnIds: ["name", ...currentGroup, "ca"],
+                widths: {
+                  name: 240,
+                  "tactic_current.goalkeeper": 10_000,
+                  "tactic_current.left_back": 72,
+                  ca: 104,
+                },
+              },
+              "moneyball-search": {
+                columnIds: ["name", ...potentialGroup],
+                widths: { "tactic_potential.goalkeeper": 10_000 },
+              },
+              shortlist: {
+                columnIds: [...currentGroup, ...potentialGroup],
+                widths: {},
+              },
+            },
+          },
+          version: 6,
+        }),
+      );
+      await usePlayerTableStore.persist.rehydrate();
+      const layouts = usePlayerTableStore.getState().layouts;
+      expect(layouts.search.columnIds).toEqual(["name", ...currentGroup, "ca"]);
+      expect(layouts.search.widths["tactic_current.goalkeeper"]).toBe(360);
+      expect(layouts.search.widths["tactic_current.left_back"]).toBe(72);
+      expect(layouts["moneyball-search"].columnIds).toEqual([
+        "name",
+        ...potentialGroup,
+      ]);
+      expect(
+        layouts["moneyball-search"].widths["tactic_potential.goalkeeper"],
+      ).toBe(360);
+      expect(layouts.shortlist.columnIds).toEqual([
+        ...currentGroup,
+        ...potentialGroup,
+      ]);
+    });
+
+    it("drops invalid lane suffixes and widths for unknown tactic IDs", async () => {
+      localStorage.setItem(
+        PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layouts: {
+              search: {
+                columnIds: [
+                  "name",
+                  "tactic_current.goalkeeper",
+                  "tactic_current.not_a_lane",
+                  "tactic_potential.not_a_lane",
+                  "tactic_current.",
+                  "ca",
+                ],
+                widths: {
+                  "tactic_current.goalkeeper": 120,
+                  "tactic_current.not_a_lane": 120,
+                  "tactic_potential.not_a_lane": 120,
+                },
+              },
+            },
+          },
+          version: 6,
+        }),
+      );
+      await usePlayerTableStore.persist.rehydrate();
+      const search = usePlayerTableStore.getState().layouts.search;
+      expect(search.columnIds).toEqual([
+        "name",
+        "tactic_current.goalkeeper",
+        "ca",
+      ]);
+      expect(search.widths).toEqual({
+        "tactic_current.goalkeeper": 120,
+      });
+      expect(search.widths["tactic_current.not_a_lane"]).toBeUndefined();
+      expect(search.widths["tactic_potential.not_a_lane"]).toBeUndefined();
+    });
+
+    it("rejects valid synthetic IDs for squad and staff tables", async () => {
+      localStorage.setItem(
+        PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layouts: {
+              squad: {
+                columnIds: ["name", ...currentGroup, "ca"],
+                widths: { "tactic_current.goalkeeper": 150 },
+              },
+              "staff-search": {
+                columnIds: ["name", ...potentialGroup],
+                widths: { "tactic_potential.goalkeeper": 150 },
+              },
+              "my-staff": {
+                columnIds: [...currentGroup],
+                widths: {},
+              },
+            },
+          },
+          version: 6,
+        }),
+      );
+      await usePlayerTableStore.persist.rehydrate();
+      expect(
+        usePlayerTableStore.getState().layouts.squad.columnIds,
+      ).not.toEqual(expect.arrayContaining(currentGroup));
+      expect(usePlayerTableStore.getState().layouts.squad.columnIds).toEqual([
+        "name",
+        "ca",
+      ]);
+      expect(
+        usePlayerTableStore.getState().layouts.squad.widths[
+          "tactic_current.goalkeeper"
+        ],
+      ).toBeUndefined();
+      expect(
+        usePlayerTableStore.getState().layouts["staff-search"].columnIds,
+      ).not.toEqual(expect.arrayContaining(potentialGroup));
+      expect(
+        usePlayerTableStore.getState().layouts["my-staff"].columnIds,
+      ).not.toEqual(expect.arrayContaining(currentGroup));
+      expect(
+        usePlayerTableStore.getState().layouts["my-staff"].columnIds.length,
+      ).toBeGreaterThan(0);
+      expect(
+        usePlayerTableStore.getState().layouts["my-staff"].widths[
+          "tactic_current.goalkeeper"
+        ],
+      ).toBeUndefined();
+    });
+
+    it("leaves staff tables unchanged when adding valid tactic IDs via public action", () => {
+      for (const table of [
+        "staff-search",
+        "my-staff",
+        "staff-shortlist",
+      ] as const) {
+        const before = usePlayerTableStore.getState().layouts[table];
+        usePlayerTableStore
+          .getState()
+          .addColumns(table, [
+            "tactic_current.goalkeeper",
+            "tactic_potential.goalkeeper",
+          ]);
+        expect(usePlayerTableStore.getState().layouts[table]).toEqual(before);
+      }
+    });
+
+    it("atomically replaces layout via replaceLayout, deduplicates and preserves order", () => {
+      expect(typeof usePlayerTableStore.getState().replaceLayout).toBe(
+        "function",
+      );
+      const next = [
+        "ca",
+        "tactic_current.goalkeeper",
+        "ca",
+        "tactic_current.goalkeeper",
+        "tactic_potential.goalkeeper",
+        "tactic_current.not_a_lane",
+        "name",
+      ];
+      usePlayerTableStore.getState().replaceLayout("search", next);
+      const layout = usePlayerTableStore.getState().layouts.search;
+      expect(layout.columnIds).toEqual([
+        "ca",
+        "tactic_current.goalkeeper",
+        "tactic_potential.goalkeeper",
+        "name",
+      ]);
+    });
+
+    it("prunes stale widths in the same atomic replaceLayout write", () => {
+      usePlayerTableStore.setState({
+        layouts: {
+          ...defaultPlayerTableLayouts(),
+          search: {
+            columnIds: ["name", "ca", "tactic_current.goalkeeper"],
+            widths: {
+              name: 240,
+              ca: 104,
+              "tactic_current.goalkeeper": 200,
+            },
+          },
+        },
+      });
+      usePlayerTableStore
+        .getState()
+        .replaceLayout("search", ["name", "tactic_current.left_back"]);
+      const layout = usePlayerTableStore.getState().layouts.search;
+      expect(layout.columnIds).toEqual(["name", "tactic_current.left_back"]);
+      expect(layout.widths["tactic_current.goalkeeper"]).toBeUndefined();
+      expect(layout.widths["tactic_current.left_back"]).toBeUndefined();
+      expect(layout.widths.name).toBe(240);
+      expect(Object.keys(layout.widths)).toEqual(["name"]);
+    });
+
+    it("emits exactly one store notification with complete next layout and pruned widths", () => {
+      usePlayerTableStore.setState({
+        layouts: {
+          ...defaultPlayerTableLayouts(),
+          search: {
+            columnIds: ["name", "ca", "tactic_current.goalkeeper"],
+            widths: { name: 240, ca: 104, "tactic_current.goalkeeper": 200 },
+          },
+        },
+      });
+      const snapshots: Array<{
+        columnIds: string[];
+        widths: Record<string, number>;
+      }> = [];
+      const unsub = usePlayerTableStore.subscribe((state) => {
+        snapshots.push({
+          columnIds: [...state.layouts.search.columnIds],
+          widths: { ...state.layouts.search.widths },
+        });
+      });
+      usePlayerTableStore
+        .getState()
+        .replaceLayout("search", ["name", "tactic_current.left_back"]);
+      unsub();
+      expect(snapshots).toHaveLength(1);
+      expect(snapshots[0].columnIds).toEqual([
+        "name",
+        "tactic_current.left_back",
+      ]);
+      expect(snapshots[0].widths).toEqual({ name: 240 });
+    });
+
+    it("clamps retained widths via replaceLayout", () => {
+      usePlayerTableStore.setState({
+        layouts: {
+          ...defaultPlayerTableLayouts(),
+          search: {
+            columnIds: ["name", "tactic_current.goalkeeper"],
+            widths: { name: 10_000, "tactic_current.goalkeeper": 10_000 },
+          },
+        },
+      });
+      usePlayerTableStore
+        .getState()
+        .replaceLayout("search", ["name", "tactic_current.goalkeeper"]);
+      expect(usePlayerTableStore.getState().layouts.search.widths.name).toBe(
+        360,
+      );
+      expect(
+        usePlayerTableStore.getState().layouts.search.widths[
+          "tactic_current.goalkeeper"
+        ],
+      ).toBe(360);
+    });
+
+    it("falls back to default layout when tactic-only layout toggled off", () => {
+      usePlayerTableStore.setState({
+        layouts: {
+          ...defaultPlayerTableLayouts(),
+          search: { columnIds: [...currentGroup], widths: {} },
+        },
+      });
+      usePlayerTableStore.getState().replaceLayout("search", []);
+      expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual(
+        defaultPlayerTableLayouts().search.columnIds,
+      );
+      expect(usePlayerTableStore.getState().layouts.search.widths).toEqual({});
+    });
+
+    it("falls back to defaults when replaceLayout filters to empty via invalid IDs", () => {
+      usePlayerTableStore.setState({
+        layouts: {
+          ...defaultPlayerTableLayouts(),
+          shortlist: { columnIds: ["name", "ca"], widths: { name: 240 } },
+        },
+      });
+      usePlayerTableStore
+        .getState()
+        .replaceLayout("shortlist", [
+          "tactic_current.not_a_lane",
+          "tactic_potential.bogus",
+        ]);
+      expect(
+        usePlayerTableStore.getState().layouts.shortlist.columnIds,
+      ).toEqual(defaultPlayerTableLayouts().shortlist.columnIds);
+    });
   });
 });
