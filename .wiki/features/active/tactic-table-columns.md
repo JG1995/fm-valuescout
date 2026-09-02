@@ -371,7 +371,7 @@ The thinnest end-to-end path that proves the approach:
 
 #### Commit 3 — Persist synthetic tactic layouts with an atomic replace action
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(search): persist tactic column layouts atomically`
 
@@ -449,7 +449,7 @@ The thinnest end-to-end path that proves the approach:
 
 #### Commit 4 — Extend Rust resolver for synthetic tactic metric fields
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(player-metrics): support tactic metric fields in resolver`
 
@@ -777,19 +777,19 @@ The thinnest end-to-end path that proves the approach:
 
 **PR:** PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist)
 
-**Commit:** Persist synthetic tactic layouts with an atomic replace action
+**Commit:** Extend Rust resolver for synthetic tactic metric fields
 
 ### RED or removal proof
 
-Extend the player-table store tests with valid and invalid tactic layouts and the missing atomic `replaceLayout` action. Confirm the current store drops valid tactic IDs or lacks the action.
+Add resolver and filter tests for canonical tactic metric parsing. Confirm requested tactic fields are currently rejected while filter rules remain rejected.
 
 ### Expected outcome
 
-The `search`, `moneyball-search`, and `shortlist` layouts retain only canonical tactic IDs and clamped widths. One atomic `replaceLayout` action validates and deduplicates the complete next layout, prunes stale widths, preserves order, and falls back to the table default when no valid columns remain. Other table IDs continue to reject tactic IDs.
+The Rust metric resolver accepts `tactic_current.<laneId>` and `tactic_potential.<laneId>` for every canonical lane as nullable integer display/sort fields, rejects unknown suffixes, preserves requested-field order and limits, and exposes tactic accessors. Filter compilation and Moneyball metric-catalog eligibility continue to reject tactic IDs. SQL remains a deliberate `NULL` placeholder until Commit 5 wires score computation.
 
 ### Explicit exclusions
 
-Rust resolver/query behavior, route composition, toggle UI, tactic scoring, metric-picker changes, default tactic columns, schema migration, Squad support, and unrelated refactors.
+Score computation, real SQL expressions, query sorting, frontend route/panel/toggle work, schema changes, Squad integration, and unrelated refactors.
 
 ## Discoveries and replanning
 
@@ -808,6 +808,7 @@ Rust resolver/query behavior, route composition, toggle UI, tactic scoring, metr
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 1 — Record the approved feature plan | 944551c774cb30c0d7f2bcb42f232572680e870d | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`; `delivery_state.py`; `git diff --check 406dca7..944551c` — passed. | Not applicable | Clear | 0 | None |
 | PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 2 — Add neutral tactic-identity helpers and ordering | d8be592b873076aa8611d569ecd8badb38a4e021 | Added the closed 11-lane synthetic ID contract, Planner re-export, and deterministic straight/interleaved tactic ordering. | Focused Vitest: 11 passed; `./scripts/dev check-app`; boundary import search; `git diff --cached --check` — passed. | Pass | Clear | 1 | Corrected constructors and order builders to reject unknown runtime lane IDs. |
+| PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 3 — Persist synthetic tactic layouts with an atomic replace action | 83bdccd0db2b4707a416a1e78fc36b0088cb7493 | Retained canonical tactic IDs on the three Search layouts and added one atomic, validated layout replacement with width pruning and default fallback. | Store Vitest: 27 passed; tactic helpers: 11 passed; `./scripts/dev check-app`; boundary import search; `git diff --cached --check` — passed. | Pass | Clear | 1 | Unified all store mutators on one table-specific allowlist and added single-notification proof. |
 
 ## Final validation
 

@@ -40,6 +40,29 @@ pub const PERSONALITY_KEYS: &[&str] = &[
 /// input bounded before it can expand a row projection.
 pub const MAX_REQUESTED_FIELDS: usize = 256;
 
+pub const TACTIC_CURRENT_PREFIX: &str = "tactic_current.";
+pub const TACTIC_POTENTIAL_PREFIX: &str = "tactic_potential.";
+
+pub const TACTIC_LANE_IDS: [&str; 11] = [
+    "goalkeeper",
+    "left_back",
+    "left_centre_back",
+    "right_centre_back",
+    "right_back",
+    "defensive_midfielder",
+    "left_central_midfielder",
+    "right_central_midfielder",
+    "left_winger",
+    "right_winger",
+    "centre_forward",
+];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TacticGroup {
+    Current,
+    Potential,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetricValueKind {
     Integer,
@@ -80,6 +103,10 @@ enum MetricSource {
         column: String,
     },
     ClubDna,
+    Tactic {
+        group: TacticGroup,
+        lane_id: String,
+    },
 }
 
 impl MetricSource {
@@ -133,10 +160,23 @@ pub enum DynamicValue {
 
 impl MetricField {
     pub fn parse(field: &str) -> Result<Self, String> {
-        Self::parse_for_moneyball(field, false)
+        Self::parse_inner(field, false, false)
     }
 
     pub fn parse_for_moneyball(field: &str, moneyball: bool) -> Result<Self, String> {
+        Self::parse_inner(field, moneyball, true)
+    }
+
+    fn parse_inner(field: &str, moneyball: bool, allow_tactic: bool) -> Result<Self, String> {
+        if allow_tactic {
+            if let Some(tactic) = parse_tactic_field(field)? {
+                return Ok(tactic);
+            }
+        } else if field.starts_with(TACTIC_CURRENT_PREFIX)
+            || field.starts_with(TACTIC_POTENTIAL_PREFIX)
+        {
+            return Err(format!("unknown player metric: {field}"));
+        }
         if let Some(role_id) = parse_moneyball_role_id(field, moneyball)? {
             return Ok(Self {
                 id: field.to_string(),
@@ -293,6 +333,38 @@ impl MetricField {
         matches!(self.source, MetricSource::ClubDna)
     }
 
+    #[allow(dead_code)]
+    pub fn is_tactic_field(&self) -> bool {
+        matches!(self.source, MetricSource::Tactic { .. })
+    }
+
+    #[allow(dead_code)]
+    pub fn is_tactic_current(&self) -> bool {
+        matches!(
+            self.source,
+            MetricSource::Tactic {
+                group: TacticGroup::Current,
+                ..
+            }
+        )
+    }
+
+    #[allow(dead_code)]
+    pub fn tactic_lane_id(&self) -> Option<&str> {
+        match &self.source {
+            MetricSource::Tactic { lane_id, .. } => Some(lane_id),
+            _ => None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn tactic_group(&self) -> Option<TacticGroup> {
+        match &self.source {
+            MetricSource::Tactic { group, .. } => Some(group.clone()),
+            _ => None,
+        }
+    }
+
     /// Returns a trusted SQLite expression relative to the supplied player-table alias.
     pub fn sql_expression(&self, player_alias: &str) -> String {
         self.sql_expression_with_club_dna(player_alias, None)
@@ -323,6 +395,7 @@ impl MetricField {
             MetricSource::ClubDna => club_dna_bindings
                 .map(|bindings| bindings.score_expression(player_alias))
                 .unwrap_or_else(|| "NULL".to_string()),
+            MetricSource::Tactic { .. } => "NULL".to_string(),
         }
     }
 
@@ -367,6 +440,27 @@ pub fn parse_moneyball_role_id(field: &str, moneyball: bool) -> Result<Option<St
     }
 }
 
+fn parse_tactic_field(field: &str) -> Result<Option<MetricField>, String> {
+    let (group, lane_id) = if let Some(lane) = field.strip_prefix(TACTIC_CURRENT_PREFIX) {
+        (TacticGroup::Current, lane)
+    } else if let Some(lane) = field.strip_prefix(TACTIC_POTENTIAL_PREFIX) {
+        (TacticGroup::Potential, lane)
+    } else {
+        return Ok(None);
+    };
+    if !TACTIC_LANE_IDS.contains(&lane_id) {
+        return Err(format!("unknown player metric: {field}"));
+    }
+    Ok(Some(MetricField {
+        id: field.to_string(),
+        kind: MetricValueKind::Integer,
+        source: MetricSource::Tactic {
+            group,
+            lane_id: lane_id.to_string(),
+        },
+    }))
+}
+
 pub fn is_moneyball_search_field(field: &str) -> bool {
     if field.starts_with("moneyball_role.") {
         return parse_moneyball_role_id(field, true)
@@ -393,7 +487,20 @@ pub fn is_moneyball_search_field(field: &str) -> bool {
 
 /// Validates request fields and retains their first-seen order.
 pub fn parse_requested_fields(fields: &[String]) -> Result<Vec<MetricField>, String> {
-    parse_requested_fields_for_moneyball(fields, false)
+    if fields.len() > MAX_REQUESTED_FIELDS {
+        return Err(format!(
+            "requested field count exceeds maximum of {MAX_REQUESTED_FIELDS}"
+        ));
+    }
+    let mut seen = HashSet::new();
+    let mut parsed = Vec::new();
+    for field in fields {
+        let metric = MetricField::parse(field)?;
+        if seen.insert(metric.id.clone()) {
+            parsed.push(metric);
+        }
+    }
+    Ok(parsed)
 }
 
 pub fn parse_requested_fields_for_moneyball(
@@ -660,5 +767,166 @@ mod tests {
     fn rejects_general_only_metrics_in_moneyball_mode() {
         assert!(MetricField::parse_for_moneyball("attr.Acceleration", true).is_err());
         assert!(MetricField::parse_for_moneyball("role.target_forward", true).is_err());
+    }
+
+    #[test]
+    fn tactic_fields_search_accepts_all_canonical_lanes_both_modes_as_integer_null() {
+        for lane in TACTIC_LANE_IDS {
+            for moneyball in [false, true] {
+                for (prefix, expected_group) in [
+                    (TACTIC_CURRENT_PREFIX, TacticGroup::Current),
+                    (TACTIC_POTENTIAL_PREFIX, TacticGroup::Potential),
+                ] {
+                    let field = format!("{prefix}{lane}");
+                    let parsed = MetricField::parse_for_moneyball(&field, moneyball)
+                        .unwrap_or_else(|e| {
+                            panic!("should parse {field} moneyball={moneyball}: {e}")
+                        });
+                    assert_eq!(parsed.id(), field);
+                    assert_eq!(parsed.kind(), MetricValueKind::Integer);
+                    assert!(parsed.is_tactic_field());
+                    assert_eq!(parsed.tactic_lane_id(), Some(lane));
+                    assert_eq!(parsed.tactic_group(), Some(expected_group.clone()));
+                    assert_eq!(parsed.sql_expression("players"), "NULL");
+                    assert_eq!(
+                        parsed.sql_expression_with_club_dna(
+                            "players",
+                            Some(ClubDnaSqlBindings::new(2, 3))
+                        ),
+                        "NULL"
+                    );
+                    let req = parse_requested_fields_for_moneyball(
+                        std::slice::from_ref(&field),
+                        moneyball,
+                    )
+                    .expect("requested fields");
+                    assert_eq!(req[0].id(), field);
+                }
+            }
+        }
+        let scalar = MetricField::parse("ca").expect("scalar");
+        assert!(!scalar.is_tactic_field());
+        assert!(scalar.tactic_lane_id().is_none());
+    }
+
+    #[test]
+    fn tactic_fields_rejected_by_generic_parser_while_search_false_mode_accepts() {
+        assert_eq!(
+            MetricField::parse("tactic_current.goalkeeper").unwrap_err(),
+            "unknown player metric: tactic_current.goalkeeper"
+        );
+        assert_eq!(
+            parse_requested_fields(&["tactic_current.goalkeeper".to_string()]).unwrap_err(),
+            "unknown player metric: tactic_current.goalkeeper"
+        );
+        assert!(crate::features::planner::squad::SquadSortField::parse(
+            "tactic_current.goalkeeper"
+        )
+        .is_err());
+        assert!(MetricField::parse_for_moneyball("tactic_current.goalkeeper", false).is_ok());
+        assert!(parse_requested_fields_for_moneyball(
+            &["tactic_current.goalkeeper".to_string()],
+            false
+        )
+        .is_ok());
+        assert_eq!(
+            MetricField::parse("tactic_current.not_a_lane").unwrap_err(),
+            "unknown player metric: tactic_current.not_a_lane"
+        );
+        assert_eq!(
+            MetricField::parse_for_moneyball("tactic_current.not_a_lane", false).unwrap_err(),
+            "unknown player metric: tactic_current.not_a_lane"
+        );
+        assert_eq!(
+            MetricField::parse_for_moneyball("tactic_current.not_a_lane", true).unwrap_err(),
+            "unknown player metric: tactic_current.not_a_lane"
+        );
+    }
+
+    #[test]
+    fn tactic_fields_reject_invalid_suffix() {
+        for field in [
+            "tactic_current.",
+            "tactic_current.Goalkeeper",
+            "tactic_current.goalkeeper;DROP",
+        ] {
+            let err = MetricField::parse_for_moneyball(field, false).unwrap_err();
+            assert!(
+                err.starts_with("unknown player metric:"),
+                "unexpected {err}"
+            );
+            assert!(err.contains(field));
+        }
+    }
+
+    #[test]
+    fn tactic_fields_dedup_and_order_via_search_parser() {
+        let general = parse_requested_fields_for_moneyball(
+            &[
+                "tactic_current.goalkeeper".to_string(),
+                "ca".to_string(),
+                "tactic_potential.left_back".to_string(),
+                "tactic_current.goalkeeper".to_string(),
+            ],
+            false,
+        )
+        .expect("general dedup");
+        assert_eq!(
+            general.iter().map(MetricField::id).collect::<Vec<_>>(),
+            [
+                "tactic_current.goalkeeper",
+                "ca",
+                "tactic_potential.left_back"
+            ]
+        );
+        let moneyball = parse_requested_fields_for_moneyball(
+            &[
+                "tactic_current.goalkeeper".to_string(),
+                "moneyball.np-xg".to_string(),
+                "tactic_current.goalkeeper".to_string(),
+                "tactic_potential.goalkeeper".to_string(),
+            ],
+            true,
+        )
+        .expect("moneyball dedup");
+        assert_eq!(
+            moneyball.iter().map(MetricField::id).collect::<Vec<_>>(),
+            [
+                "tactic_current.goalkeeper",
+                "moneyball.np-xg",
+                "tactic_potential.goalkeeper"
+            ]
+        );
+    }
+
+    #[test]
+    fn tactic_fields_excluded_from_moneyball_search_catalog() {
+        assert!(!is_moneyball_search_field("tactic_current.goalkeeper"));
+        assert!(!is_moneyball_search_field(
+            "tactic_potential.centre_forward"
+        ));
+        assert!(!is_moneyball_search_field("tactic_current.not_a_lane"));
+    }
+
+    #[test]
+    fn tactic_fields_bounded_by_max_requested_fields_via_search_parser() {
+        let max = vec!["tactic_current.goalkeeper".to_string(); MAX_REQUESTED_FIELDS];
+        assert!(parse_requested_fields_for_moneyball(&max, false).is_ok());
+        assert!(parse_requested_fields_for_moneyball(&max, true).is_ok());
+        let too_many = vec!["tactic_current.goalkeeper".to_string(); MAX_REQUESTED_FIELDS + 1];
+        assert!(parse_requested_fields_for_moneyball(&too_many, false)
+            .unwrap_err()
+            .contains("exceeds maximum"));
+        assert!(parse_requested_fields_for_moneyball(&too_many, true).is_err());
+        assert!(parse_requested_fields(&too_many).is_err());
+    }
+
+    #[test]
+    fn tactic_lane_ids_match_planner_default() {
+        let planner_ids = crate::features::planner::tactic::DEFAULT_LANE_IDS;
+        assert_eq!(TACTIC_LANE_IDS.len(), planner_ids.len());
+        for (left, right) in TACTIC_LANE_IDS.iter().zip(planner_ids.iter()) {
+            assert_eq!(left, right);
+        }
     }
 }

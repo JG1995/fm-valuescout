@@ -1440,4 +1440,24 @@ mod tests {
         )
         .expect("match score"));
     }
+
+    #[test]
+    fn rejects_tactic_fields_as_filters_in_both_modes() {
+        for field in ["tactic_current.goalkeeper", "tactic_current.not_a_lane"] {
+            let ast = parse_filter_ast(vec![rule(field, "gt", FilterValue::Integer(70))], None)
+                .expect("parse ast");
+            assert!(
+                compile_filters(&ast, 2).is_err(),
+                "expected {field} to be rejected in General mode"
+            );
+            assert!(
+                compile_filters_for_moneyball(&ast, 2, true).is_err(),
+                "expected {field} to be rejected in Moneyball mode"
+            );
+            assert!(
+                compile_filters_for_moneyball(&ast, 2, false).is_err(),
+                "expected {field} to be rejected in non-Moneyball filter path"
+            );
+        }
+    }
 }
