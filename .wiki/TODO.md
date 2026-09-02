@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-_None._
+- [Tactic Columns for Player Tables](./features/active/tactic-table-columns.md) — append 11-lane Planner tactic groups (Current/Potential) as synthetic display columns to Search (General), Moneyball, and Shortlist with interleaving, persistence, and blended adjusted scoring.
 
 ## Next
 
