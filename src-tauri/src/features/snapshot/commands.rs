@@ -1,13 +1,15 @@
+use std::path::Path;
 use std::time::Instant;
 
 use serde::Serialize;
 use tauri::State;
+use tempfile::TempPath;
 
 use crate::db::Db;
-use crate::features::memory_read::service::DumpWaitConfig;
+use crate::features::memory_read::service::{DumpRequestResult, DumpWaitConfig};
 use crate::features::player::boost_gate;
 
-use super::ingest::SnapshotSummary;
+use super::ingest::{self, SnapshotSummary};
 use super::load_data::{self, LoadDataError, LoadDataResult};
 use super::query;
 use super::service::{self, SaveDeleteResult, SaveSummary, SnapshotDeleteResult, SnapshotMetadata};
@@ -299,16 +301,24 @@ pub fn get_current_snapshot(db: State<'_, Db>) -> Result<Option<SnapshotSummaryD
     Ok(snapshot.map(SnapshotSummaryDto::from))
 }
 
-#[tauri::command]
-pub fn load_data(
+pub(crate) fn execute_load_data_with<S, P, C>(
+    db: &Db,
     max_accepted: Option<i32>,
-    db: State<'_, Db>,
-) -> Result<LoadDataResultDto, LoadDataError> {
+    scan: S,
+    prepare: P,
+    mut now_ms: C,
+) -> Result<LoadDataResultDto, LoadDataError>
+where
+    S: FnOnce(Option<i32>) -> Result<(TempPath, DumpRequestResult), LoadDataError>,
+    P: FnOnce(&Path) -> Result<ingest::PreparedSnapshot, LoadDataError>,
+    C: FnMut() -> u64,
+{
     let _boost_guard = boost_gate::acquire_boost_gate().map_err(|message| LoadDataError::Scan {
         kind: "inProgress".to_string(),
         message,
     })?;
-    let total_started = Instant::now();
+    let total_started = now_ms();
+    // Capture save context under a brief Db mutex lock.
     let save_context = {
         let conn = db.0.lock().map_err(|_| LoadDataError::Scan {
             kind: "internal".to_string(),
@@ -319,32 +329,166 @@ pub fn load_data(
             message,
         })?
     };
-    let scan_started = Instant::now();
-    let (captured_dump_path, dump_result) =
-        load_data::scan_dump_from_local_app_data(DumpWaitConfig::default(), max_accepted)?;
-    let scan_ms = scan_started.elapsed().as_millis() as u64;
-    let ingest_started = Instant::now();
+    // Scan without the Db mutex.
+    let scan_started = now_ms();
+    let (captured_dump_path, dump_result) = scan(max_accepted)?;
+    let scan_ms = now_ms().saturating_sub(scan_started);
+    // Prepare (validation + raw normalization + projection + compact scoring) without the Db mutex.
+    // This is pure and performs zero database reads/writes or rusqlite ownership.
+    let prepared = prepare(captured_dump_path.as_ref())?;
+    // Final publication: start DB-publication timing, lock once, publish, finish timings.
+    let ingest_started = now_ms();
     let mut conn = db.0.lock().map_err(|_| LoadDataError::Scan {
         kind: "internal".to_string(),
         message: "database lock poisoned".to_string(),
     })?;
-    let mut result = load_data::load_data_after_scan_with_context(
-        &mut conn,
-        captured_dump_path.as_ref(),
-        dump_result,
-        &save_context,
-    )?;
+    let mut result =
+        load_data::publish_prepared_dump(&mut conn, dump_result, &save_context, prepared)?;
+    let ingest_ms = now_ms().saturating_sub(ingest_started);
+    let total_ms = now_ms().saturating_sub(total_started);
     result.timings = load_data::LoadDataTimings {
         scan_ms,
-        ingest_ms: ingest_started.elapsed().as_millis() as u64,
-        total_ms: total_started.elapsed().as_millis() as u64,
+        ingest_ms,
+        total_ms,
     };
     Ok(LoadDataResultDto::from(result))
+}
+
+#[tauri::command]
+pub fn load_data(
+    max_accepted: Option<i32>,
+    db: State<'_, Db>,
+) -> Result<LoadDataResultDto, LoadDataError> {
+    let start = Instant::now();
+    let now_ms = move || start.elapsed().as_millis() as u64;
+    execute_load_data_with(
+        db.inner(),
+        max_accepted,
+        |limit| load_data::scan_dump_from_local_app_data(DumpWaitConfig::default(), limit),
+        load_data::prepare_dump_for_publish,
+        now_ms,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+    use std::collections::VecDeque;
+    use std::io::Write;
+    use std::rc::Rc;
+    use std::sync::Mutex;
+
+    use rusqlite::Connection;
+    use tempfile::TempPath;
+
+    use crate::db::{migrations, Db};
+    use crate::features::memory_read::service::DumpRequestResult;
+
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v8.json");
+
+    #[test]
+    fn production_load_data_orchestrator_does_not_hold_db_lock_during_prepare_and_reports_deterministic_timings(
+    ) {
+        let _boost_test_guard = crate::features::player::boost_gate::BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("cmd-orchestrator.db");
+        let conn = Connection::open(&db_path).expect("open db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        migrations::apply(&conn).expect("apply migrations");
+        let db = Db(Mutex::new(conn));
+        // Seed default save so capture_active_save_context succeeds.
+        {
+            let guard = db.0.lock().expect("lock db");
+            crate::features::snapshot::service::list_saves(&guard).expect("seed default save");
+        }
+        // Deterministic monotonic ticks: total_start=0, scan_start=10, scan_end=50 => scan_ms=40,
+        // ingest_start=80, ingest_end=85 => ingest_ms=5 (DB-only), total_end=100 => total_ms=100.
+        // The gap 50->80 (30ms) is preparation, excluded from ingest_ms but included in total.
+        let ticks = Rc::new(std::cell::RefCell::new(VecDeque::from([
+            0u64, 10, 50, 80, 85, 100,
+        ])));
+        let call_count = Rc::new(Cell::new(0usize));
+        let call_count_for_clock = Rc::clone(&call_count);
+        let ticks_for_clock = Rc::clone(&ticks);
+        let mut now_ms = move || {
+            call_count_for_clock.set(call_count_for_clock.get() + 1);
+            ticks_for_clock
+                .borrow_mut()
+                .pop_front()
+                .expect("too many clock calls")
+        };
+        let call_count_for_prepare = Rc::clone(&call_count);
+        let db_for_scan = &db;
+        let db_for_prepare = &db;
+        let scan = move |max_accepted: Option<i32>| -> Result<(TempPath, DumpRequestResult), LoadDataError> {
+            let db = db_for_scan;
+            assert!(
+                db.0.try_lock().is_ok(),
+                "Db mutex must be free during scan – orchestrator must not hold lock across scan"
+            );
+            assert_eq!(max_accepted, None);
+            let mut tmp = tempfile::NamedTempFile::new().expect("tmp file");
+            tmp.write_all(GOLDEN_FIXTURE.as_bytes()).expect("write golden");
+            tmp.flush().expect("flush");
+            let path = tmp.into_temp_path();
+            let dump_result = DumpRequestResult {
+                request_id: "req-deterministic-test".to_string(),
+                state: "ready".to_string(),
+                players_found: Some(1),
+                dump_present: true,
+                error: None,
+                scan_truncated: Some(false),
+                max_accepted: None,
+            };
+            Ok((path, dump_result))
+        };
+        let prepare = move |path: &Path| -> Result<ingest::PreparedSnapshot, LoadDataError> {
+            let db = db_for_prepare;
+            assert!(
+                db.0.try_lock().is_ok(),
+                "Db mutex must be free during prepare – orchestrator must not reacquire Db before preparation or start ingest timing before preparation"
+            );
+            // Verify ordering: ingest_started must not have been called yet.
+            // Clock calls so far: total_start (1), scan_start (2), scan_end (3). Next is ingest_start (4).
+            assert_eq!(
+                call_count_for_prepare.get(),
+                3,
+                "prepare must run after scan but before ingest_started – ingest timing started too early"
+            );
+            load_data::prepare_dump_for_publish(path)
+        };
+        let result = execute_load_data_with(&db, None, scan, prepare, &mut now_ms)
+            .expect("deterministic load_data via production orchestrator");
+        assert_eq!(result.request_id, "req-deterministic-test");
+        assert_eq!(
+            result.timings.scan_ms, 40,
+            "scan_ms must be deterministic DB-free interval"
+        );
+        assert_eq!(
+            result.timings.ingest_ms, 5,
+            "ingest_ms must be DB-only, excluding preparation"
+        );
+        assert_eq!(
+            result.timings.total_ms, 100,
+            "total must include preparation"
+        );
+        assert!(
+            result.timings.total_ms >= result.timings.scan_ms + result.timings.ingest_ms,
+            "total must cover scan + ingest"
+        );
+        // Real publication must have succeeded with the golden dump.
+        assert_eq!(result.stored_snapshot.player_count, 1);
+        assert_eq!(result.effective_snapshot.player_count, 1);
+        let guard = db.0.lock().expect("lock db");
+        let snapshot_count: i64 = guard
+            .query_row("SELECT COUNT(*) FROM snapshots", [], |row| row.get(0))
+            .expect("count snapshots");
+        assert_eq!(snapshot_count, 1);
+    }
 
     #[test]
     fn snapshot_summary_dto_exposes_context_tokens_for_current_and_load_data_results() {

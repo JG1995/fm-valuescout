@@ -9,10 +9,14 @@
 //! lookup followed by safe snake_case validation. WebView input never becomes
 //! an SQL identifier.
 
+use std::collections::HashMap;
+
 use rusqlite::{params, params_from_iter, types::Value, Connection, Transaction};
 
 use super::potential_scores;
-use crate::features::scoring::catalog::all_roles;
+use crate::features::scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS};
+use crate::features::scoring::projection::project_attributes;
+use crate::features::scoring::score::score_role;
 
 /// Model version of the checked-in projection formula. Alias of
 /// `potential_scores::PROJECTION_MODEL_VERSION` so the compact contract keeps
@@ -123,6 +127,59 @@ pub(crate) struct CompactPlayerRow {
     pub(crate) uid: i64,
     pub(crate) current_scores: Vec<Option<i64>>,
     pub(crate) potential_scores: Vec<Option<i64>>,
+}
+
+/// Pure preparation of player projection and compact scores without any
+/// database read/write or `rusqlite` ownership. Callers build the returned
+/// values outside the `Db(Mutex<Connection>)` lock; `persist_rows` writes
+/// them in the final transaction. Memory is proportional to one player's
+/// 68+68 scores.
+#[allow(clippy::type_complexity)]
+pub(crate) fn prepare_player_derived(
+    uid: i64,
+    attributes_json: &str,
+    positions_json: &str,
+    ca: i64,
+    pa: i64,
+    age: Option<i64>,
+) -> Result<(String, Vec<Option<i64>>, Vec<Option<i64>>), String> {
+    let source_attributes = serde_json::from_str::<HashMap<String, Option<u8>>>(attributes_json)
+        .map_err(|error| format!("invalid player {uid} attributes JSON: {error}"))?;
+    for key in DUMP_ATTRIBUTE_KEYS {
+        if let Some(value) = source_attributes.get(*key).copied().flatten() {
+            if !(1..=20).contains(&value) {
+                return Err(format!(
+                    "player {uid} attribute `{key}` must be between 1 and 20"
+                ));
+            }
+        }
+    }
+    let attributes_for_scoring: HashMap<String, Option<u8>> = DUMP_ATTRIBUTE_KEYS
+        .iter()
+        .map(|key| {
+            (
+                (*key).to_string(),
+                source_attributes.get(*key).copied().flatten(),
+            )
+        })
+        .collect();
+    let positions_map = serde_json::from_str::<HashMap<String, Option<i64>>>(positions_json)
+        .map_err(|error| format!("invalid player {uid} positions JSON: {error}"))?;
+    let projected = project_attributes(
+        &attributes_for_scoring,
+        ca,
+        pa,
+        age,
+        positions_map.iter().map(|(k, v)| (k.as_str(), *v)),
+    );
+    let projected_json = serde_json::to_string(&projected).map_err(|e| e.to_string())?;
+    let mut current_scores = Vec::with_capacity(all_roles().len());
+    let mut potential_scores = Vec::with_capacity(all_roles().len());
+    for role in all_roles() {
+        current_scores.push(score_role(&attributes_for_scoring, role).map(i64::from));
+        potential_scores.push(score_role(&projected, role).map(i64::from));
+    }
+    Ok((projected_json, current_scores, potential_scores))
 }
 
 /// Inserts or replaces one compact row per prepared player for one snapshot,

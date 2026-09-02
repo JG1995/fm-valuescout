@@ -122,11 +122,11 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 ### PR 1 — Compact active snapshot metrics
 
-**Status:** Ready for publication
+**Status:** Merged
 
 **PR ref:** https://github.com/JG1995/fm-valuescout/pull/107
 
-**Merge ref:** Not merged
+**Merge ref:** ec2c6f60ab4e136a3c477a969b79bc6f315a0830
 
 **Branch:** feature/compact-snapshot-metrics
 
@@ -616,7 +616,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 ### PR 2 — Phased Load Data progress
 
-**Status:** Awaiting prior PR merge
+**Status:** Active
 
 **PR ref:** Not published
 
@@ -646,7 +646,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 #### Commit 1 — Prepare snapshot data before publication
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `refactor(load-data): prepare snapshots before publication`
 
@@ -702,7 +702,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 #### Commit 2 — Stream ordered Load Data progress and timings
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(load-data): stream phased progress`
 
@@ -874,7 +874,17 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 ## Active work
 
-PR 1 is published at <https://github.com/JG1995/fm-valuescout/pull/107>. Monitor the required strict `check`, merge the verified head with squash, synchronize `main`, then activate PR 2.
+**PR:** PR 2 — Phased Load Data progress
+
+**Commit:** Commit 2 — Stream ordered Load Data progress and timings
+
+### RED or removal proof
+
+Serialization, phase-order, best-effort delivery, error-boundary, and detailed-timing tests fail because Load Data exposes only the final result and coarse scan/ingest/total timings.
+
+### Expected outcome
+
+Load Data emits ordered command-scoped progress bound to the captured save context, reports truthful non-overlapping phase timings, ignores failed progress delivery, and preserves the final result or error as authoritative; `./scripts/dev check-rust` and `./scripts/dev check` pass.
 
 ## Discoveries and replanning
 
@@ -883,6 +893,7 @@ PR 1 is published at <https://github.com/JG1995/fm-valuescout/pull/107>. Monitor
 - CodeGraph was unavailable/stale for this planning run. All current-state claims were verified against direct source and tests.
 - PR 1 feature review found one Planner slot-candidate completeness gap. Correction `121998d` adds missing-row and wrong-current-model regression tests plus the established current-only compact preflight; correction review is clear and the full gate passes with 699 Rust tests, 0 failures, and 2 intended-ignored scale tests.
 - Windows 11 acceptance used an isolated transformed representative dump with 155,392 players and 100,624 staff. First load measured 17,488 ms validation, 126,262 ms insert/finalization, and 143,751 ms total; the repeated raw-history load measured 17,310 ms, 131,366 ms, and 148,676 ms. The isolated database measured 572,440,576 bytes after the first load and 1,099,730,944 bytes after the repeat. Compact rows remained current-only; role queries and promotion rebuild passed; the three normalized tables were absent. The 33,320,030,208-byte legacy `app.db` retained its exact size and modification time. No speedup is claimed without an equivalent prior-build run.
+- PR 1 passed the required strict `check` at verified head `df0c3cb`, merged by squash as `ec2c6f60ab4e136a3c477a969b79bc6f315a0830`, and synchronized `main` fast-forward-only before PR 2 branch activation.
 
 ## Completed work
 
@@ -896,6 +907,7 @@ PR 1 is published at <https://github.com/JG1995/fm-valuescout/pull/107>. Monitor
 | PR 1 — Compact active snapshot metrics | Commit 6 — Materialize current staff metrics atomically | 7de6e6287f9474d8e475dffd0fef48e0e0d0a9db | One compact `staff_role_metrics` row per current staff member written at ingest (`score_all_staff_roles` catalog order, null on unavailable/out-of-range) with `SCORE_MODEL_VERSION = 1`; normalized staff writes retained as the marked temporary dual-write seam; `reconcile_current_selection` (mirroring the Commit 3 player pattern) clears non-current snapshots and rebuilds a newly selected current snapshot from retained `staff_attributes_json` before commit; staff CA boost untouched; failed compact staff writes roll back the whole ingest keeping the prior current visible; promotion rebuild failure rolls back the current-snapshot deletion. | `./scripts/dev check-rust` passed (702 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, independent review clear after two corrections (wrong-version rejection proof, byte-for-byte promotion rollback preservation), targeted wrong-version and promotion tests pass and fail RED against a broken version predicate. | Pass | Clear | 2 | HIGH wrong-staff-model-version rejection lacked a regression proof; MEDIUM promotion-rollback test compared row presence not exact preserved content — both resolved with new/strengthened tests. |
 | PR 1 — Compact active snapshot metrics | Commit 7 — Cut staff consumers over to compact metrics | 52b84120277764cae47efeb126bcda052b0e5c77 | All staff table, Profile, shortlist, filter, and assignment-optimization reads now use compact columns: `MetricField::Role` and Role filters/sorts compile to `staff_role_metrics` columns via the closed-catalog `staff_role_column` (no role-id IN binds); Profile emits all 21 catalog entries in order with nulls; `assert_read_models_complete` runs unconditionally for every table read (Profile, Search, My Staff, Shortlist) so missing/wrong-version state fails before any raw staff row loads; `load_candidates` reads one compact row per candidate (single LEFT JOIN, 21 `SCORE_ROLE_IDS` columns, `staff.uid ASC`) with no row multiplication; normalized `staff_role_scores` remain only in the ingest dual-write seam and tests. | `./scripts/dev check-rust` passed (702 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, independent review clear after one correction (scalar table reads now gate on read-model completeness; new scalar missing/wrong-version assertion + promoted-snapshot fixture compact rows), scalar gate fails RED when made conditional again. | Pass | Clear | 1 | HIGH scalar-only staff table reads skipped `assert_read_models_complete` leaving incomplete snapshots visible as raw rows — resolved by running the completeness gate unconditionally on all staff table reads plus a scalar rejection test. |
 | PR 1 — Compact active snapshot metrics | Commit 8 — Remove normalized score persistence | 6392befe3ee98d92348b8c2f79aea252722e137f | Added append-only migration v39 to drop the three normalized player/potential/staff score tables and their indexes; removed the v34 normalized backfill hook, runtime dual writes, normalized helpers, fixtures, and compatibility assertions; current and projected player values plus staff values now persist only in compact rows while raw facts remain authoritative; current compact boost, rollback, projection, null, completeness, promotion, Planner, Search, Profile, and Staff behavior proofs remain. | `./scripts/dev check-rust` passed (697 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, source search confirms zero normalized-table references under `src-tauri/src/features`, fresh schema absence test proves all three tables and indexes absent, independent review clear with stale comments corrected. | Pass | Clear | 3 | Initial worker attempt deleted unrelated behavior tests and was rejected; corrected implementation restored/adapted compact behavior coverage. Reviewer found one stale dual-write comment and one obsolete ignored-test reason; both were corrected. PR-level feature review found Planner slot candidates lacked a compact completeness preflight; correction `121998d` added direct missing/wrong-model proofs and passed correction review. |
+| PR 2 — Phased Load Data progress | Commit 1 — Prepare snapshot data before publication | Pending record | Added bounded owned snapshot preparation outside `Db(Mutex<Connection>)`, including validated raw values, projected player attributes, and all compact player/staff scores; the production command now captures save context briefly, scans and prepares lock-free, then revalidates and publishes through one final transaction while direct test APIs compose the same boundary; duplicate transactional parse/score paths were removed. | `./scripts/dev check-rust` passed (705 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --cached --check` clean, focused command orchestration and 39 ingest tests passed, deterministic clock/lock proof covers production timing placement, independent correction review clear. | Pass | Clear | 1 | Initial review found that lower-level tests could not detect production command lock/timer regression and that a test-only bridge helper compiled in production; resolved with the exact injected production orchestrator, deterministic command-level regression proof, and `cfg(test)` gating. |
 
 ## Final validation
 

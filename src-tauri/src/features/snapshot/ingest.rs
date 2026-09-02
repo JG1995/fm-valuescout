@@ -4,22 +4,121 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-use rusqlite::{params, Connection, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::Value;
 
 use crate::features::academy::service as academy_service;
 use crate::features::memory_read::dump_validation::parse_and_validate_dump;
 use crate::features::player_metrics::club_dna as club_dna_scores;
 #[allow(unused_imports)]
-use crate::features::scoring::catalog::all_roles;
+use crate::features::player_metrics::compact as player_compact;
 #[allow(unused_imports)]
+use crate::features::player_metrics::potential_scores;
+#[allow(unused_imports)]
+use crate::features::scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS};
+#[allow(unused_imports)]
+use crate::features::scoring::projection::project_attributes;
+#[cfg(test)]
 use crate::features::scoring::score::score_role;
-#[allow(unused_imports)]
+#[cfg(test)]
+use crate::features::staff::scoring::all_staff_roles;
 use crate::features::staff::scoring::{
-    all_staff_roles, persist_rows as persist_staff_rows, score_all_staff_roles, CompactStaffRow,
+    persist_rows as persist_staff_rows, score_all_staff_roles, CompactStaffRow,
 };
 
 use super::service::{self, SaveContext};
+
+/// Bounded owned preparation of one dump, proportional to one dump's
+/// `players` + `staff` vectors. It owns parsed raw rows plus derived
+/// projected JSON and compact scores, but no `rusqlite` connection,
+/// transaction, or row. Built outside the `Db(Mutex<Connection>)` lock;
+/// `publish_prepared_snapshot` revalidates the captured `SaveContext`
+/// first and publishes it in one final transaction.
+#[derive(Debug, Clone)]
+pub struct PreparedSnapshot {
+    pub(crate) schema_version: i64,
+    pub(crate) generated_at_utc: String,
+    pub(crate) game_version: String,
+    pub(crate) supported_game_version: String,
+    pub(crate) bridge_version: String,
+    pub(crate) protocol_version: i64,
+    pub(crate) game_date: Option<String>,
+    pub(crate) game_date_source: String,
+    pub(crate) game_date_basis: String,
+    pub(crate) player_database_scope: String,
+    pub(crate) scan_truncated: bool,
+    pub(crate) max_accepted: Option<i64>,
+    pub(crate) player_count: i64,
+    pub(crate) staff_count: i64,
+    pub(crate) manager_uid: Option<i64>,
+    pub(crate) manager_name: Option<String>,
+    pub(crate) manager_club: Option<String>,
+    pub(crate) manager_club_reputation: Option<i64>,
+    pub(crate) players: Vec<PreparedPlayer>,
+    pub(crate) staff: Vec<PreparedStaff>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedPlayer {
+    pub(crate) uid: i64,
+    pub(crate) ca: i64,
+    pub(crate) pa: i64,
+    pub(crate) name: String,
+    pub(crate) birth_year: i64,
+    pub(crate) birth_day_of_year: i64,
+    pub(crate) age: Option<i64>,
+    pub(crate) nationalities_json: String,
+    pub(crate) height_cm: Option<i64>,
+    pub(crate) preferred_foot: String,
+    pub(crate) positions_json: String,
+    pub(crate) attributes_json: String,
+    pub(crate) hidden_attributes_json: String,
+    pub(crate) personality_json: String,
+    pub(crate) weekly_wage_gbp: Option<i64>,
+    pub(crate) contract_expiry_year: Option<i64>,
+    pub(crate) contract_expiry_day_of_year: Option<i64>,
+    pub(crate) transfer_listed: Option<i32>,
+    pub(crate) loan_listed: Option<i32>,
+    pub(crate) not_for_sale: Option<i32>,
+    pub(crate) set_for_release: Option<i32>,
+    pub(crate) market_value_gbp: Option<i64>,
+    pub(crate) reputation_current: Option<i64>,
+    pub(crate) reputation_world: Option<i64>,
+    pub(crate) current_club: Option<String>,
+    pub(crate) parent_club: Option<String>,
+    pub(crate) on_loan: Option<i32>,
+    pub(crate) division: Option<String>,
+    pub(crate) team_level: Option<String>,
+    pub(crate) nation_uid: Option<i64>,
+    pub(crate) gender: String,
+    pub(crate) club_reputation: Option<i64>,
+    pub(crate) team_type: Option<i64>,
+    pub(crate) projected_attributes_json: String,
+    pub(crate) compact_current: Vec<Option<i64>>,
+    pub(crate) compact_potential: Vec<Option<i64>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedStaff {
+    pub(crate) uid: i64,
+    pub(crate) name: Option<String>,
+    pub(crate) birth_year: Option<i64>,
+    pub(crate) birth_day_of_year: Option<i64>,
+    pub(crate) age: Option<i64>,
+    pub(crate) nationalities_json: String,
+    pub(crate) nation_uid: Option<i64>,
+    pub(crate) gender: String,
+    pub(crate) ca: i64,
+    pub(crate) pa: i64,
+    pub(crate) staff_attributes_json: String,
+    pub(crate) job_id: Option<i64>,
+    pub(crate) weekly_wage_gbp: Option<i64>,
+    pub(crate) contract_expiry_year: Option<i64>,
+    pub(crate) contract_expiry_day_of_year: Option<i64>,
+    pub(crate) club: Option<String>,
+    pub(crate) division: Option<String>,
+    pub(crate) compact_scores: Vec<Option<i64>>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotSummary {
@@ -41,7 +140,7 @@ pub struct SnapshotSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct IngestResult {
+pub(crate) struct IngestResult {
     pub stored_snapshot: SnapshotSummary,
     pub effective_snapshot: SnapshotSummary,
 }
@@ -86,6 +185,7 @@ pub fn ingest_dump_file_for_save(
     .map(|result| result.stored_snapshot)
 }
 
+#[cfg(test)]
 pub(super) fn ingest_dump_file_for_save_with_bridge_source_request_id(
     conn: &mut Connection,
     save_context: &SaveContext,
@@ -106,6 +206,8 @@ fn ingest_dump_file_for_save_with_optional_bridge_source_request_id(
     dump_path: &Path,
     bridge_source_request_id: Option<&str>,
 ) -> Result<IngestResult, String> {
+    // Direct-connection callers compose prepare+publish while holding &mut Connection.
+    // Only the Tauri Load Data command releases the Db mutex during prepare.
     let json = fs::read_to_string(dump_path).map_err(|error| error.to_string())?;
     ingest_dump_json_for_save(conn, save_context, &json, bridge_source_request_id)
         .map(|(result, _)| result)
@@ -124,42 +226,312 @@ pub fn ingest_dump_file_for_save_timed(
         .map(|(result, timings)| (result.stored_snapshot, timings))
 }
 
-fn ingest_dump_json_for_save(
-    conn: &mut Connection,
-    save_context: &SaveContext,
-    json: &str,
-    bridge_source_request_id: Option<&str>,
-) -> Result<(IngestResult, IngestTimings), String> {
-    let total_started = Instant::now();
-
-    let validation_started = Instant::now();
+/// Pure preparation: validates dump JSON and builds owned raw + derived state
+/// without any database read/write or `rusqlite` connection. Memory is
+/// proportional to one dump's `players` + `staff` vectors.
+pub fn prepare_dump_json(json: &str) -> Result<PreparedSnapshot, String> {
     let root = parse_and_validate_dump(json).map_err(|error| error.to_string())?;
-    let validation_ms = validation_started.elapsed().as_millis();
-
     let object = root
         .as_object()
         .ok_or_else(|| "dump root must be a JSON object".to_string())?;
 
-    let insert_started = Instant::now();
+    let schema_version = require_i64(object, "schemaVersion")?;
+    let generated_at_utc = require_string(object, "generatedAtUtc")?;
+    let game_version = require_string(object, "gameVersion")?;
+    let supported_game_version = require_string(object, "supportedGameVersion")?;
+    let bridge_version = require_string(object, "bridgeVersion")?;
+    let protocol_version = require_i64(object, "protocolVersion")?;
+    let game_date = optional_string(object.get("gameDate"))?;
+    let game_date_source = require_string(object, "gameDateSource")?;
+    let game_date_basis = require_string(object, "gameDateBasis")?;
+    let player_database_scope = require_string(object, "playerDatabaseScope")?;
+    let scan_truncated = require_bool(object, "scanTruncated")?;
+    let max_accepted = optional_i64(object.get("maxAccepted"))?;
+    let player_count = require_i64(object, "playerCount")?;
+    let staff_count = require_i64(object, "staffCount")?;
+    let manager_uid = optional_i64(manager_field(object, "uid")?)?;
+    let manager_name = optional_string(manager_field(object, "name")?)?;
+    let manager_club = optional_string(manager_field(object, "club")?)?;
+    let manager_club_reputation = optional_i64(manager_field(object, "clubReputation")?)?;
+
+    let players_value = object
+        .get("players")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "dump players must be an array".to_string())?;
+    let staff_value = object
+        .get("staff")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "dump staff must be an array".to_string())?;
+
+    let mut players = Vec::with_capacity(players_value.len());
+    for player in players_value {
+        let player = player
+            .as_object()
+            .ok_or_else(|| "each player must be a JSON object".to_string())?;
+        let uid = require_u64(player, "uid")? as i64;
+        let ca = require_i64(player, "ca")?;
+        let pa = require_i64(player, "pa")?;
+        let name = require_string(player, "name")?;
+        let birth_year = require_i64(player, "birthYear")?;
+        let birth_day_of_year = require_i64(player, "birthDayOfYear")?;
+        let age = optional_i64(player.get("age"))?;
+        let nationalities_json = json_string(required_value(player, "nationalities")?)?;
+        let height_cm = optional_i64(player.get("heightCm"))?;
+        let preferred_foot = require_string(player, "preferredFoot")?;
+        let positions_json = json_string(required_value(player, "positions")?)?;
+        let attributes_json = json_string(required_value(player, "attributes")?)?;
+        let hidden_attributes_json = json_string(required_value(player, "hiddenAttributes")?)?;
+        let personality_json = json_string(required_value(player, "personality")?)?;
+        let weekly_wage_gbp = optional_i64(player.get("weeklyWageGbp"))?;
+        let contract_expiry_year = optional_i64(player.get("contractExpiryYear"))?;
+        let contract_expiry_day_of_year = optional_i64(player.get("contractExpiryDayOfYear"))?;
+        let transfer_listed = optional_bool(player.get("transferListed"))?;
+        let loan_listed = optional_bool(player.get("loanListed"))?;
+        let not_for_sale = optional_bool(player.get("notForSale"))?;
+        let set_for_release = optional_bool(player.get("setForRelease"))?;
+        let market_value_gbp = optional_i64(player.get("marketValueGbp"))?;
+        let reputation_current = reputation_field(player, "current")?;
+        let reputation_world = reputation_field(player, "world")?;
+        let current_club = optional_string(player.get("currentClub"))?;
+        let parent_club = optional_string(player.get("parentClub"))?;
+        let on_loan = optional_bool(player.get("onLoan"))?;
+        let division = optional_string(player.get("division"))?;
+        let team_level = optional_string(player.get("teamLevel"))?;
+        let nation_uid = optional_i64(player.get("nationUid"))?;
+        let gender = require_string(player, "gender")?;
+        let club_reputation = optional_i64(player.get("clubReputation"))?;
+        let team_type = optional_i64(player.get("teamType"))?;
+
+        let (projected_attributes_json, compact_current, compact_potential) =
+            player_compact::prepare_player_derived(
+                uid,
+                &attributes_json,
+                &positions_json,
+                ca,
+                pa,
+                age,
+            )?;
+
+        players.push(PreparedPlayer {
+            uid,
+            ca,
+            pa,
+            name,
+            birth_year,
+            birth_day_of_year,
+            age,
+            nationalities_json,
+            height_cm,
+            preferred_foot,
+            positions_json,
+            attributes_json,
+            hidden_attributes_json,
+            personality_json,
+            weekly_wage_gbp,
+            contract_expiry_year,
+            contract_expiry_day_of_year,
+            transfer_listed,
+            loan_listed,
+            not_for_sale,
+            set_for_release,
+            market_value_gbp,
+            reputation_current,
+            reputation_world,
+            current_club,
+            parent_club,
+            on_loan,
+            division,
+            team_level,
+            nation_uid,
+            gender,
+            club_reputation,
+            team_type,
+            projected_attributes_json,
+            compact_current,
+            compact_potential,
+        });
+    }
+
+    let mut staff = Vec::with_capacity(staff_value.len());
+    for staff_record in staff_value {
+        let staff_record = staff_record
+            .as_object()
+            .ok_or_else(|| "each staff record must be a JSON object".to_string())?;
+        let uid = require_u64(staff_record, "uid")? as i64;
+        let name = optional_string(staff_record.get("name"))?;
+        let birth_year = optional_i64(staff_record.get("birthYear"))?;
+        let birth_day_of_year = optional_i64(staff_record.get("birthDayOfYear"))?;
+        let age = optional_i64(staff_record.get("age"))?;
+        let nationalities_json = json_string(required_value(staff_record, "nationalities")?)?;
+        let nation_uid = optional_i64(staff_record.get("nationUid"))?;
+        let gender = require_string(staff_record, "gender")?;
+        let ca = require_i64(staff_record, "ca")?;
+        let pa = require_i64(staff_record, "pa")?;
+        let raw_attributes = required_value(staff_record, "attributes")?;
+        let staff_attributes_json = json_string(raw_attributes)?;
+        let attributes = attributes_map(raw_attributes)?;
+        let job_id = optional_i64(staff_record.get("jobId"))?;
+        let weekly_wage_gbp = optional_i64(staff_record.get("weeklyWageGbp"))?;
+        let contract_expiry_year = optional_i64(staff_record.get("contractExpiryYear"))?;
+        let contract_expiry_day_of_year =
+            optional_i64(staff_record.get("contractExpiryDayOfYear"))?;
+        let club = optional_string(staff_record.get("club"))?;
+        let division = optional_string(staff_record.get("division"))?;
+        let compact_scores = score_all_staff_roles(&attributes);
+        staff.push(PreparedStaff {
+            uid,
+            name,
+            birth_year,
+            birth_day_of_year,
+            age,
+            nationalities_json,
+            nation_uid,
+            gender,
+            ca,
+            pa,
+            staff_attributes_json,
+            job_id,
+            weekly_wage_gbp,
+            contract_expiry_year,
+            contract_expiry_day_of_year,
+            club,
+            division,
+            compact_scores,
+        });
+    }
+
+    Ok(PreparedSnapshot {
+        schema_version,
+        generated_at_utc,
+        game_version,
+        supported_game_version,
+        bridge_version,
+        protocol_version,
+        game_date,
+        game_date_source,
+        game_date_basis,
+        player_database_scope,
+        scan_truncated,
+        max_accepted,
+        player_count,
+        staff_count,
+        manager_uid,
+        manager_name,
+        manager_club,
+        manager_club_reputation,
+        players,
+        staff,
+    })
+}
+
+pub fn prepare_dump_file(path: &Path) -> Result<PreparedSnapshot, String> {
+    let json = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    prepare_dump_json(&json)
+}
+
+/// Final publication: revalidates the captured `SaveContext` first, then in
+/// one transaction inserts raw rows, Club DNA, selects effective current,
+/// persists only current derived state, clears displaced current derived
+/// state, and commits atomically. Failure rolls back, preserving prior current.
+pub(crate) fn publish_prepared_snapshot(
+    conn: &mut Connection,
+    save_context: &SaveContext,
+    prepared: PreparedSnapshot,
+    bridge_source_request_id: Option<&str>,
+) -> Result<IngestResult, String> {
     let tx = conn.transaction().map_err(|error| error.to_string())?;
     service::ensure_save_context(&tx, save_context)?;
     let save_id = save_context.id;
-    let snapshot_id = insert_snapshot(&tx, save_id, object, bridge_source_request_id)?;
-    insert_players(&tx, snapshot_id, object)?;
-    insert_staff(&tx, snapshot_id, object)?;
+    let snapshot_id = insert_prepared_snapshot(&tx, save_id, &prepared, bridge_source_request_id)?;
+    insert_prepared_players_raw(&tx, snapshot_id, &prepared.players)?;
+    insert_prepared_staff_raw(&tx, snapshot_id, &prepared.staff)?;
     if let Some(definition) = club_dna_scores::definition_for_save(&tx, save_id)? {
         club_dna_scores::persist_snapshot_scores(&tx, snapshot_id, &definition)?;
     }
-    let effective_snapshot_id = service::select_current_snapshot(&tx, save_id)?
+    // Determine effective current snapshot (same ordering as service::select_current_snapshot)
+    let effective_snapshot_id = {
+        let order = service::SNAPSHOT_ORDER_BY;
+        let sql = format!("SELECT id FROM snapshots WHERE save_id = ?1 ORDER BY {order} LIMIT 1");
+        let current_id: Option<i64> = tx
+            .query_row(&sql, rusqlite::params![save_id], |row| row.get(0))
+            .optional()
+            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE snapshots SET is_current = 0 WHERE save_id = ?1 AND is_current = 1",
+            rusqlite::params![save_id],
+        )
+        .map_err(|e| e.to_string())?;
+        if let Some(id) = current_id {
+            tx.execute(
+                "UPDATE snapshots SET is_current = 1 WHERE id = ?1",
+                rusqlite::params![id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        // Clear derived state from every non-current snapshot (displaced current)
+        player_compact::clear_non_current_snapshots(&tx, save_id)?;
+        tx.execute(
+            "UPDATE players SET potential_attributes_json = NULL, potential_projection_model_version = NULL WHERE snapshot_id IN (SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0)",
+            rusqlite::params![save_id],
+        )
+        .map_err(|e| e.to_string())?;
+        crate::features::staff::scoring::clear_non_current_snapshots(&tx, save_id)?;
+        // Persist derived state only for the effective current snapshot.
+        // If the new snapshot won, use the prepared derived values (no DB read, no duplicate scoring).
+        // If another snapshot is effective (historical insert), its derived state is already correct;
+        // the new historical snapshot stays raw-only and the promotion rebuild is not needed here.
+        if let Some(effective) = current_id {
+            if effective == snapshot_id {
+                // Insert projected JSON + compact rows for the winning snapshot from prepared.
+                for player in &prepared.players {
+                    tx.execute(
+                        "UPDATE players SET potential_attributes_json = ?3, potential_projection_model_version = ?4 WHERE snapshot_id = ?1 AND uid = ?2",
+                        rusqlite::params![
+                            snapshot_id,
+                            player.uid,
+                            player.projected_attributes_json,
+                            potential_scores::PROJECTION_MODEL_VERSION
+                        ],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                let compact_rows: Vec<player_compact::CompactPlayerRow> = prepared
+                    .players
+                    .iter()
+                    .map(|p| player_compact::CompactPlayerRow {
+                        uid: p.uid,
+                        current_scores: p.compact_current.clone(),
+                        potential_scores: p.compact_potential.clone(),
+                    })
+                    .collect();
+                player_compact::persist_rows(&tx, snapshot_id, &compact_rows)?;
+                player_compact::assert_snapshot_complete(&tx, snapshot_id)?;
+                potential_scores::assert_current_snapshot_complete(&tx, snapshot_id)?;
+                let staff_rows: Vec<CompactStaffRow> = prepared
+                    .staff
+                    .iter()
+                    .map(|s| CompactStaffRow {
+                        uid: s.uid,
+                        scores: s.compact_scores.clone(),
+                    })
+                    .collect();
+                persist_staff_rows(&tx, snapshot_id, &staff_rows)?;
+                crate::features::staff::scoring::assert_snapshot_complete(&tx, snapshot_id)?;
+            }
+            // Academy: only when the new snapshot is effective current
+            if effective == snapshot_id {
+                academy_service::ensure_class_for_game_date(
+                    &tx,
+                    save_id,
+                    prepared.game_date.as_deref(),
+                    &prepared.game_date_source,
+                )?;
+            }
+        }
+        current_id
+    };
+    let effective_snapshot_id = effective_snapshot_id
         .ok_or_else(|| "ingest did not select a current snapshot".to_string())?;
-    if effective_snapshot_id == snapshot_id {
-        academy_service::ensure_class_for_game_date(
-            &tx,
-            save_id,
-            optional_string(object.get("gameDate"))?.as_deref(),
-            &require_string(object, "gameDateSource")?,
-        )?;
-    }
     let stored_snapshot = get_snapshot_by_id(&tx, snapshot_id)?;
     let effective_snapshot = if effective_snapshot_id == snapshot_id {
         stored_snapshot.clone()
@@ -167,27 +539,16 @@ fn ingest_dump_json_for_save(
         get_snapshot_by_id(&tx, effective_snapshot_id)?
     };
     tx.commit().map_err(|error| error.to_string())?;
-    let insert_ms = insert_started.elapsed().as_millis();
-
-    let total_ms = total_started.elapsed().as_millis();
-
-    Ok((
-        IngestResult {
-            stored_snapshot,
-            effective_snapshot,
-        },
-        IngestTimings {
-            validation_ms,
-            insert_ms,
-            total_ms,
-        },
-    ))
+    Ok(IngestResult {
+        stored_snapshot,
+        effective_snapshot,
+    })
 }
 
-fn insert_snapshot(
+fn insert_prepared_snapshot(
     tx: &Transaction<'_>,
     save_id: i64,
-    object: &serde_json::Map<String, Value>,
+    prepared: &PreparedSnapshot,
     bridge_source_request_id: Option<&str>,
 ) -> Result<i64, String> {
     tx.execute(
@@ -219,42 +580,36 @@ fn insert_snapshot(
         )",
         params![
             save_id,
-            require_i64(object, "schemaVersion")?,
-            require_string(object, "generatedAtUtc")?,
-            require_string(object, "gameVersion")?,
-            require_string(object, "supportedGameVersion")?,
-            require_string(object, "bridgeVersion")?,
-            require_i64(object, "protocolVersion")?,
-            optional_string(object.get("gameDate"))?,
-            require_string(object, "gameDateSource")?,
-            require_string(object, "gameDateBasis")?,
-            require_string(object, "playerDatabaseScope")?,
-            i32::from(require_bool(object, "scanTruncated")?),
-            optional_i64(object.get("maxAccepted"))?,
-            require_i64(object, "playerCount")?,
-            require_i64(object, "staffCount")?,
-            optional_i64(manager_field(object, "uid")?)?,
-            optional_string(manager_field(object, "name")?)?,
-            optional_string(manager_field(object, "club")?)?,
-            optional_i64(manager_field(object, "clubReputation")?)?,
+            prepared.schema_version,
+            prepared.generated_at_utc,
+            prepared.game_version,
+            prepared.supported_game_version,
+            prepared.bridge_version,
+            prepared.protocol_version,
+            prepared.game_date,
+            prepared.game_date_source,
+            prepared.game_date_basis,
+            prepared.player_database_scope,
+            i32::from(prepared.scan_truncated),
+            prepared.max_accepted,
+            prepared.player_count,
+            prepared.staff_count,
+            prepared.manager_uid,
+            prepared.manager_name,
+            prepared.manager_club,
+            prepared.manager_club_reputation,
             bridge_source_request_id,
         ],
     )
     .map_err(|error| error.to_string())?;
-
     Ok(tx.last_insert_rowid())
 }
 
-fn insert_players(
+fn insert_prepared_players_raw(
     tx: &Transaction<'_>,
     snapshot_id: i64,
-    object: &serde_json::Map<String, Value>,
+    players: &[PreparedPlayer],
 ) -> Result<(), String> {
-    let players = object
-        .get("players")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "dump players must be an array".to_string())?;
-
     let mut stmt = tx
         .prepare(
             "INSERT INTO players (
@@ -299,65 +654,54 @@ fn insert_players(
             )",
         )
         .map_err(|error| error.to_string())?;
-
-    for player in players {
-        let player = player
-            .as_object()
-            .ok_or_else(|| "each player must be a JSON object".to_string())?;
-
+    for p in players {
         stmt.execute(params![
             snapshot_id,
-            require_u64(player, "uid")? as i64,
-            require_i64(player, "ca")?,
-            require_i64(player, "pa")?,
-            require_string(player, "name")?,
-            require_i64(player, "birthYear")?,
-            require_i64(player, "birthDayOfYear")?,
-            optional_i64(player.get("age"))?,
-            json_string(required_value(player, "nationalities")?)?,
-            optional_i64(player.get("heightCm"))?,
-            require_string(player, "preferredFoot")?,
-            json_string(required_value(player, "positions")?)?,
-            json_string(required_value(player, "attributes")?)?,
-            json_string(required_value(player, "hiddenAttributes")?)?,
-            json_string(required_value(player, "personality")?)?,
-            optional_i64(player.get("weeklyWageGbp"))?,
-            optional_i64(player.get("contractExpiryYear"))?,
-            optional_i64(player.get("contractExpiryDayOfYear"))?,
-            optional_bool(player.get("transferListed"))?,
-            optional_bool(player.get("loanListed"))?,
-            optional_bool(player.get("notForSale"))?,
-            optional_bool(player.get("setForRelease"))?,
-            optional_i64(player.get("marketValueGbp"))?,
-            reputation_field(player, "current")?,
-            reputation_field(player, "world")?,
-            optional_string(player.get("currentClub"))?,
-            optional_string(player.get("parentClub"))?,
-            optional_bool(player.get("onLoan"))?,
-            optional_string(player.get("division"))?,
-            optional_string(player.get("teamLevel"))?,
-            optional_i64(player.get("nationUid"))?,
-            require_string(player, "gender")?,
-            optional_i64(player.get("clubReputation"))?,
-            optional_i64(player.get("teamType"))?,
+            p.uid,
+            p.ca,
+            p.pa,
+            p.name,
+            p.birth_year,
+            p.birth_day_of_year,
+            p.age,
+            p.nationalities_json,
+            p.height_cm,
+            p.preferred_foot,
+            p.positions_json,
+            p.attributes_json,
+            p.hidden_attributes_json,
+            p.personality_json,
+            p.weekly_wage_gbp,
+            p.contract_expiry_year,
+            p.contract_expiry_day_of_year,
+            p.transfer_listed,
+            p.loan_listed,
+            p.not_for_sale,
+            p.set_for_release,
+            p.market_value_gbp,
+            p.reputation_current,
+            p.reputation_world,
+            p.current_club,
+            p.parent_club,
+            p.on_loan,
+            p.division,
+            p.team_level,
+            p.nation_uid,
+            p.gender,
+            p.club_reputation,
+            p.team_type,
         ])
         .map_err(|error| error.to_string())?;
     }
-
     Ok(())
 }
 
-fn insert_staff(
+fn insert_prepared_staff_raw(
     tx: &Transaction<'_>,
     snapshot_id: i64,
-    object: &serde_json::Map<String, Value>,
+    staff: &[PreparedStaff],
 ) -> Result<(), String> {
-    let staff = object
-        .get("staff")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "dump staff must be an array".to_string())?;
-
-    let mut staff_stmt = tx
+    let mut stmt = tx
         .prepare(
             "INSERT INTO staff (
                 snapshot_id,
@@ -384,46 +728,54 @@ fn insert_staff(
             )",
         )
         .map_err(|error| error.to_string())?;
-    let mut compact_rows = Vec::with_capacity(staff.len());
-
-    for staff_record in staff {
-        let staff_record = staff_record
-            .as_object()
-            .ok_or_else(|| "each staff record must be a JSON object".to_string())?;
-        let uid = require_u64(staff_record, "uid")? as i64;
-        let raw_attributes = required_value(staff_record, "attributes")?;
-        let attributes = attributes_map(raw_attributes)?;
-
-        staff_stmt
-            .execute(params![
-                snapshot_id,
-                uid,
-                optional_string(staff_record.get("name"))?,
-                optional_i64(staff_record.get("birthYear"))?,
-                optional_i64(staff_record.get("birthDayOfYear"))?,
-                optional_i64(staff_record.get("age"))?,
-                json_string(required_value(staff_record, "nationalities")?)?,
-                optional_i64(staff_record.get("nationUid"))?,
-                require_string(staff_record, "gender")?,
-                require_i64(staff_record, "ca")?,
-                require_i64(staff_record, "pa")?,
-                json_string(raw_attributes)?,
-                optional_i64(staff_record.get("jobId"))?,
-                optional_i64(staff_record.get("weeklyWageGbp"))?,
-                optional_i64(staff_record.get("contractExpiryYear"))?,
-                optional_i64(staff_record.get("contractExpiryDayOfYear"))?,
-                optional_string(staff_record.get("club"))?,
-                optional_string(staff_record.get("division"))?,
-            ])
-            .map_err(|error| error.to_string())?;
-
-        let scores = score_all_staff_roles(&attributes);
-        compact_rows.push(CompactStaffRow { uid, scores });
+    for s in staff {
+        stmt.execute(params![
+            snapshot_id,
+            s.uid,
+            s.name,
+            s.birth_year,
+            s.birth_day_of_year,
+            s.age,
+            s.nationalities_json,
+            s.nation_uid,
+            s.gender,
+            s.ca,
+            s.pa,
+            s.staff_attributes_json,
+            s.job_id,
+            s.weekly_wage_gbp,
+            s.contract_expiry_year,
+            s.contract_expiry_day_of_year,
+            s.club,
+            s.division,
+        ])
+        .map_err(|error| error.to_string())?;
     }
-
-    persist_staff_rows(tx, snapshot_id, &compact_rows)?;
-
     Ok(())
+}
+
+fn ingest_dump_json_for_save(
+    conn: &mut Connection,
+    save_context: &SaveContext,
+    json: &str,
+    bridge_source_request_id: Option<&str>,
+) -> Result<(IngestResult, IngestTimings), String> {
+    let total_started = Instant::now();
+    let validation_started = Instant::now();
+    let prepared = prepare_dump_json(json)?;
+    let validation_ms = validation_started.elapsed().as_millis();
+    let insert_started = Instant::now();
+    let result = publish_prepared_snapshot(conn, save_context, prepared, bridge_source_request_id)?;
+    let insert_ms = insert_started.elapsed().as_millis();
+    let total_ms = total_started.elapsed().as_millis();
+    Ok((
+        result,
+        IngestTimings {
+            validation_ms,
+            insert_ms,
+            total_ms,
+        },
+    ))
 }
 
 fn attributes_map(value: &Value) -> Result<std::collections::HashMap<String, Option<u8>>, String> {
@@ -2216,5 +2568,145 @@ mod tests {
             "generated ingest player_count={player_count} validation_ms={} insert_ms={} total_ms={}",
             timings.validation_ms, timings.insert_ms, timings.total_ms
         );
+    }
+
+    #[test]
+    fn prepare_snapshot_is_pure_and_does_not_hold_db_mutex() {
+        use std::sync::Mutex;
+
+        use crate::db::Db;
+
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("prepare-mutex.db"));
+        let db = Db(Mutex::new(conn));
+        // DB is empty, no writes yet.
+        let before_snapshots: i64 =
+            db.0.lock()
+                .expect("lock db")
+                .query_row("SELECT COUNT(*) FROM snapshots", [], |row| row.get(0))
+                .expect("count snapshots");
+        assert_eq!(before_snapshots, 0);
+        // Preparation must succeed without holding the Db mutex and must not write.
+        let prepared = prepare_dump_json(GOLDEN_FIXTURE).expect("prepare without db");
+        assert_eq!(prepared.players.len(), 1);
+        assert_eq!(prepared.staff.len(), 1);
+        let after_prepare_snapshots: i64 =
+            db.0.lock()
+                .expect("lock db")
+                .query_row("SELECT COUNT(*) FROM snapshots", [], |row| row.get(0))
+                .expect("count snapshots after prepare");
+        assert_eq!(after_prepare_snapshots, 0, "prepare must not write");
+        // Holding the database mutex cannot affect pure preparation because the
+        // preparation API owns no database handle.
+        let guard = db.0.lock().expect("hold db mutex");
+        let _ = prepare_dump_json(GOLDEN_FIXTURE).expect("prepare while db mutex is held");
+        drop(guard);
+        assert_eq!(prepared.players[0].compact_current.len(), 68);
+        assert_eq!(prepared.players[0].compact_potential.len(), 68);
+        assert_eq!(prepared.staff[0].compact_scores.len(), 21);
+    }
+
+    #[test]
+    fn publish_rejects_stale_captured_context_before_any_write() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("publish-stale-context.db"));
+        let save_context = service::capture_active_save_context(&conn).expect("capture");
+        let prepared = prepare_dump_json(GOLDEN_FIXTURE).expect("prepare");
+        // Simulate save switch/delete/reused numeric ID after capture.
+        conn.execute("DELETE FROM saves WHERE id = ?1", [save_context.id])
+            .expect("delete save");
+        conn.execute(
+            "INSERT INTO saves (id, name, is_active) VALUES (?1, 'Reused', 1)",
+            [save_context.id],
+        )
+        .expect("reused id");
+        let err = publish_prepared_snapshot(&mut conn, &save_context, prepared, None)
+            .expect_err("reject stale context");
+        assert!(err.contains("Save changed"), "{err}");
+        // All DB state must be unchanged: no snapshot, no players, no compact.
+        let snapshot_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM snapshots", [], |row| row.get(0))
+            .expect("count");
+        assert_eq!(snapshot_count, 0);
+        let player_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM players", [], |row| row.get(0))
+            .expect("count");
+        assert_eq!(player_count, 0);
+        let compact_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM player_role_metrics", [], |row| {
+                row.get(0)
+            })
+            .expect("count");
+        assert_eq!(compact_count, 0);
+    }
+
+    #[test]
+    fn publish_is_one_transaction_and_rolls_back_on_compact_failure() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("publish-rollback.db"));
+        let first_path = write_dump(&temp_dir, "first.json", GOLDEN_FIXTURE);
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        let prior_snapshot_id = first.id;
+        let prior_compact = compact_row(&conn, prior_snapshot_id, 77).expect("prior compact");
+        let save_context = service::capture_active_save_context(&conn).expect("capture");
+        let prepared = prepare_dump_json(GOLDEN_FIXTURE).expect("prepare second");
+        conn.execute_batch(
+            "CREATE TRIGGER reject_compact_rows BEFORE INSERT ON player_role_metrics BEGIN SELECT RAISE(ABORT, 'compact row failure'); END;",
+        )
+        .expect("trigger");
+        let err = publish_prepared_snapshot(&mut conn, &save_context, prepared, Some("req-fail"))
+            .expect_err("rollback");
+        assert!(err.contains("compact row failure"), "{err}");
+        // Prior current must remain visible byte-for-byte, no new snapshot committed.
+        assert_eq!(
+            current_snapshot_id(&conn, save_context.id),
+            Some(prior_snapshot_id)
+        );
+        assert_eq!(snapshot_count(&conn, save_context.id), 1);
+        assert_eq!(
+            compact_row(&conn, prior_snapshot_id, 77),
+            Some(prior_compact)
+        );
+    }
+
+    #[test]
+    fn prepare_and_publish_preserve_winner_and_raw_history_semantics() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("prepare-winner-history.db"));
+        let save_context = service::capture_active_save_context(&conn).expect("capture");
+        // First ingest via publish path: later date wins.
+        let later_json = dump_with_game_date(Some("2027-08-16"), "Later player");
+        let later_prepared = prepare_dump_json(&later_json).expect("prepare later");
+        let later = publish_prepared_snapshot(&mut conn, &save_context, later_prepared, Some("R2"))
+            .expect("publish later");
+        assert_eq!(later.stored_snapshot.id, later.effective_snapshot.id);
+        assert_complete_potential_state(&conn, later.stored_snapshot.id);
+        assert_eq!(compact_row_count(&conn, later.stored_snapshot.id), 1);
+        // Historical insert must stay raw-only.
+        let earlier_json = dump_with_game_date(Some("2026-08-14"), "Earlier player");
+        let earlier_prepared = prepare_dump_json(&earlier_json).expect("prepare earlier");
+        let earlier =
+            publish_prepared_snapshot(&mut conn, &save_context, earlier_prepared, Some("R1"))
+                .expect("publish earlier");
+        assert_ne!(earlier.stored_snapshot.id, earlier.effective_snapshot.id);
+        assert_eq!(earlier.effective_snapshot.id, later.stored_snapshot.id);
+        assert_empty_potential_state(&conn, earlier.stored_snapshot.id);
+        assert_eq!(compact_row_count(&conn, earlier.stored_snapshot.id), 0);
+        assert_eq!(compact_row_count(&conn, later.stored_snapshot.id), 1);
+        // Prepare errors must not have written.
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 8", "\"schemaVersion\": 4");
+        assert!(prepare_dump_json(&bad_json).is_err());
+        assert_eq!(snapshot_count(&conn, save_context.id), 2);
+    }
+
+    #[test]
+    fn timings_separate_preparation_from_db_save_without_overlap() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("prepare-timings.db"));
+        let save_context = service::capture_active_save_context(&conn).expect("capture");
+        let prepared = prepare_dump_json(GOLDEN_FIXTURE).expect("prepare");
+        let result =
+            publish_prepared_snapshot(&mut conn, &save_context, prepared, None).expect("publish");
+        assert_eq!(result.stored_snapshot.player_count, 1);
     }
 }

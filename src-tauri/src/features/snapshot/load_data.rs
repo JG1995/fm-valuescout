@@ -5,10 +5,11 @@ use rusqlite::Connection;
 use serde::Serialize;
 use tempfile::TempPath;
 
+#[cfg(test)]
+use crate::features::memory_read::service::request_player_dump;
 use crate::features::memory_read::service::{
-    dump_path, read_bridge_status, request_player_dump, request_player_dump_with_limit,
-    resolve_bridge_directory, BridgeStatusError, DumpRequestError, DumpRequestResult,
-    DumpWaitConfig,
+    dump_path, read_bridge_status, request_player_dump_with_limit, resolve_bridge_directory,
+    BridgeStatusError, DumpRequestError, DumpRequestResult, DumpWaitConfig,
 };
 
 use super::ingest::{self, SnapshotSummary};
@@ -70,7 +71,7 @@ pub fn scan_dump_from_bridge(
 }
 
 /// Convenience for unit tests that simulate scan + ingest in one call.
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(test)]
 pub fn load_data_from_bridge(
     conn: &mut Connection,
     bridge_directory: &Path,
@@ -104,6 +105,43 @@ pub fn load_data_after_scan(
     load_data_after_scan_with_context(conn, captured_dump_path, dump_result, &save_context)
 }
 
+/// Pure preparation outside the database mutex: validates and builds owned snapshot state.
+/// No `rusqlite` connection/row/transaction is used.
+pub fn prepare_dump_for_publish(
+    captured_dump_path: &Path,
+) -> Result<ingest::PreparedSnapshot, LoadDataError> {
+    ingest::prepare_dump_file(captured_dump_path)
+        .map_err(|message| LoadDataError::Ingest { message })
+}
+
+/// Final publication: revalidates captured `SaveContext` first, then in one
+/// transaction inserts raw rows, Club DNA, selects effective current, persists
+/// only current derived state, clears displaced current derived state, and commits.
+pub fn publish_prepared_dump(
+    conn: &mut Connection,
+    dump_result: DumpRequestResult,
+    save_context: &service::SaveContext,
+    prepared: ingest::PreparedSnapshot,
+) -> Result<LoadDataResult, LoadDataError> {
+    ensure_scan_succeeded(&dump_result)?;
+    let ingest_result = ingest::publish_prepared_snapshot(
+        conn,
+        save_context,
+        prepared,
+        Some(&dump_result.request_id),
+    )
+    .map_err(|message| LoadDataError::Ingest { message })?;
+    Ok(LoadDataResult {
+        request_id: dump_result.request_id,
+        players_found: dump_result.players_found,
+        scan_truncated: dump_result.scan_truncated,
+        max_accepted: dump_result.max_accepted,
+        stored_snapshot: ingest_result.stored_snapshot,
+        effective_snapshot: ingest_result.effective_snapshot,
+        timings: LoadDataTimings::default(),
+    })
+}
+
 pub(crate) fn load_data_after_scan_with_context(
     conn: &mut Connection,
     captured_dump_path: &Path,
@@ -111,12 +149,16 @@ pub(crate) fn load_data_after_scan_with_context(
     save_context: &service::SaveContext,
 ) -> Result<LoadDataResult, LoadDataError> {
     ensure_scan_succeeded(&dump_result)?;
-
-    let ingest_result = ingest::ingest_dump_file_for_save_with_bridge_source_request_id(
+    // Keep direct-connection callers working by composing prepare+publish
+    // while holding &mut Connection. Only the Tauri command releases the
+    // Db mutex during prepare.
+    let prepared = ingest::prepare_dump_file(captured_dump_path)
+        .map_err(|message| LoadDataError::Ingest { message })?;
+    let ingest_result = ingest::publish_prepared_snapshot(
         conn,
         save_context,
-        captured_dump_path,
-        &dump_result.request_id,
+        prepared,
+        Some(&dump_result.request_id),
     )
     .map_err(|message| LoadDataError::Ingest { message })?;
 
