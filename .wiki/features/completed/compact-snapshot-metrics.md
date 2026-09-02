@@ -2,9 +2,11 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
+
+**Feature close-out:** Current
 
 ## Delivery authorization
 
@@ -634,7 +636,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 **Required checks:** GitHub required strict status `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -874,7 +876,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 ## Active work
 
-PR 2 implementation is complete and independently reviewed. Run PR-level validation and the recorded acceptance proof, then publish and merge PR 2 before feature close-out.
+Implementation, automated validation, final review, and documentation reconciliation are complete. PR2 publication and strict `check` verification remain. The developer explicitly deferred the remaining native-window manual acceptance and squash merge for their own PR review.
 
 ## Discoveries and replanning
 
@@ -883,6 +885,7 @@ PR 2 implementation is complete and independently reviewed. Run PR-level validat
 - CodeGraph was unavailable/stale for this planning run. All current-state claims were verified against direct source and tests.
 - PR 1 feature review found one Planner slot-candidate completeness gap. Correction `121998d` adds missing-row and wrong-current-model regression tests plus the established current-only compact preflight; correction review is clear and the full gate passes with 699 Rust tests, 0 failures, and 2 intended-ignored scale tests.
 - Windows 11 acceptance used an isolated transformed representative dump with 155,392 players and 100,624 staff. First load measured 17,488 ms validation, 126,262 ms insert/finalization, and 143,751 ms total; the repeated raw-history load measured 17,310 ms, 131,366 ms, and 148,676 ms. The isolated database measured 572,440,576 bytes after the first load and 1,099,730,944 bytes after the repeat. Compact rows remained current-only; role queries and promotion rebuild passed; the three normalized tables were absent. The 33,320,030,208-byte legacy `app.db` retained its exact size and modification time. No speedup is claimed without an equivalent prior-build run.
+- Windows acceptance at HEAD `610cd00` (Windows 10 Home 10.0.26100 Build 26100 x64) is recorded in authoritative `/tmp/fmvs-pr2-windows-acceptance-final.md`: synthetic 250,000 players + 2,000 staff on isolated Windows target; disjoint timings scan 5ms (synthetic) + prepare 20,728ms + scoring 29,050ms + first save 4,794ms/finalize 49,966ms = total 104,543ms (`ingestMs` 54,760ms); second save 4,835ms/finalize 52,083ms with history growth +392,572,928 bytes (412.8 → 787.2 MB); final `app-v2.db` 826,093,568 bytes, legacy `app.db` 33,320,030,208 bytes unchanged; historical compact 0/0, current 250k/2k; `LOAD_GATE`/`BOOST_GATE` and invocation-token `saveChanged`/`inProgress` proofs passed. A later isolated native Tauri/WebView2 run at final HEAD `5c3a054` proved the async window remained responsive, the command-scoped Channel reached the real WebView, and scan rendered indeterminate progress with phase-specific button text; its external fake-bridge harness did not complete the later phases. On 2026-09-02 the developer explicitly accepted deferring the remaining native-window sequence to manual PR validation rather than blocking publication.
 - PR 1 passed the required strict `check` at verified head `df0c3cb`, merged by squash as `ec2c6f60ab4e136a3c477a969b79bc6f315a0830`, and synchronized `main` fast-forward-only before PR 2 branch activation.
 
 ## Completed work
@@ -900,7 +903,7 @@ PR 2 implementation is complete and independently reviewed. Run PR-level validat
 | PR 2 — Phased Load Data progress | Commit 1 — Prepare snapshot data before publication | e68255c82b2babc955bb1f7153e184ac2541daaa | Added bounded owned snapshot preparation outside `Db(Mutex<Connection>)`, including validated raw values, projected player attributes, and all compact player/staff scores; the production command now captures save context briefly, scans and prepares lock-free, then revalidates and publishes through one final transaction while direct test APIs compose the same boundary; duplicate transactional parse/score paths were removed. | `./scripts/dev check-rust` passed (705 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --cached --check` clean, focused command orchestration and 39 ingest tests passed, deterministic clock/lock proof covers production timing placement, independent correction review clear. | Pass | Clear | 1 | Initial review found that lower-level tests could not detect production command lock/timer regression and that a test-only bridge helper compiled in production; resolved with the exact injected production orchestrator, deterministic command-level regression proof, and `cfg(test)` gating. |
 | PR 2 — Phased Load Data progress | Commit 2 — Stream ordered Load Data progress and timings | 1184bedbeb2770bf24fb45b74fb51775688315bc | Added a closed camelCase phase contract and command-scoped best-effort Channel bound to captured save context; the exact production orchestrator emits bounded start/completion events for scan, preparing, scoring, saving, and finalizing; raw preparation and scoring are separate lock-free passes without duplicate parse/score; one canonical transaction reports disjoint raw-save/finalization timings while preserving authoritative result/error and atomic publication. | `./scripts/dev check-rust` passed (715 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --cached --check` clean, focused command suite passed 13 tests, exact nonuniform clock proof covers every timing bucket, canonical raw-staff failure proves rollback and prevents premature save completion, independent correction review clear. | Pass | Clear | 2 | The first implementation was rejected before review because it bypassed the injected preparation seam, duplicated publication, emitted late phase labels, and did not model sender failure; the rewrite corrected those issues. Independent review then required exact nonuniform timing assertions and a canonical raw-insert boundary failure proof; both were added and approved. Tauri 2.11.3 rejects `Option<Channel<T>>`, so frontend Channel construction remains the recorded Commit 3 dependency. |
 | PR 2 — Phased Load Data progress | Commit 3 — Preserve visible data until successful replacement | e159426ad84bd6ed583bb2f655592153cee14a3f | Added the typed frontend progress Channel and context-bound local mutation ownership; Load Data no longer uses the neutral context-mutation key or clears before invocation, so established Search and Squad rows remain mounted and interactive during delayed work and failures. Context revisions permanently suppress stale presentation, while successful publications still reconcile truthful cache owners: current replacements clear exact roots only for the matching active save, historical or inactive-save results refresh captured history, and every terminal path refreshes Bridge status. | The full frontend suite passed (680 tests); focused Channel/hook/AppTopBar/Search/My Club/root-guard suites passed; route composition tests exercise readable, sortable, activatable rows through actual delayed top-bar mutation; `./scripts/dev check-app` and `./scripts/dev check` passed (715 Rust tests, 0 failures, 2 intended-ignored); staged diff, LSP, secret, ledger, and delivery checks clean. | Pass | Clear | 2 | Initial review found away-and-back stale revival, missing Bridge refresh, broad historical invalidation, and an unrealistic delayed error mock. Correction added revision ownership, exact terminal invalidation, invocation-captured rejection, and guarded root removal. A second review found stale presentation suppression also skipped authoritative A→B→A reconciliation and exposed contradictory mutation state; final correction separated presentation from reconciliation and added coherent global-busy/context-state semantics. Final independent review clear. |
-| PR 2 — Phased Load Data progress | Commit 4 — Show accessible phased Load Data progress | Pending record | Extended the existing stable polite top-bar banner with exact scan/preparing/scoring/saving/finalizing text, native indeterminate or truthful determinate progress, phase-matched fixed-width button labels, stale-context generic busy state, and detailed disjoint timing copy. Visible phase/count text is the live region’s sole changing content; the exact-named native progress element is an adjacent sibling to prevent duplicate announcements. | Focused outcome and AppTopBar suites passed (47 tests after accessibility correction); `./scripts/dev check-app` passed; smoke passed 51 tests; `./scripts/dev check` passed (715 Rust tests, 0 failures, 2 intended-ignored); staged diff, LSP, secret, ledger, and delivery checks clean. | Pass | Clear | 1 | Initial review found the visible phase/count and identical progress accessible name inside one polite subtree, which could double-announce every update. Correction kept one stable text-only live region and moved native progress beside it in the same visual row; final independent review clear. |
+| PR 2 — Phased Load Data progress | Commit 4 — Show accessible phased Load Data progress | 3efb63751f74fe7f28eb8cd346a333adfafe0480 | Extended the existing stable polite top-bar banner with exact scan/preparing/scoring/saving/finalizing text, native indeterminate or truthful determinate progress, phase-matched fixed-width button labels, stale-context generic busy state, and detailed disjoint timing copy. Visible phase/count text is the live region’s sole changing content; the exact-named native progress element is an adjacent sibling to prevent duplicate announcements. | Focused outcome and AppTopBar suites passed (47 tests after accessibility correction); `./scripts/dev check-app` passed; smoke passed 51 tests; `./scripts/dev check` passed (715 Rust tests, 0 failures, 2 intended-ignored; final repo 724 pass/2 ignored at HEAD 5c3a054); staged diff, LSP, secret, ledger, and delivery checks clean. Source normalized-reference absence verified. | Pass | Clear | 1 | Initial review found the visible phase/count and identical progress accessible name inside one polite subtree, which could double-announce every update. Correction kept one stable text-only live region and moved native progress beside it in the same visual row; final independent review clear. Final independent feature review: Blocking No, Clear; full gates pass; Windows 250k/2k acceptance at HEAD 610cd00 (Windows 10 Home 10.0.26100 Build 26100 x64, authoritative `/tmp/fmvs-pr2-windows-acceptance-final.md`) passed with complete disjoint timings scan 5ms synthetic + prepare 20,728ms + scoring 29,050ms + first save 4,794ms/finalize 49,966ms = total 104,543ms, second save 4,835ms/finalize 52,083ms; final `app-v2.db` 826,093,568 bytes, legacy `app.db` 33,320,030,208 bytes unchanged; no speedup claimed. Corrections after Commit 4 reviewed: 13d7334 bind results to captured save — pass; 610cd00 coordinate save transitions (boost/load/context leases, invocation save token `LOAD_GATE`/`inProgress` before `saveChanged`, A→B→A stale suppression, isContextMutating) — pass; 5c3a054 keep heavy command responsive (one-line `async` delta) — official/macro review clear; final-HEAD native WebView acceptance proved responsiveness and real Channel delivery through indeterminate scan, while the developer explicitly deferred the remaining phased sequence to manual PR validation. |
 
 ## Final validation
 
@@ -931,3 +934,66 @@ Manual Windows proof on a fresh representative approximately 250,000-player load
 `README.md` is intrinsic to PR 1 Commit 2 because `app-v2.db` becomes user-visible there. That commit must document that `app.db` remains untouched, reinstall might preserve application data, and the user must verify `app-v2.db` before manually deleting `app.db`.
 
 After PR 2 Commit 4 completes and final automated/manual validation passes, `/skill:workflow-finish-feature` owns documentation reconciliation and close-out rather than a planned content packet. It must verify and correct the README only if implementation or validation changed its truth; reconcile `.wiki/ARCHITECTURE.md` with the implemented compact schema, immutable migration/version contract, preparation/publication boundary, fresh filename, progress channel, and measured timing language; reconcile `.wiki/DESIGN.md` with implemented top-bar progress behavior; preserve the individual Profile timeline in `.wiki/BACKLOG.md` as unimplemented; remove the feature from `.wiki/TODO.md`; archive the complete ledger under `.wiki/features/completed/`; and reconcile ADR links/status only if implementation materially deviated. It must not claim automatic cleanup, historical timeline delivery, unmeasured performance, or release publication. Inspect the complete documentation diff, rerun both classifiers, run the repository documentation gate, and stop if cleanup safety, measurements, implementation truth, or archive classification cannot be verified.
+
+## Exact implementation refs
+
+Exact publication scope for the compact foundation and phased progress:
+
+- PR1 — Compact active snapshot metrics — merged as `ec2c6f60ab4e136a3c477a969b79bc6f315a0830` via PR #107 (branch `feature/compact-snapshot-metrics`).
+- PR2 — Phased Load Data progress — branch `feature/load-data-progress` (base `main` at `ec2c6f60ab4e136a3c477a969b79bc6f315a0830`), not published, not merged. Content refs:
+
+| Ref | Subject | Result |
+| --- | --- | --- |
+| `e68255c82b2babc955bb1f7153e184ac2541daaa` | `refactor(load-data): prepare snapshots before publication` | Accepted |
+| `1184bedbeb2770bf24fb45b74fb51775688315bc` | `feat(load-data): stream phased progress` | Accepted |
+| `e159426ad84bd6ed583bb2f655592153cee14a3f` | `fix(load-data): retain results until publication` | Accepted |
+| `3efb63751f74fe7f28eb8cd346a333adfafe0480` | `feat(load-data): show top-bar progress` | Accepted |
+| `13d733467691d27994b79a2c6986cf30af6c4c16` | `fix(load-data): bind results to captured save` | Accepted |
+| `610cd00b57e088fffe96f7280ed6f0e8d1b38cba` | `fix(load-data): coordinate save transitions` | Accepted |
+| `5c3a0541dc91baefc59df5554ee55b8fe7fd3dd2` | `fix(load-data): keep heavy command responsive` | Accepted |
+
+Documentation reconciliation: `Pending record`.
+
+Publication range for PR2: `ec2c6f60ab4e136a3c477a969b79bc6f315a0830..5c3a0541dc91baefc59df5554ee55b8fe7fd3dd2` (short: `ec2c6f60..5c3a054`).
+
+## Final publication
+
+```yaml
+status: ready_for_publication
+pr_status: not_published
+merge_status: not_merged
+pr_ref: "Not published"
+merge_ref: "Not merged"
+branch: feature/load-data-progress
+base_branch: main
+base_ref: ec2c6f60ab4e136a3c477a969b79bc6f315a0830
+publication_provider: GitHub
+pr_template: .github/pull_request_template.md
+merge_method: squash
+required_checks: strict_check
+required_check_name: check
+pr_count: 2
+earlier_prs:
+  - pr: 107
+    status: merged
+    merge_ref: ec2c6f60ab4e136a3c477a969b79bc6f315a0830
+    branch: feature/compact-snapshot-metrics
+feature_close_out: current
+feature_review_blocking: false
+feature_review_recommendation: accept
+project_fit: conforms
+architecture: conforms
+test_portfolio: pass
+publication_range: "ec2c6f60..5c3a054"
+full_publication_range: "ec2c6f60ab4e136a3c477a969b79bc6f315a0830..5c3a0541dc91baefc59df5554ee55b8fe7fd3dd2"
+implementation_refs:
+  - ec2c6f60ab4e136a3c477a969b79bc6f315a0830
+  - e68255c82b2babc955bb1f7153e184ac2541daaa
+  - 1184bedbeb2770bf24fb45b74fb51775688315bc
+  - e159426ad84bd6ed583bb2f655592153cee14a3f
+  - 3efb63751f74fe7f28eb8cd346a333adfafe0480
+  - 13d733467691d27994b79a2c6986cf30af6c4c16
+  - 610cd00b57e088fffe96f7280ed6f0e8d1b38cba
+  - 5c3a0541dc91baefc59df5554ee55b8fe7fd3dd2
+close_out_documentation_ref: Pending record
+```
