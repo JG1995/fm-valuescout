@@ -1,6 +1,6 @@
 pub mod commands;
 pub mod depth;
-mod fit;
+pub(crate) mod fit;
 mod optimizer;
 mod role_reference;
 pub mod squad;

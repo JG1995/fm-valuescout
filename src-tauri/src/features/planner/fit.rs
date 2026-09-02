@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use super::tactic::{base_position, TacticLane};
+use crate::features::scoring::combine::combine_role_scores;
 
 pub(super) fn phase_fit_score(
     score: Option<u8>,
@@ -33,6 +34,18 @@ pub(super) fn lane_fit_score(
         score,
         foot_penalty + familiarity_penalty(ip_familiarity) + familiarity_penalty(oop_familiarity),
     ))
+}
+
+pub(crate) fn tactic_adjusted_score(
+    ip_score: Option<u8>,
+    oop_score: Option<u8>,
+    ip_weight: f64,
+    player_foot: &str,
+    positions: &BTreeMap<String, Option<i64>>,
+    lane: &TacticLane,
+) -> Option<u8> {
+    let blended = combine_role_scores(ip_score, oop_score, ip_weight)?;
+    lane_fit_score(Some(blended), player_foot, positions, lane)
 }
 
 pub(super) fn foot_matches(player_foot: &str, preferred_foot: &str) -> bool {

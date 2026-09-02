@@ -406,6 +406,57 @@ mod tests {
     }
 
     #[test]
+    fn tactic_compound_key_is_unique_and_covers_103_of_111_with_8_uncovered() {
+        let catalog = builtin_catalog().expect("built-in catalog should load");
+        // Unique (attribute_role_id, position_tag) among mapped definitions
+        let mut seen = std::collections::HashSet::new();
+        for def in &catalog.definitions {
+            if let Some(attr) = def.attribute_role_id.as_deref() {
+                for tag in &def.position_tags {
+                    let key = (attr, tag.as_str());
+                    assert!(seen.insert(key), "duplicate compound key {attr} + {tag}");
+                }
+            }
+        }
+        // General combos vs Moneyball coverage
+        let general_roles = all_roles();
+        let mut total = 0usize;
+        let mut mapped = 0usize;
+        let mut uncovered = Vec::new();
+        for role in general_roles {
+            for tag in role.position_tags {
+                total += 1;
+                let has = catalog.definitions.iter().any(|def| {
+                    def.attribute_role_id.as_deref() == Some(role.role_id)
+                        && def.position_tags.contains(&tag.to_string())
+                });
+                if has {
+                    mapped += 1;
+                } else {
+                    uncovered.push((role.role_id, *tag));
+                }
+            }
+        }
+        assert_eq!(total, 111, "General (role, position) count");
+        assert_eq!(mapped, 103, "mapped combos");
+        assert_eq!(uncovered.len(), 8, "uncovered count");
+        let expected: std::collections::HashSet<(&str, &str)> = [
+            ("holding_wing_back_oop", "DL"),
+            ("holding_wing_back_oop", "DR"),
+            ("pressing_wing_back_oop", "DL"),
+            ("pressing_wing_back_oop", "DR"),
+            ("box_to_box_midfielder_ip", "MC"),
+            ("box_to_box_playmaker_ip", "MC"),
+            ("deep_lying_playmaker_ip", "MC"),
+            ("second_striker_ip", "ST"),
+        ]
+        .into_iter()
+        .collect();
+        let actual: std::collections::HashSet<(&str, &str)> = uncovered.into_iter().collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn uses_distinct_canonical_metric_keys_and_matching_directions() {
         let catalog = builtin_catalog().expect("built-in catalog should load");
         let mut seen = std::collections::HashSet::new();

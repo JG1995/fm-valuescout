@@ -152,7 +152,7 @@ fn sided_placements(base_position: &str) -> Option<[&'static str; 3]> {
     }
 }
 
-pub(super) fn base_position(placement: &str) -> &str {
+pub(crate) fn base_position(placement: &str) -> &str {
     match placement {
         "DCR" | "DC" | "DCL" => "DC",
         "DMCR" | "DM" | "DMCL" => "DM",

@@ -1,3 +1,11 @@
+/**
+ * Moneyball mapping contract (deterministic, see ledger Invariants):
+ * 88 Moneyball defs (77 mapped via attribute_role_id, 11 Moneyball-only with attribute_role_id:null),
+ * 103/111 General (role_id, base_position) combos mapped via (attribute_role_id, base_position(placement)),
+ * 8 unavailable by design (NULL -> "—"): holding_wing_back_oop+DL, holding_wing_back_oop+DR,
+ * pressing_wing_back_oop+DL, pressing_wing_back_oop+DR, box_to_box_midfielder_ip+MC,
+ * box_to_box_playmaker_ip+MC, deep_lying_playmaker_ip+MC, second_striker_ip+ST.
+ */
 export const TACTIC_CURRENT_PREFIX = "tactic_current.";
 export const TACTIC_POTENTIAL_PREFIX = "tactic_potential.";
 export const TACTIC_COLUMN_DEFAULT_WIDTH = 112;
