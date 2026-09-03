@@ -611,7 +611,7 @@ The thinnest end-to-end path that proves the approach:
 
 #### Commit 6 — Captured-context Planner tactic IPC seam
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): add captured-context tactic IPC seam`
 
@@ -703,7 +703,7 @@ The thinnest end-to-end path that proves the approach:
 
 #### Commit 7 — My Club tactic lifecycle and errors
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(my-club): complete tactic lifecycle and error handling`
 
@@ -934,19 +934,19 @@ The thinnest end-to-end path that proves the approach:
 
 **PR:** PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist)
 
-**Commit:** Commit 6 — Captured-context Planner tactic IPC seam
+**Commit:** Commit 7 — My Club tactic lifecycle and errors
 
 ### RED or removal proof
 
-Prove that tactic reads/saves use the context captured when the operation starts with exact `{ saveId, contextToken }` args. A delayed A save that settles after B becomes active must update A persistence/cache and never B. Prove valid inactive A accepted, unknown ID (`Save {id} not found`) and token-mismatch (`Save changed or no longer exists`) rejected before writes, same-ID/new-token safety, cache isolation via `plannerKeys.tactic(context)`, and one transaction per command. Retry/refetch UX is Commit 7; sort gating/no-snapshot is Commit 8; synthetic UI is Commit 9.
+Prove actionable initial failure and cached-refresh behavior on the existing context boundary. A tactic-only or options-only initial failure must show `Could not load tactic`, and Retry must refetch both context-keyed queries. A cached refresh failure must retain tactic data read-only and block writes. Verify that the Commit 6 full-context remount still isolates draft and feedback when context changes or an A operation settles after B mounts.
 
 ### Expected outcome
 
-The existing Planner tactic IPC accepts exact `{ saveId, contextToken }` arguments and targets that row without consulting current active state. Query and mutation results are stored under the originating context key. Commit 6 outcome includes the mandatory minimal `TacticContextBoundary`/remount (minimal boundary with unconditional non-null `plannerKeys.tactic`/`tacticOptions` queries, context mutation/key/cache wiring, full-context remount and basic proof); Commit 7 later hardens lifecycle only (`retryBoth`, `readOnly`, actionable initial/refresh error lifecycle, mounted-B feedback isolation proof reusing C6 remount unchanged). Search sort gating/no-snapshot is Commit 8; synthetic rendering/interleaving/header-X is Commit 9. No custom abort wrapper, global pending helper, active-only tactic mock, parent current-context ref, or stale-result discard path remains.
+My Club consumes the existing `TacticContextBoundary` through additive `retryBoth` and `readOnly` states. Initial errors are actionable, cached refresh errors retain data without permitting writes, and full-context editor state remains isolated without new query factories, mutation wiring, cancellation, sentinels, or parent settlement guards.
 
 ### Explicit exclusions
 
-Toggle presentation, tactic labels and cells, interleaving, header-X recompaction, and widths remain in Commit 9. Commit 6 does not cancel a valid A operation merely because B becomes active. Commits 7 and 8 do not change IPC or add toggle UI respectively.
+Search sort/no-snapshot behavior remains in Commit 8. Search toggle presentation, labels and cells, interleaving, header-X recompaction, widths, and null-last polish remain in Commit 9. Commit 7 does not change Rust or IPC contracts.
 
 ## Discoveries and replanning
 
@@ -973,6 +973,7 @@ Toggle presentation, tactic labels and cells, interleaving, header-X recompactio
 | PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 3 — Persist synthetic tactic layouts with an atomic replace action | 83bdccd0db2b4707a416a1e78fc36b0088cb7493 | Retained canonical tactic IDs on the three Search layouts and added one atomic, validated layout replacement with width pruning and default fallback. | Store Vitest: 27 passed; tactic helpers: 11 passed; `./scripts/dev check-app`; boundary import search; `git diff --cached --check` — passed. | Pass | Clear | 1 | Unified all store mutators on one table-specific allowlist and added single-notification proof. |
 | PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 4 — Extend Rust resolver for synthetic tactic metric fields | d83a06250244829c08cb2c66c9b344084e2dd167 | Added closed Search-only tactic metric parsing with integer/NULL placeholder semantics while preserving generic Squad and filter rejection. | Resolver: 18 passed; Squad: 33 passed; filter: 59 passed; `./scripts/dev check-rust`: 737 passed, 2 ignored; `git diff --cached --check` — passed. | Pass | Clear | 1 | Split Search-specific parsing from generic parsing and consolidated exact boundary tests. |
 | PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 5 — Implement tactic lane scoring and query sort (Rust, Moneyball mapping) | d9d27377fcc47e42b1b4e34bb2fc7c57e890b8bd | Added Planner-equivalent tactic scoring for General/Shortlist SQL and Moneyball cohort scoring, deterministic compound mapping, and null-last stable sorting. | Query: 115 passed; fit: 12 passed; catalog: 6 passed; `./scripts/dev check-rust`: 745 passed, 2 ignored; frontend Vitest: 740 passed; `git diff --cached --check` — passed. | Pass | Clear | 1 | Consolidated Moneyball requested/sort work on exact field IDs after review found lane-only keying; expanded focused parity, completeness, Shortlist, and comparison-pool proofs. |
+| PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 6 — Captured-context Planner tactic IPC seam | Pending record | Replaced implicit active-save tactic IPC with exact captured `{ saveId, contextToken }` reads and saves, context-keyed frontend state, transaction-owned Rust validation, a minimal matched-snapshot boundary, and full-context editor remounting. | Focused frontend: 144 passed; `./scripts/dev check-app`; `./scripts/dev check-rust`: 748 passed, 2 ignored; `./scripts/dev smoke`: 54 passed; primary LSP diagnostics; fixed-string checks; `git diff --check` — passed. | Pass | Clear | 1 | Corrected Planner unit and browser test doubles to share their environments' live save lifecycle for created, deleted, and same-ID replacement contexts. |
 
 ## Final validation
 

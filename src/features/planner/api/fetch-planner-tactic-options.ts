@@ -1,6 +1,10 @@
 import { invokeCommand } from "@/lib/tauri-client";
 import type { TacticOptions } from "../types/tactic";
+import type { PlannerContext } from "./planner-keys";
 
-export function fetchPlannerTacticOptions() {
-  return invokeCommand<TacticOptions>("get_planner_tactic_options");
+export function fetchPlannerTacticOptions(context: PlannerContext) {
+  return invokeCommand<TacticOptions>("get_planner_tactic_options", {
+    saveId: context.saveId,
+    contextToken: context.contextToken,
+  });
 }

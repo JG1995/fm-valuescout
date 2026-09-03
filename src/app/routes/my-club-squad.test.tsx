@@ -64,6 +64,9 @@ import {
   getPlannerOptimizeIpcMockCalls,
   getPlannerRoleReferenceCalls,
   getPlannerSlotCandidateFetchCount,
+  getPlannerTacticIpcMockCalls,
+  getPlannerTacticOptionsIpcMockCalls,
+  getPlannerTacticSaveIpcMockCalls,
   getPlannerTeamSaveIpcMockCalls,
   observeManagedClubSaveCall,
   resolvePendingManagedClubSave,
@@ -89,6 +92,7 @@ import {
   setPlannerRoleReference,
   setPlannerRoleReferenceError,
   setPlannerSlotCandidates,
+  setPlannerTacticForContext,
   setPlannerTacticIpcMock,
   setPlannerTacticSaveError,
   setPlannerTeamRemovalImpactPending,
@@ -96,7 +100,11 @@ import {
   setPlannerTeamSaveError,
   setPlannerTeamSavePending,
 } from "@/testing/planner-ipc-mock";
-import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
+import {
+  resolveCreateSaveIpcMock,
+  resolveGetCurrentSnapshotIpcMock,
+  resolveLoadDataIpcMock,
+} from "@/testing/snapshot-ipc-mock";
 import {
   getLastSquadCurrentAbilityBoostProgress,
   getLastSquadPlayersArgs,
@@ -279,6 +287,38 @@ function savesFor(activeSaveId: number): SaveSummary[] {
   ];
 }
 
+function switchToSecondSave(
+  queryClient: QueryClient,
+  updateSnapshot: (snapshot: SnapshotSummary) => SnapshotSummary = (
+    snapshot,
+  ) => ({
+    ...snapshot,
+    saveId: SECOND_SAVE.id,
+  }),
+) {
+  const snapshot = queryClient.getQueryData<SnapshotSummary>(
+    snapshotKeys.current(),
+  );
+  if (!snapshot) {
+    throw new Error("Expected a current snapshot in the planner query");
+  }
+  const created = resolveCreateSaveIpcMock({ name: SECOND_SAVE.name });
+  if (
+    created.id !== SECOND_SAVE.id ||
+    created.contextToken !== SECOND_SAVE.contextToken
+  ) {
+    throw new Error("Expected the second save context");
+  }
+  queryClient.setQueryData(
+    savesQueryOptions.queryKey,
+    savesFor(SECOND_SAVE.id),
+  );
+  queryClient.setQueryData<SnapshotSummary | null>(
+    snapshotKeys.current(),
+    updateSnapshot(snapshot),
+  );
+}
+
 describe("My Club route", () => {
   it("exposes the five My Club workspaces in order", async () => {
     await resolveLoadDataIpcMock();
@@ -295,6 +335,48 @@ describe("My Club route", () => {
       "Staff Shortlist",
     ]);
   });
+
+  it.each([
+    ["null", null],
+    [
+      "owned by another save",
+      { saveId: SECOND_SAVE.id } as Partial<SnapshotSummary>,
+    ],
+  ])(
+    "does not mount tactic IPC when the snapshot is %s",
+    async (_description, snapshotOverride) => {
+      await resolveLoadDataIpcMock();
+      const currentSnapshot = resolveGetCurrentSnapshotIpcMock();
+      if (!currentSnapshot) {
+        throw new Error("Expected a current snapshot fixture");
+      }
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+      });
+      queryClient.setQueryData(savesQueryOptions.queryKey, savesFor(1));
+      queryClient.setQueryData(
+        snapshotKeys.current(),
+        snapshotOverride === null
+          ? null
+          : { ...currentSnapshot, ...snapshotOverride },
+      );
+
+      renderMyClubRoute({ queryClient });
+
+      if (snapshotOverride === null) {
+        expect(
+          await screen.findByText("No data loaded for this save"),
+        ).toBeInTheDocument();
+      } else {
+        expect(
+          await screen.findByRole("tab", { name: "Planner" }),
+        ).toBeInTheDocument();
+      }
+      expect(getPlannerTacticIpcMockCalls()).toEqual([]);
+      expect(getPlannerTacticOptionsIpcMockCalls()).toEqual([]);
+      expect(getPlannerTacticSaveIpcMockCalls()).toEqual([]);
+    },
+  );
 
   it("renders managed-club Staff inside My Club", async () => {
     await resolveLoadDataIpcMock();
@@ -3778,22 +3860,16 @@ describe("My Club route", () => {
     );
     expect(weight).toHaveValue("55");
 
-    queryClient.setQueryData(plannerKeys.tactic(), {
-      ...resolvePlannerTacticIpcMock(),
-      lanes: resolvePlannerTacticIpcMock().lanes.map((lane, index) =>
-        index === 0 ? { ...lane, ipWeight: 0.2 } : lane,
-      ),
-    });
-    const snapshot = queryClient.getQueryData<SnapshotSummary>(
-      snapshotKeys.current(),
+    const secondSaveTactic = resolvePlannerTacticIpcMock();
+    secondSaveTactic.lanes[0].ipWeight = 0.2;
+    setPlannerTacticForContext(
+      {
+        saveId: SECOND_SAVE.id,
+        contextToken: SECOND_SAVE.contextToken,
+      },
+      secondSaveTactic,
     );
-    if (!snapshot) {
-      throw new Error("Expected a current snapshot in the planner query");
-    }
-    queryClient.setQueryData<SnapshotSummary | null>(
-      snapshotKeys.current(),
-      () => ({ ...snapshot, saveId: 2 }),
-    );
+    switchToSecondSave(queryClient);
 
     await waitFor(() =>
       expect(
@@ -3825,7 +3901,7 @@ describe("My Club route", () => {
       resolveRefresh = resolve;
     });
     const refreshRequest = queryClient.fetchQuery({
-      queryKey: plannerKeys.tactic(),
+      queryKey: plannerKeys.tactic({ saveId: 1, contextToken: "save-token-1" }),
       queryFn: () => refresh,
     });
 
@@ -3860,7 +3936,7 @@ describe("My Club route", () => {
     );
 
     const refreshRequest = queryClient.fetchQuery({
-      queryKey: plannerKeys.tactic(),
+      queryKey: plannerKeys.tactic({ saveId: 1, contextToken: "save-token-1" }),
       queryFn: () => Promise.reject(new Error("Tactic refresh failed")),
     });
     await expect(refreshRequest).rejects.toThrow("Tactic refresh failed");
@@ -5643,16 +5719,7 @@ describe("My Club route", () => {
       within(dialog).getByRole("checkbox", { name: "Senior" }),
     ).toBeDisabled();
 
-    const snapshot = queryClient.getQueryData<SnapshotSummary>(
-      snapshotKeys.current(),
-    );
-    if (!snapshot) {
-      throw new Error("Expected a current snapshot in the planner query");
-    }
-    queryClient.setQueryData<SnapshotSummary | null>(
-      snapshotKeys.current(),
-      () => ({ ...snapshot, saveId: 2 }),
-    );
+    switchToSecondSave(queryClient);
 
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
@@ -5687,16 +5754,7 @@ describe("My Club route", () => {
       .map((team) => ({ ...team, displayName: "Fresh Save Team" }));
     setPlannerDepthIpcMock(nextDepth);
     queryClient.setQueryData(plannerKeys.depth(), nextDepth);
-    const snapshot = queryClient.getQueryData<SnapshotSummary>(
-      snapshotKeys.current(),
-    );
-    if (!snapshot) {
-      throw new Error("Expected a current snapshot in the planner query");
-    }
-    queryClient.setQueryData<SnapshotSummary | null>(
-      snapshotKeys.current(),
-      () => ({ ...snapshot, saveId: 2 }),
-    );
+    switchToSecondSave(queryClient);
 
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
@@ -5894,16 +5952,7 @@ describe("My Club route", () => {
       .map((team) => ({ ...team, displayName: "Fresh Save Team" }));
     setPlannerDepthIpcMock(nextDepth);
     queryClient.setQueryData(plannerKeys.depth(), nextDepth);
-    const snapshot = queryClient.getQueryData<SnapshotSummary>(
-      snapshotKeys.current(),
-    );
-    if (!snapshot) {
-      throw new Error("Expected a current snapshot in the planner query");
-    }
-    queryClient.setQueryData<SnapshotSummary | null>(
-      snapshotKeys.current(),
-      () => ({ ...snapshot, saveId: 2 }),
-    );
+    switchToSecondSave(queryClient);
 
     expect(
       await screen.findByRole("tab", { name: "Fresh Save Team" }),

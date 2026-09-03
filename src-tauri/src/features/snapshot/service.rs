@@ -161,6 +161,17 @@ pub(crate) fn ensure_save_context(
     tx: &Transaction<'_>,
     context: &SaveContext,
 ) -> Result<(), String> {
+    let exists: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM saves WHERE id = ?1)",
+            params![context.id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if !exists {
+        return Err(format!("Save {} not found", context.id));
+    }
+
     let matches: bool = tx
         .query_row(
             "SELECT EXISTS(

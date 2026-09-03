@@ -1,7 +1,14 @@
+export type PlannerContext = {
+  saveId: number;
+  contextToken: string;
+};
+
 export const plannerKeys = {
   all: ["planner"] as const,
-  tactic: () => [...plannerKeys.all, "tactic"] as const,
-  tacticOptions: () => [...plannerKeys.all, "tactic-options"] as const,
+  tactic: (context: PlannerContext) =>
+    [...plannerKeys.all, "tactic", context] as const,
+  tacticOptions: (context: PlannerContext) =>
+    [...plannerKeys.all, "tactic-options", context] as const,
   depth: () => [...plannerKeys.all, "depth"] as const,
   slotCandidates: () => [...plannerKeys.all, "slot-candidates"] as const,
   slotCandidate: (

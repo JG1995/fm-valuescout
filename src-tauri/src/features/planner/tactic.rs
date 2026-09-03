@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, Transaction};
 
 use crate::features::scoring::catalog::{all_roles, RolePhase};
 
@@ -210,17 +210,43 @@ pub fn get_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, Stri
 
 pub fn save_tactic(conn: &Connection, save_id: i64, tactic: &PlannerTactic) -> Result<(), String> {
     ensure_save_exists(conn, save_id)?;
-    validate_tactic(tactic)?;
 
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
+    save_tactic_in_tx(&tx, save_id, tactic)?;
+    tx.commit().map_err(|error| error.to_string())
+}
+
+pub(crate) fn load_or_initialize_tactic_in_tx(
+    tx: &Transaction<'_>,
+    save_id: i64,
+) -> Result<PlannerTactic, String> {
+    let tactic_exists: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM planner_tactic_lanes WHERE save_id = ?1)",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if !tactic_exists {
+        let tactic = default_tactic();
+        save_tactic_in_tx(tx, save_id, &tactic)?;
+    }
+    load_tactic(tx, save_id)
+}
+
+pub(crate) fn save_tactic_in_tx(
+    tx: &Transaction<'_>,
+    save_id: i64,
+    tactic: &PlannerTactic,
+) -> Result<(), String> {
+    validate_tactic(tactic)?;
     tx.execute(
         "DELETE FROM planner_tactic_lanes WHERE save_id = ?1",
         params![save_id],
     )
     .map_err(|error| error.to_string())?;
-
     for (lane_order, lane) in tactic.lanes.iter().enumerate() {
         tx.execute(
             "INSERT INTO planner_tactic_lanes (
@@ -246,8 +272,7 @@ pub fn save_tactic(conn: &Connection, save_id: i64, tactic: &PlannerTactic) -> R
         )
         .map_err(|error| error.to_string())?;
     }
-
-    tx.commit().map_err(|error| error.to_string())
+    Ok(())
 }
 
 pub fn get_tactic_options() -> TacticOptions {
