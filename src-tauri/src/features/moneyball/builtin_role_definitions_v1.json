@@ -207,7 +207,7 @@
       "phase": "out_of_possession",
       "position_family": "attacking_midfielder",
       "position_tags": ["AMC"],
-      "attribute_role_id": null,
+      "attribute_role_id": "attacking_midfielder_oop",
       "metrics": [
         {
           "key": "pressures_completed_per_90",
@@ -607,7 +607,7 @@
       "phase": "out_of_possession",
       "position_family": "central_defender",
       "position_tags": ["DC"],
-      "attribute_role_id": null,
+      "attribute_role_id": "centre_back_oop",
       "metrics": [
         {
           "key": "headers_won_ratio",
@@ -727,7 +727,7 @@
       "phase": "out_of_possession",
       "position_family": "central_defender",
       "position_tags": ["DC"],
-      "attribute_role_id": null,
+      "attribute_role_id": "wide_centre_back_oop",
       "metrics": [
         {
           "key": "headers_won_ratio",
@@ -1087,7 +1087,7 @@
       "phase": "out_of_possession",
       "position_family": "central_midfielder",
       "position_tags": ["MC"],
-      "attribute_role_id": null,
+      "attribute_role_id": "central_midfielder_oop",
       "metrics": [
         {
           "key": "tackles_completed_per_90",
@@ -1447,7 +1447,7 @@
       "phase": "out_of_possession",
       "position_family": "defensive_midfielder",
       "position_tags": ["DM"],
-      "attribute_role_id": null,
+      "attribute_role_id": "defensive_midfielder_oop",
       "metrics": [
         {
           "key": "tackles_completed_per_90",
@@ -1847,7 +1847,7 @@
       "phase": "out_of_possession",
       "position_family": "full_back",
       "position_tags": ["DL", "DR"],
-      "attribute_role_id": null,
+      "attribute_role_id": "full_back_oop",
       "metrics": [
         {
           "key": "interceptions_per_90",
@@ -2087,7 +2087,7 @@
       "phase": "out_of_possession",
       "position_family": "goalkeeper",
       "position_tags": ["GK"],
-      "attribute_role_id": null,
+      "attribute_role_id": "goalkeeper_oop",
       "metrics": [
         {
           "key": "xgp_per_90",
@@ -2447,7 +2447,7 @@
       "phase": "out_of_possession",
       "position_family": "striker",
       "position_tags": ["ST"],
-      "attribute_role_id": null,
+      "attribute_role_id": "centre_forward_oop",
       "metrics": [
         {
           "key": "pressures_completed_per_90",
@@ -2767,7 +2767,7 @@
       "phase": "out_of_possession",
       "position_family": "wide_midfielder",
       "position_tags": ["ML", "MR"],
-      "attribute_role_id": null,
+      "attribute_role_id": "wide_midfielder_oop",
       "metrics": [
         {
           "key": "interceptions_per_90",
@@ -3047,7 +3047,7 @@
       "phase": "out_of_possession",
       "position_family": "wing_back",
       "position_tags": ["WBL", "WBR"],
-      "attribute_role_id": null,
+      "attribute_role_id": "wing_back_oop",
       "metrics": [
         {
           "key": "interceptions_per_90",
@@ -3367,7 +3367,7 @@
       "phase": "out_of_possession",
       "position_family": "winger",
       "position_tags": ["AML", "AMR"],
-      "attribute_role_id": null,
+      "attribute_role_id": "winger_oop",
       "metrics": [
         {
           "key": "pressures_completed_per_90",

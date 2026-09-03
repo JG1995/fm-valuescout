@@ -341,27 +341,36 @@ mod tests {
         let catalog = builtin_catalog().expect("built-in catalog should load");
         let known_attribute_ids: std::collections::HashSet<_> =
             all_roles().iter().map(|role| role.role_id).collect();
-        let expected_unmapped = [
-            "amc_attacking_midfielder_oop",
-            "dc_centre_back_oop",
-            "dc_wide_centre_back_oop",
-            "mc_central_midfielder_oop",
-            "dm_defensive_midfielder_oop",
-            "dl_dr_full_back_oop",
-            "gk_traditional_goalkeeper_oop",
-            "st_centre_forward_oop",
-            "ml_mr_wide_midfielder_oop",
-            "wbl_wbr_wing_back_oop",
-            "aml_amr_winger_oop",
-        ]
-        .into_iter()
-        .collect::<std::collections::HashSet<_>>();
-        let actual_unmapped = catalog
+        let expected_mappings = [
+            ("amc_attacking_midfielder_oop", "attacking_midfielder_oop"),
+            ("dc_centre_back_oop", "centre_back_oop"),
+            ("dc_wide_centre_back_oop", "wide_centre_back_oop"),
+            ("mc_central_midfielder_oop", "central_midfielder_oop"),
+            ("dm_defensive_midfielder_oop", "defensive_midfielder_oop"),
+            ("dl_dr_full_back_oop", "full_back_oop"),
+            ("gk_traditional_goalkeeper_oop", "goalkeeper_oop"),
+            ("st_centre_forward_oop", "centre_forward_oop"),
+            ("ml_mr_wide_midfielder_oop", "wide_midfielder_oop"),
+            ("wbl_wbr_wing_back_oop", "wing_back_oop"),
+            ("aml_amr_winger_oop", "winger_oop"),
+        ];
+        let mapped_by_id = catalog
             .definitions
             .iter()
-            .filter(|definition| definition.attribute_role_id.is_none())
-            .map(|definition| definition.id.as_str())
-            .collect::<std::collections::HashSet<_>>();
+            .map(|definition| {
+                (
+                    definition.id.as_str(),
+                    definition.attribute_role_id.as_deref(),
+                )
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+        for (presentation_id, attribute_role_id) in expected_mappings {
+            assert_eq!(
+                mapped_by_id.get(presentation_id),
+                Some(&Some(attribute_role_id)),
+                "wrong mapping for {presentation_id}"
+            );
+        }
 
         assert_eq!(
             catalog
@@ -369,7 +378,7 @@ mod tests {
                 .iter()
                 .filter(|definition| definition.attribute_role_id.is_some())
                 .count(),
-            77
+            88
         );
         assert_eq!(
             catalog
@@ -377,14 +386,13 @@ mod tests {
                 .iter()
                 .filter(|definition| definition.attribute_role_id.is_none())
                 .count(),
-            11
+            0
         );
-        assert_eq!(actual_unmapped, expected_unmapped);
         assert!(catalog.definitions.iter().all(|definition| {
             definition
                 .attribute_role_id
                 .as_deref()
-                .map_or(true, |role_id| known_attribute_ids.contains(role_id))
+                .is_some_and(|role_id| known_attribute_ids.contains(role_id))
         }));
     }
 
@@ -406,7 +414,7 @@ mod tests {
     }
 
     #[test]
-    fn tactic_compound_key_is_unique_and_covers_104_of_129_with_25_uncovered() {
+    fn tactic_compound_key_is_unique_and_covers_119_of_129_with_10_uncovered() {
         let catalog = builtin_catalog().expect("built-in catalog should load");
         // Unique (attribute_role_id, position_tag) among mapped definitions
         let mut seen = std::collections::HashSet::new();
@@ -438,8 +446,8 @@ mod tests {
             }
         }
         assert_eq!(total, 129, "General (role, position) count");
-        assert_eq!(mapped, 104, "mapped combos");
-        assert_eq!(uncovered.len(), 25, "uncovered count");
+        assert_eq!(mapped, 119, "mapped combos");
+        assert_eq!(uncovered.len(), 10, "uncovered count");
         let expected: std::collections::HashSet<(&str, &str)> = [
             ("holding_wing_back_oop", "DL"),
             ("holding_wing_back_oop", "DR"),
@@ -449,25 +457,10 @@ mod tests {
             ("box_to_box_playmaker_ip", "MC"),
             ("deep_lying_playmaker_ip", "MC"),
             ("second_striker_ip", "ST"),
-            // Interim Commit 3: 11 generic OOP roles added before the
-            // Moneyball mapping fills their presentation rows (Commit 4).
-            ("goalkeeper_oop", "GK"),
-            ("centre_back_oop", "DC"),
-            ("wide_centre_back_oop", "DC"),
-            ("full_back_oop", "DL"),
-            ("full_back_oop", "DR"),
+            // Generic wing_back_oop retains DL/DR/WBL/WBR while its
+            // presentation row remains WBL/WBR, so DL/DR stay uncovered.
             ("wing_back_oop", "DL"),
             ("wing_back_oop", "DR"),
-            ("wing_back_oop", "WBL"),
-            ("wing_back_oop", "WBR"),
-            ("defensive_midfielder_oop", "DM"),
-            ("central_midfielder_oop", "MC"),
-            ("wide_midfielder_oop", "ML"),
-            ("wide_midfielder_oop", "MR"),
-            ("attacking_midfielder_oop", "AMC"),
-            ("winger_oop", "AML"),
-            ("winger_oop", "AMR"),
-            ("centre_forward_oop", "ST"),
         ]
         .into_iter()
         .collect();

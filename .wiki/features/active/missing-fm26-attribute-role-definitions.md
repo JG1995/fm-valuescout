@@ -323,7 +323,7 @@ Add `goalkeeper_oop` and the `channel_midfielder_ip` tag correction with migrati
 
 #### Commit 4 — Map Moneyball presentation roles to the new attribute roles and pin tactic coverage
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(moneyball): map generic OOP presentation roles`
 
@@ -383,7 +383,7 @@ Add `goalkeeper_oop` and the `channel_midfielder_ip` tag correction with migrati
 
 #### Commit 5 — Mirror expanded attribute catalog in frontend (display only)
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(frontend): mirror expanded attribute catalog`
 
@@ -442,19 +442,19 @@ Add `goalkeeper_oop` and the `channel_midfielder_ip` tag correction with migrati
 
 **PR:** PR 1 — Complete missing FM26 attribute role definitions
 
-**Commit:** Map Moneyball presentation roles to the new attribute roles and pin tactic coverage
+**Commit:** Mirror expanded attribute catalog in frontend (display only)
 
 ### RED or removal proof
 
-Update Moneyball catalog and Player Profile tests to expect all 88 presentation definitions mapped and 119/129 tactic coverage; confirm they fail on the interim catalog.
+Update frontend catalog and family tests to expect 79 roles and all 11 new IDs; confirm the 68-role baseline and incomplete family map fail.
 
 ### Expected outcome
 
-The 11 former Moneyball placeholders map to the new generic OOP attribute roles, Profile returns materialized version-2 scores, and tactic coverage is pinned to 119/129 with exactly ten intentional gaps.
+General Search exposes all 79 attribute roles, the frontend family map is total for the new IDs, and Moneyball presentation remains at 88 entries.
 
 ### Explicit exclusions
 
-Frontend attribute catalog mirrors, compact schema changes, metric weights, catalog version changes, and unrelated refactors.
+Rust scoring or persistence, Moneyball metric catalogs, visual design, phase or position-tag mirrors, and unrelated refactors.
 
 ## Discoveries and replanning
 
@@ -467,7 +467,8 @@ Frontend attribute catalog mirrors, compact schema changes, metric weights, cata
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Complete missing FM26 attribute role definitions | Commit 1 — Record the approved feature plan | 90df8821a7fdef3035cf7dce5efe56eb6a7222cc | Recorded the accepted schema-2 ledger, TODO activation, and ADR-0027/0028 amendments. | `ledger_state.py`; `git diff --cached --check` — passed. | Not applicable | Clear | 0 | None |
 | PR 1 — Complete missing FM26 attribute role definitions | Commit 2 — docs(scoring): simplify missing role delivery plan | 88782a46425c7106599fd70ab66d5c01f7a6eb38 | Restored ADR-0027/0028 to `main` and reduced delivery to the 22-column migration, global score-model version bump, Moneyball mapping, and frontend mirrors. | `ledger_state.py`; `delivery_state.py`; `git diff --cached --check` — passed. | Not applicable | Clear | 1 | Corrected two proof statements: v1 rows fail the existing version gate, and frontend mirror proof remains in Commit 5. |
-| PR 1 — Complete missing FM26 attribute role definitions | Commit 3 — Expand Rust catalog and compact metrics with global version | Pending record | Added the exact 11 generic OOP definitions, Channel Midfielder MC eligibility, migration v40 with 22 nullable checked columns, 79-role compact persistence, and global score-model version 2 gates. | Focused Rust suites; `./scripts/dev check` — 756 passed, 2 ignored. | Pass | Clear | 1 | Interim coverage is 104/129 rather than the planned estimate 103/128 because the existing Moneyball catalog already maps `channel_midfielder_ip` at MC; final 119/129 remains unchanged. |
+| PR 1 — Complete missing FM26 attribute role definitions | Commit 3 — Expand Rust catalog and compact metrics with global version | 526367b240e871b60bbb39cbd88d263e084266b0 | Added the exact 11 generic OOP definitions, Channel Midfielder MC eligibility, migration v40 with 22 nullable checked columns, 79-role compact persistence, and global score-model version 2 gates. | Focused Rust suites; `./scripts/dev check` — 756 passed, 2 ignored. | Pass | Clear | 1 | Interim coverage is 104/129 rather than the planned estimate 103/128 because the existing Moneyball catalog already maps `channel_midfielder_ip` at MC; final 119/129 remains unchanged. |
+| PR 1 — Complete missing FM26 attribute role definitions | Commit 4 — Map Moneyball presentation roles to the new attribute roles and pin tactic coverage | Pending record | Mapped all 11 former Moneyball placeholders to the new generic OOP attribute roles and pinned exact 88/88 mapping plus 119/129 tactic coverage. | Focused Moneyball and Player Profile tests; `./scripts/dev check` — 756 passed, 2 ignored. | Pass | Clear | 0 | Accepted one cosmetic stale test-name nitpick; assertions and supported behavior are exact. |
 
 ## Final validation
 

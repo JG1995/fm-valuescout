@@ -734,23 +734,18 @@ mod tests {
             .expect("get_player")
             .expect("player present");
         let catalog = builtin_catalog().expect("built-in catalog");
-        let unmapped_role_ids = catalog
-            .definitions
-            .iter()
-            .filter(|role| role.attribute_role_id.is_none())
-            .map(|role| role.id.as_str())
-            .collect::<std::collections::HashSet<_>>();
         assert_eq!(detail.potential_attributes, stored_potential_attributes);
         assert_eq!(detail.role_scores.len(), 88);
-        assert!(detail.role_scores.iter().any(|role| {
-            unmapped_role_ids.contains(role.role_id.as_str())
-                && role.score.is_none()
-                && role.potential_score.is_none()
-        }));
+        assert!(
+            catalog
+                .definitions
+                .iter()
+                .all(|role| role.attribute_role_id.is_some()),
+            "all 88 presentation roles map to an attribute role"
+        );
         assert!(detail
             .role_scores
             .iter()
-            .filter(|role| !unmapped_role_ids.contains(role.role_id.as_str()))
             .all(|role| { role.score.is_some() && role.potential_score.is_some() }));
         let centre_forward = detail
             .role_scores
@@ -976,13 +971,15 @@ mod tests {
     }
 
     #[test]
-    fn presents_duplicate_moneyball_roles_from_one_attribute_score_and_keeps_unmapped_null() {
+    fn presents_duplicate_moneyball_roles_from_one_attribute_score_and_maps_generic_oop_roles() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-role-inventory.db"));
         let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("src/features/memory_read/fixtures/golden_dump_v8.json");
         ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
         set_role_score(&conn, 77, "wing_back_ip", Some(73));
+        set_role_score(&conn, 77, "centre_back_oop", Some(61));
+        set_potential_role_score(&conn, 77, "centre_back_oop", Some(65));
 
         let detail = get_player(&conn, 77)
             .expect("get_player")
@@ -1004,14 +1001,32 @@ mod tests {
             duplicate_rows[1].potential_score
         );
 
-        let unmapped = detail
+        let centre_back_oop = detail
             .role_scores
             .iter()
-            .find(|role| role.role_id == "amc_attacking_midfielder_oop")
-            .expect("unmapped presentation role");
-        assert_eq!(unmapped.score, None);
-        assert_eq!(unmapped.potential_score, None);
+            .find(|role| role.role_id == "dc_centre_back_oop")
+            .expect("mapped generic OOP presentation role");
+        assert_eq!(centre_back_oop.score, Some(61));
+        assert_eq!(centre_back_oop.potential_score, Some(65));
         assert_eq!(all_roles().len(), 79);
+
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        conn.execute(
+            "UPDATE player_role_metrics SET score_model_version = 1
+             WHERE snapshot_id = ?1 AND uid = 77",
+            params![snapshot_id],
+        )
+        .expect("downgrade compact row to version 1");
+        assert_eq!(
+            get_player(&conn, 77),
+            Err("Current potential snapshot is incomplete".to_string())
+        );
     }
 
     #[test]
