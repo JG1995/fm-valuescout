@@ -214,7 +214,7 @@ The thinnest end-to-end path that proves the approach:
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/112
 
 **Merge ref:** Not merged
 
@@ -911,7 +911,7 @@ The thinnest end-to-end path that proves the approach:
 
 ## Active work
 
-Implementation, full validation (Vitest 767 passed, check-app passed, check-rust 748 passed/2 ignored, Playwright 54 passed, targeted browser workflow 1 passed then removed), independent feature review (Clear, no findings), and documentation reconciliation complete. Publication remains.
+Implementation, full validation (Vitest 767 passed, check-app passed, check-rust 748 passed/2 ignored, Playwright 54 passed, targeted browser workflow 1 passed then removed), independent feature review (Clear, no findings), and documentation reconciliation complete. PR [#112](https://github.com/JG1995/fm-valuescout/pull/112) is published; required checks and merge remain.
 
 ## Discoveries and replanning
 
