@@ -15,14 +15,23 @@ import {
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
+import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import type { PlayerSummary } from "@/features/search/types/player-summary";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import {
+  getPlannerTacticIpcMockCalls,
+  getPlannerTacticOptionsIpcMockCalls,
+  getPlannerTacticSaveIpcMockCalls,
+  resolvePlannerTacticIpcMock,
+  setPlannerTacticForContext,
+} from "@/testing/planner-ipc-mock";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
   getLastSearchPlayersArgs,
@@ -37,12 +46,17 @@ import {
   resolveLoadDataIpcMock,
 } from "@/testing/snapshot-ipc-mock";
 
-function renderSearchRoute(initialEntry = "/search") {
+function renderSearchRoute(
+  initialEntry = "/search",
+  seedQueryClient?: (queryClient: QueryClient) => void,
+) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: 60_000 },
     },
   });
+
+  seedQueryClient?.(queryClient);
 
   const router = createRouter({
     routeTree,
@@ -94,6 +108,20 @@ function manyPlayers(count: number): PlayerSummary[] {
   }));
 }
 
+const ORDERED_TACTIC_LANE_IDS = [
+  "goalkeeper",
+  "right_back",
+  "left_centre_back",
+  "right_centre_back",
+  "left_back",
+  "defensive_midfielder",
+  "left_central_midfielder",
+  "right_central_midfielder",
+  "right_winger",
+  "left_winger",
+  "centre_forward",
+] as const;
+
 function mockScrollerScrollTo(scroller: HTMLElement) {
   Object.defineProperty(scroller, "scrollTo", {
     configurable: true,
@@ -109,8 +137,11 @@ describe("search route", () => {
     useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
   });
 
-  it("lists Player Search in the nav rail and opens the no-snapshot empty state", async () => {
+  it("keeps Search controls mounted without a snapshot and does not touch tactic state", async () => {
     const user = userEvent.setup();
+    const layoutBeforeRender = structuredClone(
+      usePlayerTableStore.getState().layouts,
+    );
     renderWithProviders();
 
     const searchLink = await screen.findByRole("link", {
@@ -122,9 +153,439 @@ describe("search route", () => {
       await screen.findByRole("heading", { level: 1, name: "Player Search" }),
     ).toBeInTheDocument();
     expect(searchLink).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("tab", { name: "General" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Edit filters" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Add Tactic (Potential)" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText("No snapshot loaded — use Load Data"),
+    ).toBeVisible();
     expect(
       screen.getByText("No data loaded for this save"),
     ).toBeInTheDocument();
+    expect(getPlannerTacticIpcMockCalls()).toEqual([]);
+    expect(getPlannerTacticOptionsIpcMockCalls()).toEqual([]);
+    expect(getPlannerTacticSaveIpcMockCalls()).toEqual([]);
+    expect(usePlayerTableStore.getState().layouts).toEqual(layoutBeforeRender);
+  });
+
+  it("keeps Search controls mounted for a mismatched snapshot without tactic IPC", async () => {
+    const loaded = await resolveLoadDataIpcMock();
+    const layoutBeforeMismatch = structuredClone(
+      usePlayerTableStore.getState().layouts,
+    );
+    const mismatchedSnapshot: SnapshotSummary = {
+      ...loaded.effectiveSnapshot,
+      saveId: loaded.effectiveSnapshot.saveId + 1,
+    };
+    renderSearchRoute("/search", (queryClient) => {
+      queryClient.setQueryData(
+        currentSnapshotQueryOptions.queryKey,
+        mismatchedSnapshot,
+      );
+    });
+
+    expect(
+      await screen.findByRole("tab", { name: "General" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Edit filters" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("No data loaded for this save"),
+    ).toBeInTheDocument();
+    expect(getPlannerTacticIpcMockCalls()).toEqual([]);
+    expect(getPlannerTacticOptionsIpcMockCalls()).toEqual([]);
+    expect(getPlannerTacticSaveIpcMockCalls()).toEqual([]);
+    expect(usePlayerTableStore.getState().layouts).toEqual(
+      layoutBeforeMismatch,
+    );
+  });
+
+  it("atomically appends, interleaves, and re-compacts tactic groups", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    renderSearchRoute();
+
+    await screen.findByRole("button", {
+      name: "Add Tactic (Current)",
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Add Tactic (Current)" }),
+      ).toBeEnabled(),
+    );
+    const orderedLaneIds = ORDERED_TACTIC_LANE_IDS;
+    const nonTacticIds = ["name", "age", "nationality", "ca", "pa", "value"];
+
+    await user.click(
+      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+    );
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
+      ...nonTacticIds,
+      ...orderedLaneIds.map((laneId) => `tactic_current.${laneId}`),
+    ]);
+    expect(
+      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(
+      screen.getByRole("button", { name: "Add Tactic (Potential)" }),
+    );
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
+      ...nonTacticIds,
+      ...orderedLaneIds.flatMap((laneId) => [
+        `tactic_current.${laneId}`,
+        `tactic_potential.${laneId}`,
+      ]),
+    ]);
+
+    await user.click(
+      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+    );
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
+      ...nonTacticIds,
+      ...orderedLaneIds.map((laneId) => `tactic_potential.${laneId}`),
+    ]);
+    expect(
+      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByRole("button", { name: "Add Tactic (Potential)" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("renders tactic scores and re-compacts the survivor when header removal resets sort", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const orderedLaneIds = ORDERED_TACTIC_LANE_IDS;
+    const currentIds = orderedLaneIds.map(
+      (laneId) => `tactic_current.${laneId}`,
+    );
+    const potentialIds = orderedLaneIds.map(
+      (laneId) => `tactic_potential.${laneId}`,
+    );
+    const interleavedIds = orderedLaneIds.flatMap((laneId) => [
+      `tactic_current.${laneId}`,
+      `tactic_potential.${laneId}`,
+    ]);
+    const store = usePlayerTableStore.getState();
+    store.replaceLayout("search", ["name", "ca", ...interleavedIds]);
+    store.setColumnWidth("search", currentIds[0], 176);
+    store.setColumnWidth("search", potentialIds[0], 184);
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Available fit", 160),
+        dynamicValues: {
+          [currentIds[0]]: 88,
+          [potentialIds[0]]: null,
+        },
+      },
+      {
+        ...playerNamed("Unavailable fit", 150),
+        dynamicValues: {
+          [currentIds[0]]: null,
+          [potentialIds[0]]: null,
+        },
+      },
+    ]);
+    const { router } = renderSearchRoute(
+      `/search?sort=${currentIds[0]}&dir=desc`,
+    );
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const label = "GK (Goalkeeper) / GK (Line-Holding Keeper)";
+    const headers = within(table).getAllByRole("columnheader", { name: label });
+    expect(headers).toHaveLength(2);
+    const resizeHandles = within(table).getAllByRole("separator", {
+      name: `Resize ${label} column`,
+    });
+    expect(resizeHandles[0]).toHaveAttribute("aria-valuenow", "176");
+    expect(resizeHandles[1]).toHaveAttribute("aria-valuenow", "184");
+    const rows = within(table)
+      .getAllByRole("row")
+      .filter((row) => row.hasAttribute("data-index"));
+    expect(within(rows[0]).getByText("Available fit")).toBeInTheDocument();
+    expect(
+      within(rows[0]).getByRole("img", {
+        name: `${label}: 88, Excellent`,
+      }),
+    ).toBeInTheDocument();
+    expect(within(rows[0]).getAllByText("—")).not.toHaveLength(0);
+    expect(within(rows[1]).getByText("Unavailable fit")).toBeInTheDocument();
+
+    const siblingLabel = "DR (Full-Back) / DR (Holding Full-Back)";
+    fireEvent.contextMenu(
+      within(table).getAllByRole("columnheader", { name: siblingLabel })[0],
+    );
+    await user.click(
+      screen.getByRole("menuitem", { name: `Remove ${siblingLabel}` }),
+    );
+
+    await waitFor(() => {
+      expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
+        "name",
+        "ca",
+        ...potentialIds,
+      ]);
+      expect(router.state.location.search).toMatchObject({
+        sort: "ca",
+        dir: "desc",
+      });
+    });
+    expect(
+      usePlayerTableStore.getState().layouts.search.widths[potentialIds[0]],
+    ).toBe(184);
+    expect(
+      usePlayerTableStore.getState().layouts.search.widths[currentIds[0]],
+    ).toBeUndefined();
+    expect(
+      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByRole("button", { name: "Add Tactic (Potential)" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("keeps the surviving tactic group when a header is removed during tactic loading", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const potentialIds = ORDERED_TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_potential.${laneId}`,
+    );
+    usePlayerTableStore
+      .getState()
+      .replaceLayout("search", [
+        "name",
+        "ca",
+        ...ORDERED_TACTIC_LANE_IDS.flatMap((laneId) => [
+          `tactic_current.${laneId}`,
+          `tactic_potential.${laneId}`,
+        ]),
+      ]);
+    usePlayerTableStore.getState().moveColumn("search", potentialIds[0], 23);
+    renderSearchRoute("/search", (queryClient) => {
+      void queryClient.fetchQuery({
+        queryKey: plannerKeys.tactic({
+          saveId: 1,
+          contextToken: "save-token-1",
+        }),
+        queryFn: () => new Promise<never>(() => undefined),
+      });
+    });
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(
+      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+    ).toBeDisabled();
+    fireEvent.contextMenu(
+      within(table).getAllByRole("columnheader", { name: "goalkeeper" })[0],
+    );
+    await user.click(
+      screen.getByRole("menuitem", { name: "Remove goalkeeper" }),
+    );
+
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
+      "name",
+      "ca",
+      ...potentialIds.slice(1),
+      potentialIds[0],
+    ]);
+    expect(
+      usePlayerTableStore
+        .getState()
+        .layouts.search.columnIds.some((id) =>
+          id.startsWith("tactic_current."),
+        ),
+    ).toBe(false);
+  });
+
+  it("restores the default layout and sort after tactic-only header removal", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const currentIds = ORDERED_TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_current.${laneId}`,
+    );
+    usePlayerTableStore.getState().replaceLayout("search", currentIds);
+    const { router } = renderSearchRoute(
+      `/search?sort=${currentIds[0]}&dir=desc`,
+    );
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const label = "GK (Goalkeeper) / GK (Line-Holding Keeper)";
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: label }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: `Remove ${label}` }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        sort: "ca",
+        dir: "desc",
+      });
+    });
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
+      "name",
+      "age",
+      "nationality",
+      "ca",
+      "pa",
+      "value",
+    ]);
+  });
+
+  it("falls back from a tactic sort when its active group is toggled off", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const currentIds = ORDERED_TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_current.${laneId}`,
+    );
+    usePlayerTableStore
+      .getState()
+      .replaceLayout("search", ["name", "ca", ...currentIds]);
+    const { router } = renderSearchRoute(
+      `/search?sort=${currentIds[0]}&dir=desc`,
+    );
+
+    const currentToggle = await screen.findByRole("button", {
+      name: "Add Tactic (Current)",
+    });
+    await waitFor(() => expect(currentToggle).toBeEnabled());
+    await user.click(currentToggle);
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        sort: "ca",
+        dir: "desc",
+      });
+    });
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
+      "name",
+      "ca",
+    ]);
+  });
+
+  it("refreshes tactic labels for a new save without replacing its table layout", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const currentIds = ORDERED_TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_current.${laneId}`,
+    );
+    const store = usePlayerTableStore.getState();
+    store.replaceLayout("search", ["name", "ca", ...currentIds]);
+    store.setColumnWidth("search", currentIds[0], 176);
+    const { queryClient } = renderSearchRoute();
+
+    const originalLabel = "GK (Goalkeeper) / GK (Line-Holding Keeper)";
+    expect(
+      await screen.findByRole("columnheader", { name: originalLabel }),
+    ).toBeInTheDocument();
+
+    const second = resolveCreateSaveIpcMock({ name: "Second save" });
+    const secondTactic = resolvePlannerTacticIpcMock();
+    secondTactic.lanes[0].ipRoleId = "ball_playing_goalkeeper_ip";
+    setPlannerTacticForContext(
+      { saveId: second.id, contextToken: second.contextToken },
+      secondTactic,
+    );
+    await queryClient.invalidateQueries({ queryKey: snapshotKeys.saves() });
+    const saveSelect = screen.getByRole("combobox", { name: "Active save" });
+    await screen.findByRole("option", { name: "Second save" });
+    await user.selectOptions(saveSelect, String(second.id));
+
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
+      "name",
+      "ca",
+      ...currentIds,
+    ]);
+    expect(
+      usePlayerTableStore.getState().layouts.search.widths[currentIds[0]],
+    ).toBe(176);
+
+    await user.click(screen.getByRole("button", { name: "Load Data" }));
+    expect(
+      await screen.findByRole("columnheader", {
+        name: "GK (Ball-Playing Goalkeeper) / GK (Line-Holding Keeper)",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: originalLabel }),
+    ).toBeNull();
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
+      "name",
+      "ca",
+      ...currentIds,
+    ]);
+    expect(
+      usePlayerTableStore.getState().layouts.search.widths[currentIds[0]],
+    ).toBe(176);
+  });
+
+  it.each([
+    ["moneyball", "moneyball-search"],
+    ["shortlist", "shortlist"],
+  ] as const)(
+    "stores tactic toggles in the %s table layout",
+    async (view, tableId) => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      renderSearchRoute(`/search?view=${view}`);
+
+      const toggle = await screen.findByRole("button", {
+        name: "Add Tactic (Current)",
+      });
+      await waitFor(() => expect(toggle).toBeEnabled());
+      await user.click(toggle);
+
+      expect(
+        usePlayerTableStore.getState().layouts[tableId].columnIds,
+      ).toContain("tactic_current.goalkeeper");
+      expect(
+        usePlayerTableStore.getState().layouts.search.columnIds,
+      ).not.toContain("tactic_current.goalkeeper");
+    },
+  );
+
+  it("restores a persisted tactic sort only for the current view layout", async () => {
+    const tacticSort = "tactic_current.goalkeeper";
+    usePlayerTableStore
+      .getState()
+      .replaceLayout("search", ["name", tacticSort]);
+
+    const { router } = renderSearchRoute(`/search?sort=${tacticSort}&dir=asc`);
+
+    await screen.findByRole("tab", { name: "General" });
+    expect(router.state.location.search).toMatchObject({
+      sort: tacticSort,
+      dir: "asc",
+    });
+  });
+
+  it("falls back when a tactic sort exists only in another table layout", async () => {
+    const tacticSort = "tactic_potential.goalkeeper";
+    usePlayerTableStore
+      .getState()
+      .replaceLayout("moneyball-search", ["name", tacticSort]);
+
+    const { router } = renderSearchRoute(`/search?sort=${tacticSort}`);
+
+    await screen.findByRole("tab", { name: "General" });
+    expect(router.state.location.search).toMatchObject({
+      sort: "ca",
+      dir: "desc",
+    });
   });
 
   it("opens the opt-in Moneyball workspace with its own query view and pool", async () => {

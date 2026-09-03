@@ -244,6 +244,27 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           oopRoleId,
         })),
       };
+      const plannerTacticStore = new Map([
+        ["1:save-token-1", JSON.parse(JSON.stringify(plannerTactic))],
+      ]);
+      function plannerContextKey(saveId, contextToken) {
+        return saveId + ":" + contextToken;
+      }
+      function validatePlannerTacticContext(args) {
+        if (!args || typeof args.saveId !== "number" || typeof args.contextToken !== "string") {
+          throw new Error("Invalid planner tactic request");
+        }
+        return { saveId: args.saveId, contextToken: args.contextToken };
+      }
+      function ensurePlannerSaveContext(saveId, contextToken) {
+        const save = saves.find((candidate) => candidate.id === saveId);
+        if (!save) {
+          throw "Save " + saveId + " not found";
+        }
+        if (save.contextToken !== contextToken) {
+          throw "Save changed or no longer exists";
+        }
+      }
       const plannerTeamNames = {
         senior: "Senior",
         reserves: "Reserves",
@@ -668,14 +689,13 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             if (target.isActive) {
               if (saves.length === 0) {
                 saves = [{
-                  id: nextSaveId,
-                  contextToken: "save-token-" + nextSaveId,
+                  id: target.id,
+                  contextToken: "save-token-" + target.id + "-replacement",
                   name: "Default save",
                   isActive: true,
                   createdAtUtc: "2026-07-28T16:20:00.000Z",
                   updatedAtUtc: "2026-07-28T16:20:00.000Z",
                 }];
-                nextSaveId += 1;
               } else {
                 saves = saves.map((save, index) => ({
                   ...save,
@@ -1536,7 +1556,10 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "get_planner_tactic") {
-            return plannerTactic;
+            const { saveId, contextToken } = validatePlannerTacticContext(args);
+            ensurePlannerSaveContext(saveId, contextToken);
+            const key = plannerContextKey(saveId, contextToken);
+            return plannerTacticStore.get(key) ?? JSON.parse(JSON.stringify(plannerTactic));
           }
 
           if (cmd === "get_planner_depth") {
@@ -1733,6 +1756,8 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "get_planner_tactic_options") {
+            const { saveId, contextToken } = validatePlannerTacticContext(args);
+            ensurePlannerSaveContext(saveId, contextToken);
             return {
               placements: ["GK", "DL", "DCR", "DC", "DCL", "DR", "WBL", "WBR", "DMCR", "DM", "DMCL", "MCR", "MC", "MCL", "ML", "MR", "AML", "AMCR", "AMC", "AMCL", "AMR", "STCR", "STC", "STCL"],
               roles: [
@@ -1755,7 +1780,12 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "save_planner_tactic") {
-            return args?.tactic;
+            const { saveId, contextToken } = validatePlannerTacticContext(args);
+            ensurePlannerSaveContext(saveId, contextToken);
+            if (!args?.tactic) throw new Error("Tactic is required");
+            const key = plannerContextKey(saveId, contextToken);
+            plannerTacticStore.set(key, JSON.parse(JSON.stringify(args.tactic)));
+            return args.tactic;
           }
 
           if (cmd === "load_data") {

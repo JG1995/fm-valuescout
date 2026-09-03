@@ -307,11 +307,11 @@ function registerIpcMocks() {
     }
 
     if (cmd === "get_planner_tactic") {
-      return resolvePlannerTacticIpcMock();
+      return resolvePlannerTacticIpcMock(args);
     }
 
     if (cmd === "get_planner_tactic_options") {
-      return resolvePlannerTacticOptionsIpcMock();
+      return resolvePlannerTacticOptionsIpcMock(args);
     }
 
     if (cmd === "get_planner_depth") {

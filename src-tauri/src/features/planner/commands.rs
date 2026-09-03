@@ -1,3 +1,4 @@
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -457,13 +458,59 @@ pub fn list_squad_players(
     .into())
 }
 
+fn get_planner_tactic_for_context(
+    conn: &Connection,
+    context: &service::SaveContext,
+) -> Result<PlannerTactic, String> {
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    service::ensure_save_context(&tx, context)?;
+    let tactic = tactic_service::load_or_initialize_tactic_in_tx(&tx, context.id)?;
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(tactic)
+}
+
+fn get_planner_tactic_options_for_context(
+    conn: &Connection,
+    context: &service::SaveContext,
+) -> Result<TacticOptions, String> {
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    service::ensure_save_context(&tx, context)?;
+    let options = tactic_service::get_tactic_options();
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(options)
+}
+
+fn save_planner_tactic_for_context(
+    conn: &Connection,
+    context: &service::SaveContext,
+    tactic: &PlannerTactic,
+) -> Result<(), String> {
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    service::ensure_save_context(&tx, context)?;
+    tactic_service::save_tactic_in_tx(&tx, context.id, tactic)?;
+    tx.commit().map_err(|error| error.to_string())
+}
+
 #[tauri::command]
-pub fn get_planner_tactic(db: State<'_, Db>) -> Result<PlannerTacticDto, String> {
+pub fn get_planner_tactic(
+    save_id: i64,
+    context_token: String,
+    db: State<'_, Db>,
+) -> Result<PlannerTacticDto, String> {
     let conn =
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    Ok(tactic_service::get_tactic(&conn, save_id)?.into())
+    let context = service::SaveContext {
+        id: save_id,
+        context_token,
+    };
+    Ok(get_planner_tactic_for_context(&conn, &context)?.into())
 }
 
 #[tauri::command]
@@ -482,21 +529,37 @@ pub fn get_planner_role_reference(
 }
 
 #[tauri::command]
-pub fn get_planner_tactic_options() -> TacticOptionsDto {
-    tactic_service::get_tactic_options().into()
+pub fn get_planner_tactic_options(
+    save_id: i64,
+    context_token: String,
+    db: State<'_, Db>,
+) -> Result<TacticOptionsDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let context = service::SaveContext {
+        id: save_id,
+        context_token,
+    };
+    Ok(get_planner_tactic_options_for_context(&conn, &context)?.into())
 }
 
 #[tauri::command]
 pub fn save_planner_tactic(
+    save_id: i64,
+    context_token: String,
     tactic: PlannerTacticInputDto,
     db: State<'_, Db>,
 ) -> Result<PlannerTacticDto, String> {
     let conn =
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
+    let context = service::SaveContext {
+        id: save_id,
+        context_token,
+    };
     let tactic = PlannerTactic::from(tactic);
-    tactic_service::save_tactic(&conn, save_id, &tactic)?;
+    save_planner_tactic_for_context(&conn, &context, &tactic)?;
     Ok(tactic.into())
 }
 
@@ -716,4 +779,153 @@ pub fn move_planner_player(
     let (_, snapshot_id) =
         depth_service::move_player(&conn, save_id, string_id, &lane_id, player_uid)?;
     Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::db::migrations;
+
+    use super::*;
+
+    fn save_context(conn: &Connection, save_id: i64) -> service::SaveContext {
+        conn.query_row(
+            "SELECT context_token FROM saves WHERE id = ?1",
+            [save_id],
+            |row| {
+                Ok(service::SaveContext {
+                    id: save_id,
+                    context_token: row.get(0)?,
+                })
+            },
+        )
+        .expect("read save context")
+    }
+
+    fn open_with_two_saves() -> (
+        tempfile::TempDir,
+        Connection,
+        service::SaveContext,
+        service::SaveContext,
+    ) {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("planner-commands.db")).expect("open db");
+        migrations::apply(&conn).expect("apply migrations");
+        conn.execute(
+            "INSERT INTO saves (name, is_active) VALUES ('Active save', 1)",
+            [],
+        )
+        .expect("insert active save");
+        let active_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO saves (name, is_active) VALUES ('Inactive save', 0)",
+            [],
+        )
+        .expect("insert inactive save");
+        let inactive_id = conn.last_insert_rowid();
+        let active = save_context(&conn, active_id);
+        let inactive = save_context(&conn, inactive_id);
+        (temp_dir, conn, active, inactive)
+    }
+
+    #[test]
+    fn captured_context_commands_accept_inactive_save_and_isolate_persistence() {
+        let (_temp_dir, conn, active, inactive) = open_with_two_saves();
+        let active_tactic =
+            get_planner_tactic_for_context(&conn, &active).expect("read active tactic");
+        assert_eq!(active_tactic, tactic_service::default_tactic());
+        assert_eq!(
+            get_planner_tactic_options_for_context(&conn, &inactive)
+                .expect("read inactive options")
+                .placements,
+            tactic_service::get_tactic_options().placements
+        );
+
+        let mut inactive_tactic =
+            get_planner_tactic_for_context(&conn, &inactive).expect("read inactive tactic");
+        inactive_tactic.lanes[0].ip_weight = 0.25;
+        save_planner_tactic_for_context(&conn, &inactive, &inactive_tactic)
+            .expect("save inactive tactic");
+
+        assert_eq!(
+            get_planner_tactic_for_context(&conn, &inactive).expect("reload inactive tactic"),
+            inactive_tactic
+        );
+        assert_eq!(
+            get_planner_tactic_for_context(&conn, &active).expect("reload active tactic"),
+            active_tactic
+        );
+    }
+
+    #[test]
+    fn invalid_contexts_are_rejected_before_tactic_persistence_changes() {
+        let (_temp_dir, conn, _active, inactive) = open_with_two_saves();
+        let persisted =
+            get_planner_tactic_for_context(&conn, &inactive).expect("initialize tactic");
+        let mut attempted = persisted.clone();
+        attempted.lanes[0].ip_weight = 0.25;
+
+        let unknown = service::SaveContext {
+            id: 999,
+            context_token: "unknown-token".to_string(),
+        };
+        assert_eq!(
+            get_planner_tactic_for_context(&conn, &unknown),
+            Err("Save 999 not found".to_string())
+        );
+        assert_eq!(
+            save_planner_tactic_for_context(&conn, &unknown, &attempted),
+            Err("Save 999 not found".to_string())
+        );
+        assert_eq!(
+            tactic_service::get_tactic(&conn, inactive.id).expect("read after unknown ID"),
+            persisted
+        );
+
+        let wrong_token = service::SaveContext {
+            id: inactive.id,
+            context_token: "wrong-token".to_string(),
+        };
+        assert_eq!(
+            get_planner_tactic_options_for_context(&conn, &wrong_token),
+            Err("Save changed or no longer exists".to_string())
+        );
+        assert_eq!(
+            save_planner_tactic_for_context(&conn, &wrong_token, &attempted),
+            Err("Save changed or no longer exists".to_string())
+        );
+        assert_eq!(
+            tactic_service::get_tactic(&conn, inactive.id).expect("read after wrong token"),
+            persisted
+        );
+    }
+
+    #[test]
+    fn old_token_cannot_write_a_recreated_save_with_the_same_id() {
+        let (_temp_dir, conn, _active, old_context) = open_with_two_saves();
+        get_planner_tactic_for_context(&conn, &old_context).expect("initialize old tactic");
+        conn.execute("DELETE FROM saves WHERE id = ?1", [old_context.id])
+            .expect("delete old save");
+        conn.execute(
+            "INSERT INTO saves (id, name, is_active, context_token) VALUES (?1, 'Recreated save', 0, 'recreated-token')",
+            [old_context.id],
+        )
+        .expect("recreate save");
+        let recreated = save_context(&conn, old_context.id);
+        let mut recreated_tactic =
+            get_planner_tactic_for_context(&conn, &recreated).expect("initialize recreated tactic");
+        recreated_tactic.lanes[0].ip_weight = 0.3;
+        save_planner_tactic_for_context(&conn, &recreated, &recreated_tactic)
+            .expect("save recreated tactic");
+
+        let mut stale_write = recreated_tactic.clone();
+        stale_write.lanes[0].ip_weight = 0.8;
+        assert_eq!(
+            save_planner_tactic_for_context(&conn, &old_context, &stale_write),
+            Err("Save changed or no longer exists".to_string())
+        );
+        assert_eq!(
+            tactic_service::get_tactic(&conn, recreated.id).expect("reload recreated tactic"),
+            recreated_tactic
+        );
+    }
 }

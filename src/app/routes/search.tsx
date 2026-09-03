@@ -9,9 +9,20 @@ import { Panel } from "@/components/ui/panel/panel";
 import { SquadCsvImportModal } from "@/features/csv-import/components/squad-csv-import-modal";
 import type { CsvImportSummary } from "@/features/csv-import/types/csv-import-summary";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
+import type { TacticContextBoundaryState } from "@/features/planner/components/tactic-context-boundary";
+import { TacticContextBoundary } from "@/features/planner/components/tactic-context-boundary";
+import type {
+  PlannerTactic,
+  TacticOptions,
+} from "@/features/planner/types/tactic";
+import {
+  orderedTacticLanes,
+  validateTacticDraft,
+} from "@/features/planner/utils/tactic-editor";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { SearchFilterBar } from "@/features/search/components/search-filter-bar";
 import { SearchResultsPanel } from "@/features/search/components/search-results-panel";
+import { TacticColumnToggles } from "@/features/search/components/tactic-column-toggles";
 import type {
   FilterCombineMode,
   FilterRule,
@@ -39,10 +50,16 @@ import {
   parseSearchFilters,
   searchFiltersForUrl,
 } from "@/features/search/utils/search-url-search";
+import { buildTacticColumnOrder } from "@/features/search/utils/tactic-columns";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import {
+  isFullTacticGroup,
+  isTacticColumnId,
+  type TacticColumnGroup,
+} from "@/utils/tactic-ids";
 
 export type SearchRouteSearch = {
   sort: SearchSortField;
@@ -69,12 +86,26 @@ export const Route = createFileRoute("/search")({
       parseSearchFilters(search.filters, view),
     );
     const filterRules = parseSearchFilters(filters, view);
-    const sort = isVisibleSortField(search.sort, filterRules, view)
+    const tableId =
+      view === "moneyball"
+        ? "moneyball-search"
+        : view === "shortlist"
+          ? "shortlist"
+          : "search";
+    const visibleColumnIds =
+      usePlayerTableStore.getState().layouts[tableId].columnIds;
+    const visibleSort = isVisibleSortField(
+      search.sort,
+      filterRules,
+      view,
+      visibleColumnIds,
+    )
       ? search.sort
-      : defaultSearchSort(view);
+      : null;
+    const sort = visibleSort ?? defaultSearchSort(view);
     const dir = isSearchSortDir(search.dir)
       ? search.dir
-      : isVisibleSortField(search.sort, filterRules, view)
+      : visibleSort !== null
         ? defaultDirForSortField(sort)
         : DEFAULT_SEARCH_SORT_DIR;
     return {
@@ -100,7 +131,10 @@ export const Route = createFileRoute("/search")({
     comparisonPool: comparisonPool ?? "filtered",
   }),
   loader: ({ context: { queryClient } }) =>
-    queryClient.ensureQueryData(currentSnapshotQueryOptions),
+    Promise.all([
+      queryClient.ensureQueryData(currentSnapshotQueryOptions),
+      queryClient.ensureQueryData(savesQueryOptions),
+    ]),
   component: SearchPage,
 });
 
@@ -112,12 +146,26 @@ function PanelFallback() {
   );
 }
 
+function tacticLaneLabels(
+  tactic: PlannerTactic,
+  options: TacticOptions,
+): Map<string, string> {
+  const roleNames = new Map(
+    options.roles.map((role) => [role.roleId, role.displayName]),
+  );
+  return new Map(
+    tactic.lanes.map((lane) => [
+      lane.laneId,
+      `${lane.ipPosition} (${roleNames.get(lane.ipRoleId) ?? lane.ipRoleId}) / ${lane.oopPosition} (${roleNames.get(lane.oopRoleId) ?? lane.oopRoleId})`,
+    ]),
+  );
+}
+
 function SearchPageContent() {
   const snapshotQuery = useQuery(currentSnapshotQueryOptions);
   const savesQuery = useQuery(savesQueryOptions);
   const snapshot = snapshotQuery.data;
-  const activeSave =
-    savesQuery.data?.find((save) => save.isActive) ?? savesQuery.data?.[0];
+  const activeSave = savesQuery.data?.find((save) => save.isActive);
   const isResultContextChanging =
     useIsMutating({ mutationKey: playerResultContextMutationKey }) > 0 ||
     snapshotQuery.isFetching ||
@@ -126,6 +174,7 @@ function SearchPageContent() {
     savesQuery.isError;
   const queryClient = useQueryClient();
   const addColumns = usePlayerTableStore((state) => state.addColumns);
+  const replaceLayout = usePlayerTableStore((state) => state.replaceLayout);
   const {
     sort,
     dir,
@@ -139,6 +188,13 @@ function SearchPageContent() {
   );
   const view = routeView ?? defaultAnalysisView;
   const comparisonPool = routeComparisonPool ?? "filtered";
+  const tableId =
+    view === "moneyball"
+      ? "moneyball-search"
+      : view === "shortlist"
+        ? "shortlist"
+        : "search";
+  const layout = usePlayerTableStore((state) => state.layouts[tableId]);
   const navigate = Route.useNavigate();
   const filters = useMemo(
     () => parseSearchFilters(filterUrls, view),
@@ -148,6 +204,10 @@ function SearchPageContent() {
   const [lastMoneyballImport, setLastMoneyballImport] =
     useState<CsvImportSummary | null>(null);
   const snapshotContext = snapshot ? `${snapshot.saveId}:${snapshot.id}` : null;
+  const resultContext =
+    snapshot && activeSave && snapshot.saveId === activeSave.id
+      ? { snapshot, activeSave }
+      : null;
   const tabRefs = useRef<Record<SearchView, HTMLButtonElement | null>>({
     general: null,
     moneyball: null,
@@ -187,16 +247,176 @@ function SearchPageContent() {
       replace: patch.replace ?? true,
     });
 
-  if (!snapshot) {
+  const renderSearchBody = (tacticState: TacticContextBoundaryState | null) => {
+    const tactic = tacticState?.tactic;
+    const options = tacticState?.options;
+    const orderedLaneIds = tactic
+      ? orderedTacticLanes(tactic.lanes).map((lane) => lane.laneId)
+      : [];
+    const laneLabels =
+      tactic && options ? tacticLaneLabels(tactic, options) : new Map();
+    const validationError =
+      tactic && options ? validateTacticDraft(tactic, options) : null;
+    const currentActive = isFullTacticGroup(layout.columnIds, "current");
+    const potentialActive = isFullTacticGroup(layout.columnIds, "potential");
+    const toggleDisabled =
+      isResultContextChanging ||
+      tacticState === null ||
+      tacticState.isPending ||
+      tacticState.initialError !== null ||
+      tactic === undefined ||
+      options === undefined ||
+      validationError !== null ||
+      tacticState.readOnly;
+
+    let tacticMessage: string | null = null;
+    let tacticMessageIsError = false;
+    let retryTactic: (() => void) | null = null;
+    if (!activeSave) {
+      tacticMessage =
+        "No active save — configure a save before adding tactic columns";
+    } else if (!resultContext) {
+      tacticMessage = "No snapshot loaded — use Load Data";
+    } else if (isResultContextChanging || tacticState?.isPending) {
+      tacticMessage = "Loading tactic…";
+    } else if (tacticState?.initialError) {
+      tacticMessage = "Could not load tactic";
+      tacticMessageIsError = true;
+      retryTactic = tacticState.retryBoth;
+    } else if (!tactic || !options) {
+      tacticMessage = "Loading tactic…";
+    } else if (validationError) {
+      tacticMessage = validationError;
+      tacticMessageIsError = true;
+    } else if (tacticState?.readOnly) {
+      tacticMessage = "Could not refresh tactic. Cached labels are read-only.";
+      tacticMessageIsError = true;
+      retryTactic = tacticState.retryBoth;
+    }
+
+    const toggleGroup = (group: TacticColumnGroup) => {
+      if (toggleDisabled || !tactic || !options) {
+        return;
+      }
+      if (validateTacticDraft(tactic, options) !== null) {
+        return;
+      }
+      const columnIds =
+        usePlayerTableStore.getState().layouts[tableId].columnIds;
+      const nextCurrentActive =
+        group === "current"
+          ? !isFullTacticGroup(columnIds, "current")
+          : isFullTacticGroup(columnIds, "current");
+      const nextPotentialActive =
+        group === "potential"
+          ? !isFullTacticGroup(columnIds, "potential")
+          : isFullTacticGroup(columnIds, "potential");
+      const nextColumnIds = [
+        ...columnIds.filter((id) => !isTacticColumnId(id)),
+        ...buildTacticColumnOrder(
+          orderedLaneIds,
+          nextCurrentActive,
+          nextPotentialActive,
+        ),
+      ];
+      replaceLayout(tableId, nextColumnIds);
+      if (isTacticColumnId(sort) && !nextColumnIds.includes(sort)) {
+        const nextSort = defaultSearchSort(view);
+        updateSearch({
+          sort: nextSort,
+          dir: defaultDirForSortField(nextSort),
+        });
+      }
+    };
+
     return (
-      <Panel title="Results" flush>
-        <EmptyState icon={DatabaseZap} title="No data loaded for this save">
-          No snapshot loaded for the active save. Use Load Data to scan Football
-          Manager and ingest players into the database.
-        </EmptyState>
-      </Panel>
+      <>
+        <SearchFilterBar
+          rules={filters}
+          combine={combine}
+          onRulesChange={(rules) => {
+            updateSearch({ filters: rules });
+          }}
+          onApply={(rules, nextCombine) => {
+            void updateSearch({ filters: rules, combine: nextCombine }).then(
+              () => {
+                addColumns(
+                  tableId,
+                  rules.map((rule) => rule.field),
+                );
+              },
+            );
+          }}
+          actions={
+            <TacticColumnToggles
+              currentActive={currentActive}
+              potentialActive={potentialActive}
+              disabled={toggleDisabled}
+              onToggleGroup={toggleGroup}
+            />
+          }
+          view={view}
+        />
+        {tacticMessage ? (
+          <div
+            className={`flex items-center justify-between gap-3 text-body-sm ${tacticMessageIsError ? "text-error" : "text-on-surface-variant"}`}
+            role={tacticMessageIsError ? "alert" : "status"}
+          >
+            <span>{tacticMessage}</span>
+            {retryTactic ? (
+              <Button variant="secondary" onClick={retryTactic}>
+                Retry
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="flex min-h-0 flex-1 flex-col">
+          {isResultContextChanging ? (
+            <Panel title="Results" flush>
+              <p className="p-4 text-body-md text-on-surface-variant">
+                Loading player results…
+              </p>
+            </Panel>
+          ) : resultContext ? (
+            <SearchResultsPanel
+              key={`${resultContext.activeSave.id}:${resultContext.activeSave.contextToken}:${resultContext.snapshot.id}:${resultContext.snapshot.saveId}:${view}:${comparisonPool}:${combine}:${JSON.stringify(filters)}`}
+              sortBy={sort}
+              sortDir={dir}
+              filters={filters}
+              filterCombine={combine}
+              view={view}
+              comparisonPool={comparisonPool}
+              pageContext={{
+                activeSave: {
+                  id: resultContext.activeSave.id,
+                  contextToken: resultContext.activeSave.contextToken,
+                },
+                currentSnapshot: {
+                  id: resultContext.snapshot.id,
+                  saveId: resultContext.snapshot.saveId,
+                },
+              }}
+              orderedLaneIds={orderedLaneIds}
+              laneLabels={laneLabels}
+              onSortChange={(nextSort, nextDir) => {
+                updateSearch({ sort: nextSort, dir: nextDir });
+              }}
+            />
+          ) : (
+            <Panel title="Results" flush>
+              <EmptyState
+                icon={DatabaseZap}
+                title="No data loaded for this save"
+              >
+                No snapshot loaded for the active save. Use Load Data to scan
+                Football Manager and ingest players into the database.
+              </EmptyState>
+            </Panel>
+          )}
+        </div>
+      </>
     );
-  }
+  };
 
   return (
     <>
@@ -303,71 +523,33 @@ function SearchPageContent() {
           </div>
         ) : null}
       </div>
-      <SearchFilterBar
-        rules={filters}
-        combine={combine}
-        onRulesChange={(rules) => {
-          updateSearch({ filters: rules });
-        }}
-        onApply={(rules, nextCombine) => {
-          void updateSearch({ filters: rules, combine: nextCombine }).then(
-            () => {
-              const layoutId =
-                view === "moneyball"
-                  ? "moneyball-search"
-                  : view === "shortlist"
-                    ? "shortlist"
-                    : "search";
-              addColumns(
-                layoutId,
-                rules.map((rule) => rule.field),
-              );
-            },
-          );
-        }}
-        view={view}
-      />
-      <div className="flex min-h-0 flex-1 flex-col">
-        {isResultContextChanging ? (
-          <Panel title="Results" flush>
-            <p className="p-4 text-body-md text-on-surface-variant">
-              Loading player results…
-            </p>
-          </Panel>
-        ) : (
-          <SearchResultsPanel
-            key={`${activeSave?.id}:${activeSave?.contextToken}:${snapshot.id}:${snapshot.saveId}:${view}:${comparisonPool}:${combine}:${JSON.stringify(filters)}`}
-            sortBy={sort}
-            sortDir={dir}
-            filters={filters}
-            filterCombine={combine}
-            view={view}
-            comparisonPool={comparisonPool}
-            pageContext={{
-              activeSave: activeSave
-                ? { id: activeSave.id, contextToken: activeSave.contextToken }
-                : null,
-              currentSnapshot: { id: snapshot.id, saveId: snapshot.saveId },
-            }}
-            onSortChange={(nextSort, nextDir) => {
-              updateSearch({ sort: nextSort, dir: nextDir });
-            }}
-          />
-        )}
-      </div>
-      <SquadCsvImportModal
-        activeSaveId={snapshot.saveId}
-        snapshotId={snapshot.id}
-        format="moneyball"
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        onYouthImported={() => undefined}
-        onMoneyballImported={(summary) => {
-          setLastMoneyballImport(summary);
-          void queryClient.invalidateQueries({ queryKey: searchKeys.all });
-          void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
-        }}
-      />
+      {resultContext ? (
+        <TacticContextBoundary
+          context={{
+            saveId: resultContext.activeSave.id,
+            contextToken: resultContext.activeSave.contextToken,
+          }}
+        >
+          {renderSearchBody}
+        </TacticContextBoundary>
+      ) : (
+        renderSearchBody(null)
+      )}
+      {resultContext ? (
+        <SquadCsvImportModal
+          activeSaveId={resultContext.snapshot.saveId}
+          snapshotId={resultContext.snapshot.id}
+          format="moneyball"
+          open={importOpen}
+          onClose={() => setImportOpen(false)}
+          onYouthImported={() => undefined}
+          onMoneyballImported={(summary) => {
+            setLastMoneyballImport(summary);
+            void queryClient.invalidateQueries({ queryKey: searchKeys.all });
+            void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
+          }}
+        />
+      ) : null}
     </>
   );
 }

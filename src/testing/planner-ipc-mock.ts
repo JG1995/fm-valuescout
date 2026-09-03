@@ -15,6 +15,7 @@ import type {
 } from "@/features/planner/types/tactic";
 import { PLANNER_TEAMS, type PlannerTeam } from "@/features/planner/types/team";
 import type { PlannerTeamRemovalImpact } from "@/features/planner/types/team-removal-impact";
+import { resolveListSavesIpcMock } from "@/testing/snapshot-ipc-mock";
 
 const DEFAULT_MANAGED_CLUB: ManagedClubStatus = {
   clubName: null,
@@ -270,7 +271,13 @@ let pendingManagedClubSave: {
   result: ManagedClubStatus;
   resolve: (result: ManagedClubStatus) => void;
 } | null = null;
-let tactic: PlannerTactic = cloneTactic(DEFAULT_TACTIC);
+const tacticStore = new Map<string, PlannerTactic>([
+  [`1:save-token-1`, cloneTactic(DEFAULT_TACTIC)],
+]);
+let tacticReadCalls: Array<{ saveId: number; contextToken: string }> = [];
+let tacticOptionsReadCalls: Array<{ saveId: number; contextToken: string }> =
+  [];
+let tacticSaveCalls: Array<{ saveId: number; contextToken: string }> = [];
 let depth: PlannerDepth = buildDefaultDepth();
 let roleReference: PlannerRoleReference = buildDefaultRoleReference();
 let roleReferenceError: string | null = null;
@@ -387,6 +394,42 @@ function buildDefaultDepth(): PlannerDepth {
   };
 }
 
+function plannerContextKey(saveId: number, contextToken: string) {
+  return `${saveId}:${contextToken}`;
+}
+
+function validatePlannerTacticContext(args: unknown): {
+  saveId: number;
+  contextToken: string;
+} {
+  if (
+    typeof args !== "object" ||
+    args === null ||
+    !("saveId" in args) ||
+    !("contextToken" in args) ||
+    typeof (args as { saveId: unknown }).saveId !== "number" ||
+    typeof (args as { contextToken: unknown }).contextToken !== "string"
+  ) {
+    throw new Error("Invalid planner tactic request");
+  }
+  return {
+    saveId: (args as { saveId: number }).saveId,
+    contextToken: (args as { contextToken: string }).contextToken,
+  };
+}
+
+function ensurePlannerSaveContext(saveId: number, contextToken: string) {
+  const save = resolveListSavesIpcMock().find(
+    (candidate) => candidate.id === saveId,
+  );
+  if (!save) {
+    throw `Save ${saveId} not found`;
+  }
+  if (save.contextToken !== contextToken) {
+    throw "Save changed or no longer exists";
+  }
+}
+
 export function resetPlannerIpcMock() {
   managedClub = { ...DEFAULT_MANAGED_CLUB };
   availableClubs = [];
@@ -395,7 +438,11 @@ export function resetPlannerIpcMock() {
   onManagedClubSaveCall = undefined;
   managedClubSavePending = false;
   pendingManagedClubSave = null;
-  tactic = cloneTactic(DEFAULT_TACTIC);
+  tacticStore.clear();
+  tacticStore.set(`1:save-token-1`, cloneTactic(DEFAULT_TACTIC));
+  tacticReadCalls = [];
+  tacticOptionsReadCalls = [];
+  tacticSaveCalls = [];
   depth = buildDefaultDepth();
   roleReference = buildDefaultRoleReference();
   roleReferenceError = null;
@@ -469,12 +516,45 @@ export function resolveManagedClubOptionsIpcMock() {
   return [...availableClubs];
 }
 
-export function resolvePlannerTacticIpcMock() {
-  return cloneTactic(tactic);
+export function resolvePlannerTacticIpcMock(args?: unknown) {
+  if (args !== undefined) {
+    const { saveId, contextToken } = validatePlannerTacticContext(args);
+    tacticReadCalls.push({ saveId, contextToken });
+    ensurePlannerSaveContext(saveId, contextToken);
+    const key = plannerContextKey(saveId, contextToken);
+    const stored = tacticStore.get(key);
+    if (stored) {
+      return cloneTactic(stored);
+    }
+    return cloneTactic(DEFAULT_TACTIC);
+  }
+  return cloneTactic(tacticStore.get(`1:save-token-1`) ?? DEFAULT_TACTIC);
+}
+
+export function getPlannerTacticIpcMockCalls() {
+  return tacticReadCalls.map((call) => ({ ...call }));
+}
+
+export function getPlannerTacticOptionsIpcMockCalls() {
+  return tacticOptionsReadCalls.map((call) => ({ ...call }));
+}
+
+export function getPlannerTacticSaveIpcMockCalls() {
+  return tacticSaveCalls.map((call) => ({ ...call }));
 }
 
 export function setPlannerTacticIpcMock(value: PlannerTactic) {
-  tactic = cloneTactic(value);
+  tacticStore.set(`1:save-token-1`, cloneTactic(value));
+}
+
+export function setPlannerTacticForContext(
+  context: { saveId: number; contextToken: string },
+  value: PlannerTactic,
+) {
+  tacticStore.set(
+    plannerContextKey(context.saveId, context.contextToken),
+    cloneTactic(value),
+  );
 }
 
 export function setPlannerRoleReference(value: PlannerRoleReference) {
@@ -510,7 +590,12 @@ export function resolvePlannerRoleReferenceIpcMock(args: unknown) {
   return cloneRoleReference(roleReference);
 }
 
-export function resolvePlannerTacticOptionsIpcMock() {
+export function resolvePlannerTacticOptionsIpcMock(args?: unknown) {
+  if (args !== undefined) {
+    const { saveId, contextToken } = validatePlannerTacticContext(args);
+    tacticOptionsReadCalls.push({ saveId, contextToken });
+    ensurePlannerSaveContext(saveId, contextToken);
+  }
   return {
     placements: [...DEFAULT_TACTIC_OPTIONS.placements],
     roles: [...DEFAULT_TACTIC_OPTIONS.roles],
@@ -1063,12 +1148,21 @@ export function resolveSavePlannerTacticIpcMock(args: unknown) {
   if (tacticSaveError) {
     throw tacticSaveError;
   }
-  const record = args as { tactic?: PlannerTactic };
+  const record = args as {
+    saveId?: unknown;
+    contextToken?: unknown;
+    tactic?: PlannerTactic;
+  };
+  const { saveId, contextToken } = validatePlannerTacticContext(args);
+  tacticSaveCalls.push({ saveId, contextToken });
+  ensurePlannerSaveContext(saveId, contextToken);
   if (!record.tactic) {
     throw new Error("Tactic is required");
   }
-  tactic = cloneTactic(record.tactic);
-  return resolvePlannerTacticIpcMock();
+  const key = plannerContextKey(saveId, contextToken);
+  const next = cloneTactic(record.tactic);
+  tacticStore.set(key, next);
+  return cloneTactic(next);
 }
 
 export function resolveSetManagedClubIpcMock(

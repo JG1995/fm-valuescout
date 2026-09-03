@@ -1,16 +1,4 @@
-export const TACTIC_LANE_IDS = [
-  "goalkeeper",
-  "left_back",
-  "left_centre_back",
-  "right_centre_back",
-  "right_back",
-  "defensive_midfielder",
-  "left_central_midfielder",
-  "right_central_midfielder",
-  "left_winger",
-  "right_winger",
-  "centre_forward",
-] as const;
+export { TACTIC_LANE_IDS } from "@/utils/tactic-ids";
 
 export type TacticLane = {
   laneId: string;

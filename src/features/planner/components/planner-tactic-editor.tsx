@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
-import { plannerKeys } from "../api/planner-keys";
+import { type PlannerContext, plannerKeys } from "../api/planner-keys";
 import { savePlannerTactic } from "../api/save-planner-tactic";
 import type { PlannerTactic, TacticLane, TacticOptions } from "../types/tactic";
 import {
@@ -21,8 +21,10 @@ import { PlannerTacticInspector } from "./planner-tactic-inspector";
 import { PlannerTacticPitch } from "./planner-tactic-pitch";
 
 type PlannerTacticEditorProps = {
+  context: PlannerContext;
   activeSaveRefreshError: boolean;
   isActiveSaveUnavailable: boolean;
+  readOnly?: boolean;
   tactic: PlannerTactic;
   options: TacticOptions;
 };
@@ -60,8 +62,10 @@ function nextView(view: TacticView, key: string): TacticView | null {
 }
 
 export function PlannerTacticEditor({
+  context,
   activeSaveRefreshError,
   isActiveSaveUnavailable,
+  readOnly = false,
   tactic,
   options,
 }: PlannerTacticEditorProps) {
@@ -99,13 +103,15 @@ export function PlannerTacticEditor({
   }, [draft, lastSavedTactic, selectedLaneId, tactic]);
 
   const save = useMutation({
-    mutationFn: () => savePlannerTactic(draft),
-    onSuccess: async (savedTactic) => {
+    mutationKey: plannerKeys.tactic(context),
+    mutationFn: (vars: { context: PlannerContext; tactic: PlannerTactic }) =>
+      savePlannerTactic(vars.context, vars.tactic),
+    onSuccess: async (savedTactic, vars) => {
       const nextTactic = cloneTactic(savedTactic);
       setDraft(nextTactic);
       setLastSavedTactic(nextTactic);
       setSaveSucceeded(true);
-      queryClient.setQueryData(plannerKeys.tactic(), nextTactic);
+      queryClient.setQueryData(plannerKeys.tactic(vars.context), nextTactic);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: plannerKeys.depth() }),
         queryClient.invalidateQueries({
@@ -315,10 +321,12 @@ export function PlannerTacticEditor({
           </div>
 
           <Button
-            disabled={Boolean(validationError) || isActiveSaveUnavailable}
+            disabled={
+              Boolean(validationError) || isActiveSaveUnavailable || readOnly
+            }
             loading={save.isPending}
             loadingLabel="Saving…"
-            onClick={() => save.mutate()}
+            onClick={() => save.mutate({ context, tactic: draft })}
           >
             Save tactic
           </Button>
@@ -348,6 +356,7 @@ export function PlannerTacticEditor({
             lanes={draft.lanes}
             options={options}
             phases={visiblePhases(view)}
+            disabled={readOnly}
             onWeightChange={updateSelectedLaneWeight}
             onRankChange={updateSelectedLaneRank}
             onPreferredFootChange={updateSelectedLaneFoot}

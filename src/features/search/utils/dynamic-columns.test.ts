@@ -111,6 +111,20 @@ describe("dynamicColumnFields", () => {
     expect(isVisibleSortField("unknown.metric", [])).toBe(false);
   });
 
+  it("allows only canonical tactic sorts present in the current table layout", () => {
+    const tacticSort = "tactic_current.goalkeeper";
+
+    expect(isVisibleSortField(tacticSort, [], "general", [tacticSort])).toBe(
+      true,
+    );
+    expect(isVisibleSortField(tacticSort, [], "general", [])).toBe(false);
+    expect(
+      isVisibleSortField("tactic_current.unknown", [], "general", [
+        "tactic_current.unknown",
+      ]),
+    ).toBe(false);
+  });
+
   it("requests and sorts Moneyball role fields in the Moneyball view only", () => {
     const filters = [
       {

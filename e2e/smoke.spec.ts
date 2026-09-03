@@ -178,6 +178,91 @@ test.describe("application smoke", () => {
     ).toHaveText("Default save");
   });
 
+  test("Planner IPC follows the stub save lifecycle", async ({ page }) => {
+    await page.goto("/");
+
+    const result = await page.evaluate(async () => {
+      const invoke = (
+        globalThis as unknown as {
+          __TAURI_INTERNALS__: {
+            invoke: (
+              command: string,
+              args?: Record<string, unknown>,
+            ) => Promise<unknown>;
+          };
+        }
+      ).__TAURI_INTERNALS__.invoke;
+      const plannerError = async (context: {
+        saveId: number;
+        contextToken: string;
+      }) => {
+        try {
+          await invoke("get_planner_tactic", context);
+          return null;
+        } catch (error) {
+          return error instanceof Error ? error.message : String(error);
+        }
+      };
+
+      const beforeCreate = await plannerError({
+        saveId: 2,
+        contextToken: "save-token-2",
+      });
+      const created = (await invoke("create_save", {
+        name: "Planner save",
+      })) as { id: number; contextToken: string };
+      const createdContext = {
+        saveId: created.id,
+        contextToken: created.contextToken,
+      };
+      await invoke("get_planner_tactic_options", createdContext);
+      await invoke("delete_save", createdContext);
+      const afterDelete = await plannerError(createdContext);
+
+      const replacementResult = (await invoke("delete_save", {
+        saveId: 1,
+        contextToken: "save-token-1",
+      })) as { activeSave: { id: number; contextToken: string } };
+      const replacementContext = {
+        saveId: replacementResult.activeSave.id,
+        contextToken: replacementResult.activeSave.contextToken,
+      };
+      const oldToken = await plannerError({
+        saveId: 1,
+        contextToken: "save-token-1",
+      });
+      await invoke("save_planner_tactic", {
+        ...replacementContext,
+        tactic: { lanes: [] },
+      });
+      const replacementTactic = (await invoke(
+        "get_planner_tactic",
+        replacementContext,
+      )) as { lanes: unknown[] };
+
+      return {
+        beforeCreate,
+        createdId: created.id,
+        afterDelete,
+        replacementContext,
+        oldToken,
+        replacementLaneCount: replacementTactic.lanes.length,
+      };
+    });
+
+    expect(result).toEqual({
+      beforeCreate: "Save 2 not found",
+      createdId: 2,
+      afterDelete: "Save 2 not found",
+      replacementContext: {
+        saveId: 1,
+        contextToken: "save-token-1-replacement",
+      },
+      oldToken: "Save changed or no longer exists",
+      replacementLaneCount: 0,
+    });
+  });
+
   test("nav rail expands from its own toggle", async ({ page }) => {
     await page.goto("/");
 

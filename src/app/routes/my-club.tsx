@@ -39,10 +39,9 @@ import {
 } from "@/features/my-club/components/my-club-workspace-tabs";
 import { plannerDepthQueryOptions } from "@/features/planner/api/planner-depth-query-options";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
-import { plannerTacticOptionsQueryOptions } from "@/features/planner/api/planner-tactic-options-query-options";
-import { plannerTacticQueryOptions } from "@/features/planner/api/planner-tactic-query-options";
 import { PlannerDepthMatrix } from "@/features/planner/components/planner-depth-matrix";
 import { PlannerTacticEditor } from "@/features/planner/components/planner-tactic-editor";
+import { TacticContextBoundary } from "@/features/planner/components/tactic-context-boundary";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
@@ -229,8 +228,6 @@ export const Route = createFileRoute("/my-club")({
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(managedClubQueryOptions),
       queryClient.prefetchQuery(managedClubOptionsQueryOptions),
-      queryClient.ensureQueryData(plannerTacticQueryOptions),
-      queryClient.ensureQueryData(plannerTacticOptionsQueryOptions),
       queryClient.ensureQueryData(plannerDepthQueryOptions),
       staffQuery,
     ]);
@@ -316,6 +313,31 @@ function ManagedClubError({
   );
 }
 
+function TacticQueryError({
+  error,
+  title,
+  onRetry,
+}: {
+  error: Error;
+  title: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div
+      className="m-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-error/40 bg-error-container p-3 text-on-error-container"
+      role="alert"
+    >
+      <div>
+        <p className="text-label-lg">{title}</p>
+        <p className="text-body-sm">{error.message}</p>
+      </div>
+      <Button variant="secondary" onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
+  );
+}
+
 function MyClubPageContent() {
   const queryClient = useQueryClient();
   const addColumns = usePlayerTableStore((state) => state.addColumns);
@@ -338,14 +360,14 @@ function MyClubPageContent() {
     useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: managedClub, isRefetchError: managedClubRefreshError } =
     useSuspenseQuery(managedClubQueryOptions);
-  const { data: tactic, isRefetchError: tacticRefreshError } = useSuspenseQuery(
-    plannerTacticQueryOptions,
-  );
-  const { data: tacticOptions, isRefetchError: tacticOptionsRefreshError } =
-    useSuspenseQuery(plannerTacticOptionsQueryOptions);
   const { data: depth, isRefetchError: depthRefreshError } = useSuspenseQuery(
     plannerDepthQueryOptions,
   );
+  const plannerContext = activeClubDnaContext;
+  const isMatchedSnapshot =
+    snapshot !== null &&
+    plannerContext !== null &&
+    snapshot.saveId === plannerContext.saveId;
   const invalidateSquadBoostQueries = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: snapshotKeys.all }),
@@ -413,8 +435,6 @@ function MyClubPageContent() {
     savesQuery.isError ||
     snapshotRefreshError ||
     managedClubRefreshError ||
-    tacticRefreshError ||
-    tacticOptionsRefreshError ||
     depthRefreshError;
   const isActiveSaveUnavailable =
     isPlannerRefreshing ||
@@ -828,26 +848,118 @@ function MyClubPageContent() {
         {...myClubWorkspacePanelProps("planner", activeWorkspace)}
         className="min-h-0 flex-1 overflow-y-auto"
       >
-        <PlannerDepthMatrix
-          key={snapshot.saveId}
-          activeSaveId={snapshot.saveId}
-          depth={depth}
-          tactic={tactic}
-          options={tacticOptions}
-        />
+        {plannerContext && isMatchedSnapshot ? (
+          <TacticContextBoundary context={plannerContext}>
+            {({
+              tactic,
+              options,
+              isPending,
+              initialError,
+              refreshError,
+              retryBoth,
+            }) => {
+              if (isPending) {
+                return (
+                  <p className="p-4 text-body-md text-on-surface-variant">
+                    Loading tactic…
+                  </p>
+                );
+              }
+              if (initialError) {
+                return (
+                  <TacticQueryError
+                    error={initialError}
+                    title="Could not load tactic"
+                    onRetry={retryBoth}
+                  />
+                );
+              }
+              if (!tactic || !options) {
+                return null;
+              }
+              return (
+                <>
+                  {refreshError ? (
+                    <TacticQueryError
+                      error={refreshError}
+                      title="Could not refresh tactic"
+                      onRetry={retryBoth}
+                    />
+                  ) : null}
+                  <PlannerDepthMatrix
+                    key={`${plannerContext.saveId}:${plannerContext.contextToken}`}
+                    activeSaveId={plannerContext.saveId}
+                    depth={depth}
+                    tactic={tactic}
+                    options={options}
+                  />
+                </>
+              );
+            }}
+          </TacticContextBoundary>
+        ) : (
+          <p className="p-4 text-body-md text-on-surface-variant">
+            Loading planner…
+          </p>
+        )}
       </div>
       <div
         {...myClubWorkspacePanelProps("tactic", activeWorkspace)}
         className="min-h-0 flex-1 overflow-y-auto"
       >
-        {/* Key the editor to the active save so its local draft cannot cross a save boundary. */}
-        <PlannerTacticEditor
-          key={snapshot.saveId}
-          activeSaveRefreshError={activeSaveRefreshError}
-          isActiveSaveUnavailable={isActiveSaveUnavailable}
-          tactic={tactic}
-          options={tacticOptions}
-        />
+        {plannerContext && isMatchedSnapshot ? (
+          <TacticContextBoundary context={plannerContext}>
+            {({
+              tactic,
+              options,
+              isPending,
+              initialError,
+              refreshError,
+              readOnly,
+              retryBoth,
+            }) => {
+              if (isPending) {
+                return (
+                  <p className="p-4 text-body-md text-on-surface-variant">
+                    Loading tactic…
+                  </p>
+                );
+              }
+              if (initialError) {
+                return (
+                  <TacticQueryError
+                    error={initialError}
+                    title="Could not load tactic"
+                    onRetry={retryBoth}
+                  />
+                );
+              }
+              if (!tactic || !options) {
+                return null;
+              }
+              return (
+                <>
+                  {refreshError ? (
+                    <TacticQueryError
+                      error={refreshError}
+                      title="Could not refresh tactic"
+                      onRetry={retryBoth}
+                    />
+                  ) : null}
+                  <PlannerTacticEditor
+                    key={`${plannerContext.saveId}:${plannerContext.contextToken}`}
+                    context={plannerContext}
+                    activeSaveRefreshError={activeSaveRefreshError}
+                    isActiveSaveUnavailable={isActiveSaveUnavailable}
+                    readOnly={readOnly}
+                    tactic={tactic}
+                    options={options}
+                  />
+                </>
+              );
+            }}
+          </TacticContextBoundary>
+        ) : null}
       </div>
       <div
         {...myClubWorkspacePanelProps("staff", activeWorkspace)}
