@@ -1038,7 +1038,7 @@ const ROLES: &[RoleDefinition] = &[
         role_id: "channel_midfielder_ip",
         display_name: "Channel Midfielder",
         phase: RolePhase::InPossession,
-        position_tags: &["AMC"],
+        position_tags: &["AMC", "MC"],
         primary: &[
             "Crossing",
             "FirstTouch",
@@ -1367,6 +1367,207 @@ const ROLES: &[RoleDefinition] = &[
         primary: &["Marking", "WorkRate", "Stamina"],
         secondary: &[],
     },
+    // Generic OOP roles (JAY-31 bands): one possession-agnostic defensive
+    // definition per base position for General search/profile/planner use.
+    RoleDefinition {
+        role_id: "goalkeeper_oop",
+        display_name: "Goalkeeper",
+        phase: RolePhase::OutOfPossession,
+        position_tags: &["GK"],
+        primary: &[
+            "AerialReach",
+            "CommandOfArea",
+            "Communication",
+            "Handling",
+            "Reflexes",
+            "Concentration",
+            "Positioning",
+            "Agility",
+        ],
+        secondary: &["OneOnOnes", "RushingOut", "Anticipation", "Decisions"],
+    },
+    RoleDefinition {
+        role_id: "centre_back_oop",
+        display_name: "Centre-Back",
+        phase: RolePhase::OutOfPossession,
+        position_tags: &["DC"],
+        primary: &[
+            "Heading",
+            "Marking",
+            "Tackling",
+            "Anticipation",
+            "Positioning",
+            "JumpingReach",
+            "Strength",
+        ],
+        secondary: &[
+            "Aggression",
+            "Bravery",
+            "Composure",
+            "Concentration",
+            "Decisions",
+            "Pace",
+        ],
+    },
+    RoleDefinition {
+        role_id: "wide_centre_back_oop",
+        display_name: "Wide Centre-Back",
+        phase: RolePhase::OutOfPossession,
+        position_tags: &["DC"],
+        primary: &[
+            "Heading",
+            "Marking",
+            "Tackling",
+            "Anticipation",
+            "Positioning",
+            "JumpingReach",
+            "Strength",
+        ],
+        secondary: &[
+            "Aggression",
+            "Bravery",
+            "Concentration",
+            "Decisions",
+            "Acceleration",
+            "Agility",
+            "Pace",
+        ],
+    },
+    RoleDefinition {
+        role_id: "full_back_oop",
+        display_name: "Full-Back",
+        phase: RolePhase::OutOfPossession,
+        position_tags: &["DL", "DR"],
+        primary: &[
+            "Marking",
+            "Tackling",
+            "Anticipation",
+            "Positioning",
+            "Teamwork",
+            "Acceleration",
+        ],
+        secondary: &[
+            "Aggression",
+            "Concentration",
+            "Decisions",
+            "WorkRate",
+            "Agility",
+            "Pace",
+            "Stamina",
+        ],
+    },
+    RoleDefinition {
+        role_id: "wing_back_oop",
+        display_name: "Wing-Back",
+        phase: RolePhase::OutOfPossession,
+        position_tags: &["DL", "DR", "WBL", "WBR"],
+        primary: &[
+            "Marking",
+            "Tackling",
+            "Anticipation",
+            "Positioning",
+            "Teamwork",
+            "Acceleration",
+            "Stamina",
+        ],
+        secondary: &[
+            "Aggression",
+            "Concentration",
+            "Decisions",
+            "WorkRate",
+            "Agility",
+            "Pace",
+        ],
+    },
+    RoleDefinition {
+        role_id: "defensive_midfielder_oop",
+        display_name: "Defensive Midfielder",
+        phase: RolePhase::OutOfPossession,
+        position_tags: &["DM"],
+        primary: &[
+            "Tackling",
+            "Anticipation",
+            "Decisions",
+            "Positioning",
+            "Teamwork",
+            "WorkRate",
+        ],
+        secondary: &[
+            "Marking",
+            "Aggression",
+            "Concentration",
+            "Stamina",
+            "Strength",
+        ],
+    },
+    RoleDefinition {
+        role_id: "central_midfielder_oop",
+        display_name: "Central Midfielder",
+        phase: RolePhase::OutOfPossession,
+        position_tags: &["MC"],
+        primary: &["Tackling", "Decisions", "Teamwork", "WorkRate"],
+        secondary: &[
+            "Marking",
+            "Aggression",
+            "Anticipation",
+            "Concentration",
+            "Positioning",
+            "Stamina",
+        ],
+    },
+    RoleDefinition {
+        role_id: "wide_midfielder_oop",
+        display_name: "Wide Midfielder",
+        phase: RolePhase::OutOfPossession,
+        position_tags: &["ML", "MR"],
+        primary: &["Decisions", "Teamwork", "WorkRate", "Acceleration"],
+        secondary: &[
+            "Marking",
+            "Aggression",
+            "Anticipation",
+            "OffTheBall",
+            "Agility",
+            "Pace",
+            "Stamina",
+        ],
+    },
+    RoleDefinition {
+        role_id: "attacking_midfielder_oop",
+        display_name: "Attacking Midfielder",
+        phase: RolePhase::OutOfPossession,
+        position_tags: &["AMC"],
+        primary: &["Anticipation", "Decisions", "WorkRate"],
+        secondary: &["Marking", "Aggression", "OffTheBall", "Teamwork", "Stamina"],
+    },
+    RoleDefinition {
+        role_id: "winger_oop",
+        display_name: "Winger",
+        phase: RolePhase::OutOfPossession,
+        position_tags: &["AML", "AMR"],
+        primary: &[
+            "Anticipation",
+            "Decisions",
+            "Teamwork",
+            "WorkRate",
+            "Acceleration",
+        ],
+        secondary: &[
+            "Marking",
+            "Aggression",
+            "OffTheBall",
+            "Agility",
+            "Pace",
+            "Stamina",
+        ],
+    },
+    RoleDefinition {
+        role_id: "centre_forward_oop",
+        display_name: "Centre Forward",
+        phase: RolePhase::OutOfPossession,
+        position_tags: &["ST"],
+        primary: &["Anticipation", "Decisions", "WorkRate"],
+        secondary: &["Marking", "Aggression", "OffTheBall", "Teamwork", "Stamina"],
+    },
 ];
 
 /// All catalogued FM26 roles (IP and OOP).
@@ -1474,5 +1675,281 @@ mod tests {
         assert!(role.primary.contains(&"OffTheBall"));
         assert!(!role.secondary.contains(&"OffTheBall"));
         assert!(!role.secondary.is_empty());
+    }
+
+    #[test]
+    fn catalog_contains_79_roles_including_11_generic_oop() {
+        let ids: HashSet<_> = all_roles().iter().map(|role| role.role_id).collect();
+        assert_eq!(all_roles().len(), 79);
+        for role_id in [
+            "goalkeeper_oop",
+            "centre_back_oop",
+            "wide_centre_back_oop",
+            "full_back_oop",
+            "wing_back_oop",
+            "defensive_midfielder_oop",
+            "central_midfielder_oop",
+            "wide_midfielder_oop",
+            "attacking_midfielder_oop",
+            "winger_oop",
+            "centre_forward_oop",
+        ] {
+            assert!(ids.contains(role_id), "missing generic OOP role {role_id}");
+        }
+    }
+
+    type GenericOopExpectation<'a> = (
+        &'a str,
+        &'a str,
+        &'a [&'a str],
+        &'a [&'a str],
+        &'a [&'a str],
+    );
+
+    #[test]
+    fn generic_oop_roles_match_the_jay31_band_contract() {
+        let contract: &[GenericOopExpectation<'_>] = &[
+            (
+                "goalkeeper_oop",
+                "Goalkeeper",
+                &["GK"],
+                &[
+                    "AerialReach",
+                    "CommandOfArea",
+                    "Communication",
+                    "Handling",
+                    "Reflexes",
+                    "Concentration",
+                    "Positioning",
+                    "Agility",
+                ],
+                &["OneOnOnes", "RushingOut", "Anticipation", "Decisions"],
+            ),
+            (
+                "centre_back_oop",
+                "Centre-Back",
+                &["DC"],
+                &[
+                    "Heading",
+                    "Marking",
+                    "Tackling",
+                    "Anticipation",
+                    "Positioning",
+                    "JumpingReach",
+                    "Strength",
+                ],
+                &[
+                    "Aggression",
+                    "Bravery",
+                    "Composure",
+                    "Concentration",
+                    "Decisions",
+                    "Pace",
+                ],
+            ),
+            (
+                "wide_centre_back_oop",
+                "Wide Centre-Back",
+                &["DC"],
+                &[
+                    "Heading",
+                    "Marking",
+                    "Tackling",
+                    "Anticipation",
+                    "Positioning",
+                    "JumpingReach",
+                    "Strength",
+                ],
+                &[
+                    "Aggression",
+                    "Bravery",
+                    "Concentration",
+                    "Decisions",
+                    "Acceleration",
+                    "Agility",
+                    "Pace",
+                ],
+            ),
+            (
+                "full_back_oop",
+                "Full-Back",
+                &["DL", "DR"],
+                &[
+                    "Marking",
+                    "Tackling",
+                    "Anticipation",
+                    "Positioning",
+                    "Teamwork",
+                    "Acceleration",
+                ],
+                &[
+                    "Aggression",
+                    "Concentration",
+                    "Decisions",
+                    "WorkRate",
+                    "Agility",
+                    "Pace",
+                    "Stamina",
+                ],
+            ),
+            (
+                "wing_back_oop",
+                "Wing-Back",
+                &["DL", "DR", "WBL", "WBR"],
+                &[
+                    "Marking",
+                    "Tackling",
+                    "Anticipation",
+                    "Positioning",
+                    "Teamwork",
+                    "Acceleration",
+                    "Stamina",
+                ],
+                &[
+                    "Aggression",
+                    "Concentration",
+                    "Decisions",
+                    "WorkRate",
+                    "Agility",
+                    "Pace",
+                ],
+            ),
+            (
+                "defensive_midfielder_oop",
+                "Defensive Midfielder",
+                &["DM"],
+                &[
+                    "Tackling",
+                    "Anticipation",
+                    "Decisions",
+                    "Positioning",
+                    "Teamwork",
+                    "WorkRate",
+                ],
+                &[
+                    "Marking",
+                    "Aggression",
+                    "Concentration",
+                    "Stamina",
+                    "Strength",
+                ],
+            ),
+            (
+                "central_midfielder_oop",
+                "Central Midfielder",
+                &["MC"],
+                &["Tackling", "Decisions", "Teamwork", "WorkRate"],
+                &[
+                    "Marking",
+                    "Aggression",
+                    "Anticipation",
+                    "Concentration",
+                    "Positioning",
+                    "Stamina",
+                ],
+            ),
+            (
+                "wide_midfielder_oop",
+                "Wide Midfielder",
+                &["ML", "MR"],
+                &["Decisions", "Teamwork", "WorkRate", "Acceleration"],
+                &[
+                    "Marking",
+                    "Aggression",
+                    "Anticipation",
+                    "OffTheBall",
+                    "Agility",
+                    "Pace",
+                    "Stamina",
+                ],
+            ),
+            (
+                "attacking_midfielder_oop",
+                "Attacking Midfielder",
+                &["AMC"],
+                &["Anticipation", "Decisions", "WorkRate"],
+                &["Marking", "Aggression", "OffTheBall", "Teamwork", "Stamina"],
+            ),
+            (
+                "winger_oop",
+                "Winger",
+                &["AML", "AMR"],
+                &[
+                    "Anticipation",
+                    "Decisions",
+                    "Teamwork",
+                    "WorkRate",
+                    "Acceleration",
+                ],
+                &[
+                    "Marking",
+                    "Aggression",
+                    "OffTheBall",
+                    "Agility",
+                    "Pace",
+                    "Stamina",
+                ],
+            ),
+            (
+                "centre_forward_oop",
+                "Centre Forward",
+                &["ST"],
+                &["Anticipation", "Decisions", "WorkRate"],
+                &["Marking", "Aggression", "OffTheBall", "Teamwork", "Stamina"],
+            ),
+        ];
+        assert_eq!(contract.len(), 11);
+        for (role_id, display_name, position_tags, primary, secondary) in contract {
+            let role = all_roles()
+                .iter()
+                .find(|role| role.role_id == *role_id)
+                .unwrap_or_else(|| panic!("missing generic OOP role {role_id}"));
+            assert_eq!(role.display_name, *display_name, "{role_id} display name");
+            assert_eq!(role.phase, RolePhase::OutOfPossession, "{role_id} phase");
+            assert_eq!(
+                role.position_tags, *position_tags,
+                "{role_id} position tags"
+            );
+            assert_eq!(role.primary, *primary, "{role_id} primary band");
+            assert_eq!(role.secondary, *secondary, "{role_id} secondary band");
+        }
+    }
+
+    #[test]
+    fn channel_midfielder_supports_amc_and_mc_without_other_changes() {
+        let role = all_roles()
+            .iter()
+            .find(|role| role.role_id == "channel_midfielder_ip")
+            .expect("channel_midfielder_ip");
+        assert_eq!(role.display_name, "Channel Midfielder");
+        assert_eq!(role.phase, RolePhase::InPossession);
+        assert_eq!(
+            role.primary,
+            &[
+                "Crossing",
+                "FirstTouch",
+                "Passing",
+                "Technique",
+                "Composure",
+                "OffTheBall",
+                "WorkRate",
+                "Acceleration",
+            ]
+        );
+        assert_eq!(
+            role.secondary,
+            &[
+                "Dribbling",
+                "LongShots",
+                "Anticipation",
+                "Decisions",
+                "Flair",
+                "Vision",
+                "Agility",
+                "Pace",
+                "Stamina",
+            ]
+        );
+        assert_eq!(role.position_tags, &["AMC", "MC"]);
     }
 }

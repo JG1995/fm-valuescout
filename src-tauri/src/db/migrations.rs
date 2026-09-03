@@ -979,6 +979,31 @@ DROP TABLE IF EXISTS player_potential_role_scores;
 DROP TABLE IF EXISTS staff_role_scores;
 ";
 
+pub const MIGRATION_V40_SQL: &str = "
+ALTER TABLE player_role_metrics ADD COLUMN goalkeeper_oop INTEGER CHECK (goalkeeper_oop IS NULL OR goalkeeper_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN centre_back_oop INTEGER CHECK (centre_back_oop IS NULL OR centre_back_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN wide_centre_back_oop INTEGER CHECK (wide_centre_back_oop IS NULL OR wide_centre_back_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN full_back_oop INTEGER CHECK (full_back_oop IS NULL OR full_back_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN wing_back_oop INTEGER CHECK (wing_back_oop IS NULL OR wing_back_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN defensive_midfielder_oop INTEGER CHECK (defensive_midfielder_oop IS NULL OR defensive_midfielder_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN central_midfielder_oop INTEGER CHECK (central_midfielder_oop IS NULL OR central_midfielder_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN wide_midfielder_oop INTEGER CHECK (wide_midfielder_oop IS NULL OR wide_midfielder_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN attacking_midfielder_oop INTEGER CHECK (attacking_midfielder_oop IS NULL OR attacking_midfielder_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN winger_oop INTEGER CHECK (winger_oop IS NULL OR winger_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN centre_forward_oop INTEGER CHECK (centre_forward_oop IS NULL OR centre_forward_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN potential_goalkeeper_oop INTEGER CHECK (potential_goalkeeper_oop IS NULL OR potential_goalkeeper_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN potential_centre_back_oop INTEGER CHECK (potential_centre_back_oop IS NULL OR potential_centre_back_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN potential_wide_centre_back_oop INTEGER CHECK (potential_wide_centre_back_oop IS NULL OR potential_wide_centre_back_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN potential_full_back_oop INTEGER CHECK (potential_full_back_oop IS NULL OR potential_full_back_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN potential_wing_back_oop INTEGER CHECK (potential_wing_back_oop IS NULL OR potential_wing_back_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN potential_defensive_midfielder_oop INTEGER CHECK (potential_defensive_midfielder_oop IS NULL OR potential_defensive_midfielder_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN potential_central_midfielder_oop INTEGER CHECK (potential_central_midfielder_oop IS NULL OR potential_central_midfielder_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN potential_wide_midfielder_oop INTEGER CHECK (potential_wide_midfielder_oop IS NULL OR potential_wide_midfielder_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN potential_attacking_midfielder_oop INTEGER CHECK (potential_attacking_midfielder_oop IS NULL OR potential_attacking_midfielder_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN potential_winger_oop INTEGER CHECK (potential_winger_oop IS NULL OR potential_winger_oop BETWEEN 0 AND 100);
+ALTER TABLE player_role_metrics ADD COLUMN potential_centre_forward_oop INTEGER CHECK (potential_centre_forward_oop IS NULL OR potential_centre_forward_oop BETWEEN 0 AND 100);
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -1175,6 +1200,11 @@ pub fn all() -> &'static [Migration] {
             version: 39,
             description: "drop_normalized_score_tables",
             sql: DROP_NORMALIZED_SCORE_TABLES_V39_SQL,
+        },
+        Migration {
+            version: 40,
+            description: "expand_compact_role_metrics_for_generic_oop",
+            sql: MIGRATION_V40_SQL,
         },
     ]
 }
@@ -1501,8 +1531,8 @@ mod tests {
 
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
-                .expect("read v39 version"),
-            39
+                .expect("read v40 version"),
+            40
         );
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
@@ -1542,7 +1572,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         assert_player_sort_index_inventory(&conn);
 
         let demo_value_exists: bool = conn
@@ -1660,7 +1690,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         assert_player_sort_index_inventory(&conn);
         assert_eq!(
             conn.query_row(
@@ -1741,7 +1771,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         let player_columns = table_columns(&conn, "players");
         assert!(player_columns.contains(&"potential_attributes_json".to_string()));
         assert!(player_columns.contains(&"potential_projection_model_version".to_string()));
@@ -2273,7 +2303,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         let settings: Vec<(i64, String, String)> = conn
             .prepare(
                 "SELECT save_id, team, display_name
@@ -2500,7 +2530,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         type MoneyballRow = (
             Option<String>,
             Option<i64>,
@@ -2686,7 +2716,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated user version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         let existing: i64 = conn
             .query_row("SELECT reveal_hidden_information FROM saves", [], |row| {
                 row.get(0)
@@ -2789,7 +2819,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         let demo_value_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -2869,7 +2899,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         // v39 drops normalized tables
         for table in ["player_role_scores", "player_potential_role_scores"] {
             let exists: bool = conn
@@ -3428,7 +3458,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         let (save_name, is_current, primary_club): (String, i32, String) = conn
             .query_row(
                 "SELECT saves.name, snapshots.is_current, managed_club_settings.club_name
@@ -3499,7 +3529,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         let rows: Vec<LegacyMoneyballRow> = conn
             .prepare(
                 "SELECT save_id, player_uid, asking_price_kind, asking_price_lower_eur,
@@ -3686,7 +3716,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         let primary_club: String = conn
             .query_row(
                 "SELECT club_name FROM managed_club_settings WHERE save_id = ?1",
@@ -3734,7 +3764,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -3975,7 +4005,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -4080,7 +4110,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
 
         for table in [
             "player_role_scores",
@@ -4266,7 +4296,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
                 .expect("count retained saves"),
@@ -4332,7 +4362,7 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("check normalized absence");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         assert_eq!(staff_count, 1);
         assert!(!normalized_exists);
     }
@@ -4585,7 +4615,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
     }
 
     #[test]
@@ -4619,7 +4649,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 39);
+        assert_eq!(version, 40);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -4659,7 +4689,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 39, "legacy version {legacy_version}");
+            assert_eq!(version, 40, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -4672,7 +4702,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 39);
+        assert_eq!(migrations.len(), 40);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -4836,6 +4866,12 @@ mod tests {
         assert_eq!(migrations[38].version, 39);
         assert_eq!(migrations[38].description, "drop_normalized_score_tables");
         assert_eq!(migrations[38].sql, DROP_NORMALIZED_SCORE_TABLES_V39_SQL);
+        assert_eq!(migrations[39].version, 40);
+        assert_eq!(
+            migrations[39].description,
+            "expand_compact_role_metrics_for_generic_oop"
+        );
+        assert_eq!(migrations[39].sql, MIGRATION_V40_SQL);
     }
 
     #[test]
@@ -4868,8 +4904,8 @@ mod tests {
 
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
-                .expect("read v39 version"),
-            39
+                .expect("read v40 version"),
+            40
         );
         let targets = conn
             .prepare(
@@ -5149,9 +5185,131 @@ mod tests {
                 "potential_central_outlet_centre_forward_oop",
                 "potential_splitting_outlet_centre_forward_oop",
                 "potential_tracking_centre_forward_oop",
+                "goalkeeper_oop",
+                "centre_back_oop",
+                "wide_centre_back_oop",
+                "full_back_oop",
+                "wing_back_oop",
+                "defensive_midfielder_oop",
+                "central_midfielder_oop",
+                "wide_midfielder_oop",
+                "attacking_midfielder_oop",
+                "winger_oop",
+                "centre_forward_oop",
+                "potential_goalkeeper_oop",
+                "potential_centre_back_oop",
+                "potential_wide_centre_back_oop",
+                "potential_full_back_oop",
+                "potential_wing_back_oop",
+                "potential_defensive_midfielder_oop",
+                "potential_central_midfielder_oop",
+                "potential_wide_midfielder_oop",
+                "potential_attacking_midfielder_oop",
+                "potential_winger_oop",
+                "potential_centre_forward_oop",
             ]
         );
-        assert_eq!(table_columns(&conn, "player_role_metrics").len(), 140);
+        assert_eq!(table_columns(&conn, "player_role_metrics").len(), 162);
+    }
+
+    #[test]
+    fn migrates_v39_compact_rows_to_v40_without_backfilling_scores() {
+        const NEW_ROLE_IDS: [&str; 11] = [
+            "goalkeeper_oop",
+            "centre_back_oop",
+            "wide_centre_back_oop",
+            "full_back_oop",
+            "wing_back_oop",
+            "defensive_midfielder_oop",
+            "central_midfielder_oop",
+            "wide_midfielder_oop",
+            "attacking_midfielder_oop",
+            "winger_oop",
+            "centre_forward_oop",
+        ];
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("v40-generic-oop.db")).expect("open db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 39) {
+            conn.execute_batch(migration.sql)
+                .expect("apply legacy migration");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set legacy version");
+        }
+        conn.execute(
+            "INSERT INTO saves (name, is_active) VALUES ('Legacy save', 1)",
+            [],
+        )
+        .expect("insert save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![save_id, true, false, Option::<i64>::None],
+        )
+        .expect("insert legacy snapshot");
+        let snapshot_id = conn.last_insert_rowid();
+        insert_player(&conn, snapshot_id, 77);
+        conn.execute(
+            "INSERT INTO player_role_metrics (
+                snapshot_id, uid, score_model_version, projection_model_version,
+                goalkeeper_ip, potential_goalkeeper_ip
+             ) VALUES (?1, 77, 1, 2, 73, 81)",
+            [snapshot_id],
+        )
+        .expect("insert legacy compact row");
+
+        apply(&conn).expect("migrate v39 database");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read v40 version");
+        assert_eq!(version, 40);
+        assert_eq!(table_columns(&conn, "player_role_metrics").len(), 162);
+        let row_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM player_role_metrics", [], |row| {
+                row.get(0)
+            })
+            .expect("count compact rows");
+        assert_eq!(row_count, 1);
+        let (score_version, kept_current, kept_potential): (i64, Option<i64>, Option<i64>) = conn
+            .query_row(
+                "SELECT score_model_version, goalkeeper_ip, potential_goalkeeper_ip
+                 FROM player_role_metrics WHERE snapshot_id = ?1 AND uid = 77",
+                [snapshot_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read migrated legacy row");
+        assert_eq!(score_version, 1);
+        assert_eq!(kept_current, Some(73));
+        assert_eq!(kept_potential, Some(81));
+        for role_id in NEW_ROLE_IDS {
+            for column in [role_id.to_string(), format!("potential_{role_id}")] {
+                let value: Option<i64> = conn
+                    .query_row(
+                        &format!(
+                            "SELECT {column} FROM player_role_metrics
+                             WHERE snapshot_id = ?1 AND uid = 77"
+                        ),
+                        [snapshot_id],
+                        |row| row.get(0),
+                    )
+                    .expect("read new nullable column");
+                assert_eq!(value, None, "{column} must stay NULL without backfill");
+            }
+        }
+        let ddl: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master
+                 WHERE type = 'table' AND name = 'player_role_metrics'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read compact DDL");
+        assert!(
+            ddl.contains("goalkeeper_oop IS NULL OR goalkeeper_oop BETWEEN 0 AND 100"),
+            "new columns must carry the nullable 0-100 check"
+        );
     }
 
     #[test]
@@ -5319,6 +5477,80 @@ mod tests {
             })
             .expect("count cascaded staff metrics");
         assert_eq!(staff_rows, 0);
+    }
+
+    #[test]
+    fn v40_generic_oop_columns_reject_out_of_range_scores() {
+        const NEW_COLUMNS: [&str; 22] = [
+            "goalkeeper_oop",
+            "centre_back_oop",
+            "wide_centre_back_oop",
+            "full_back_oop",
+            "wing_back_oop",
+            "defensive_midfielder_oop",
+            "central_midfielder_oop",
+            "wide_midfielder_oop",
+            "attacking_midfielder_oop",
+            "winger_oop",
+            "centre_forward_oop",
+            "potential_goalkeeper_oop",
+            "potential_centre_back_oop",
+            "potential_wide_centre_back_oop",
+            "potential_full_back_oop",
+            "potential_wing_back_oop",
+            "potential_defensive_midfielder_oop",
+            "potential_central_midfielder_oop",
+            "potential_wide_midfielder_oop",
+            "potential_attacking_midfielder_oop",
+            "potential_winger_oop",
+            "potential_centre_forward_oop",
+        ];
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("v40-oop-checks.db"));
+
+        conn.execute_batch(
+            "INSERT INTO saves (id, name, is_active) VALUES (1, 'Save', 1);
+             INSERT INTO snapshots (
+                 id, save_id, is_current, schema_version, generated_at_utc, game_version,
+                 supported_game_version, bridge_version, protocol_version, game_date,
+                 game_date_source, scan_truncated, max_accepted, player_count
+             ) VALUES (
+                 1, 1, 1, 8, '2026-08-16T00:00:00Z', '26.3', '26.3', '0.4.0', 1,
+                 NULL, 'unavailable', 0, NULL, 0
+             );",
+        )
+        .expect("seed compact owners");
+        for (index, column) in NEW_COLUMNS.iter().enumerate() {
+            let uid = 100 + index as i64;
+            insert_player(&conn, 1, uid);
+            for invalid in [101, -1] {
+                let error = conn
+                    .execute(
+                        &format!(
+                            "INSERT INTO player_role_metrics (
+                                snapshot_id, uid, score_model_version,
+                                projection_model_version, {column}
+                             ) VALUES (1, {uid}, 2, 2, {invalid})"
+                        ),
+                        [],
+                    )
+                    .expect_err(&format!("{column} must reject {invalid}"));
+                assert!(
+                    error.to_string().contains("CHECK"),
+                    "{column} must reject {invalid} via its CHECK ({error})"
+                );
+            }
+            conn.execute(
+                &format!(
+                    "INSERT INTO player_role_metrics (
+                        snapshot_id, uid, score_model_version,
+                        projection_model_version, {column}
+                     ) VALUES (1, {uid}, 2, 2, NULL)"
+                ),
+                [],
+            )
+            .expect("NULL stays accepted");
+        }
     }
 
     #[test]

@@ -3684,6 +3684,39 @@ mod tests {
     }
 
     #[test]
+    fn filters_by_new_generic_oop_role_score() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-new-oop-role.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Shot Stopper", 150),
+                player_template(2, "Outfielder", 140),
+            ],
+        );
+        set_role_score(&conn, 1, "goalkeeper_oop", Some(85));
+        set_role_score(&conn, 2, "goalkeeper_oop", Some(40));
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "role.goalkeeper_oop",
+                "gt",
+                FilterValue::Integer(70),
+            )],
+            None,
+        )
+        .expect("new OOP role score filter");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "Shot Stopper");
+    }
+
+    #[test]
     fn potential_role_filter_reads_complete_rows_without_writes() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("potential-role-filter.db"));
@@ -3848,6 +3881,85 @@ mod tests {
             );
             assert_eq!(potential_state(&conn), before);
         }
+    }
+
+    #[test]
+    fn potential_role_filter_rejects_migrated_score_v1_rows_without_writes() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("potential-role-score-v1.db"));
+        ingest_players(
+            &mut conn,
+            vec![player_with_deep_fields(
+                1,
+                "Migrated scorer",
+                100,
+                DeepPlayerFields {
+                    nationalities: json!(["ENG"]),
+                    positions: json!({ "GK": 20 }),
+                    attributes: json!({ "Positioning": 10, "Concentration": 10 }),
+                    hidden: json!({}),
+                    personality: json!({}),
+                },
+            )],
+        );
+
+        // Normal version-2 materialization reads through the potential-only seam.
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "potential_role.line_holding_keeper_oop",
+                "gt",
+                FilterValue::Integer(0),
+            )],
+            None,
+        )
+        .expect("v2 potential read");
+        assert_eq!(page.total, 1);
+
+        // A migrated/seeded score-v1 row keeps projection v2 yet must fail.
+        let snapshot_id = current_snapshot_id(&conn);
+        conn.execute(
+            "UPDATE player_role_metrics SET score_model_version = ?2
+             WHERE snapshot_id = ?1 AND uid = 1",
+            rusqlite::params![
+                snapshot_id,
+                crate::features::player_metrics::compact::SCORE_MODEL_VERSION - 1
+            ],
+        )
+        .expect("seed migrated score v1 row");
+        let projection_version: i64 = conn
+            .query_row(
+                "SELECT projection_model_version FROM player_role_metrics
+                 WHERE snapshot_id = ?1 AND uid = 1",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("read seeded projection version");
+        assert_eq!(projection_version, PROJECTION_MODEL_VERSION);
+        let before = potential_state(&conn);
+        deny_potential_writes(&conn);
+
+        assert_eq!(
+            search_with_filters(
+                &conn,
+                0,
+                DEFAULT_PAGE_LIMIT,
+                SortField::DEFAULT,
+                SortDir::DEFAULT,
+                vec![filter_rule(
+                    "potential_role.line_holding_keeper_oop",
+                    "gt",
+                    FilterValue::Integer(0),
+                )],
+                None,
+            ),
+            Err("Current potential snapshot is incomplete".to_string())
+        );
+        assert_eq!(potential_state(&conn), before);
     }
 
     #[test]

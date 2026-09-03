@@ -1857,7 +1857,11 @@ mod tests {
         assert_ne!(recomputed_potential_state.2, previous_potential_state.2);
         let recomputed_compact_row =
             compact_row(&fixture.conn, fixture.snapshot_id).expect("compact row after boost");
-        assert_eq!(recomputed_compact_row.0, 1, "score model version");
+        assert_eq!(
+            recomputed_compact_row.0,
+            crate::features::player_metrics::compact::SCORE_MODEL_VERSION,
+            "score model version"
+        );
         assert_eq!(
             recomputed_compact_row.1,
             crate::features::player_metrics::potential_scores::PROJECTION_MODEL_VERSION
@@ -1937,7 +1941,10 @@ mod tests {
         assert_ne!(recomputed_potential_state.0, previous_potential_state.0);
         let (score_version, projection_version, current_scores, potential_scores) =
             compact_row(&fixture.conn, fixture.snapshot_id).expect("recomputed compact row");
-        assert_eq!(score_version, 1);
+        assert_eq!(
+            score_version,
+            crate::features::player_metrics::compact::SCORE_MODEL_VERSION
+        );
         assert_eq!(
             projection_version,
             crate::features::player_metrics::potential_scores::PROJECTION_MODEL_VERSION

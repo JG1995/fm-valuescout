@@ -1,10 +1,13 @@
 /**
  * Moneyball mapping contract (deterministic, see ledger Invariants):
- * 88 Moneyball defs (77 mapped via attribute_role_id, 11 Moneyball-only with attribute_role_id:null),
- * 103/111 General (role_id, base_position) combos mapped via (attribute_role_id, base_position(placement)),
- * 8 unavailable by design (NULL -> "—"): holding_wing_back_oop+DL, holding_wing_back_oop+DR,
- * pressing_wing_back_oop+DL, pressing_wing_back_oop+DR, box_to_box_midfielder_ip+MC,
- * box_to_box_playmaker_ip+MC, deep_lying_playmaker_ip+MC, second_striker_ip+ST.
+ * 88 Moneyball defs (all mapped via attribute_role_id, 0 unmapped),
+ * 119/129 General (role_id, base_position) combos mapped via (attribute_role_id, base_position(placement)),
+ * 10 uncovered (NULL -> "—"): holding_wing_back_oop+DL,
+ * holding_wing_back_oop+DR, pressing_wing_back_oop+DL, pressing_wing_back_oop+DR,
+ * box_to_box_midfielder_ip+MC, box_to_box_playmaker_ip+MC, deep_lying_playmaker_ip+MC,
+ * second_striker_ip+ST, wing_back_oop+DL, wing_back_oop+DR (generic wing_back_oop
+ * retains DL/DR/WBL/WBR while its presentation row remains WBL/WBR). The Channel
+ * Midfielder MC tag correction is already covered by existing Moneyball rows.
  */
 export const TACTIC_CURRENT_PREFIX = "tactic_current.";
 export const TACTIC_POTENTIAL_PREFIX = "tactic_potential.";
