@@ -69,12 +69,26 @@ export const Route = createFileRoute("/search")({
       parseSearchFilters(search.filters, view),
     );
     const filterRules = parseSearchFilters(filters, view);
-    const sort = isVisibleSortField(search.sort, filterRules, view)
+    const tableId =
+      view === "moneyball"
+        ? "moneyball-search"
+        : view === "shortlist"
+          ? "shortlist"
+          : "search";
+    const visibleColumnIds =
+      usePlayerTableStore.getState().layouts[tableId].columnIds;
+    const visibleSort = isVisibleSortField(
+      search.sort,
+      filterRules,
+      view,
+      visibleColumnIds,
+    )
       ? search.sort
-      : defaultSearchSort(view);
+      : null;
+    const sort = visibleSort ?? defaultSearchSort(view);
     const dir = isSearchSortDir(search.dir)
       ? search.dir
-      : isVisibleSortField(search.sort, filterRules, view)
+      : visibleSort !== null
         ? defaultDirForSortField(sort)
         : DEFAULT_SEARCH_SORT_DIR;
     return {
@@ -148,6 +162,10 @@ function SearchPageContent() {
   const [lastMoneyballImport, setLastMoneyballImport] =
     useState<CsvImportSummary | null>(null);
   const snapshotContext = snapshot ? `${snapshot.saveId}:${snapshot.id}` : null;
+  const resultContext =
+    snapshot && activeSave && snapshot.saveId === activeSave.id
+      ? { snapshot, activeSave }
+      : null;
   const tabRefs = useRef<Record<SearchView, HTMLButtonElement | null>>({
     general: null,
     moneyball: null,
@@ -186,17 +204,6 @@ function SearchPageContent() {
       }),
       replace: patch.replace ?? true,
     });
-
-  if (!snapshot) {
-    return (
-      <Panel title="Results" flush>
-        <EmptyState icon={DatabaseZap} title="No data loaded for this save">
-          No snapshot loaded for the active save. Use Load Data to scan Football
-          Manager and ingest players into the database.
-        </EmptyState>
-      </Panel>
-    );
-  }
 
   return (
     <>
@@ -334,9 +341,9 @@ function SearchPageContent() {
               Loading player results…
             </p>
           </Panel>
-        ) : (
+        ) : resultContext ? (
           <SearchResultsPanel
-            key={`${activeSave?.id}:${activeSave?.contextToken}:${snapshot.id}:${snapshot.saveId}:${view}:${comparisonPool}:${combine}:${JSON.stringify(filters)}`}
+            key={`${resultContext.activeSave.id}:${resultContext.activeSave.contextToken}:${resultContext.snapshot.id}:${resultContext.snapshot.saveId}:${view}:${comparisonPool}:${combine}:${JSON.stringify(filters)}`}
             sortBy={sort}
             sortDir={dir}
             filters={filters}
@@ -344,30 +351,43 @@ function SearchPageContent() {
             view={view}
             comparisonPool={comparisonPool}
             pageContext={{
-              activeSave: activeSave
-                ? { id: activeSave.id, contextToken: activeSave.contextToken }
-                : null,
-              currentSnapshot: { id: snapshot.id, saveId: snapshot.saveId },
+              activeSave: {
+                id: resultContext.activeSave.id,
+                contextToken: resultContext.activeSave.contextToken,
+              },
+              currentSnapshot: {
+                id: resultContext.snapshot.id,
+                saveId: resultContext.snapshot.saveId,
+              },
             }}
             onSortChange={(nextSort, nextDir) => {
               updateSearch({ sort: nextSort, dir: nextDir });
             }}
           />
+        ) : (
+          <Panel title="Results" flush>
+            <EmptyState icon={DatabaseZap} title="No data loaded for this save">
+              No snapshot loaded for the active save. Use Load Data to scan
+              Football Manager and ingest players into the database.
+            </EmptyState>
+          </Panel>
         )}
       </div>
-      <SquadCsvImportModal
-        activeSaveId={snapshot.saveId}
-        snapshotId={snapshot.id}
-        format="moneyball"
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        onYouthImported={() => undefined}
-        onMoneyballImported={(summary) => {
-          setLastMoneyballImport(summary);
-          void queryClient.invalidateQueries({ queryKey: searchKeys.all });
-          void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
-        }}
-      />
+      {resultContext ? (
+        <SquadCsvImportModal
+          activeSaveId={resultContext.snapshot.saveId}
+          snapshotId={resultContext.snapshot.id}
+          format="moneyball"
+          open={importOpen}
+          onClose={() => setImportOpen(false)}
+          onYouthImported={() => undefined}
+          onMoneyballImported={(summary) => {
+            setLastMoneyballImport(summary);
+            void queryClient.invalidateQueries({ queryKey: searchKeys.all });
+            void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
+          }}
+        />
+      ) : null}
     </>
   );
 }

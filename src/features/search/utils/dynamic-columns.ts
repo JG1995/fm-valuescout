@@ -1,3 +1,4 @@
+import { isValidTacticColumnId } from "@/utils/tactic-ids";
 import type { FilterRule } from "../types/filter-rule";
 import type { SearchSortField } from "../types/search-sort";
 import { BASIC_SEARCH_SORT_FIELDS } from "../types/search-sort";
@@ -39,9 +40,13 @@ export function isVisibleSortField(
   value: unknown,
   _filters: FilterRule[],
   view: SearchView = "general",
+  visibleColumnIds: readonly string[] = [],
 ): value is SearchSortField {
   if (typeof value !== "string") {
     return false;
+  }
+  if (isValidTacticColumnId(value)) {
+    return visibleColumnIds.includes(value);
   }
   if ((BASIC_SEARCH_SORT_FIELDS as readonly string[]).includes(value)) {
     return (

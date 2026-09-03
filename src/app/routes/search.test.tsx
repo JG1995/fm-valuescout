@@ -19,10 +19,16 @@ import { searchKeys } from "@/features/search/api/search-keys";
 import type { PlayerSummary } from "@/features/search/types/player-summary";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import {
+  getPlannerTacticIpcMockCalls,
+  getPlannerTacticOptionsIpcMockCalls,
+  getPlannerTacticSaveIpcMockCalls,
+} from "@/testing/planner-ipc-mock";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
   getLastSearchPlayersArgs,
@@ -109,8 +115,11 @@ describe("search route", () => {
     useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
   });
 
-  it("lists Player Search in the nav rail and opens the no-snapshot empty state", async () => {
+  it("keeps Search controls mounted without a snapshot and does not touch tactic state", async () => {
     const user = userEvent.setup();
+    const layoutBeforeRender = structuredClone(
+      usePlayerTableStore.getState().layouts,
+    );
     renderWithProviders();
 
     const searchLink = await screen.findByRole("link", {
@@ -122,9 +131,81 @@ describe("search route", () => {
       await screen.findByRole("heading", { level: 1, name: "Player Search" }),
     ).toBeInTheDocument();
     expect(searchLink).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("tab", { name: "General" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Edit filters" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("No data loaded for this save"),
     ).toBeInTheDocument();
+    expect(getPlannerTacticIpcMockCalls()).toEqual([]);
+    expect(getPlannerTacticOptionsIpcMockCalls()).toEqual([]);
+    expect(getPlannerTacticSaveIpcMockCalls()).toEqual([]);
+    expect(usePlayerTableStore.getState().layouts).toEqual(layoutBeforeRender);
+  });
+
+  it("keeps Search controls mounted for a mismatched snapshot without tactic IPC", async () => {
+    const loaded = await resolveLoadDataIpcMock();
+    const layoutBeforeMismatch = structuredClone(
+      usePlayerTableStore.getState().layouts,
+    );
+    const { queryClient } = renderSearchRoute();
+    await screen.findByRole("table", { name: "Player search results" });
+
+    const mismatchedSnapshot: SnapshotSummary = {
+      ...loaded.effectiveSnapshot,
+      saveId: loaded.effectiveSnapshot.saveId + 1,
+    };
+    act(() => {
+      queryClient.setQueriesData<SnapshotSummary | null>(
+        { queryKey: snapshotKeys.current(), exact: true },
+        () => mismatchedSnapshot,
+      );
+    });
+
+    expect(screen.getByRole("tab", { name: "General" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Edit filters" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("No data loaded for this save"),
+    ).toBeInTheDocument();
+    expect(getPlannerTacticIpcMockCalls()).toEqual([]);
+    expect(getPlannerTacticOptionsIpcMockCalls()).toEqual([]);
+    expect(getPlannerTacticSaveIpcMockCalls()).toEqual([]);
+    expect(usePlayerTableStore.getState().layouts).toEqual(
+      layoutBeforeMismatch,
+    );
+  });
+
+  it("restores a persisted tactic sort only for the current view layout", async () => {
+    const tacticSort = "tactic_current.goalkeeper";
+    usePlayerTableStore
+      .getState()
+      .replaceLayout("search", ["name", tacticSort]);
+
+    const { router } = renderSearchRoute(`/search?sort=${tacticSort}&dir=asc`);
+
+    await screen.findByRole("tab", { name: "General" });
+    expect(router.state.location.search).toMatchObject({
+      sort: tacticSort,
+      dir: "asc",
+    });
+  });
+
+  it("falls back when a tactic sort exists only in another table layout", async () => {
+    const tacticSort = "tactic_potential.goalkeeper";
+    usePlayerTableStore
+      .getState()
+      .replaceLayout("moneyball-search", ["name", tacticSort]);
+
+    const { router } = renderSearchRoute(`/search?sort=${tacticSort}`);
+
+    await screen.findByRole("tab", { name: "General" });
+    expect(router.state.location.search).toMatchObject({
+      sort: "ca",
+      dir: "desc",
+    });
   });
 
   it("opens the opt-in Moneyball workspace with its own query view and pool", async () => {
