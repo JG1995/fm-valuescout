@@ -1287,7 +1287,7 @@ describe("player profile route", () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
-        roleScores: Array.from({ length: 68 }, (_, index) => ({
+        roleScores: Array.from({ length: 79 }, (_, index) => ({
           roleId: `catalog-role-${index}`,
           displayName: `Catalog Role ${index + 1}`,
           phase: "in_possession",
@@ -1303,14 +1303,17 @@ describe("player profile route", () => {
       await screen.findByLabelText("Catalog Role 1 (Current): 60, Average"),
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Catalog Role 68 (Potential): 70, Good"),
+      screen.getByLabelText("Catalog Role 79 (Current): 60, Average"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Catalog Role 79 (Potential): 70, Good"),
     ).toBeInTheDocument();
     expect(
       screen.getAllByLabelText(/Catalog Role \d+ \(Current\):/),
-    ).toHaveLength(68);
+    ).toHaveLength(79);
     expect(
       screen.getAllByLabelText(/Catalog Role \d+ \(Potential\):/),
-    ).toHaveLength(68);
+    ).toHaveLength(79);
   });
 
   it("sorts roles from the Current and Potential column headers", async () => {

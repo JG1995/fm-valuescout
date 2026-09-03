@@ -201,6 +201,17 @@ const ROLE_FAMILY_BY_ID = {
   central_outlet_centre_forward_oop: "Forwards",
   splitting_outlet_centre_forward_oop: "Forwards",
   tracking_centre_forward_oop: "Forwards",
+  goalkeeper_oop: "Goalkeepers",
+  centre_back_oop: "Central defense",
+  wide_centre_back_oop: "Central defense",
+  full_back_oop: "Full-back and wing-back",
+  wing_back_oop: "Full-back and wing-back",
+  defensive_midfielder_oop: "Defensive midfield",
+  central_midfielder_oop: "Central midfield",
+  wide_midfielder_oop: "Wide midfield and wings",
+  attacking_midfielder_oop: "Attacking midfield",
+  winger_oop: "Wide midfield and wings",
+  centre_forward_oop: "Forwards",
 } as const satisfies Record<RoleId, PlayerMetricRoleFamily>;
 
 const ATTRIBUTE_METRICS: PlayerMetric[] = VISIBLE_ATTRIBUTE_KEYS.map((key) =>
