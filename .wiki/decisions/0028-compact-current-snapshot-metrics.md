@@ -79,38 +79,10 @@ These options can improve specific workloads, but they add storage, concurrency,
 - Add the user-facing `app-v2.db` and safe manual-cleanup instruction in the implementation commit that changes the filename. Reconcile `.wiki/ARCHITECTURE.md` and `.wiki/DESIGN.md` only after implementation makes the new architecture and interaction behavior true.
 - Keep historical Player Profile timeline work in the backlog until separately planned.
 
-## Amendment — Missing FM26 attribute role definitions (planned — decision amended in planning, implementation deferred)
-
-This amendment expands the compact contract for the 79-role catalog (11 generic OOP roles + `channel_midfielder_ip` → `AMC`+`MC`) without editing the immutable v38 DDL. It is a durable decision record; `.wiki/ARCHITECTURE.md` reconciliation remains deferred until implementation makes the schema true.
-
-### Per-snapshot provenance column
-
-Add migration v40 `expand_compact_role_metrics_for_generic_oop_and_snapshot_provenance`:
-
-- 22 nullable `player_role_metrics` columns (`goalkeeper_oop` / `potential_goalkeeper_oop` … `centre_forward_oop` / `potential_centre_forward_oop`), each `INTEGER CHECK (col IS NULL OR col BETWEEN 0 AND 100)`.
-- `snapshots.compact_score_model_version INTEGER NOT NULL DEFAULT 1 CHECK (compact_score_model_version IN (1,2))`. SQLite semantics: the `ALTER ... NOT NULL DEFAULT 1` causes every pre-v40 snapshot row to store/read `1`, any omitted `compact_score_model_version` on insert to store `1`, and any explicit `NULL` to be rejected — no `UPDATE snapshots SET ... WHERE compact_score_model_version IS NULL` backfill is required or performed. `DEFAULT 1` is only the migration/legacy-safe fallback; every successfully published fresh ingest explicitly binds `2` in `insert_prepared_snapshot` and tests prove every published fresh ingest (including older non-current ingests) is `2`. `DEFAULT 1` does not prove a fresh ingest used the right value.
-
-### Immutable legacy partition
-
-`src-tauri/src/features/player_metrics/compact.rs` owns `pub const LEGACY_V1_ROLE_IDS: &[&str]` — exactly the 68 pre-feature ids enumerated in the active ledger Invariants (no derivation by position). Runtime asserts prove `len == 68`, uniqueness, `require_safe_snake_case`, every entry in `all_roles()`, disjointness from the 11 new ids, and `LEGACY_V1 ∪ NEW_11 == all_roles()` with `all_roles().len() == 79`. Writers align columns/values by iterating `all_roles()` order and using set membership against `LEGACY_V1_ROLE_IDS`: provenance 1 computes exactly those 68 and writes `None` for the 11 new columns; provenance 2 computes all 79. Drift (unknown id, duplicate, wrong case, size ≠68, or a writer emitting 68 values without aligned `None`s) fails `runtime_player_catalog_maps_once_to_the_checked_in_compact_schema` / `persist_rows_borrowed` length checks.
-
-### Lifecycle
-
-- **Migration:** preserves raw rows, keeps 68 scores at `score_model_version = 1` with 11 new columns `NULL` (uncomputed), and every pre-v40 snapshot stores `1` via `DEFAULT` (`NOT NULL`).
-- **Ingest (`publish_prepared_snapshot_canonical`):** `insert_prepared_snapshot` explicitly binds `compact_score_model_version = 2` for the ingested snapshot regardless of effective-current selection; compact rows remain current-only (cleared from non-current, persisted only for the new effective current at `2`). If the ingested snapshot is older-than-current, it retains provenance `2` with raw rows only; later promotion materializes its 79 derived rows at `2`.
-- **Promotion (`reconcile_current_selection`):** clears non-current derived rows; if the new current has provenance `1` rebuild at `1` (compute exactly the 68 `LEGACY_V1_ROLE_IDS`, leave 11 `NULL` uncomputed); if provenance `2` rebuild at `2` (full 79). Never upgrades legacy to `2` without Load Data.
-- **Boost (`replace_player`):** captures the target snapshot's `compact_score_model_version` and recomputes only the availability-appropriate columns (version 1 → 68 via `LEGACY_V1_ROLE_IDS`, version 2 → 79), never materializing new-role scores on legacy snapshots.
-- **Read:** `assert_snapshot_complete` / `assert_read_models_complete` accept the snapshot's provenance; legacy requires `IS NULL` on the 11 new columns (set membership), version-2 requires all 79 computed (null only for missing source attributes). Any `potential_role.*` read requires both `score_model_version` and `projection_model_version`.
-
-### Rationale — strict Require Load Data
-
-Before a successful fresh Load Data for a given snapshot, the 11 new OOP columns remain uncomputed `NULL` while 68 existing roles stay readable. No new-role score materializes via migration, promotion, or boost before that snapshot's ingest; uncomputed nulls are never mislabeled as computed missing-attribute nulls. This preserves the one-PR atomic boundary while keeping trunk-safe drift guards (`LEGACY_V1_ROLE_IDS` explicit, writer length checks).
-
 ## Related work
 
 - Feature plan: [Compact Snapshot Metrics and Load Progress](../features/completed/compact-snapshot-metrics.md)
-- Active plan: [Complete missing FM26 attribute role definitions](../features/active/missing-fm26-attribute-role-definitions.md) (amends this ADR; implementation deferred — architecture not yet true)
 - Amends: [ADR-0025 — Selective index-driven player table sorts](./0025-selective-index-driven-player-sorts.md)
 - Supersedes: [ADR-0026 — Eager current-snapshot potential scoring](./0026-eager-current-potential-scoring.md)
-- Supersedes in part: [ADR-0027 — Scoped potential read validation](./0027-scoped-potential-read-validation.md) — see that ADR's reconciliation note for what remains valid (scoped identifier/width principles)
+- Supersedes in part: [ADR-0027 — Scoped potential read validation](./0027-scoped-potential-read-validation.md)
 - Retains: [ADR-0015 — SQLite with Rust-owned migrations and queries](./0015-sqlite-rust-owned.md)
