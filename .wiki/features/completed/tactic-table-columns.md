@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -230,7 +230,7 @@ The thinnest end-to-end path that proves the approach:
 
 **Required checks:** GitHub required checks
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -911,7 +911,7 @@ The thinnest end-to-end path that proves the approach:
 
 ## Active work
 
-Implementation is complete. Run feature-level validation, independent feature review, and documentation reconciliation before publication.
+Implementation, full validation (Vitest 767 passed, check-app passed, check-rust 748 passed/2 ignored, Playwright 54 passed, targeted browser workflow 1 passed then removed), independent feature review (Clear, no findings), and documentation reconciliation complete. Publication remains.
 
 ## Discoveries and replanning
 
@@ -936,7 +936,7 @@ Implementation is complete. Run feature-level validation, independent feature re
 | PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 6 — Captured-context Planner tactic IPC seam | 190dc4ca4885c40ed3f2724d0fc52dad789610f4 | Replaced implicit active-save tactic IPC with exact captured `{ saveId, contextToken }` reads and saves, context-keyed frontend state, transaction-owned Rust validation, a minimal matched-snapshot boundary, and full-context editor remounting. | Focused frontend: 144 passed; `./scripts/dev check-app`; `./scripts/dev check-rust`: 748 passed, 2 ignored; `./scripts/dev smoke`: 54 passed; primary LSP diagnostics; fixed-string checks; `git diff --check` — passed. | Pass | Clear | 1 | Corrected Planner unit and browser test doubles to share their environments' live save lifecycle for created, deleted, and same-ID replacement contexts. |
 | PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 7 — My Club tactic load and refresh errors | 3b8c9b9d5aecc538333f7fe4cefec1669563861a | Added actionable initial tactic/options load errors, Retry-both behavior, cached-refresh feedback, and editor-only read-only controls while leaving unrelated Planner actions usable. | Focused frontend: 141 passed; `./scripts/dev check-app`; `./scripts/dev check`: Rust 748 passed, 2 ignored; primary LSP diagnostics; fixed-string checks; `git diff --check` — passed. | Pass | Clear | 0 | Used the permitted `PlannerTacticInspector` fieldset seam to disable tactic form controls without freezing other Planner operations. |
 | PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 8 — Search tactic sort gating and no-snapshot composition | 57e4598885b2493ae500748d273958d9852940be | Added layout-aware tactic sort validation and preserved Search tabs and filter controls for null or mismatched snapshots while keeping tactic IPC unmounted. | Focused frontend: 73 passed; `./scripts/dev check-app`; `./scripts/dev check`: Rust 748 passed, 2 ignored; primary LSP diagnostics; fixed-string checks; `git diff --check` — passed. | Pass | Clear | 0 | None |
-| PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 9 — Tactic lane toggles, interleaving, and table polish | Pending record | Added accessible Current/Potential toggles, matched-context tactic loading, atomic group layout transitions, synthetic labels and score cells, header-X recompaction, width handling, sort fallback, and context-updated labels across all three Search views. | Focused frontend: 109 passed; `./scripts/dev check-app`; `./scripts/dev check-rust`: 748 passed, 2 ignored; `./scripts/dev check`; primary LSP diagnostics; fixed-string checks; `git diff --check` — passed. | Pass | Clear | 0 | None |
+| PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 9 — Tactic lane toggles, interleaving, and table polish | 1cdb67330f828711fa42847ad266ba482fb8647f | Added accessible Current/Potential toggles, matched-context tactic loading, atomic group layout transitions, synthetic labels and score cells, header-X recompaction, width handling, sort fallback, and context-updated labels across all three Search views. | Focused frontend: 109 passed; `./scripts/dev check-app`; `./scripts/dev check-rust`: 748 passed, 2 ignored; `./scripts/dev check` passed; full Vitest 767 passed (72 files); `./scripts/dev smoke` 54 passed; targeted temporary browser workflow 1 passed (Current/Potential toggles in General/Moneyball/Shortlist, 11 then 22 headers, tactic sort, header-X deactivation/recompaction/sort fallback; temp test removed); primary LSP diagnostics; fixed-string checks; `git diff --check` — passed. | Pass | Clear | 0 | None |
 
 ## Final validation
 
@@ -953,4 +953,6 @@ Implementation is complete. Run feature-level validation, independent feature re
 
 ## Documentation impact
 
-Complete during reconciliation. No `ARCHITECTURE.md` or `DESIGN.md` structural change is needed until implementation lands. At close-out, `ARCHITECTURE.md` notes tactic synthetic columns, the neutral `src/utils/tactic-ids.ts` ownership, save-scoped tactic loading, deterministic `(attribute_role_id, base_position)` Moneyball mapping, and the Rust scorer; `DESIGN.md` notes the two toggle buttons and header format if one is added. The Moneyball mapping contract remains documented inline in `resolver.rs` and `query.rs` plus ledger Invariants. No ADR is required for this display plumbing; rationale stays in the ledger.
+Complete. `ARCHITECTURE.md` records synthetic tactic columns, neutral `src/utils/tactic-ids.ts` ownership, per-table persisted atomic layouts, immutable save-context tactic loading, Rust-owned blended/fit scoring with deterministic Moneyball `(attribute_role_id, base_position)` mapping and null-last sorting; no Squad/filter exposure. `DESIGN.md` records two accessible Add Tactic controls beside Edit Filters, active/disabled behavior, deterministic interleaving, header label `"{IP Position} ({IP Role}) / {OOP Position} ({OOP Role})"`, ScoreBadge/"—" presentation, 112 width (72–360 clamp) and header-X recompaction. `.wiki/TODO.md` moved to completed pointing to `./features/completed/tactic-table-columns.md`. No release claimed.
+
+Feature review investigated duplicated Moneyball catalog-count prose in `src/utils/tactic-ids.ts`. No code change in this task; the comment is non-authoritative explanatory text duplicating the authoritative catalog at `src-tauri/src/features/moneyball/builtin_role_definitions_v1.json` and ledger Invariants, and remains accurate as a doc reference only.
