@@ -116,7 +116,7 @@ Add `goalkeeper_oop` and the `channel_midfielder_ip` tag correction with migrati
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/113
 
 **Merge ref:** Not merged
 
