@@ -33,16 +33,22 @@ function provider(client: QueryClient, children: ReactNode) {
 
 function BoundaryState({ state }: { state: TacticContextBoundaryState }) {
   return (
-    <output>
-      {JSON.stringify({
-        hasTactic: state.tactic !== undefined,
-        hasOptions: state.options !== undefined,
-        isPending: state.isPending,
-        initialError: state.initialError?.message ?? null,
-        isRefetchError: state.isRefetchError,
-        refreshError: state.refreshError?.message ?? null,
-      })}
-    </output>
+    <>
+      <output>
+        {JSON.stringify({
+          hasTactic: state.tactic !== undefined,
+          hasOptions: state.options !== undefined,
+          isPending: state.isPending,
+          initialError: state.initialError?.message ?? null,
+          isRefetchError: state.isRefetchError,
+          refreshError: state.refreshError?.message ?? null,
+          readOnly: state.readOnly,
+        })}
+      </output>
+      <button type="button" onClick={state.retryBoth}>
+        Retry both
+      </button>
+    </>
   );
 }
 
@@ -76,6 +82,22 @@ describe("TacticContextBoundary", () => {
       expect(screen.getByRole("status")).toHaveTextContent(
         '"isRefetchError":false',
       );
+      expect(screen.getByRole("status")).toHaveTextContent('"readOnly":false');
+      const callsBeforeRetry = vi.mocked(invokeCommand).mock.calls.length;
+
+      await userEvent.click(screen.getByRole("button", { name: "Retry both" }));
+
+      await waitFor(() =>
+        expect(vi.mocked(invokeCommand).mock.calls).toHaveLength(
+          callsBeforeRetry + 2,
+        ),
+      );
+      expect(
+        vi
+          .mocked(invokeCommand)
+          .mock.calls.slice(-2)
+          .map(([command]) => command),
+      ).toEqual(["get_planner_tactic", "get_planner_tactic_options"]);
     },
   );
 
@@ -108,6 +130,7 @@ describe("TacticContextBoundary", () => {
     expect(screen.getByRole("status")).toHaveTextContent('"hasTactic":true');
     expect(screen.getByRole("status")).toHaveTextContent('"hasOptions":true');
     expect(screen.getByRole("status")).toHaveTextContent('"initialError":null');
+    expect(screen.getByRole("status")).toHaveTextContent('"readOnly":true');
   });
 });
 

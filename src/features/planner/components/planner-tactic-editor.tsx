@@ -24,6 +24,7 @@ type PlannerTacticEditorProps = {
   context: PlannerContext;
   activeSaveRefreshError: boolean;
   isActiveSaveUnavailable: boolean;
+  readOnly?: boolean;
   tactic: PlannerTactic;
   options: TacticOptions;
 };
@@ -64,6 +65,7 @@ export function PlannerTacticEditor({
   context,
   activeSaveRefreshError,
   isActiveSaveUnavailable,
+  readOnly = false,
   tactic,
   options,
 }: PlannerTacticEditorProps) {
@@ -319,7 +321,9 @@ export function PlannerTacticEditor({
           </div>
 
           <Button
-            disabled={Boolean(validationError) || isActiveSaveUnavailable}
+            disabled={
+              Boolean(validationError) || isActiveSaveUnavailable || readOnly
+            }
             loading={save.isPending}
             loadingLabel="Saving…"
             onClick={() => save.mutate({ context, tactic: draft })}
@@ -352,6 +356,7 @@ export function PlannerTacticEditor({
             lanes={draft.lanes}
             options={options}
             phases={visiblePhases(view)}
+            disabled={readOnly}
             onWeightChange={updateSelectedLaneWeight}
             onRankChange={updateSelectedLaneRank}
             onPreferredFootChange={updateSelectedLaneFoot}

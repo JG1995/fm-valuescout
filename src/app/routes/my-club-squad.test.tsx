@@ -3918,7 +3918,68 @@ describe("My Club route", () => {
     await waitFor(() => expect(saveButton).toBeEnabled());
   });
 
-  it("keeps tactic saves blocked after an active-save refresh fails", async () => {
+  it.each([
+    ["get_planner_tactic", plannerKeys.tactic(CLUB_DNA_CONTEXT)],
+    ["get_planner_tactic_options", plannerKeys.tacticOptions(CLUB_DNA_CONTEXT)],
+  ])(
+    "shows one tactic load retry and refetches both queries when %s fails",
+    async (_failedCommand, failedQueryKey) => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      setPlannerAvailableClubs(["Barcelona"]);
+      const queryClient = new QueryClient({
+        defaultOptions: {
+          queries: {
+            retry: false,
+            retryOnMount: false,
+            refetchOnMount: false,
+            staleTime: 0,
+          },
+        },
+      });
+      const failedQuery = queryClient.fetchQuery({
+        queryKey: failedQueryKey,
+        queryFn: () => Promise.reject(new Error("Initial tactic load failed")),
+      });
+      await expect(failedQuery).rejects.toThrow("Initial tactic load failed");
+      renderMyClubRoute({
+        initialEntry: "/my-club?view=tactic",
+        queryClient,
+      });
+
+      await screen.findByRole("tab", { name: "Tactic" });
+      const tacticPanel = document.getElementById(
+        "my-club-workspace-panel-tactic",
+      );
+      if (!tacticPanel) {
+        throw new Error("Expected the Tactic workspace panel");
+      }
+      expect(
+        await within(tacticPanel).findByText("Could not load tactic"),
+      ).toBeInTheDocument();
+      expect(
+        within(tacticPanel).getAllByRole("button", { name: "Retry" }),
+      ).toHaveLength(1);
+      const tacticCalls = getPlannerTacticIpcMockCalls().length;
+      const optionsCalls = getPlannerTacticOptionsIpcMockCalls().length;
+
+      await user.click(
+        within(tacticPanel).getByRole("button", { name: "Retry" }),
+      );
+
+      expect(
+        await within(tacticPanel).findByRole("region", {
+          name: "Tactic controls",
+        }),
+      ).toBeInTheDocument();
+      expect(getPlannerTacticIpcMockCalls()).toHaveLength(tacticCalls + 1);
+      expect(getPlannerTacticOptionsIpcMockCalls()).toHaveLength(
+        optionsCalls + 1,
+      );
+    },
+  );
+
+  it("keeps cached tactic data read-only until a successful retry", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
@@ -3936,18 +3997,31 @@ describe("My Club route", () => {
     );
 
     const refreshRequest = queryClient.fetchQuery({
-      queryKey: plannerKeys.tactic({ saveId: 1, contextToken: "save-token-1" }),
+      queryKey: plannerKeys.tactic(CLUB_DNA_CONTEXT),
       queryFn: () => Promise.reject(new Error("Tactic refresh failed")),
     });
     await expect(refreshRequest).rejects.toThrow("Tactic refresh failed");
 
     const saveButton = screen.getByRole("button", { name: "Save tactic" });
-    await waitFor(() => expect(saveButton).toBeDisabled());
+    await waitFor(() => expect(weight).toBeDisabled());
+    expect(saveButton).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "IP GK role" })).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Could not refresh the active save",
+      "Could not refresh tactic",
     );
-    await user.click(saveButton);
-    expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
+
+    await openMyClubWorkspace(user, "planner");
+    expect(screen.getByRole("button", { name: "Manage teams" })).toBeEnabled();
+    await openMyClubWorkspace(user, "tactic");
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(weight).toBeEnabled());
+    expect(saveButton).toBeEnabled();
+    expect(weight).toHaveValue("55");
+    expect(
+      screen.queryByText("Could not refresh tactic"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders shared lanes, ordered strings, keyboard tabs, and truthful assignment states", async () => {

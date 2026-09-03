@@ -313,6 +313,31 @@ function ManagedClubError({
   );
 }
 
+function TacticQueryError({
+  error,
+  title,
+  onRetry,
+}: {
+  error: Error;
+  title: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div
+      className="m-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-error/40 bg-error-container p-3 text-on-error-container"
+      role="alert"
+    >
+      <div>
+        <p className="text-label-lg">{title}</p>
+        <p className="text-body-sm">{error.message}</p>
+      </div>
+      <Button variant="secondary" onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
+  );
+}
+
 function MyClubPageContent() {
   const queryClient = useQueryClient();
   const addColumns = usePlayerTableStore((state) => state.addColumns);
@@ -825,7 +850,14 @@ function MyClubPageContent() {
       >
         {plannerContext && isMatchedSnapshot ? (
           <TacticContextBoundary context={plannerContext}>
-            {({ tactic, options, isPending, initialError }) => {
+            {({
+              tactic,
+              options,
+              isPending,
+              initialError,
+              refreshError,
+              retryBoth,
+            }) => {
               if (isPending) {
                 return (
                   <p className="p-4 text-body-md text-on-surface-variant">
@@ -835,22 +867,33 @@ function MyClubPageContent() {
               }
               if (initialError) {
                 return (
-                  <p className="p-4 text-body-md text-error" role="alert">
-                    {initialError.message}
-                  </p>
+                  <TacticQueryError
+                    error={initialError}
+                    title="Could not load tactic"
+                    onRetry={retryBoth}
+                  />
                 );
               }
               if (!tactic || !options) {
                 return null;
               }
               return (
-                <PlannerDepthMatrix
-                  key={`${plannerContext.saveId}:${plannerContext.contextToken}`}
-                  activeSaveId={plannerContext.saveId}
-                  depth={depth}
-                  tactic={tactic}
-                  options={options}
-                />
+                <>
+                  {refreshError ? (
+                    <TacticQueryError
+                      error={refreshError}
+                      title="Could not refresh tactic"
+                      onRetry={retryBoth}
+                    />
+                  ) : null}
+                  <PlannerDepthMatrix
+                    key={`${plannerContext.saveId}:${plannerContext.contextToken}`}
+                    activeSaveId={plannerContext.saveId}
+                    depth={depth}
+                    tactic={tactic}
+                    options={options}
+                  />
+                </>
               );
             }}
           </TacticContextBoundary>
@@ -866,7 +909,15 @@ function MyClubPageContent() {
       >
         {plannerContext && isMatchedSnapshot ? (
           <TacticContextBoundary context={plannerContext}>
-            {({ tactic, options, isPending, initialError, isRefetchError }) => {
+            {({
+              tactic,
+              options,
+              isPending,
+              initialError,
+              refreshError,
+              readOnly,
+              retryBoth,
+            }) => {
               if (isPending) {
                 return (
                   <p className="p-4 text-body-md text-on-surface-variant">
@@ -876,27 +927,35 @@ function MyClubPageContent() {
               }
               if (initialError) {
                 return (
-                  <p className="p-4 text-body-md text-error" role="alert">
-                    {initialError.message}
-                  </p>
+                  <TacticQueryError
+                    error={initialError}
+                    title="Could not load tactic"
+                    onRetry={retryBoth}
+                  />
                 );
               }
               if (!tactic || !options) {
                 return null;
               }
               return (
-                <PlannerTacticEditor
-                  key={`${plannerContext.saveId}:${plannerContext.contextToken}`}
-                  context={plannerContext}
-                  activeSaveRefreshError={
-                    activeSaveRefreshError || isRefetchError
-                  }
-                  isActiveSaveUnavailable={
-                    isActiveSaveUnavailable || isRefetchError
-                  }
-                  tactic={tactic}
-                  options={options}
-                />
+                <>
+                  {refreshError ? (
+                    <TacticQueryError
+                      error={refreshError}
+                      title="Could not refresh tactic"
+                      onRetry={retryBoth}
+                    />
+                  ) : null}
+                  <PlannerTacticEditor
+                    key={`${plannerContext.saveId}:${plannerContext.contextToken}`}
+                    context={plannerContext}
+                    activeSaveRefreshError={activeSaveRefreshError}
+                    isActiveSaveUnavailable={isActiveSaveUnavailable}
+                    readOnly={readOnly}
+                    tactic={tactic}
+                    options={options}
+                  />
+                </>
               );
             }}
           </TacticContextBoundary>

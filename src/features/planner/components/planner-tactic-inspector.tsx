@@ -21,6 +21,7 @@ type PlannerTacticInspectorProps = {
   lanes: TacticLane[];
   options: TacticOptions;
   phases: TacticPhase[];
+  disabled: boolean;
   onWeightChange: (ipWeight: number) => void;
   onRankChange: (importanceRank: number | null) => void;
   onPreferredFootChange: (preferredFoot: TacticLane["preferredFoot"]) => void;
@@ -117,6 +118,7 @@ export function PlannerTacticInspector({
   lanes,
   options,
   phases,
+  disabled,
   onWeightChange,
   onRankChange,
   onPreferredFootChange,
@@ -142,7 +144,10 @@ export function PlannerTacticInspector({
         </p>
       </div>
 
-      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))]">
+      <fieldset
+        disabled={disabled}
+        className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))]"
+      >
         <div className="space-y-1">
           <label
             className="block text-label-md text-on-surface-variant"
@@ -231,7 +236,7 @@ export function PlannerTacticInspector({
             onRoleChange={(roleId) => onRoleChange(phase, roleId)}
           />
         ))}
-      </div>
+      </fieldset>
     </section>
   );
 }

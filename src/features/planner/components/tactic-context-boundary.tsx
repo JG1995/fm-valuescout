@@ -11,6 +11,8 @@ export type TacticContextBoundaryState = {
   initialError: Error | null;
   isRefetchError: boolean;
   refreshError: Error | null;
+  readOnly: boolean;
+  retryBoth: () => void;
 };
 
 type TacticContextBoundaryProps = {
@@ -41,9 +43,10 @@ export function TacticContextBoundary({
         : null;
 
   const isRefetchError =
-    (hasData && tacticQuery.isError) || (hasData && optionsQuery.isError);
+    tacticQuery.isRefetchError || optionsQuery.isRefetchError;
+  const readOnly = hasData && isRefetchError;
 
-  const refreshError = isRefetchError
+  const refreshError = readOnly
     ? ((tacticQuery.error as Error | null) ??
       (optionsQuery.error as Error | null) ??
       null)
@@ -56,8 +59,13 @@ export function TacticContextBoundary({
         options: optionsQuery.data,
         isPending: Boolean(isPending),
         initialError,
-        isRefetchError: Boolean(isRefetchError),
+        isRefetchError,
         refreshError,
+        readOnly,
+        retryBoth: () => {
+          void tacticQuery.refetch();
+          void optionsQuery.refetch();
+        },
       })}
     </>
   );
