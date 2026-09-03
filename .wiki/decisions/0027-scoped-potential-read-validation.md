@@ -2,7 +2,10 @@
 
 ## Status
 
-Superseded where [ADR-0028](./0028-compact-current-snapshot-metrics.md) retires normalized potential-role rows and their per-role completeness counts. Its principle remains: ordinary reads validate only the compact model/version and values they consume, while lifecycle writers own complete current-snapshot postconditions.
+Partially superseded by [ADR-0028](./0028-compact-current-snapshot-metrics.md) and its missing-FM26 amendment.
+
+- **Superseded:** the normalized `player_potential_role_scores` row scope and per-role `(snapshot_id, role_id, projection_model_version, score)` completeness counts retired by the compact `player_role_metrics` wide row (68→79 columns) and by the per-snapshot `snapshots.compact_score_model_version INTEGER NOT NULL DEFAULT 1 CHECK IN (1,2)` availability marker introduced for the 79-role catalog. That marker revisits the rejected "persisted completeness marker" alternative from this ADR — but only as a snapshot-level availability version (`1` = legacy 68, `2` = full 79), not as a general completeness blob — and its SQLite `NOT NULL DEFAULT 1` semantics (existing rows store `1`, omitted inserts store `1`, explicit `NULL` rejected) plus explicit `bind 2` on every fresh ingest are now the authoritative availability signal.
+- **Retained (still valid):** the scoped-read principle — ordinary reads validate only the compact model/version and values they consume, while lifecycle writers own complete current-snapshot postconditions — plus the width/index reasoning for scoped identifier validation. These principles are reused for the new provenance-aware `assert_read_models_complete` / `assert_snapshot_complete` (including `IS NULL` checks on the 11 new columns for provenance `1` via `LEGACY_V1_ROLE_IDS` set membership and dual `score_model_version`+`projection_model_version` enforcement for any `potential_role.*` read).
 
 ## Context
 
@@ -65,3 +68,4 @@ A snapshot marker could make reads constant-time. It would require a migration a
 - [ADR-0015 — SQLite with Rust-owned migrations and queries](./0015-sqlite-rust-owned.md)
 - [ADR-0026 — Eager current-snapshot potential scoring](./0026-eager-current-potential-scoring.md)
 - [Ingest-Time Potential Scoring](../features/completed/ingest-potential-scores.md)
+- Active amendment: [Complete missing FM26 attribute role definitions](../features/active/missing-fm26-attribute-role-definitions.md) and [ADR-0028 — Compact current-snapshot metrics](./0028-compact-current-snapshot-metrics.md) (amended — scoped principles retained, snapshot-marker rejection partially superseded by `compact_score_model_version`)
