@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-03
+
+### Added
+
+- Player Search General, Moneyball, and Shortlist tables now provide optional Current and Potential tactic-lane columns with stable sorting and saved table layouts.
+- General scoring now includes the 11 missing FM26 generic out-of-possession roles across Search, player profiles, and Planner. All 88 Moneyball roles now map to General scores.
+
+### Changed
+
+- Channel Midfielder now supports both attacking and central midfield positions.
+- Existing score-model version 1 data remains intact but requires a normal **Load Data** run before the expanded version 2 role scores become available.
+
 ## [0.15.0] - 2026-09-02
 
 ### Added
