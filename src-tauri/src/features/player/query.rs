@@ -1011,7 +1011,7 @@ mod tests {
             .expect("unmapped presentation role");
         assert_eq!(unmapped.score, None);
         assert_eq!(unmapped.potential_score, None);
-        assert_eq!(all_roles().len(), 68);
+        assert_eq!(all_roles().len(), 79);
     }
 
     #[test]

@@ -2794,8 +2794,8 @@ mod tests {
         let guard = db.0.lock().expect("hold db mutex");
         let _ = prepare_dump_json(GOLDEN_FIXTURE).expect("prepare while db mutex is held");
         drop(guard);
-        assert_eq!(prepared.players[0].compact_current.len(), 68);
-        assert_eq!(prepared.players[0].compact_potential.len(), 68);
+        assert_eq!(prepared.players[0].compact_current.len(), 79);
+        assert_eq!(prepared.players[0].compact_potential.len(), 79);
         assert_eq!(prepared.staff[0].compact_scores.len(), 21);
     }
 

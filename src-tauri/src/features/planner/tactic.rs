@@ -793,5 +793,19 @@ mod tests {
             .expect("goalkeeper role option");
         assert_eq!(goalkeeper.phase, "in_possession");
         assert_eq!(goalkeeper.position_tags, vec!["GK"]);
+        let generic_keeper = options
+            .roles
+            .iter()
+            .find(|role| role.role_id == "goalkeeper_oop")
+            .expect("generic OOP goalkeeper role option");
+        assert_eq!(generic_keeper.phase, "out_of_possession");
+        assert_eq!(generic_keeper.position_tags, vec!["GK"]);
+        let channel_midfielder = options
+            .roles
+            .iter()
+            .find(|role| role.role_id == "channel_midfielder_ip")
+            .expect("channel midfielder role option");
+        assert_eq!(channel_midfielder.phase, "in_possession");
+        assert_eq!(channel_midfielder.position_tags, vec!["AMC", "MC"]);
     }
 }

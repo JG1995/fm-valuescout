@@ -3,7 +3,8 @@
 //! one-row-per-player persistence for the current-snapshot lifecycle.
 //!
 //! Migration 38 checks in one immutable inventory of 68 current and 68
-//! potential named columns: the current column name is the verified role id,
+//! potential named columns, extended by migration 40 with 11 generic OOP
+//! roles to 79 current and 79 potential columns: the current column name is the verified role id,
 //! and the matching potential column prefixes it with `potential_`. Writers
 //! and readers derive SQL identifiers only through this module — closed-catalog
 //! lookup followed by safe snake_case validation. WebView input never becomes
@@ -24,7 +25,8 @@ use crate::features::scoring::score::score_role;
 pub const PROJECTION_MODEL_VERSION: i64 = potential_scores::PROJECTION_MODEL_VERSION;
 
 /// Model version of the checked-in current per-role score formula (`score_role`).
-pub const SCORE_MODEL_VERSION: i64 = 1;
+/// Bumped to 2 when migration 40 added the 11 generic OOP compact columns.
+pub const SCORE_MODEL_VERSION: i64 = 2;
 
 /// Returns the compact current column for a closed-catalog player role.
 pub fn player_current_column(role_id: &str) -> Result<&'static str, String> {
@@ -41,9 +43,12 @@ pub fn player_potential_column(role_id: &str) -> Result<String, String> {
 pub const PLAYER_METRICS_ALIAS: &str = "player_metrics";
 
 /// Builds the one-to-one compact player metrics join for the role kinds a
-/// read consumes. Model-version predicates make only rows with the exact
-/// checked-in versions readable, so a wrong-version row never contributes a
-/// value; a missing row stays NULL through the LEFT JOIN.
+/// read consumes. The score model gates every current or potential role read,
+/// because both select score columns from the same compact row; potential
+/// reads additionally require the projection model. Model-version predicates
+/// make only rows with the exact checked-in versions readable, so a
+/// wrong-version row never contributes a value; a missing row stays NULL
+/// through the LEFT JOIN.
 pub fn player_metrics_join(
     player_alias: &str,
     require_score_model: bool,
@@ -53,7 +58,7 @@ pub fn player_metrics_join(
         format!("{PLAYER_METRICS_ALIAS}.snapshot_id = {player_alias}.snapshot_id"),
         format!("{PLAYER_METRICS_ALIAS}.uid = {player_alias}.uid"),
     ];
-    if require_score_model {
+    if require_score_model || require_projection_model {
         predicates.push(format!(
             "{PLAYER_METRICS_ALIAS}.score_model_version = {SCORE_MODEL_VERSION}"
         ));
@@ -71,7 +76,8 @@ pub fn player_metrics_join(
 
 /// Scoped read validation: every current player must have one compact row
 /// carrying each model version a read consumes — the checked-in score model
-/// for current role requests and the checked-in projection model for
+/// for every current or potential role request (both select score columns
+/// from the same compact row) and the checked-in projection model for
 /// potential role requests. Missing or wrong-version state fails before
 /// values are read; a read never writes or repairs.
 pub(crate) fn assert_read_models_complete(
@@ -84,7 +90,7 @@ pub(crate) fn assert_read_models_complete(
         return Ok(());
     }
     let mut model_predicates = Vec::new();
-    if require_score_model {
+    if require_score_model || require_projection_model {
         model_predicates.push(format!(
             "{PLAYER_METRICS_ALIAS}.score_model_version = {SCORE_MODEL_VERSION}"
         ));
@@ -120,8 +126,8 @@ pub(crate) fn assert_read_models_complete(
     }
 }
 
-/// One catalog-ordered compact row to persist for a player: the 68 current
-/// scores in `all_roles()` order followed by the 68 potential scores in the
+/// One catalog-ordered compact row to persist for a player: the 79 current
+/// scores in `all_roles()` order followed by the 79 potential scores in the
 /// same order. Values are SQL null when a required source attribute is missing.
 pub(crate) struct CompactPlayerRow {
     pub(crate) uid: i64,
@@ -133,7 +139,7 @@ pub(crate) struct CompactPlayerRow {
 /// database read/write or `rusqlite` ownership. Callers build the returned
 /// values outside the `Db(Mutex<Connection>)` lock; `persist_rows` writes
 /// them in the final transaction. Memory is proportional to one player's
-/// 68+68 scores.
+/// 79+79 scores.
 #[allow(clippy::type_complexity)]
 pub(crate) fn prepare_player_derived(
     uid: i64,
@@ -183,7 +189,7 @@ pub(crate) fn prepare_player_derived(
 }
 
 /// Borrowed persistence implementation: inserts or replaces one compact row per player
-/// without cloning the 136-value score vectors. Accepts any iterator over borrowed
+/// without cloning the 158-value score vectors. Accepts any iterator over borrowed
 /// slices directly from `PreparedPlayer`.
 pub(crate) fn persist_rows_borrowed<'a, I>(
     tx: &Transaction<'_>,
@@ -422,7 +428,7 @@ mod tests {
     #[test]
     fn runtime_player_catalog_maps_once_to_the_checked_in_compact_schema() {
         let roles = all_roles();
-        assert_eq!(roles.len(), 68);
+        assert_eq!(roles.len(), 79);
         let current = roles
             .iter()
             .map(|role| player_current_column(role.role_id))
@@ -435,12 +441,12 @@ mod tests {
             .expect("map potential columns");
         assert_eq!(
             current.iter().collect::<HashSet<_>>().len(),
-            68,
+            79,
             "current columns must be unique per role"
         );
         assert_eq!(
             potential.iter().collect::<HashSet<_>>().len(),
-            68,
+            79,
             "potential columns must be unique per role"
         );
 
@@ -455,9 +461,11 @@ mod tests {
         .map(str::to_string)
         .chain(current.into_iter().map(str::to_string))
         .chain(potential)
-        .collect::<Vec<_>>();
-        assert_eq!(schema.len(), 140);
-        assert_eq!(schema, expected);
+        .collect::<HashSet<_>>();
+        assert_eq!(schema.len(), 162);
+        // Additive migrations append columns, so physical order follows
+        // migration history; the contract pins the exact column set.
+        assert_eq!(schema.into_iter().collect::<HashSet<_>>(), expected);
 
         // The version columns reject zero; writers persist exactly these
         // checked-in model versions into them.
@@ -471,16 +479,16 @@ mod tests {
         assert!(current_only.contains(" LEFT JOIN player_role_metrics player_metrics ON "));
         assert!(current_only.contains("player_metrics.snapshot_id = players.snapshot_id"));
         assert!(current_only.contains("player_metrics.uid = players.uid"));
-        assert!(current_only.contains("player_metrics.score_model_version = 1"));
+        assert!(current_only.contains("player_metrics.score_model_version = 2"));
         assert!(!current_only.contains("projection_model_version"));
 
         let potential_only = player_metrics_join("players", false, true);
         assert!(potential_only.contains("player_metrics.snapshot_id = players.snapshot_id"));
+        assert!(potential_only.contains("player_metrics.score_model_version = 2"));
         assert!(potential_only.contains("player_metrics.projection_model_version = 2"));
-        assert!(!potential_only.contains("score_model_version"));
 
         let both = player_metrics_join("players", true, true);
-        assert!(both.contains("player_metrics.score_model_version = 1"));
+        assert!(both.contains("player_metrics.score_model_version = 2"));
         assert!(both.contains("player_metrics.projection_model_version = 2"));
         assert!(both.contains(" LEFT JOIN player_role_metrics "));
     }

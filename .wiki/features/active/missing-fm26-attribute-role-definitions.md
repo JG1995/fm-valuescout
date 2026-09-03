@@ -260,7 +260,7 @@ Add `goalkeeper_oop` and the `channel_midfielder_ip` tag correction with migrati
 
 #### Commit 3 — Expand Rust catalog and compact metrics with global version
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(scoring): add FM26 OOP roles with version bump`
 
@@ -323,7 +323,7 @@ Add `goalkeeper_oop` and the `channel_midfielder_ip` tag correction with migrati
 
 #### Commit 4 — Map Moneyball presentation roles to the new attribute roles and pin tactic coverage
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(moneyball): map generic OOP presentation roles`
 
@@ -442,19 +442,19 @@ Add `goalkeeper_oop` and the `channel_midfielder_ip` tag correction with migrati
 
 **PR:** PR 1 — Complete missing FM26 attribute role definitions
 
-**Commit:** Expand Rust catalog and compact metrics with global version
+**Commit:** Map Moneyball presentation roles to the new attribute roles and pin tactic coverage
 
 ### RED or removal proof
 
-Add catalog tests that fail on the 68-role baseline and schema tests that fail before migration v40 exists.
+Update Moneyball catalog and Player Profile tests to expect all 88 presentation definitions mapped and 119/129 tactic coverage; confirm they fail on the interim catalog.
 
 ### Expected outcome
 
-The Rust catalog contains 79 roles, migration v40 adds the 22 new nullable compact columns, and `SCORE_MODEL_VERSION` is 2. Existing generic ingest and version-gated reads support the expanded catalog.
+The 11 former Moneyball placeholders map to the new generic OOP attribute roles, Profile returns materialized version-2 scores, and tactic coverage is pinned to 119/129 with exactly ten intentional gaps.
 
 ### Explicit exclusions
 
-Moneyball JSON mapping, frontend mirrors, boost or promotion changes, snapshot provenance, compatibility partitions, backfills, and unrelated refactors.
+Frontend attribute catalog mirrors, compact schema changes, metric weights, catalog version changes, and unrelated refactors.
 
 ## Discoveries and replanning
 
@@ -466,7 +466,8 @@ Moneyball JSON mapping, frontend mirrors, boost or promotion changes, snapshot p
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Complete missing FM26 attribute role definitions | Commit 1 — Record the approved feature plan | 90df8821a7fdef3035cf7dce5efe56eb6a7222cc | Recorded the accepted schema-2 ledger, TODO activation, and ADR-0027/0028 amendments. | `ledger_state.py`; `git diff --cached --check` — passed. | Not applicable | Clear | 0 | None |
-| PR 1 — Complete missing FM26 attribute role definitions | Commit 2 — Simplify missing role delivery plan | Pending record | Restored ADR-0027/0028 to `main` and reduced delivery to the 22-column migration, global score-model version bump, Moneyball mapping, and frontend mirrors. | `ledger_state.py`; `delivery_state.py`; `git diff --cached --check` — passed. | Not applicable | Clear after 1 correction round | 1 | Corrected two proof statements: v1 rows fail the existing version gate, and frontend mirror proof remains in Commit 5. |
+| PR 1 — Complete missing FM26 attribute role definitions | Commit 2 — docs(scoring): simplify missing role delivery plan | 88782a46425c7106599fd70ab66d5c01f7a6eb38 | Restored ADR-0027/0028 to `main` and reduced delivery to the 22-column migration, global score-model version bump, Moneyball mapping, and frontend mirrors. | `ledger_state.py`; `delivery_state.py`; `git diff --cached --check` — passed. | Not applicable | Clear | 1 | Corrected two proof statements: v1 rows fail the existing version gate, and frontend mirror proof remains in Commit 5. |
+| PR 1 — Complete missing FM26 attribute role definitions | Commit 3 — Expand Rust catalog and compact metrics with global version | Pending record | Added the exact 11 generic OOP definitions, Channel Midfielder MC eligibility, migration v40 with 22 nullable checked columns, 79-role compact persistence, and global score-model version 2 gates. | Focused Rust suites; `./scripts/dev check` — 756 passed, 2 ignored. | Pass | Clear | 1 | Interim coverage is 104/129 rather than the planned estimate 103/128 because the existing Moneyball catalog already maps `channel_midfielder_ip` at MC; final 119/129 remains unchanged. |
 
 ## Final validation
 

@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn tactic_compound_key_is_unique_and_covers_103_of_111_with_8_uncovered() {
+    fn tactic_compound_key_is_unique_and_covers_104_of_129_with_25_uncovered() {
         let catalog = builtin_catalog().expect("built-in catalog should load");
         // Unique (attribute_role_id, position_tag) among mapped definitions
         let mut seen = std::collections::HashSet::new();
@@ -437,9 +437,9 @@ mod tests {
                 }
             }
         }
-        assert_eq!(total, 111, "General (role, position) count");
-        assert_eq!(mapped, 103, "mapped combos");
-        assert_eq!(uncovered.len(), 8, "uncovered count");
+        assert_eq!(total, 129, "General (role, position) count");
+        assert_eq!(mapped, 104, "mapped combos");
+        assert_eq!(uncovered.len(), 25, "uncovered count");
         let expected: std::collections::HashSet<(&str, &str)> = [
             ("holding_wing_back_oop", "DL"),
             ("holding_wing_back_oop", "DR"),
@@ -449,6 +449,25 @@ mod tests {
             ("box_to_box_playmaker_ip", "MC"),
             ("deep_lying_playmaker_ip", "MC"),
             ("second_striker_ip", "ST"),
+            // Interim Commit 3: 11 generic OOP roles added before the
+            // Moneyball mapping fills their presentation rows (Commit 4).
+            ("goalkeeper_oop", "GK"),
+            ("centre_back_oop", "DC"),
+            ("wide_centre_back_oop", "DC"),
+            ("full_back_oop", "DL"),
+            ("full_back_oop", "DR"),
+            ("wing_back_oop", "DL"),
+            ("wing_back_oop", "DR"),
+            ("wing_back_oop", "WBL"),
+            ("wing_back_oop", "WBR"),
+            ("defensive_midfielder_oop", "DM"),
+            ("central_midfielder_oop", "MC"),
+            ("wide_midfielder_oop", "ML"),
+            ("wide_midfielder_oop", "MR"),
+            ("attacking_midfielder_oop", "AMC"),
+            ("winger_oop", "AML"),
+            ("winger_oop", "AMR"),
+            ("centre_forward_oop", "ST"),
         ]
         .into_iter()
         .collect();

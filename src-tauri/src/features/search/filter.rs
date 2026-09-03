@@ -1363,6 +1363,45 @@ mod tests {
     }
 
     #[test]
+    fn compiles_new_generic_oop_role_filters_via_the_compact_metrics_join() {
+        let ast = parse_filter_ast(
+            vec![rule("role.goalkeeper_oop", "gt", FilterValue::Integer(70))],
+            None,
+        )
+        .expect("parse ast");
+
+        let compiled = compile_filters(&ast, 2).expect("compile new OOP role score");
+        assert_eq!(
+            compiled.sql,
+            "((player_metrics.goalkeeper_oop > ?2 AND player_metrics.goalkeeper_oop IS NOT NULL))"
+        );
+        assert_eq!(
+            current_role_ids_from_ast(&ast).expect("extract roles"),
+            ["goalkeeper_oop"]
+        );
+
+        let ast = parse_filter_ast(
+            vec![rule(
+                "potential_role.goalkeeper_oop",
+                "gt",
+                FilterValue::Integer(70),
+            )],
+            None,
+        )
+        .expect("parse ast");
+
+        let compiled = compile_filters(&ast, 2).expect("compile new OOP potential role");
+        assert_eq!(
+            compiled.sql,
+            "((player_metrics.potential_goalkeeper_oop > ?2 AND player_metrics.potential_goalkeeper_oop IS NOT NULL))"
+        );
+        assert_eq!(
+            potential_role_ids_from_ast(&ast).expect("extract roles"),
+            ["goalkeeper_oop"]
+        );
+    }
+
+    #[test]
     fn rejects_unknown_potential_role_id() {
         let ast = parse_filter_ast(
             vec![rule(
