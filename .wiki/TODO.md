@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- **Complete missing FM26 attribute role definitions** — [active ledger](./features/active/missing-fm26-attribute-role-definitions.md) — add the 11 missing generic OOP attribute roles with JAY-31 bands, correct `channel_midfielder_ip` to `AMC`+`MC`, and map the 11 generic OOP Moneyball presentation definitions to the expanded catalog (Linear JAY-31).
+None.
 
 ## Next
 

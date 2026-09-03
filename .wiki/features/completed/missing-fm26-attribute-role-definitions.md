@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -132,7 +132,7 @@ Add `goalkeeper_oop` and the `channel_midfielder_ip` tag correction with migrati
 
 **Required checks:** check
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -442,7 +442,7 @@ Add `goalkeeper_oop` and the `channel_midfielder_ip` tag correction with migrati
 
 **PR:** PR 1 — Complete missing FM26 attribute role definitions
 
-**Commit:** None — implementation complete
+**Commit:** None — documentation close-out complete
 
 ### RED or removal proof
 
@@ -450,7 +450,7 @@ All recorded implementation packets completed their RED → GREEN proof.
 
 ### Expected outcome
 
-Publish and validate PR 1, then reconcile current-state documentation and archive the completed ledger.
+Feature close-out complete. The whole-feature review is clear with no blocking findings.
 
 ### Explicit exclusions
 
@@ -469,7 +469,7 @@ New implementation scope, release preparation, unrelated refactors, and unrecord
 | PR 1 — Complete missing FM26 attribute role definitions | Commit 2 — docs(scoring): simplify missing role delivery plan | 88782a46425c7106599fd70ab66d5c01f7a6eb38 | Restored ADR-0027/0028 to `main` and reduced delivery to the 22-column migration, global score-model version bump, Moneyball mapping, and frontend mirrors. | `ledger_state.py`; `delivery_state.py`; `git diff --cached --check` — passed. | Not applicable | Clear | 1 | Corrected two proof statements: v1 rows fail the existing version gate, and frontend mirror proof remains in Commit 5. |
 | PR 1 — Complete missing FM26 attribute role definitions | Commit 3 — Expand Rust catalog and compact metrics with global version | 526367b240e871b60bbb39cbd88d263e084266b0 | Added the exact 11 generic OOP definitions, Channel Midfielder MC eligibility, migration v40 with 22 nullable checked columns, 79-role compact persistence, and global score-model version 2 gates. | Focused Rust suites; `./scripts/dev check` — 756 passed, 2 ignored. | Pass | Clear | 1 | Interim coverage is 104/129 rather than the planned estimate 103/128 because the existing Moneyball catalog already maps `channel_midfielder_ip` at MC; final 119/129 remains unchanged. |
 | PR 1 — Complete missing FM26 attribute role definitions | Commit 4 — Map Moneyball presentation roles to the new attribute roles and pin tactic coverage | 5f1f4f6b359e9313b09736642dc57453f0a734d5 | Mapped all 11 former Moneyball placeholders to the new generic OOP attribute roles and pinned exact 88/88 mapping plus 119/129 tactic coverage. | Focused Moneyball and Player Profile tests; `./scripts/dev check` — 756 passed, 2 ignored. | Pass | Clear | 0 | Accepted one cosmetic stale test-name nitpick; assertions and supported behavior are exact. |
-| PR 1 — Complete missing FM26 attribute role definitions | Commit 5 — Mirror expanded attribute catalog in frontend (display only) | Pending record | Expanded the frontend General role catalog to 79 ordered entries and made the role-family mirror total for all 11 new generic OOP IDs. | Focused frontend suite — 50 passed; Profile route suite — 54 passed; `./scripts/dev check` — 756 Rust passed, 2 ignored. | Pass | Clear | 1 | Correction strengthened exact 79-role order, all 11 family mappings, and Profile rendering beyond the former 68-role boundary. |
+| PR 1 — Complete missing FM26 attribute role definitions | Commit 5 — Mirror expanded attribute catalog in frontend (display only) | d942ad813bb70583367436104169f6aacdf51035 | Expanded the frontend General role catalog to 79 ordered entries and made the role-family mirror total for all 11 new generic OOP IDs. | Focused frontend suite — 50 passed; Profile route suite — 54 passed; `./scripts/dev check` — 756 Rust passed, 2 ignored. | Pass | Clear | 1 | Correction strengthened exact 79-role order, all 11 family mappings, and Profile rendering beyond the former 68-role boundary. |
 
 ## Final validation
 
@@ -477,6 +477,13 @@ New implementation scope, release preparation, unrelated refactors, and unrecord
 - `git diff --check -- .wiki/features/active/missing-fm26-attribute-role-definitions.md` (active ledger only; ADRs remain exact `main` matches and are not edited)
 - `python3 /home/jonas/projects/PI_SETUP/scripts/delivery_state.py .wiki/features/active/missing-fm26-attribute-role-definitions.md /home/jonas/projects/fm-valuescout` to confirm the recorded Delivery fingerprint, then rerun `ledger_state.py`.
 - `./scripts/dev test && ./scripts/dev check` on the final implementation range (separate commands: `test` runs Vitest, `check` runs Biome/TypeScript/secretlint/Rust fmt/clippy/test; do not claim `check` runs Vitest). Commit 5 validation must first run focused `./scripts/dev test src/utils/player-metrics.test.ts src/features/search/utils/dynamic-columns.test.ts src/utils/moneyball-role-catalog.test.ts src/utils/moneyball-search-metrics.test.ts src/utils/tactic-ids.test.ts` then `./scripts/dev check`.
+
+## Close-out validation
+
+- `./scripts/dev test` — 781/781 passed after one non-reproducing unrelated focus flake.
+- `./scripts/dev check` — 756 Rust passed, 2 intentionally ignored.
+- Delivery and ledger classifiers report implementation_complete.
+- Fresh whole-feature review is clear with no blocking findings.
 
 ## Documentation impact
 
