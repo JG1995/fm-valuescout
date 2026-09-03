@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -212,7 +212,7 @@ The thinnest end-to-end path that proves the approach:
 
 ### PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist)
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -842,7 +842,7 @@ The thinnest end-to-end path that proves the approach:
 
 #### Commit 9 — Tactic lane toggles, interleaving, and table polish
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(search): add tactic lane toggles and interleaving`
 
@@ -911,21 +911,7 @@ The thinnest end-to-end path that proves the approach:
 
 ## Active work
 
-**PR:** PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist)
-
-**Commit:** Commit 9 — Tactic lane toggles, interleaving, and table polish
-
-### RED or removal proof
-
-Show that Search lacks tactic toggles and synthetic column rendering, and that existing layout mutations cannot append, interleave, remove, or re-compact complete Current/Potential tactic groups through one atomic action.
-
-### Expected outcome
-
-All three player-table views expose accessible Current and Potential tactic toggles beside Edit Filters. Ready actions atomically append, interleave, remove, and re-compact tactic columns; synthetic headers, cells, widths, sorting, header-X fallback, and save-context label updates behave as specified. Unavailable controls are disabled with one proactive route-owned message.
-
-### Explicit exclusions
-
-No additional backend, IPC, metric-picker, filter, Squad-layout, or persistence-schema changes. Active state remains derived from the existing table layout rather than separately persisted.
+Implementation is complete. Run feature-level validation, independent feature review, and documentation reconciliation before publication.
 
 ## Discoveries and replanning
 
@@ -949,7 +935,8 @@ No additional backend, IPC, metric-picker, filter, Squad-layout, or persistence-
 | PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 5 — Implement tactic lane scoring and query sort (Rust, Moneyball mapping) | d9d27377fcc47e42b1b4e34bb2fc7c57e890b8bd | Added Planner-equivalent tactic scoring for General/Shortlist SQL and Moneyball cohort scoring, deterministic compound mapping, and null-last stable sorting. | Query: 115 passed; fit: 12 passed; catalog: 6 passed; `./scripts/dev check-rust`: 745 passed, 2 ignored; frontend Vitest: 740 passed; `git diff --cached --check` — passed. | Pass | Clear | 1 | Consolidated Moneyball requested/sort work on exact field IDs after review found lane-only keying; expanded focused parity, completeness, Shortlist, and comparison-pool proofs. |
 | PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 6 — Captured-context Planner tactic IPC seam | 190dc4ca4885c40ed3f2724d0fc52dad789610f4 | Replaced implicit active-save tactic IPC with exact captured `{ saveId, contextToken }` reads and saves, context-keyed frontend state, transaction-owned Rust validation, a minimal matched-snapshot boundary, and full-context editor remounting. | Focused frontend: 144 passed; `./scripts/dev check-app`; `./scripts/dev check-rust`: 748 passed, 2 ignored; `./scripts/dev smoke`: 54 passed; primary LSP diagnostics; fixed-string checks; `git diff --check` — passed. | Pass | Clear | 1 | Corrected Planner unit and browser test doubles to share their environments' live save lifecycle for created, deleted, and same-ID replacement contexts. |
 | PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 7 — My Club tactic load and refresh errors | 3b8c9b9d5aecc538333f7fe4cefec1669563861a | Added actionable initial tactic/options load errors, Retry-both behavior, cached-refresh feedback, and editor-only read-only controls while leaving unrelated Planner actions usable. | Focused frontend: 141 passed; `./scripts/dev check-app`; `./scripts/dev check`: Rust 748 passed, 2 ignored; primary LSP diagnostics; fixed-string checks; `git diff --check` — passed. | Pass | Clear | 0 | Used the permitted `PlannerTacticInspector` fieldset seam to disable tactic form controls without freezing other Planner operations. |
-| PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 8 — Search tactic sort gating and no-snapshot composition | Pending record | Added layout-aware tactic sort validation and preserved Search tabs and filter controls for null or mismatched snapshots while keeping tactic IPC unmounted. | Focused frontend: 73 passed; `./scripts/dev check-app`; `./scripts/dev check`: Rust 748 passed, 2 ignored; primary LSP diagnostics; fixed-string checks; `git diff --check` — passed. | Pass | Clear | 0 | None |
+| PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 8 — Search tactic sort gating and no-snapshot composition | 57e4598885b2493ae500748d273958d9852940be | Added layout-aware tactic sort validation and preserved Search tabs and filter controls for null or mismatched snapshots while keeping tactic IPC unmounted. | Focused frontend: 73 passed; `./scripts/dev check-app`; `./scripts/dev check`: Rust 748 passed, 2 ignored; primary LSP diagnostics; fixed-string checks; `git diff --check` — passed. | Pass | Clear | 0 | None |
+| PR 1 — Tactic columns for player tables (Search, Moneyball, Shortlist) | Commit 9 — Tactic lane toggles, interleaving, and table polish | Pending record | Added accessible Current/Potential toggles, matched-context tactic loading, atomic group layout transitions, synthetic labels and score cells, header-X recompaction, width handling, sort fallback, and context-updated labels across all three Search views. | Focused frontend: 109 passed; `./scripts/dev check-app`; `./scripts/dev check-rust`: 748 passed, 2 ignored; `./scripts/dev check`; primary LSP diagnostics; fixed-string checks; `git diff --check` — passed. | Pass | Clear | 0 | None |
 
 ## Final validation
 

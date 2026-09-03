@@ -24,6 +24,15 @@ import {
   MONEYBALL_SEARCH_METRICS,
 } from "@/utils/moneyball-search-metrics";
 import { getPlayerMetric } from "@/utils/player-metrics";
+import {
+  isFullTacticGroup,
+  isTacticColumnId,
+  isValidTacticColumnId,
+  TACTIC_COLUMN_DEFAULT_WIDTH,
+  TACTIC_LANE_IDS,
+  tacticGroupForId,
+  tacticLaneIdForId,
+} from "@/utils/tactic-ids";
 import type { SearchPlayerPageContext } from "../api/search-keys";
 import {
   SEARCH_PAGE_SIZE,
@@ -41,6 +50,7 @@ import {
 import type { ComparisonPool, SearchView } from "../types/search-view";
 import { defaultSearchSort } from "../types/search-view";
 import { completeFilterRules } from "../utils/filter-registry";
+import { buildTacticColumnOrder } from "../utils/tactic-columns";
 
 const TEXT_CELL =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
@@ -58,6 +68,8 @@ type SearchResultsPanelProps = {
   view: SearchView;
   comparisonPool: ComparisonPool;
   pageContext: SearchPlayerPageContext;
+  orderedLaneIds: readonly string[];
+  laneLabels: ReadonlyMap<string, string>;
 };
 
 function nextSort(
@@ -147,7 +159,17 @@ function tableColumnForMetric(
   metricId: string,
   width: number | undefined,
   view: SearchView,
+  laneLabels: ReadonlyMap<string, string>,
 ): TableColumn | undefined {
+  if (isValidTacticColumnId(metricId)) {
+    const laneId = tacticLaneIdForId(metricId);
+    return {
+      id: metricId,
+      label: laneLabels.get(laneId ?? "") ?? laneId ?? metricId,
+      align: "right",
+      width: width ?? TACTIC_COLUMN_DEFAULT_WIDTH,
+    };
+  }
   if (view === "moneyball") {
     const metric = getMoneyballSearchMetric(metricId);
     if (metric) {
@@ -250,6 +272,20 @@ function SearchResultsVirtualTable({
       pageSize={SEARCH_PAGE_SIZE}
       renderCells={(player) =>
         columns.map((column) => {
+          if (isValidTacticColumnId(column.id)) {
+            const score = player?.dynamicValues?.[column.id];
+            return (
+              <td key={column.id} className={NUM_CELL}>
+                {typeof score === "number" ? (
+                  <ScoreBadge score={score} roleName={column.label} />
+                ) : (
+                  <span className="text-on-surface-variant">
+                    {player === undefined ? "…" : "—"}
+                  </span>
+                )}
+              </td>
+            );
+          }
           const moneyballMetric =
             view === "moneyball"
               ? getMoneyballSearchMetric(column.id)
@@ -410,6 +446,8 @@ export function SearchResultsPanel({
   view,
   comparisonPool,
   pageContext,
+  orderedLaneIds,
+  laneLabels,
 }: SearchResultsPanelProps) {
   const navigate = useNavigate();
   const tableId =
@@ -421,6 +459,7 @@ export function SearchResultsPanel({
   const layout = usePlayerTableStore((state) => state.layouts[tableId]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const removeStoredColumn = usePlayerTableStore((state) => state.removeColumn);
+  const replaceLayout = usePlayerTableStore((state) => state.replaceLayout);
   const moveColumn = usePlayerTableStore((state) => state.moveColumn);
   const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
   const columns = useMemo<TableColumn[]>(
@@ -430,10 +469,11 @@ export function SearchResultsPanel({
           metricId,
           layout.widths[metricId],
           view,
+          laneLabels,
         );
         return column ? [column] : [];
       }),
-    [layout, view],
+    [laneLabels, layout, view],
   );
   const requestedFields = useMemo(
     () =>
@@ -676,26 +716,55 @@ export function SearchResultsPanel({
     ? sortMetric.id === "age"
       ? "Age / DOB"
       : sortMetric.label
-    : committed.sortBy;
+    : (columns.find((column) => column.id === committed.sortBy)?.label ??
+      committed.sortBy);
   const removeColumn = (metricId: string) => {
-    const remainingColumns = columns.filter((column) => column.id !== metricId);
-    if (remainingColumns.length === columns.length) {
+    let nextColumnIds = layout.columnIds.filter((id) => id !== metricId);
+    if (nextColumnIds.length === layout.columnIds.length) {
       return;
     }
-    removeStoredColumn(tableId, metricId);
-    if (requested.sortBy !== metricId) {
+    if (isTacticColumnId(metricId)) {
+      const currentSurvives = isFullTacticGroup(nextColumnIds, "current");
+      const potentialSurvives = isFullTacticGroup(nextColumnIds, "potential");
+      const survivingGroup = currentSurvives
+        ? "current"
+        : potentialSurvives
+          ? "potential"
+          : null;
+      const persistedLaneIds = nextColumnIds.flatMap((id) => {
+        const laneId = tacticLaneIdForId(id);
+        return laneId && tacticGroupForId(id) === survivingGroup
+          ? [laneId]
+          : [];
+      });
+      const removalOrder =
+        orderedLaneIds.length === TACTIC_LANE_IDS.length
+          ? orderedLaneIds
+          : [...new Set(persistedLaneIds)];
+      nextColumnIds = [
+        ...nextColumnIds.filter((id) => !isTacticColumnId(id)),
+        ...buildTacticColumnOrder(
+          removalOrder,
+          currentSurvives,
+          potentialSurvives,
+        ),
+      ];
+      replaceLayout(tableId, nextColumnIds);
+    } else {
+      removeStoredColumn(tableId, metricId);
+    }
+    const persistedColumnIds =
+      usePlayerTableStore.getState().layouts[tableId].columnIds;
+    if (persistedColumnIds.includes(requested.sortBy)) {
       return;
     }
-    const nextColumn =
-      remainingColumns.find(
-        (column) =>
-          column.id ===
-          (view === "moneyball" ? "moneyball.average_rating" : "ca"),
-      ) ?? remainingColumns[0];
-    if (!nextColumn) {
+    const nextSort = persistedColumnIds.includes(defaultSearchSort(view))
+      ? defaultSearchSort(view)
+      : persistedColumnIds[0];
+    if (!nextSort) {
       return;
     }
-    onSortChange(nextColumn.id, defaultDirForSortField(nextColumn.id));
+    onSortChange(nextSort, defaultDirForSortField(nextSort));
   };
 
   return (

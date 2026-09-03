@@ -1,4 +1,5 @@
 import { SlidersHorizontal } from "lucide-react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
 import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
@@ -11,6 +12,7 @@ type SearchFilterStripProps = {
   combine: FilterCombineMode;
   onRulesChange: (rules: FilterRule[]) => void;
   onEdit: () => void;
+  actions?: ReactNode;
   view?: SearchView;
 };
 
@@ -19,6 +21,7 @@ export function SearchFilterStrip({
   combine,
   onRulesChange,
   onEdit,
+  actions,
   view = "general",
 }: SearchFilterStripProps) {
   const appliedRules = completeFilterRules(rules, view);
@@ -35,7 +38,8 @@ export function SearchFilterStrip({
     <Panel
       title="Filters"
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {actions}
           {appliedRules.length > 0 ? (
             <Button variant="ghost" onClick={clearAll}>
               Clear all

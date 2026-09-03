@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
 import type { SearchView } from "../types/search-view";
 import { SearchFilterEditorModal } from "./search-filter-editor-modal";
@@ -9,6 +9,7 @@ type SearchFilterBarProps = {
   combine: FilterCombineMode;
   onRulesChange: (rules: FilterRule[]) => void;
   onApply: (rules: FilterRule[], combine: FilterCombineMode) => void;
+  actions?: ReactNode;
   view?: SearchView;
 };
 
@@ -17,6 +18,7 @@ export function SearchFilterBar({
   combine,
   onRulesChange,
   onApply,
+  actions,
   view = "general",
 }: SearchFilterBarProps) {
   const [editorOpen, setEditorOpen] = useState(false);
@@ -34,6 +36,7 @@ export function SearchFilterBar({
         combine={combine}
         onRulesChange={onRulesChange}
         onEdit={openEditor}
+        actions={actions}
         view={view}
       />
       <SearchFilterEditorModal
