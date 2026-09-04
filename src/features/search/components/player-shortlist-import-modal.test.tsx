@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PlayerShortlistImportModal } from "./player-shortlist-import-modal";
@@ -123,6 +123,53 @@ describe("PlayerShortlistImportModal", () => {
     resolvePath("C:\\exports\\shortlist.csv");
 
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(invokeCommand).not.toHaveBeenCalled();
+    expect(onImported).not.toHaveBeenCalled();
+  });
+
+  it("abandons a pending picker when unmounted before it resolves", async () => {
+    let resolvePath: (path: string) => void = (_path) => {
+      throw new Error("Expected file picker resolver");
+    };
+    openFileDialog.mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolvePath = resolve;
+      }),
+    );
+    const onClose = vi.fn();
+    const onImported = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    const first = render(
+      <PlayerShortlistImportModal
+        activeSaveId={1}
+        snapshotId={1}
+        open
+        onClose={onClose}
+        onImported={onImported}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
+    await waitFor(() => expect(openFileDialog).toHaveBeenCalledTimes(1));
+
+    // A null result context unmounts the modal; a later valid context
+    // remounts it. Resolving the old picker must not import.
+    first.unmount();
+    render(
+      <PlayerShortlistImportModal
+        activeSaveId={1}
+        snapshotId={1}
+        open
+        onClose={onClose}
+        onImported={onImported}
+      />,
+    );
+
+    await act(async () => {
+      resolvePath("C:\\exports\\shortlist.csv");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
     expect(invokeCommand).not.toHaveBeenCalled();
     expect(onImported).not.toHaveBeenCalled();
   });

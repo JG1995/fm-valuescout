@@ -119,8 +119,8 @@ export const Route = createFileRoute("/staff")({
       DEFAULT_STAFF_SORT_FIELD,
     );
     const shortlistState = normalizedStaffSort(
-      search.shortlistSort,
-      search.shortlistDir,
+      search.shortlistSort ?? (legacyShortlist ? legacy.sort : undefined),
+      search.shortlistDir ?? (legacyShortlist ? legacy.dir : undefined),
       DEFAULT_STAFF_SORT_FIELD,
       isStaffShortlistSortField,
     );

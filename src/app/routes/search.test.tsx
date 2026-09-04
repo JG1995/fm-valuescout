@@ -2726,4 +2726,111 @@ describe("search route", () => {
     });
     expect(getLastPlayerShortlistImportIpcArgs()).toBeUndefined();
   });
+
+  it("refreshes the visible Moneyball page after a Moneyball CSV import under retained shortlist URL state", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    openCsvDialog.mockResolvedValue("C:\\exports\\moneyball.csv");
+    setCsvImportIpcMockResult({
+      format: "moneyball",
+      totalPlayers: 75,
+      storedPlayers: 74,
+      skippedPlayers: 1,
+    });
+    const { router } = renderSearchRoute(
+      "/search?view=moneyball&shortlistOnly=true",
+    );
+    await screen.findByText("High CA");
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "moneyball",
+        shortlistOnly: true,
+      });
+    });
+    const callsBeforeImport = getSearchPlayersCallCount();
+
+    await user.click(
+      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Upload Moneyball CSV",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Browse files" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Last import: 74 stored/)).toBeInTheDocument();
+    });
+    // The shortlist filter stays on in the URL, but the visible Moneyball
+    // page still refetches: Moneyball is membership-independent.
+    expect(router.state.location.search).toMatchObject({
+      view: "moneyball",
+      shortlistOnly: true,
+    });
+    await waitFor(() => {
+      expect(getSearchPlayersCallCount()).toBeGreaterThan(callsBeforeImport);
+    });
+    expect(getLastSearchPlayersArgs()).toMatchObject({
+      searchView: "moneyball",
+      shortlistOnly: true,
+    });
+    expect(getLastPlayerShortlistImportIpcArgs()).toBeUndefined();
+  });
+
+  it("clears shortlist import feedback and never arms a delayed dialog across a null snapshot", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    openCsvDialog.mockResolvedValue("C:\\exports\\shortlist.csv");
+    setPlayerShortlistImportIpcMockResult({
+      totalPlayers: 3,
+      storedPlayers: 2,
+      skippedPlayers: 1,
+    });
+    const { queryClient } = renderSearchRoute("/search");
+    await screen.findByText("High CA");
+
+    await user.click(screen.getByRole("button", { name: "Upload Shortlist" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Upload Player Shortlist CSV",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Choose CSV" }),
+    );
+    await screen.findByText("Last import: 3 players, 2 stored, 1 skipped.");
+
+    const snapshot = queryClient.getQueryData(
+      currentSnapshotQueryOptions.queryKey,
+    );
+    await act(async () => {
+      queryClient.setQueryData(currentSnapshotQueryOptions.queryKey, null);
+    });
+
+    // The null context discards the context-owned summary.
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Last import: 3 players, 2 stored, 1 skipped."),
+      ).toBeNull();
+    });
+    expect(
+      screen.getByRole("button", { name: "Upload Shortlist" }),
+    ).toBeDisabled();
+
+    // Clicking Upload with no valid snapshot must not arm a delayed dialog.
+    await user.click(screen.getByRole("button", { name: "Upload Shortlist" }));
+
+    await act(async () => {
+      queryClient.setQueryData(currentSnapshotQueryOptions.queryKey, snapshot);
+    });
+
+    await screen.findByText("High CA");
+    expect(
+      screen.queryByRole("dialog", { name: "Upload Player Shortlist CSV" }),
+    ).toBeNull();
+    expect(
+      screen.queryByText("Last import: 3 players, 2 stored, 1 skipped."),
+    ).toBeNull();
+  });
 });

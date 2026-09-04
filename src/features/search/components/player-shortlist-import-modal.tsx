@@ -41,6 +41,13 @@ export function PlayerShortlistImportModal({
     setPending(false);
     setError(undefined);
     onPendingChange?.(false);
+    return () => {
+      // A null result context unmounts the modal while the native picker
+      // may still be pending. Invalidate the guard so resolving that old
+      // picker cannot import under a later context.
+      contextGeneration.current += 1;
+      currentContext.current = "__unmounted__";
+    };
   }, [contextKey, onPendingChange]);
   useEffect(() => {
     if (previousContextKey.current !== contextKey && open) {

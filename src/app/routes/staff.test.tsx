@@ -1065,4 +1065,57 @@ describe("staff route", () => {
     ).toBeInTheDocument();
     expect(within(table).getAllByText("€15k")).toHaveLength(2);
   });
+
+  it("carries a legacy generic sort into the shortlist sort and result order", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([fixtureStaff()]);
+    const { router } = renderStaffRoute(
+      "/staff?view=shortlist&sort=name&dir=asc",
+    );
+
+    // Legacy links replace-normalize to Staff Search with filtering on while
+    // the generic legacy sort becomes the shortlist sort.
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        view: "search",
+        shortlistOnly: true,
+        shortlistSort: "name",
+        shortlistDir: "asc",
+      });
+    });
+    expect(router.state.location.href).not.toContain("view=shortlist");
+    await screen.findByRole("table", { name: "Staff Shortlist" });
+    await waitFor(() => {
+      expect(getLastStaffArgs()).toMatchObject({
+        shortlistOnly: true,
+        sortBy: "name",
+        sortDir: "asc",
+      });
+    });
+  });
+
+  it("keeps explicit shortlist sort keys ahead of a legacy generic sort", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([fixtureStaff()]);
+    const { router } = renderStaffRoute(
+      "/staff?view=shortlist&sort=ca&dir=desc&shortlistSort=name&shortlistDir=asc",
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        view: "search",
+        shortlistOnly: true,
+        shortlistSort: "name",
+        shortlistDir: "asc",
+      });
+    });
+    await screen.findByRole("table", { name: "Staff Shortlist" });
+    await waitFor(() => {
+      expect(getLastStaffArgs()).toMatchObject({
+        shortlistOnly: true,
+        sortBy: "name",
+        sortDir: "asc",
+      });
+    });
+  });
 });

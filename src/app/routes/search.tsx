@@ -227,20 +227,27 @@ function SearchPageContent() {
   const [shortlistImportOpen, setShortlistImportOpen] = useState(false);
   const [lastShortlistImport, setLastShortlistImport] =
     useState<PlayerShortlistImportSummary | null>(null);
-  const snapshotContext = snapshot ? `${snapshot.saveId}:${snapshot.id}` : null;
   const resultContext =
     snapshot && activeSave && snapshot.saveId === activeSave.id
       ? { snapshot, activeSave }
       : null;
+  // The shortlist import UI and its summary belong to one result context: a
+  // null or changed context closes the modal and discards the summary, so
+  // opening Upload without a valid snapshot cannot arm a delayed dialog.
+  const shortlistUiContextKey = resultContext
+    ? `${resultContext.activeSave.id}:${resultContext.activeSave.contextToken}:${resultContext.snapshot.id}:${resultContext.snapshot.contextToken}`
+    : null;
+  useEffect(() => {
+    setLastMoneyballImport(null);
+    setLastShortlistImport(null);
+    if (shortlistUiContextKey === null) {
+      setShortlistImportOpen(false);
+    }
+  }, [shortlistUiContextKey]);
   const tabRefs = useRef<Record<SearchView, HTMLButtonElement | null>>({
     general: null,
     moneyball: null,
   });
-  useEffect(() => {
-    if (!snapshotContext) return;
-    setLastMoneyballImport(null);
-    setLastShortlistImport(null);
-  }, [snapshotContext]);
 
   const updateSearch = (
     patch: Partial<{
@@ -390,6 +397,7 @@ function SearchPageContent() {
                 <Button
                   variant="secondary"
                   icon={FileUp}
+                  disabled={!resultContext}
                   onClick={() => setShortlistImportOpen(true)}
                 >
                   Upload Shortlist
@@ -596,13 +604,18 @@ function SearchPageContent() {
             setLastMoneyballImport(summary);
             // Moneyball imports never change player shortlist membership,
             // so shortlist-filtered General queries keep their results.
+            // Moneyball pages always refresh, even under retained
+            // shortlistOnly URL state: Moneyball stays membership-independent.
             void queryClient.invalidateQueries({
               queryKey: searchKeys.playerPages(),
               predicate: (query) => {
                 const params = query.queryKey[2] as
-                  | { shortlistOnly?: boolean }
+                  | { shortlistOnly?: boolean; searchView?: SearchView }
                   | undefined;
-                return params?.shortlistOnly !== true;
+                return (
+                  params?.shortlistOnly !== true ||
+                  params?.searchView === "moneyball"
+                );
               },
             });
             void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
