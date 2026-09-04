@@ -133,7 +133,7 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/116
 
 **Merge ref:** Not merged
 
