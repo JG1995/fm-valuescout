@@ -383,33 +383,6 @@ pub fn list_staff(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn list_staff_shortlist(
-    conn: &Connection,
-    offset: usize,
-    limit: usize,
-    sort: SortField,
-    direction: SortDir,
-    preferred_job: Option<&str>,
-    unemployed_only: bool,
-    requested_fields: &[String],
-) -> Result<StaffPage, String> {
-    let preferred_jobs = preferred_job.into_iter().collect::<Vec<_>>();
-    list_staff_with_shortlist(
-        conn,
-        StaffScope::Shortlist,
-        offset,
-        limit,
-        sort,
-        direction,
-        None,
-        false,
-        &preferred_jobs,
-        unemployed_only,
-        requested_fields,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
 fn list_staff_with_shortlist(
     conn: &Connection,
     scope: StaffScope,
@@ -727,9 +700,20 @@ mod tests {
         )
         .expect("seed shortlist");
 
-        let all =
-            list_staff_shortlist(&conn, 0, 1, SortField::Name, SortDir::Asc, None, false, &[])
-                .expect("list shortlist");
+        let all = list_staff(
+            &conn,
+            StaffScope::Search,
+            0,
+            1,
+            SortField::Name,
+            SortDir::Asc,
+            None,
+            true,
+            None,
+            false,
+            &[],
+        )
+        .expect("list shortlist");
         assert_eq!(all.total, 3);
         assert_eq!(all.staff[0].uid, 1);
         assert_eq!(
@@ -742,12 +726,15 @@ mod tests {
         );
         assert_eq!(all.preferred_job_options, ["Physio", "Scout"]);
 
-        let unemployed_scouts = list_staff_shortlist(
+        let unemployed_scouts = list_staff(
             &conn,
+            StaffScope::Search,
             0,
             50,
             SortField::Name,
             SortDir::Asc,
+            None,
+            true,
             Some("Scout"),
             true,
             &[],
@@ -756,9 +743,20 @@ mod tests {
         assert_eq!(unemployed_scouts.total, 1);
         assert_eq!(unemployed_scouts.staff[0].uid, 2);
 
-        let unemployed =
-            list_staff_shortlist(&conn, 0, 50, SortField::Name, SortDir::Asc, None, true, &[])
-                .expect("all unemployed shortlist staff");
+        let unemployed = list_staff(
+            &conn,
+            StaffScope::Search,
+            0,
+            50,
+            SortField::Name,
+            SortDir::Asc,
+            None,
+            true,
+            None,
+            true,
+            &[],
+        )
+        .expect("all unemployed shortlist staff");
         assert_eq!(
             unemployed
                 .staff
@@ -768,12 +766,15 @@ mod tests {
             [1, 2]
         );
 
-        let case_insensitive = list_staff_shortlist(
+        let case_insensitive = list_staff(
             &conn,
+            StaffScope::Search,
             0,
             50,
             SortField::Name,
             SortDir::Asc,
+            None,
+            true,
             Some("scout"),
             false,
             &[],
@@ -783,7 +784,7 @@ mod tests {
     }
 
     #[test]
-    fn flagged_core_search_matches_shortlist_query_and_composes_core_filters() {
+    fn flagged_core_search_returns_shortlist_rows_and_composes_core_filters() {
         let conn = open();
         seed(&conn, false);
         conn.execute_batch(
@@ -810,24 +811,28 @@ mod tests {
             &[],
         )
         .expect("flagged core search");
-        let standalone = list_staff_shortlist(
-            &conn,
-            0,
-            50,
-            SortField::Name,
-            SortDir::Asc,
-            None,
-            false,
-            &[],
-        )
-        .expect("standalone shortlist");
         assert_eq!(flagged.state, StaffPageState::Ready);
-        assert_eq!(flagged.total, standalone.total);
-        assert_eq!(flagged.staff, standalone.staff);
+        assert_eq!(flagged.total, 3);
         assert_eq!(
-            flagged.preferred_job_options,
-            standalone.preferred_job_options
+            flagged
+                .staff
+                .iter()
+                .map(|staff| staff.uid)
+                .collect::<Vec<_>>(),
+            [1, 2, 3]
         );
+        assert_eq!(
+            flagged.staff[0]
+                .shortlist
+                .as_ref()
+                .expect("shortlist metadata"),
+            &StaffShortlistMetadata {
+                preferred_job: "Physio".to_string(),
+                club_job: "-".to_string(),
+                coaching_qualifications: "Continental Pro".to_string(),
+            }
+        );
+        assert_eq!(flagged.preferred_job_options, ["Physio", "Scout"]);
 
         let sorted = list_staff(
             &conn,
@@ -901,16 +906,40 @@ mod tests {
     fn shortlist_distinguishes_setup_states_and_keeps_saved_rows_when_current_staff_changes() {
         let conn = open();
         assert_eq!(
-            list_staff_shortlist(&conn, 0, 50, SortField::Ca, SortDir::Desc, None, false, &[])
-                .expect("empty database state")
-                .state,
+            list_staff(
+                &conn,
+                StaffScope::Search,
+                0,
+                50,
+                SortField::Ca,
+                SortDir::Desc,
+                None,
+                true,
+                None,
+                false,
+                &[]
+            )
+            .expect("empty database state")
+            .state,
             StaffPageState::NoCurrentSnapshot
         );
         seed(&conn, false);
         assert_eq!(
-            list_staff_shortlist(&conn, 0, 50, SortField::Ca, SortDir::Desc, None, false, &[])
-                .expect("no shortlist state")
-                .state,
+            list_staff(
+                &conn,
+                StaffScope::Search,
+                0,
+                50,
+                SortField::Ca,
+                SortDir::Desc,
+                None,
+                true,
+                None,
+                false,
+                &[]
+            )
+            .expect("no shortlist state")
+            .state,
             StaffPageState::NoShortlist
         );
         conn.execute(
@@ -939,9 +968,20 @@ mod tests {
         )
         .expect("replace current snapshot");
 
-        let replacement =
-            list_staff_shortlist(&conn, 0, 50, SortField::Ca, SortDir::Desc, None, false, &[])
-                .expect("current replacement staff");
+        let replacement = list_staff(
+            &conn,
+            StaffScope::Search,
+            0,
+            50,
+            SortField::Ca,
+            SortDir::Desc,
+            None,
+            true,
+            None,
+            false,
+            &[],
+        )
+        .expect("current replacement staff");
         assert_eq!(replacement.state, StaffPageState::Ready);
         assert_eq!(replacement.total, 1);
         assert_eq!(replacement.staff[0].name.as_deref(), Some("Replacement"));
@@ -987,9 +1027,20 @@ mod tests {
             SortField::ClubJob,
             SortField::CoachingQualifications,
         ] {
-            let sorted =
-                list_staff_shortlist(&conn, 0, 50, sort.clone(), SortDir::Asc, None, false, &[])
-                    .expect("sort shortlist CSV column");
+            let sorted = list_staff(
+                &conn,
+                StaffScope::Search,
+                0,
+                50,
+                sort.clone(),
+                SortDir::Asc,
+                None,
+                true,
+                None,
+                false,
+                &[],
+            )
+            .expect("sort shortlist CSV column");
             assert_eq!(
                 sorted
                     .staff
@@ -1013,12 +1064,15 @@ mod tests {
             )
             .is_err());
         }
-        let scores = list_staff_shortlist(
+        let scores = list_staff(
             &conn,
+            StaffScope::Search,
             0,
             1,
             SortField::parse("role.coach_fitness").unwrap(),
             SortDir::Desc,
+            None,
+            true,
             None,
             false,
             &["role.coach_fitness".to_string()],
@@ -1030,12 +1084,15 @@ mod tests {
             scores.staff[0].dynamic_values["role.coach_fitness"],
             Some(80)
         );
-        assert!(list_staff_shortlist(
+        assert!(list_staff(
             &conn,
+            StaffScope::Search,
             0,
             50,
             SortField::Ca,
             SortDir::Desc,
+            None,
+            true,
             None,
             false,
             &["role.unknown".to_string()],

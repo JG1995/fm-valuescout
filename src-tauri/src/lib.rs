@@ -74,7 +74,6 @@ pub fn run() {
             features::search::commands::suggest_players,
             features::staff::commands::search_staff,
             features::staff::commands::list_my_staff,
-            features::staff::commands::list_staff_shortlist,
             features::staff::commands::get_staff_assignment_targets,
             features::staff::commands::save_staff_assignment_targets,
             features::staff::commands::optimize_staff_assignments,

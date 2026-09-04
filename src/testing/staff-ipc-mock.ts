@@ -746,6 +746,63 @@ export function resolveSearchStaffIpcMock(args: unknown): StaffPage {
     return { state: "no_current_snapshot", staff: [], total: 0 };
   }
   const parsed = parseArgs(args);
+  const record =
+    typeof args === "object" && args !== null
+      ? (args as Record<string, unknown>)
+      : {};
+  const shortlistOnly = record.shortlistOnly === true;
+  const preferredJob =
+    typeof record.preferredJob === "string" ? record.preferredJob : "";
+  const unemployedOnly = record.unemployedOnly === true;
+  if (shortlistOnly) {
+    if (!shortlistOverride) {
+      return {
+        state: "no_shortlist",
+        staff: [],
+        total: 0,
+        preferredJobOptions: [],
+      };
+    }
+    const preferredJobOptions = [
+      ...new Set(
+        shortlistOverride.flatMap((staff) =>
+          staff.shortlist?.preferredJob ? [staff.shortlist.preferredJob] : [],
+        ),
+      ),
+    ];
+    const matching = shortlistOverride.filter((staff) => {
+      if (preferredJob && staff.shortlist?.preferredJob !== preferredJob) {
+        return false;
+      }
+      const clubJob = (staff.shortlist?.clubJob ?? "").trim();
+      if (unemployedOnly && clubJob !== "" && clubJob !== "-") {
+        return false;
+      }
+      if (parsed.filters.length === 0) return true;
+      const results = parsed.filters.map((rule) => matches(staff, rule));
+      return parsed.combine === "and"
+        ? results.every(Boolean)
+        : results.some(Boolean);
+    });
+    const sorted = sortStaff(matching, parsed.sortBy, parsed.sortDir);
+    const page = sorted
+      .slice(parsed.offset, parsed.offset + parsed.limit)
+      .map((staff) => ({
+        ...staff,
+        dynamicValues: Object.fromEntries(
+          parsed.requestedFields.map((field) => [
+            field,
+            staff.dynamicValues?.[field] ?? null,
+          ]),
+        ),
+      }));
+    return {
+      state: "ready",
+      staff: page,
+      total: sorted.length,
+      preferredJobOptions,
+    };
+  }
   const source = overrideStaff ?? defaultStaff();
   const filtered =
     parsed.filters.length === 0
@@ -779,34 +836,6 @@ export function resolveListMyStaffIpcMock(args: unknown): StaffPage {
     return { state: "no_managed_club", staff: [], total: 0 };
   }
   return resolveSearchStaffIpcMock(args);
-}
-
-export function resolveListStaffShortlistIpcMock(args: unknown): StaffPage {
-  if (!resolveGetCurrentSnapshotIpcMock()) {
-    return { state: "no_current_snapshot", staff: [], total: 0 };
-  }
-  if (shortlistOverride) {
-    const parsed = parseArgs(args);
-    const sorted = sortStaff(shortlistOverride, parsed.sortBy, parsed.sortDir);
-    return {
-      state: "ready",
-      staff: sorted.slice(parsed.offset, parsed.offset + parsed.limit),
-      total: sorted.length,
-      preferredJobOptions: [
-        ...new Set(
-          shortlistOverride.flatMap((staff) =>
-            staff.shortlist?.preferredJob ? [staff.shortlist.preferredJob] : [],
-          ),
-        ),
-      ],
-    };
-  }
-  return {
-    state: "no_shortlist",
-    staff: [],
-    total: 0,
-    preferredJobOptions: [],
-  };
 }
 
 function staffBoostResult(uid: number): StaffBoostResult {

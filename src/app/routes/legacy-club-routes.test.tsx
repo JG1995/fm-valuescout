@@ -109,21 +109,58 @@ describe("legacy club routes", () => {
     expect(history.canGoBack()).toBe(false);
   });
 
-  it("replaces legacy Staff Shortlist while preserving shortlist state", async () => {
+  it("replaces a legacy Staff Shortlist link with Staff Search filtering on", async () => {
+    await resolveLoadDataIpcMock();
     const { history, router } = renderLegacyPlannerRoute(
       "/staff?view=shortlist&shortlistSort=name&shortlistDir=asc&preferredJob=Coach&unemployedOnly=true&shortlistContextSort=role.coach_attacking_technical&shortlistContextDir=desc",
     );
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/my-club");
+      expect(router.state.location.pathname).toBe("/staff");
       expect(router.state.location.search).toEqual({
-        view: "staff-shortlist",
+        view: "search",
+        sort: "ca",
+        dir: "desc",
+        searchSort: "ca",
+        searchDir: "desc",
+        myStaffSort: "ca",
+        myStaffDir: "desc",
         shortlistSort: "name",
         shortlistDir: "asc",
-        preferredJob: "Coach",
-        unemployedOnly: true,
         shortlistContextSort: "role.coach_attacking_technical",
         shortlistContextDir: "desc",
+        shortlistOnly: true,
+        preferredJob: "Coach",
+        unemployedOnly: true,
+        filters: [],
+        combine: "and",
+      });
+    });
+    expect(history.canGoBack()).toBe(false);
+  });
+
+  it("replaces a My Club Staff Shortlist workspace with Staff Search filtering on", async () => {
+    await resolveLoadDataIpcMock();
+    const { history, router } = renderLegacyPlannerRoute(
+      "/my-club?view=staff-shortlist",
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/staff");
+      expect(router.state.location.search).toEqual({
+        view: "search",
+        sort: "ca",
+        dir: "desc",
+        searchSort: "ca",
+        searchDir: "desc",
+        myStaffSort: "ca",
+        myStaffDir: "desc",
+        shortlistSort: "ca",
+        shortlistDir: "desc",
+        shortlistOnly: true,
+        unemployedOnly: false,
+        filters: [],
+        combine: "and",
       });
     });
     expect(history.canGoBack()).toBe(false);

@@ -28,7 +28,6 @@ import {
   STAFF_PAGE_SIZE,
   staffMyStaffQueryOptions,
   staffSearchQueryOptions,
-  staffShortlistQueryOptions,
 } from "../api/staff-query-options";
 import type { StaffFilterRule } from "../types/staff-filter-rule";
 import type { StaffSortDir, StaffSortField } from "../types/staff-sort";
@@ -42,6 +41,7 @@ import {
   STAFF_METRICS,
   STAFF_SHORTLIST_METRICS,
 } from "../utils/staff-metrics";
+import { staffShortlistPresentation } from "../utils/staff-shortlist-presentation";
 import { MyStaffBoostOutcome, MyStaffCaBoost } from "./my-staff-ca-boost";
 
 const TEXT_CELL =
@@ -51,8 +51,29 @@ const AGE_CELL =
 const NUM_CELL =
   "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
 
-export type StaffWorkspaceScope = "search" | "my-staff" | "shortlist";
+export type StaffWorkspaceScope = "search" | "my-staff";
 type StaffLayoutId = "staff-search" | "my-staff" | "staff-shortlist";
+
+function ShortlistSwitch({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange?: (next: boolean) => void;
+}) {
+  if (!onChange) return null;
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="inline-flex items-center gap-2 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    >
+      Shortlist: {checked ? "On" : "Off"}
+    </button>
+  );
+}
 
 function nextSort(
   currentBy: StaffSortField,
@@ -163,7 +184,7 @@ function StaffSearchTable({
   onMoveColumn,
   onResizeColumn,
   onRowActivate,
-  scope,
+  shortlist,
   configurable,
 }: {
   total: number;
@@ -182,7 +203,7 @@ function StaffSearchTable({
   onMoveColumn: (id: string, target: number) => void;
   onResizeColumn: (id: string, width: number) => void;
   onRowActivate?: (staff: StaffSummary) => void;
-  scope: StaffWorkspaceScope;
+  shortlist: boolean;
   configurable: boolean;
 }) {
   return (
@@ -202,9 +223,7 @@ function StaffSearchTable({
           columns={columns}
           configurable={configurable}
           sortable
-          metrics={
-            scope === "shortlist" ? STAFF_SHORTLIST_METRICS : STAFF_METRICS
-          }
+          metrics={shortlist ? STAFF_SHORTLIST_METRICS : STAFF_METRICS}
           sortBy={sortBy}
           sortDir={sortDir}
           onSortChange={(metricId) => {
@@ -314,10 +333,11 @@ export function StaffSearchResultsPanel({
   filterCombine,
   preferredJob,
   unemployedOnly = false,
+  shortlistOnly = false,
   onSortChange,
+  onShortlistOnlyChange,
   onBoostSuccess,
   onRowActivate,
-  visibleColumnIds,
 }: {
   activeSnapshotId: number | null;
   scope?: StaffWorkspaceScope;
@@ -327,15 +347,21 @@ export function StaffSearchResultsPanel({
   filterCombine: "and" | "or";
   preferredJob?: string;
   unemployedOnly?: boolean;
+  shortlistOnly?: boolean;
   onSortChange: (sort: StaffSortField, dir: StaffSortDir) => void;
+  onShortlistOnlyChange?: (shortlistOnly: boolean) => void;
   onBoostSuccess?: () => Promise<void>;
   onRowActivate?: (staff: StaffSummary) => void;
-  visibleColumnIds?: string[];
 }) {
+  const isShortlist = scope === "search" && shortlistOnly;
+  const shortlistPresentation = isShortlist
+    ? staffShortlistPresentation(preferredJob)
+    : undefined;
+  const fixedColumnIds = shortlistPresentation?.columnIds;
   const layoutId: StaffLayoutId =
     scope === "my-staff"
       ? "my-staff"
-      : scope === "shortlist"
+      : isShortlist
         ? "staff-shortlist"
         : "staff-search";
   const layout = usePlayerTableStore((state) => state.layouts[layoutId]);
@@ -363,11 +389,10 @@ export function StaffSearchResultsPanel({
   const boostOutcomeRef = useRef<HTMLDivElement>(null);
   const columns = useMemo(
     () =>
-      (visibleColumnIds ?? layout.columnIds).flatMap((id) => {
-        const metric =
-          scope === "shortlist"
-            ? getStaffShortlistMetric(id)
-            : getStaffMetric(id);
+      (fixedColumnIds ?? layout.columnIds).flatMap((id) => {
+        const metric = isShortlist
+          ? getStaffShortlistMetric(id)
+          : getStaffMetric(id);
         const column = metric
           ? {
               id: metric.id,
@@ -378,7 +403,7 @@ export function StaffSearchResultsPanel({
           : undefined;
         return column ? [column] : [];
       }),
-    [layout, scope, visibleColumnIds],
+    [fixedColumnIds, isShortlist, layout],
   );
   const requestedFields = useMemo(
     () =>
@@ -394,34 +419,29 @@ export function StaffSearchResultsPanel({
         .sort(),
     [columns],
   );
-  const { data: page } = useSuspenseQuery(
+  const resolvePageOptions = (offset: number, limit: number) =>
     scope === "my-staff"
       ? staffMyStaffQueryOptions(
-          0,
-          STAFF_PAGE_SIZE,
+          offset,
+          limit,
           sortBy,
           sortDir,
           requestedFields,
         )
-      : scope === "shortlist"
-        ? staffShortlistQueryOptions(
-            0,
-            STAFF_PAGE_SIZE,
-            sortBy,
-            sortDir,
-            preferredJob,
-            unemployedOnly,
-            requestedFields,
-          )
-        : staffSearchQueryOptions(
-            0,
-            STAFF_PAGE_SIZE,
-            sortBy,
-            sortDir,
-            filters,
-            filterCombine,
-            requestedFields,
-          ),
+      : staffSearchQueryOptions(
+          offset,
+          limit,
+          sortBy,
+          sortDir,
+          filters,
+          filterCombine,
+          requestedFields,
+          isShortlist,
+          preferredJob,
+          unemployedOnly,
+        );
+  const { data: page } = useSuspenseQuery(
+    resolvePageOptions(0, STAFF_PAGE_SIZE),
   );
 
   if (page.state === "no_current_snapshot") {
@@ -457,7 +477,18 @@ export function StaffSearchResultsPanel({
   }
   if (page.state === "no_shortlist") {
     return (
-      <Panel title="Staff Shortlist" flush>
+      <Panel
+        title="Staff Shortlist"
+        flush
+        actions={
+          scope === "search" ? (
+            <ShortlistSwitch
+              checked={shortlistOnly === true}
+              onChange={onShortlistOnlyChange}
+            />
+          ) : undefined
+        }
+      >
         <EmptyState icon={UsersRound} title="No Staff Shortlist uploaded">
           Upload a staff CSV to view the people included in it.
         </EmptyState>
@@ -465,8 +496,10 @@ export function StaffSearchResultsPanel({
     );
   }
   if (page.total === 0) {
-    const isShortlist = scope === "shortlist";
-    const hasShortlistFilter = preferredJob || unemployedOnly;
+    const hasShortlistFilter =
+      Boolean(preferredJob) ||
+      unemployedOnly ||
+      completeStaffFilterRules(filters).length > 0;
     return (
       <Panel
         title={
@@ -477,6 +510,14 @@ export function StaffSearchResultsPanel({
               : "Results"
         }
         flush
+        actions={
+          scope === "search" ? (
+            <ShortlistSwitch
+              checked={shortlistOnly === true}
+              onChange={onShortlistOnlyChange}
+            />
+          ) : undefined
+        }
       >
         <EmptyState
           icon={scope === "my-staff" || isShortlist ? UsersRound : SearchX}
@@ -496,7 +537,7 @@ export function StaffSearchResultsPanel({
             ? "No current-snapshot staff match your managed club."
             : isShortlist
               ? hasShortlistFilter
-                ? "Choose All jobs or turn off Only unemployed to widen the results."
+                ? "Adjust or clear filters to widen the results."
                 : "Load Data to restore saved shortlist people who are absent from the current snapshot."
               : completeStaffFilterRules(filters).length > 0
                 ? "Adjust or clear filters to widen the result set."
@@ -506,10 +547,9 @@ export function StaffSearchResultsPanel({
     );
   }
 
-  const sortMetric =
-    scope === "shortlist"
-      ? getStaffShortlistMetric(sortBy)
-      : getStaffMetric(sortBy);
+  const sortMetric = isShortlist
+    ? getStaffShortlistMetric(sortBy)
+    : getStaffMetric(sortBy);
   const sortLabel = sortMetric?.label ?? sortBy;
   const requestedRoleFields = requestedFields.filter((field) =>
     field.startsWith("role."),
@@ -525,7 +565,7 @@ export function StaffSearchResultsPanel({
       ),
     );
   const removeStoredColumn = (metricId: string) => {
-    if (scope === "shortlist" && visibleColumnIds) return;
+    if (isShortlist && fixedColumnIds) return;
     if (columns.length <= 1) return;
     removeColumn(layoutId, metricId);
     if (sortBy === metricId) {
@@ -540,7 +580,7 @@ export function StaffSearchResultsPanel({
       title={
         scope === "my-staff"
           ? "Staff"
-          : scope === "shortlist"
+          : isShortlist
             ? "Staff Shortlist"
             : "Results"
       }
@@ -567,11 +607,19 @@ export function StaffSearchResultsPanel({
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
-      <p className="shrink-0 px-4 pb-3 text-body-md text-on-surface-variant">
-        <span className="text-on-surface">{formatCount(page.total)}</span> staff
-        · sorted by {sortLabel} (
-        {sortDir === "asc" ? "ascending" : "descending"})
-      </p>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-4 pb-3">
+        <p className="text-body-md text-on-surface-variant">
+          <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
+          staff · sorted by {sortLabel} (
+          {sortDir === "asc" ? "ascending" : "descending"})
+        </p>
+        {scope === "search" ? (
+          <ShortlistSwitch
+            checked={shortlistOnly === true}
+            onChange={onShortlistOnlyChange}
+          />
+        ) : null}
+      </div>
       <div
         ref={boostOutcomeRef}
         data-testid="staff-boost-outcome"
@@ -597,57 +645,29 @@ export function StaffSearchResultsPanel({
         sortBy={sortBy}
         sortDir={sortDir}
         columns={columns}
-        pageQueryOptions={(offset, limit) =>
-          scope === "my-staff"
-            ? staffMyStaffQueryOptions(
-                offset,
-                limit,
-                sortBy,
-                sortDir,
-                requestedFields,
-              )
-            : scope === "shortlist"
-              ? staffShortlistQueryOptions(
-                  offset,
-                  limit,
-                  sortBy,
-                  sortDir,
-                  preferredJob,
-                  unemployedOnly,
-                  requestedFields,
-                )
-              : staffSearchQueryOptions(
-                  offset,
-                  limit,
-                  sortBy,
-                  sortDir,
-                  filters,
-                  filterCombine,
-                  requestedFields,
-                )
-        }
+        pageQueryOptions={resolvePageOptions}
         caption={
           scope === "my-staff"
             ? "Staff overview"
-            : scope === "shortlist"
+            : isShortlist
               ? "Staff Shortlist"
               : "Staff search results"
         }
         testId={`${layoutId}-results-scroller`}
         onSortChange={onSortChange}
         onAddColumn={(id) => {
-          if (!visibleColumnIds) addColumns(layoutId, [id]);
+          if (!fixedColumnIds) addColumns(layoutId, [id]);
         }}
         onRemoveColumn={removeStoredColumn}
         onMoveColumn={(id, target) => {
-          if (!visibleColumnIds) moveColumn(layoutId, id, target);
+          if (!fixedColumnIds) moveColumn(layoutId, id, target);
         }}
         onResizeColumn={(id, width) => {
-          if (!visibleColumnIds) setColumnWidth(layoutId, id, width);
+          if (!fixedColumnIds) setColumnWidth(layoutId, id, width);
         }}
         onRowActivate={onRowActivate}
-        scope={scope}
-        configurable={!visibleColumnIds}
+        shortlist={isShortlist}
+        configurable={!fixedColumnIds}
       />
     </Panel>
   );

@@ -322,7 +322,7 @@ test.describe("application smoke", () => {
     const staffTable = main.getByRole("table", { name: "Staff overview" });
     await expect(staffTable).toBeVisible();
     await expect(staffTable.getByText("Alex Coach")).toBeVisible();
-    await page.goto("/my-club?view=staff-shortlist");
+    await page.goto("/staff?shortlistOnly=true");
     await expect(main.getByText("No Staff Shortlist uploaded")).toBeVisible();
     await expect(
       main.getByRole("button", { name: "Upload CSV" }),
@@ -364,7 +364,7 @@ test.describe("application smoke", () => {
     page,
   }) => {
     await stubTauriIpc(page, { staffWorkspace: true, staffShortlist: true });
-    await page.goto("/my-club?view=staff-shortlist");
+    await page.goto("/staff?shortlistOnly=true");
 
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "Staff Shortlist" });
@@ -428,10 +428,10 @@ test.describe("application smoke", () => {
       staffWorkspace: true,
     });
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/my-club?view=staff-shortlist");
+    await page.goto("/staff?shortlistOnly=true");
 
     const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Configure slots" }).click();
+    await main.getByRole("button", { name: "Configure Club Staff" }).click();
     const dialog = page.getByRole("dialog", {
       name: "Configure assignment slots",
     });
@@ -517,7 +517,7 @@ test.describe("application smoke", () => {
     await expect(main.getByRole("status")).toHaveText("Slot counts saved.");
     await expect(dialog).toBeHidden();
 
-    await main.getByRole("button", { name: "Configure slots" }).click();
+    await main.getByRole("button", { name: "Configure Club Staff" }).click();
     await expect(dialog).toBeVisible();
     await expect(assistantManager).toHaveValue("1");
     await expect(coaches).toHaveValue("1");
@@ -621,10 +621,10 @@ test.describe("application smoke", () => {
       staffShortlist: true,
       staffWorkspace: true,
     });
-    await page.goto("/my-club?view=staff-shortlist");
+    await page.goto("/staff?shortlistOnly=true");
 
     const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Configure slots" }).click();
+    await main.getByRole("button", { name: "Configure Club Staff" }).click();
     const dialog = page.getByRole("dialog", {
       name: "Configure assignment slots",
     });

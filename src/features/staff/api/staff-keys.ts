@@ -8,7 +8,7 @@ export const staffKeys = {
   assignmentTargets: (contextKey: string) =>
     [...staffKeys.all, "assignment-targets", contextKey] as const,
   list: (
-    scope: "search" | "my-staff" | "shortlist",
+    scope: "search" | "my-staff",
     offset: number,
     limit: number,
     sort: StaffSortField,
@@ -18,6 +18,7 @@ export const staffKeys = {
     requestedFields: string[],
     preferredJob?: string,
     unemployedOnly?: boolean,
+    shortlistOnly?: boolean,
   ) =>
     [
       ...staffKeys.all,
@@ -32,5 +33,6 @@ export const staffKeys = {
       requestedFields,
       preferredJob,
       unemployedOnly,
+      shortlistOnly,
     ] as const satisfies QueryKey,
 } as const;

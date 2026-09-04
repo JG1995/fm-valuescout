@@ -21,6 +21,9 @@ export function fetchStaff(
   filters: StaffFilterRule[] = [],
   filterCombine: "and" | "or" = "and",
   requestedFields: string[] = [],
+  shortlistOnly = false,
+  preferredJob?: string,
+  unemployedOnly = false,
 ) {
   return fetchStaffCommand(
     "search_staff",
@@ -31,6 +34,9 @@ export function fetchStaff(
     filters,
     filterCombine,
     requestedFields,
+    shortlistOnly,
+    preferredJob,
+    unemployedOnly,
   );
 }
 
@@ -53,26 +59,6 @@ export function fetchMyStaff(
   );
 }
 
-export function fetchStaffShortlist(
-  offset = 0,
-  limit = STAFF_PAGE_SIZE,
-  sortBy: StaffSortField = DEFAULT_STAFF_SORT_FIELD,
-  sortDir: StaffSortDir = DEFAULT_STAFF_SORT_DIR,
-  preferredJob?: string,
-  unemployedOnly = false,
-  requestedFields: string[] = [],
-) {
-  return invokeCommand<StaffPage>("list_staff_shortlist", {
-    offset,
-    limit,
-    sortBy,
-    sortDir,
-    preferredJob,
-    unemployedOnly,
-    requestedFields,
-  });
-}
-
 export function fetchStaffDetail(uid: number) {
   return invokeCommand<StaffDetail | null>("get_staff", { uid });
 }
@@ -86,6 +72,9 @@ function fetchStaffCommand(
   filters: StaffFilterRule[],
   filterCombine: "and" | "or",
   requestedFields: string[],
+  shortlistOnly = false,
+  preferredJob?: string,
+  unemployedOnly = false,
 ) {
   const applied = completeStaffFilterRules(filters);
   return invokeCommand<StaffPage>(command, {
@@ -94,6 +83,9 @@ function fetchStaffCommand(
     sortBy,
     sortDir,
     requestedFields,
+    shortlistOnly,
+    preferredJob,
+    unemployedOnly,
     ...(applied.length > 0
       ? {
           filters: applied.map(staffFilterRuleToIpc),

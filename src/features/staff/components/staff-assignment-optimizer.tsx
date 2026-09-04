@@ -169,12 +169,18 @@ export function StaffAssignmentOptimizer({
         </Button>
       </div>
       {!contextUnavailable && error ? (
-        <p role="alert" className="text-body-sm text-error">
+        <p
+          role="alert"
+          className="w-full shrink-0 basis-full text-body-sm text-error"
+        >
           {error}
         </p>
       ) : null}
       {message ? (
-        <p role="status" className="text-body-md text-on-surface-variant">
+        <p
+          role="status"
+          className="w-full shrink-0 basis-full text-body-md text-on-surface-variant"
+        >
           {message}
         </p>
       ) : null}
