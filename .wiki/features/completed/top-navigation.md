@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -149,7 +149,7 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 
 **Required checks:** GitHub required strict status check
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -529,10 +529,33 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 
 **Review mandate:** Verify every changed doc statement traces to the implementation diff; no stale rail, tab, or Staff-ownership claim remains; no implementation or unrelated doc file changed.
 
+## Active work
+
+**PR:** PR 1 — feat(nav): replace left rail with top navigation
+
+**Active work:** None — feature close-out
+
+**Commit:** None — feature close-out
+
+### RED or removal proof
+
+Not applicable — every planned packet, full feature validation, feature review, correction review, and documentation reconciliation is complete.
+
+### Expected outcome
+
+The reviewed feature is ready for final PR publication.
+
+### Explicit exclusions
+
+Release preparation, unrelated implementation or documentation, and branch cleanup.
+
 ## Discoveries and replanning
 
 - Commit 2: removing the 56px rail changed the effective content width of two out-of-contract 900px Planner smoke scenarios enough to cross the matrix layout threshold. Their viewport changed to 844px to preserve the same pre-removal content geometry and tabbed-mode contract; the supported 1280×800 shell and navigation fit has separate direct coverage.
 - Commit 3 review recorded and omitted one NITPICK: `src/app/routes/search.test.tsx` contains a duplicate mismatched-snapshot empty-state assertion. It does not weaken coverage or behavior and does not justify a correction round.
+- Feature review found missing visible profile group context, missing proof that Search preserves `combine`, and two stale rail references. Correction commit `eb72201bf2c079c04bf5513cfc6f235f6bb01e4b` added token-based profile caption treatment and focused proof, strengthened the Search transition test, and removed the stale prose. Correction review found no remaining CRITICAL, HIGH, or MEDIUM issue; test portfolio passed and project fit conformed.
+- Feature close-out passed `./scripts/dev test` with 822 frontend tests, `./scripts/dev check` with 766 Rust tests passed and 2 ignored, and `CI=1 ./scripts/dev smoke` with 54 browser tests including the explicit 1280×800 navigation-fit proof.
+- Native Tauri/WebView rendering remains an honest manual validation gap. The feature changes no IPC, capability, persistence, migration, or native integration contract.
 
 ## Completed work
 
@@ -543,7 +566,7 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 | PR 1 — feat(nav): replace left rail with top navigation | Commit 3 — Move Search and Moneyball tabs into top navigation | 6bedba8c08b760ddb2ceb66d16778ef0b04c631f | Removed the local Search view tablist and moved General/Moneyball switching into top navigation while preserving deep-link state and the prior reset/preserve transition contract. | Focused Search tests passed 72/72; affected Search and shell tests passed 144/144; `./scripts/dev check` passed with 766 Rust tests and 2 ignored; LSP and staged diff checks passed. | Pass | Clear | 0 | None |
 | PR 1 — feat(nav): replace left rail with top navigation | Commit 4 — Make My Staff a canonical Staff destination | 12d51ab98615f67e033d1725a1daebd70646bb5d | Made My Staff canonical under Staff, reversed the legacy Club redirect with validated sort mapping, removed the Club Staff workspace, and isolated My Staff from Staff Search-only queries. | Focused Staff, legacy, Club, and shell tests passed 205/205; `./scripts/dev check` passed with 766 Rust tests and 2 ignored; `CI=1 ./scripts/dev smoke` passed 54/54; LSP and staged diff checks passed. | Pass | Clear | 3 | None |
 | PR 1 — feat(nav): replace left rail with top navigation | Commit 5 — Move Club Squad, Planner, and Tactic into top navigation | 0c550937ab489cd7f6e4a504bed0459d3d012d08 | Removed the Club workspace tabs and obsolete tab semantics, moved route parsing ownership, preserved mounted Planner/Tactic state and Squad sort state, and normalized `/planner` to the Planner destination. | Focused Club, legacy, and shell tests passed 165/165; `./scripts/dev check` passed with 766 Rust tests and 2 ignored; `CI=1 ./scripts/dev smoke` passed 54/54; LSP and staged diff checks passed. | Pass | Clear | 1 | None |
-| PR 1 — feat(nav): replace left rail with top navigation | Commit 6 — Reconcile navigation documentation | Pending record | Updated architecture and design current state for the utility and navigation bars, destination ownership, compatibility routes, URL/history behavior, accessibility, and retired rail/tab contracts. | `ledger_state.py`, Markdown, whitespace, and staged diff checks passed; implementation and route tests supplied the documentation evidence. | Not applicable | Clear | 2 | None |
+| PR 1 — feat(nav): replace left rail with top navigation | Commit 6 — Reconcile navigation documentation | e9916dc0eeaea9db341fcbea92075998a93623ee | Updated architecture and design current state for the utility and navigation bars, destination ownership, compatibility routes, URL/history behavior, accessibility, and retired rail/tab contracts. | `ledger_state.py`, Markdown, whitespace, and staged diff checks passed; implementation and route tests supplied the documentation evidence. | Not applicable | Clear | 2 | None |
 
 ## Final validation
 
@@ -554,6 +577,6 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 
 ## Documentation impact
 
-- This planning change records reconciliation responsibilities in Commit 6. It does not edit `.wiki/ARCHITECTURE.md` or `.wiki/DESIGN.md` now.
-- Commit 6 updates `.wiki/ARCHITECTURE.md` shell, route, workspace, redirect, and persistence sections and the `.wiki/DESIGN.md` navigation contract after implementation makes the new behavior true.
-- No ADR meets the project threshold. No BACKLOG change exists. No release metadata applies.
+- Reconciliation is complete in `.wiki/ARCHITECTURE.md`, `.wiki/DESIGN.md`, and `.wiki/TODO.md` for the implemented shell, destinations, route ownership, redirects, state transitions, accessibility, and removed rail/tab contracts.
+- `.wiki/CONCEPT.md` and `.wiki/BACKLOG.md` require no change. No ADR meets the project threshold. No release metadata applies.
+- This complete ledger moves to `.wiki/features/completed/top-navigation.md` in the reviewed close-out commit.
