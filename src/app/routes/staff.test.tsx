@@ -12,9 +12,11 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
+import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
+import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
@@ -22,19 +24,40 @@ import {
   defaultPlayerTableLayouts,
   usePlayerTableStore,
 } from "@/stores/use-player-table-store";
+import {
+  resolvePendingPlannerTeamSaveIpcMock,
+  setPlannerDepthError,
+  setPlannerTeamRemovalImpacts,
+  setPlannerTeamSavePending,
+} from "@/testing/planner-ipc-mock";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 import {
   fixtureStaff,
+  fixtureStaffAssignmentOptimization,
+  fixtureStaffAssignmentTargets,
+  getLastStaffArgs,
+  getLastStaffAssignmentOptimizerIpcArgs,
+  getLastStaffAssignmentTargetsIpcArgs,
   getMyStaffBoostIpcMockCalls,
   rejectPendingMyStaffBoostIpcMock,
   resolvePendingMyStaffBoostIpcMock,
   sendPendingMyStaffBoostProgressIpcMock,
   setMyStaffBoostIpcMockMode,
+  setStaffAssignmentOptimizationIpcMock,
+  setStaffAssignmentTargetsIpcMock,
   setStaffFamilyConfigured,
   setStaffListIpcMockMode,
   setStaffOverride,
   setStaffShortlistOverride,
 } from "@/testing/staff-ipc-mock";
+import {
+  getLastStaffShortlistImportIpcArgs,
+  setStaffShortlistImportIpcMockResult,
+} from "@/testing/staff-shortlist-import-ipc-mock";
+
+const { openCsvDialog } = vi.hoisted(() => ({ openCsvDialog: vi.fn() }));
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openCsvDialog }));
 
 function renderStaffRoute(initialEntry = "/staff") {
   const queryClient = new QueryClient({
@@ -59,6 +82,7 @@ function renderStaffRoute(initialEntry = "/staff") {
 
 describe("staff route", () => {
   beforeEach(() => {
+    openCsvDialog.mockReset();
     useLayoutStore.setState({ railExpanded: true });
     usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });
   });
@@ -96,7 +120,7 @@ describe("staff route", () => {
       }),
     ]);
     const user = userEvent.setup();
-    const { router } = renderStaffRoute("/my-club?view=staff-shortlist");
+    const { router } = renderStaffRoute("/staff?shortlistOnly=true");
 
     const allJobsTable = await screen.findByRole("table", {
       name: "Staff Shortlist",
@@ -579,6 +603,447 @@ describe("staff route", () => {
     expect(dialog).toBeInTheDocument();
   });
 
+  it("keeps shortlist upload, Configure Club Staff, and Optimize visible with conditional metadata filters", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    const { router } = renderStaffRoute("/staff");
+
+    expect(
+      await screen.findByRole("button", { name: "Upload CSV" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Configure Club Staff" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Preferred Job" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("checkbox", { name: "Only unemployed" }),
+    ).toBeNull();
+
+    await user.click(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    );
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        shortlistOnly: true,
+      });
+    });
+    expect(
+      await screen.findByRole("combobox", { name: "Preferred Job" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "Only unemployed" }),
+    ).toBeInTheDocument();
+  });
+
+  it("round-trips the shortlist toggle through the URL and refetches flagged search", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    const { router } = renderStaffRoute("/staff");
+
+    await user.click(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    );
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        shortlistOnly: true,
+      });
+    });
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    ).toHaveAttribute("aria-checked", "true");
+    await waitFor(() => {
+      expect(getLastStaffArgs()).toMatchObject({ shortlistOnly: true });
+    });
+
+    await user.click(screen.getByRole("switch", { name: "Shortlist: On" }));
+    await waitFor(() => {
+      expect(router.state.location.search.shortlistOnly).toBeUndefined();
+    });
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("treats an invalid shortlist toggle value as off", async () => {
+    await resolveLoadDataIpcMock();
+    renderStaffRoute("/staff?shortlistOnly=maybe");
+
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(
+      await screen.findByRole("table", { name: "Staff search results" }),
+    ).toBeInTheDocument();
+  });
+
+  it("turns shortlist filtering on after a successful upload and resets metadata filters", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    openCsvDialog.mockResolvedValue("C:\\exports\\staff.csv");
+    setStaffShortlistImportIpcMockResult({
+      totalStaff: 3,
+      storedStaff: 2,
+      skippedStaff: 1,
+    });
+    const { router } = renderStaffRoute(
+      "/staff?preferredJob=Coach&unemployedOnly=true",
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Upload CSV" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Upload Staff Shortlist CSV",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Choose CSV" }),
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        shortlistOnly: true,
+      });
+    });
+    await waitFor(() => {
+      expect(router.state.location.search).not.toHaveProperty("preferredJob");
+    });
+    expect(router.state.location.search.unemployedOnly).toBe(false);
+    await waitFor(() => {
+      expect(getLastStaffArgs()).toMatchObject({ shortlistOnly: true });
+    });
+    expect(getLastStaffShortlistImportIpcArgs()).toEqual({
+      path: "C:\\exports\\staff.csv",
+    });
+    expect(
+      await screen.findByText("Stored 2 of 3 staff IDs; 1 skipped."),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps Staff Search usable when Planner context fails", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerDepthError("Planner unavailable");
+    renderStaffRoute();
+
+    expect(
+      await screen.findByRole("table", { name: "Staff search results" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Upload CSV" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    ).toBeDisabled();
+  });
+
+  it("adds applied shortlist filter metrics to the visible layout", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([fixtureStaff()]);
+    const user = userEvent.setup();
+    usePlayerTableStore.setState({
+      layouts: {
+        ...defaultPlayerTableLayouts(),
+        "staff-search": { columnIds: ["name"], widths: {} },
+        "staff-shortlist": { columnIds: ["name"], widths: {} },
+      },
+    });
+    const filters = encodeURIComponent(
+      JSON.stringify([{ id: "ca", field: "ca", op: "gt", value: 0 }]),
+    );
+    renderStaffRoute(`/staff?shortlistOnly=true&filters=${filters}`);
+
+    await screen.findByRole("table", { name: "Staff Shortlist" });
+    await user.click(screen.getByRole("button", { name: "Edit filters" }));
+    await user.click(screen.getByRole("button", { name: "Done" }));
+
+    await waitFor(() => {
+      expect(
+        usePlayerTableStore.getState().layouts["staff-shortlist"].columnIds,
+      ).toContain("ca");
+    });
+    expect(
+      usePlayerTableStore.getState().layouts["staff-search"].columnIds,
+    ).toEqual(["name"]);
+  });
+
+  it("shows setup feedback with Upload available when filtering on with no list", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({ state: "no_shortlist" }),
+    );
+    renderStaffRoute("/staff?shortlistOnly=true");
+
+    expect(
+      await screen.findByText("No Staff Shortlist uploaded"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Upload CSV" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    ).toHaveAttribute("aria-checked", "true");
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+    expect(
+      await screen.findByText(
+        "Upload a Staff Shortlist before optimizing assignments.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows shortlist-filter guidance when the preferred job excludes every row and escapes via the switch", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([
+      fixtureStaff({
+        shortlist: {
+          preferredJob: "Coach",
+          clubJob: "-",
+          coachingQualifications: "Continental A",
+        },
+      }),
+    ]);
+    const { router } = renderStaffRoute(
+      "/staff?shortlistOnly=true&preferredJob=Manager",
+    );
+
+    expect(
+      await screen.findByText("No shortlist staff match these filters"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Adjust or clear filters to widen the results."),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    ).toHaveAttribute("aria-checked", "true");
+
+    await user.click(screen.getByRole("switch", { name: "Shortlist: On" }));
+    await waitFor(() => {
+      expect(router.state.location.search.shortlistOnly).toBeUndefined();
+    });
+    expect(
+      await screen.findByRole("table", { name: "Staff search results" }),
+    ).toBeInTheDocument();
+  });
+
+  it("describes a core-filtered empty shortlist as a filter mismatch", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([fixtureStaff()]);
+    const filters = encodeURIComponent(
+      JSON.stringify([{ id: "ca", field: "ca", op: "gt", value: 200 }]),
+    );
+    renderStaffRoute(`/staff?shortlistOnly=true&filters=${filters}`);
+
+    expect(
+      await screen.findByText("No shortlist staff match these filters"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Adjust or clear filters to widen the results."),
+    ).toBeInTheDocument();
+  });
+
+  it("opens a staff profile from a shortlisted row", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    setStaffShortlistOverride([fixtureStaff()]);
+    const { router } = renderStaffRoute("/staff?shortlistOnly=true");
+
+    const table = await screen.findByRole("table", {
+      name: "Staff Shortlist",
+    });
+    const row = within(table)
+      .getAllByRole("row")
+      .find((item) => item.hasAttribute("data-index"));
+    expect(row).toBeDefined();
+    await user.click(row as HTMLElement);
+    expect(
+      await screen.findByRole("heading", { name: "Alex Coach" }),
+    ).toBeInTheDocument();
+    expect(router.history.location.pathname).toBe("/staff/101");
+  });
+
+  it("optimizes without shortlist presentation filters", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    renderStaffRoute(
+      "/staff?shortlistOnly=true&preferredJob=Coach&unemployedOnly=true",
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "Optimize assignments" }),
+    );
+
+    await waitFor(() =>
+      expect(getLastStaffAssignmentOptimizerIpcArgs()).toEqual({
+        expectedSaveContextToken: "save-token-1",
+        expectedSnapshotContextToken: "snapshot-token-1",
+      }),
+    );
+  });
+
+  it("uses the route context for complete slot saves and token replacement", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const targets = fixtureStaffAssignmentTargets();
+    targets.teams[1] = { ...targets.teams[1], displayName: "B Squad" };
+    setStaffAssignmentTargetsIpcMock(targets);
+    const { queryClient } = renderStaffRoute("/staff?shortlistOnly=true");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Configure Club Staff" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Configure assignment slots",
+    });
+    expect(within(dialog).getByText("B Squad")).toBeInTheDocument();
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save slots" }),
+    );
+    await waitFor(() =>
+      expect(getLastStaffAssignmentTargetsIpcArgs()).toEqual(
+        expect.objectContaining({ expectedSaveContextToken: "save-token-1" }),
+      ),
+    );
+    expect(
+      (
+        getLastStaffAssignmentTargetsIpcArgs() as
+          | { targets?: unknown[] }
+          | undefined
+      )?.targets,
+    ).toHaveLength(28);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Configure Club Staff" }),
+    );
+    const reopened = await screen.findByRole("dialog");
+    const assistantManager = within(reopened).getAllByRole("spinbutton", {
+      name: "Assistant Manager slots",
+    })[0];
+    await user.clear(assistantManager);
+    await user.type(assistantManager, "12");
+    const snapshot = queryClient.getQueryData<SnapshotSummary>(
+      snapshotKeys.current(),
+    );
+    if (!snapshot) {
+      throw new Error("Expected a current snapshot");
+    }
+    queryClient.setQueryData<SnapshotSummary | null>(
+      snapshotKeys.current(),
+      () => ({ ...snapshot, contextToken: "snapshot-token-replacement" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    const configureClubStaff = await screen.findByRole("button", {
+      name: "Configure Club Staff",
+    });
+    expect(configureClubStaff).toHaveFocus();
+    await user.click(configureClubStaff);
+    expect(
+      screen.getAllByRole("spinbutton", { name: "Assistant Manager slots" })[0],
+    ).toHaveValue(0);
+  });
+
+  it("renders standalone Club sections through Configure Club Staff without Senior", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const targets = fixtureStaffAssignmentTargets();
+    targets.teams = targets.teams.filter(({ team }) => team !== "senior");
+    targets.targets = targets.targets.filter(({ scope }) => scope !== "senior");
+    setStaffAssignmentTargetsIpcMock(targets);
+    renderStaffRoute("/staff?shortlistOnly=true");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Configure Club Staff" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Configure assignment slots",
+    });
+    const club = within(dialog).getByRole("group", { name: "Club" });
+
+    expect(within(dialog).queryByRole("group", { name: "Senior" })).toBeNull();
+    expect(
+      within(club).getByRole("group", { name: "Recruitment" }),
+    ).toBeInTheDocument();
+  });
+
+  it("suppresses recommendations during a pending Planner team save and recovers after resolve", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerTeamRemovalImpacts([]);
+    setPlannerTeamSavePending(true);
+    const { queryClient, router } = renderStaffRoute(
+      "/staff?shortlistOnly=true",
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "Optimize assignments" }),
+    );
+    expect(
+      await screen.findByRole("table", {
+        name: "Staff assignment recommendations and vacancies",
+      }),
+    ).toBeInTheDocument();
+
+    router.history.push("/my-club?view=planner");
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    const seniorDisplayName = within(dialog).getByRole("textbox", {
+      name: "Senior display name",
+    });
+    await user.clear(seniorDisplayName);
+    await user.type(seniorDisplayName, "First Team");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+    await waitFor(() =>
+      expect(
+        queryClient.isMutating({
+          mutationKey: playerResultContextMutationKey,
+        }),
+      ).toBeGreaterThan(0),
+    );
+
+    router.history.push("/staff?shortlistOnly=true");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Optimize assignments" }),
+      ).toBeDisabled(),
+    );
+    expect(
+      screen.queryByRole("table", {
+        name: "Staff assignment recommendations and vacancies",
+      }),
+    ).not.toBeInTheDocument();
+
+    resolvePendingPlannerTeamSaveIpcMock();
+    router.history.push("/my-club?view=planner");
+    expect(
+      await screen.findByRole("tab", { name: "First Team" }),
+    ).toBeInTheDocument();
+    router.history.push("/staff?shortlistOnly=true");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Optimize assignments" }),
+      ).not.toBeDisabled(),
+    );
+    expect(
+      screen.queryByRole("table", {
+        name: "Staff assignment recommendations and vacancies",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
   it("formats Staff wage and labels the internal job value explicitly", async () => {
     await resolveLoadDataIpcMock();
     usePlayerTableStore.setState({
@@ -599,5 +1064,58 @@ describe("staff route", () => {
       within(table).getByRole("columnheader", { name: "Job ID" }),
     ).toBeInTheDocument();
     expect(within(table).getAllByText("€15k")).toHaveLength(2);
+  });
+
+  it("carries a legacy generic sort into the shortlist sort and result order", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([fixtureStaff()]);
+    const { router } = renderStaffRoute(
+      "/staff?view=shortlist&sort=name&dir=asc",
+    );
+
+    // Legacy links replace-normalize to Staff Search with filtering on while
+    // the generic legacy sort becomes the shortlist sort.
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        view: "search",
+        shortlistOnly: true,
+        shortlistSort: "name",
+        shortlistDir: "asc",
+      });
+    });
+    expect(router.state.location.href).not.toContain("view=shortlist");
+    await screen.findByRole("table", { name: "Staff Shortlist" });
+    await waitFor(() => {
+      expect(getLastStaffArgs()).toMatchObject({
+        shortlistOnly: true,
+        sortBy: "name",
+        sortDir: "asc",
+      });
+    });
+  });
+
+  it("keeps explicit shortlist sort keys ahead of a legacy generic sort", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([fixtureStaff()]);
+    const { router } = renderStaffRoute(
+      "/staff?view=shortlist&sort=ca&dir=desc&shortlistSort=name&shortlistDir=asc",
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        view: "search",
+        shortlistOnly: true,
+        shortlistSort: "name",
+        shortlistDir: "asc",
+      });
+    });
+    await screen.findByRole("table", { name: "Staff Shortlist" });
+    await waitFor(() => {
+      expect(getLastStaffArgs()).toMatchObject({
+        shortlistOnly: true,
+        sortBy: "name",
+        sortDir: "asc",
+      });
+    });
   });
 });

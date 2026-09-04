@@ -60,6 +60,7 @@ None.
 
 ## Completed
 
+- [Integrated Shortlists](./features/completed/integrated-shortlists.md) — integrated save-owned player and staff replacement shortlists into Player Search General and Staff Search with CSV upload, URL-backed filtering, and Staff assignment controls; final PR not published.
 - [Tactic Columns for Player Tables](./features/completed/tactic-table-columns.md) — 11-lane Planner tactic groups (Current/Potential) as synthetic display columns for Search General, Moneyball, and Shortlist with interleaving, persistence, and blended adjusted scoring.
 - [Player Shortlist](./features/completed/player-shortlist.md) — third Search tab filtered to the current Moneyball cohort with General metrics and independent persisted layout (Linear JAY-52).
 - [Staff Assignment FM26 Layout](./features/completed/staff-assignment-fm26-layout.md) — redesign Configure slots around FM26 staff limits, exact coach composition and lead pools, Recruitment Analyst support, and collapsible assignment results (Linear JAY-44).

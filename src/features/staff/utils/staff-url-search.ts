@@ -37,6 +37,10 @@ export function parseStaffCombine(value: unknown): "and" | "or" {
   return value === "or" ? "or" : "and";
 }
 
+export function parseShortlistOnly(value: unknown): boolean {
+  return value === true || value === "true";
+}
+
 export function parseStaffFilters(value: unknown): StaffFilterRule[] {
   return parseStaffFilterRules(value);
 }

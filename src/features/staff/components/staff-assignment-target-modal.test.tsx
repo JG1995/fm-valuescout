@@ -55,7 +55,7 @@ describe("StaffAssignmentTargetModal", () => {
     renderModal();
 
     const trigger = await screen.findByRole("button", {
-      name: "Configure slots",
+      name: "Configure Club Staff",
     });
     await user.click(trigger);
     const dialog = await screen.findByRole("dialog", {
@@ -187,7 +187,7 @@ describe("StaffAssignmentTargetModal", () => {
     renderModal();
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure slots" }),
+      await screen.findByRole("button", { name: "Configure Club Staff" }),
     );
     const dialog = await screen.findByRole("dialog");
     const club = within(dialog).getByRole("group", { name: "Club" });
@@ -214,7 +214,7 @@ describe("StaffAssignmentTargetModal", () => {
     renderModal();
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure slots" }),
+      await screen.findByRole("button", { name: "Configure Club Staff" }),
     );
     const dialog = await screen.findByRole("dialog");
     const headOfYouthDevelopment = within(dialog).getByRole("spinbutton", {
@@ -247,7 +247,7 @@ describe("StaffAssignmentTargetModal", () => {
     renderModal();
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure slots" }),
+      await screen.findByRole("button", { name: "Configure Club Staff" }),
     );
     const dialog = await screen.findByRole("dialog");
     await user.click(
@@ -268,7 +268,7 @@ describe("StaffAssignmentTargetModal", () => {
     const { rerenderModal } = renderModal();
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure slots" }),
+      await screen.findByRole("button", { name: "Configure Club Staff" }),
     );
     const dialog = await screen.findByRole("dialog");
     const assistantManager = within(dialog).getAllByRole("spinbutton", {
@@ -282,7 +282,7 @@ describe("StaffAssignmentTargetModal", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     await user.click(
-      await screen.findByRole("button", { name: "Configure slots" }),
+      await screen.findByRole("button", { name: "Configure Club Staff" }),
     );
     expect(
       screen.getAllByRole("spinbutton", { name: "Assistant Manager slots" })[0],

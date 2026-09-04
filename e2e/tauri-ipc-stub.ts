@@ -744,6 +744,14 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             };
           }
 
+          if (cmd === "import_player_shortlist_csv") {
+            return {
+              totalPlayers: 3,
+              storedPlayers: 2,
+              skippedPlayers: 1,
+            };
+          }
+
           if (cmd === "search_players") {
             const offset = Number.isInteger(args?.offset)
               ? Math.max(0, args.offset)
@@ -751,7 +759,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             const limit = Number.isInteger(args?.limit)
               ? Math.min(200, Math.max(1, args.limit))
               : 50;
-            if (args?.searchView === "shortlist") {
+            if (args?.shortlistOnly === true && args?.searchView === "general") {
               const filterRules = Array.isArray(args?.filters)
                 ? args.filters
                 : [];
@@ -1010,6 +1018,49 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "search_staff") {
+            if (args?.shortlistOnly === true) {
+              if (staffWorkspace && staffShortlist) {
+                const preferredJob = typeof args?.preferredJob === "string"
+                  ? args.preferredJob
+                  : "";
+                const unemployedOnly = args?.unemployedOnly === true;
+                const matching = shortlistStaffRows.filter((staff) =>
+                  (!preferredJob || staff.shortlist.preferredJob === preferredJob) &&
+                  (!unemployedOnly || !staff.shortlist.clubJob || staff.shortlist.clubJob === "-"),
+                );
+                if (args?.sortBy === "ca" && args?.sortDir === "desc") {
+                  matching.sort((left, right) => right.ca - left.ca);
+                } else if (
+                  typeof args?.sortBy === "string" &&
+                  args.sortBy.startsWith("role.") &&
+                  args?.sortDir === "desc"
+                ) {
+                  matching.sort(
+                    (left, right) =>
+                      (right.dynamicValues?.[args.sortBy] ?? -1) -
+                      (left.dynamicValues?.[args.sortBy] ?? -1),
+                  );
+                }
+                const offset = Number.isInteger(args?.offset)
+                  ? Math.max(0, args.offset)
+                  : 0;
+                const limit = Number.isInteger(args?.limit)
+                  ? Math.min(200, Math.max(1, args.limit))
+                  : 50;
+                return {
+                  state: "ready",
+                  staff: matching.slice(offset, offset + limit),
+                  total: matching.length,
+                  preferredJobOptions: ["Coach", "Manager", "Technical Director"],
+                };
+              }
+              return {
+                state: staffWorkspace ? "no_shortlist" : "no_current_snapshot",
+                staff: [],
+                total: 0,
+                preferredJobOptions: [],
+              };
+            }
             const offset = Number.isInteger(args?.offset)
               ? Math.max(0, args.offset)
               : 0;
@@ -1040,50 +1091,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 ? staffRows.slice(offset, offset + limit)
                 : [],
               total: staffFamilyConfigured ? staffRows.length : 0,
-            };
-          }
-
-          if (cmd === "list_staff_shortlist") {
-            if (staffWorkspace && staffShortlist) {
-              const preferredJob = typeof args?.preferredJob === "string"
-                ? args.preferredJob
-                : "";
-              const unemployedOnly = args?.unemployedOnly === true;
-              const matching = shortlistStaffRows.filter((staff) =>
-                (!preferredJob || staff.shortlist.preferredJob === preferredJob) &&
-                (!unemployedOnly || !staff.shortlist.clubJob || staff.shortlist.clubJob === "-"),
-              );
-              if (args?.sortBy === "ca" && args?.sortDir === "desc") {
-                matching.sort((left, right) => right.ca - left.ca);
-              } else if (
-                typeof args?.sortBy === "string" &&
-                args.sortBy.startsWith("role.") &&
-                args?.sortDir === "desc"
-              ) {
-                matching.sort(
-                  (left, right) =>
-                    (right.dynamicValues?.[args.sortBy] ?? -1) -
-                    (left.dynamicValues?.[args.sortBy] ?? -1),
-                );
-              }
-              const offset = Number.isInteger(args?.offset)
-                ? Math.max(0, args.offset)
-                : 0;
-              const limit = Number.isInteger(args?.limit)
-                ? Math.min(200, Math.max(1, args.limit))
-                : 50;
-              return {
-                state: "ready",
-                staff: matching.slice(offset, offset + limit),
-                total: matching.length,
-                preferredJobOptions: ["Coach", "Manager", "Technical Director"],
-              };
-            }
-            return {
-              state: staffWorkspace ? "no_shortlist" : "no_current_snapshot",
-              staff: [],
-              total: 0,
-              preferredJobOptions: [],
             };
           }
 

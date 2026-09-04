@@ -65,8 +65,10 @@ type SearchResultsPanelProps = {
   filters: FilterRule[];
   filterCombine: FilterCombineMode;
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
+  onShortlistOnlyChange: (shortlistOnly: boolean) => void;
   view: SearchView;
   comparisonPool: ComparisonPool;
+  shortlistOnly: boolean;
   pageContext: SearchPlayerPageContext;
   orderedLaneIds: readonly string[];
   laneLabels: ReadonlyMap<string, string>;
@@ -208,6 +210,7 @@ function SearchResultsVirtualTable({
   onResizeColumn,
   view,
   comparisonPool,
+  shortlistOnly,
   pageContext,
   firstPageQueryOptions,
   isReplacementActive,
@@ -226,6 +229,7 @@ function SearchResultsVirtualTable({
   onResizeColumn: (metricId: string, width: number) => void;
   view: SearchView;
   comparisonPool: ComparisonPool;
+  shortlistOnly: boolean;
   pageContext: SearchPlayerPageContext;
   firstPageQueryOptions: ReturnType<typeof searchPlayersQueryOptions>;
   isReplacementActive: boolean;
@@ -266,6 +270,7 @@ function SearchResultsVirtualTable({
           requestedFields,
           view,
           comparisonPool,
+          shortlistOnly,
           pageContext,
         )
       }
@@ -429,7 +434,7 @@ function SearchResultsVirtualTable({
         void navigate({
           to: "/players/$uid",
           params: { uid: String(player.uid) },
-          search: { view: view === "shortlist" ? "general" : view },
+          search: { view },
         });
       }}
     />
@@ -443,19 +448,15 @@ export function SearchResultsPanel({
   filters,
   filterCombine,
   onSortChange,
+  onShortlistOnlyChange,
   view,
   comparisonPool,
+  shortlistOnly,
   pageContext,
   orderedLaneIds,
   laneLabels,
 }: SearchResultsPanelProps) {
-  const navigate = useNavigate();
-  const tableId =
-    view === "moneyball"
-      ? "moneyball-search"
-      : view === "shortlist"
-        ? "shortlist"
-        : "search";
+  const tableId = view === "moneyball" ? "moneyball-search" : "search";
   const layout = usePlayerTableStore((state) => state.layouts[tableId]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const removeStoredColumn = usePlayerTableStore((state) => state.removeColumn);
@@ -493,6 +494,7 @@ export function SearchResultsPanel({
       requestedFields,
       view,
       comparisonPool,
+      shortlistOnly,
       pageContext,
     }),
     [
@@ -501,6 +503,7 @@ export function SearchResultsPanel({
       filters,
       pageContext,
       requestedFields,
+      shortlistOnly,
       sortBy,
       sortDir,
       view,
@@ -517,6 +520,7 @@ export function SearchResultsPanel({
     committed.requestedFields,
     committed.view,
     committed.comparisonPool,
+    committed.shortlistOnly,
     committed.pageContext,
   );
   const requestedOptions = searchPlayersQueryOptions(
@@ -529,6 +533,7 @@ export function SearchResultsPanel({
     requested.requestedFields,
     requested.view,
     requested.comparisonPool,
+    requested.shortlistOnly,
     requested.pageContext,
   );
   const committedQuery = useQuery(committedOptions);
@@ -640,73 +645,6 @@ export function SearchResultsPanel({
       </Panel>
     );
   }
-  if (page.total === 0) {
-    const appliedFilters = completeFilterRules(filters, view);
-    if (appliedFilters.length > 0) {
-      return (
-        <Panel title="Results" flush>
-          <EmptyState icon={SearchX} title="No players match these filters">
-            Adjust or clear filters in the strip above to widen the result set.
-          </EmptyState>
-        </Panel>
-      );
-    }
-
-    if (view === "shortlist") {
-      return (
-        <Panel title="Results" flush>
-          <EmptyState
-            icon={SearchX}
-            title="No shortlist yet"
-            action={
-              <button
-                type="button"
-                className="rounded-full bg-primary px-4 py-1.5 text-label-md text-on-primary hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                onClick={() => {
-                  void navigate({
-                    to: "/search",
-                    search: {
-                      view: "moneyball",
-                      sort: defaultSearchSort("moneyball"),
-                      dir: defaultDirForSortField(
-                        defaultSearchSort("moneyball"),
-                      ),
-                      filters: [],
-                      combine: "and",
-                      comparisonPool: "filtered",
-                    },
-                  });
-                }}
-              >
-                Go to Moneyball
-              </button>
-            }
-          >
-            No players have been shortlisted yet. Upload a Moneyball CSV in the
-            Moneyball tab to create your shortlist.
-          </EmptyState>
-        </Panel>
-      );
-    }
-
-    return (
-      <Panel title="Results" flush>
-        <EmptyState
-          icon={SearchX}
-          title={
-            view === "moneyball"
-              ? "No players in this Moneyball import"
-              : "No players in snapshot"
-          }
-        >
-          {view === "moneyball"
-            ? "Upload a Moneyball CSV for the current snapshot to analyse its matched players."
-            : "The snapshot exists but holds no player rows. Run Load Data again with Football Manager in an active save."}
-        </EmptyState>
-      </Panel>
-    );
-  }
-
   const dirLabel = committed.sortDir === "asc" ? "ascending" : "descending";
   const sortMetric =
     committed.view === "moneyball"
@@ -718,6 +656,61 @@ export function SearchResultsPanel({
       : sortMetric.label
     : (columns.find((column) => column.id === committed.sortBy)?.label ??
       committed.sortBy);
+  const shortlistSwitch =
+    view === "general" ? (
+      <button
+        type="button"
+        role="switch"
+        aria-checked={shortlistOnly}
+        onClick={() => onShortlistOnlyChange(!shortlistOnly)}
+        className="inline-flex items-center gap-2 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        Shortlist: {shortlistOnly ? "On" : "Off"}
+      </button>
+    ) : null;
+  if (page.total === 0) {
+    const appliedFilters = completeFilterRules(filters, view);
+    const shortlistEmpty = view === "general" && shortlistOnly;
+    const emptyTitle = shortlistEmpty
+      ? appliedFilters.length > 0
+        ? "No shortlisted players match these filters"
+        : "No players in shortlist"
+      : appliedFilters.length > 0
+        ? "No players match these filters"
+        : view === "moneyball"
+          ? "No players in this Moneyball import"
+          : "No players in snapshot";
+    const emptyBody = shortlistEmpty
+      ? appliedFilters.length > 0
+        ? "Adjust or clear filters in the strip above, or turn Shortlist off to widen the result set."
+        : "Upload a shortlist CSV for this save, or turn Shortlist off to browse every snapshot player."
+      : appliedFilters.length > 0
+        ? "Adjust or clear filters in the strip above to widen the result set."
+        : view === "moneyball"
+          ? "Upload a Moneyball CSV for the current snapshot to analyse its matched players."
+          : "The snapshot exists but holds no player rows. Run Load Data again with Football Manager in an active save.";
+
+    return (
+      <Panel
+        title="Results"
+        flush
+        className="flex min-h-0 flex-1 flex-col"
+        contentClassName="flex min-h-0 flex-1 flex-col"
+      >
+        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-4 pb-3">
+          <p className="text-body-md text-on-surface-variant">
+            <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
+            players · sorted by {sortLabel} ({dirLabel})
+          </p>
+          {shortlistSwitch}
+        </div>
+        <EmptyState icon={SearchX} title={emptyTitle}>
+          {emptyBody}
+        </EmptyState>
+      </Panel>
+    );
+  }
+
   const removeColumn = (metricId: string) => {
     let nextColumnIds = layout.columnIds.filter((id) => id !== metricId);
     if (nextColumnIds.length === layout.columnIds.length) {
@@ -774,10 +767,13 @@ export function SearchResultsPanel({
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
-      <p className="shrink-0 px-4 pb-3 text-body-md text-on-surface-variant">
-        <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
-        players · sorted by {sortLabel} ({dirLabel})
-      </p>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-4 pb-3">
+        <p className="text-body-md text-on-surface-variant">
+          <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
+          players · sorted by {sortLabel} ({dirLabel})
+        </p>
+        {shortlistSwitch}
+      </div>
       {isReplacementPending ? (
         <p
           className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
@@ -812,6 +808,7 @@ export function SearchResultsPanel({
         requestedFields={committed.requestedFields}
         view={committed.view}
         comparisonPool={committed.comparisonPool}
+        shortlistOnly={committed.shortlistOnly}
         pageContext={committed.pageContext}
         firstPageQueryOptions={committedOptions}
         isReplacementActive={isReplacementActive}

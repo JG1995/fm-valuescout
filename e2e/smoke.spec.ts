@@ -322,7 +322,7 @@ test.describe("application smoke", () => {
     const staffTable = main.getByRole("table", { name: "Staff overview" });
     await expect(staffTable).toBeVisible();
     await expect(staffTable.getByText("Alex Coach")).toBeVisible();
-    await page.goto("/my-club?view=staff-shortlist");
+    await page.goto("/staff?shortlistOnly=true");
     await expect(main.getByText("No Staff Shortlist uploaded")).toBeVisible();
     await expect(
       main.getByRole("button", { name: "Upload CSV" }),
@@ -364,7 +364,7 @@ test.describe("application smoke", () => {
     page,
   }) => {
     await stubTauriIpc(page, { staffWorkspace: true, staffShortlist: true });
-    await page.goto("/my-club?view=staff-shortlist");
+    await page.goto("/staff?shortlistOnly=true");
 
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "Staff Shortlist" });
@@ -428,10 +428,10 @@ test.describe("application smoke", () => {
       staffWorkspace: true,
     });
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/my-club?view=staff-shortlist");
+    await page.goto("/staff?shortlistOnly=true");
 
     const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Configure slots" }).click();
+    await main.getByRole("button", { name: "Configure Club Staff" }).click();
     const dialog = page.getByRole("dialog", {
       name: "Configure assignment slots",
     });
@@ -517,7 +517,7 @@ test.describe("application smoke", () => {
     await expect(main.getByRole("status")).toHaveText("Slot counts saved.");
     await expect(dialog).toBeHidden();
 
-    await main.getByRole("button", { name: "Configure slots" }).click();
+    await main.getByRole("button", { name: "Configure Club Staff" }).click();
     await expect(dialog).toBeVisible();
     await expect(assistantManager).toHaveValue("1");
     await expect(coaches).toHaveValue("1");
@@ -621,10 +621,10 @@ test.describe("application smoke", () => {
       staffShortlist: true,
       staffWorkspace: true,
     });
-    await page.goto("/my-club?view=staff-shortlist");
+    await page.goto("/staff?shortlistOnly=true");
 
     const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Configure slots" }).click();
+    await main.getByRole("button", { name: "Configure Club Staff" }).click();
     const dialog = page.getByRole("dialog", {
       name: "Configure assignment slots",
     });
@@ -2682,7 +2682,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
-  test("Shortlist shows three tabs, keyboard navigation, and neutral vs filtered empty without duplicate upload", async ({
+  test("Search shows General and Moneyball tabs with legacy shortlist normalization", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
@@ -2691,14 +2691,14 @@ test.describe("application smoke", () => {
     const tablist = page.getByRole("tablist", { name: "Search view" });
     const generalTab = tablist.getByRole("tab", { name: "General" });
     const moneyballTab = tablist.getByRole("tab", { name: "Moneyball" });
-    const shortlistTab = tablist.getByRole("tab", { name: "Shortlist" });
 
     await expect(generalTab).toBeVisible();
     await expect(moneyballTab).toBeVisible();
-    await expect(shortlistTab).toBeVisible();
+    await expect(tablist.getByRole("tab", { name: "Shortlist" })).toHaveCount(
+      0,
+    );
     await expect(tablist.getByRole("tab").nth(0)).toHaveText("General");
     await expect(tablist.getByRole("tab").nth(1)).toHaveText("Moneyball");
-    await expect(tablist.getByRole("tab").nth(2)).toHaveText("Shortlist");
 
     await generalTab.focus();
     await expect(generalTab).toHaveAttribute("aria-selected", "true");
@@ -2706,58 +2706,34 @@ test.describe("application smoke", () => {
     await expect(moneyballTab).toBeFocused();
     await expect(moneyballTab).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("ArrowRight");
-    await expect(shortlistTab).toBeFocused();
-    await expect(shortlistTab).toHaveAttribute("aria-selected", "true");
-    await page.keyboard.press("Home");
     await expect(generalTab).toBeFocused();
     await expect(generalTab).toHaveAttribute("aria-selected", "true");
-    await page.keyboard.press("End");
-    await expect(shortlistTab).toBeFocused();
-    await expect(shortlistTab).toHaveAttribute("aria-selected", "true");
+
+    await expect(
+      page.getByRole("button", { name: "Upload Shortlist" }),
+    ).toBeVisible();
 
     await page.goto("/search?view=shortlist");
-    await expect(page.getByText("No shortlist yet")).toBeVisible();
+    await expect(generalTab).toHaveAttribute("aria-selected", "true");
     await expect(
-      page.getByRole("button", { name: "Go to Moneyball" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Upload Moneyball CSV" }),
-    ).toHaveCount(0);
-    await expect(shortlistTab).toHaveAttribute("aria-selected", "true");
-    await expect(shortlistTab).toHaveAttribute("tabIndex", "0");
-    await expect(generalTab).toHaveAttribute("tabIndex", "-1");
-
-    await page.getByRole("button", { name: "Edit filters" }).click();
-    const dialog = page.getByRole("dialog", { name: "Edit filters" });
-    await dialog.getByRole("button", { name: "Add filter" }).click();
-    await dialog.getByRole("button", { name: "Field: CA" }).click();
-    await dialog
-      .getByRole("combobox", { name: "Search fields" })
-      .fill("acceleration");
-    await dialog.getByRole("option", { name: "Acceleration" }).click();
-    await dialog.getByLabel("Value").fill("16");
-    await dialog.getByRole("button", { name: "Done" }).click();
-    await expect(
-      page.getByText("No players match these filters"),
+      page.getByRole("switch", { name: "Shortlist: On" }),
     ).toBeVisible();
     await expect(page.getByText("No shortlist yet")).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Go to Moneyball" }),
     ).toHaveCount(0);
-
-    await page.getByRole("button", { name: "Clear all" }).click();
-    await expect(page.getByText("No shortlist yet")).toBeVisible();
   });
 
-  test("Shortlist rows open General profile with virtual paging and desktop layout", async ({
+  test("Shortlist toggle filters General rows with virtual paging and desktop layout", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
       plannerSnapshot: true,
+      squadOverview: true,
       shortlistSearch: true,
     });
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/search?view=shortlist");
+    await page.goto("/search?shortlistOnly=true");
 
     const main = page.getByRole("main");
     const scroller = main.getByTestId("search-results-scroller");
@@ -2777,8 +2753,14 @@ test.describe("application smoke", () => {
       page.getByRole("heading", { name: "Shortlist player 001" }),
     ).toHaveCount(0);
 
-    await page.goto("/search?view=shortlist");
+    await page.goto("/search?shortlistOnly=true");
     await expect(table.getByText("Shortlist player 001")).toBeVisible();
+    const toggle = page.getByRole("switch", { name: "Shortlist: On" });
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await toggle.click();
+    await expect(
+      page.getByRole("switch", { name: "Shortlist: Off" }),
+    ).toBeVisible();
     const [mainBox, scrollerBox, mainDimensions] = await Promise.all([
       main.boundingBox(),
       scroller.boundingBox(),
@@ -2796,7 +2778,7 @@ test.describe("application smoke", () => {
     expect(mainBox).not.toBeNull();
     expect(scrollerBox).not.toBeNull();
     if (!mainBox || !scrollerBox) {
-      throw new Error("Expected the Shortlist table to have a visible layout.");
+      throw new Error("Expected the General table to have a visible layout.");
     }
     expect(scrollerBox.height).toBeGreaterThan(100);
     expect(scrollerBox.y + scrollerBox.height).toBeLessThanOrEqual(

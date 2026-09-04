@@ -37,7 +37,6 @@ const PLAYER_TABLE_LAYOUT_VERSION = 6;
 export type PlayerTableId =
   | "search"
   | "moneyball-search"
-  | "shortlist"
   | "squad"
   | "staff-search"
   | "my-staff"
@@ -88,11 +87,7 @@ function isAllowedColumnId(table: PlayerTableId, id: string): boolean {
     return false;
   }
   if (isValidTacticColumnId(id)) {
-    return (
-      table === "search" ||
-      table === "moneyball-search" ||
-      table === "shortlist"
-    );
+    return table === "search" || table === "moneyball-search";
   }
   if (isTacticColumnId(id)) {
     return false;
@@ -103,7 +98,7 @@ function isAllowedColumnId(table: PlayerTableId, id: string): boolean {
       ["name", "age", "nationality", "club", "division", "value"].includes(id)
     );
   }
-  if (table === "search" || table === "shortlist" || table === "squad") {
+  if (table === "search" || table === "squad") {
     return getPlayerMetric(id)?.sortable === true;
   }
   return id.length > 0;
@@ -120,7 +115,7 @@ function defaultLayout(table: PlayerTableId): PlayerTableLayout {
     columnIds:
       table === "moneyball-search"
         ? withoutDuplicateIdentityColumns(DEFAULT_MONEYBALL_TABLE_COLUMN_IDS)
-        : table === "search" || table === "squad" || table === "shortlist"
+        : table === "search" || table === "squad"
           ? withoutDuplicateIdentityColumns(DEFAULT_PLAYER_TABLE_COLUMN_IDS)
           : table === "staff-shortlist"
             ? [...DEFAULT_STAFF_SHORTLIST_COLUMN_IDS]
@@ -133,7 +128,6 @@ export function defaultPlayerTableLayouts(): PlayerTableLayouts {
   return {
     search: defaultLayout("search"),
     "moneyball-search": defaultLayout("moneyball-search"),
-    shortlist: defaultLayout("shortlist"),
     squad: defaultLayout("squad"),
     "staff-search": defaultLayout("staff-search"),
     "my-staff": defaultLayout("my-staff"),
@@ -157,10 +151,7 @@ function sanitizeLayout(
     : [];
   const useNameFallback =
     identityOnlyFallback &&
-    (table === "search" ||
-      table === "moneyball-search" ||
-      table === "squad" ||
-      table === "shortlist") &&
+    (table === "search" || table === "moneyball-search" || table === "squad") &&
     columnIds.length > 0 &&
     withoutDuplicateIdentityColumns(columnIds).length === 0;
   const visibleColumnIds = useNameFallback
@@ -195,11 +186,6 @@ function sanitizePersistedState(
       "moneyball-search": sanitizeLayout(
         layouts["moneyball-search"],
         "moneyball-search",
-        identityOnlyFallback,
-      ),
-      shortlist: sanitizeLayout(
-        layouts.shortlist,
-        "shortlist",
         identityOnlyFallback,
       ),
       squad: sanitizeLayout(layouts.squad, "squad", identityOnlyFallback),

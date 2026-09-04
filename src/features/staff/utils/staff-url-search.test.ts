@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseShortlistOnly,
   parseStaffSort,
   parseStaffSortDir,
   parseStaffView,
@@ -14,6 +15,16 @@ describe("staff URL state", () => {
     expect(parseStaffSort("role.not_real")).toBe("ca");
     expect(parseStaffSortDir("asc")).toBe("asc");
     expect(parseStaffSortDir("sideways")).toBe("desc");
+  });
+
+  it("parses the shortlist toggle with strict invalid-to-off", () => {
+    expect(parseShortlistOnly(true)).toBe(true);
+    expect(parseShortlistOnly("true")).toBe(true);
+    expect(parseShortlistOnly(false)).toBe(false);
+    expect(parseShortlistOnly(undefined)).toBe(false);
+    expect(parseShortlistOnly("yes")).toBe(false);
+    expect(parseShortlistOnly("false")).toBe(false);
+    expect(parseShortlistOnly(1)).toBe(false);
   });
 
   it("serializes only the bounded, complete filter shape", () => {

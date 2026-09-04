@@ -21,6 +21,7 @@ export function searchPlayersQueryOptions(
   requestedFields: string[] = [],
   searchView: SearchView = "general",
   comparisonPool: ComparisonPool = "filtered",
+  shortlistOnly = false,
   context?: SearchPlayerPageContext,
 ) {
   return queryOptions({
@@ -34,6 +35,7 @@ export function searchPlayersQueryOptions(
       requestedFields,
       searchView,
       comparisonPool,
+      shortlistOnly,
       context,
     ),
     queryFn: () =>
@@ -47,6 +49,7 @@ export function searchPlayersQueryOptions(
         requestedFields,
         searchView,
         comparisonPool,
+        shortlistOnly,
       ),
   });
 }

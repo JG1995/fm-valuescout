@@ -77,6 +77,10 @@ import {
   resolveSetPlayerHiddenInformationRevealedIpcMock,
 } from "@/testing/player-ipc-mock";
 import {
+  resetPlayerShortlistImportIpcMock,
+  resolvePlayerShortlistImportIpcMock,
+} from "@/testing/player-shortlist-ipc-mock";
+import {
   resetSearchPlayersOverride,
   resolveSearchPlayersIpcMock,
   resolveSuggestPlayersIpcMock,
@@ -110,11 +114,14 @@ import {
   resolveGetStaffAssignmentTargetsIpcMock,
   resolveGetStaffIpcMock,
   resolveListMyStaffIpcMock,
-  resolveListStaffShortlistIpcMock,
   resolveOptimizeStaffAssignmentsIpcMock,
   resolveSaveStaffAssignmentTargetsIpcMock,
   resolveSearchStaffIpcMock,
 } from "@/testing/staff-ipc-mock";
+import {
+  resetStaffShortlistImportIpcMock,
+  resolveStaffShortlistImportIpcMock,
+} from "@/testing/staff-shortlist-import-ipc-mock";
 
 function registerIpcMocks() {
   mockIPC((cmd, args) => {
@@ -162,6 +169,14 @@ function registerIpcMocks() {
       return resolveGetCurrentSnapshotIpcMock();
     }
 
+    if (cmd === "import_player_shortlist_csv") {
+      return resolvePlayerShortlistImportIpcMock(args);
+    }
+
+    if (cmd === "import_staff_shortlist_csv") {
+      return resolveStaffShortlistImportIpcMock(args);
+    }
+
     if (cmd === "import_csv") {
       return resolveCsvImportIpcMock(args);
     }
@@ -188,10 +203,6 @@ function registerIpcMocks() {
 
     if (cmd === "list_my_staff") {
       return resolveListMyStaffIpcMock(args);
-    }
-
-    if (cmd === "list_staff_shortlist") {
-      return resolveListStaffShortlistIpcMock(args);
     }
 
     if (cmd === "get_staff_assignment_targets") {
@@ -396,6 +407,8 @@ afterEach(() => {
   resetBridgeInstallIpcMock();
   resetSnapshotIpcMock();
   resetCsvImportIpcMock();
+  resetPlayerShortlistImportIpcMock();
+  resetStaffShortlistImportIpcMock();
   resetClubDnaIpcMock();
   resetSearchPlayersOverride();
   resetStaffIpcMock();

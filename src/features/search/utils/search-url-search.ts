@@ -21,6 +21,10 @@ export function parseSearchCombine(value: unknown): FilterCombineMode {
   return value === "or" ? "or" : "and";
 }
 
+export function parseShortlistOnly(value: unknown): boolean {
+  return value === true || value === "true";
+}
+
 function isFilterValue(value: unknown): value is FilterValue {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;

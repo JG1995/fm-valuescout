@@ -566,7 +566,7 @@ fn csv_reader(input: &str, delimiter: u8) -> csv::Reader<&[u8]> {
         .from_reader(input.as_bytes())
 }
 
-fn detect_delimiter(input: &str) -> Result<u8, CsvImportError> {
+pub(crate) fn detect_delimiter(input: &str) -> Result<u8, CsvImportError> {
     let semicolon_columns = header_width(input, b';')?;
     let comma_columns = header_width(input, b',')?;
 

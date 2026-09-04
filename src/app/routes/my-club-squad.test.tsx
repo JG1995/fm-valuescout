@@ -71,7 +71,6 @@ import {
   observeManagedClubSaveCall,
   resolvePendingManagedClubSave,
   resolvePendingPlannerTeamRemovalImpact,
-  resolvePendingPlannerTeamSaveIpcMock,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
@@ -123,15 +122,7 @@ import {
   setSquadPlayersPageIpcMockMode,
   setSquadWonderkidMentalityBoostIpcMockMode,
 } from "@/testing/squad-ipc-mock";
-import {
-  fixtureStaff,
-  fixtureStaffAssignmentTargets,
-  getLastStaffAssignmentOptimizerIpcArgs,
-  getLastStaffAssignmentTargetsIpcArgs,
-  setStaffAssignmentTargetsIpcMock,
-  setStaffOverride,
-  setStaffShortlistOverride,
-} from "@/testing/staff-ipc-mock";
+import { fixtureStaff, setStaffOverride } from "@/testing/staff-ipc-mock";
 
 const { openCsvDialog } = vi.hoisted(() => ({ openCsvDialog: vi.fn() }));
 
@@ -174,7 +165,6 @@ async function openMyClubWorkspace(
     planner: "Planner",
     tactic: "Tactic",
     staff: "Staff",
-    "staff-shortlist": "Staff Shortlist",
   };
   await user.click(await screen.findByRole("tab", { name: labels[workspace] }));
 }
@@ -320,7 +310,7 @@ function switchToSecondSave(
 }
 
 describe("My Club route", () => {
-  it("exposes the five My Club workspaces in order", async () => {
+  it("exposes the four My Club workspaces in order", async () => {
     await resolveLoadDataIpcMock();
     renderMyClubRoute({ initialEntry: "/my-club" });
 
@@ -332,7 +322,6 @@ describe("My Club route", () => {
       "Planner",
       "Tactic",
       "Staff",
-      "Staff Shortlist",
     ]);
   });
 
@@ -391,238 +380,25 @@ describe("My Club route", () => {
     ).toBeInTheDocument();
   });
 
-  it("places Configure slots only in Staff Shortlist", async () => {
-    const user = userEvent.setup();
+  it("keeps Staff overview inside its virtualized workspace", async () => {
     await resolveLoadDataIpcMock();
+    setStaffOverride(manyStaff(101));
     renderMyClubRoute({ initialEntry: "/my-club?view=staff" });
 
-    await screen.findByRole("table", { name: "Staff overview" });
-    expect(
-      screen.queryByRole("button", { name: "Configure slots" }),
-    ).toBeNull();
-    await openMyClubWorkspace(user, "staff-shortlist");
-    expect(
-      await screen.findByRole("button", { name: "Configure slots" }),
-    ).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "Staff overview" });
+    const panel = document.getElementById("my-club-workspace-panel-staff");
+    expect(panel).toHaveClass("flex", "min-h-0", "flex-1", "flex-col");
+
+    const scroller = screen.getByTestId("my-staff-results-scroller");
+    expect(scroller).toHaveClass("h-full", "min-h-0", "overflow-auto");
+    expect(scroller.parentElement).toHaveClass("relative", "min-h-0", "flex-1");
+
+    const virtualRows = within(table)
+      .getAllByRole("row")
+      .filter((row) => row.hasAttribute("data-index"));
+    expect(virtualRows.length).toBeGreaterThan(0);
+    expect(virtualRows.length).toBeLessThan(101);
   });
-
-  it("optimizes without shortlist presentation filters", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    renderMyClubRoute({
-      initialEntry:
-        "/my-club?view=staff-shortlist&preferredJob=Coach&unemployedOnly=true",
-    });
-
-    await user.click(
-      await screen.findByRole("button", { name: "Optimize assignments" }),
-    );
-
-    await waitFor(() =>
-      expect(getLastStaffAssignmentOptimizerIpcArgs()).toEqual({
-        expectedSaveContextToken: "save-token-1",
-        expectedSnapshotContextToken: "snapshot-token-1",
-      }),
-    );
-  });
-
-  it("suppresses recommendations during an actual pending Planner team save", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerTeamRemovalImpacts([]);
-    setPlannerTeamSavePending(true);
-    const { queryClient } = renderMyClubRoute({
-      initialEntry: "/my-club?view=staff-shortlist",
-    });
-
-    await user.click(
-      await screen.findByRole("button", { name: "Optimize assignments" }),
-    );
-    expect(
-      await screen.findByRole("table", {
-        name: "Staff assignment recommendations and vacancies",
-      }),
-    ).toBeInTheDocument();
-
-    await openMyClubWorkspace(user, "planner");
-    await user.click(
-      await screen.findByRole("button", { name: "Manage teams" }),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Manage squad teams",
-    });
-    const seniorDisplayName = within(dialog).getByRole("textbox", {
-      name: "Senior display name",
-    });
-    await user.clear(seniorDisplayName);
-    await user.type(seniorDisplayName, "First Team");
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save teams" }),
-    );
-    await waitFor(() =>
-      expect(
-        queryClient.isMutating({ mutationKey: playerResultContextMutationKey }),
-      ).toBeGreaterThan(0),
-    );
-
-    await openMyClubWorkspace(user, "staff-shortlist");
-    expect(
-      screen.queryByRole("table", {
-        name: "Staff assignment recommendations and vacancies",
-      }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Optimize assignments" }),
-    ).toBeDisabled();
-
-    resolvePendingPlannerTeamSaveIpcMock();
-    await openMyClubWorkspace(user, "planner");
-    expect(
-      await screen.findByRole("tab", { name: "First Team" }),
-    ).toBeInTheDocument();
-    await openMyClubWorkspace(user, "staff-shortlist");
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Optimize assignments" }),
-      ).not.toBeDisabled(),
-    );
-    expect(
-      screen.queryByRole("table", {
-        name: "Staff assignment recommendations and vacancies",
-      }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("uses the route context for complete slot saves and token replacement", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    const targets = fixtureStaffAssignmentTargets();
-    targets.teams[1] = { ...targets.teams[1], displayName: "B Squad" };
-    setStaffAssignmentTargetsIpcMock(targets);
-    const { queryClient } = renderMyClubRoute({
-      initialEntry: "/my-club?view=staff-shortlist",
-    });
-
-    await user.click(
-      await screen.findByRole("button", { name: "Configure slots" }),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Configure assignment slots",
-    });
-    expect(within(dialog).getByText("B Squad")).toBeInTheDocument();
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save slots" }),
-    );
-    await waitFor(() =>
-      expect(getLastStaffAssignmentTargetsIpcArgs()).toEqual(
-        expect.objectContaining({ expectedSaveContextToken: "save-token-1" }),
-      ),
-    );
-    expect(
-      (
-        getLastStaffAssignmentTargetsIpcArgs() as
-          | { targets?: unknown[] }
-          | undefined
-      )?.targets,
-    ).toHaveLength(28);
-
-    await user.click(
-      await screen.findByRole("button", { name: "Configure slots" }),
-    );
-    const reopened = await screen.findByRole("dialog");
-    const assistantManager = within(reopened).getAllByRole("spinbutton", {
-      name: "Assistant Manager slots",
-    })[0];
-    await user.clear(assistantManager);
-    await user.type(assistantManager, "12");
-    const snapshot = queryClient.getQueryData<SnapshotSummary>(
-      snapshotKeys.current(),
-    );
-    if (!snapshot) {
-      throw new Error("Expected a current snapshot");
-    }
-    queryClient.setQueryData<SnapshotSummary | null>(
-      snapshotKeys.current(),
-      () => ({ ...snapshot, contextToken: "snapshot-token-replacement" }),
-    );
-
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
-    const configureSlots = await screen.findByRole("button", {
-      name: "Configure slots",
-    });
-    expect(configureSlots).toHaveFocus();
-    await user.click(configureSlots);
-    expect(
-      screen.getAllByRole("spinbutton", { name: "Assistant Manager slots" })[0],
-    ).toHaveValue(0);
-  });
-
-  it("renders standalone Club sections through the Staff Shortlist route without Senior", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    const targets = fixtureStaffAssignmentTargets();
-    targets.teams = targets.teams.filter(({ team }) => team !== "senior");
-    targets.targets = targets.targets.filter(({ scope }) => scope !== "senior");
-    setStaffAssignmentTargetsIpcMock(targets);
-    renderMyClubRoute({ initialEntry: "/my-club?view=staff-shortlist" });
-
-    await user.click(
-      await screen.findByRole("button", { name: "Configure slots" }),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Configure assignment slots",
-    });
-    const club = within(dialog).getByRole("group", { name: "Club" });
-
-    expect(within(dialog).queryByRole("group", { name: "Senior" })).toBeNull();
-    expect(
-      within(club).getByRole("group", { name: "Recruitment" }),
-    ).toBeInTheDocument();
-  });
-
-  it.each([
-    {
-      workspace: "staff",
-      caption: "Staff overview",
-      scrollerTestId: "my-staff-results-scroller",
-      setStaff: setStaffOverride,
-    },
-    {
-      workspace: "staff-shortlist",
-      caption: "Staff Shortlist",
-      scrollerTestId: "staff-shortlist-results-scroller",
-      setStaff: setStaffShortlistOverride,
-    },
-  ] as const)(
-    "keeps $caption inside its virtualized workspace",
-    async ({ workspace, caption, scrollerTestId, setStaff }) => {
-      await resolveLoadDataIpcMock();
-      setStaff(manyStaff(101));
-      renderMyClubRoute({ initialEntry: `/my-club?view=${workspace}` });
-
-      const table = await screen.findByRole("table", { name: caption });
-      const panel = document.getElementById(
-        `my-club-workspace-panel-${workspace}`,
-      );
-      expect(panel).toHaveClass("flex", "min-h-0", "flex-1", "flex-col");
-
-      const scroller = screen.getByTestId(scrollerTestId);
-      expect(scroller).toHaveClass("h-full", "min-h-0", "overflow-auto");
-      expect(scroller.parentElement).toHaveClass(
-        "relative",
-        "min-h-0",
-        "flex-1",
-      );
-
-      const virtualRows = within(table)
-        .getAllByRole("row")
-        .filter((row) => row.hasAttribute("data-index"));
-      expect(virtualRows.length).toBeGreaterThan(0);
-      expect(virtualRows.length).toBeLessThan(101);
-    },
-  );
 
   it("shows Load Data guidance when the active save has no snapshot", async () => {
     renderMyClubRoute({ initialEntry: "/my-club" });
@@ -1238,13 +1014,13 @@ describe("My Club route", () => {
     expect(tacticPanel).toHaveAttribute("hidden");
     expect(plannerPanel).toHaveAttribute("hidden");
     expect(
-      within(tacticPanel as HTMLElement).getByRole("region", {
+      await within(tacticPanel as HTMLElement).findByRole("region", {
         name: "Tactic controls",
         hidden: true,
       }),
     ).toBeInTheDocument();
     expect(
-      within(plannerPanel as HTMLElement).getByRole("heading", {
+      await within(plannerPanel as HTMLElement).findByRole("heading", {
         level: 2,
         name: "Squad depth",
         hidden: true,
@@ -2774,25 +2550,25 @@ describe("My Club route", () => {
     squadTab.focus();
     await user.keyboard("{End}");
 
-    const shortlistTab = screen.getByRole("tab", { name: "Staff Shortlist" });
-    expect(shortlistTab).toHaveAttribute("aria-selected", "true");
-    expect(shortlistTab).toHaveFocus();
-    expect(shortlistTab).toHaveAttribute("tabIndex", "0");
-    expect(squadTab).toHaveAttribute("tabIndex", "-1");
-    expect(router.state.location.search).toEqual({ view: "staff-shortlist" });
-    await user.keyboard("{ArrowLeft}");
     const staffTab = screen.getByRole("tab", { name: "Staff" });
     expect(staffTab).toHaveAttribute("aria-selected", "true");
     expect(staffTab).toHaveFocus();
     expect(staffTab).toHaveAttribute("tabIndex", "0");
-    expect(shortlistTab).toHaveAttribute("tabIndex", "-1");
+    expect(squadTab).toHaveAttribute("tabIndex", "-1");
     expect(router.state.location.search).toEqual({ view: "staff" });
-    staffTab.focus();
+    await user.keyboard("{ArrowLeft}");
+    const tacticTab = screen.getByRole("tab", { name: "Tactic" });
+    expect(tacticTab).toHaveAttribute("aria-selected", "true");
+    expect(tacticTab).toHaveFocus();
+    expect(tacticTab).toHaveAttribute("tabIndex", "0");
+    expect(staffTab).toHaveAttribute("tabIndex", "-1");
+    expect(router.state.location.search).toEqual({ view: "tactic" });
+    tacticTab.focus();
     await user.keyboard("{Home}");
     expect(squadTab).toHaveAttribute("aria-selected", "true");
     expect(squadTab).toHaveFocus();
     expect(squadTab).toHaveAttribute("tabIndex", "0");
-    expect(staffTab).toHaveAttribute("tabIndex", "-1");
+    expect(tacticTab).toHaveAttribute("tabIndex", "-1");
     expect(router.state.location.search).toEqual({ view: "squad" });
 
     router.history.back();
@@ -2814,7 +2590,7 @@ describe("My Club route", () => {
       "aria-selected",
       "true",
     );
-    const matrix = screen.getByRole("region", {
+    const matrix = await screen.findByRole("region", {
       name: "Senior squad depth matrix",
     });
     expect(matrix).toBeVisible();

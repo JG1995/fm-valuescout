@@ -13,6 +13,7 @@ type SearchFilterStripProps = {
   onRulesChange: (rules: FilterRule[]) => void;
   onEdit: () => void;
   actions?: ReactNode;
+  afterEditActions?: ReactNode;
   view?: SearchView;
 };
 
@@ -22,6 +23,7 @@ export function SearchFilterStrip({
   onRulesChange,
   onEdit,
   actions,
+  afterEditActions,
   view = "general",
 }: SearchFilterStripProps) {
   const appliedRules = completeFilterRules(rules, view);
@@ -48,6 +50,7 @@ export function SearchFilterStrip({
           <Button variant="secondary" icon={SlidersHorizontal} onClick={onEdit}>
             Edit filters
           </Button>
+          {afterEditActions}
         </div>
       }
     >

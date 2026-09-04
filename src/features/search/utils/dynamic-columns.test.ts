@@ -150,25 +150,28 @@ describe("dynamicColumnFields", () => {
     ).toBe(false);
   });
 
-  it("treats Shortlist as General-family for visible sorts", () => {
-    expect(isVisibleSortField("ca", [], "shortlist")).toBe(true);
-    expect(isVisibleSortField("pa", [], "shortlist")).toBe(true);
+  it("keeps General sorts and fields independent of Moneyball", () => {
+    expect(isVisibleSortField("pa", [], "general")).toBe(true);
+    expect(isVisibleSortField("moneyball.goals", [], "general")).toBe(false);
     expect(
-      isVisibleSortField("role.deep_lying_playmaker_ip", [], "shortlist"),
-    ).toBe(true);
-    expect(
-      isVisibleSortField("potential_role.goalkeeper_ip", [], "shortlist"),
-    ).toBe(true);
-    expect(isVisibleSortField("attr.Acceleration", [], "shortlist")).toBe(true);
-    expect(isVisibleSortField("club_dna", [], "shortlist")).toBe(true);
-    expect(isVisibleSortField("moneyball.goals", [], "shortlist")).toBe(false);
-    expect(
-      isVisibleSortField(
-        "moneyball_role.wbl_wbr_wing_back_ip",
-        [],
-        "shortlist",
+      dynamicColumnFields(
+        [
+          {
+            id: createFilterRuleId(),
+            field: "moneyball.goals",
+            op: "gt",
+            value: { type: "integer" as const, value: 5 },
+          },
+          {
+            id: createFilterRuleId(),
+            field: "moneyball_role.wbl_wbr_wing_back_ip",
+            op: "gt",
+            value: { type: "integer" as const, value: 70 },
+          },
+        ],
+        "general",
       ),
-    ).toBe(false);
+    ).toEqual([]);
   });
 
   it("keeps Moneyball basic identity and value sorts while rejecting CA and PA", () => {
@@ -183,62 +186,6 @@ describe("dynamicColumnFields", () => {
     expect(
       isVisibleSortField("moneyball.average_rating", [], "moneyball"),
     ).toBe(true);
-  });
-
-  it("mirrors General dynamic columns for Shortlist and rejects Moneyball fields", () => {
-    const generalFields = [
-      {
-        id: createFilterRuleId(),
-        field: "role.deep_lying_playmaker_ip",
-        op: "gt",
-        value: { type: "integer" as const, value: 70 },
-      },
-      {
-        id: createFilterRuleId(),
-        field: "potential_role.goalkeeper_ip",
-        op: "gt",
-        value: { type: "integer" as const, value: 70 },
-      },
-      {
-        id: createFilterRuleId(),
-        field: "attr.Acceleration",
-        op: "gt",
-        value: { type: "integer" as const, value: 12 },
-      },
-      {
-        id: createFilterRuleId(),
-        field: "club_dna",
-        op: "gt",
-        value: { type: "integer" as const, value: 70 },
-      },
-    ];
-
-    expect(dynamicColumnFields(generalFields, "shortlist")).toEqual(
-      dynamicColumnFields(generalFields, "general"),
-    );
-    expect(dynamicColumnFields(generalFields, "shortlist")).toEqual([
-      "role.deep_lying_playmaker_ip",
-      "potential_role.goalkeeper_ip",
-      "attr.Acceleration",
-      "club_dna",
-    ]);
-
-    const moneyballFields = [
-      {
-        id: createFilterRuleId(),
-        field: "moneyball.goals",
-        op: "gt",
-        value: { type: "integer" as const, value: 5 },
-      },
-      {
-        id: createFilterRuleId(),
-        field: "moneyball_role.wbl_wbr_wing_back_ip",
-        op: "gt",
-        value: { type: "integer" as const, value: 70 },
-      },
-    ];
-    expect(dynamicColumnFields(moneyballFields, "shortlist")).toEqual([]);
-    expect(dynamicColumnFields(moneyballFields, "general")).toEqual([]);
   });
 });
 

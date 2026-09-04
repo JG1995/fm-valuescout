@@ -234,7 +234,7 @@ export function StaffAssignmentTargetModal({
         disabled={targetsQuery.isFetching || targetsQuery.isError || pending}
         onClick={openModal}
       >
-        Configure slots
+        Configure Club Staff
       </Button>
       {saved ? (
         <p role="status" className="text-body-sm text-success">

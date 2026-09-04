@@ -6,7 +6,6 @@ export const MY_CLUB_WORKSPACES = [
   "planner",
   "tactic",
   "staff",
-  "staff-shortlist",
 ] as const;
 export type MyClubWorkspace = (typeof MY_CLUB_WORKSPACES)[number];
 
@@ -15,7 +14,6 @@ const WORKSPACE_LABELS: Record<MyClubWorkspace, string> = {
   planner: "Planner",
   tactic: "Tactic",
   staff: "Staff",
-  "staff-shortlist": "Staff Shortlist",
 };
 
 export function parseMyClubWorkspace(raw: unknown): MyClubWorkspace | null {

@@ -4,6 +4,7 @@ import {
   MAX_FILTER_RULES,
   parseSearchCombine,
   parseSearchFilters,
+  parseShortlistOnly,
   searchFiltersForUrl,
 } from "./search-url-search";
 
@@ -78,5 +79,15 @@ describe("search URL search params", () => {
         value: { type: "integer", value: 100 },
       },
     ]);
+  });
+
+  it("parses the shortlist toggle with strict invalid-to-off", () => {
+    expect(parseShortlistOnly(true)).toBe(true);
+    expect(parseShortlistOnly("true")).toBe(true);
+    expect(parseShortlistOnly(false)).toBe(false);
+    expect(parseShortlistOnly(undefined)).toBe(false);
+    expect(parseShortlistOnly("yes")).toBe(false);
+    expect(parseShortlistOnly("false")).toBe(false);
+    expect(parseShortlistOnly(1)).toBe(false);
   });
 });

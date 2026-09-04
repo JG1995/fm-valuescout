@@ -1,4 +1,5 @@
 import { SlidersHorizontal, Trash2 } from "lucide-react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { SelectField } from "@/components/ui/field/select-field";
@@ -27,6 +28,13 @@ type StaffFilterBarProps = {
   combine: "and" | "or";
   onRulesChange: (rules: StaffFilterRule[]) => void;
   onApply: (rules: StaffFilterRule[], combine: "and" | "or") => void;
+  headerActions?: ReactNode;
+  shortlistOnly?: boolean;
+  preferredJob?: string;
+  preferredJobOptions?: string[];
+  unemployedOnly?: boolean;
+  onPreferredJobChange?: (preferredJob: string) => void;
+  onUnemployedOnlyChange?: (unemployedOnly: boolean) => void;
 };
 
 function formatValue(rule: StaffFilterRule): string {
@@ -38,7 +46,26 @@ function StaffFilterStrip({
   combine,
   onRulesChange,
   onEdit,
-}: Pick<StaffFilterBarProps, "rules" | "combine" | "onRulesChange"> & {
+  headerActions,
+  shortlistOnly,
+  preferredJob,
+  preferredJobOptions,
+  unemployedOnly,
+  onPreferredJobChange,
+  onUnemployedOnlyChange,
+}: Pick<
+  StaffFilterBarProps,
+  | "rules"
+  | "combine"
+  | "onRulesChange"
+  | "headerActions"
+  | "shortlistOnly"
+  | "preferredJob"
+  | "preferredJobOptions"
+  | "unemployedOnly"
+  | "onPreferredJobChange"
+  | "onUnemployedOnlyChange"
+> & {
   onEdit: () => void;
 }) {
   const appliedRules = completeStaffFilterRules(rules);
@@ -46,7 +73,7 @@ function StaffFilterStrip({
     <Panel
       title="Filters"
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
           {appliedRules.length > 0 ? (
             <Button variant="ghost" onClick={() => onRulesChange([])}>
               Clear all
@@ -55,9 +82,39 @@ function StaffFilterStrip({
           <Button variant="secondary" icon={SlidersHorizontal} onClick={onEdit}>
             Edit filters
           </Button>
+          {headerActions}
         </div>
       }
     >
+      {shortlistOnly ? (
+        <div className="flex flex-wrap items-center gap-4 pt-2">
+          <label className="flex items-center gap-2 text-body-md text-on-surface">
+            Preferred Job
+            <select
+              className="rounded-md border border-outline bg-surface px-2 py-1 text-on-surface"
+              value={preferredJob ?? ""}
+              onChange={(event) => onPreferredJobChange?.(event.target.value)}
+            >
+              <option value="">All jobs</option>
+              {(preferredJobOptions ?? []).map((job) => (
+                <option key={job} value={job}>
+                  {job}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-body-md text-on-surface">
+            <input
+              type="checkbox"
+              checked={unemployedOnly === true}
+              onChange={(event) =>
+                onUnemployedOnlyChange?.(event.target.checked)
+              }
+            />
+            Only unemployed
+          </label>
+        </div>
+      ) : null}
       {appliedRules.length === 0 ? (
         <p className="text-body-md text-on-surface-variant">
           No filters applied. Use Edit filters to narrow the staff list.
@@ -310,6 +367,13 @@ export function StaffFilterBar({
   combine,
   onRulesChange,
   onApply,
+  headerActions,
+  shortlistOnly,
+  preferredJob,
+  preferredJobOptions,
+  unemployedOnly,
+  onPreferredJobChange,
+  onUnemployedOnlyChange,
 }: StaffFilterBarProps) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
@@ -320,6 +384,13 @@ export function StaffFilterBar({
         combine={combine}
         onRulesChange={onRulesChange}
         onEdit={() => setOpen(true)}
+        headerActions={headerActions}
+        shortlistOnly={shortlistOnly}
+        preferredJob={preferredJob}
+        preferredJobOptions={preferredJobOptions}
+        unemployedOnly={unemployedOnly}
+        onPreferredJobChange={onPreferredJobChange}
+        onUnemployedOnlyChange={onUnemployedOnlyChange}
       />
       <StaffFilterEditorModal
         open={open}

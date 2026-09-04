@@ -329,7 +329,9 @@ describe("StaffAssignmentOptimizer", () => {
       screen.getByRole("button", { name: "Optimize assignments" }),
     );
     setStaffAssignmentTargetsIpcMockMode("pending");
-    await user.click(screen.getByRole("button", { name: "Configure slots" }));
+    await user.click(
+      screen.getByRole("button", { name: "Configure Club Staff" }),
+    );
     const dialog = await screen.findByRole("dialog", {
       name: "Configure assignment slots",
     });
@@ -354,7 +356,7 @@ describe("StaffAssignmentOptimizer", () => {
     const { rerenderOptimizer } = renderOptimizer();
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure slots" }),
+      await screen.findByRole("button", { name: "Configure Club Staff" }),
     );
     await user.click(screen.getByRole("button", { name: "Save slots" }));
     expect(
@@ -366,7 +368,7 @@ describe("StaffAssignmentOptimizer", () => {
       snapshotContextToken: "snapshot-token-b",
     });
     await user.click(
-      await screen.findByRole("button", { name: "Configure slots" }),
+      await screen.findByRole("button", { name: "Configure Club Staff" }),
     );
     const dialog = await screen.findByRole("dialog", {
       name: "Configure assignment slots",

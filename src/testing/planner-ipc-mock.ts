@@ -279,6 +279,7 @@ let tacticOptionsReadCalls: Array<{ saveId: number; contextToken: string }> =
   [];
 let tacticSaveCalls: Array<{ saveId: number; contextToken: string }> = [];
 let depth: PlannerDepth = buildDefaultDepth();
+let depthError: string | null = null;
 let roleReference: PlannerRoleReference = buildDefaultRoleReference();
 let roleReferenceError: string | null = null;
 let roleReferenceCalls: Array<{
@@ -444,6 +445,7 @@ export function resetPlannerIpcMock() {
   tacticOptionsReadCalls = [];
   tacticSaveCalls = [];
   depth = buildDefaultDepth();
+  depthError = null;
   roleReference = buildDefaultRoleReference();
   roleReferenceError = null;
   roleReferenceCalls = [];
@@ -604,6 +606,7 @@ export function resolvePlannerTacticOptionsIpcMock(args?: unknown) {
 
 export function resolvePlannerDepthIpcMock(): PlannerDepth {
   depthFetchCount += 1;
+  if (depthError) throw new Error(depthError);
   return cloneDepth(depth);
 }
 
@@ -613,6 +616,10 @@ export function getPlannerDepthIpcMockCalls() {
 
 export function setPlannerDepthIpcMock(value: PlannerDepth) {
   depth = cloneDepth(value);
+}
+
+export function setPlannerDepthError(message: string | null) {
+  depthError = message;
 }
 
 export function setPlannerSlotCandidates(value: PlannerSlotCandidate[]) {
