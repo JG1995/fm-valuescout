@@ -176,7 +176,7 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 #### Commit 1 — Record the approved feature plan
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(shortlists): record approved feature plan`
 
@@ -234,7 +234,7 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 #### Commit 2 — Add save-owned player shortlist store and import
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `feat(search): add save-owned player shortlist store`
 
@@ -300,7 +300,7 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 #### Commit 3 — Restrict General search to the player shortlist
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(search): restrict general search to shortlist`
 
@@ -564,19 +564,19 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 **PR:** feat(search): integrate player and staff shortlists
 
-**Commit:** Record the approved feature plan
+**Commit:** Restrict General search to the player shortlist
 
 ### RED or removal proof
 
-Not applicable — independently reviewed planning documents only. Proof is `python3 /home/jonas/projects/PI_SETUP/scripts/ledger_state.py .wiki/features/active/integrated-shortlists.md` plus the repository documentation check when one exists.
+Add focused Rust query proof that General search with the new restriction returns only current-snapshot players joined through the save-owned shortlist while composing with one existing filter and paging.
 
 ### Expected outcome
 
-Planning artifacts committed on `feat/integrated-shortlists` from `main`: this ledger, TODO active state, and no BACKLOG or ADR change.
+General Search accepts an optional shortlist restriction and composes it with existing filters, sorting, tactic columns, Club DNA, totals, and paging while the legacy Moneyball-backed Shortlist view remains intact for the current frontend.
 
 ### Explicit exclusions
 
-Implementation, tests, executable configuration, generated files, CONCEPT/ARCHITECTURE reconciliation, and unrelated documentation.
+React and URL changes, removal of the legacy Shortlist view, staff changes, current-state documentation, and unrelated refactors.
 
 ## Discoveries and replanning
 
@@ -588,6 +588,8 @@ Correction round 1 (plan-review verdict) made Commits 3/4 and 5/6 trunk-safe by 
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — feat(search): integrate player and staff shortlists | Commit 1 — Record the approved feature plan | d5b958618df579b99b0c778a55178ca034995f43 | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`; `delivery_state.py`; `git diff --cached --check`; pre-commit `check-fast` — passed. | Not applicable | Clear | 0 | None |
+| PR 1 — feat(search): integrate player and staff shortlists | Commit 2 — Add save-owned player shortlist store and import | Pending record | Added migration v41 and a bounded save-owned player shortlist CSV import with context revalidation, atomic replacement, zero-match preservation, and exact summary counts. | `cargo test player_shortlist`; `cargo test csv_import`; `./scripts/dev check-rust`; `./scripts/dev check` (768 passed, 2 ignored); Rust LSP; `git diff --check` — passed. | Pass | Clear | 0 | MEDIUM deferred to feature close-out: remove the module-level dead-code suppression and test-only internal skip counters if the final portfolio confirms they add no contract value. The one-column delimiter fallback is required for the exact UID-only header. |
 
 ## Final validation
 
