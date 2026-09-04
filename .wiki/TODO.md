@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-None.
+- **Top navigation (Linear JAY-54)** — replace the persistent left rail with grouped top navigation; see [active ledger](./features/active/top-navigation.md).
 
 ## Next
 
