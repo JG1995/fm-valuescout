@@ -127,10 +127,9 @@ describe("app shell routing", () => {
     ).toBeInTheDocument();
     expect(within(nav).queryByRole("link", { current: "page" })).toBeNull();
     expect(nav.querySelectorAll("[aria-current]")).toHaveLength(1);
-    expect(within(nav).getByText("Players")).toHaveAttribute(
-      "aria-current",
-      "location",
-    );
+    const playersCaption = within(nav).getByText("Players");
+    expect(playersCaption).toHaveAttribute("aria-current", "location");
+    expect(playersCaption).toHaveClass("text-primary", "font-bold");
   });
 
   it("marks only the Staff group on a staff profile", async () => {
@@ -145,10 +144,9 @@ describe("app shell routing", () => {
     ).toBeInTheDocument();
     expect(within(nav).queryByRole("link", { current: "page" })).toBeNull();
     expect(nav.querySelectorAll("[aria-current]")).toHaveLength(1);
-    expect(within(nav).getByText("Staff")).toHaveAttribute(
-      "aria-current",
-      "location",
-    );
+    const staffCaption = within(nav).getByText("Staff");
+    expect(staffCaption).toHaveAttribute("aria-current", "location");
+    expect(staffCaption).toHaveClass("text-primary", "font-bold");
   });
 
   it("marks My Staff current on its canonical Staff destination", async () => {

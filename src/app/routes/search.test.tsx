@@ -2401,13 +2401,14 @@ describe("search route", () => {
       JSON.stringify([{ field: "ca", op: "gt", value: 150 }]),
     );
     const { router } = renderSearchRoute(
-      `/search?view=general&sort=pa&dir=asc&filters=${encodedFilters}&shortlistOnly=true`,
+      `/search?view=general&sort=pa&dir=asc&combine=or&filters=${encodedFilters}&shortlistOnly=true`,
     );
     await screen.findByText("High CA");
     expect(router.state.location.search).toMatchObject({
       view: "general",
       sort: "pa",
       dir: "asc",
+      combine: "or",
       filters: [expect.objectContaining({ field: "ca" })],
       shortlistOnly: true,
     });
@@ -2418,6 +2419,7 @@ describe("search route", () => {
         view: "moneyball",
         sort: "moneyball.average_rating",
         dir: "desc",
+        combine: "or",
         filters: [],
         comparisonPool: "filtered",
         shortlistOnly: true,
@@ -2448,6 +2450,7 @@ describe("search route", () => {
         view: "general",
         sort: "ca",
         dir: "desc",
+        combine: "or",
         filters: [],
         shortlistOnly: true,
       });

@@ -240,7 +240,10 @@ export function AppNavBar() {
                 aria-current={
                   groupContext === group.caption ? "location" : undefined
                 }
-                className="px-2 text-label-sm text-on-surface-variant"
+                className={cn(
+                  "px-2 text-label-sm text-on-surface-variant",
+                  groupContext === group.caption && "font-bold text-primary",
+                )}
               >
                 {group.caption}
               </span>
