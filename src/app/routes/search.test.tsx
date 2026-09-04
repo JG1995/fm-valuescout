@@ -163,7 +163,7 @@ describe("search route", () => {
       await screen.findByRole("heading", { level: 1, name: "Player Search" }),
     ).toBeInTheDocument();
     expect(searchLink).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("tab", { name: "General" })).toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
     expect(
       screen.getByRole("button", { name: "Edit filters" }),
     ).toBeInTheDocument();
@@ -202,10 +202,10 @@ describe("search route", () => {
     });
 
     expect(
-      await screen.findByRole("tab", { name: "General" }),
+      await screen.findByRole("button", { name: "Edit filters" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Edit filters" }),
+      await screen.findByText("No data loaded for this save"),
     ).toBeInTheDocument();
     expect(
       await screen.findByText("No data loaded for this save"),
@@ -570,7 +570,7 @@ describe("search route", () => {
 
     const { router } = renderSearchRoute(`/search?sort=${tacticSort}&dir=asc`);
 
-    await screen.findByRole("tab", { name: "General" });
+    await screen.findByRole("heading", { level: 1, name: "Player Search" });
     expect(router.state.location.search).toMatchObject({
       sort: tacticSort,
       dir: "asc",
@@ -585,7 +585,7 @@ describe("search route", () => {
 
     const { router } = renderSearchRoute(`/search?sort=${tacticSort}`);
 
-    await screen.findByRole("tab", { name: "General" });
+    await screen.findByRole("heading", { level: 1, name: "Player Search" });
     expect(router.state.location.search).toMatchObject({
       sort: "ca",
       dir: "desc",
@@ -603,9 +603,11 @@ describe("search route", () => {
     ]);
     renderSearchRoute("/search?view=moneyball");
 
-    expect(
-      await screen.findByRole("tab", { name: "Moneyball" }),
-    ).toHaveAttribute("aria-selected", "true");
+    const moneyballLink = await screen.findByRole("link", {
+      name: "Moneyball",
+    });
+    expect(moneyballLink).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
     expect(
       screen.getByRole("button", { name: "Upload Moneyball CSV" }),
     ).toBeInTheDocument();
@@ -755,7 +757,10 @@ describe("search route", () => {
     renderSearchRoute();
 
     expect(
-      await screen.findByRole("tab", { name: "Moneyball", selected: true }),
+      await screen.findByRole("link", {
+        name: "Moneyball",
+        current: "page",
+      }),
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
@@ -773,7 +778,10 @@ describe("search route", () => {
     renderSearchRoute("/search?view=general");
 
     expect(
-      await screen.findByRole("tab", { name: "General", selected: true }),
+      await screen.findByRole("link", {
+        name: "Search",
+        current: "page",
+      }),
     ).toBeInTheDocument();
   });
 
@@ -783,14 +791,12 @@ describe("search route", () => {
     useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
     const { router } = renderSearchRoute();
 
-    await user.click(
-      await screen.findByRole("tab", { name: "General", selected: false }),
-    );
+    await user.click(await screen.findByRole("link", { name: "Search" }));
 
     await waitFor(() => {
       expect(router.state.location.search.view).toBe("general");
       expect(
-        screen.getByRole("tab", { name: "General", selected: true }),
+        screen.getByRole("link", { name: "Search", current: "page" }),
       ).toBeInTheDocument();
     });
   });
@@ -813,17 +819,36 @@ describe("search route", () => {
     ).toBeNull();
   });
 
-  it("moves focus to the selected Search tab during keyboard navigation", async () => {
+  it("renders Search views without a local view tablist", async () => {
+    const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    renderSearchRoute();
+    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+    const { router } = renderSearchRoute("/search?view=general");
 
-    const general = await screen.findByRole("tab", { name: "General" });
-    general.focus();
-    fireEvent.keyDown(general, { key: "ArrowRight" });
+    expect(
+      await screen.findByRole("link", {
+        name: "Search",
+        current: "page",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
+
+    await user.click(screen.getByRole("link", { name: "Moneyball" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: "Moneyball" })).toHaveFocus();
+      expect(router.state.location.search).toMatchObject({
+        view: "moneyball",
+      });
     });
+    expect(
+      screen.getByRole("link", { name: "Moneyball", current: "page" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", {
+        name: "Upload Moneyball CSV",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
   });
 
   it("renders a virtualized page of basic columns via search_players", async () => {
@@ -2365,7 +2390,7 @@ describe("search route", () => {
     expect(within(firstRow).getByText("Low")).toBeInTheDocument();
   });
 
-  it("clears all filters and resets destination sort and direction when any tab is selected", async () => {
+  it("clears all filters and resets destination sort and direction when navigation selects a view", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([
@@ -2376,7 +2401,7 @@ describe("search route", () => {
       JSON.stringify([{ field: "ca", op: "gt", value: 150 }]),
     );
     const { router } = renderSearchRoute(
-      `/search?view=general&sort=pa&dir=asc&filters=${encodedFilters}`,
+      `/search?view=general&sort=pa&dir=asc&filters=${encodedFilters}&shortlistOnly=true`,
     );
     await screen.findByText("High CA");
     expect(router.state.location.search).toMatchObject({
@@ -2384,9 +2409,10 @@ describe("search route", () => {
       sort: "pa",
       dir: "asc",
       filters: [expect.objectContaining({ field: "ca" })],
+      shortlistOnly: true,
     });
 
-    await user.click(screen.getByRole("tab", { name: "Moneyball" }));
+    await user.click(screen.getByRole("link", { name: "Moneyball" }));
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
         view: "moneyball",
@@ -2394,6 +2420,7 @@ describe("search route", () => {
         dir: "desc",
         filters: [],
         comparisonPool: "filtered",
+        shortlistOnly: true,
       });
     });
 
@@ -2415,15 +2442,17 @@ describe("search route", () => {
       expect(router.state.location.search.filters).toHaveLength(1),
     );
 
-    await user.click(screen.getByRole("tab", { name: "General" }));
+    await user.click(screen.getByRole("link", { name: "Search" }));
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
         view: "general",
         sort: "ca",
         dir: "desc",
         filters: [],
+        shortlistOnly: true,
       });
     });
+    expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
   });
 
   it("keeps Moneyball Name sort from direct URL rather than normalizing to Average Rating", async () => {
@@ -2496,21 +2525,23 @@ describe("search route", () => {
     });
   });
 
-  it("shows General and Moneyball tabs without a Player Shortlist tab", async () => {
+  it("renders Search without local view tabs or a Player Shortlist tab", async () => {
     await resolveLoadDataIpcMock();
     renderSearchRoute("/search");
 
-    const tablist = await screen.findByRole("tablist", {
-      name: "Search view",
-    });
     expect(
-      within(tablist)
-        .getAllByRole("tab")
-        .map((tab) => tab.textContent),
-    ).toEqual(["General", "Moneyball"]);
+      await screen.findByRole("heading", { level: 1, name: "Player Search" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "General" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Moneyball" })).toBeNull();
     expect(
       screen.queryByRole("tab", { name: "Shortlist" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Search", current: "page" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Moneyball" })).toBeInTheDocument();
     expect(screen.queryByText("No shortlist yet")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Go to Moneyball" }),
@@ -2705,7 +2736,7 @@ describe("search route", () => {
     const { router } = renderSearchRoute("/search?shortlistOnly=true");
     await screen.findByText("High CA");
 
-    await user.click(screen.getByRole("tab", { name: "Moneyball" }));
+    await user.click(screen.getByRole("link", { name: "Moneyball" }));
     await user.click(
       screen.getByRole("button", { name: "Upload Moneyball CSV" }),
     );

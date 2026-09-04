@@ -1,7 +1,7 @@
 import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DatabaseZap, FileUp } from "lucide-react";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
@@ -244,10 +244,6 @@ function SearchPageContent() {
       setShortlistImportOpen(false);
     }
   }, [shortlistUiContextKey]);
-  const tabRefs = useRef<Record<SearchView, HTMLButtonElement | null>>({
-    general: null,
-    moneyball: null,
-  });
 
   const updateSearch = (
     patch: Partial<{
@@ -481,105 +477,41 @@ function SearchPageContent() {
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div
-          role="tablist"
-          aria-label="Search view"
-          className="inline-flex rounded-full bg-surface-container-high p-0.5"
-          onKeyDown={(event) => {
-            const views: SearchView[] = ["general", "moneyball"];
-            const index = views.indexOf(view);
-            const nextIndex =
-              event.key === "ArrowRight" || event.key === "ArrowDown"
-                ? (index + 1) % views.length
-                : event.key === "ArrowLeft" || event.key === "ArrowUp"
-                  ? (index - 1 + views.length) % views.length
-                  : event.key === "Home"
-                    ? 0
-                    : event.key === "End"
-                      ? views.length - 1
-                      : -1;
-            if (nextIndex < 0) return;
-            event.preventDefault();
-            const next = views[nextIndex];
-            updateSearch({
-              view: next,
-              comparisonPool: next === "moneyball" ? "filtered" : undefined,
-              replace: false,
-              sort: defaultSearchSort(next),
-              dir: defaultDirForSortField(defaultSearchSort(next)),
-              filters: [],
-            });
-            tabRefs.current[next]?.focus();
-          }}
-        >
-          {(["general", "moneyball"] as const).map((candidate) => (
-            <button
-              key={candidate}
-              type="button"
-              role="tab"
-              aria-selected={view === candidate}
-              tabIndex={view === candidate ? 0 : -1}
-              ref={(element) => {
-                tabRefs.current[candidate] = element;
-              }}
-              className={
-                view === candidate
-                  ? "rounded-full bg-primary px-3 py-1.5 text-label-md text-on-primary"
-                  : "rounded-full px-3 py-1.5 text-label-md text-on-surface-variant hover:text-on-surface"
-              }
-              onClick={() =>
-                updateSearch({
-                  view: candidate,
-                  comparisonPool:
-                    candidate === "moneyball" ? "filtered" : undefined,
-                  replace: false,
-                  sort: defaultSearchSort(candidate),
-                  dir: defaultDirForSortField(defaultSearchSort(candidate)),
-                  filters: [],
-                })
-              }
-            >
-              {candidate === "general" ? "General" : "Moneyball"}
-            </button>
-          ))}
+      {view === "moneyball" ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <fieldset className="inline-flex rounded-full border border-outline bg-surface-container-high p-0.5">
+            <legend className="sr-only">Comparison pool</legend>
+            {(["filtered", "fullCsv"] as const).map((pool) => (
+              <button
+                key={pool}
+                type="button"
+                aria-pressed={comparisonPool === pool}
+                className={
+                  comparisonPool === pool
+                    ? "rounded-full bg-primary px-3 py-1 text-label-md text-on-primary"
+                    : "rounded-full px-3 py-1 text-label-md text-on-surface-variant hover:text-on-surface"
+                }
+                onClick={() => updateSearch({ comparisonPool: pool })}
+              >
+                {pool === "filtered" ? "Filtered cohort" : "Full CSV"}
+              </button>
+            ))}
+          </fieldset>
+          <Button
+            variant="secondary"
+            icon={FileUp}
+            onClick={() => setImportOpen(true)}
+          >
+            Upload Moneyball CSV
+          </Button>
+          {lastMoneyballImport ? (
+            <p className="text-body-sm text-on-surface-variant">
+              Last import: {lastMoneyballImport.storedPlayers} stored,{" "}
+              {lastMoneyballImport.skippedPlayers} skipped.
+            </p>
+          ) : null}
         </div>
-        {view === "moneyball" ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <fieldset className="inline-flex rounded-full border border-outline bg-surface-container-high p-0.5">
-              <legend className="sr-only">Comparison pool</legend>
-              {(["filtered", "fullCsv"] as const).map((pool) => (
-                <button
-                  key={pool}
-                  type="button"
-                  aria-pressed={comparisonPool === pool}
-                  className={
-                    comparisonPool === pool
-                      ? "rounded-full bg-primary px-3 py-1 text-label-md text-on-primary"
-                      : "rounded-full px-3 py-1 text-label-md text-on-surface-variant hover:text-on-surface"
-                  }
-                  onClick={() => updateSearch({ comparisonPool: pool })}
-                >
-                  {pool === "filtered" ? "Filtered cohort" : "Full CSV"}
-                </button>
-              ))}
-            </fieldset>
-            <Button
-              variant="secondary"
-              icon={FileUp}
-              onClick={() => setImportOpen(true)}
-            >
-              Upload Moneyball CSV
-            </Button>
-            {lastMoneyballImport ? (
-              <p className="text-body-sm text-on-surface-variant">
-                Last import: {lastMoneyballImport.storedPlayers} stored,{" "}
-                {lastMoneyballImport.skippedPlayers} skipped.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+      ) : null}
       {resultContext ? (
         <TacticContextBoundary
           context={{

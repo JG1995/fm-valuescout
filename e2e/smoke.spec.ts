@@ -1638,10 +1638,10 @@ test.describe("application smoke", () => {
     });
 
     await page.goto("/search");
-    const main = page.getByRole("main");
-    await expect(
-      main.getByRole("tab", { name: "Moneyball", selected: true }),
-    ).toBeVisible();
+    const nav = page.getByTestId("app-nav-bar");
+    const searchLink = nav.getByRole("link", { name: "Search" });
+    const moneyballLink = nav.getByRole("link", { name: "Moneyball" });
+    await expect(moneyballLink).toHaveAttribute("aria-current", "page");
 
     await page.goto("/players/1");
     await expect(
@@ -1649,22 +1649,16 @@ test.describe("application smoke", () => {
     ).toBeVisible();
 
     await page.goto("/search");
-    await main.getByRole("tab", { name: "General" }).click();
+    await searchLink.click();
     await expect(page).toHaveURL(/\/search\?.*view=general/);
-    await expect(
-      main.getByRole("tab", { name: "General", selected: true }),
-    ).toBeVisible();
+    await expect(searchLink).toHaveAttribute("aria-current", "page");
 
     await page.reload();
-    await expect(
-      main.getByRole("tab", { name: "General", selected: true }),
-    ).toBeVisible();
+    await expect(searchLink).toHaveAttribute("aria-current", "page");
 
     await page.goBack();
     await expect(page).not.toHaveURL(/view=/);
-    await expect(
-      main.getByRole("tab", { name: "Moneyball", selected: true }),
-    ).toBeVisible();
+    await expect(moneyballLink).toHaveAttribute("aria-current", "page");
   });
 
   test("configured Squad confirms and reports a closed CA boost", async ({
@@ -2716,39 +2710,40 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
-  test("Search shows General and Moneyball tabs with legacy shortlist normalization", async ({
+  test("Search shows General and Moneyball views in navigation with legacy shortlist normalization", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/search");
 
-    const tablist = page.getByRole("tablist", { name: "Search view" });
-    const generalTab = tablist.getByRole("tab", { name: "General" });
-    const moneyballTab = tablist.getByRole("tab", { name: "Moneyball" });
+    const nav = page.getByTestId("app-nav-bar");
+    const searchLink = nav.getByRole("link", { name: "Search" });
+    const moneyballLink = nav.getByRole("link", { name: "Moneyball" });
 
-    await expect(generalTab).toBeVisible();
-    await expect(moneyballTab).toBeVisible();
-    await expect(tablist.getByRole("tab", { name: "Shortlist" })).toHaveCount(
-      0,
-    );
-    await expect(tablist.getByRole("tab").nth(0)).toHaveText("General");
-    await expect(tablist.getByRole("tab").nth(1)).toHaveText("Moneyball");
+    await expect(searchLink).toBeVisible();
+    await expect(moneyballLink).toBeVisible();
+    await expect(searchLink).toHaveAttribute("aria-current", "page");
+    await expect(
+      page.getByRole("tablist", { name: "Search view" }),
+    ).toHaveCount(0);
 
-    await generalTab.focus();
-    await expect(generalTab).toHaveAttribute("aria-selected", "true");
-    await page.keyboard.press("ArrowRight");
-    await expect(moneyballTab).toBeFocused();
-    await expect(moneyballTab).toHaveAttribute("aria-selected", "true");
-    await page.keyboard.press("ArrowRight");
-    await expect(generalTab).toBeFocused();
-    await expect(generalTab).toHaveAttribute("aria-selected", "true");
+    await moneyballLink.click();
+    await expect(page).toHaveURL(/\/search\?.*view=moneyball/);
+    await expect(moneyballLink).toHaveAttribute("aria-current", "page");
+    await expect(
+      page.getByRole("tablist", { name: "Search view" }),
+    ).toHaveCount(0);
+
+    await searchLink.click();
+    await expect(page).toHaveURL(/\/search\?.*view=general/);
+    await expect(searchLink).toHaveAttribute("aria-current", "page");
 
     await expect(
       page.getByRole("button", { name: "Upload Shortlist" }),
     ).toBeVisible();
 
     await page.goto("/search?view=shortlist");
-    await expect(generalTab).toHaveAttribute("aria-selected", "true");
+    await expect(searchLink).toHaveAttribute("aria-current", "page");
     await expect(
       page.getByRole("switch", { name: "Shortlist: On" }),
     ).toBeVisible();

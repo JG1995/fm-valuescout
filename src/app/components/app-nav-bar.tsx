@@ -33,7 +33,26 @@ type Destination = {
   icon: LucideIcon;
   to: string;
   search?: Record<string, string>;
+  /**
+   * Same-route view transition. The plain `search` object replaces the
+   * whole search state; the transition keeps `shortlistOnly` (and
+   * `combine`, which the old tab patch never replaced) while every other
+   * key falls back to the destination view defaults in validateSearch.
+   */
+  searchTransition?: (
+    previous: Record<string, unknown>,
+  ) => Record<string, unknown>;
 };
+
+function searchViewTransition(
+  view: "general" | "moneyball",
+): (previous: Record<string, unknown>) => Record<string, unknown> {
+  return (previous) => ({
+    view,
+    combine: previous.combine,
+    shortlistOnly: previous.shortlistOnly,
+  });
+}
 
 const destinations: Destination[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, to: "/" },
@@ -43,6 +62,7 @@ const destinations: Destination[] = [
     icon: Search,
     to: "/search",
     search: { view: "general" },
+    searchTransition: searchViewTransition("general"),
   },
   {
     id: "moneyball",
@@ -50,6 +70,7 @@ const destinations: Destination[] = [
     icon: Target,
     to: "/search",
     search: { view: "moneyball" },
+    searchTransition: searchViewTransition("moneyball"),
   },
   {
     id: "staff-search",
@@ -145,6 +166,11 @@ export function AppNavBar() {
   );
   const groupContext = current === null ? currentGroupCaption(pathname) : null;
   const byId = new Map(destinations.map((item) => [item.id, item]));
+  // View switching inside /search keeps the old tab transition contract
+  // (shortlistOnly/combine survive, everything else resets to the
+  // destination view defaults). Links from other routes use the plain
+  // search object so staff or club state never leaks into Search.
+  const onSearchRoute = pathname === "/search";
 
   return (
     <nav
@@ -172,7 +198,11 @@ export function AppNavBar() {
                     <Link
                       key={id}
                       to={item.to}
-                      search={item.search}
+                      search={
+                        item.searchTransition && onSearchRoute
+                          ? item.searchTransition
+                          : item.search
+                      }
                       activeOptions={{ exact: true }}
                       aria-current={isActive ? "page" : undefined}
                       className={cn(
