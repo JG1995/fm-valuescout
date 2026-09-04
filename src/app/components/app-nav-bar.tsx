@@ -138,10 +138,6 @@ function currentDestinationId(
     if (search.view === undefined || search.view === "squad") return "squad";
     if (search.view === "planner") return "planner";
     if (search.view === "tactic") return "tactic";
-    // Interim: Commit 4 owns reversing the retained /staff?view=my-staff
-    // replace-redirect to /my-club?view=staff, so map that route state to
-    // the My Staff destination until the canonical Staff URL lands directly.
-    if (search.view === "staff") return "my-staff";
     return null;
   }
   if (pathname === "/academy") return "youth";

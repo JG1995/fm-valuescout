@@ -25,6 +25,7 @@ import {
 } from "@/stores/use-player-table-store";
 import {
   resolvePendingPlannerTeamSaveIpcMock,
+  setManagedClubIpcMock,
   setPlannerDepthError,
   setPlannerTeamRemovalImpacts,
   setPlannerTeamSavePending,
@@ -38,6 +39,7 @@ import {
   getLastStaffAssignmentOptimizerIpcArgs,
   getLastStaffAssignmentTargetsIpcArgs,
   getMyStaffBoostIpcMockCalls,
+  getSearchStaffIpcMockCalls,
   rejectPendingMyStaffBoostIpcMock,
   resolvePendingMyStaffBoostIpcMock,
   sendPendingMyStaffBoostProgressIpcMock,
@@ -47,6 +49,7 @@ import {
   setStaffFamilyConfigured,
   setStaffListIpcMockMode,
   setStaffOverride,
+  setStaffSearchIpcMockMode,
   setStaffShortlistOverride,
 } from "@/testing/staff-ipc-mock";
 import {
@@ -104,6 +107,55 @@ describe("staff route", () => {
       within(table).getByRole("columnheader", { name: "Coach — Goalkeeping" }),
     ).toBeInTheDocument();
     expect(within(table).getByText("Alex Coach")).toBeInTheDocument();
+  });
+
+  it("renders My Staff canonically with club context and no selector", async () => {
+    await resolveLoadDataIpcMock();
+    setManagedClubIpcMock({
+      clubName: "Metro FC",
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
+    const { router } = renderStaffRoute("/staff?view=my-staff");
+
+    expect(router.state.location.pathname).toBe("/staff");
+    const myStaffLink = await screen.findByRole("link", {
+      name: "My Staff",
+    });
+    expect(myStaffLink).toHaveAttribute("aria-current", "page");
+    expect(
+      await screen.findByRole("heading", { name: "My Staff" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Managed club: Metro FC")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("table", { name: "Staff overview" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Managed club" })).toBeNull();
+  });
+
+  it("renders My Staff without Staff Search when search_staff fails", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffSearchIpcMockMode("error");
+    renderStaffRoute("/staff?view=my-staff");
+
+    expect(
+      await screen.findByRole("table", { name: "Staff overview" }),
+    ).toBeInTheDocument();
+    expect(getSearchStaffIpcMockCalls()).toHaveLength(0);
+  });
+
+  it("shows the Club setup link with no selector when My Staff is unconfigured", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffFamilyConfigured(false);
+    renderStaffRoute("/staff?view=my-staff");
+
+    expect(
+      await screen.findByText("Choose your managed club", { exact: true }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open Managed Club" }),
+    ).toHaveAttribute("href", "/my-club#managed-club");
+    expect(screen.queryByRole("combobox", { name: "Managed club" })).toBeNull();
   });
 
   it("keeps projected shortlist columns sortable without showing job metadata", async () => {
@@ -236,22 +288,46 @@ describe("staff route", () => {
     ).toHaveAttribute("aria-sort", "ascending");
   });
 
-  it("retains managed-club Staff sort state in My Club", async () => {
+  it("keeps the canonical My Staff overview virtualized", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffOverride(
+      Array.from({ length: 101 }, (_, index) =>
+        fixtureStaff({
+          uid: index + 1,
+          name: `Staff member ${String(index + 1).padStart(3, "0")}`,
+        }),
+      ),
+    );
+    renderStaffRoute("/staff?view=my-staff");
+
+    const table = await screen.findByRole("table", {
+      name: "Staff overview",
+    });
+    const scroller = screen.getByTestId("my-staff-results-scroller");
+    expect(scroller).toHaveClass("h-full", "min-h-0", "overflow-auto");
+    const virtualRows = within(table)
+      .getAllByRole("row")
+      .filter((row) => row.hasAttribute("data-index"));
+    expect(virtualRows.length).toBeGreaterThan(0);
+    expect(virtualRows.length).toBeLessThan(101);
+  });
+
+  it("retains managed-club Staff sort state under My Staff", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
-    const { router } = renderStaffRoute("/my-club?view=staff");
+    const { router } = renderStaffRoute("/staff?view=my-staff");
     const myStaffTable = await screen.findByRole("table", {
       name: "Staff overview",
     });
     expect(router.state.location.search).toMatchObject({
-      view: "staff",
+      view: "my-staff",
     });
     await user.click(within(myStaffTable).getByRole("button", { name: "PA" }));
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        view: "staff",
-        staffSort: "pa",
-        staffDir: "desc",
+        view: "my-staff",
+        myStaffSort: "pa",
+        myStaffDir: "desc",
       });
     });
   });
@@ -289,7 +365,7 @@ describe("staff route", () => {
   it("opens a staff profile from a managed-club Staff row with Enter", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
-    renderStaffRoute("/my-club?view=staff");
+    renderStaffRoute("/staff?view=my-staff");
     const table = await screen.findByRole("table", {
       name: "Staff overview",
     });
@@ -302,24 +378,6 @@ describe("staff route", () => {
     expect(
       await screen.findByRole("heading", { name: "Alex Coach" }),
     ).toBeInTheDocument();
-  });
-
-  it("supports keyboard My Club workspace tabs without changing the table contract", async () => {
-    await resolveLoadDataIpcMock();
-    const user = userEvent.setup();
-    renderStaffRoute("/my-club?view=staff");
-    await screen.findByRole("table", { name: "Staff overview" });
-    const squadTab = screen.getByRole("tab", { name: "Squad" });
-    squadTab.focus();
-    fireEvent.keyDown(squadTab.parentElement as HTMLElement, {
-      key: "ArrowRight",
-    });
-    await user.click(screen.getByRole("tab", { name: "Staff" }));
-    const myStaffTable = await screen.findByRole("table", {
-      name: "Staff overview",
-    });
-    expect(within(myStaffTable).getAllByRole("columnheader")).toHaveLength(26);
-    expect(within(myStaffTable).getByText("Alex Coach")).toBeInTheDocument();
   });
 
   it("renders missing scores as em dashes instead of zero", async () => {
@@ -355,7 +413,7 @@ describe("staff route", () => {
         },
       },
     ]);
-    renderStaffRoute("/my-club?view=staff");
+    renderStaffRoute("/staff?view=my-staff");
 
     const staffTable = await screen.findByRole("table", {
       name: "Staff overview",
@@ -441,7 +499,7 @@ describe("staff route", () => {
     const staffSearchColumns = [
       ...usePlayerTableStore.getState().layouts["staff-search"].columnIds,
     ];
-    renderStaffRoute("/my-club?view=staff");
+    renderStaffRoute("/staff?view=my-staff");
     const myStaffTable = await screen.findByRole("table", {
       name: "Staff overview",
     });
@@ -460,7 +518,7 @@ describe("staff route", () => {
   it("distinguishes an unconfigured managed club from an empty Staff overview", async () => {
     await resolveLoadDataIpcMock();
     setStaffFamilyConfigured(false);
-    renderStaffRoute("/my-club?view=staff");
+    renderStaffRoute("/staff?view=my-staff");
     expect(
       await screen.findByText("Choose your managed club", { exact: true }),
     ).toBeInTheDocument();
@@ -472,7 +530,7 @@ describe("staff route", () => {
   it("describes an empty managed-club Staff overview as one managed club", async () => {
     await resolveLoadDataIpcMock();
     setStaffOverride([]);
-    renderStaffRoute("/my-club?view=staff");
+    renderStaffRoute("/staff?view=my-staff");
 
     expect(
       await screen.findByText(
@@ -483,7 +541,7 @@ describe("staff route", () => {
 
   it("offers one bulk CA boost on managed-club Staff and no row actions", async () => {
     await resolveLoadDataIpcMock();
-    renderStaffRoute("/my-club?view=staff");
+    renderStaffRoute("/staff?view=my-staff");
 
     const myStaffTable = await screen.findByRole("table", {
       name: "Staff overview",
@@ -500,7 +558,7 @@ describe("staff route", () => {
   it("confirms and reports a managed-club bulk CA boost", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
-    const { queryClient } = renderStaffRoute("/my-club?view=staff");
+    const { queryClient } = renderStaffRoute("/staff?view=my-staff");
     queryClient.setQueryData(["staff", "probe"], []);
     queryClient.setQueryData(["snapshot", "probe"], []);
     await screen.findByRole("table", {
@@ -542,7 +600,7 @@ describe("staff route", () => {
     await resolveLoadDataIpcMock();
     setMyStaffBoostIpcMockMode("recoveryRequired");
     const user = userEvent.setup();
-    const { queryClient } = renderStaffRoute("/my-club?view=staff");
+    const { queryClient } = renderStaffRoute("/staff?view=my-staff");
 
     await screen.findByRole("table", { name: "Staff overview" });
     await user.click(screen.getByRole("button", { name: "Boost all CA" }));
@@ -578,7 +636,7 @@ describe("staff route", () => {
     await resolveLoadDataIpcMock();
     setMyStaffBoostIpcMockMode("pending");
     const user = userEvent.setup();
-    renderStaffRoute("/my-club?view=staff");
+    renderStaffRoute("/staff?view=my-staff");
 
     await screen.findByRole("table", { name: "Staff overview" });
     await user.click(screen.getByRole("button", { name: "Boost all CA" }));

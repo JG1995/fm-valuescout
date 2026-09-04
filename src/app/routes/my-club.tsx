@@ -6,7 +6,7 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { CircleAlert, DatabaseZap, UsersRound } from "lucide-react";
 import { Suspense, useRef, useState } from "react";
 import { clearPlayerResultContext } from "@/app/player-result-context";
@@ -70,12 +70,6 @@ import {
   isSquadSortField,
 } from "@/features/squad/types/squad-sort";
 import { staffKeys } from "@/features/staff/api/staff-keys";
-import { staffMyStaffQueryOptions } from "@/features/staff/api/staff-query-options";
-import { StaffSearchResultsPanel } from "@/features/staff/components/staff-search-results-panel";
-import type {
-  StaffSortDir,
-  StaffSortField,
-} from "@/features/staff/types/staff-sort";
 import {
   DEFAULT_STAFF_SORT_FIELD,
   defaultDirForStaffSortField,
@@ -89,8 +83,6 @@ export type MyClubSearch = {
   view?: MyClubWorkspace;
   squadSort?: SquadSortField;
   squadDir?: SquadSortDir;
-  staffSort?: StaffSortField;
-  staffDir?: StaffSortDir;
 };
 
 function squadSortForSearch(search: MyClubSearch): {
@@ -108,64 +100,60 @@ function squadSortForSearch(search: MyClubSearch): {
   return { sort, dir };
 }
 
-function staffSortForSearch(search: MyClubSearch): {
-  sort: StaffSortField;
-  dir: StaffSortDir;
-} {
-  const sort = isStaffSortField(search.staffSort)
-    ? search.staffSort
-    : DEFAULT_STAFF_SORT_FIELD;
-  const dir = isStaffSortDir(search.staffDir)
-    ? search.staffDir
-    : defaultDirForStaffSortField(sort);
-  return { sort, dir };
-}
-
 type SquadBoostMutationVariables = {
   snapshotId: number;
   onProgress: (progress: SquadPlayerBoostProgress) => void;
 };
 
-type MyClubStaffSearchPatch = {
-  staffSort?: StaffSortField;
-  staffDir?: StaffSortDir;
-};
-
 export const Route = createFileRoute("/my-club")({
   loaderDeps: ({ search }) => {
     const { sort, dir } = squadSortForSearch(search);
-    const staff = staffSortForSearch(search);
     return {
       view: parseMyClubWorkspace(search.view) ?? "squad",
       sort,
       dir,
-      staffSort: staff.sort,
-      staffDir: staff.dir,
     };
   },
-  loader: ({
-    context: { queryClient },
-    deps: { view, staffSort, staffDir },
-  }) => {
-    const staffQuery =
-      view === "staff"
-        ? queryClient.ensureQueryData(
-            staffMyStaffQueryOptions(0, undefined, staffSort, staffDir, []),
-          )
-        : Promise.resolve();
+  loader: ({ context: { queryClient } }) => {
     return Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(managedClubQueryOptions),
       queryClient.prefetchQuery(managedClubOptionsQueryOptions),
       queryClient.ensureQueryData(plannerDepthQueryOptions),
-      staffQuery,
     ]);
   },
   beforeLoad: ({ location }) => {
-    // Legacy Staff Shortlist links replace the history entry with the
-    // canonical Staff Search + shortlistOnly URL without inspecting
-    // persistence. location.search is the raw query.
+    // Legacy Club Staff links replace the history entry with the canonical
+    // My Staff URL, mapping staffSort/staffDir onto myStaffSort/myStaffDir.
+    // location.search is the raw query.
     const raw = location.search as Record<string, unknown> | undefined;
+    if (raw?.view === "staff") {
+      const myStaffSort = isStaffSortField(raw.staffSort)
+        ? raw.staffSort
+        : DEFAULT_STAFF_SORT_FIELD;
+      throw Route.redirect({
+        to: "/staff",
+        search: {
+          view: "my-staff",
+          sort: myStaffSort,
+          dir: isStaffSortDir(raw.staffDir)
+            ? raw.staffDir
+            : defaultDirForStaffSortField(myStaffSort),
+          searchSort: DEFAULT_STAFF_SORT_FIELD,
+          searchDir: defaultDirForStaffSortField(DEFAULT_STAFF_SORT_FIELD),
+          myStaffSort,
+          myStaffDir: isStaffSortDir(raw.staffDir)
+            ? raw.staffDir
+            : defaultDirForStaffSortField(myStaffSort),
+          shortlistSort: DEFAULT_STAFF_SORT_FIELD,
+          shortlistDir: defaultDirForStaffSortField(DEFAULT_STAFF_SORT_FIELD),
+          unemployedOnly: false,
+          filters: [],
+          combine: "and",
+        },
+        replace: true,
+      });
+    }
     if (raw?.view === "staff-shortlist") {
       const shortlistSort = isStaffShortlistSortField(raw.shortlistSort)
         ? raw.shortlistSort
@@ -211,18 +199,10 @@ export const Route = createFileRoute("/my-club")({
     const squadDir = isSquadSortDir(search.squadDir)
       ? search.squadDir
       : undefined;
-    const staffSort = isStaffSortField(search.staffSort)
-      ? search.staffSort
-      : undefined;
-    const staffDir = isStaffSortDir(search.staffDir)
-      ? search.staffDir
-      : undefined;
     return {
       ...(view ? { view } : {}),
       ...(squadSort ? { squadSort } : {}),
       ...(squadDir ? { squadDir } : {}),
-      ...(staffSort ? { staffSort } : {}),
-      ...(staffDir ? { staffDir } : {}),
     };
   },
   component: MyClubPage,
@@ -409,10 +389,8 @@ function MyClubPageContent() {
   const { view } = search;
   const { sort: squadSort, dir: squadDir } = squadSortForSearch(search);
   const navigate = Route.useNavigate();
-  const router = useRouter();
   const requestedWorkspace = parseMyClubWorkspace(view);
   const activeWorkspace = requestedWorkspace ?? "squad";
-  const { sort: staffSort, dir: staffDir } = staffSortForSearch(search);
   const squadCurrentAbilityBoostContextIsCurrent =
     squadCurrentAbilityBoost.variables?.snapshotId === snapshot?.id;
   const squadWonderkidMentalityBoostContextIsCurrent =
@@ -470,23 +448,6 @@ function MyClubPageContent() {
       replace: true,
     });
   };
-  const updateStaffSearch = (patch: MyClubStaffSearchPatch) =>
-    navigate({
-      search: (previous) => ({
-        ...previous,
-        ...(patch.staffSort ? { staffSort: patch.staffSort } : {}),
-        ...(patch.staffDir ? { staffDir: patch.staffDir } : {}),
-      }),
-      replace: true,
-    });
-  const onStaffSortChange = (
-    nextSort: StaffSortField,
-    nextDir: StaffSortDir,
-  ) => {
-    void updateStaffSearch({ staffSort: nextSort, staffDir: nextDir });
-  };
-  const onStaffBoostSuccess = () =>
-    queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
   const myClubHeader = (
     <header className="flex flex-col items-start gap-2">
       <div className="flex w-full flex-wrap items-start justify-between gap-3">
@@ -807,37 +768,6 @@ function MyClubPageContent() {
           </TacticContextBoundary>
         ) : null}
       </div>
-      <div
-        {...myClubWorkspacePanelProps("staff", activeWorkspace)}
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        <Suspense fallback={<StaffWorkspaceFallback />}>
-          <StaffSearchResultsPanel
-            activeSnapshotId={snapshot.id}
-            scope="my-staff"
-            sortBy={staffSort}
-            sortDir={staffDir}
-            filters={[]}
-            filterCombine="and"
-            onSortChange={onStaffSortChange}
-            onBoostSuccess={onStaffBoostSuccess}
-            onRowActivate={(staff) =>
-              router.history.push(`/staff/${staff.uid}`)
-            }
-          />
-        </Suspense>
-      </div>
-    </div>
-  );
-}
-
-function StaffWorkspaceFallback() {
-  return (
-    <div
-      className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant"
-      aria-busy="true"
-    >
-      Loading staff…
     </div>
   );
 }

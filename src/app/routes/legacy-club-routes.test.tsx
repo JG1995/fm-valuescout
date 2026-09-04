@@ -93,20 +93,35 @@ describe("legacy club routes", () => {
     expect(history.canGoBack()).toBe(false);
   });
 
-  it("replaces legacy My Staff with the My Club Staff workspace", async () => {
+  it("replaces legacy Club Staff with canonical My Staff preserving sort", async () => {
     const { history, router } = renderLegacyPlannerRoute(
-      "/staff?view=my-staff&myStaffSort=pa&myStaffDir=asc",
+      "/my-club?view=staff&staffSort=pa&staffDir=asc",
     );
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/my-club");
-      expect(router.state.location.search).toEqual({
-        view: "staff",
-        staffSort: "pa",
-        staffDir: "asc",
+      expect(router.state.location.pathname).toBe("/staff");
+      expect(router.state.location.search).toMatchObject({
+        view: "my-staff",
+        myStaffSort: "pa",
+        myStaffDir: "asc",
       });
     });
     expect(history.canGoBack()).toBe(false);
+  });
+
+  it("defaults invalid legacy Club Staff sort through the staff validators", async () => {
+    const { router } = renderLegacyPlannerRoute(
+      "/my-club?view=staff&staffSort=bogus&staffDir=sideways",
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/staff");
+      expect(router.state.location.search).toMatchObject({
+        view: "my-staff",
+        myStaffSort: "ca",
+        myStaffDir: "desc",
+      });
+    });
   });
 
   it("replaces a legacy Staff Shortlist link with Staff Search filtering on", async () => {

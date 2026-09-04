@@ -349,7 +349,7 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 
 #### Commit 4 — Make My Staff a canonical Staff destination
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): promote my staff to a top destination`
 
@@ -412,7 +412,7 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 
 #### Commit 5 — Move Club Squad, Planner, and Tactic into top navigation
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(club): move club workspaces into top navigation`
 
@@ -533,19 +533,19 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 
 **PR:** PR 1 — feat(nav): replace left rail with top navigation
 
-**Commit:** Make My Staff a canonical Staff destination
+**Commit:** Move Club Squad, Planner, and Tactic into top navigation
 
 ### RED or removal proof
 
-Add route tests that fail until `/staff?view=my-staff` renders the managed-club cohort and `/my-club?view=staff&staffSort&staffDir` replace-redirects to it with valid sort state translated and no extra history entry. Prove an unconfigured club shows the Club setup link and no managed-club selector appears in Staff.
+Add route tests that fail until `/my-club?view=squad|planner|tactic` selects the matching navigation destination without the local `My Club workspaces` tablist. Prove only the selected workspace is exposed while Planner and Tactic panels remain mounted with drafts intact, and prove no obsolete `tabpanel`, `aria-labelledby`, or tab/panel IDs remain.
 
 ### Expected outcome
 
-My Staff is canonical under Staff with selected-club context, setup recovery when unconfigured, and preserved optimizer/assignment context. Legacy Club Staff URLs replace-normalize to `myStaffSort`/`myStaffDir`; the Staff workspace leaves the Club surface while Staff Search behavior remains unchanged.
+Squad, Planner, and Tactic are navigation-owned Club destinations. The duplicated page-level tab component and keyboard handling are deleted; direct hidden props preserve mounted Planner/Tactic state; selector, DNA, boosts, CSV actions, depth, tactic behavior, and `/planner` compatibility mapping remain intact.
 
 ### Explicit exclusions
 
-Search, Club Squad/Planner/Tactic tab removal, Youth, utility-bar, optimizer semantics, CSV contracts, and current-state documentation changes.
+Search, Staff, Youth, utility-bar, current-state documentation, and unrelated Club behavior.
 
 ## Discoveries and replanning
 
@@ -558,7 +558,8 @@ Search, Club Squad/Planner/Tactic tab removal, Youth, utility-bar, optimizer sem
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — feat(nav): replace left rail with top navigation | Commit 1 — Record the approved feature plan | 911ea310f31485936dabf431a9a1eb73d485d398 | Recorded the independently reviewed schema 2 ledger and active JAY-54 TODO entry. | `ledger_state.py`, `delivery_state.py`, `git diff --cached --check`, and `./scripts/dev check` passed; 766 Rust tests passed and 2 were ignored. | Not applicable | Clear | 0 | None |
 | PR 1 — feat(nav): replace left rail with top navigation | Commit 2 — Replace the left rail with the grouped top navigation shell | 786e1f7dfdee02d7524038db1ea36a15ea0032d6 | Added the grouped top navigation beneath the utility bar; retired the rail, expansion store, width tokens, and profile width branches; added exact active-state and 1280×800 fit proof. | Focused shell and affected route tests passed; `./scripts/dev check` passed with 766 Rust tests and 2 ignored; `CI=1 ./scripts/dev smoke` passed 54/54; LSP and staged diff checks passed. | Pass | Clear | 1 | Two 900px Planner smoke viewports changed to 844px to preserve their prior effective content width after rail retirement. |
-| PR 1 — feat(nav): replace left rail with top navigation | Commit 3 — Move Search and Moneyball tabs into top navigation | Pending record | Removed the local Search view tablist and moved General/Moneyball switching into top navigation while preserving deep-link state and the prior reset/preserve transition contract. | Focused Search tests passed 72/72; affected Search and shell tests passed 144/144; `./scripts/dev check` passed with 766 Rust tests and 2 ignored; LSP and staged diff checks passed. | Pass | Clear | 0 | None |
+| PR 1 — feat(nav): replace left rail with top navigation | Commit 3 — Move Search and Moneyball tabs into top navigation | 6bedba8c08b760ddb2ceb66d16778ef0b04c631f | Removed the local Search view tablist and moved General/Moneyball switching into top navigation while preserving deep-link state and the prior reset/preserve transition contract. | Focused Search tests passed 72/72; affected Search and shell tests passed 144/144; `./scripts/dev check` passed with 766 Rust tests and 2 ignored; LSP and staged diff checks passed. | Pass | Clear | 0 | None |
+| PR 1 — feat(nav): replace left rail with top navigation | Commit 4 — Make My Staff a canonical Staff destination | Pending record | Made My Staff canonical under Staff, reversed the legacy Club redirect with validated sort mapping, removed the Club Staff workspace, and isolated My Staff from Staff Search-only queries. | Focused Staff, legacy, Club, and shell tests passed 205/205; `./scripts/dev check` passed with 766 Rust tests and 2 ignored; `CI=1 ./scripts/dev smoke` passed 54/54; LSP and staged diff checks passed. | Pass | Clear | 3 | None |
 
 ## Final validation
 

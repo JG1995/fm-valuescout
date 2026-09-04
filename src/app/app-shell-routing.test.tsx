@@ -151,14 +151,16 @@ describe("app shell routing", () => {
     );
   });
 
-  it("marks My Staff current after following the retained my-staff redirect", async () => {
+  it("marks My Staff current on its canonical Staff destination", async () => {
     const user = userEvent.setup();
     const { router } = renderWithProviders();
 
     await user.click(await screen.findByRole("link", { name: "My Staff" }));
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/my-club");
-      expect(router.state.location.search).toMatchObject({ view: "staff" });
+      expect(router.state.location.pathname).toBe("/staff");
+      expect(router.state.location.search).toMatchObject({
+        view: "my-staff",
+      });
     });
 
     const nav = await screen.findByRole("navigation", { name: "Primary" });

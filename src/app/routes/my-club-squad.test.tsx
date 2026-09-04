@@ -122,7 +122,6 @@ import {
   setSquadPlayersPageIpcMockMode,
   setSquadWonderkidMentalityBoostIpcMockMode,
 } from "@/testing/squad-ipc-mock";
-import { fixtureStaff, setStaffOverride } from "@/testing/staff-ipc-mock";
 
 const { openCsvDialog } = vi.hoisted(() => ({ openCsvDialog: vi.fn() }));
 
@@ -164,7 +163,6 @@ async function openMyClubWorkspace(
     squad: "Squad",
     planner: "Planner",
     tactic: "Tactic",
-    staff: "Staff",
   };
   await user.click(await screen.findByRole("tab", { name: labels[workspace] }));
 }
@@ -197,15 +195,6 @@ function manySquadPlayers(count: number): SquadPlayer[] {
       index + 1,
       200 - index,
     ),
-  );
-}
-
-function manyStaff(count: number) {
-  return Array.from({ length: count }, (_, index) =>
-    fixtureStaff({
-      uid: index + 1,
-      name: `Staff member ${String(index + 1).padStart(3, "0")}`,
-    }),
   );
 }
 
@@ -310,19 +299,19 @@ function switchToSecondSave(
 }
 
 describe("My Club route", () => {
-  it("exposes the four My Club workspaces in order", async () => {
+  it("exposes the three My Club workspaces in order", async () => {
     await resolveLoadDataIpcMock();
     renderMyClubRoute({ initialEntry: "/my-club" });
 
     expect(
-      await screen.findByRole("tab", { name: "Staff" }),
+      await screen.findByRole("tab", { name: "Squad" }),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Squad",
       "Planner",
       "Tactic",
-      "Staff",
     ]);
+    expect(screen.queryByRole("tab", { name: "Staff" })).toBeNull();
   });
 
   it.each([
@@ -366,39 +355,6 @@ describe("My Club route", () => {
       expect(getPlannerTacticSaveIpcMockCalls()).toEqual([]);
     },
   );
-
-  it("renders managed-club Staff inside My Club", async () => {
-    await resolveLoadDataIpcMock();
-    renderMyClubRoute({ initialEntry: "/my-club?view=staff" });
-
-    expect(await screen.findByRole("tab", { name: "Staff" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(
-      await screen.findByRole("table", { name: "Staff overview" }),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps Staff overview inside its virtualized workspace", async () => {
-    await resolveLoadDataIpcMock();
-    setStaffOverride(manyStaff(101));
-    renderMyClubRoute({ initialEntry: "/my-club?view=staff" });
-
-    const table = await screen.findByRole("table", { name: "Staff overview" });
-    const panel = document.getElementById("my-club-workspace-panel-staff");
-    expect(panel).toHaveClass("flex", "min-h-0", "flex-1", "flex-col");
-
-    const scroller = screen.getByTestId("my-staff-results-scroller");
-    expect(scroller).toHaveClass("h-full", "min-h-0", "overflow-auto");
-    expect(scroller.parentElement).toHaveClass("relative", "min-h-0", "flex-1");
-
-    const virtualRows = within(table)
-      .getAllByRole("row")
-      .filter((row) => row.hasAttribute("data-index"));
-    expect(virtualRows.length).toBeGreaterThan(0);
-    expect(virtualRows.length).toBeLessThan(101);
-  });
 
   it("shows Load Data guidance when the active save has no snapshot", async () => {
     renderMyClubRoute({ initialEntry: "/my-club" });
@@ -560,10 +516,18 @@ describe("My Club route", () => {
     expect(saveButton.compareDocumentPosition(defineButton)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    await waitFor(() => expect(defineButton).toBeEnabled());
+    // The disabled placeholder swaps for the definition trigger once saves
+    // settle, so re-query inside the wait instead of holding a stale node.
+    await waitFor(() =>
+      expect(
+        within(controls).getByRole("button", { name: "Define DNA" }),
+      ).toBeEnabled(),
+    );
 
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
-    await user.click(defineButton);
+    await user.click(
+      within(controls).getByRole("button", { name: "Define DNA" }),
+    );
     const dialog = await screen.findByRole("dialog", {
       name: "Define Club DNA",
     });
@@ -596,7 +560,9 @@ describe("My Club route", () => {
     invalidateQueries.mockClear();
     store.removeColumn("search", "club_dna");
     store.removeColumn("squad", "club_dna");
-    await user.click(defineButton);
+    await user.click(
+      within(controls).getByRole("button", { name: "Define DNA" }),
+    );
     const editDialog = await screen.findByRole("dialog", {
       name: "Define Club DNA",
     });
@@ -634,7 +600,9 @@ describe("My Club route", () => {
     expect(layoutsBeforeRemoval.squad).toContain("club_dna");
 
     invalidateQueries.mockClear();
-    await user.click(defineButton);
+    await user.click(
+      within(controls).getByRole("button", { name: "Define DNA" }),
+    );
     const removeDialog = await screen.findByRole("dialog", {
       name: "Define Club DNA",
     });
@@ -674,7 +642,9 @@ describe("My Club route", () => {
     store.removeColumn("search", "club_dna");
     store.removeColumn("squad", "club_dna");
 
-    await user.click(defineButton);
+    await user.click(
+      within(controls).getByRole("button", { name: "Define DNA" }),
+    );
     const recreateDialog = await screen.findByRole("dialog", {
       name: "Define Club DNA",
     });
@@ -2550,20 +2520,20 @@ describe("My Club route", () => {
     squadTab.focus();
     await user.keyboard("{End}");
 
-    const staffTab = screen.getByRole("tab", { name: "Staff" });
-    expect(staffTab).toHaveAttribute("aria-selected", "true");
-    expect(staffTab).toHaveFocus();
-    expect(staffTab).toHaveAttribute("tabIndex", "0");
-    expect(squadTab).toHaveAttribute("tabIndex", "-1");
-    expect(router.state.location.search).toEqual({ view: "staff" });
-    await user.keyboard("{ArrowLeft}");
     const tacticTab = screen.getByRole("tab", { name: "Tactic" });
     expect(tacticTab).toHaveAttribute("aria-selected", "true");
     expect(tacticTab).toHaveFocus();
     expect(tacticTab).toHaveAttribute("tabIndex", "0");
-    expect(staffTab).toHaveAttribute("tabIndex", "-1");
+    expect(squadTab).toHaveAttribute("tabIndex", "-1");
     expect(router.state.location.search).toEqual({ view: "tactic" });
-    tacticTab.focus();
+    await user.keyboard("{ArrowLeft}");
+    const plannerTab = screen.getByRole("tab", { name: "Planner" });
+    expect(plannerTab).toHaveAttribute("aria-selected", "true");
+    expect(plannerTab).toHaveFocus();
+    expect(plannerTab).toHaveAttribute("tabIndex", "0");
+    expect(tacticTab).toHaveAttribute("tabIndex", "-1");
+    expect(router.state.location.search).toEqual({ view: "planner" });
+    plannerTab.focus();
     await user.keyboard("{Home}");
     expect(squadTab).toHaveAttribute("aria-selected", "true");
     expect(squadTab).toHaveFocus();

@@ -26,8 +26,10 @@ let overrideStaff: StaffSummary[] | null = null;
 let shortlistOverride: StaffSummary[] | null = null;
 let staffDetailOverride: StaffDetail | null | undefined;
 let lastStaffArgs: Record<string, unknown> | null = null;
+let searchStaffCalls: unknown[] = [];
 let staffFamilyConfigured = true;
 let staffListMode: StaffListIpcMockMode = "success";
+let staffSearchMode: StaffListIpcMockMode = "success";
 let staffBoostMode: StaffBoostIpcMockMode = "success";
 let staffBoostCalls: unknown[] = [];
 let pendingStaffBoost: {
@@ -417,13 +419,23 @@ export function setStaffListIpcMockMode(mode: StaffListIpcMockMode) {
   staffListMode = mode;
 }
 
+export function setStaffSearchIpcMockMode(mode: StaffListIpcMockMode) {
+  staffSearchMode = mode;
+}
+
+export function getSearchStaffIpcMockCalls() {
+  return searchStaffCalls;
+}
+
 export function resetStaffIpcMock() {
   overrideStaff = null;
   shortlistOverride = null;
   staffDetailOverride = undefined;
   lastStaffArgs = null;
+  searchStaffCalls = [];
   staffFamilyConfigured = true;
   staffListMode = "success";
+  staffSearchMode = "success";
   staffBoostMode = "success";
   staffBoostCalls = [];
   pendingStaffBoost = null;
@@ -735,9 +747,14 @@ export function resolveOptimizeStaffAssignmentsIpcMock(
 }
 
 export function resolveSearchStaffIpcMock(args: unknown): StaffPage {
-  if (staffListMode === "error") {
+  searchStaffCalls = [...searchStaffCalls, args];
+  if (staffSearchMode === "error" || staffListMode === "error") {
     throw new Error("staff list failed");
   }
+  return buildStaffPage(args);
+}
+
+function buildStaffPage(args: unknown): StaffPage {
   lastStaffArgs =
     typeof args === "object" && args !== null
       ? (args as Record<string, unknown>)
@@ -835,7 +852,10 @@ export function resolveListMyStaffIpcMock(args: unknown): StaffPage {
   if (!staffFamilyConfigured) {
     return { state: "no_managed_club", staff: [], total: 0 };
   }
-  return resolveSearchStaffIpcMock(args);
+  if (staffListMode === "error") {
+    throw new Error("staff list failed");
+  }
+  return buildStaffPage(args);
 }
 
 function staffBoostResult(uid: number): StaffBoostResult {
