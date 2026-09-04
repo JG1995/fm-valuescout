@@ -500,7 +500,7 @@ describe("usePlayerTableStore", () => {
     expect(usePlayerTableStore.getState().layouts.search).toEqual(before);
   });
 
-  it("migrates version-5 persisted Shortlist layouts preserving existing orders and widths", async () => {
+  it("migrates version-5 persisted layouts preserving existing orders and widths", async () => {
     const customSearch = {
       columnIds: ["name", "age", "ca", "attr.Acceleration"],
       widths: { name: 240, ca: 104, "attr.Acceleration": 216 },
@@ -520,6 +520,10 @@ describe("usePlayerTableStore", () => {
               columnIds: [...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS],
               widths: {},
             },
+            shortlist: {
+              columnIds: ["name", "ca"],
+              widths: { name: 240 },
+            },
           },
         },
         version: 5,
@@ -531,10 +535,7 @@ describe("usePlayerTableStore", () => {
     const layouts = usePlayerTableStore.getState().layouts;
     expect(layouts.search).toEqual(customSearch);
     expect(layouts["moneyball-search"]).toEqual(customMoneyball);
-    expect(layouts.shortlist).toEqual({
-      columnIds: [...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS],
-      widths: {},
-    });
+    expect(layouts).not.toHaveProperty("shortlist");
   });
 
   it("preserves version-5 identity-only Club and Division layouts without fallback to Name", async () => {
@@ -565,10 +566,6 @@ describe("usePlayerTableStore", () => {
       columnIds: ["division"],
       widths: { division: 168 },
     });
-    expect(layouts.shortlist).toEqual({
-      columnIds: [...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS],
-      widths: {},
-    });
   });
 
   it("does not remove the last visible column", () => {
@@ -579,7 +576,6 @@ describe("usePlayerTableStore", () => {
           columnIds: ["moneyball.average_rating"],
           widths: {},
         },
-        shortlist: { columnIds: ["name"], widths: {} },
         squad: {
           columnIds: [...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS],
           widths: {},
@@ -645,10 +641,7 @@ describe("usePlayerTableStore", () => {
       expect(
         layouts["moneyball-search"].widths["tactic_potential.goalkeeper"],
       ).toBe(360);
-      expect(layouts.shortlist.columnIds).toEqual([
-        ...currentGroup,
-        ...potentialGroup,
-      ]);
+      expect(layouts).not.toHaveProperty("shortlist");
     });
 
     it("drops invalid lane suffixes and widths for unknown tactic IDs", async () => {
@@ -881,18 +874,18 @@ describe("usePlayerTableStore", () => {
       usePlayerTableStore.setState({
         layouts: {
           ...defaultPlayerTableLayouts(),
-          shortlist: { columnIds: ["name", "ca"], widths: { name: 240 } },
+          search: { columnIds: ["name", "ca"], widths: { name: 240 } },
         },
       });
       usePlayerTableStore
         .getState()
-        .replaceLayout("shortlist", [
+        .replaceLayout("search", [
           "tactic_current.not_a_lane",
           "tactic_potential.bogus",
         ]);
-      expect(
-        usePlayerTableStore.getState().layouts.shortlist.columnIds,
-      ).toEqual(defaultPlayerTableLayouts().shortlist.columnIds);
+      expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual(
+        defaultPlayerTableLayouts().search.columnIds,
+      );
     });
   });
 });

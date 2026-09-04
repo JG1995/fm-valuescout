@@ -23,6 +23,7 @@ export function fetchSearchPlayers(
   requestedFields: string[] = [],
   searchView: SearchView = "general",
   comparisonPool: ComparisonPool = "filtered",
+  shortlistOnly = false,
 ) {
   const applied = completeFilterRules(filters, searchView);
   return invokeCommand<SearchPlayersPage>("search_players", {
@@ -33,6 +34,7 @@ export function fetchSearchPlayers(
     requestedFields,
     searchView,
     comparisonPool,
+    shortlistOnly,
     ...(applied.length > 0
       ? {
           filters: applied.map(filterRuleToIpc),

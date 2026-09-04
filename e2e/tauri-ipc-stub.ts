@@ -744,6 +744,14 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             };
           }
 
+          if (cmd === "import_player_shortlist_csv") {
+            return {
+              totalPlayers: 3,
+              storedPlayers: 2,
+              skippedPlayers: 1,
+            };
+          }
+
           if (cmd === "search_players") {
             const offset = Number.isInteger(args?.offset)
               ? Math.max(0, args.offset)
@@ -751,7 +759,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             const limit = Number.isInteger(args?.limit)
               ? Math.min(200, Math.max(1, args.limit))
               : 50;
-            if (args?.searchView === "shortlist") {
+            if (args?.shortlistOnly === true && args?.searchView === "general") {
               const filterRules = Array.isArray(args?.filters)
                 ? args.filters
                 : [];

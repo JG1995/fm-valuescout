@@ -14,6 +14,7 @@ describe("searchKeys.players", () => {
       [],
       "general",
       "filtered",
+      false,
       {
         activeSave: { id: 1, contextToken: "save-token" },
         currentSnapshot: { id: 2, saveId: 1 },
@@ -48,6 +49,7 @@ describe("searchKeys.players", () => {
       ["position", "role.goalkeeper_ip"],
       "general",
       "filtered",
+      false,
       contextOne,
     );
     const roleThenPosition = searchKeys.players(
@@ -60,6 +62,7 @@ describe("searchKeys.players", () => {
       ["role.goalkeeper_ip", "position"],
       "general",
       "filtered",
+      false,
       contextOne,
     );
 
@@ -75,6 +78,7 @@ describe("searchKeys.players", () => {
         [],
         "general",
         "filtered",
+        false,
         contextTwo,
       ),
     );
@@ -84,5 +88,40 @@ describe("searchKeys.players", () => {
     const options = searchPlayersQueryOptions(0, 50, "name", "asc");
 
     expect(options.queryKey).toEqual(searchKeys.players(0, 50, "name", "asc"));
+  });
+
+  it("keeps the shortlist restriction in the page cache identity", () => {
+    const context = {
+      activeSave: { id: 1, contextToken: "one" },
+      currentSnapshot: { id: 2, saveId: 1 },
+    };
+    const unrestricted = searchKeys.players(
+      0,
+      50,
+      "ca",
+      "desc",
+      [],
+      "and",
+      [],
+      "general",
+      "filtered",
+      false,
+      context,
+    );
+    const restricted = searchKeys.players(
+      0,
+      50,
+      "ca",
+      "desc",
+      [],
+      "and",
+      [],
+      "general",
+      "filtered",
+      true,
+      context,
+    );
+
+    expect(restricted).not.toEqual(unrestricted);
   });
 });

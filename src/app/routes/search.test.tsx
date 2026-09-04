@@ -13,7 +13,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
@@ -25,6 +25,7 @@ import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import { setCsvImportIpcMockResult } from "@/testing/csv-import-ipc-mock";
 import {
   getPlannerTacticIpcMockCalls,
   getPlannerTacticOptionsIpcMockCalls,
@@ -32,6 +33,10 @@ import {
   resolvePlannerTacticIpcMock,
   setPlannerTacticForContext,
 } from "@/testing/planner-ipc-mock";
+import {
+  getLastPlayerShortlistImportIpcArgs,
+  setPlayerShortlistImportIpcMockResult,
+} from "@/testing/player-shortlist-ipc-mock";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
   getLastSearchPlayersArgs,
@@ -45,6 +50,12 @@ import {
   resolveCreateSaveIpcMock,
   resolveLoadDataIpcMock,
 } from "@/testing/snapshot-ipc-mock";
+
+const { openCsvDialog } = vi.hoisted(() => ({
+  openCsvDialog: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openCsvDialog }));
 
 function renderSearchRoute(
   initialEntry = "/search",
@@ -133,6 +144,7 @@ function mockScrollerScrollTo(scroller: HTMLElement) {
 
 describe("search route", () => {
   beforeEach(() => {
+    openCsvDialog.mockReset();
     useLayoutStore.setState({ railExpanded: true });
     useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
   });
@@ -533,30 +545,24 @@ describe("search route", () => {
     ).toBe(176);
   });
 
-  it.each([
-    ["moneyball", "moneyball-search"],
-    ["shortlist", "shortlist"],
-  ] as const)(
-    "stores tactic toggles in the %s table layout",
-    async (view, tableId) => {
-      const user = userEvent.setup();
-      await resolveLoadDataIpcMock();
-      renderSearchRoute(`/search?view=${view}`);
+  it("stores tactic toggles in the moneyball table layout without touching search", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    renderSearchRoute("/search?view=moneyball");
 
-      const toggle = await screen.findByRole("button", {
-        name: "Add Tactic (Current)",
-      });
-      await waitFor(() => expect(toggle).toBeEnabled());
-      await user.click(toggle);
+    const toggle = await screen.findByRole("button", {
+      name: "Add Tactic (Current)",
+    });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    await user.click(toggle);
 
-      expect(
-        usePlayerTableStore.getState().layouts[tableId].columnIds,
-      ).toContain("tactic_current.goalkeeper");
-      expect(
-        usePlayerTableStore.getState().layouts.search.columnIds,
-      ).not.toContain("tactic_current.goalkeeper");
-    },
-  );
+    expect(
+      usePlayerTableStore.getState().layouts["moneyball-search"].columnIds,
+    ).toContain("tactic_current.goalkeeper");
+    expect(
+      usePlayerTableStore.getState().layouts.search.columnIds,
+    ).not.toContain("tactic_current.goalkeeper");
+  });
 
   it("restores a persisted tactic sort only for the current view layout", async () => {
     const tacticSort = "tactic_current.goalkeeper";
@@ -2162,6 +2168,27 @@ describe("search route", () => {
     expect(screen.queryByText("High CA")).not.toBeInTheDocument();
   });
 
+  it("shows the filtered empty state for Moneyball when filters exclude every player", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([]);
+    const encoded = encodeURIComponent(
+      JSON.stringify([
+        { field: "moneyball.average_rating", op: "gt", value: 7 },
+      ]),
+    );
+    renderSearchRoute(`/search?view=moneyball&filters=${encoded}`);
+
+    expect(
+      await screen.findByText("No players match these filters"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("No players in this Moneyball import"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Adjust or clear filters in the strip above/),
+    ).toBeInTheDocument();
+  });
+
   it("keeps focus in the filter value field while editing", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -2340,106 +2367,6 @@ describe("search route", () => {
     expect(within(firstRow).getByText("Low")).toBeInTheDocument();
   });
 
-  it("validates explicit Shortlist view, strips comparisonPool outside Moneyball and drops Moneyball-only direct-URL filters", async () => {
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([
-      {
-        ...playerNamed("General Scout", 160),
-        dynamicValues: {
-          "role.deep_lying_playmaker_ip": 80,
-          "attr.Acceleration": 16,
-        },
-      },
-    ]);
-    const encodedFilters = encodeURIComponent(
-      JSON.stringify([
-        { field: "ca", op: "gt", value: 150 },
-        { field: "moneyball.goals", op: "gt", value: 5 },
-        {
-          field: "moneyball_role.wbl_wbr_wing_back_ip",
-          op: "gt",
-          value: 70,
-        },
-        { field: "role.deep_lying_playmaker_ip", op: "gt", value: 70 },
-        { field: "attr.Acceleration", op: "gt", value: 12 },
-      ]),
-    );
-    const { router } = renderSearchRoute(
-      `/search?view=shortlist&comparisonPool=fullCsv&filters=${encodedFilters}`,
-    );
-
-    await waitFor(() => {
-      expect(router.state.location.search.view).toBe("shortlist");
-      expect(router.state.location.search.comparisonPool).toBeUndefined();
-    });
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "shortlist",
-        filters: expect.arrayContaining([
-          expect.objectContaining({ field: "ca" }),
-          expect.objectContaining({ field: "role.deep_lying_playmaker_ip" }),
-          expect.objectContaining({ field: "attr.Acceleration" }),
-        ]),
-      });
-      const filteredFields = (
-        (getLastSearchPlayersArgs()?.filters as Array<{ field: string }>) ?? []
-      ).map((rule) => rule.field);
-      expect(filteredFields).not.toContain("moneyball.goals");
-      expect(filteredFields).not.toContain(
-        "moneyball_role.wbl_wbr_wing_back_ip",
-      );
-    });
-    expect(screen.getByRole("tab", { name: "Shortlist" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-  });
-
-  it("renders three tabs in General Moneyball Shortlist order with roving focus and ArrowRight Left Home End", async () => {
-    await resolveLoadDataIpcMock();
-    renderSearchRoute("/search?view=general");
-
-    const tablist = await screen.findByRole("tablist", {
-      name: "Search view",
-    });
-    const tabs = within(tablist).getAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent)).toEqual([
-      "General",
-      "Moneyball",
-      "Shortlist",
-    ]);
-    const general = within(tablist).getByRole("tab", { name: "General" });
-    const moneyball = within(tablist).getByRole("tab", { name: "Moneyball" });
-    const shortlist = within(tablist).getByRole("tab", { name: "Shortlist" });
-
-    expect(general).toHaveAttribute("aria-selected", "true");
-    expect(general).toHaveAttribute("tabIndex", "0");
-    expect(moneyball).toHaveAttribute("tabIndex", "-1");
-    expect(shortlist).toHaveAttribute("tabIndex", "-1");
-
-    general.focus();
-    fireEvent.keyDown(tablist, { key: "ArrowRight" });
-    await waitFor(() => expect(moneyball).toHaveFocus());
-    expect(moneyball).toHaveAttribute("aria-selected", "true");
-    expect(general).toHaveAttribute("tabIndex", "-1");
-    expect(moneyball).toHaveAttribute("tabIndex", "0");
-
-    fireEvent.keyDown(tablist, { key: "ArrowRight" });
-    await waitFor(() => expect(shortlist).toHaveFocus());
-    expect(shortlist).toHaveAttribute("aria-selected", "true");
-
-    fireEvent.keyDown(tablist, { key: "End" });
-    await waitFor(() => expect(shortlist).toHaveFocus());
-
-    fireEvent.keyDown(tablist, { key: "Home" });
-    await waitFor(() => expect(general).toHaveFocus());
-    expect(general).toHaveAttribute("aria-selected", "true");
-
-    fireEvent.keyDown(tablist, { key: "ArrowLeft" });
-    await waitFor(() => expect(shortlist).toHaveFocus());
-    expect(shortlist).toHaveAttribute("aria-selected", "true");
-  });
-
   it("clears all filters and resets destination sort and direction when any tab is selected", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -2472,7 +2399,7 @@ describe("search route", () => {
       });
     });
 
-    // Add a Moneyball filter then switch to Shortlist
+    // Add a Moneyball filter then switch back to General
     await user.click(screen.getByRole("button", { name: "Edit filters" }));
     const moneyballDialog = screen.getByRole("dialog", {
       name: "Edit filters",
@@ -2490,35 +2417,6 @@ describe("search route", () => {
       expect(router.state.location.search.filters).toHaveLength(1),
     );
 
-    await user.click(screen.getByRole("tab", { name: "Shortlist" }));
-    await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        view: "shortlist",
-        sort: "ca",
-        dir: "desc",
-        filters: [],
-      });
-      expect(router.state.location.search.comparisonPool).toBeUndefined();
-    });
-
-    // Add a Shortlist filter then go back to General
-    await user.click(screen.getByRole("button", { name: "Edit filters" }));
-    const shortlistDialog = screen.getByRole("dialog", {
-      name: "Edit filters",
-    });
-    await user.click(
-      within(shortlistDialog).getByRole("button", { name: "Add filter" }),
-    );
-    fireEvent.change(within(shortlistDialog).getByLabelText("Value"), {
-      target: { value: "10" },
-    });
-    await user.click(
-      within(shortlistDialog).getByRole("button", { name: "Done" }),
-    );
-    await waitFor(() =>
-      expect(router.state.location.search.filters).toHaveLength(1),
-    );
-
     await user.click(screen.getByRole("tab", { name: "General" }));
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
@@ -2527,164 +2425,6 @@ describe("search route", () => {
         dir: "desc",
         filters: [],
       });
-    });
-  });
-
-  it("applies a Shortlist filter only to the shortlist layout preserving search and moneyball-search", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    usePlayerTableStore.setState({
-      layouts: {
-        search: { columnIds: ["name", "ca"], widths: { name: 240 } },
-        "moneyball-search": {
-          columnIds: ["name", "moneyball.average_rating"],
-          widths: { name: 240 },
-        },
-        shortlist: { columnIds: ["name", "ca"], widths: { name: 240 } },
-        squad: { columnIds: ["name"], widths: {} },
-        "staff-search": { columnIds: [], widths: {} },
-        "my-staff": { columnIds: [], widths: {} },
-        "staff-shortlist": { columnIds: [], widths: {} },
-      },
-    });
-    setSearchPlayersOverride([playerNamed("Isolated", 160)]);
-    renderSearchRoute("/search?view=shortlist");
-    await screen.findByText("Isolated");
-
-    await user.click(screen.getByRole("button", { name: "Edit filters" }));
-    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Add filter" }),
-    );
-    await user.click(within(dialog).getByRole("button", { name: "Field: CA" }));
-    await user.type(
-      within(dialog).getByRole("combobox", { name: "Search fields" }),
-      "acceleration",
-    );
-    await user.click(
-      within(dialog).getByRole("option", { name: "Acceleration" }),
-    );
-    fireEvent.change(within(dialog).getByLabelText("Value"), {
-      target: { value: "16" },
-    });
-    await user.click(within(dialog).getByRole("button", { name: "Done" }));
-
-    await waitFor(() => {
-      expect(
-        usePlayerTableStore.getState().layouts.shortlist.columnIds,
-      ).toContain("attr.Acceleration");
-    });
-    expect(
-      usePlayerTableStore.getState().layouts.search.columnIds,
-    ).not.toContain("attr.Acceleration");
-    expect(
-      usePlayerTableStore.getState().layouts["moneyball-search"].columnIds,
-    ).not.toContain("attr.Acceleration");
-  });
-
-  it("shows Shortlist neutral empty without upload, filtered standard, and clearing reveals neutral", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([]);
-    renderSearchRoute("/search?view=shortlist");
-
-    expect(await screen.findByText("No shortlist yet")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Go to Moneyball" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
-    ).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Edit filters" }));
-    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Add filter" }),
-    );
-    fireEvent.change(within(dialog).getByLabelText("Value"), {
-      target: { value: "190" },
-    });
-    await user.click(within(dialog).getByRole("button", { name: "Done" }));
-
-    expect(
-      await screen.findByText("No players match these filters"),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("No shortlist yet")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Go to Moneyball" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
-    ).not.toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: /Remove filter CA > 190/i }),
-    );
-    expect(await screen.findByText("No shortlist yet")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows filtered standard for a direct-URL Shortlist with a valid General filter yielding total 0", async () => {
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
-    const encoded = encodeURIComponent(
-      JSON.stringify([{ field: "attr.Acceleration", op: "gt", value: 20 }]),
-    );
-    renderSearchRoute(`/search?view=shortlist&filters=${encoded}`);
-
-    expect(
-      await screen.findByText("No players match these filters"),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("No shortlist yet")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
-    ).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "shortlist",
-        filters: [expect.objectContaining({ field: "attr.Acceleration" })],
-      });
-    });
-  });
-
-  it("renders Shortlist rows with General columns and navigates to General profile", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([
-      {
-        ...playerNamed("Shortlist Ace", 170),
-        dynamicValues: { "role.deep_lying_playmaker_ip": 80 },
-      },
-    ]);
-    const { router } = renderSearchRoute("/search?view=shortlist");
-
-    const table = await screen.findByRole("table", {
-      name: "Player search results",
-    });
-    expect(
-      within(table).getByRole("columnheader", { name: "CA" }),
-    ).toBeInTheDocument();
-    expect(
-      within(table).queryByRole("columnheader", {
-        name: "Average Rating",
-      }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
-    ).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "shortlist",
-        sortBy: "ca",
-      });
-    });
-
-    await user.click(within(table).getByText("Shortlist Ace"));
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/players/170");
-      expect(router.state.location.search).toEqual({ view: "general" });
     });
   });
 
@@ -2756,5 +2496,234 @@ describe("search route", () => {
         { field: "attr.Acceleration", op: "gt", value: 12 },
       ],
     });
+  });
+
+  it("shows General and Moneyball tabs without a Player Shortlist tab", async () => {
+    await resolveLoadDataIpcMock();
+    renderSearchRoute("/search");
+
+    const tablist = await screen.findByRole("tablist", {
+      name: "Search view",
+    });
+    expect(
+      within(tablist)
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent),
+    ).toEqual(["General", "Moneyball"]);
+    expect(
+      screen.queryByRole("tab", { name: "Shortlist" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("No shortlist yet")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Go to Moneyball" }),
+    ).not.toBeInTheDocument();
+    expect(usePlayerTableStore.getState().layouts).not.toHaveProperty(
+      "shortlist",
+    );
+  });
+
+  it("replace-normalizes a legacy shortlist view to General with filtering on", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+    const { router } = renderSearchRoute("/search?view=shortlist");
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        view: "general",
+        shortlistOnly: true,
+      });
+    });
+    // The legacy history entry itself is replaced with the canonical URL.
+    await waitFor(() => {
+      expect(router.state.location.href).not.toContain("view=shortlist");
+      expect(router.state.location.href).toContain("shortlistOnly");
+    });
+    expect(router.history.canGoBack()).toBe(false);
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "general",
+        shortlistOnly: true,
+      });
+    });
+    expect(screen.queryByText("No shortlist yet")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Go to Moneyball" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("toggles shortlist filtering beside the result count and refetches", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("High CA", 180),
+      playerNamed("Low CA", 100),
+    ]);
+    const { router } = renderSearchRoute("/search");
+
+    await screen.findByText("High CA");
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+
+    const toggleOff = await screen.findByRole("switch", {
+      name: "Shortlist: Off",
+    });
+    toggleOff.focus();
+    await user.keyboard(" ");
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        shortlistOnly: true,
+      });
+    });
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "general",
+        shortlistOnly: true,
+      });
+    });
+    // Toggling remounts the results panel, so re-query the switch.
+    const toggleOn = await screen.findByRole("switch", {
+      name: "Shortlist: On",
+    });
+    expect(toggleOn).toHaveAttribute("aria-checked", "true");
+
+    await user.click(toggleOn);
+    await waitFor(() => {
+      expect(router.state.location.search.shortlistOnly).toBeUndefined();
+    });
+    // Off shows all current General players again.
+    expect(await screen.findByText("High CA")).toBeInTheDocument();
+    expect(await screen.findByText("Low CA")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("turns shortlist filtering on after a successful upload and refetches General", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    openCsvDialog.mockResolvedValue("C:\\exports\\shortlist.csv");
+    setPlayerShortlistImportIpcMockResult({
+      totalPlayers: 3,
+      storedPlayers: 2,
+      skippedPlayers: 1,
+    });
+    const { router } = renderSearchRoute("/search");
+    await screen.findByText("High CA");
+
+    await user.click(screen.getByRole("button", { name: "Upload Shortlist" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Upload Player Shortlist CSV",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Choose CSV" }),
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        shortlistOnly: true,
+      });
+    });
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "general",
+        shortlistOnly: true,
+      });
+    });
+    expect(getLastPlayerShortlistImportIpcArgs()).toEqual({
+      path: "C:\\exports\\shortlist.csv",
+    });
+    expect(
+      await screen.findByText("Last import: 3 players, 2 stored, 1 skipped."),
+    ).toBeInTheDocument();
+  });
+
+  it("composes shortlist filtering with a General filter in one fetch", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+    const encoded = encodeURIComponent(
+      JSON.stringify([{ field: "ca", op: "gt", value: 150 }]),
+    );
+    renderSearchRoute(`/search?shortlistOnly=true&filters=${encoded}`);
+
+    await screen.findByText("General Scout");
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "general",
+        shortlistOnly: true,
+        filters: [expect.objectContaining({ field: "ca" })],
+      });
+    });
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    ).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("keeps the shortlist switch beside zero shortlist results with shortlist feedback", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([]);
+    const { router } = renderSearchRoute("/search?shortlistOnly=true");
+
+    expect(
+      await screen.findByText("No players in shortlist"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("No players in snapshot"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("No shortlist yet")).not.toBeInTheDocument();
+    const toggleOn = await screen.findByRole("switch", {
+      name: "Shortlist: On",
+    });
+    expect(toggleOn).toHaveAttribute("aria-checked", "true");
+    expect(
+      screen.getByText(/Upload a shortlist CSV for this save/),
+    ).toBeInTheDocument();
+
+    await user.click(toggleOn);
+    await waitFor(() => {
+      expect(router.state.location.search.shortlistOnly).toBeUndefined();
+    });
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(
+      await screen.findByText("No players in snapshot"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps shortlist filtering on after a Moneyball CSV import", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    openCsvDialog.mockResolvedValue("C:\\exports\\moneyball.csv");
+    setCsvImportIpcMockResult({
+      format: "moneyball",
+      totalPlayers: 75,
+      storedPlayers: 74,
+      skippedPlayers: 1,
+    });
+    const { router } = renderSearchRoute("/search?shortlistOnly=true");
+    await screen.findByText("High CA");
+
+    await user.click(screen.getByRole("tab", { name: "Moneyball" }));
+    await user.click(
+      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Upload Moneyball CSV",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Browse files" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Last import: 74 stored/)).toBeInTheDocument();
+    });
+    expect(router.state.location.search).toMatchObject({
+      shortlistOnly: true,
+    });
+    expect(getLastPlayerShortlistImportIpcArgs()).toBeUndefined();
   });
 });

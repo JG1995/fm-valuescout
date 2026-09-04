@@ -360,7 +360,7 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 #### Commit 4 — Integrate player shortlist upload and toggle in Search
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(search): integrate player shortlist upload toggle`
 
@@ -431,7 +431,7 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 #### Commit 5 — Compose shortlist filter into core staff search
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): compose shortlist filter into search`
 
@@ -564,19 +564,19 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 **PR:** feat(search): integrate player and staff shortlists
 
-**Commit:** Integrate player shortlist upload and toggle in Search
+**Commit:** Compose shortlist filter into core staff search
 
 ### RED or removal proof
 
-Add focused frontend proofs that the URL toggle round-trips, successful upload enables it, and the separate Player Shortlist tab no longer renders; retain removal proof for the legacy backend branch and layout.
+Add focused Rust proof that flagged core Staff Search returns the same rows, metadata, and totals as the existing standalone shortlist query for identical inputs.
 
 ### Expected outcome
 
-`/search` exposes player shortlist upload and URL-backed filtering on General, removes the separate tab and player shortlist layout, and atomically retires the now-unused Moneyball-backed Rust Shortlist branch.
+The core Staff Search command and query accept shortlist, Preferred Job, and unemployment parameters through the existing reusable shortlist composition while the legacy command remains intact for the current frontend.
 
 ### Explicit exclusions
 
-Staff changes, current-state documentation, and unrelated Search behavior or refactors.
+React and frontend API changes, removal of the legacy staff shortlist command, player changes, current-state documentation, and unrelated refactors.
 
 ## Discoveries and replanning
 
@@ -590,7 +590,8 @@ Correction round 1 (plan-review verdict) made Commits 3/4 and 5/6 trunk-safe by 
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — feat(search): integrate player and staff shortlists | Commit 1 — Record the approved feature plan | d5b958618df579b99b0c778a55178ca034995f43 | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`; `delivery_state.py`; `git diff --cached --check`; pre-commit `check-fast` — passed. | Not applicable | Clear | 0 | None |
 | PR 1 — feat(search): integrate player and staff shortlists | Commit 2 — Add save-owned player shortlist store and import | 905f716e368450adaacb49e2d1fe8cc62a5eecc4 | Added migration v41 and a bounded save-owned player shortlist CSV import with context revalidation, atomic replacement, zero-match preservation, and exact summary counts. | `cargo test player_shortlist`; `cargo test csv_import`; `./scripts/dev check-rust`; `./scripts/dev check` (768 passed, 2 ignored); Rust LSP; `git diff --check` — passed. | Pass | Clear | 0 | MEDIUM deferred to feature close-out: remove the module-level dead-code suppression and test-only internal skip counters if the final portfolio confirms they add no contract value. The one-column delimiter fallback is required for the exact UID-only header. |
-| PR 1 — feat(search): integrate player and staff shortlists | Commit 3 — Restrict General search to the player shortlist | Pending record | Added a General-only, save-scoped shortlist restriction through bounded IPC while preserving the legacy Moneyball-backed Shortlist contract for the current frontend. | `cargo test --lib features::search::` (102 passed); `./scripts/dev check-rust`; `./scripts/dev check` (769 passed, 2 ignored); Rust LSP; `git diff --check` — passed. | Pass | Clear | 0 | Existing tactic and Club DNA tests provide stronger composition coverage through the unchanged shared query pipeline; no duplicate flagged variants added. |
+| PR 1 — feat(search): integrate player and staff shortlists | Commit 3 — Restrict General search to the player shortlist | abe2c2d496256ca3e6037f5e29e99ac9f3c00cf1 | Added a General-only, save-scoped shortlist restriction through bounded IPC while preserving the legacy Moneyball-backed Shortlist contract for the current frontend. | `cargo test --lib features::search::` (102 passed); `./scripts/dev check-rust`; `./scripts/dev check` (769 passed, 2 ignored); Rust LSP; `git diff --check` — passed. | Pass | Clear | 0 | Existing tactic and Club DNA tests provide stronger composition coverage through the unchanged shared query pipeline; no duplicate flagged variants added. |
+| PR 1 — feat(search): integrate player and staff shortlists | Commit 4 — Integrate player shortlist upload and toggle in Search | Pending record | Integrated save-owned shortlist upload and URL filtering into General Search, removed the separate Player Shortlist tab/layout and Rust legacy branch, and preserved Moneyball isolation and profile navigation. | Search route 70 passed; focused parser/key/store/modal tests 51 passed; Rust Search 98 passed; `CI=1 ./scripts/dev smoke` 54 passed; `./scripts/dev check` (765 passed, 2 ignored); `git diff --check` — passed. | Pass | Clear | 2 | Corrected zero-result switch access, true replace-normalization, immutable token guards, complete summary feedback, Playwright Moneyball fidelity, redundant tests, and filtered Moneyball empty-state precedence. |
 
 ## Final validation
 

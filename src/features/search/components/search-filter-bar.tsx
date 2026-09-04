@@ -10,6 +10,7 @@ type SearchFilterBarProps = {
   onRulesChange: (rules: FilterRule[]) => void;
   onApply: (rules: FilterRule[], combine: FilterCombineMode) => void;
   actions?: ReactNode;
+  afterEditActions?: ReactNode;
   view?: SearchView;
 };
 
@@ -19,6 +20,7 @@ export function SearchFilterBar({
   onRulesChange,
   onApply,
   actions,
+  afterEditActions,
   view = "general",
 }: SearchFilterBarProps) {
   const [editorOpen, setEditorOpen] = useState(false);
@@ -37,6 +39,7 @@ export function SearchFilterBar({
         onRulesChange={onRulesChange}
         onEdit={openEditor}
         actions={actions}
+        afterEditActions={afterEditActions}
         view={view}
       />
       <SearchFilterEditorModal

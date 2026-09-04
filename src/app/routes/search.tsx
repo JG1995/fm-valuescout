@@ -20,6 +20,7 @@ import {
   validateTacticDraft,
 } from "@/features/planner/utils/tactic-editor";
 import { searchKeys } from "@/features/search/api/search-keys";
+import { PlayerShortlistImportModal } from "@/features/search/components/player-shortlist-import-modal";
 import { SearchFilterBar } from "@/features/search/components/search-filter-bar";
 import { SearchResultsPanel } from "@/features/search/components/search-results-panel";
 import { TacticColumnToggles } from "@/features/search/components/tactic-column-toggles";
@@ -27,6 +28,7 @@ import type {
   FilterCombineMode,
   FilterRule,
 } from "@/features/search/types/filter-rule";
+import type { PlayerShortlistImportSummary } from "@/features/search/types/player-shortlist-import-summary";
 import type {
   SearchSortDir,
   SearchSortField,
@@ -48,6 +50,7 @@ import type { FilterRuleUrl } from "@/features/search/utils/search-url-search";
 import {
   parseSearchCombine,
   parseSearchFilters,
+  parseShortlistOnly,
   searchFiltersForUrl,
 } from "@/features/search/utils/search-url-search";
 import { buildTacticColumnOrder } from "@/features/search/utils/tactic-columns";
@@ -69,15 +72,18 @@ export type SearchRouteSearch = {
   combine: FilterCombineMode;
   view?: SearchView;
   comparisonPool?: ComparisonPool;
+  shortlistOnly?: boolean;
 };
 
 export const Route = createFileRoute("/search")({
   validateSearch: (search: Record<string, unknown>): SearchRouteSearch => {
+    // Legacy Player Shortlist links resolve to General with filtering on
+    // without inspecting persistence.
+    const legacyShortlist = search.view === "shortlist";
     const parsedView = parseSearchView(search.view);
-    const explicitView =
-      search.view === "general" ||
-      search.view === "moneyball" ||
-      search.view === "shortlist"
+    const explicitView = legacyShortlist
+      ? ("general" as const)
+      : search.view === "general" || search.view === "moneyball"
         ? parsedView
         : undefined;
     const view =
@@ -86,12 +92,7 @@ export const Route = createFileRoute("/search")({
       parseSearchFilters(search.filters, view),
     );
     const filterRules = parseSearchFilters(filters, view);
-    const tableId =
-      view === "moneyball"
-        ? "moneyball-search"
-        : view === "shortlist"
-          ? "shortlist"
-          : "search";
+    const tableId = view === "moneyball" ? "moneyball-search" : "search";
     const visibleColumnIds =
       usePlayerTableStore.getState().layouts[tableId].columnIds;
     const visibleSort = isVisibleSortField(
@@ -118,7 +119,30 @@ export const Route = createFileRoute("/search")({
         view === "moneyball"
           ? parseComparisonPool(search.comparisonPool)
           : undefined,
+      shortlistOnly:
+        legacyShortlist || parseShortlistOnly(search.shortlistOnly)
+          ? true
+          : undefined,
     };
+  },
+  beforeLoad: ({ location, search }) => {
+    // Legacy Player Shortlist links replace the history entry with the
+    // canonical General + shortlistOnly URL instead of only normalizing
+    // parsed state. location.search is the raw query; search is validated.
+    if (
+      (location.search as Record<string, unknown> | undefined)?.view ===
+      "shortlist"
+    ) {
+      throw Route.redirect({
+        to: "/search",
+        search: {
+          ...search,
+          view: "general",
+          shortlistOnly: true,
+        },
+        replace: true,
+      });
+    }
   },
   loaderDeps: ({
     search: { sort, dir, filters, combine, view, comparisonPool },
@@ -182,18 +206,15 @@ function SearchPageContent() {
     combine,
     view: routeView,
     comparisonPool: routeComparisonPool,
+    shortlistOnly: routeShortlistOnly,
   } = Route.useSearch();
   const defaultAnalysisView = useMoneyballPreferences(
     (state) => state.defaultAnalysisView,
   );
   const view = routeView ?? defaultAnalysisView;
   const comparisonPool = routeComparisonPool ?? "filtered";
-  const tableId =
-    view === "moneyball"
-      ? "moneyball-search"
-      : view === "shortlist"
-        ? "shortlist"
-        : "search";
+  const shortlistOnly = routeShortlistOnly === true;
+  const tableId = view === "moneyball" ? "moneyball-search" : "search";
   const layout = usePlayerTableStore((state) => state.layouts[tableId]);
   const navigate = Route.useNavigate();
   const filters = useMemo(
@@ -203,6 +224,9 @@ function SearchPageContent() {
   const [importOpen, setImportOpen] = useState(false);
   const [lastMoneyballImport, setLastMoneyballImport] =
     useState<CsvImportSummary | null>(null);
+  const [shortlistImportOpen, setShortlistImportOpen] = useState(false);
+  const [lastShortlistImport, setLastShortlistImport] =
+    useState<PlayerShortlistImportSummary | null>(null);
   const snapshotContext = snapshot ? `${snapshot.saveId}:${snapshot.id}` : null;
   const resultContext =
     snapshot && activeSave && snapshot.saveId === activeSave.id
@@ -211,11 +235,11 @@ function SearchPageContent() {
   const tabRefs = useRef<Record<SearchView, HTMLButtonElement | null>>({
     general: null,
     moneyball: null,
-    shortlist: null,
   });
   useEffect(() => {
     if (!snapshotContext) return;
     setLastMoneyballImport(null);
+    setLastShortlistImport(null);
   }, [snapshotContext]);
 
   const updateSearch = (
@@ -226,6 +250,7 @@ function SearchPageContent() {
       combine: FilterCombineMode;
       view: SearchView | undefined;
       comparisonPool: ComparisonPool | undefined;
+      shortlistOnly: boolean | undefined;
       replace: boolean;
     }>,
   ) =>
@@ -243,6 +268,10 @@ function SearchPageContent() {
           "comparisonPool" in patch
             ? patch.comparisonPool
             : previous.comparisonPool,
+        shortlistOnly:
+          "shortlistOnly" in patch
+            ? patch.shortlistOnly
+            : previous.shortlistOnly,
       }),
       replace: patch.replace ?? true,
     });
@@ -355,6 +384,26 @@ function SearchPageContent() {
               onToggleGroup={toggleGroup}
             />
           }
+          afterEditActions={
+            view === "general" ? (
+              <>
+                <Button
+                  variant="secondary"
+                  icon={FileUp}
+                  onClick={() => setShortlistImportOpen(true)}
+                >
+                  Upload Shortlist
+                </Button>
+                {lastShortlistImport ? (
+                  <p className="text-body-sm text-on-surface-variant">
+                    Last import: {lastShortlistImport.totalPlayers} players,{" "}
+                    {lastShortlistImport.storedPlayers} stored,{" "}
+                    {lastShortlistImport.skippedPlayers} skipped.
+                  </p>
+                ) : null}
+              </>
+            ) : undefined
+          }
           view={view}
         />
         {tacticMessage ? (
@@ -379,13 +428,14 @@ function SearchPageContent() {
             </Panel>
           ) : resultContext ? (
             <SearchResultsPanel
-              key={`${resultContext.activeSave.id}:${resultContext.activeSave.contextToken}:${resultContext.snapshot.id}:${resultContext.snapshot.saveId}:${view}:${comparisonPool}:${combine}:${JSON.stringify(filters)}`}
+              key={`${resultContext.activeSave.id}:${resultContext.activeSave.contextToken}:${resultContext.snapshot.id}:${resultContext.snapshot.saveId}:${view}:${comparisonPool}:${combine}:${JSON.stringify(filters)}:${shortlistOnly}`}
               sortBy={sort}
               sortDir={dir}
               filters={filters}
               filterCombine={combine}
               view={view}
               comparisonPool={comparisonPool}
+              shortlistOnly={shortlistOnly}
               pageContext={{
                 activeSave: {
                   id: resultContext.activeSave.id,
@@ -400,6 +450,9 @@ function SearchPageContent() {
               laneLabels={laneLabels}
               onSortChange={(nextSort, nextDir) => {
                 updateSearch({ sort: nextSort, dir: nextDir });
+              }}
+              onShortlistOnlyChange={(next: boolean) => {
+                updateSearch({ shortlistOnly: next ? true : undefined });
               }}
             />
           ) : (
@@ -426,7 +479,7 @@ function SearchPageContent() {
           aria-label="Search view"
           className="inline-flex rounded-full bg-surface-container-high p-0.5"
           onKeyDown={(event) => {
-            const views: SearchView[] = ["general", "moneyball", "shortlist"];
+            const views: SearchView[] = ["general", "moneyball"];
             const index = views.indexOf(view);
             const nextIndex =
               event.key === "ArrowRight" || event.key === "ArrowDown"
@@ -452,7 +505,7 @@ function SearchPageContent() {
             tabRefs.current[next]?.focus();
           }}
         >
-          {(["general", "moneyball", "shortlist"] as const).map((candidate) => (
+          {(["general", "moneyball"] as const).map((candidate) => (
             <button
               key={candidate}
               type="button"
@@ -479,11 +532,7 @@ function SearchPageContent() {
                 })
               }
             >
-              {candidate === "general"
-                ? "General"
-                : candidate === "moneyball"
-                  ? "Moneyball"
-                  : "Shortlist"}
+              {candidate === "general" ? "General" : "Moneyball"}
             </button>
           ))}
         </div>
@@ -545,8 +594,36 @@ function SearchPageContent() {
           onYouthImported={() => undefined}
           onMoneyballImported={(summary) => {
             setLastMoneyballImport(summary);
-            void queryClient.invalidateQueries({ queryKey: searchKeys.all });
+            // Moneyball imports never change player shortlist membership,
+            // so shortlist-filtered General queries keep their results.
+            void queryClient.invalidateQueries({
+              queryKey: searchKeys.playerPages(),
+              predicate: (query) => {
+                const params = query.queryKey[2] as
+                  | { shortlistOnly?: boolean }
+                  | undefined;
+                return params?.shortlistOnly !== true;
+              },
+            });
             void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
+          }}
+        />
+      ) : null}
+      {resultContext ? (
+        <PlayerShortlistImportModal
+          activeSaveId={resultContext.snapshot.saveId}
+          activeSaveContextToken={resultContext.activeSave.contextToken}
+          snapshotId={resultContext.snapshot.id}
+          snapshotContextToken={resultContext.snapshot.contextToken}
+          open={shortlistImportOpen}
+          onClose={() => setShortlistImportOpen(false)}
+          onImported={async (summary) => {
+            setLastShortlistImport(summary);
+            setShortlistImportOpen(false);
+            await updateSearch({ shortlistOnly: true });
+            await queryClient.invalidateQueries({
+              queryKey: searchKeys.playerPages(),
+            });
           }}
         />
       ) : null}
