@@ -26,15 +26,15 @@ ValueScout solves this with four pillars tied to how FM players actually work:
 
 Load the current game world from a running FM26 session. One action captures clubs, squads, contracts, and attributes to match what is in memory. The primary workflow needs no manual export step. Successful snapshots stay in the active app save, and the snapshot with the greatest valid in-game date is current for normal product reads. Snapshots are explicit (you click **Load Data** when you want fresh data), which keeps the model simple and predictable.
 
-Optional format-specific Squad imports supplement the current snapshot with supported Youth Tracker and Moneyball CSV values that the memory pipeline does not supply. Imports use exact numeric player IDs, stay scoped to the active app save, and never create players or replace live memory data. The Staff workspace can also import one save-owned shortlist from a staff CSV; it matches exact staff IDs and keeps Preferred Job, Club Job, and qualifications as recruitment context.
+Optional format-specific Squad imports supplement the current snapshot with supported Youth Tracker and Moneyball CSV values that the memory pipeline does not supply. Imports use exact numeric player IDs, stay scoped to the active app save, and never create players or replace live memory data. Player Search and Staff Search can each import one save-owned replacement shortlist. Both lists match exact IDs to the current snapshot; the staff list also keeps Preferred Job, Club Job, and qualifications as recruitment context.
 
-Player Profile and Player Search have optional Moneyball views for current-snapshot players in a scored Moneyball import. General is the factory default, and Settings can make Moneyball the app-local default when a URL does not specify a view. General keeps the familiar attribute, role-fit, concealment, and development tools. Moneyball shows playing-time context and raw performance metrics with imported-cohort percentile scores; Search can compare scores against either the filtered result cohort or the full CSV import. Player Search also offers a **Shortlist** view that filters the current snapshot to the Moneyball cohort and uses General attribute and role-score metrics with its own persisted layout; it has no upload control, no Moneyball metrics, and maps row activation to the General profile.
+Player Profile and Player Search have optional Moneyball views for current-snapshot players in a scored Moneyball import. General is the factory default, and Settings can make Moneyball the app-local default when a URL does not specify a view. General keeps the familiar attribute, role-fit, concealment, development, and shortlist tools. Moneyball shows playing-time context and raw performance metrics with imported-cohort percentile scores; Search can compare scores against either the filtered result cohort or the full CSV import. Player Search has General and Moneyball views only. General owns **Upload Shortlist** and a URL-backed shortlist filter; Moneyball imports do not change shortlist membership.
 
 The app supports multiple **save slots** (separate scouting databases—for example, different FM careers). Exactly one slot is active; **Load Data** stores a new snapshot in that slot, while Search, profiles, Planner, Academy, and CSV matching use the slot's current snapshot. Slots are app-side labels, not FM save files.
 
 ### 2. Searchable databases with role scores
 
-Every loaded player lives in a searchable database with scores per position and per role (e.g. defensive midfielder / deep-lying playmaker). Staff have current-ability job-fit scores derived from the attributes required by each job. Sort and filter by the fit you need, inspect detailed player or staff profiles, review everyone at the selected managed club in Staff, and narrow an imported Staff Shortlist by Preferred Job or unemployment.
+Every loaded player lives in a searchable database with scores per position and per role (e.g. defensive midfielder / deep-lying playmaker). Staff have current-ability job-fit scores derived from the attributes required by each job. Sort and filter by the fit you need, inspect detailed player or staff profiles, review everyone at the selected managed club in My Club Staff, and narrow the Staff Search results to an imported shortlist by Preferred Job or unemployment.
 
 ### 3. Squad planner
 
@@ -93,7 +93,7 @@ A week later in-game, the signing completes. You click **Load Data** again. The 
 - Transfer search with sort/filter by role scores
 - Staff Search with sort/filter by current job-fit scores
 - Staff overview for everyone at the selected managed club
-- Save-owned Staff Shortlist CSV import with exact staff-ID matching, Preferred Job filtering, and unemployment filtering
+- Save-owned Player and Staff Shortlist CSV imports with exact ID matching and URL-backed Search filters; Staff Search also supports Preferred Job and unemployment filtering
 - Detailed Staff Profile with current attributes and job fit
 - Squad planner aligned to the user's tactic
 - Squad optimizer that maximizes combined team score for the tactic

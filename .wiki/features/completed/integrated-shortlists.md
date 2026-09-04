@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -146,7 +146,7 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 ### PR 1 — feat(search): integrate player and staff shortlists
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -164,7 +164,7 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 **Required checks:** GitHub required strict status `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -491,7 +491,7 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 #### Commit 6 — Integrate shortlist controls into Staff Search page
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): integrate shortlist into staff search`
 
@@ -562,27 +562,15 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 ## Active work
 
-**PR:** feat(search): integrate player and staff shortlists
-
-**Commit:** Integrate shortlist controls into Staff Search page
-
-### RED or removal proof
-
-Add focused frontend proofs that the Staff shortlist URL flag round-trips, metadata filters appear only when enabled, the My Club shortlist tab is absent, and both legacy URLs replace-normalize to integrated Staff Search.
-
-### Expected outcome
-
-`/staff` owns shortlist upload, configuration, optimization, conditional metadata filters, URL-backed filtering and retained shortlist presentation; the My Club workspace and dedicated backend/frontend query paths retire atomically.
-
-### Explicit exclusions
-
-Player changes, current-state documentation, unrelated Staff behavior, and unrelated refactors.
+None. All planned commits, feature validation, feature review correction, and documentation reconciliation are complete. Publication remains pending under the unchanged Delivery fingerprint.
 
 ## Discoveries and replanning
 
 Orchestrator correction round settled the Staff presentation mapping (OFF uses `staff-search` layout and normal metrics; ON uses the persisted `staff-shortlist` layout with the exact `staffShortlistPresentation(preferredJob)` cases), the exact legacy replace-normalization without persistence inspection, the exact player CSV contract and summary fields, the settled `search_staff`/`list_staff` extension routed through `list_staff_with_shortlist` with `list_staff_shortlist` retirement in Commit 6, always-visible Staff header controls, and the Commit 2/3 backend split. No implementation evidence contradicts the delivery boundary.
 
 Correction round 1 (plan-review verdict) made Commits 3/4 and 5/6 trunk-safe by retaining the old backend contracts (`SearchView::Shortlist`, `list_staff_shortlist`) through the flag commits and retiring each atomically with its frontend move; hardened Commit 2 proof (row-count boundary before validity/deduplication, insert-failure rollback, Moneyball non-interference, forward-migration/cascade/isolation/snapshot-survival proof, no separate save index); settled frontend ownership (`search-filter-bar.tsx`/`search-filter-strip.tsx` after-Edit seam, `player-shortlist-import-modal.tsx` + import API + summary types, `staff-filter-bar.tsx` action slot, `my-club-workspace-tabs.tsx`, testing/e2e assets); assigned immutable shortlist context ownership to `staff.tsx::StaffPageContent`; and recorded the exact DESIGN reconciliation facts for the workflow-core close-out owner. One PR and six commits preserved; Delivery fingerprint stays pending review.
+
+Feature review required one correction commit, `6e58afc14b7a8939b4d6cbe24c682fed2bae30f3`. It fixed Moneyball refetch under retained shortlist URL state, player import UI and picker-context invalidation, and legacy Staff sort preservation. The correction review was clear. Developer review confirmed that the 10,000-player CSV limit counts data records yielded by the established CSV parser; a second physical-line and quote parser was rejected as needless hardening.
 
 ## Completed work
 
@@ -593,6 +581,7 @@ Correction round 1 (plan-review verdict) made Commits 3/4 and 5/6 trunk-safe by 
 | PR 1 — feat(search): integrate player and staff shortlists | Commit 3 — Restrict General search to the player shortlist | abe2c2d496256ca3e6037f5e29e99ac9f3c00cf1 | Added a General-only, save-scoped shortlist restriction through bounded IPC while preserving the legacy Moneyball-backed Shortlist contract for the current frontend. | `cargo test --lib features::search::` (102 passed); `./scripts/dev check-rust`; `./scripts/dev check` (769 passed, 2 ignored); Rust LSP; `git diff --check` — passed. | Pass | Clear | 0 | Existing tactic and Club DNA tests provide stronger composition coverage through the unchanged shared query pipeline; no duplicate flagged variants added. |
 | PR 1 — feat(search): integrate player and staff shortlists | Commit 4 — Integrate player shortlist upload and toggle in Search | 1b47488b482f7081fd319e6277a37b7eafb6a561 | Integrated save-owned shortlist upload and URL filtering into General Search, removed the separate Player Shortlist tab/layout and Rust legacy branch, and preserved Moneyball isolation and profile navigation. | Search route 70 passed; focused parser/key/store/modal tests 51 passed; Rust Search 98 passed; `CI=1 ./scripts/dev smoke` 54 passed; `./scripts/dev check` (765 passed, 2 ignored); `git diff --check` — passed. | Pass | Clear | 2 | Corrected zero-result switch access, true replace-normalization, immutable token guards, complete summary feedback, Playwright Moneyball fidelity, redundant tests, and filtered Moneyball empty-state precedence. |
 | PR 1 — feat(search): integrate player and staff shortlists | Commit 5 — Compose shortlist filter into core staff search | a51644e | Extended core Staff Search with optional shortlist, Preferred Job, and unemployment parameters through the shared shortlist query composition while retaining the legacy command for the current frontend. | `cargo test --lib features::staff::` (68 passed); combined bind proof 1 passed; `./scripts/dev check-rust` (766 passed, 2 ignored); `./scripts/dev check`; Rust LSP; `git diff --check` — passed. | Pass | Clear | 1 | Reviewer-required combined bind proof consolidated shortlist, Preferred Job, unemployment, core filter, metadata, and paging into one query test. |
+| PR 1 — feat(search): integrate player and staff shortlists | Commit 6 — Integrate shortlist controls into Staff Search page | 0e71a5266c61cd8054295d0a7a01894aad5dd31b | Integrated Staff shortlist upload, conditional filters, Configure Club Staff, and assignment optimization into Staff Search; retired the My Club workspace and dedicated Staff shortlist IPC/query path while retaining shared composition and the `staff-shortlist` layout. | Staff and optimizer tests (50 passed); My Club tests (131 passed); `./scripts/dev check` (766 passed, 2 ignored) — passed. | Pass | Clear | 1 | Cleared after one commit-level fix round. Feature correction `6e58afc14b7a8939b4d6cbe24c682fed2bae30f3` fixed Moneyball refetch under retained shortlist URL state, player import UI/picker-context invalidation, and legacy Staff sort preservation. |
 
 ## Final validation
 
@@ -602,14 +591,16 @@ Correction round 1 (plan-review verdict) made Commits 3/4 and 5/6 trunk-safe by 
 - Manual evidence only where automation cannot prove the contract: native-picker upload, keyboard toggle operation, and restart/snapshot-replacement persistence for both lists.
 - Close-out reconciliation covers `.wiki/CONCEPT.md`, `.wiki/ARCHITECTURE.md`, `.wiki/DESIGN.md`, `.wiki/TODO.md`, and the completed feature record (see Documentation impact for the exact DESIGN facts).
 
+## Close-out evidence
+
+- Feature review correction: `6e58afc14b7a8939b4d6cbe24c682fed2bae30f3`.
+- `./scripts/dev check` passed with 766 tests and 2 ignored.
+- Focused route and modal tests passed: 115.
+- `CI=1 ./scripts/dev smoke` passed: 54.
+- Correction review was clear.
+- Automation proved URL normalization, modal context invalidation, shortlist persistence and query behavior, and route presentation. No native-picker or restart manual test is claimed.
+- Release preparation remains out of scope.
+
 ## Documentation impact
 
-Complete during reconciliation. After implementation makes the new behavior true, reconcile `.wiki/CONCEPT.md`, `.wiki/ARCHITECTURE.md`, `.wiki/DESIGN.md`, `.wiki/TODO.md`, and the completed feature record. No ADR is planned. No BACKLOG change is planned. No normal implementation packet is reserved for close-out: workflow-core owns the close-out commit, so this section plus Final validation state the exact DESIGN facts the close-out owner must reconcile and cannot omit:
-
-- Status paragraph (implemented surfaces): the automatic Moneyball-cohort Player Shortlist view with General metrics and independent layout becomes the save-owned persistent replacement list with `Upload Shortlist` and URL toggle on `/search` General; the save-owned Staff Shortlist workspace entry becomes the integrated Staff Search header (Upload, `Configure Club Staff`, `Optimize assignments`) with URL toggle.
-- Compact Filter Strip / Filter Tag / Filter Editor: the settled after-Edit action seam (`Upload Shortlist` immediately right of `Edit Filters`, tactic controls unmoved) and the Staff integrated action slot with conditional Preferred Job / Only unemployed.
-- Search tactic columns: tactic columns compose with the General shortlist restriction.
-- Modal: the new `player-shortlist-import-modal.tsx` alongside the staff import modal (summary, zero-match error, context-change guards).
-- Empty, Loading, and Error States: removed Player Shortlist tab copy (`No shortlist yet`) and My Club Staff Shortlist workspace copy replaced by on-with-no-list setup/no-shortlist feedback with Upload available.
-- Staff workspace layout and Squad workspace layout: Staff Shortlist leaves the My Club workspace; `staff-shortlist` persisted layout retained on `/staff`, Player `shortlist` layout removed.
-- Current-state docs remain unchanged during planning; reconciliation happens only after implementation makes the new behavior true.
+Reconciled `.wiki/CONCEPT.md`, `.wiki/ARCHITECTURE.md`, `.wiki/DESIGN.md`, and `.wiki/TODO.md` to the implemented integrated shortlist behavior. No ADR or BACKLOG change was required. The completed ledger destination must preserve this full schema 2 record and the unchanged Delivery fingerprint; the orchestrator owns the approved move after inspection.
