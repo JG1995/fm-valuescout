@@ -22,7 +22,6 @@ import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-sna
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
-import { useLayoutStore } from "@/stores/use-layout-store";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { setCsvImportIpcMockResult } from "@/testing/csv-import-ipc-mock";
@@ -145,7 +144,6 @@ function mockScrollerScrollTo(scroller: HTMLElement) {
 describe("search route", () => {
   beforeEach(() => {
     openCsvDialog.mockReset();
-    useLayoutStore.setState({ railExpanded: true });
     useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
   });
 
@@ -157,7 +155,7 @@ describe("search route", () => {
     renderWithProviders();
 
     const searchLink = await screen.findByRole("link", {
-      name: "Player Search",
+      name: "Search",
     });
     await user.click(searchLink);
 

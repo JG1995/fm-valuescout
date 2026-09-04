@@ -18,7 +18,6 @@ import { staffKeys } from "@/features/staff/api/staff-keys";
 import { StaffAttributesPanel } from "@/features/staff/components/staff-attributes-panel";
 import { StaffOverviewPanel } from "@/features/staff/components/staff-overview-panel";
 import { StaffRoleFitPanel } from "@/features/staff/components/staff-role-fit-panel";
-import { useLayoutStore } from "@/stores/use-layout-store";
 import { cn } from "@/utils/cn";
 
 function parseUid(raw: string): number | null {
@@ -39,12 +38,10 @@ export const Route = createFileRoute("/staff/$uid")({
   component: StaffProfileRoute,
 });
 
-function profileWorkspaceClassName(railExpanded: boolean) {
+function profileWorkspaceClassName() {
   return cn(
     "grid h-0 min-h-0 flex-1 gap-gutter [&>*]:min-h-0",
-    railExpanded
-      ? "grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] 2xl:grid-rows-[minmax(0,1fr)]"
-      : "grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]",
+    "grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]",
   );
 }
 
@@ -71,7 +68,6 @@ function StaffNotFound() {
 }
 
 function StaffProfileContent({ uid }: { uid: number }) {
-  const railExpanded = useLayoutStore((state) => state.railExpanded);
   const queryClient = useQueryClient();
   const outcomeRef = useRef<HTMLDivElement>(null);
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
@@ -144,7 +140,7 @@ function StaffProfileContent({ uid }: { uid: number }) {
           </p>
         ) : null}
       </div>
-      <div className={profileWorkspaceClassName(railExpanded)}>
+      <div className={profileWorkspaceClassName()}>
         <StaffAttributesPanel staff={staff} />
         <StaffRoleFitPanel staff={staff} />
       </div>

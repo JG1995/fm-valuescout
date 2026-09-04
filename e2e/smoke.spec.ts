@@ -263,20 +263,59 @@ test.describe("application smoke", () => {
     });
   });
 
-  test("nav rail expands from its own toggle", async ({ page }) => {
+  test("top navigation fits every destination at 1280x800", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/");
 
-    const toggle = page.getByRole("button", { name: "Toggle navigation" });
-    const rail = page.getByTestId("app-nav-rail");
+    const header = page.getByTestId("app-header");
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    const main = page.getByRole("main");
+    await expect(header).toBeVisible();
+    await expect(nav).toBeVisible();
+    const [headerBox, navBox, mainBox] = await Promise.all([
+      header.boundingBox(),
+      nav.boundingBox(),
+      main.boundingBox(),
+    ]);
+    expect(headerBox).not.toBeNull();
+    expect(navBox).not.toBeNull();
+    expect(mainBox).not.toBeNull();
+    if (!headerBox || !navBox || !mainBox) {
+      throw new Error("Expected the shell bars to have a visible layout.");
+    }
+    expect(navBox.y).toBeGreaterThanOrEqual(headerBox.y + headerBox.height - 1);
+    expect(mainBox.y).toBeGreaterThanOrEqual(navBox.y + navBox.height - 1);
+    expect(mainBox.x + mainBox.width).toBeLessThanOrEqual(1280 + 1);
+    await expect(page.getByTestId("app-nav-rail")).toHaveCount(0);
 
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(rail).toHaveAttribute("data-expanded", "false");
-    await expect(rail.getByText("Dashboard")).toBeHidden();
+    for (const name of [
+      "Dashboard",
+      "Search",
+      "Moneyball",
+      "Staff Search",
+      "My Staff",
+      "Squad",
+      "Planner",
+      "Tactic",
+      "Youth",
+      "Settings",
+    ] as const) {
+      await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
+    }
+    await expect(
+      nav.locator("[data-nav-caption]").allTextContents(),
+    ).resolves.toEqual(["Home", "Players", "Staff", "Club", "Settings"]);
 
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(rail).toHaveAttribute("data-expanded", "true");
-    await expect(rail.getByText("Dashboard")).toBeVisible();
+    const navOverflow = await nav.evaluate((element) => {
+      const navElement = element as unknown as {
+        clientWidth: number;
+        scrollWidth: number;
+      };
+      return navElement.scrollWidth - navElement.clientWidth;
+    });
+    expect(navOverflow).toBeLessThanOrEqual(1);
   });
 
   test("search route shows no-snapshot empty state from stubbed IPC", async ({
@@ -290,7 +329,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
     await expect(
-      page.getByRole("link", { name: "Player Search" }),
+      page.getByRole("link", { name: "Search", exact: true }),
     ).toHaveAttribute("aria-current", "page");
   });
 
@@ -1855,9 +1894,6 @@ test.describe("application smoke", () => {
     const workspaceTabs = main.getByRole("tablist", {
       name: "My Club workspaces",
     });
-    const navToggle = page.getByRole("button", {
-      name: "Toggle navigation",
-    });
 
     const expectWorkspaceFit = async (
       width: number,
@@ -1936,18 +1972,15 @@ test.describe("application smoke", () => {
       [1920, 1080, true],
     ] as const) {
       await expectWorkspaceFit(width, height, requireVerticalFit);
-      await navToggle.click();
-      await expect(navToggle).toHaveAttribute("aria-expanded", "true");
-      await expectWorkspaceFit(width, height, requireVerticalFit);
-      await navToggle.click();
-      await expect(navToggle).toHaveAttribute("aria-expanded", "false");
     }
   });
 
   test("planner depth adds strings for Senior, Reserves, and Youth", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 900, height: 800 });
+    // 844 keeps the 900px content geometry from before the 56px rail retired,
+    // so the depth matrix stays in tabbed mode.
+    await page.setViewportSize({ width: 844, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/my-club");
 
@@ -2119,7 +2152,9 @@ test.describe("application smoke", () => {
   test("planner depth clears every squad from one confirmed action", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 900, height: 800 });
+    // 844 keeps the 900px content geometry from before the 56px rail retired,
+    // so the depth matrix stays in tabbed mode.
+    await page.setViewportSize({ width: 844, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/my-club");
 
@@ -2634,9 +2669,8 @@ test.describe("application smoke", () => {
       }
     }
 
-    await page.getByRole("button", { name: "Toggle navigation" }).click();
     await page.setViewportSize({ width: 1280, height: 800 });
-    const expandedRoleFitDimensions = await roleFit.evaluate((element) => {
+    const roleFitDimensions = await roleFit.evaluate((element) => {
       const htmlElement = element as unknown as {
         clientWidth: number;
         scrollWidth: number;
@@ -2646,8 +2680,8 @@ test.describe("application smoke", () => {
         scrollWidth: htmlElement.scrollWidth,
       };
     });
-    expect(expandedRoleFitDimensions.scrollWidth).toBeLessThanOrEqual(
-      expandedRoleFitDimensions.clientWidth,
+    expect(roleFitDimensions.scrollWidth).toBeLessThanOrEqual(
+      roleFitDimensions.clientWidth,
     );
     for (const [region, label] of [
       [technical, "Passing"],

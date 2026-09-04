@@ -12,7 +12,6 @@ import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { staffKeys } from "@/features/staff/api/staff-keys";
 import { STAFF_PROFILE_ATTRIBUTE_GROUPS } from "@/features/staff/utils/staff-profile-attributes";
 import { routeTree } from "@/routeTree.gen";
-import { useLayoutStore } from "@/stores/use-layout-store";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 import {
   fixtureStaffDetail,
@@ -42,7 +41,6 @@ function renderStaffProfileRoute(initialEntry: string) {
 
 describe("staff profile route", () => {
   beforeEach(() => {
-    useLayoutStore.setState({ railExpanded: true });
     setStaffDetailOverride(undefined);
   });
 

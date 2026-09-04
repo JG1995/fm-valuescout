@@ -217,7 +217,7 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 
 #### Commit 2 — Replace the left rail with the grouped top navigation shell
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(nav): replace left rail with top navigation`
 
@@ -287,7 +287,7 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 
 #### Commit 3 — Move Search and Moneyball tabs into top navigation
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(search): move search views into top navigation`
 
@@ -533,29 +533,30 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 
 **PR:** PR 1 — feat(nav): replace left rail with top navigation
 
-**Commit:** Replace the left rail with the grouped top navigation shell
+**Commit:** Move Search and Moneyball tabs into top navigation
 
 ### RED or removal proof
 
-Add shell-routing tests that fail until the utility bar precedes the new navigation bar, every supported destination has one current link, profile routes mark only their stable group, and unknown routes mark nothing. Retire the rail contract and prove its component, toggle, persisted state, width tokens, and dependent profile branches are absent.
+Add route tests that fail until `/search?view=general` and `/search?view=moneyball` render their matching views through navigation without the local `Search view` tablist. Prove navigation switching retains `shortlistOnly` while resetting comparison pool, sort, direction, and filters to the destination defaults.
 
 ### Expected outcome
 
-The shell renders the unchanged utility bar above all ten grouped navigation destinations, removes the left rail and its persisted expansion state, reflows content to the recovered width, and fits without horizontal overflow at 1280×800. Existing page-level tabs and compatibility redirects remain for later commits.
+Search and Moneyball are navigation-owned destinations with deep links, reload, and history preserving URL state. The duplicated local General/Moneyball tabs and their keyboard handling are gone; existing Search filters, comparison pool, shortlist, sorting, tactic columns, Club DNA, uploads, and profile tabs retain their current owners.
 
 ### Explicit exclusions
 
-Search and My Club tab removal, Staff redirect reversal, utility-bar behavior changes, current-state documentation reconciliation, and unrelated route or feature behavior.
+Staff, Club, Youth, utility-bar, redirect, profile-tab, and current-state documentation changes.
 
 ## Discoveries and replanning
 
-- None yet.
+- Commit 2: removing the 56px rail changed the effective content width of two out-of-contract 900px Planner smoke scenarios enough to cross the matrix layout threshold. Their viewport changed to 844px to preserve the same pre-removal content geometry and tabbed-mode contract; the supported 1280×800 shell and navigation fit has separate direct coverage.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — feat(nav): replace left rail with top navigation | Commit 1 — Record the approved feature plan | Pending record | Recorded the independently reviewed schema 2 ledger and active JAY-54 TODO entry. | `ledger_state.py`, `delivery_state.py`, `git diff --cached --check`, and `./scripts/dev check` passed; 766 Rust tests passed and 2 were ignored. | Not applicable | Clear | 0 | None |
+| PR 1 — feat(nav): replace left rail with top navigation | Commit 1 — Record the approved feature plan | 911ea310f31485936dabf431a9a1eb73d485d398 | Recorded the independently reviewed schema 2 ledger and active JAY-54 TODO entry. | `ledger_state.py`, `delivery_state.py`, `git diff --cached --check`, and `./scripts/dev check` passed; 766 Rust tests passed and 2 were ignored. | Not applicable | Clear | 0 | None |
+| PR 1 — feat(nav): replace left rail with top navigation | Commit 2 — Replace the left rail with the grouped top navigation shell | Pending record | Added the grouped top navigation beneath the utility bar; retired the rail, expansion store, width tokens, and profile width branches; added exact active-state and 1280×800 fit proof. | Focused shell and affected route tests passed; `./scripts/dev check` passed with 766 Rust tests and 2 ignored; `CI=1 ./scripts/dev smoke` passed 54/54; LSP and staged diff checks passed. | Pass | Clear | 1 | Two 900px Planner smoke viewports changed to 844px to preserve their prior effective content width after rail retirement. |
 
 ## Final validation
 

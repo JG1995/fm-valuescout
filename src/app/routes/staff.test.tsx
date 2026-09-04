@@ -19,7 +19,6 @@ import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-sna
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
-import { useLayoutStore } from "@/stores/use-layout-store";
 import {
   defaultPlayerTableLayouts,
   usePlayerTableStore,
@@ -83,7 +82,6 @@ function renderStaffRoute(initialEntry = "/staff") {
 describe("staff route", () => {
   beforeEach(() => {
     openCsvDialog.mockReset();
-    useLayoutStore.setState({ railExpanded: true });
     usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });
   });
 

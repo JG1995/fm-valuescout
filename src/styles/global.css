@@ -146,8 +146,6 @@
   /* Product dimensions. The 4px `unit` and the `stack-*` rhythm are Tailwind's
      default numeric scale (stack-xs=1, sm=2, md=4, lg=6, xl=8), so only the
      named dimensions that must stay identical across components live here. */
-  --spacing-rail-width: 56px;
-  --spacing-rail-width-expanded: 208px;
   --spacing-header-height: 56px;
   --spacing-table-row-height: 36px;
   --spacing-table-row-height-two-line: 40px;

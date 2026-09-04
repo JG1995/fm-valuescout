@@ -11,7 +11,6 @@ import type { RouterContext } from "@/app/router-context";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
-import { useLayoutStore } from "@/stores/use-layout-store";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
   fixturePlayerMoneyball,
@@ -61,7 +60,6 @@ function renderProfileRoute(initialEntry: string) {
 
 describe("player profile route", () => {
   beforeEach(() => {
-    useLayoutStore.setState({ railExpanded: true });
     useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
     setGetPlayerOverride(undefined);
   });
