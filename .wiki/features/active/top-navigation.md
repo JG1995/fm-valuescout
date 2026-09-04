@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -131,7 +131,7 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 
 ### PR 1 — feat(nav): replace left rail with top navigation
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -475,7 +475,7 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 
 #### Commit 6 — Reconcile navigation documentation
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(nav): reconcile navigation documentation`
 
@@ -529,24 +529,6 @@ The grouped top navigation bar lands first in the shell with utility bar orderin
 
 **Review mandate:** Verify every changed doc statement traces to the implementation diff; no stale rail, tab, or Staff-ownership claim remains; no implementation or unrelated doc file changed.
 
-## Active work
-
-**PR:** PR 1 — feat(nav): replace left rail with top navigation
-
-**Commit:** Reconcile navigation documentation
-
-### RED or removal proof
-
-Not applicable — documentation follows the reviewed implementation. Diff `.wiki/ARCHITECTURE.md` and `.wiki/DESIGN.md` against the delivered shell, destination, route, compatibility, and persistence behavior, and remove stale rail/tab/Staff ownership claims.
-
-### Expected outcome
-
-Current-state documentation describes the utility bar plus grouped top navigation, direct Search/Staff/Club/Youth destinations, canonical My Staff ownership, compatibility redirects, active-state accessibility, 1280×800 fit, and removal of rail expansion persistence exactly as implemented.
-
-### Explicit exclusions
-
-Implementation, tests, executable configuration, ledger scope or packet changes, ADRs, BACKLOG, and unrelated documentation.
-
 ## Discoveries and replanning
 
 - Commit 2: removing the 56px rail changed the effective content width of two out-of-contract 900px Planner smoke scenarios enough to cross the matrix layout threshold. Their viewport changed to 844px to preserve the same pre-removal content geometry and tabbed-mode contract; the supported 1280×800 shell and navigation fit has separate direct coverage.
@@ -560,7 +542,8 @@ Implementation, tests, executable configuration, ledger scope or packet changes,
 | PR 1 — feat(nav): replace left rail with top navigation | Commit 2 — Replace the left rail with the grouped top navigation shell | 786e1f7dfdee02d7524038db1ea36a15ea0032d6 | Added the grouped top navigation beneath the utility bar; retired the rail, expansion store, width tokens, and profile width branches; added exact active-state and 1280×800 fit proof. | Focused shell and affected route tests passed; `./scripts/dev check` passed with 766 Rust tests and 2 ignored; `CI=1 ./scripts/dev smoke` passed 54/54; LSP and staged diff checks passed. | Pass | Clear | 1 | Two 900px Planner smoke viewports changed to 844px to preserve their prior effective content width after rail retirement. |
 | PR 1 — feat(nav): replace left rail with top navigation | Commit 3 — Move Search and Moneyball tabs into top navigation | 6bedba8c08b760ddb2ceb66d16778ef0b04c631f | Removed the local Search view tablist and moved General/Moneyball switching into top navigation while preserving deep-link state and the prior reset/preserve transition contract. | Focused Search tests passed 72/72; affected Search and shell tests passed 144/144; `./scripts/dev check` passed with 766 Rust tests and 2 ignored; LSP and staged diff checks passed. | Pass | Clear | 0 | None |
 | PR 1 — feat(nav): replace left rail with top navigation | Commit 4 — Make My Staff a canonical Staff destination | 12d51ab98615f67e033d1725a1daebd70646bb5d | Made My Staff canonical under Staff, reversed the legacy Club redirect with validated sort mapping, removed the Club Staff workspace, and isolated My Staff from Staff Search-only queries. | Focused Staff, legacy, Club, and shell tests passed 205/205; `./scripts/dev check` passed with 766 Rust tests and 2 ignored; `CI=1 ./scripts/dev smoke` passed 54/54; LSP and staged diff checks passed. | Pass | Clear | 3 | None |
-| PR 1 — feat(nav): replace left rail with top navigation | Commit 5 — Move Club Squad, Planner, and Tactic into top navigation | Pending record | Removed the Club workspace tabs and obsolete tab semantics, moved route parsing ownership, preserved mounted Planner/Tactic state and Squad sort state, and normalized `/planner` to the Planner destination. | Focused Club, legacy, and shell tests passed 165/165; `./scripts/dev check` passed with 766 Rust tests and 2 ignored; `CI=1 ./scripts/dev smoke` passed 54/54; LSP and staged diff checks passed. | Pass | Clear | 1 | None |
+| PR 1 — feat(nav): replace left rail with top navigation | Commit 5 — Move Club Squad, Planner, and Tactic into top navigation | 0c550937ab489cd7f6e4a504bed0459d3d012d08 | Removed the Club workspace tabs and obsolete tab semantics, moved route parsing ownership, preserved mounted Planner/Tactic state and Squad sort state, and normalized `/planner` to the Planner destination. | Focused Club, legacy, and shell tests passed 165/165; `./scripts/dev check` passed with 766 Rust tests and 2 ignored; `CI=1 ./scripts/dev smoke` passed 54/54; LSP and staged diff checks passed. | Pass | Clear | 1 | None |
+| PR 1 — feat(nav): replace left rail with top navigation | Commit 6 — Reconcile navigation documentation | Pending record | Updated architecture and design current state for the utility and navigation bars, destination ownership, compatibility routes, URL/history behavior, accessibility, and retired rail/tab contracts. | `ledger_state.py`, Markdown, whitespace, and staged diff checks passed; implementation and route tests supplied the documentation evidence. | Not applicable | Clear | 2 | None |
 
 ## Final validation
 
