@@ -54,6 +54,16 @@ function searchViewTransition(
   });
 }
 
+function clubViewTransition(
+  view: "squad" | "planner" | "tactic",
+): (previous: Record<string, unknown>) => Record<string, unknown> {
+  return (previous) => ({
+    view,
+    squadSort: previous.squadSort,
+    squadDir: previous.squadDir,
+  });
+}
+
 const destinations: Destination[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, to: "/" },
   {
@@ -92,6 +102,7 @@ const destinations: Destination[] = [
     icon: UsersRound,
     to: "/my-club",
     search: { view: "squad" },
+    searchTransition: clubViewTransition("squad"),
   },
   {
     id: "planner",
@@ -99,6 +110,7 @@ const destinations: Destination[] = [
     icon: CalendarDays,
     to: "/my-club",
     search: { view: "planner" },
+    searchTransition: clubViewTransition("planner"),
   },
   {
     id: "tactic",
@@ -106,6 +118,7 @@ const destinations: Destination[] = [
     icon: ClipboardList,
     to: "/my-club",
     search: { view: "tactic" },
+    searchTransition: clubViewTransition("tactic"),
   },
   { id: "youth", label: "Youth", icon: GraduationCap, to: "/academy" },
   { id: "settings", label: "Settings", icon: SettingsIcon, to: "/settings" },
@@ -162,11 +175,13 @@ export function AppNavBar() {
   );
   const groupContext = current === null ? currentGroupCaption(pathname) : null;
   const byId = new Map(destinations.map((item) => [item.id, item]));
-  // View switching inside /search keeps the old tab transition contract
-  // (shortlistOnly/combine survive, everything else resets to the
-  // destination view defaults). Links from other routes use the plain
-  // search object so staff or club state never leaks into Search.
-  const onSearchRoute = pathname === "/search";
+  // Same-route view transitions keep the old tab contract: inside /search
+  // shortlistOnly/combine survive, inside /my-club squadSort/squadDir
+  // survive, and every other key falls back to the destination view
+  // defaults in validateSearch. Links from other routes use the plain
+  // search object so unrelated search state never leaks across routes.
+  // Each transition only carries its own route's keys, so applying it on
+  // the sibling route degrades to the plain object.
 
   return (
     <nav
@@ -195,7 +210,7 @@ export function AppNavBar() {
                       key={id}
                       to={item.to}
                       search={
-                        item.searchTransition && onSearchRoute
+                        item.searchTransition && pathname === item.to
                           ? item.searchTransition
                           : item.search
                       }

@@ -15,12 +15,12 @@ import {
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
+import type { MyClubWorkspace } from "@/app/routes/my-club";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
-import type { MyClubWorkspace } from "@/features/my-club/components/my-club-workspace-tabs";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import type {
   PlannerDepth,
@@ -164,7 +164,10 @@ async function openMyClubWorkspace(
     planner: "Planner",
     tactic: "Tactic",
   };
-  await user.click(await screen.findByRole("tab", { name: labels[workspace] }));
+  const navigation = screen.getByRole("navigation", { name: "Primary" });
+  await user.click(
+    within(navigation).getByRole("link", { name: labels[workspace] }),
+  );
 }
 
 const KEEPER_POSITION = "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper";
@@ -299,19 +302,105 @@ function switchToSecondSave(
 }
 
 describe("My Club route", () => {
-  it("exposes the three My Club workspaces in order", async () => {
+  it("selects each Club workspace from navigation with no local tabs", async () => {
     await resolveLoadDataIpcMock();
-    renderMyClubRoute({ initialEntry: "/my-club" });
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    const user = userEvent.setup();
+    const { history, router } = renderMyClubRoute({
+      initialEntry: "/my-club?view=squad&squadSort=name&squadDir=asc",
+    });
 
+    const navigation = await screen.findByRole("navigation", {
+      name: "Primary",
+    });
+    const workspaceLink = (name: string) =>
+      within(navigation).getByRole("link", { name });
+    expect(workspaceLink("Squad")).toHaveAttribute("aria-current", "page");
+    expect(workspaceLink("Planner")).not.toHaveAttribute("aria-current");
+    expect(workspaceLink("Tactic")).not.toHaveAttribute("aria-current");
     expect(
-      await screen.findByRole("tab", { name: "Squad" }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-      "Squad",
-      "Planner",
-      "Tactic",
-    ]);
-    expect(screen.queryByRole("tab", { name: "Staff" })).toBeNull();
+      screen.queryByRole("tablist", { name: "My Club workspaces" }),
+    ).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Squad" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Planner" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Tactic" })).toBeNull();
+    expect(document.querySelector('[id^="my-club-workspace-"]')).toBeNull();
+    expect(
+      document.querySelector('[aria-labelledby^="my-club-workspace-"]'),
+    ).toBeNull();
+    const squadTable = await screen.findByRole("table", {
+      name: "Squad overview",
+    });
+    expect(squadTable).toBeVisible();
+    expect(
+      within(squadTable).getByRole("columnheader", { name: "Name" }),
+    ).toHaveAttribute("aria-sort", "ascending");
+    expect(
+      screen.getByRole("heading", {
+        name: "Squad depth",
+        hidden: true,
+      }),
+    ).not.toBeVisible();
+    expect(
+      screen.getByRole("region", {
+        name: "Tactic controls",
+        hidden: true,
+      }),
+    ).not.toBeVisible();
+
+    await user.click(workspaceLink("Planner"));
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({
+        view: "planner",
+        squadSort: "name",
+        squadDir: "asc",
+      }),
+    );
+    expect(workspaceLink("Planner")).toHaveAttribute("aria-current", "page");
+    expect(workspaceLink("Squad")).not.toHaveAttribute("aria-current");
+    expect(
+      await screen.findByRole("heading", { name: "Squad depth" }),
+    ).toBeVisible();
+    expect(squadTable).not.toBeVisible();
+
+    await user.click(workspaceLink("Tactic"));
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({
+        view: "tactic",
+        squadSort: "name",
+        squadDir: "asc",
+      }),
+    );
+    expect(workspaceLink("Tactic")).toHaveAttribute("aria-current", "page");
+    expect(workspaceLink("Planner")).not.toHaveAttribute("aria-current");
+    expect(
+      await screen.findByRole("region", { name: "Tactic controls" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Squad depth",
+        hidden: true,
+      }),
+    ).not.toBeVisible();
+
+    await user.click(workspaceLink("Squad"));
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({
+        view: "squad",
+        squadSort: "name",
+        squadDir: "asc",
+      }),
+    );
+    expect(workspaceLink("Squad")).toHaveAttribute("aria-current", "page");
+    expect(workspaceLink("Tactic")).not.toHaveAttribute("aria-current");
+    expect(history.canGoBack()).toBe(true);
+    expect(
+      within(squadTable).getByRole("columnheader", { name: "Name" }),
+    ).toHaveAttribute("aria-sort", "ascending");
   });
 
   it.each([
@@ -346,8 +435,11 @@ describe("My Club route", () => {
           await screen.findByText("No data loaded for this save"),
         ).toBeInTheDocument();
       } else {
+        const navigation = await screen.findByRole("navigation", {
+          name: "Primary",
+        });
         expect(
-          await screen.findByRole("tab", { name: "Planner" }),
+          within(navigation).getByRole("link", { name: "Planner" }),
         ).toBeInTheDocument();
       }
       expect(getPlannerTacticIpcMockCalls()).toEqual([]);
@@ -960,42 +1052,41 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     renderMyClubRoute({ initialEntry: "/my-club" });
 
+    const navigation = await screen.findByRole("navigation", {
+      name: "Primary",
+    });
+    const workspaceLink = (name: string) =>
+      within(navigation).getByRole("link", { name });
     await screen.findByRole("link", { name: "Open Managed Club" });
-    expect(screen.getByRole("tab", { name: "Squad" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.getByRole("tab", { name: "Planner" })).toHaveAttribute(
-      "aria-selected",
-      "false",
-    );
-    expect(screen.queryByRole("tab", { name: "Club Setup" })).toBeNull();
+    expect(workspaceLink("Squad")).toHaveAttribute("aria-current", "page");
+    expect(workspaceLink("Planner")).not.toHaveAttribute("aria-current");
+    expect(workspaceLink("Tactic")).not.toHaveAttribute("aria-current");
+    expect(
+      screen.queryByRole("tablist", { name: "My Club workspaces" }),
+    ).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Squad" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Planner" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Tactic" })).toBeNull();
+    expect(document.querySelector('[id^="my-club-workspace-"]')).toBeNull();
+    expect(
+      document.querySelector('[aria-labelledby^="my-club-workspace-"]'),
+    ).toBeNull();
     expect(
       screen.getByRole("link", { name: "Open Managed Club" }),
     ).toHaveAttribute("href", "/my-club#managed-club");
-    const tacticPanel = document.getElementById(
-      "my-club-workspace-panel-tactic",
-    );
-    const plannerPanel = document.getElementById(
-      "my-club-workspace-panel-planner",
-    );
-    expect(tacticPanel).toBeInTheDocument();
-    expect(plannerPanel).toBeInTheDocument();
-    expect(tacticPanel).toHaveAttribute("hidden");
-    expect(plannerPanel).toHaveAttribute("hidden");
-    expect(
-      await within(tacticPanel as HTMLElement).findByRole("region", {
-        name: "Tactic controls",
-        hidden: true,
-      }),
-    ).toBeInTheDocument();
-    expect(
-      await within(plannerPanel as HTMLElement).findByRole("heading", {
-        level: 2,
-        name: "Squad depth",
-        hidden: true,
-      }),
-    ).toBeInTheDocument();
+    const tacticRegion = await screen.findByRole("region", {
+      name: "Tactic controls",
+      hidden: true,
+    });
+    const depthHeading = await screen.findByRole("heading", {
+      level: 2,
+      name: "Squad depth",
+      hidden: true,
+    });
+    expect(tacticRegion.closest("[hidden]")).not.toBeNull();
+    expect(depthHeading.closest("[hidden]")).not.toBeNull();
+    expect(tacticRegion).not.toBeVisible();
+    expect(depthHeading).not.toBeVisible();
 
     await openMyClubWorkspace(user, "tactic");
     const tacticEditor = screen.getByRole("region", {
@@ -2246,14 +2337,14 @@ describe("My Club route", () => {
     boundaryRow.focus();
     await user.keyboard("{ArrowDown}");
 
-    const plannerTab = screen.getByRole("tab", { name: "Planner" });
-    plannerTab.focus();
-    expect(plannerTab).toHaveFocus();
+    const plannerLink = screen.getByRole("link", { name: "Planner" });
+    plannerLink.focus();
+    expect(plannerLink).toHaveFocus();
 
     resolvePendingSquadPlayersPageIpcMock();
 
     expect(await screen.findByText("Squad player 051")).toBeInTheDocument();
-    expect(plannerTab).toHaveFocus();
+    expect(plannerLink).toHaveFocus();
   });
 
   it("offers a retry when a visible virtual Squad page fails", async () => {
@@ -2502,7 +2593,7 @@ describe("My Club route", () => {
     ).toHaveAttribute("aria-sort", "ascending");
   });
 
-  it("uses the Squad default and replaces workspace URL state", async () => {
+  it("switches Club workspaces from navigation with history support", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
@@ -2510,42 +2601,33 @@ describe("My Club route", () => {
       primaryClub: "Barcelona",
       sources: [],
     });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
     const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     expect(
       await screen.findByText("Managed club: Barcelona"),
     ).toBeInTheDocument();
-    const squadTab = screen.getByRole("tab", { name: "Squad" });
-    expect(squadTab).toHaveAttribute("aria-selected", "true");
-    squadTab.focus();
-    await user.keyboard("{End}");
+    const navigation = screen.getByRole("navigation", { name: "Primary" });
+    const workspaceLink = (name: string) =>
+      within(navigation).getByRole("link", { name });
+    expect(workspaceLink("Squad")).toHaveAttribute("aria-current", "page");
 
-    const tacticTab = screen.getByRole("tab", { name: "Tactic" });
-    expect(tacticTab).toHaveAttribute("aria-selected", "true");
-    expect(tacticTab).toHaveFocus();
-    expect(tacticTab).toHaveAttribute("tabIndex", "0");
-    expect(squadTab).toHaveAttribute("tabIndex", "-1");
-    expect(router.state.location.search).toEqual({ view: "tactic" });
-    await user.keyboard("{ArrowLeft}");
-    const plannerTab = screen.getByRole("tab", { name: "Planner" });
-    expect(plannerTab).toHaveAttribute("aria-selected", "true");
-    expect(plannerTab).toHaveFocus();
-    expect(plannerTab).toHaveAttribute("tabIndex", "0");
-    expect(tacticTab).toHaveAttribute("tabIndex", "-1");
-    expect(router.state.location.search).toEqual({ view: "planner" });
-    plannerTab.focus();
-    await user.keyboard("{Home}");
-    expect(squadTab).toHaveAttribute("aria-selected", "true");
-    expect(squadTab).toHaveFocus();
-    expect(squadTab).toHaveAttribute("tabIndex", "0");
-    expect(tacticTab).toHaveAttribute("tabIndex", "-1");
-    expect(router.state.location.search).toEqual({ view: "squad" });
+    await user.click(workspaceLink("Tactic"));
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ view: "tactic" }),
+    );
+    expect(workspaceLink("Tactic")).toHaveAttribute("aria-current", "page");
+    expect(
+      await screen.findByRole("region", { name: "Tactic controls" }),
+    ).toBeVisible();
 
     router.history.back();
     await waitFor(() =>
-      expect(router.state.location.search).toEqual({ view: "squad" }),
+      expect(workspaceLink("Squad")).toHaveAttribute("aria-current", "page"),
     );
-    expect(router.history.canGoBack()).toBe(false);
+    expect(
+      await screen.findByRole("table", { name: "Squad overview" }),
+    ).toBeVisible();
   });
 
   it("lets an explicit Planner workspace override the default", async () => {
@@ -2556,10 +2638,12 @@ describe("My Club route", () => {
     });
     renderMyClubRoute({ initialEntry: "/my-club?view=planner" });
 
-    expect(await screen.findByRole("tab", { name: "Planner" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    const navigation = await screen.findByRole("navigation", {
+      name: "Primary",
+    });
+    expect(
+      within(navigation).getByRole("link", { name: "Planner" }),
+    ).toHaveAttribute("aria-current", "page");
     const matrix = await screen.findByRole("region", {
       name: "Senior squad depth matrix",
     });
@@ -2591,10 +2675,18 @@ describe("My Club route", () => {
     setPlannerAvailableClubs(["Barcelona"]);
     renderMyClubRoute({ initialEntry: "/my-club?view=clubs" });
 
-    expect(await screen.findByRole("tab", { name: "Squad" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    const navigation = await screen.findByRole("navigation", {
+      name: "Primary",
+    });
+    expect(
+      within(navigation).getByRole("link", { name: "Squad" }),
+    ).not.toHaveAttribute("aria-current");
+    expect(
+      within(navigation).getByRole("link", { name: "Planner" }),
+    ).not.toHaveAttribute("aria-current");
+    expect(
+      within(navigation).getByRole("link", { name: "Tactic" }),
+    ).not.toHaveAttribute("aria-current");
     expect(
       screen.getByRole("link", { name: "Open Managed Club" }),
     ).toBeVisible();
@@ -3693,28 +3785,31 @@ describe("My Club route", () => {
         queryClient,
       });
 
-      await screen.findByRole("tab", { name: "Tactic" });
-      const tacticPanel = document.getElementById(
-        "my-club-workspace-panel-tactic",
+      const navigation = await screen.findByRole("navigation", {
+        name: "Primary",
+      });
+      expect(
+        within(navigation).getByRole("link", { name: "Tactic" }),
+      ).toHaveAttribute("aria-current", "page");
+      const retryButtons = await screen.findAllByRole("button", {
+        name: "Retry",
+      });
+      const visibleRetries = retryButtons.filter(
+        (button) => button.closest("[hidden]") === null,
       );
-      if (!tacticPanel) {
-        throw new Error("Expected the Tactic workspace panel");
-      }
-      expect(
-        await within(tacticPanel).findByText("Could not load tactic"),
-      ).toBeInTheDocument();
-      expect(
-        within(tacticPanel).getAllByRole("button", { name: "Retry" }),
-      ).toHaveLength(1);
+      expect(visibleRetries).toHaveLength(1);
+      const loadErrors = await screen.findAllByText("Could not load tactic");
+      const visibleErrors = loadErrors.filter(
+        (element) => element.closest("[hidden]") === null,
+      );
+      expect(visibleErrors).toHaveLength(1);
       const tacticCalls = getPlannerTacticIpcMockCalls().length;
       const optionsCalls = getPlannerTacticOptionsIpcMockCalls().length;
 
-      await user.click(
-        within(tacticPanel).getByRole("button", { name: "Retry" }),
-      );
+      await user.click(visibleRetries[0]);
 
       expect(
-        await within(tacticPanel).findByRole("region", {
+        await screen.findByRole("region", {
           name: "Tactic controls",
         }),
       ).toBeInTheDocument();

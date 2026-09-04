@@ -884,10 +884,12 @@ test.describe("application smoke", () => {
     await expect(
       main.getByRole("heading", { level: 1, name: "My Club" }),
     ).toBeVisible();
-    await expect(main.getByRole("tab", { name: "Squad" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    await expect(
+      page.getByRole("link", { name: "Squad", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(
+      page.getByRole("tablist", { name: "My Club workspaces" }),
+    ).toHaveCount(0);
     await expect(
       main.getByText("Choose your managed club", { exact: true }),
     ).toBeVisible();
@@ -1739,7 +1741,7 @@ test.describe("application smoke", () => {
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Tactic" }).click();
+    await page.getByRole("link", { name: "Tactic", exact: true }).click();
     await expect(
       main.getByRole("region", { name: "Tactic controls" }),
     ).toBeVisible();
@@ -1888,9 +1890,12 @@ test.describe("application smoke", () => {
       level: 1,
       name: "My Club",
     });
-    const workspaceTabs = main.getByRole("tablist", {
-      name: "My Club workspaces",
-    });
+    await expect(
+      page.getByRole("link", { name: "Tactic", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(
+      page.getByRole("tablist", { name: "My Club workspaces" }),
+    ).toHaveCount(0);
 
     const expectWorkspaceFit = async (
       width: number,
@@ -1910,15 +1915,8 @@ test.describe("application smoke", () => {
           settings.getByRole("combobox", { name: visibleRole }),
         ).toBeVisible();
 
-        const [headingBox, workspaceTabsBox] = await Promise.all([
-          plannerHeading.boundingBox(),
-          workspaceTabs.boundingBox(),
-        ]);
+        const [headingBox] = await Promise.all([plannerHeading.boundingBox()]);
         expect(headingBox).not.toBeNull();
-        expect(workspaceTabsBox).not.toBeNull();
-        expect(workspaceTabsBox?.y).toBeGreaterThanOrEqual(
-          (headingBox?.y ?? 0) + (headingBox?.height ?? 0),
-        );
 
         if (width >= 1600 && view === "Both") {
           const selectBoxes = await settings
@@ -1982,7 +1980,7 @@ test.describe("application smoke", () => {
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Planner" }).click();
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
     for (const team of ["Senior", "Reserves", "Youth"]) {
       await main.getByRole("tab", { name: team }).click();
       await main.getByRole("button", { name: "Manage 1st string" }).click();
@@ -2044,7 +2042,7 @@ test.describe("application smoke", () => {
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Planner" }).click();
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
     await main.getByRole("button", { name: "Optimize squads" }).click();
     await expect(main.getByRole("status")).toHaveText(
       "Squads optimized by current scores.",
@@ -2101,7 +2099,7 @@ test.describe("application smoke", () => {
       await page.goto("/my-club");
 
       const main = page.getByRole("main");
-      await main.getByRole("tab", { name: "Planner" }).click();
+      await page.getByRole("link", { name: "Planner", exact: true }).click();
       const controls = main.getByRole("group", { name: "Squad controls" });
       const current = main.getByRole("button", { name: "Optimize squads" });
       const potential = main.getByRole("button", {
@@ -2156,7 +2154,7 @@ test.describe("application smoke", () => {
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Planner" }).click();
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
     await main.getByRole("button", { name: "Optimize squads" }).click();
     await expect(main.getByRole("status")).toHaveText(
       "Squads optimized by current scores.",
@@ -2187,7 +2185,7 @@ test.describe("application smoke", () => {
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Planner" }).click();
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
     const matrix = main.getByRole("region", {
       name: "All squads depth matrix",
     });
@@ -2214,7 +2212,7 @@ test.describe("application smoke", () => {
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Planner" }).click();
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
     const scoreCell = main.getByRole("button", {
       name: /Senior, 1st string, IP: GK .* Potential Keeper, Resolved, current score 82, potential score 91/,
     });

@@ -31,12 +31,6 @@ import {
 } from "@/features/managed-club/api/managed-club-query-options";
 import { ManagedClubSelector } from "@/features/managed-club/components/managed-club-selector";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
-import {
-  type MyClubWorkspace,
-  MyClubWorkspaceTabs,
-  myClubWorkspacePanelProps,
-  parseMyClubWorkspace,
-} from "@/features/my-club/components/my-club-workspace-tabs";
 import { plannerDepthQueryOptions } from "@/features/planner/api/planner-depth-query-options";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { PlannerDepthMatrix } from "@/features/planner/components/planner-depth-matrix";
@@ -78,6 +72,17 @@ import {
   isStaffSortField,
 } from "@/features/staff/types/staff-sort";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
+
+export const MY_CLUB_WORKSPACES = ["squad", "planner", "tactic"] as const;
+export type MyClubWorkspace = (typeof MY_CLUB_WORKSPACES)[number];
+
+export function parseMyClubWorkspace(raw: unknown): MyClubWorkspace | null {
+  return typeof raw === "string" && isMyClubWorkspace(raw) ? raw : null;
+}
+
+function isMyClubWorkspace(raw: string): raw is MyClubWorkspace {
+  return (MY_CLUB_WORKSPACES as readonly string[]).includes(raw);
+}
 
 export type MyClubSearch = {
   view?: MyClubWorkspace;
@@ -429,12 +434,6 @@ function MyClubPageContent() {
         }
       />
     ) : null;
-  const onWorkspaceChange = (nextWorkspace: MyClubWorkspace) => {
-    void navigate({
-      search: (previous) => ({ ...previous, view: nextWorkspace }),
-      replace: true,
-    });
-  };
   const onSquadSortChange = (
     nextSort: SquadSortField,
     nextDir: SquadSortDir,
@@ -497,12 +496,6 @@ function MyClubPageContent() {
           ) : null}
         </div>
       </div>
-      {snapshot ? (
-        <MyClubWorkspaceTabs
-          workspace={activeWorkspace}
-          onWorkspaceChange={onWorkspaceChange}
-        />
-      ) : null}
     </header>
   );
 
@@ -524,7 +517,7 @@ function MyClubPageContent() {
     <div className="flex h-full min-w-0 flex-col gap-2">
       {myClubHeader}
       <div
-        {...myClubWorkspacePanelProps("squad", activeWorkspace)}
+        hidden={activeWorkspace !== "squad"}
         className="flex min-h-0 flex-1 flex-col"
       >
         {managedClub.clubName ? (
@@ -652,7 +645,7 @@ function MyClubPageContent() {
         )}
       </div>
       <div
-        {...myClubWorkspacePanelProps("planner", activeWorkspace)}
+        hidden={activeWorkspace !== "planner"}
         className="min-h-0 flex-1 overflow-y-auto"
       >
         {plannerContext && isMatchedSnapshot ? (
@@ -711,7 +704,7 @@ function MyClubPageContent() {
         )}
       </div>
       <div
-        {...myClubWorkspacePanelProps("tactic", activeWorkspace)}
+        hidden={activeWorkspace !== "tactic"}
         className="min-h-0 flex-1 overflow-y-auto"
       >
         {plannerContext && isMatchedSnapshot ? (
