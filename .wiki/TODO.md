@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-None.
+- **Integrated shortlists** — fold the Player Shortlist tab and the My Club Staff Shortlist workspace into core Search and Staff Search with save-owned persistent replacement lists, CSV upload, and URL-backed shortlist toggles. See [Integrated Shortlists](./features/active/integrated-shortlists.md).
 
 ## Next
 
