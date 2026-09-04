@@ -475,6 +475,9 @@ fn run(
     filters: Option<Vec<StaffFilterRuleInput>>,
     filter_combine: Option<String>,
     requested_fields: Option<Vec<String>>,
+    shortlist_only: Option<bool>,
+    preferred_job: Option<String>,
+    unemployed_only: Option<bool>,
     db: State<'_, Db>,
 ) -> Result<StaffPageDto, String> {
     let conn =
@@ -499,6 +502,9 @@ fn run(
         sort,
         direction,
         filters.as_ref(),
+        shortlist_only.unwrap_or(false),
+        preferred_job.as_deref(),
+        unemployed_only.unwrap_or(false),
         &requested_fields.unwrap_or_default(),
     )
     .map(StaffPageDto::from)
@@ -514,6 +520,9 @@ pub fn search_staff(
     filters: Option<Vec<StaffFilterRuleInput>>,
     filter_combine: Option<String>,
     requested_fields: Option<Vec<String>>,
+    shortlist_only: Option<bool>,
+    preferred_job: Option<String>,
+    unemployed_only: Option<bool>,
     db: State<'_, Db>,
 ) -> Result<StaffPageDto, String> {
     run(
@@ -525,6 +534,9 @@ pub fn search_staff(
         filters,
         filter_combine,
         requested_fields,
+        shortlist_only,
+        preferred_job,
+        unemployed_only,
         db,
     )
 }
@@ -548,6 +560,9 @@ pub fn list_my_staff(
         None,
         None,
         requested_fields,
+        None,
+        None,
+        None,
         db,
     )
 }
