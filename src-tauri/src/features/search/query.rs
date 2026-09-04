@@ -314,6 +314,9 @@ pub struct SearchPlayersRequest<'a> {
     pub requested_fields: &'a [String],
     pub view: SearchView,
     pub comparison_pool: ComparisonPool,
+    /// Restrict General results to the save-owned player shortlist (Commit 3).
+    /// Only the General path applies it; other views ignore the flag.
+    pub shortlist_only: bool,
 }
 
 #[cfg(test)]
@@ -337,6 +340,7 @@ fn search_players(
             requested_fields,
             view: SearchView::General,
             comparison_pool: ComparisonPool::FullCsv,
+            shortlist_only: false,
         },
     )
 }
@@ -361,6 +365,7 @@ pub fn search_players_in_view(
         requested_fields,
         view,
         comparison_pool,
+        shortlist_only,
     } = request;
     if view == SearchView::Moneyball && !sort_by.is_available_in_moneyball() {
         return Err("unsupported Moneyball sort field".to_string());
@@ -505,6 +510,10 @@ pub fn search_players_in_view(
     let club_dna_sort = sort_by.club_dna_sort_identity(club_dna_definition_version);
 
     let mut from_sql = match view {
+        // Save-owned shortlist restriction (Commit 3): join by UID against the
+        // effective current snapshot. Reusing ?1 adds no bind and keeps every
+        // downstream parameter index unchanged.
+        SearchView::General if shortlist_only => "FROM players INNER JOIN player_shortlist_entries shortlist ON shortlist.player_uid = players.uid AND shortlist.save_id = (SELECT save_id FROM snapshots WHERE id = ?1)".to_string(),
         SearchView::General => "FROM players".to_string(),
         SearchView::Shortlist => "FROM players INNER JOIN player_moneyball_stats shortlist ON shortlist.snapshot_id = players.snapshot_id AND shortlist.player_uid = players.uid".to_string(),
         SearchView::Moneyball => "FROM players INNER JOIN player_moneyball_stats moneyball ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid AND moneyball.percentiles_json IS NOT NULL".to_string(),
@@ -809,6 +818,7 @@ fn search_players_with_roles(
         requested_fields,
         view,
         comparison_pool,
+        shortlist_only: _,
     } = request;
     if view != SearchView::Moneyball {
         return Err("Moneyball role fields require Moneyball search view".to_string());
@@ -1461,6 +1471,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
     }
@@ -1486,6 +1497,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
     }
@@ -1850,6 +1862,7 @@ mod tests {
                 requested_fields,
                 view: SearchView::Moneyball,
                 comparison_pool,
+                shortlist_only: false,
             },
         )
     }
@@ -1934,6 +1947,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("search Moneyball players");
@@ -1975,6 +1989,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("search Moneyball players");
@@ -2036,6 +2051,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::Filtered,
+                shortlist_only: false,
             },
         )
         .expect("first page");
@@ -2050,6 +2066,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::Filtered,
+                shortlist_only: false,
             },
         )
         .expect("second page");
@@ -2090,6 +2107,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::Filtered,
+                shortlist_only: false,
             },
         )
         .expect_err("CA must not sort Moneyball Search");
@@ -2137,6 +2155,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::Shortlist,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("search Shortlist");
@@ -2169,6 +2188,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("search General");
@@ -2195,6 +2215,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::Shortlist,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("filtered Shortlist");
@@ -2216,6 +2237,7 @@ mod tests {
                 requested_fields: &["moneyball.goals".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("search Moneyball");
@@ -2265,6 +2287,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::Shortlist,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("shortlist other save");
@@ -2284,6 +2307,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::Shortlist,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("shortlist first save");
@@ -2305,11 +2329,170 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::Shortlist,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("empty shortlist");
         assert_eq!(empty_page.total, 0);
         assert!(empty_page.players.is_empty());
+    }
+
+    #[test]
+    fn general_shortlist_restriction_returns_only_saved_current_uids_with_filter_and_paging() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("general-shortlist.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "One", 130),
+                player_template(2, "Two", 140),
+                player_template(3, "Three", 150),
+                player_template(4, "Four", 160),
+            ],
+        );
+        set_role_score(&conn, 1, "deep_lying_playmaker_ip", Some(80));
+        set_role_score(&conn, 2, "deep_lying_playmaker_ip", Some(40));
+        set_role_score(&conn, 3, "deep_lying_playmaker_ip", Some(90));
+        set_role_score(&conn, 4, "deep_lying_playmaker_ip", Some(80));
+        let save_id: i64 = conn
+            .query_row(
+                "SELECT save_id FROM snapshots WHERE is_current = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("current save");
+        // Saved UIDs 1..=3 plus a stale UID with no current-snapshot player.
+        for uid in [1, 2, 3, 99] {
+            conn.execute(
+                "INSERT INTO player_shortlist_entries (save_id, player_uid) VALUES (?1, ?2)",
+                rusqlite::params![save_id, uid],
+            )
+            .expect("seed shortlist");
+        }
+        let requested_fields = vec!["role.deep_lying_playmaker_ip".to_string()];
+
+        // Unrestricted General still returns every current player.
+        let unrestricted = search_players_in_view(
+            &conn,
+            SearchPlayersRequest {
+                offset: 0,
+                limit: DEFAULT_PAGE_LIMIT,
+                sort_by: SortField::Ca,
+                sort_dir: SortDir::Desc,
+                filter_ast: None,
+                requested_fields: &requested_fields,
+                view: SearchView::General,
+                comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
+            },
+        )
+        .expect("unrestricted General");
+        assert_eq!(unrestricted.total, 4);
+
+        // Restricted General returns only saved current UIDs; the stale UID drops out.
+        let restricted = search_players_in_view(
+            &conn,
+            SearchPlayersRequest {
+                offset: 0,
+                limit: DEFAULT_PAGE_LIMIT,
+                sort_by: SortField::Ca,
+                sort_dir: SortDir::Desc,
+                filter_ast: None,
+                requested_fields: &requested_fields,
+                view: SearchView::General,
+                comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: true,
+            },
+        )
+        .expect("restricted General");
+        assert_eq!(restricted.total, 3);
+        assert_eq!(
+            restricted.players.iter().map(|p| p.uid).collect::<Vec<_>>(),
+            vec![3, 2, 1]
+        );
+        assert_eq!(
+            restricted.players[0]
+                .dynamic_values
+                .get("role.deep_lying_playmaker_ip"),
+            Some(&Some(DynamicValue::Integer(90)))
+        );
+
+        // The restriction composes with one General filter.
+        let ast = parse_filter_ast(
+            vec![FilterRule {
+                field: "role.deep_lying_playmaker_ip".to_string(),
+                op: "gt".to_string(),
+                value: FilterValue::Integer(50),
+            }],
+            None,
+        )
+        .expect("parse filter");
+        let filtered = search_players_in_view(
+            &conn,
+            SearchPlayersRequest {
+                offset: 0,
+                limit: DEFAULT_PAGE_LIMIT,
+                sort_by: SortField::Ca,
+                sort_dir: SortDir::Desc,
+                filter_ast: Some(&ast),
+                requested_fields: &[],
+                view: SearchView::General,
+                comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: true,
+            },
+        )
+        .expect("filtered restricted General");
+        assert_eq!(filtered.total, 2);
+        assert_eq!(
+            filtered.players.iter().map(|p| p.uid).collect::<Vec<_>>(),
+            vec![3, 1]
+        );
+
+        // Totals survive paging.
+        let paged = search_players_in_view(
+            &conn,
+            SearchPlayersRequest {
+                offset: 1,
+                limit: 1,
+                sort_by: SortField::Ca,
+                sort_dir: SortDir::Desc,
+                filter_ast: Some(&ast),
+                requested_fields: &[],
+                view: SearchView::General,
+                comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: true,
+            },
+        )
+        .expect("paged restricted General");
+        assert_eq!(paged.total, 2);
+        assert_eq!(
+            paged.players.iter().map(|p| p.uid).collect::<Vec<_>>(),
+            vec![1]
+        );
+
+        // An empty saved list restricts to nothing.
+        conn.execute(
+            "DELETE FROM player_shortlist_entries WHERE save_id = ?1",
+            [save_id],
+        )
+        .expect("clear shortlist");
+        let empty = search_players_in_view(
+            &conn,
+            SearchPlayersRequest {
+                offset: 0,
+                limit: DEFAULT_PAGE_LIMIT,
+                sort_by: SortField::Ca,
+                sort_dir: SortDir::Desc,
+                filter_ast: None,
+                requested_fields: &[],
+                view: SearchView::General,
+                comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: true,
+            },
+        )
+        .expect("empty restricted General");
+        assert_eq!(empty.total, 0);
+        assert!(empty.players.is_empty());
     }
 
     #[test]
@@ -2344,6 +2527,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::Shortlist,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("shortlist FullCsv");
@@ -2358,6 +2542,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::Shortlist,
                 comparison_pool: ComparisonPool::Filtered,
+                shortlist_only: false,
             },
         )
         .expect("shortlist Filtered");
@@ -2422,6 +2607,7 @@ mod tests {
                     requested_fields: &[field.to_string()],
                     view: SearchView::Shortlist,
                     comparison_pool: ComparisonPool::FullCsv,
+                    shortlist_only: false,
                 },
             )
             .expect_err("should reject moneyball requested field");
@@ -2455,6 +2641,7 @@ mod tests {
                     requested_fields: &[],
                     view: SearchView::Shortlist,
                     comparison_pool: ComparisonPool::FullCsv,
+                    shortlist_only: false,
                 },
             )
             .expect_err("should reject moneyball filter");
@@ -2474,6 +2661,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::Shortlist,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect_err("should reject moneyball sort");
@@ -2492,6 +2680,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::Shortlist,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect_err("should reject moneyball role sort");
@@ -2510,6 +2699,7 @@ mod tests {
                 requested_fields: &oversized,
                 view: SearchView::Shortlist,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect_err("oversized Shortlist with Moneyball role must hit cap");
@@ -2539,6 +2729,7 @@ mod tests {
                 requested_fields: &ordered,
                 view: SearchView::Shortlist,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect_err("earlier unknown must win");
@@ -4936,6 +5127,7 @@ mod tests {
                 requested_fields: &[role_field],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect_err("General role field");
@@ -4957,6 +5149,7 @@ mod tests {
                 requested_fields: &[role_field],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect_err("CA sort in Moneyball role query");
@@ -5073,6 +5266,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("tactic current");
@@ -5108,6 +5302,7 @@ mod tests {
                 requested_fields: &["tactic_potential.goalkeeper".to_string()],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("tactic potential");
@@ -5151,6 +5346,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("desc");
@@ -5170,6 +5366,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("asc");
@@ -5264,6 +5461,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("moneyball mapped");
@@ -5302,6 +5500,7 @@ mod tests {
                 requested_fields: &["tactic_current.centre_forward".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("uncovered");
@@ -5324,6 +5523,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("desc");
@@ -5343,6 +5543,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::Filtered,
+                shortlist_only: false,
             },
         )
         .expect("filtered");
@@ -5412,6 +5613,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("sort-only");
@@ -5431,6 +5633,7 @@ mod tests {
                 requested_fields: &["tactic_potential.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("opposite group");
@@ -5460,6 +5663,7 @@ mod tests {
                 ],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("both groups");
@@ -5589,6 +5793,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("parity query");
@@ -5653,6 +5858,7 @@ mod tests {
                     requested_fields: &[field.to_string()],
                     view: SearchView::General,
                     comparison_pool: ComparisonPool::FullCsv,
+                    shortlist_only: false,
                 },
             )
             .expect_err("must fail completeness");
@@ -5672,6 +5878,7 @@ mod tests {
                     requested_fields: &[],
                     view: SearchView::General,
                     comparison_pool: ComparisonPool::FullCsv,
+                    shortlist_only: false,
                 },
             )
             .expect_err("sort-only must also fail");
@@ -5713,6 +5920,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Shortlist,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("shortlist");
@@ -5748,6 +5956,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Shortlist,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("shortlist nulls last");
@@ -5820,6 +6029,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: false,
             },
         )
         .expect("full");
@@ -5856,6 +6066,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::Filtered,
+                shortlist_only: false,
             },
         )
         .expect("filtered");

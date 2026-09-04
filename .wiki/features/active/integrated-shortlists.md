@@ -300,7 +300,7 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 #### Commit 3 — Restrict General search to the player shortlist
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(search): restrict general search to shortlist`
 
@@ -360,7 +360,7 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 #### Commit 4 — Integrate player shortlist upload and toggle in Search
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(search): integrate player shortlist upload toggle`
 
@@ -564,19 +564,19 @@ Player migration v41 plus the bounded import/replacement command lands first and
 
 **PR:** feat(search): integrate player and staff shortlists
 
-**Commit:** Restrict General search to the player shortlist
+**Commit:** Integrate player shortlist upload and toggle in Search
 
 ### RED or removal proof
 
-Add focused Rust query proof that General search with the new restriction returns only current-snapshot players joined through the save-owned shortlist while composing with one existing filter and paging.
+Add focused frontend proofs that the URL toggle round-trips, successful upload enables it, and the separate Player Shortlist tab no longer renders; retain removal proof for the legacy backend branch and layout.
 
 ### Expected outcome
 
-General Search accepts an optional shortlist restriction and composes it with existing filters, sorting, tactic columns, Club DNA, totals, and paging while the legacy Moneyball-backed Shortlist view remains intact for the current frontend.
+`/search` exposes player shortlist upload and URL-backed filtering on General, removes the separate tab and player shortlist layout, and atomically retires the now-unused Moneyball-backed Rust Shortlist branch.
 
 ### Explicit exclusions
 
-React and URL changes, removal of the legacy Shortlist view, staff changes, current-state documentation, and unrelated refactors.
+Staff changes, current-state documentation, and unrelated Search behavior or refactors.
 
 ## Discoveries and replanning
 
@@ -589,7 +589,8 @@ Correction round 1 (plan-review verdict) made Commits 3/4 and 5/6 trunk-safe by 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — feat(search): integrate player and staff shortlists | Commit 1 — Record the approved feature plan | d5b958618df579b99b0c778a55178ca034995f43 | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`; `delivery_state.py`; `git diff --cached --check`; pre-commit `check-fast` — passed. | Not applicable | Clear | 0 | None |
-| PR 1 — feat(search): integrate player and staff shortlists | Commit 2 — Add save-owned player shortlist store and import | Pending record | Added migration v41 and a bounded save-owned player shortlist CSV import with context revalidation, atomic replacement, zero-match preservation, and exact summary counts. | `cargo test player_shortlist`; `cargo test csv_import`; `./scripts/dev check-rust`; `./scripts/dev check` (768 passed, 2 ignored); Rust LSP; `git diff --check` — passed. | Pass | Clear | 0 | MEDIUM deferred to feature close-out: remove the module-level dead-code suppression and test-only internal skip counters if the final portfolio confirms they add no contract value. The one-column delimiter fallback is required for the exact UID-only header. |
+| PR 1 — feat(search): integrate player and staff shortlists | Commit 2 — Add save-owned player shortlist store and import | 905f716e368450adaacb49e2d1fe8cc62a5eecc4 | Added migration v41 and a bounded save-owned player shortlist CSV import with context revalidation, atomic replacement, zero-match preservation, and exact summary counts. | `cargo test player_shortlist`; `cargo test csv_import`; `./scripts/dev check-rust`; `./scripts/dev check` (768 passed, 2 ignored); Rust LSP; `git diff --check` — passed. | Pass | Clear | 0 | MEDIUM deferred to feature close-out: remove the module-level dead-code suppression and test-only internal skip counters if the final portfolio confirms they add no contract value. The one-column delimiter fallback is required for the exact UID-only header. |
+| PR 1 — feat(search): integrate player and staff shortlists | Commit 3 — Restrict General search to the player shortlist | Pending record | Added a General-only, save-scoped shortlist restriction through bounded IPC while preserving the legacy Moneyball-backed Shortlist contract for the current frontend. | `cargo test --lib features::search::` (102 passed); `./scripts/dev check-rust`; `./scripts/dev check` (769 passed, 2 ignored); Rust LSP; `git diff --check` — passed. | Pass | Clear | 0 | Existing tactic and Club DNA tests provide stronger composition coverage through the unchanged shared query pipeline; no duplicate flagged variants added. |
 
 ## Final validation
 

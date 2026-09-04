@@ -121,6 +121,7 @@ pub fn search_players(
     requested_fields: Option<Vec<String>>,
     search_view: Option<String>,
     comparison_pool: Option<String>,
+    shortlist_only: Option<bool>,
     db: State<'_, Db>,
 ) -> Result<SearchPlayersPageDto, String> {
     let conn =
@@ -163,6 +164,7 @@ pub fn search_players(
             requested_fields: &requested_fields,
             view,
             comparison_pool,
+            shortlist_only: shortlist_only.unwrap_or(false),
         },
     )?;
     Ok(SearchPlayersPageDto::from(page))
