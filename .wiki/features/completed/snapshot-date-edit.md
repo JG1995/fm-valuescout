@@ -114,7 +114,7 @@ Rename nothing: open Settings history with two dated snapshots, edit the older r
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/117
 
 **Merge ref:** Not merged
 
@@ -390,16 +390,17 @@ The complete feature passes its recorded validation and review, durable document
 | `bb01feaafba67bb13c5f1a7239e0386735d8f674` | `feat(snapshot): update snapshot game date` | Rust command, transaction, and selector behavior |
 | `aab9506908651d3921c1014ed1c7e11ba7a15a4d` | `feat(snapshot): edit snapshot date from Settings` | Settings Modal, IPC, mocks, and smoke path |
 | `5d5f2071153bd97e8da30b40aa0fef44db33be0f` | `test(snapshot): align date-edit fakes and cache proof` | Feature-review correction |
+| `f6d50471047e0aeac2eb7573b1feb4e65237d3b4` | `docs(snapshot): reconcile date-edit documentation` | Documentation reconciliation |
 
-The feature implementation range is `a024fb1c04e224489c99ebb043adc09ba89f62a1..5d5f2071153bd97e8da30b40aa0fef44db33be0f`. The documentation close-out ref remains `Pending record` until the close-out commit exists.
+The feature implementation range is `a024fb1c04e224489c99ebb043adc09ba89f62a1..5d5f2071153bd97e8da30b40aa0fef44db33be0f`. The documentation close-out commit is `f6d50471047e0aeac2eb7573b1feb4e65237d3b4`.
 
 ## Final publication
 
 ```yaml
-status: ready_for_publication
-pr_status: not_published
+status: published
+pr_status: open
 merge_status: not_merged
-pr_ref: "Not published"
+pr_ref: "https://github.com/JG1995/fm-valuescout/pull/117"
 merge_ref: "Not merged"
 branch: feat/snapshot-date-edit
 base_branch: main
@@ -427,7 +428,14 @@ implementation_refs:
   - bb01feaafba67bb13c5f1a7239e0386735d8f674
   - aab9506908651d3921c1014ed1c7e11ba7a15a4d
   - 5d5f2071153bd97e8da30b40aa0fef44db33be0f
-close_out_documentation_ref: Pending record
+final_pr_commit_set:
+  - 092110cc53be697319703dc78edd601da7ac2388
+  - bb01feaafba67bb13c5f1a7239e0386735d8f674
+  - aab9506908651d3921c1014ed1c7e11ba7a15a4d
+  - 5d5f2071153bd97e8da30b40aa0fef44db33be0f
+  - f6d50471047e0aeac2eb7573b1feb4e65237d3b4
+correction_ref: 5d5f2071153bd97e8da30b40aa0fef44db33be0f
+close_out_documentation_ref: f6d50471047e0aeac2eb7573b1feb4e65237d3b4
 publication_correction_evidence: none
 ```
 
