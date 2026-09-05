@@ -9,9 +9,11 @@ import {
   getLastSnapshotManagementIpcArgs,
   observeSnapshotIpcCall,
   resolveBusyLoadDataRequest,
+  resolveBusySnapshotDateEditRequest,
   resolveBusySnapshotDeleteRequest,
   type SnapshotMetadata,
   setLoadDataIpcMockMode,
+  setSnapshotDateEditIpcMockMode,
   setSnapshotDeleteIpcMockMode,
   setSnapshotHistoryIpcMock,
   setSnapshotRenameIpcMockMode,
@@ -62,7 +64,10 @@ function renderWithProviders() {
   return renderApp({ initialEntries: ["/settings"] });
 }
 
-function renderPanels(onBeforeContextChange: () => Promise<void>) {
+function renderPanels(
+  onBeforeContextChange: () => Promise<void>,
+  onCurrentContextChanged?: () => void,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -71,6 +76,7 @@ function renderPanels(onBeforeContextChange: () => Promise<void>) {
       <Suspense fallback={null}>
         <SnapshotPanelsWithErrorBoundary
           onBeforeContextChange={onBeforeContextChange}
+          onCurrentContextChanged={onCurrentContextChanged}
         />
       </Suspense>
     </QueryClientProvider>,
@@ -86,6 +92,7 @@ describe("snapshot panels", () => {
   afterEach(() => {
     resolveBusyLoadDataRequest();
     resolveBusySnapshotDeleteRequest();
+    resolveBusySnapshotDateEditRequest();
   });
 
   it("shows empty snapshot guidance on open", async () => {
@@ -674,6 +681,392 @@ describe("snapshot panels", () => {
         contextToken: "snapshot-token-11",
       });
     });
+  });
+
+  it("renders a disambiguated Edit date action per snapshot row", async () => {
+    setSnapshotHistoryIpcMock([
+      {
+        ...HISTORY[0],
+        id: 21,
+        contextToken: "snapshot-token-21",
+        loadedAtUtc: "2026-07-28T13:00:00.000Z",
+        isCurrent: false,
+      },
+      {
+        ...HISTORY[0],
+        id: 22,
+        contextToken: "snapshot-token-22",
+        loadedAtUtc: "2026-07-28T15:00:00.000Z",
+        isCurrent: true,
+      },
+    ]);
+    renderWithProviders();
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Edit date for snapshot 2026-06-01 (loaded 2026-07-28 15:00 UTC; snapshot #22)",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Edit date for snapshot 2026-06-01 (loaded 2026-07-28 13:00 UTC; snapshot #21)",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("rejects empty, malformed, and impossible dates without losing state", async () => {
+    seedHistory();
+    const user = userEvent.setup();
+    renderWithProviders();
+    let tauriWasCalled = false;
+    observeSnapshotIpcCall("updateSnapshotDate", () => {
+      tauriWasCalled = true;
+    });
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /^Edit date for snapshot 2026-06-01/,
+      }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /^Edit date/ });
+    const input = within(dialog).getByLabelText("In-game date");
+    const save = within(dialog).getByRole("button", { name: "Save date" });
+
+    await user.clear(input);
+    await user.click(save);
+    expect(
+      within(dialog).getByText("Enter a valid date in YYYY-MM-DD format."),
+    ).toBeVisible();
+    expect(tauriWasCalled).toBe(false);
+
+    await user.type(input, "not-a-date");
+    await user.click(save);
+    expect(
+      within(dialog).getByText("Enter a valid date in YYYY-MM-DD format."),
+    ).toBeVisible();
+    expect(tauriWasCalled).toBe(false);
+
+    await user.clear(input);
+    await user.type(input, "2026-02-30");
+    await user.click(save);
+    expect(await within(dialog).findByText(/valid date/i)).toBeVisible();
+    expect(input).toHaveValue("2026-02-30");
+    expect(
+      screen.getByRole("button", {
+        name: /^Edit date for snapshot 2026-06-01/,
+      }),
+    ).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "0000-02-29");
+    await user.click(save);
+    expect(
+      await within(dialog).findByText(
+        "Game date must be a valid date in YYYY-MM-DD format",
+      ),
+    ).toBeVisible();
+    expect(input).toHaveValue("0000-02-29");
+    expect(
+      screen.getByRole("button", {
+        name: /^Edit date for snapshot 2026-06-01/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("promotes an older snapshot and notifies the route when the winner changes", async () => {
+    seedHistory();
+    const user = userEvent.setup();
+    const onBeforeContextChange = vi.fn(async () => undefined);
+    const onCurrentContextChanged = vi.fn();
+    renderPanels(onBeforeContextChange, onCurrentContextChanged);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /^Edit date for snapshot 2026-06-01/,
+      }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /^Edit date/ });
+    await user.clear(within(dialog).getByLabelText("In-game date"));
+    await user.type(
+      within(dialog).getByLabelText("In-game date"),
+      "2026-09-01",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save date" }));
+
+    const rows = await waitFor(() => {
+      const nextRows = within(
+        screen.getByRole("table", { name: "Snapshot history" }),
+      ).getAllByRole("row");
+      expect(nextRows[1]).toHaveTextContent("2026-09-01");
+      return nextRows;
+    });
+    expect(rows[1]).toHaveTextContent("Current");
+    expect(rows[2]).toHaveTextContent("Transfer window");
+    expect(onCurrentContextChanged).toHaveBeenCalledOnce();
+    expect(getLastSnapshotManagementIpcArgs()).toEqual({
+      snapshotId: 11,
+      contextToken: "snapshot-token-11",
+      gameDate: "2026-09-01",
+    });
+  });
+
+  it("refreshes only history when a non-current edit does not promote", async () => {
+    seedHistory();
+    const user = userEvent.setup();
+    const onBeforeContextChange = vi.fn(async () => undefined);
+    const onCurrentContextChanged = vi.fn();
+    renderPanels(onBeforeContextChange, onCurrentContextChanged);
+    let currentSnapshotCalls = 0;
+    observeSnapshotIpcCall("getCurrentSnapshot", () => {
+      currentSnapshotCalls += 1;
+    });
+    await screen.findByText(/24 players/);
+    const currentSnapshotCallsBeforeEdit = currentSnapshotCalls;
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /^Edit date for snapshot 2026-06-01/,
+      }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /^Edit date/ });
+    await user.clear(within(dialog).getByLabelText("In-game date"));
+    await user.type(
+      within(dialog).getByLabelText("In-game date"),
+      "2026-07-01",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save date" }));
+
+    await waitFor(() => {
+      const rows = within(
+        screen.getByRole("table", { name: "Snapshot history" }),
+      ).getAllByRole("row");
+      expect(rows[2]).toHaveTextContent("2026-07-01");
+    });
+    const rows = within(
+      screen.getByRole("table", { name: "Snapshot history" }),
+    ).getAllByRole("row");
+    expect(rows[1]).toHaveTextContent("Transfer window");
+    expect(rows[1]).toHaveTextContent("Current");
+    expect(onCurrentContextChanged).not.toHaveBeenCalled();
+    expect(currentSnapshotCalls).toBe(currentSnapshotCallsBeforeEdit);
+  });
+
+  it("patches the cached current summary when the edited current snapshot stays current", async () => {
+    seedHistory();
+    const user = userEvent.setup();
+    const onBeforeContextChange = vi.fn(async () => undefined);
+    const onCurrentContextChanged = vi.fn();
+    renderPanels(onBeforeContextChange, onCurrentContextChanged);
+    let currentSnapshotCalls = 0;
+    observeSnapshotIpcCall("getCurrentSnapshot", () => {
+      currentSnapshotCalls += 1;
+    });
+
+    expect(await screen.findByText(/24 players/)).toHaveTextContent(
+      "2026-08-01",
+    );
+    const currentSnapshotCallsBeforeEdit = currentSnapshotCalls;
+    await user.click(
+      await screen.findByRole("button", {
+        name: /^Edit date for snapshot Transfer window/,
+      }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /^Edit date/ });
+    await user.clear(within(dialog).getByLabelText("In-game date"));
+    await user.type(
+      within(dialog).getByLabelText("In-game date"),
+      "2026-07-15",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save date" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/24 players/)).toHaveTextContent("2026-07-15");
+    });
+    expect(screen.getByText(/24 players/)).toHaveTextContent("24 players");
+    expect(onCurrentContextChanged).not.toHaveBeenCalled();
+    expect(currentSnapshotCalls).toBe(currentSnapshotCallsBeforeEdit);
+  });
+
+  it("keeps the switched save current summary unchanged when a retained date edit stays current", async () => {
+    setSnapshotHistoryIpcMock([
+      ...HISTORY,
+      {
+        id: 21,
+        contextToken: "snapshot-token-21",
+        saveId: 2,
+        customName: null,
+        gameDate: "2026-05-01",
+        gameDateSource: "inGame",
+        playerCount: 42,
+        loadedAtUtc: "2026-07-29T12:00:00.000Z",
+        isCurrent: true,
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await user.type(await screen.findByLabelText("New save"), "Archive");
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+    await screen.findByRole("button", {
+      name: "Delete save Archive (save 2)",
+    });
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /^Edit date for snapshot Transfer window/,
+      }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /^Edit date/ });
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Active save" }),
+      "2",
+    );
+    await screen.findByText(/42 players/);
+    expect(screen.getByText(/42 players/)).toHaveTextContent("2026-05-01");
+
+    await user.clear(within(dialog).getByLabelText("In-game date"));
+    await user.type(
+      within(dialog).getByLabelText("In-game date"),
+      "2026-07-15",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save date" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: /^Edit date/ }),
+      ).not.toBeInTheDocument();
+    });
+    expect(getLastSnapshotManagementIpcArgs()).toEqual({
+      snapshotId: 12,
+      contextToken: "snapshot-token-12",
+      gameDate: "2026-07-15",
+    });
+    expect(screen.getByText(/42 players/)).toHaveTextContent("2026-05-01");
+    expect(screen.getByText(/42 players/)).not.toHaveTextContent("2026-07-15");
+  });
+
+  it("waits for the injected callback before every date-edit IPC call", async () => {
+    seedHistory();
+    const user = userEvent.setup();
+    let releaseContextChange!: () => void;
+    const onBeforeContextChange = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseContextChange = resolve;
+        }),
+    );
+    renderPanels(onBeforeContextChange);
+    let tauriWasCalled = false;
+    observeSnapshotIpcCall("updateSnapshotDate", () => {
+      tauriWasCalled = true;
+    });
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /^Edit date for snapshot 2026-06-01/,
+      }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /^Edit date/ });
+    await user.clear(within(dialog).getByLabelText("In-game date"));
+    await user.type(
+      within(dialog).getByLabelText("In-game date"),
+      "2026-07-01",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save date" }));
+
+    await waitFor(() => expect(onBeforeContextChange).toHaveBeenCalledOnce());
+    expect(tauriWasCalled).toBe(false);
+
+    releaseContextChange();
+    await waitFor(() => expect(tauriWasCalled).toBe(true));
+  });
+
+  it("keeps stale-identity backend errors in the dialog with the target retained", async () => {
+    seedHistory();
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /^Edit date for snapshot 2026-06-01/,
+      }),
+    );
+    setSnapshotHistoryIpcMock(
+      HISTORY.map((snapshot) =>
+        snapshot.id === 11
+          ? { ...snapshot, contextToken: "snapshot-token-11-rotated" }
+          : snapshot,
+      ),
+    );
+    const dialog = screen.getByRole("dialog", { name: /^Edit date/ });
+    const input = within(dialog).getByLabelText("In-game date");
+    await user.clear(input);
+    await user.type(input, "2026-07-01");
+    await user.click(within(dialog).getByRole("button", { name: "Save date" }));
+
+    expect(
+      await within(dialog).findByText("Snapshot changed or no longer exists"),
+    ).toBeVisible();
+    expect(input).toHaveValue("2026-07-01");
+    expect(
+      screen.getByRole("dialog", { name: /^Edit date/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps date-edit controls pending until the submission settles", async () => {
+    seedHistory();
+    setSnapshotDateEditIpcMockMode("busy");
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /^Edit date for snapshot 2026-06-01/,
+      }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /^Edit date/ });
+    await user.clear(within(dialog).getByLabelText("In-game date"));
+    await user.type(
+      within(dialog).getByLabelText("In-game date"),
+      "2026-07-01",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save date" }));
+
+    expect(
+      within(dialog).getByRole("button", { name: "Cancel" }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Saving…" }),
+    ).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: /^Edit date/ })).toBeVisible();
+
+    resolveBusySnapshotDateEditRequest();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: /^Edit date/ }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("restores focus to a cancelled date-edit trigger", async () => {
+    seedHistory();
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    const trigger = await screen.findByRole("button", {
+      name: /^Edit date for snapshot 2026-06-01/,
+    });
+    trigger.focus();
+    await user.click(trigger);
+    await user.click(
+      within(screen.getByRole("dialog", { name: /^Edit date/ })).getByRole(
+        "button",
+        { name: "Cancel" },
+      ),
+    );
+
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it("keeps snapshot management errors in the dialog", async () => {

@@ -1,4 +1,5 @@
 import type { SaveDeleteResult } from "@/features/snapshot/api/delete-save";
+import type { SnapshotGameDateUpdateResult } from "@/features/snapshot/api/update-snapshot-date";
 import type { SaveSummary } from "@/features/snapshot/types/save";
 import type {
   SnapshotDeleteResult,
@@ -56,6 +57,7 @@ let snapshotHistory: SnapshotMetadata[] = [];
 let loadDataMode: LoadDataIpcMockMode = "success";
 let snapshotDeleteMode: SnapshotManagementIpcMockMode = "success";
 let snapshotRenameMode: SnapshotManagementIpcMockMode = "success";
+let snapshotDateEditMode: SnapshotManagementIpcMockMode = "success";
 let activeSaveMode: ActiveSaveIpcMockMode = "success";
 let lastLoadDataArgs: unknown;
 let lastLoadDataProgressChannel: {
@@ -73,6 +75,12 @@ let busySnapshotDeleteDeferred: {
   promise: Promise<SnapshotDeleteResult>;
   resolve: (value: SnapshotDeleteResult) => void;
 } | null = null;
+let busySnapshotDateEditDeferred: {
+  promise: Promise<SnapshotGameDateUpdateResult>;
+  resolve: (value: SnapshotGameDateUpdateResult) => void;
+  reject: (error: unknown) => void;
+  args: unknown;
+} | null = null;
 let busyActiveSaveDeferred: {
   promise: Promise<SaveSummary>;
   resolve: () => void;
@@ -82,6 +90,8 @@ let nextSnapshotId = 1;
 let onLoadDataCall: (() => void) | undefined;
 let onSetActiveSaveCall: (() => void) | undefined;
 let onDeleteSnapshotCall: (() => void) | undefined;
+let onGetCurrentSnapshotCall: (() => void) | undefined;
+let onUpdateSnapshotDateCall: (() => void) | undefined;
 let onDeleteSaveCall: (() => void) | undefined;
 
 function buildSnapshot(overrides?: Partial<SnapshotSummary>): SnapshotSummary {
@@ -189,6 +199,71 @@ function copySnapshotMetadata(snapshot: SnapshotMetadata): SnapshotMetadata {
   return { ...snapshot };
 }
 
+function isCanonicalGameDate(value: string) {
+  if (value.length !== 10 || value[4] !== "-" || value[7] !== "-") {
+    return false;
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    if (index === 4 || index === 7) {
+      continue;
+    }
+    const code = value.charCodeAt(index);
+    if (code < 48 || code > 57) {
+      return false;
+    }
+  }
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  if (year < 1 || month < 1 || month > 12 || day < 1) {
+    return false;
+  }
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth =
+    month === 2
+      ? leapYear
+        ? 29
+        : 28
+      : month === 4 || month === 6 || month === 9 || month === 11
+        ? 30
+        : 31;
+  return day <= daysInMonth;
+}
+
+function applySnapshotDateEdit(args: unknown): SnapshotGameDateUpdateResult {
+  const { snapshotId, contextToken } = parseSnapshotMutationArgs(args);
+  const gameDate =
+    typeof args === "object" && args !== null && "gameDate" in args
+      ? args.gameDate
+      : null;
+  if (typeof gameDate !== "string" || !isCanonicalGameDate(gameDate)) {
+    throw new Error("Game date must be a valid date in YYYY-MM-DD format");
+  }
+  const target = snapshotHistory.find(
+    (snapshot) =>
+      snapshot.id === snapshotId && snapshot.contextToken === contextToken,
+  );
+  if (!target) {
+    throw new Error("Snapshot changed or no longer exists");
+  }
+  const previousCurrentSnapshotId =
+    snapshotsForSave(target.saveId).find((snapshot) => snapshot.isCurrent)
+      ?.id ?? null;
+  snapshotHistory = snapshotHistory.map((snapshot) =>
+    snapshot.id === target.id ? { ...snapshot, gameDate } : snapshot,
+  );
+  const currentSnapshotId = promoteCurrentSnapshot(target.saveId);
+  const snapshot = snapshotHistory.find((entry) => entry.id === target.id);
+  if (!snapshot) {
+    throw new Error("Snapshot changed or no longer exists");
+  }
+  return {
+    snapshot: copySnapshotMetadata(snapshot),
+    previousCurrentSnapshotId,
+    currentSnapshotId,
+  };
+}
+
 function snapshotsForSave(saveId: number) {
   return snapshotHistory
     .filter((snapshot) => snapshot.saveId === saveId)
@@ -242,18 +317,22 @@ export function resetSnapshotIpcMock() {
   loadDataMode = "success";
   snapshotDeleteMode = "success";
   snapshotRenameMode = "success";
+  snapshotDateEditMode = "success";
   activeSaveMode = "success";
   lastLoadDataArgs = undefined;
   lastLoadDataProgressChannel = null;
   lastSnapshotManagementArgs = undefined;
   busyDeferred = null;
   busySnapshotDeleteDeferred = null;
+  busySnapshotDateEditDeferred = null;
   busyActiveSaveDeferred = null;
   nextSaveId = 2;
   nextSnapshotId = 1;
   onLoadDataCall = undefined;
   onSetActiveSaveCall = undefined;
   onDeleteSnapshotCall = undefined;
+  onGetCurrentSnapshotCall = undefined;
+  onUpdateSnapshotDateCall = undefined;
   onDeleteSaveCall = undefined;
 }
 
@@ -276,12 +355,20 @@ export function getLastSnapshotManagementIpcArgs() {
 }
 
 export function observeSnapshotIpcCall(
-  command: "loadData" | "setActiveSave" | "deleteSnapshot" | "deleteSave",
+  command:
+    | "loadData"
+    | "setActiveSave"
+    | "deleteSnapshot"
+    | "getCurrentSnapshot"
+    | "updateSnapshotDate"
+    | "deleteSave",
   observer: (() => void) | undefined,
 ) {
   if (command === "loadData") onLoadDataCall = observer;
   if (command === "setActiveSave") onSetActiveSaveCall = observer;
   if (command === "deleteSnapshot") onDeleteSnapshotCall = observer;
+  if (command === "getCurrentSnapshot") onGetCurrentSnapshotCall = observer;
+  if (command === "updateSnapshotDate") onUpdateSnapshotDateCall = observer;
   if (command === "deleteSave") onDeleteSaveCall = observer;
 }
 
@@ -325,6 +412,55 @@ export function setSnapshotRenameIpcMockMode(
   mode: SnapshotManagementIpcMockMode,
 ) {
   snapshotRenameMode = mode;
+}
+
+export function setSnapshotDateEditIpcMockMode(
+  mode: SnapshotManagementIpcMockMode,
+) {
+  snapshotDateEditMode = mode;
+  if (mode !== "busy") {
+    busySnapshotDateEditDeferred = null;
+  }
+}
+
+export function resolveUpdateSnapshotDateIpcMock(
+  args: unknown,
+): Promise<SnapshotGameDateUpdateResult> {
+  onUpdateSnapshotDateCall?.();
+  lastSnapshotManagementArgs = args;
+  if (snapshotDateEditMode === "failure") {
+    return Promise.reject(new Error("Snapshot date update failed"));
+  }
+  if (snapshotDateEditMode === "busy") {
+    if (!busySnapshotDateEditDeferred) {
+      let resolve!: (value: SnapshotGameDateUpdateResult) => void;
+      let reject!: (error: unknown) => void;
+      const promise = new Promise<SnapshotGameDateUpdateResult>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      busySnapshotDateEditDeferred = { promise, resolve, reject, args };
+    }
+    return busySnapshotDateEditDeferred.promise;
+  }
+  try {
+    return Promise.resolve(applySnapshotDateEdit(args));
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+export function resolveBusySnapshotDateEditRequest() {
+  const deferred = busySnapshotDateEditDeferred;
+  busySnapshotDateEditDeferred = null;
+  if (!deferred) {
+    return;
+  }
+  try {
+    deferred.resolve(applySnapshotDateEdit(deferred.args));
+  } catch (error) {
+    deferred.reject(error);
+  }
 }
 
 export function resolveBusyLoadDataRequest(result?: LoadDataResult) {
@@ -421,6 +557,7 @@ export function resolveListSnapshotsIpcMock(args: unknown) {
 }
 
 export function resolveGetCurrentSnapshotIpcMock() {
+  onGetCurrentSnapshotCall?.();
   const state = activeSaveSnapshot();
   return state ? { ...state.snapshot } : null;
 }

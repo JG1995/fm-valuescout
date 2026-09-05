@@ -1,8 +1,8 @@
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 
 use crate::features::{
-    academy::service as academy_service, player_metrics::potential_scores,
-    staff::scoring as staff_scoring,
+    academy::service as academy_service, memory_read::dump_validation::canonical_game_date,
+    player_metrics::potential_scores, staff::scoring as staff_scoring,
 };
 
 use super::query::get_snapshot_metadata;
@@ -46,6 +46,13 @@ pub(crate) struct SaveContext {
 pub struct SnapshotDeleteResult {
     pub deleted_snapshot_id: i64,
     pub save_id: i64,
+    pub current_snapshot_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SnapshotGameDateUpdateResult {
+    pub snapshot: SnapshotMetadata,
+    pub previous_current_snapshot_id: Option<i64>,
     pub current_snapshot_id: Option<i64>,
 }
 
@@ -274,6 +281,52 @@ pub fn rename_snapshot(
     }
 
     get_snapshot_metadata(conn, snapshot_id)
+}
+
+pub fn update_snapshot_game_date(
+    conn: &mut Connection,
+    snapshot_id: i64,
+    context_token: &str,
+    game_date: &str,
+) -> Result<SnapshotGameDateUpdateResult, String> {
+    if !canonical_game_date(game_date) {
+        return Err("Game date must be a valid date in YYYY-MM-DD format".to_string());
+    }
+
+    let tx = conn.transaction().map_err(|error| error.to_string())?;
+    let save_id: i64 = tx
+        .query_row(
+            "SELECT save_id FROM snapshots WHERE id = ?1 AND context_token = ?2",
+            params![snapshot_id, context_token],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "Snapshot changed or no longer exists".to_string())?;
+    let previous_current_snapshot_id: Option<i64> = tx
+        .query_row(
+            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+
+    tx.execute(
+        "UPDATE snapshots SET game_date = ?1 WHERE id = ?2 AND context_token = ?3",
+        params![game_date, snapshot_id, context_token],
+    )
+    .map_err(|error| error.to_string())?;
+
+    let current_snapshot_id = select_current_snapshot(&tx, save_id)?;
+    let snapshot = get_snapshot_metadata(&tx, snapshot_id)?;
+
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(SnapshotGameDateUpdateResult {
+        snapshot,
+        previous_current_snapshot_id,
+        current_snapshot_id,
+    })
 }
 
 pub fn delete_snapshot(
@@ -1617,5 +1670,359 @@ mod tests {
             .expect_err("reject snapshot delete")
             .contains("test delete failure"));
         assert_eq!(current_snapshot_id(&conn, save.id), Some(snapshot));
+    }
+
+    fn game_date_edit_setup(conn: &mut Connection) -> (SaveSummary, i64, i64) {
+        let save = list_saves(conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let older = insert_snapshot(
+            conn,
+            save.id,
+            Some("2026-01-01"),
+            "2026-08-11T10:00:00.000Z",
+        );
+        let current = insert_snapshot(
+            conn,
+            save.id,
+            Some("2026-06-01"),
+            "2026-08-11T11:00:00.000Z",
+        );
+        insert_player(conn, older, 77);
+        insert_staff_record(conn, older, 77);
+        insert_player(conn, current, 78);
+        insert_staff_record(conn, current, 78);
+        select_current_snapshot_for_test(conn, save.id);
+        (save, older, current)
+    }
+
+    #[test]
+    fn rejects_noncanonical_game_dates_with_state_unchanged() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("reject-bad-game-date.db"));
+        let (save, older, current) = game_date_edit_setup(&mut conn);
+        let older_token = snapshot_token(&conn, older);
+        rename_snapshot(&conn, older, &older_token, Some("Window label"))
+            .expect("label older snapshot");
+        let before = get_snapshot_metadata(&conn, older).expect("read older snapshot");
+        let player_before: String = conn
+            .query_row(
+                "SELECT attributes_json FROM players WHERE snapshot_id = ?1 AND uid = 77",
+                [older],
+                |row| row.get(0),
+            )
+            .expect("read player attributes");
+
+        for invalid in [
+            "",
+            " 2024-02-29 ",
+            "2026-13-01",
+            "2026-02-30",
+            "2023-02-29",
+            "2026-1-1",
+            "2026/01/01",
+            "not-a-date",
+        ] {
+            let error = update_snapshot_game_date(&mut conn, older, &older_token, invalid)
+                .expect_err(&format!("reject {invalid:?}"));
+            assert!(
+                error.contains("YYYY-MM-DD"),
+                "unexpected error for {invalid:?}: {error}"
+            );
+
+            let after = get_snapshot_metadata(&conn, older).expect("read older snapshot");
+            assert_eq!(
+                after, before,
+                "rejected input {invalid:?} must leave the row intact"
+            );
+            assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
+            assert_eq!(compact_row_count(&conn, older), 0);
+            assert_eq!(compact_row_count(&conn, current), 1);
+            assert_eq!(staff_compact_row_count(&conn, current), 1);
+            let player_after: String = conn
+                .query_row(
+                    "SELECT attributes_json FROM players WHERE snapshot_id = ?1 AND uid = 77",
+                    [older],
+                    |row| row.get(0),
+                )
+                .expect("read player attributes");
+            assert_eq!(player_after, player_before);
+        }
+    }
+
+    #[test]
+    fn accepts_leap_day_and_updates_only_game_date() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("leap-day-game-date.db"));
+        let (save, older, current) = game_date_edit_setup(&mut conn);
+        let older_token = snapshot_token(&conn, older);
+        rename_snapshot(&conn, older, &older_token, Some("Window label"))
+            .expect("label older snapshot");
+        let before = get_snapshot_metadata(&conn, older).expect("read older snapshot");
+        let player_before: String = conn
+            .query_row(
+                "SELECT attributes_json FROM players WHERE snapshot_id = ?1 AND uid = 77",
+                [older],
+                |row| row.get(0),
+            )
+            .expect("read player attributes");
+
+        let result = update_snapshot_game_date(&mut conn, older, &older_token, "2024-02-29")
+            .expect("accept leap day");
+
+        assert_eq!(result.snapshot.game_date.as_deref(), Some("2024-02-29"));
+        assert_eq!(result.snapshot.id, older);
+        assert_eq!(result.previous_current_snapshot_id, Some(current));
+        assert_eq!(result.current_snapshot_id, Some(current));
+        assert_eq!(result.snapshot.custom_name.as_deref(), Some("Window label"));
+        assert_eq!(
+            result.snapshot.game_date_source, before.game_date_source,
+            "game_date_source must stay unchanged"
+        );
+        assert_eq!(
+            result.snapshot.loaded_at_utc, before.loaded_at_utc,
+            "loaded_at_utc must stay unchanged"
+        );
+        assert!(!result.snapshot.is_current);
+        let stored = get_snapshot_metadata(&conn, older).expect("read updated snapshot");
+        assert_eq!(stored, result.snapshot);
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
+        let player_after: String = conn
+            .query_row(
+                "SELECT attributes_json FROM players WHERE snapshot_id = ?1 AND uid = 77",
+                [older],
+                |row| row.get(0),
+            )
+            .expect("read player attributes");
+        assert_eq!(player_after, player_before);
+    }
+
+    #[test]
+    fn rejects_stale_snapshot_token_without_writing() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("stale-token-game-date.db"));
+        let (save, older, current) = game_date_edit_setup(&mut conn);
+        let before = get_snapshot_metadata(&conn, older).expect("read older snapshot");
+
+        let error = update_snapshot_game_date(&mut conn, older, "stale-token", "2026-03-01")
+            .expect_err("reject stale token");
+
+        assert!(error.contains("changed"), "unexpected error: {error}");
+        assert_eq!(
+            get_snapshot_metadata(&conn, older).expect("read older snapshot"),
+            before
+        );
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
+    }
+
+    #[test]
+    fn date_edit_promotes_and_demotes_per_shared_order() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("promote-demote-game-date.db"));
+        let (save, older, current) = game_date_edit_setup(&mut conn);
+        let older_token = snapshot_token(&conn, older);
+
+        let promoted = update_snapshot_game_date(&mut conn, older, &older_token, "2027-01-01")
+            .expect("promote older snapshot");
+        assert_eq!(promoted.previous_current_snapshot_id, Some(current));
+        assert_eq!(promoted.current_snapshot_id, Some(older));
+        assert!(promoted.snapshot.is_current);
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(older));
+        assert_eq!(
+            list_snapshot_metadata(&conn, Some(save.id))
+                .expect("list reordered snapshots")
+                .iter()
+                .map(|snapshot| snapshot.id)
+                .collect::<Vec<_>>(),
+            vec![older, current]
+        );
+        assert_complete_potential_state(&conn, older);
+        assert_eq!(staff_compact_row_count(&conn, older), 1);
+
+        let demoted = update_snapshot_game_date(&mut conn, older, &older_token, "2025-01-01")
+            .expect("demote edited snapshot");
+        assert_eq!(demoted.previous_current_snapshot_id, Some(older));
+        assert_eq!(demoted.current_snapshot_id, Some(current));
+        assert!(!demoted.snapshot.is_current);
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
+        assert_eq!(
+            list_snapshot_metadata(&conn, Some(save.id))
+                .expect("list demoted snapshots")
+                .iter()
+                .map(|snapshot| snapshot.id)
+                .collect::<Vec<_>>(),
+            vec![current, older]
+        );
+        assert_complete_potential_state(&conn, current);
+    }
+
+    #[test]
+    fn equal_dates_break_ties_by_load_time_then_id() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("tie-break-game-date.db"));
+        let (save, older, current) = game_date_edit_setup(&mut conn);
+        let older_token = snapshot_token(&conn, older);
+
+        let tied = update_snapshot_game_date(&mut conn, older, &older_token, "2026-06-01")
+            .expect("tie on game date");
+        assert_eq!(tied.previous_current_snapshot_id, Some(current));
+        assert_eq!(
+            tied.current_snapshot_id,
+            Some(current),
+            "newer loaded_at_utc must win an equal-date tie"
+        );
+        assert!(!tied.snapshot.is_current);
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
+
+        let third = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-01-01"),
+            "2026-08-11T12:00:00.000Z",
+        );
+        let fourth = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-09-01"),
+            "2026-08-11T12:00:00.000Z",
+        );
+        insert_player(&conn, third, 79);
+        insert_staff_record(&conn, third, 79);
+        insert_player(&conn, fourth, 80);
+        insert_staff_record(&conn, fourth, 80);
+        select_current_snapshot_for_test(&mut conn, save.id);
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(fourth));
+        let third_token = snapshot_token(&conn, third);
+
+        let id_tied = update_snapshot_game_date(&mut conn, third, &third_token, "2026-09-01")
+            .expect("tie on game date and load time");
+        assert_eq!(
+            id_tied.current_snapshot_id,
+            Some(fourth),
+            "greater snapshot id must win a full tie"
+        );
+        assert!(!id_tied.snapshot.is_current);
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(fourth));
+    }
+
+    #[test]
+    fn compact_materialization_failure_rolls_back_date_edit() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut player_conn = open_migrated(&temp_dir.path().join("player-rollback-game-date.db"));
+        let (save, older, current) = game_date_edit_setup(&mut player_conn);
+        let current_potential = potential_state(&player_conn, current);
+        player_conn
+            .execute_batch(&format!(
+                "CREATE TRIGGER reject_promoted_player_compact
+                 BEFORE INSERT ON player_role_metrics
+                 WHEN NEW.snapshot_id = {older}
+                 BEGIN SELECT RAISE(ABORT, 'promoted player compact writes fail'); END;",
+            ))
+            .expect("reject promoted player compact rows");
+
+        let older_token = snapshot_token(&player_conn, older);
+        let error = update_snapshot_game_date(&mut player_conn, older, &older_token, "2027-01-01")
+            .expect_err("roll back player compact failure");
+        assert!(
+            error.contains("promoted player compact writes fail"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            get_snapshot_metadata(&player_conn, older)
+                .expect("read rolled-back snapshot")
+                .game_date
+                .as_deref(),
+            Some("2026-01-01")
+        );
+        assert_eq!(current_snapshot_id(&player_conn, save.id), Some(current));
+        assert_eq!(compact_row_count(&player_conn, older), 0);
+        assert_eq!(compact_row_count(&player_conn, current), 1);
+        assert_eq!(potential_state(&player_conn, current), current_potential);
+        assert_eq!(staff_compact_row_count(&player_conn, older), 0);
+        assert_eq!(staff_compact_row_count(&player_conn, current), 1);
+
+        let mut staff_conn = open_migrated(&temp_dir.path().join("staff-rollback-game-date.db"));
+        let (save, older, current) = game_date_edit_setup(&mut staff_conn);
+        let current_staff_row =
+            staff_compact_row(&staff_conn, current, 78).expect("current staff compact row");
+        staff_conn
+            .execute_batch(&format!(
+                "CREATE TRIGGER reject_promoted_staff_compact
+                 BEFORE INSERT ON staff_role_metrics
+                 WHEN NEW.snapshot_id = {older}
+                 BEGIN SELECT RAISE(ABORT, 'promoted staff compact writes fail'); END;",
+            ))
+            .expect("reject promoted staff compact rows");
+
+        let older_token = snapshot_token(&staff_conn, older);
+        let error = update_snapshot_game_date(&mut staff_conn, older, &older_token, "2027-01-01")
+            .expect_err("roll back staff compact failure");
+        assert!(
+            error.contains("promoted staff compact writes fail"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            get_snapshot_metadata(&staff_conn, older)
+                .expect("read rolled-back snapshot")
+                .game_date
+                .as_deref(),
+            Some("2026-01-01")
+        );
+        assert_eq!(current_snapshot_id(&staff_conn, save.id), Some(current));
+        assert_eq!(staff_compact_row_count(&staff_conn, older), 0);
+        assert_eq!(
+            staff_compact_row(&staff_conn, current, 78),
+            Some(current_staff_row),
+            "the previously visible staff compact row must survive byte-for-byte"
+        );
+        assert_eq!(compact_row_count(&staff_conn, older), 0);
+        assert_eq!(compact_row_count(&staff_conn, current), 1);
+    }
+
+    #[test]
+    fn date_edit_creates_no_academy_class() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("no-academy-game-date.db"));
+        let (save, older, current) = game_date_edit_setup(&mut conn);
+        select_current_snapshot_for_test(&mut conn, save.id);
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
+        let classes_before: Vec<(i64, i32)> = conn
+            .prepare(
+                "SELECT class_year, is_automatic FROM academy_classes
+                 WHERE save_id = ?1 ORDER BY class_year",
+            )
+            .expect("prepare academy classes")
+            .query_map([save.id], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("read academy classes")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect academy classes");
+        conn.execute_batch(
+            "CREATE TRIGGER reject_academy_class_writes
+             BEFORE INSERT ON academy_classes
+             BEGIN SELECT RAISE(ABORT, 'date edit must not create Academy classes'); END;",
+        )
+        .expect("reject Academy class writes");
+
+        let older_token = snapshot_token(&conn, older);
+        let promoted = update_snapshot_game_date(&mut conn, older, &older_token, "2028-01-01")
+            .expect("promoting edit must not write Academy classes");
+
+        assert_eq!(promoted.current_snapshot_id, Some(older));
+        let classes_after: Vec<(i64, i32)> = conn
+            .prepare(
+                "SELECT class_year, is_automatic FROM academy_classes
+                 WHERE save_id = ?1 ORDER BY class_year",
+            )
+            .expect("prepare academy classes")
+            .query_map([save.id], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("read academy classes")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect academy classes");
+        assert_eq!(
+            classes_after, classes_before,
+            "no Academy class may be created or changed by a date edit"
+        );
     }
 }

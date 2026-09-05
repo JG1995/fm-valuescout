@@ -88,6 +88,24 @@ impl From<SnapshotDeleteResult> for SnapshotDeleteResultDto {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SnapshotGameDateUpdateResultDto {
+    pub snapshot: SnapshotMetadataDto,
+    pub previous_current_snapshot_id: Option<i64>,
+    pub current_snapshot_id: Option<i64>,
+}
+
+impl From<service::SnapshotGameDateUpdateResult> for SnapshotGameDateUpdateResultDto {
+    fn from(result: service::SnapshotGameDateUpdateResult) -> Self {
+        Self {
+            snapshot: SnapshotMetadataDto::from(result.snapshot),
+            previous_current_snapshot_id: result.previous_current_snapshot_id,
+            current_snapshot_id: result.current_snapshot_id,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SaveDeleteResultDto {
     pub deleted_save_id: i64,
     pub deleted_was_active: bool,
@@ -190,6 +208,31 @@ pub fn delete_snapshot(
             .map_err(|_| "database lock poisoned".to_string())?;
     let result = service::delete_snapshot(&mut conn, snapshot_id, &context_token)?;
     Ok(SnapshotDeleteResultDto::from(result))
+}
+
+#[tauri::command]
+pub fn update_snapshot_game_date(
+    snapshot_id: i64,
+    context_token: String,
+    game_date: String,
+    db: State<'_, Db>,
+) -> Result<SnapshotGameDateUpdateResultDto, String> {
+    update_snapshot_game_date_for_command(db.inner(), snapshot_id, &context_token, &game_date)
+}
+
+pub(crate) fn update_snapshot_game_date_for_command(
+    db: &Db,
+    snapshot_id: i64,
+    context_token: &str,
+    game_date: &str,
+) -> Result<SnapshotGameDateUpdateResultDto, String> {
+    let _boost_guard = boost_gate::acquire_boost_gate()?;
+    let mut conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let result =
+        service::update_snapshot_game_date(&mut conn, snapshot_id, context_token, game_date)?;
+    Ok(SnapshotGameDateUpdateResultDto::from(result))
 }
 
 #[tauri::command]
@@ -1863,5 +1906,112 @@ mod tests {
         assert_eq!(deleted_save_value["deletedSaveId"], 3);
         assert_eq!(deleted_save_value["deletedWasActive"], true);
         assert_eq!(deleted_save_value["activeSave"]["id"], 4);
+    }
+
+    fn insert_date_edit_snapshot(db: &Db, save_id: i64, game_date: Option<&str>) -> (i64, String) {
+        let guard = db.0.lock().expect("lock db");
+        guard
+            .execute(
+                "INSERT INTO snapshots (
+                    save_id, is_current, schema_version, generated_at_utc, game_version,
+                    supported_game_version, bridge_version, protocol_version, game_date,
+                    game_date_source, scan_truncated, max_accepted, player_count, loaded_at_utc
+                 ) VALUES (
+                    ?1, 0, 6, '2026-08-11T10:00:00.000Z', '26.3.2', '26.3', '0.1.0', 1, ?2,
+                    'memory', 0, NULL, 1, '2026-08-11T10:00:00.000Z'
+                 )",
+                rusqlite::params![save_id, game_date],
+            )
+            .expect("insert snapshot");
+        let snapshot_id = guard.last_insert_rowid();
+        let context_token: String = guard
+            .query_row(
+                "SELECT context_token FROM snapshots WHERE id = ?1",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("read snapshot token");
+        (snapshot_id, context_token)
+    }
+
+    #[test]
+    fn update_result_dto_serializes_named_metadata_and_camel_case_ids() {
+        let dto = SnapshotGameDateUpdateResultDto::from(service::SnapshotGameDateUpdateResult {
+            snapshot: service::SnapshotMetadata {
+                id: 7,
+                context_token: "snapshot-token".to_string(),
+                save_id: 3,
+                custom_name: Some("Pre-season".to_string()),
+                game_date: Some("2024-02-29".to_string()),
+                game_date_source: "memory".to_string(),
+                player_count: 2,
+                loaded_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
+                is_current: true,
+            },
+            previous_current_snapshot_id: Some(9),
+            current_snapshot_id: Some(7),
+        });
+
+        let value = serde_json::to_value(&dto).expect("serialize update result");
+        assert_eq!(value["snapshot"]["id"], 7);
+        assert_eq!(value["snapshot"]["gameDate"], "2024-02-29");
+        assert_eq!(value["snapshot"]["contextToken"], "snapshot-token");
+        assert_eq!(value["previousCurrentSnapshotId"], 9);
+        assert_eq!(value["currentSnapshotId"], 7);
+        assert!(value.get("previous_current_snapshot_id").is_none());
+        assert!(value.get("current_snapshot_id").is_none());
+    }
+
+    #[test]
+    fn update_command_holds_the_boost_gate_exclusion() {
+        let _guard = crate::features::player::boost_gate::BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = migrated_db(&temp_dir.path().join("date-edit-gate.db"));
+        let save_id = {
+            let guard = db.0.lock().expect("lock db");
+            service::list_saves(&guard)
+                .expect("seed default save")
+                .into_iter()
+                .find(|save| save.is_active)
+                .expect("active save")
+                .id
+        };
+        let (snapshot_id, context_token) =
+            insert_date_edit_snapshot(&db, save_id, Some("2026-01-01"));
+
+        let held =
+            crate::features::player::boost_gate::acquire_boost_gate().expect("hold boost gate");
+        let error = match update_snapshot_game_date_for_command(
+            &db,
+            snapshot_id,
+            &context_token,
+            "2026-03-01",
+        ) {
+            Ok(_) => panic!("boost-held edit must fail"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("already in progress"),
+            "unexpected gate error: {error}"
+        );
+        let stored: Option<String> =
+            db.0.lock()
+                .expect("lock db")
+                .query_row(
+                    "SELECT game_date FROM snapshots WHERE id = ?1",
+                    [snapshot_id],
+                    |row| row.get(0),
+                )
+                .expect("read game date");
+        assert_eq!(stored.as_deref(), Some("2026-01-01"));
+        drop(held);
+
+        let result =
+            update_snapshot_game_date_for_command(&db, snapshot_id, &context_token, "2026-03-01")
+                .expect("edit succeeds once the gate is free");
+        assert_eq!(result.snapshot.game_date.as_deref(), Some("2026-03-01"));
+        assert_eq!(result.current_snapshot_id, Some(snapshot_id));
     }
 }

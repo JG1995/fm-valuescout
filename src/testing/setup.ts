@@ -88,6 +88,7 @@ import {
 import {
   resetSnapshotIpcMock,
   resolveBusyLoadDataRequest,
+  resolveBusySnapshotDateEditRequest,
   resolveBusySnapshotDeleteRequest,
   resolveCreateSaveIpcMock,
   resolveDeleteSaveIpcMock,
@@ -99,6 +100,7 @@ import {
   resolveRenameSaveIpcMock,
   resolveRenameSnapshotIpcMock,
   resolveSetActiveSaveIpcMock,
+  resolveUpdateSnapshotDateIpcMock,
   setLoadDataIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
 import {
@@ -159,6 +161,10 @@ function registerIpcMocks() {
 
     if (cmd === "delete_snapshot") {
       return resolveDeleteSnapshotIpcMock(args);
+    }
+
+    if (cmd === "update_snapshot_game_date") {
+      return resolveUpdateSnapshotDateIpcMock(args);
     }
 
     if (cmd === "delete_save") {
@@ -395,6 +401,7 @@ afterEach(() => {
   resolveBusyDumpRequest();
   resolveBusyLoadDataRequest();
   resolveBusySnapshotDeleteRequest();
+  resolveBusySnapshotDateEditRequest();
   resolveBusyCsvImportRequest();
   resolveBusyClubDnaGetRequest();
   resolveBusyClubDnaSetRequest();
