@@ -3,7 +3,6 @@ use std::collections::{BTreeMap, HashMap};
 use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExtension, Row};
 
 use super::{suggested_training, tactic};
-use crate::features::scoring::catalog::all_roles;
 
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
@@ -127,21 +126,8 @@ pub struct SquadPlayer {
     pub ca: i64,
     pub pa: i64,
     pub market_value_gbp: Option<i64>,
-    pub suggested_training: Option<SquadSuggestedTraining>,
+    pub suggested_training: Option<String>,
     pub dynamic_values: BTreeMap<String, Option<DynamicValue>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct SquadSuggestedTraining {
-    pub lane_id: String,
-    pub ip_role_id: String,
-    pub ip_role_display: String,
-    pub oop_role_id: String,
-    pub oop_role_display: String,
-    pub focus: Option<String>,
-    pub focus_attributes: Vec<String>,
-    pub contributing_attributes: Vec<String>,
-    pub combined_gain: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -346,8 +332,14 @@ pub fn list_squad_players(
 
     let mut players = Vec::with_capacity(rows.len());
     for (mut player, attributes) in rows {
-        player.suggested_training =
-            suggestion_for_player(tactic.as_ref(), &assignments, player.uid, &attributes)?;
+        player.suggested_training = suggestion_for_player(
+            tactic.as_ref(),
+            &assignments,
+            player.uid,
+            player.ca,
+            player.pa,
+            &attributes,
+        )?;
         players.push(player);
     }
 
@@ -365,8 +357,10 @@ fn suggestion_for_player(
     tactic: Option<&tactic::PlannerTactic>,
     assignments: &HashMap<i64, String>,
     player_uid: i64,
+    ca: i64,
+    pa: i64,
     attributes: &HashMap<String, Option<u8>>,
-) -> Result<Option<SquadSuggestedTraining>, String> {
+) -> Result<Option<String>, String> {
     let Some(tactic) = tactic else {
         return Ok(None);
     };
@@ -378,44 +372,10 @@ fn suggestion_for_player(
         .iter()
         .find(|lane| lane.lane_id == *lane_id)
         .ok_or_else(|| format!("Unknown tactic lane `{lane_id}`"))?;
-    let roles = all_roles();
-    let ip_role = roles
-        .iter()
-        .find(|role| role.role_id == lane.ip_role_id)
-        .ok_or_else(|| format!("Unknown tactic lane role `{}`", lane.ip_role_id))?;
-    let oop_role = roles
-        .iter()
-        .find(|role| role.role_id == lane.oop_role_id)
-        .ok_or_else(|| format!("Unknown tactic lane role `{}`", lane.oop_role_id))?;
-    let unavailable = SquadSuggestedTraining {
-        lane_id: lane.lane_id.clone(),
-        ip_role_id: lane.ip_role_id.clone(),
-        ip_role_display: ip_role.display_name.to_string(),
-        oop_role_id: lane.oop_role_id.clone(),
-        oop_role_display: oop_role.display_name.to_string(),
-        focus: None,
-        focus_attributes: Vec::new(),
-        contributing_attributes: Vec::new(),
-        combined_gain: None,
-    };
-    let Some(chosen) = suggested_training::suggest_for_lane(attributes, lane) else {
-        return Ok(Some(unavailable));
-    };
-    Ok(Some(SquadSuggestedTraining {
-        focus: Some(chosen.focus.to_string()),
-        focus_attributes: chosen
-            .focus_attributes
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
-        contributing_attributes: chosen
-            .contributing_attributes
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
-        combined_gain: Some(chosen.gain),
-        ..unavailable
-    }))
+    if ca >= pa {
+        return Ok(None);
+    }
+    Ok(suggested_training::suggest_for_lane(attributes, lane).map(str::to_string))
 }
 
 fn map_player(

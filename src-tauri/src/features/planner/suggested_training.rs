@@ -63,34 +63,24 @@ pub const GOALKEEPER_FOCUSES: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// Chosen focus: the inventory entry name, its ordered mapped attributes,
-/// the unrounded blended gain, and the simulated attributes that overlap the
-/// lane roles (in focus-mapping order).
-#[derive(Debug, Clone, PartialEq)]
-pub struct SuggestedFocus {
-    pub focus: &'static str,
-    pub focus_attributes: Vec<&'static str>,
-    pub gain: f64,
-    pub contributing_attributes: Vec<&'static str>,
-}
-
 /// The goalkeeper focus inventory applies only to the GK Planner lane.
 pub fn is_goalkeeper_lane(lane: &TacticLane) -> bool {
     lane.lane_id == "goalkeeper"
 }
 
-/// Ranks the applicable inventory for an assigned lane and returns the focus
-/// with the largest unrounded combined-score gain.
+/// Ranks the applicable inventory for an assigned lane and returns the winning
+/// focus name.
 ///
-/// Returns `None` when any attribute required by any focus in the applicable
-/// inventory is missing/null (no fallback focus), when a lane role is
-/// unknown, or when a lane-role required attribute is missing/null.
-/// All-zero gains still return the first inventory focus; ties keep
-/// inventory order via a strict `>` comparison.
+/// The best unrounded combined-score gain stays local to the ranking loop: it
+/// is never displayed or exported. Returns `None` when any attribute required
+/// by any focus in the applicable inventory is missing/null (no fallback
+/// focus), when a lane role is unknown, or when a lane-role required attribute
+/// is missing/null. All-zero gains still return the first inventory focus;
+/// ties keep inventory order via a strict `>` comparison.
 pub fn suggest_for_lane(
     attributes: &HashMap<String, Option<u8>>,
     lane: &TacticLane,
-) -> Option<SuggestedFocus> {
+) -> Option<&'static str> {
     let focuses = if is_goalkeeper_lane(lane) {
         GOALKEEPER_FOCUSES
     } else {
@@ -108,7 +98,7 @@ pub fn suggest_for_lane(
     let oop_role = roles.iter().find(|role| role.role_id == lane.oop_role_id)?;
     let baseline = blended_score(attributes, ip_role, oop_role, lane.ip_weight)?;
 
-    let mut best: Option<SuggestedFocus> = None;
+    let mut best: Option<(&'static str, f64)> = None;
     for &(focus, keys) in focuses.iter() {
         let mut simulated = attributes.clone();
         for key in keys.iter() {
@@ -122,18 +112,13 @@ pub fn suggest_for_lane(
         let gain = simulated_score - baseline;
         let improves = match &best {
             None => true,
-            Some(current) => gain > current.gain,
+            Some((_, current_gain)) => gain > *current_gain,
         };
         if improves {
-            best = Some(SuggestedFocus {
-                focus,
-                focus_attributes: keys.to_vec(),
-                gain,
-                contributing_attributes: contributing(keys, attributes, ip_role, oop_role),
-            });
+            best = Some((focus, gain));
         }
     }
-    best
+    best.map(|(focus, _)| focus)
 }
 
 fn blended_score(
@@ -145,31 +130,6 @@ fn blended_score(
     let ip = score_role_unrounded(attributes, ip_role)?;
     let oop = score_role_unrounded(attributes, oop_role)?;
     Some(ip * ip_weight + oop * (1.0 - ip_weight))
-}
-
-/// Focus-mapped attributes actually simulated (below 20) that also appear in
-/// either lane role's primary/secondary bands, in focus-mapping order.
-fn contributing(
-    keys: &[&'static str],
-    attributes: &HashMap<String, Option<u8>>,
-    ip_role: &RoleDefinition,
-    oop_role: &RoleDefinition,
-) -> Vec<&'static str> {
-    keys.iter()
-        .filter(|key| {
-            let simulated = attributes
-                .get(**key)
-                .copied()
-                .flatten()
-                .is_some_and(|value| value < 20);
-            simulated
-                && (ip_role.primary.contains(key)
-                    || ip_role.secondary.contains(key)
-                    || oop_role.primary.contains(key)
-                    || oop_role.secondary.contains(key))
-        })
-        .copied()
-        .collect()
 }
 
 #[cfg(test)]
@@ -294,12 +254,7 @@ mod tests {
         let suggestion =
             suggest_for_lane(&full_attributes(10), &centre_forward_lane()).expect("suggestion");
 
-        assert_eq!(suggestion.focus, "Attacking Movement");
-        assert_eq!(
-            suggestion.focus_attributes,
-            vec!["Anticipation", "Decisions", "OffTheBall"]
-        );
-        assert!((suggestion.gain - 2.890625).abs() < 1e-9);
+        assert_eq!(suggestion, "Attacking Movement");
     }
 
     #[test]
@@ -307,15 +262,11 @@ mod tests {
         let attributes = full_attributes(10);
 
         let gk = suggest_for_lane(&attributes, &goalkeeper_lane()).expect("gk suggestion");
-        assert_eq!(gk.focus, "GK Reactions");
-        assert_eq!(
-            gk.focus_attributes,
-            vec!["Reflexes", "Anticipation", "Concentration"]
-        );
+        assert_eq!(gk, "GK Reactions");
 
         let outfield =
             suggest_for_lane(&attributes, &centre_forward_lane()).expect("outfield suggestion");
-        assert_eq!(outfield.focus, "Attacking Movement");
+        assert_eq!(outfield, "Attacking Movement");
 
         assert!(is_goalkeeper_lane(&goalkeeper_lane()));
         assert!(!is_goalkeeper_lane(&centre_forward_lane()));
@@ -344,25 +295,18 @@ mod tests {
     }
 
     #[test]
-    fn all_maxed_attributes_return_the_first_focus_with_zero_gain() {
+    fn all_maxed_attributes_return_the_first_focus() {
         let suggestion =
             suggest_for_lane(&full_attributes(20), &centre_forward_lane()).expect("suggestion");
 
-        assert_eq!(suggestion.focus, "Free Kick Taking");
-        assert_eq!(suggestion.focus_attributes, vec!["Technique", "FreeKicks"]);
-        assert_eq!(suggestion.gain, 0.0);
-        assert!(suggestion.contributing_attributes.is_empty());
+        assert_eq!(suggestion, "Free Kick Taking");
     }
 
     #[test]
-    fn contributing_attributes_are_the_simulated_lane_role_overlap() {
+    fn ranking_adapts_when_the_best_focus_attributes_are_maxed() {
         let suggestion =
             suggest_for_lane(&full_attributes(10), &centre_forward_lane()).expect("suggestion");
-
-        assert_eq!(
-            suggestion.contributing_attributes,
-            vec!["Anticipation", "Decisions", "OffTheBall"]
-        );
+        assert_eq!(suggestion, "Attacking Movement");
 
         let mut attributes = full_attributes(10);
         for key in [
@@ -375,16 +319,7 @@ mod tests {
             attributes.insert(key.to_string(), Some(20));
         }
         let suggestion = suggest_for_lane(&attributes, &centre_forward_lane()).expect("suggestion");
-        assert_eq!(suggestion.focus, "Shooting");
-        assert_eq!(
-            suggestion.focus_attributes,
-            vec!["Finishing", "LongShots", "Technique"]
-        );
-        assert_eq!(
-            suggestion.contributing_attributes,
-            vec!["Finishing", "Technique"]
-        );
-        assert!((suggestion.gain - 0.46875).abs() < 1e-9);
+        assert_eq!(suggestion, "Shooting");
     }
 
     #[test]

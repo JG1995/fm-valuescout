@@ -8,37 +8,40 @@ Active
 
 ## Delivery authorization
 
-**Delivery fingerprint:** 7836059db6108ec9b379f0e728c2d56bcab9926de7c7cc2d868b1a99c2db96a7
+**Delivery fingerprint:** f6798487ce9de155379b037cd6dee21f901debfb380566fd31e90efb8c82cbea
 
 Ledger state alone creates no branch and switches no branch. The provisional branch `feature/suggested-individual-training` (from `main`) is a recorded intent only until an explicit `/skill:workflow-deliver-feature` invocation with a valid Delivery fingerprint authorizes it.
 
 ## Intent
 
-Suggest one FM26 individual-training focus per Club → Squad player that maximizes improvement of the player's current Planner-assigned tactic lane, using the same role catalog and attribute evidence the score model already computes. The suggestion is advisory and read-only: it never writes to FM, snapshots, Planner assignments, tactics, or persistence (Linear JAY-46).
+Suggest one FM26 individual-training focus name per Club → Squad player that maximizes improvement of the player's current Planner-assigned tactic lane, using the same role catalog and score model the app already computes. The cell shows only the focus name, or `—` when there is no suggestion. The suggestion is advisory and read-only: it never writes to FM, snapshots, Planner assignments, tactics, or persistence (Linear JAY-46). There is no Details action, no Modal, and no supporting evidence UI.
 
 ## User-visible behavior
 
 - Club → Squad player table shows a visible default column **Suggested Training** (new layouts; existing persisted Squad layouts that still match the old default gain it; customized layouts are unchanged).
-- For a player assigned to a Planner lane, the cell shows the focus name (e.g. `Defensive Positioning` is an example shape; the exact name comes from the Linear inventory below) chosen by the approved ranking rule for that assigned lane.
-- The focus cell contains an explicit keyboard-operable **Details** action that stops row activation and opens one Squad-owned Modal built on the existing shared Modal (`src/components/ui/modal/modal.tsx`, no new UI primitive). The Modal shows the focus, the assigned lane's IP/OOP role labels, the focus-mapped and contributing attributes, and the labeled simulated gain.
-- A player with no Planner assignment renders `—` with a non-hover-only accessible explanation (`Not assigned to a Planner lane` in the accessible text).
-- A player whose suggestion is unavailable renders `—` with a non-hover-only accessible explanation naming the assigned lane roles instead of a guess.
+- For a player assigned to a Planner lane, the cell shows only the focus name chosen by the approved ranking rule for that assigned lane.
+- A player with no Planner assignment renders `—` with an accessible name stating there is no suggestion because the player is not assigned to a Planner lane.
+- A player whose suggestion is unavailable renders `—` with an accessible name stating there is no suggestion.
+- If `CA >= PA`, the cell is always `—`: ranking must not produce a displayed focus for a fully developed player.
+- No Details action, no Modal, no gain, no role labels, and no mapped or contributing attribute evidence exist anywhere in the UI.
 - The column supports the standard header menu: Move left/right, Add column (re-add path), Remove column, resize. The column is explicitly non-sortable: header click never sorts it, it carries no sort affordance, and it never becomes the active sort. Search tables never expose this Squad-only field.
-- Rows keep their fixed heights; the cell shows only the focus name or `—`, and all evidence lives in the Modal and accessible text.
+- Rows keep their fixed heights; the cell shows only the focus name or `—`.
 - Determinism: the same player, lane, and attributes always produce the same suggestion.
 
 ## Invariants
 
 - Target is always the player's current Planner-assigned tactic lane (unique per player per save). No best-role fallback, no user-selected role.
-- Whole-inventory precondition: if any current attribute required by any focus in the applicable inventory (outfield or goalkeeper) is missing/null, the whole suggestion is unavailable (`focus: None` with lane roles present). The worker never skips that focus and recommends another. Baseline role-required values remain required (missing lane-role primary/secondary attribute also yields unavailable). The all-zero first-inventory behavior below applies only when the full inventory is evaluable.
-- Ranking rule: for each applicable FM26 focus, simulate +1 to every mapped attribute currently below 20, recompute the assigned lane's configured IP/OOP score, and choose the focus with the largest **unrounded** combined-score gain. Respect the lane `ip_weight`. Linear list order is the deterministic final tie-break (strict `>` comparison in inventory order). All-zero gains (e.g. fully maxed attributes) still return the first inventory-order focus, but only when the whole inventory is evaluable.
+- Whole-inventory precondition: if any current attribute required by any focus in the applicable inventory (outfield or goalkeeper) is missing/null, there is no suggestion (`None`, rendered as `—`). The worker never skips that focus and recommends another. Baseline role-required values remain required (a missing lane-role primary/secondary attribute also yields no suggestion). The all-zero first-inventory behavior below applies only when the full inventory is evaluable.
+- Ranking rule: for each applicable FM26 focus, simulate +1 to every mapped attribute currently below 20, recompute the assigned lane's configured IP/OOP score, and choose the focus with the largest **unrounded** combined-score gain. Respect the lane `ip_weight`. Linear list order is the deterministic final tie-break (strict `>` comparison in inventory order). All-zero gains (e.g. fully maxed attributes) still return the first inventory-order focus, but only when the whole inventory is evaluable. Gain is comparison-local only: it is never displayed or exported.
 - No separate current/potential suggestions; no projected-potential gaps; no potential path at all.
 - Goalkeeper focus inventory applies only to the GK Planner lane (`lane_id == "goalkeeper"`); the outfield inventory applies otherwise.
 - Read-only advisory: no FM write, no snapshot/Planner/tactic/persistence mutation, no new IPC mutation. Tactic reads for this feature must not seed a default tactic as a side effect. A save with zero tactic rows yields all-unassigned cells without calling `load_tactic`. Partial or corrupt tactic rows still call `load_tactic` and surface its error honestly.
 - Current visible attributes (`players.attributes_json`) are not concealed by the `reveal_hidden_information` preference; concealed state only affects PA/potential/hidden/personality presentation elsewhere.
-- Missing values render `—`, never `null`, `N/A`, `0`, or blank. Colour is never the sole indicator; the focus name / `—` is the fact, and the Modal plus accessible text carry the explanation without hover.
+- Cells render `—`, never `null`, `N/A`, `0`, or blank. Colour is never the sole indicator; the focus name or `—` is the fact, exposed through an appropriate accessible name for the visible value or dash. The UI carries no explanation beyond that name.
 - Thin frontend / thick backend: Rust owns focus ranking; the WebView renders DTO values. No WebView SQL. Rust owns no sort ordering for this field because the column is non-sortable. Shared modules (`src/utils/**`, `src/stores/**`, shared table header) never import `@/features/**` or `@/app/**`; no cross-feature imports (compose in `src/app/routes/my-club.tsx`).
 - Bounded 50-row Squad pages are preserved with SQL `LIMIT`/`OFFSET` paging unchanged; per-page suggestion derivation adds no new IPC round-trips.
+- Fully developed players get no suggestion: when `CA >= PA`, the Squad path returns `None` before ranking, so the cell is always `—` and no focus is produced or displayed. The gate lives in the Squad path because the pure ranker never sees CA/PA.
+- One null/string outward contract: unassigned, unavailable, and fully developed states all collapse to `None` (`null` over IPC, rendered as `—`). The UI only needs value-or-dash, so no lane, role, attribute, or gain field crosses the outward boundary.
 
 ## Non-goals
 
@@ -46,7 +49,7 @@ Suggest one FM26 individual-training focus per Club → Squad player that maximi
 - No sorting by this column in any surface (header, URL state, backend, mock, or test); the column is configurable, removable, resizable, and re-addable, but never sortable.
 - No current-vs-potential wording split (single suggestion; JAY-46 answers NO to differing paths).
 - No best-role or user-selected-role targeting; no per-role picker.
-- No new UI primitive: evidence uses the existing shared Modal, not a new modal, chart, comparison inspector, tooltip component, or profile surface.
+- No evidence UI: no Details action, no Modal, no gain display, no role labels, no mapped or contributing attribute display, and no replacement tooltip, chart, inspector, or profile surface. The developer explicitly rejected that evidence UI.
 - No Search/Moneyball/Staff columns, filters, or sorts for this field.
 - No age-based trainability gating, no physical-decline rules.
 - No migration beyond the additive Squad-layout version bump; no new table.
@@ -55,23 +58,24 @@ Suggest one FM26 individual-training focus per Club → Squad player that maximi
 ## Current-state map
 
 - Relevant components:
-  - `src-tauri/src/features/scoring/score.rs` — `score_role` owns the 75/25 primary/secondary blend, `/20*100` scaling, nearest-integer rounding, `None` on missing/null required attributes. No unrounded entry point exists yet.
+  - `src-tauri/src/features/scoring/score.rs` — `score_role` owns the 75/25 primary/secondary blend, `/20*100` scaling, nearest-integer rounding, `None` on missing/null required attributes. Commit 2 added the shared unrounded entry point `score_role_unrounded` beside it.
   - `src-tauri/src/features/scoring/catalog.rs` — 79 static FM26 roles; `DUMP_ATTRIBUTE_KEYS` (PascalCase); every Linear focus label maps to an existing dump key (verified: `FreeKicks`, `Corners`, `PenaltyTaking`, `LongThrows`, `JumpingReach`, `WorkRate`, `OffTheBall`, `LongShots`, `FirstTouch`, `CommandOfArea`, `OneOnOnes`, `RushingOut` all present).
   - `src-tauri/src/features/scoring/combine.rs` — `combine_role_scores(ip, oop, ip_weight)` (rounded `Option<u8>`, `None` on missing score or out-of-range weight).
-  - `src-tauri/src/features/planner/tactic.rs` — 11 ordered save-scoped lanes (`DEFAULT_LANE_IDS`, index 0 is `goalkeeper`); `TacticLane` links IP/OOP position+role and owns `ip_weight`; `load_tactic` is `pub(super)` read-only (no seeding) and rejects zero rows because validation requires exactly 11 lanes; `get_tactic` seeds a default. No `EXISTS`/count pre-check exists yet in the Squad path.
+  - `src-tauri/src/features/planner/suggested_training.rs` (new in Commit 2) — owns both focus inventories, GK-vs-outfield selection by `lane_id == "goalkeeper"`, the whole-inventory precondition, and `suggest_for_lane`. Commit 4 removes `SuggestedFocus` entirely so `suggest_for_lane` returns the winning focus name only (`Option<&'static str>`); the best gain stays a local variable inside the ranking loop and never crosses a module boundary.
+  - `src-tauri/src/features/planner/tactic.rs` — 11 ordered save-scoped lanes (`DEFAULT_LANE_IDS`, index 0 is `goalkeeper`); `TacticLane` links IP/OOP position+role and owns `ip_weight`; `load_tactic` is `pub(super)` read-only (no seeding) and rejects zero rows because validation requires exactly 11 lanes; `get_tactic` seeds a default. The Squad path (Commit 3) counts rows before calling it, so absence never reaches `load_tactic`.
   - `src-tauri/src/features/planner/depth.rs` — unique player assignment per save (`planner_assignments`: `save_id, string_id, lane_id, player_uid`); `resolve_assignment` reads persisted lane-role scores and blends with `combine_role_scores`.
-  - `src-tauri/src/features/planner/squad.rs` — bounded Club Squad pages (`list_squad_players`, 50-row default, `MAX_SQUAD_PAGE_LIMIT = 200`, SQL `LIMIT`/`OFFSET` paging); joins `player_role_metrics`/Club DNA dynamic fields; does **not** join assignments, tactic, or `attributes_json`. `SquadSortField` has no suggested-training variant and gains none.
-  - `src-tauri/src/features/planner/commands.rs` — `SquadPlayerDto` (camelCase) + `DynamicValueDto`; `list_squad_players` IPC (active-save scoped, no mutation).
+  - `src-tauri/src/features/planner/squad.rs` — bounded Club Squad pages (`list_squad_players`, 50-row default, `MAX_SQUAD_PAGE_LIMIT = 200`, SQL `LIMIT`/`OFFSET` paging); joins `player_role_metrics`/Club DNA dynamic fields. Commit 3 added a read-only tactic presence check, read-only tactic load, a one-query assignment map, `attributes_json` reads, and per-row `suggested_training` as `Option<SquadSuggestedTraining>` (nested lane/role/evidence struct; Commit 4 simplifies it to `Option<String>`). `SquadSortField` has no suggested-training variant and gains none.
+  - `src-tauri/src/features/planner/commands.rs` — `SquadPlayerDto` (camelCase) + `DynamicValueDto`; `list_squad_players` IPC (active-save scoped, no mutation). Commit 3 added the nested `suggestedTraining` DTO object (Commit 4 simplifies it to `string | null`).
   - `src-tauri/src/features/player_metrics/resolver.rs` — closed `MetricField` catalog; tactic/Club DNA precedents for synthetic fields. This feature adds no `MetricField` and no sort expression.
-  - `src/features/squad/components/squad-overview-panel.tsx` — Squad table adapter; `tableColumnForMetric` falls back to `undefined` for unknown IDs; uses `PlayerTableHeader` default metrics (`PLAYER_METRICS`); cells render `ScoreBadge`/`—`; sort replacement via committed/requested observers. `requestedFields` currently forwards every non-basic column ID and must explicitly exclude the new field. No Modal usage exists yet in this panel.
-  - `src/components/ui/modal/modal.tsx` — existing shared Modal with `open`, `onClose`, `title`, focus trap, Escape/backdrop close, and focus restoration (`returnFocusTo`/`fallbackFocusTo`). This is the evidence surface; no new primitive is approved.
+  - `src/features/squad/components/squad-overview-panel.tsx` — Squad table adapter; `tableColumnForMetric` falls back to `undefined` for unknown IDs; uses `PlayerTableHeader` default metrics (`PLAYER_METRICS`); cells render `ScoreBadge`/`—`; sort replacement via committed/requested observers. `requestedFields` currently forwards every non-basic column ID and must explicitly exclude the new field. No suggestion work exists in this panel yet (the interrupted Commit 4 never landed).
+  - `src/components/ui/modal/modal.tsx` — existing shared Modal with `open`, `onClose`, `title`, focus trap, Escape/backdrop close, and focus restoration (`returnFocusTo`/`fallbackFocusTo`). This feature does not use it.
   - `src/features/squad/types/squad-player.ts` — frontend DTO mirror (`dynamicValues` optional record).
   - `src/features/squad/types/squad-sort.ts` — `isSquadSortField` accepts only `getPlayerMetric` IDs; `SQUAD_SORT_FIELDS` fixed basics. The new ID stays outside the shared catalog, so this file correctly rejects it as a sort field with no change.
-  - `src/components/player-table/player-table-header.tsx` — `ConfigurableTableHeader` takes a table-level `sortable` flag only (click/title/`aria-sort` all key off it); the Add-column menu lists only `metric.sortable` entries. No per-column sortability exists yet; the minimum extension is planned in Commit 4.
+  - `src/components/player-table/player-table-header.tsx` — `ConfigurableTableHeader` takes a table-level `sortable` flag only (click/title/`aria-sort` all key off it); the Add-column menu lists only `metric.sortable` entries. No per-column sortability exists yet; the minimum extension is planned in Commit 5.
   - `src/utils/player-metrics.ts` — shared catalog where `playerMetric` defaults `sortable` to `true`. The new field is not added here; the worker verifies no currently supplied catalog contains `sortable: false` so the header extension changes no existing Add-menu content.
   - `src/stores/use-player-table-store.ts` — persisted per-table layouts, `PLAYER_TABLE_LAYOUT_VERSION = 6`; `search` and `squad` share `DEFAULT_PLAYER_TABLE_COLUMN_IDS` via `defaultLayout`; `isAllowedColumnId` gates synthetic IDs per table via `getPlayerMetric(id)?.sortable === true` for `search`/`squad`. No shared suggested-training module exists yet.
   - `src/app/routes/my-club.tsx` — `validateSearch`/`squadSortForSearch` via `isSquadSortField`; `squadKeys` (`["planner","squad"]`) invalidation. No sort-validation change is needed because the new ID is already rejected as a sort field.
-  - Tests/mocks: `src-tauri/src/features/planner/squad_tests.rs` (Rust seam), `src/app/routes/my-club-squad.test.tsx` (route suite), `src/stores/use-player-table-store.test.ts` (layout migration seam), `src/testing/squad-ipc-mock.ts` (local sort + paging mock; carries no suggested-training sort and gains none), `e2e/smoke.spec.ts` Squad overview block (~line 958; asserts headers).
+  - Tests/mocks: `src-tauri/src/features/planner/squad_tests.rs` (Commit 3 attachment tests; evidence and gain assertions removed in Commit 4), `planner/suggested_training.rs` inline engine tests (evidence and gain assertions removed in Commit 4), `src/app/routes/my-club-squad.test.tsx` (route suite; no suggestion coverage yet), `src/stores/use-player-table-store.test.ts` (layout migration seam; still version 6), `src/testing/squad-ipc-mock.ts` (local sort + paging mock; carries no suggested-training sort and gains none), `e2e/smoke.spec.ts` Squad overview block (~line 958; asserts headers).
 - Data model:
   - `players(snapshot_id, uid, attributes_json, …)` — current visible attributes as nullable JSON map; sparse omissions possible.
   - `planner_tactic_lanes(save_id, lane_order, lane_id, ip_weight, …, ip_position, ip_role_id, oop_position, oop_role_id)`.
@@ -99,18 +103,18 @@ Suggest one FM26 individual-training focus per Club → Squad player that maximi
 ## Feature architecture
 
 - Backend ownership (all under `src-tauri/src/features/`, planner-scoped):
-  - `planner/suggested_training.rs` (new) — owns the two focus inventories with dump-key mappings, GK-vs-outfield selection by `lane_id == "goalkeeper"`, the whole-inventory evaluability precondition, and the pure ranking function `suggest_for_lane(attributes, lane) -> SuggestionOutcome`. Imports the role catalog and the shared unrounded scorer; no SQL.
-  - `scoring/score.rs` — gains `score_role_unrounded` (same band means and 75/25 blend, no rounding) used by both baseline and simulation.
-  - `planner/squad.rs` — `list_squad_players` performs a read-only `EXISTS`/count check on tactic rows (zero rows means every cell unassigned without calling `load_tactic` and without seeding), otherwise loads the tactic read-only (`load_tactic`, never seeding) so partial/corrupt rows error honestly, maps `player_uid → lane_id` for the save in one query, reads `attributes_json` for page rows, and attaches a per-player suggestion cell value. SQL `LIMIT`/`OFFSET` paging is unchanged. No suggested-training sort path exists anywhere in the backend.
-  - `planner/commands.rs` — extends `SquadPlayerDto` with the typed suggestion cell (camelCase, no new command).
+  - `planner/suggested_training.rs` (Commit 2) — owns the two focus inventories with dump-key mappings, GK-vs-outfield selection by `lane_id == "goalkeeper"`, the whole-inventory evaluability precondition, and the pure ranking function `suggest_for_lane`. Imports the role catalog and the shared unrounded scorer; no SQL. Commit 4 deletes `SuggestedFocus` entirely so the function returns the winning focus name only (`Option<&'static str>`); the best gain stays a local variable inside the ranking loop.
+  - `scoring/score.rs` — owns `score_role_unrounded` (same band means and 75/25 blend, no rounding; added in Commit 2) used by both baseline and simulation.
+  - `planner/squad.rs` — `list_squad_players` performs a read-only `EXISTS`/count check on tactic rows (zero rows means every cell unassigned without calling `load_tactic` and without seeding), otherwise loads the tactic read-only (`load_tactic`, never seeding) so partial/corrupt rows error honestly, maps `player_uid → lane_id` for the save in one query, reads `attributes_json` plus CA/PA for page rows, and attaches a per-player suggestion. Commit 4 simplifies the cell to `Option<String>`: `suggestion_for_player` returns `None` for unassigned, tactic-less, incomputable, and `ca >= pa` rows (gate before ranking) and the winning focus name otherwise. SQL `LIMIT`/`OFFSET` paging is unchanged. No suggested-training sort path exists anywhere in the backend.
+  - `planner/commands.rs` — carries `suggestedTraining: string | null` on `SquadPlayerDto` (camelCase, no new command).
 - Frontend ownership:
-  - `src/utils/suggested-training.ts` (new, neutral shared) — owns `SUGGESTED_TRAINING_COLUMN_ID = "suggested_training"` and a simple predicate (e.g. `isSuggestedTrainingColumnId`) importable by the store and Squad. It owns no label, metric definition, or presentation list. No shared→feature import exists in either direction.
+  - `src/utils/suggested-training.ts` (new, neutral shared, required) — owns `SUGGESTED_TRAINING_COLUMN_ID = "suggested_training"` and a simple predicate (e.g. `isSuggestedTrainingColumnId`), imported by both the global store and Squad. It owns no label, metric definition, or presentation list. No shared→feature import exists in either direction.
   - `src/features/squad/utils/squad-columns.ts` (new, Squad-owned) — owns the Squad-only metric definition (label `Suggested Training`, left align, width 176, `sortable: false`), the Squad header metrics list (`PLAYER_METRICS` plus the Squad-only entry), and any Squad presentation helpers. `PLAYER_METRICS`, Moneyball catalogs, and Search paths are untouched.
   - `src/components/player-table/player-table-header.tsx` — minimum extension only: per-column sortability controls the header click/title/`aria-sort` for that column, and the Add menu may list a valid non-sortable metric so the Squad-only entry remains re-addable. Existing sortable columns keep identical behavior, proved by focused header tests plus verification that no currently supplied catalog contains `sortable: false`.
-  - `squad-overview-panel.tsx` — renders the synthetic column (focus text or `—`), owns one Modal instance with its open state (shared Modal owns focus trap and restoration), renders a keyboard-operable Details action per suggestion cell that stops row activation and opens the Modal with focus, assigned IP/OOP role labels, mapped/contributing attributes, and labeled simulated gain, shows `—` with accessible explanations for unassigned/unavailable states, passes the Squad metrics list to the header, and explicitly excludes the field from `requestedFields` (the DTO always carries it).
-  - `src/features/squad/types/squad-player.ts` — mirrors the new DTO field.
+  - `squad-overview-panel.tsx` — renders the synthetic column (focus string or `—` with an appropriate accessible name for the visible value or dash), owns no Modal and no details state, passes the Squad metrics list to the header, and explicitly excludes the field from `requestedFields` (the DTO always carries it).
+  - `src/features/squad/types/squad-player.ts` — mirrors the new DTO field as `suggestedTraining: string | null`.
   - `src/features/squad/types/squad-sort.ts` — unchanged; the Squad-only ID is not a sort field.
-  - `src/stores/use-player-table-store.ts` — version 7: Squad-specific default gains the column at the far right; `isAllowedColumnId` accepts it for `squad` only via the shared predicate (not via the shared metric catalog); v6→v7 migration appends it to persisted Squad layouts that still equal the v6 default, leaving customized layouts unchanged.
+  - `src/stores/use-player-table-store.ts` — version 7: Squad-specific default gains the column at the far right; `isAllowedColumnId` accepts it for `squad` only via the shared predicate from `src/utils/suggested-training.ts`; v6→v7 migration appends it to persisted Squad layouts that still equal the v6 default, leaving customized layouts unchanged.
 - Focus inventories (exact Linear JAY-46 order; order is the tie-break):
   - Outfield (16): Free Kick Taking (`Technique`, `FreeKicks`); Corner Taking (`Technique`, `Corners`); Penalty Taking (`Technique`, `PenaltyTaking`); Long Throws (`LongThrows`); Quickness (`Acceleration`, `Pace`); Agility and Balance (`Agility`, `Balance`); Strength (`JumpingReach`, `Strength`); Endurance (`WorkRate`, `Stamina`); Defensive Positioning (`Marking`, `Decisions`, `Positioning`); Attacking Movement (`Anticipation`, `Decisions`, `OffTheBall`); Shooting (`Finishing`, `LongShots`, `Technique`); Passing (`Passing`, `Technique`, `Vision`); Final Third (`Composure`, `Decisions`); Crossing (`Crossing`, `Technique`); Ball Control (`Dribbling`, `FirstTouch`, `Technique`); Aerial (`Heading`, `Bravery`).
   - Goalkeepers (14): Free Kick Taking; Corner Taking; Penalty Taking; Long Throws; Quickness; Agility and Balance; Strength; Endurance (same eight mappings as outfield); GK Reactions (`Reflexes`, `Anticipation`, `Concentration`); GK Tactical (`Communication`, `Decisions`, `Positioning`); GK Technique (`Handling`, `Composure`, `Technique`); GK Sweeping (`CommandOfArea`, `OneOnOnes`, `RushingOut`); GK Distribution (Long) (`Kicking`, `Throwing`); GK Distribution (Short) (`FirstTouch`, `Passing`, `Vision`).
@@ -119,13 +123,12 @@ Suggest one FM26 individual-training focus per Club → Squad player that maximi
 
 ### Known
 
-- HEAD is `339ea2c9` on `main`; worktree has a pre-existing unrelated modification to `.wiki/features/completed/snapshot-date-edit.md` (untouched by this plan and permitted to remain unstaged).
+- HEAD is `076a77f1` on `feature/suggested-individual-training` (base `main`); Commits 1–3 are complete with the refs in Completed work. The original Commit 4 partial work was interrupted before validation/review and discarded from the worktree; a recovery stash exists but is not delivery truth. The worktree also carries the pre-existing unrelated modification to `.wiki/features/completed/snapshot-date-edit.md` (untouched by this plan and permitted to remain unstaged).
 - No planned spec or active ledger exists for this feature; nothing to remove. `.wiki/TODO.md` already carries this feature as the Active entry and Next remains gender-data work (preserved).
 - All 30 focus-mapped dump keys exist in `DUMP_ATTRIBUTE_KEYS` (verified against `catalog.rs`).
 - `lane_id == "goalkeeper"` identifies the GK lane (`DEFAULT_LANE_IDS[0]`; default GK lane uses GK-only roles).
 - `load_tactic` rejects zero rows because validation requires exactly 11 lanes, so the Squad path needs the `EXISTS`/count pre-check to distinguish absent tactics (all unassigned, no seeding) from partial/corrupt rows (honest error).
-- The shared header has only a table-level `sortable` flag and the Add menu filters on `metric.sortable`; the minimum per-column extension is scoped in Commit 4.
-- The shared Modal (`src/components/ui/modal/modal.tsx`) already provides dialog semantics, focus trap, Escape/backdrop close, and focus restoration; the Squad panel owns Modal open state only.
+- The shared header has only a table-level `sortable` flag and the Add menu filters on `metric.sortable`; the minimum per-column extension is scoped in Commit 5.
 - Squad cohort is single-club and small; per-page suggestion evaluation is bounded by `MAX_SQUAD_PAGE_LIMIT` paging and the managed-club membership itself.
 - Publication: one short-lived feature branch from `main`, GitHub, `.github/pull_request_template.md`, squash merge, strict required status `check`; no release metadata for ordinary feature work.
 
@@ -142,31 +145,31 @@ Suggest one FM26 individual-training focus per Club → Squad player that maximi
 - Tactic presence is checked with a read-only `EXISTS`/count query before `load_tactic` in the Squad path (never `get_tactic`): listing the Squad must not seed a default tactic as a side effect. Zero rows means all cells unassigned. Partial/corrupt rows still call `load_tactic` and error honestly. Rationale: `load_tactic` cannot distinguish absence from corruption because it rejects both.
 - Whole-inventory evaluability gates the suggestion: a missing/null value for any attribute required by any focus in the applicable inventory makes the whole cell unavailable. The worker never skips that focus and recommends another. Rationale: skipping would silently substitute a second-best improvement for an incomputable best, which misrepresents the approved ranking rule. Baseline role-required values remain required.
 - All-zero gains (e.g. fully maxed attributes) still return the first inventory-order focus, but only when the full inventory is evaluable: deterministic consequence of the approved rule, not a special case.
-- `contributing_attributes` = focus-mapped attributes (below 20, actually simulated) that also appear in either lane role's primary/secondary bands, in focus-mapping order. This is the overlap that explains the gain.
-- Evidence uses the existing shared Modal opened from an explicit Details action: cell `title`/hover-only text is replaced because hover-only evidence is not keyboard- or touch-reachable. No new UI primitive is introduced. Rationale: the dense table keeps fixed row heights while the Modal carries the full evidence without hover dependence.
-- `SUGGESTED_TRAINING_COLUMN_ID` and its predicate live in neutral `src/utils/suggested-training.ts` importable by both the store and Squad; label/metric/presentation list stay Squad-owned. Rationale: the store needs the ID for its allowlist but shared modules must not import from `@/features/**`, and a duplicated literal would create two owners.
+- No evidence UI by developer approval: the cell shows only the focus name or `—` with an accessible name for the visible value or dash. There is no Details action, Modal, gain, role labels, mapped or contributing attribute display, and no replacement tooltip, chart, inspector, or profile surface. Rationale: the developer explicitly rejected that evidence UI and the solo-dev scope favors the smallest contract that answers the question.
+- One null/string outward contract is intentional: unassigned, unavailable, and fully developed (`CA >= PA`) all collapse to `None`/`null`/`—` because the UI only needs value-or-dash. No lane, role, attribute, or gain field crosses the Squad DTO boundary.
+- The max-CA gate lives in the Squad path (`suggestion_for_player`, which already reads CA/PA per row), not in the pure ranker: `ca >= pa` returns `None` before ranking so no focus is produced or displayed. Rationale: the ranker never sees CA/PA and its approved rule is unchanged.
+- `SUGGESTED_TRAINING_COLUMN_ID` and its predicate live in neutral `src/utils/suggested-training.ts`, imported by both the global store and Squad. Label/metric/presentation list stay Squad-owned in `src/features/squad/utils/squad-columns.ts`. Rationale: one literal owner without a shared→feature import.
 - Default position far right after Value (Club DNA append precedent); width 176 left-aligned (shared text-metric width).
 - No ADR: single approved ranking rule with no retained meaningful alternative; rationale lives here.
 
 ### Unknowns
 
-- None requiring a developer decision. All product behavior, ranking, placement, rollout, and read-only boundaries are explicitly approved in the dispatch. Remaining items are worker-verifiable implementation details with stop conditions in their packets.
+- None requiring a developer decision. All product behavior, ranking, placement, rollout, and read-only boundaries are explicitly approved. Remaining items are worker-verifiable implementation details with stop conditions in their packets.
 
 ### Risks
 
-- Unrounded math drifting from the rounded ingest scores (user-visible lane scores stay rounded; gains are advisory deltas) — mitigate with shared helper + property tests tying unrounded to `score_role` rounding.
+- Unrounded math drifting from the rounded ingest scores (user-visible lane scores stay rounded; gains are advisory and never displayed) — mitigate by keeping the shared helper + parity tests from Commit 2 unchanged.
 - Whole-inventory gating reading as overly strict in review (one missing exotic attribute blanks the cell) — this is the approved correction, so a challenge escalates to a developer decision rather than a silent revert to focus-skipping.
 - Shared-header extension affecting other tables — mitigate by verifying no existing catalog supplies `sortable: false` and by focused header tests proving sortable columns keep click/title/`aria-sort` behavior.
-- Modal judged excessive chrome for a dense table in review — stop condition in Commit 4 escalates the presentation choice rather than inventing a third evidence surface unprompted.
+- Simplicity challenged in review as hiding useful signal — this is the approved developer contract, so a challenge escalates to a developer decision rather than re-adding evidence UI unprompted.
 - Persisted-layout migration misclassifying customized layouts — mitigate with exact-equality check against the v6 default + dedicated store tests.
 
 ## Walking skeleton
 
 The thinnest end-to-end path that proves the approach:
 
-1. Add `score_role_unrounded` beside `score_role` with a rounding-parity test.
-2. Add `planner/suggested_training.rs` with both inventories and `suggest_for_lane`, proving one outfield ranking + one GK ranking + one whole-inventory-unavailable case in Rust tests.
-3. Wire one Squad row end-to-end (tactic presence check + assignment join + DTO + cell text with Details action) before menu, Modal, and migration work.
+1. Trim the outward contract to a focus string or null with the `ca >= pa` gate, proving focus-or-null plus the gate in Rust tests while ranking stays unchanged.
+2. Wire one Squad row end-to-end (tactic presence check + assignment join + string DTO + cell text or `—`) before menu and migration work.
 
 ## Delivery plan
 
@@ -196,9 +199,9 @@ The thinnest end-to-end path that proves the approach:
 
 **Provisional PR title:** `feat(squad): suggest individual training per assigned lane`
 
-**Purpose:** Deliver the complete advisory Suggested Training column for the Club Squad table in one reviewable, revertible unit: ranking engine, Squad read-model wiring, and Squad-only non-sortable presentation with layout rollout.
+**Purpose:** Deliver the complete advisory Suggested Training column for the Club Squad table in one reviewable, revertible unit: ranking engine, Squad read-model wiring with a value-or-dash string contract, and Squad-only non-sortable presentation with layout rollout.
 
-**Depends on:** None (no prior PR; HEAD `339ea2c9`).
+**Depends on:** None (single PR; Commits 1–3 complete on this branch).
 
 #### Commit 1 — Record the approved feature plan
 
@@ -317,7 +320,7 @@ The thinnest end-to-end path that proves the approach:
 
 #### Commit 3 — Attach suggestions to the Squad read model
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(squad): attach suggested training to squad pages`
 
@@ -376,97 +379,155 @@ The thinnest end-to-end path that proves the approach:
 
 **Review mandate:** (1) `EXISTS`/count pre-check proven by test with zero rows never reaching `load_tactic`; (2) partial/corrupt rows error honestly; (3) single assignment query (no N+1); (4) `None` vs `focus: None` semantics exact, including whole-inventory gating; (5) no new migration/table and no sort path; (6) DTO camelCase matches frontend mirror; (7) corrupt-attributes error honesty; (8) existing sorts/pages keep their preserved observable contracts when the column is unused (bounded `LIMIT`/`OFFSET`, unchanged totals, unchanged sort order and UID tie behavior, additive DTO gain).
 
-#### Commit 4 — Show Suggested Training in the Squad table
+#### Commit 4 — Simplify the outward suggestion to value-or-dash
 
-**Status:** Pending
+**Status:** Completed
 
-**Provisional commit:** `feat(squad): show suggested training column by default`
+**Provisional commit:** `feat(squad): simplify suggested training to value-or-dash`
 
-**Work:** Squad-only non-sortable presentation: shared ID module, Squad-only column definition, minimum shared-header per-column extension, cell + Details + Squad-owned Modal rendering, Squad-local metrics list, store default v7 + migration, DTO mirror, IPC mock fixtures, route/store/header tests, smoke verification.
+**Work:** Backend simplification: trim the outward suggestion contract to a focus string or null, add the max-CA gate, and remove obsolete evidence fields and tests. No frontend change.
 
-**Size assessment:** ~190 changed non-test implementation lines; `Within the soft target` (single coherent Squad presentation outcome; tests excluded from the count).
+**Size assessment:** ~60 changed non-test implementation lines; `Within the soft target`.
 
 **Out of scope:**
 
-- Backend ranking/read-model changes (Commits 2–3, consumed unchanged); Search/Moneyball/Staff surfaces; new UI primitives; release work; any sort path for this field.
+- Frontend/store/panel work (Commit 5); ranking-rule changes (Commit 2 engine, consumed unchanged); SQLite migrations (none); Search/query changes; any sort path for this field.
 
 **Implementation packet:**
 
 **Files and responsibilities:**
 
-- `src/utils/suggested-training.ts` (new, neutral shared) — `SUGGESTED_TRAINING_COLUMN_ID = "suggested_training"` plus a simple predicate (e.g. `isSuggestedTrainingColumnId`). No label, metric, or presentation content. Importable by the store and Squad; imports nothing from `@/features/**` or `@/app/**`.
-- `src/features/squad/utils/squad-columns.ts` (new, Squad-owned) — Squad-only metric `{ id, label: "Suggested Training", align: "left", defaultWidth: 176, sortable: false }`, and the Squad header metrics list (shared `PLAYER_METRICS` plus the Squad-only entry). No shared-catalog change.
+- `src-tauri/src/features/planner/suggested_training.rs` — delete `SuggestedFocus` entirely and change `suggest_for_lane` to return the winning focus name only (`Option<&'static str>`); keep the best gain as a local variable inside the ranking loop for comparison. Delete `focus_attributes`, `contributing_attributes`, every exported gain, and every helper that exists only to build them. Ranking math, inventory order, whole-inventory gating, and tie-break stay behaviorally identical. Update inline engine tests to assert focus names only with no gain assertions (see Tests and proof).
+- `src-tauri/src/features/planner/squad.rs` — delete `SquadSuggestedTraining`; change `SquadPlayer.suggested_training` to `Option<String>` (focus name). `suggestion_for_player` takes the row CA/PA and returns `None` without ranking when `ca >= pa`; otherwise it ranks as before and maps the winner to its focus name, keeping `None` for unassigned, tactic-less, and incomputable rows. No role, attribute, or gain value leaves this module.
+- `src-tauri/src/features/planner/commands.rs` — delete `SquadSuggestedTrainingDto` and its `From` impl; change `SquadPlayerDto.suggested_training` to `Option<String>` (`suggestedTraining: string | null`, no new command).
+- `src-tauri/src/features/planner/squad_tests.rs` — remove evidence assertions/helpers; keep ranking and missing-input coverage; add max-CA gate tests.
+
+**Behavior and data flow:**
+
+- Page path is unchanged until the per-row suggestion: `ca >= pa` short-circuits to `None` before the engine runs, so a fully developed player never produces a displayed focus. Otherwise the approved ranking runs unchanged and only the winning focus name crosses into the DTO. Unassigned, unavailable, and fully developed states all collapse to one null rendered as `—` downstream. Errors stay honest: corrupt `attributes_json` surfaces the existing invalid-data error; partial/corrupt tactic rows surface the `load_tactic` error.
+
+**Ordered implementation steps:**
+
+1. RED: add failing page-level tests — a player with `ca == pa` and a player with `ca > pa` both carry `suggested_training: None`; a control player with `pa > ca` on the same lane still carries the expected focus.
+2. GREEN: trim the structs and DTO, thread row CA/PA into `suggestion_for_player`, add the gate, and delete evidence-only code and tests. Keep every surviving ranking and missing-input test green without changing its expectation.
+3. Refactor only while green; run `./scripts/dev check-rust` then `./scripts/dev check`.
+
+**Tests and proof:**
+
+- New gate tests (page level in `squad_tests.rs`): `ca == pa` → `None`; `ca > pa` → `None`; control `pa > ca` → expected focus string.
+- Preserved tests: exact ranking outcomes (focus names only, no gain assertions), inventory order, GK-vs-outfield selection, whole-inventory unavailable (`None`), all-maxed first-focus behavior — expectations unchanged except evidence fields and gain assertions are gone.
+- Removed tests/helpers: every assertion on `focus_attributes`, `contributing_attributes`, any `gain` value or `SuggestedFocus` shape, lane/role display identity, and any fixture helper that exists only to build those. No absence test is needed for deleted struct fields: compilation plus the surviving suite proves the removal.
+- No sort tests exist or are added; existing sort/page tests keep proving bounded paging and unchanged order. The full `./scripts/dev check` gate proves no frontend, store, or header contract broke.
+
+**Patterns to verify:**
+
+- `squad_tests.rs` fixture helpers (`open_with_snapshot`, `add_picker_candidates`); `depth.rs::resolve_assignment` for weight use (unchanged).
+
+**Constraints and non-goals:**
+
+- Do not change the ranking rule, inventories, tie-break, whole-inventory gating, or rounding behavior. Do not touch the frontend, store, IPC surface beyond the field shape, Search resolvers, `SquadSortField`, or migrations. Do not round or export gains. Keep the 50-row page bound.
+
+**Dependencies and sequencing:**
+
+- Requires Commits 2–3 (engine ranking and page wiring, consumed unchanged apart from the trimmed contract).
+
+**Validation:** `./scripts/dev check-rust` then `./scripts/dev check` (full repository commit gate).
+
+**Stop conditions:** Stop if any surviving ranking expectation changes (the rule must not move), if CA/PA cannot reach `suggestion_for_player` from the already-read row without a new query, or if removing the nested struct forces an IPC surface change beyond the field shape (escalate before widening scope).
+
+**Review mandate:** (1) ranking behavior identical for `pa > ca`; (2) `ca >= pa` never yields a focus; (3) no `SuggestedFocus` type and no `focus_attributes`, `contributing_attributes`, `gain`, lane, or role value crosses any module boundary (best gain stays local to the ranker); (4) DTO is `string | null`; (5) obsolete evidence tests/helpers and gain assertions are gone while ranking and missing-input tests survive; (6) no frontend, store, migration, or sort-path change in this commit; (7) both `./scripts/dev check-rust` and the full `./scripts/dev check` gate pass.
+
+#### Commit 5 — Show Suggested Training in the Squad table
+
+**Status:** Active
+
+**Provisional commit:** `feat(squad): show suggested training column by default`
+
+**Work:** Squad-only non-sortable presentation of the Commit 4 string contract: column definition, minimum shared-header per-column extension, simple value-or-dash cell, Squad-local metrics list, store default v7 + migration, DTO mirror, IPC mock fixtures, focused tests, smoke verification. No Modal, no details state, no evidence UI.
+
+**Size assessment:** ~120 changed non-test implementation lines; `Within the soft target` (single coherent Squad presentation outcome; tests excluded from the count).
+
+**Out of scope:**
+
+- Backend ranking/read-model changes (Commits 2–4, consumed unchanged); Search/Moneyball/Staff surfaces; new UI primitives, Details actions, Modals, tooltips, or any evidence UI; release work; any sort path for this field.
+
+**Implementation packet:**
+
+**Files and responsibilities:**
+
+- `src/utils/suggested-training.ts` (new, neutral shared, required) — `SUGGESTED_TRAINING_COLUMN_ID = "suggested_training"` plus a simple predicate (e.g. `isSuggestedTrainingColumnId`), imported by both the global store and Squad. No label, metric, or presentation content. Imports nothing from `@/features/**` or `@/app/**`.
+- `src/features/squad/utils/squad-columns.ts` (new, Squad-owned) — Squad-only metric (label `Suggested Training`, left align, width 176, `sortable: false`) and the Squad header metrics list (shared `PLAYER_METRICS` plus the Squad-only entry). No shared-catalog change.
 - `src/components/player-table/player-table-header.tsx` — minimum extension only: per-column sortability gates the header click/title/`aria-sort` for that column, and the Add menu may list a valid non-sortable metric so the Squad-only entry stays re-addable. Before extending, verify no currently supplied catalog contains `sortable: false` so existing Add menus gain no new entries. Focused header tests prove sortable columns keep identical behavior.
-- `src/features/squad/components/squad-overview-panel.tsx` — `tableColumnForMetric` fallback for the Squad-only ID (via the Squad metrics list, not the shared catalog); cell renders focus text or `—` (`on-surface-variant`); per-cell keyboard-operable Details action (a real button that stops propagation so row activation never fires) opening one Squad-owned Modal instance with focus, `IP … / OOP …` role displays, mapped/contributing attributes humanized via `labelFromPascal` (the mapped list is the DTO `focusAttributes` consumed as-is; no inventory lookup or duplication in the frontend), and labeled simulated gain (`+X.X`); unassigned vs unavailable accessible strings for the `—` states; fixed row heights preserved; pass the Squad metrics list to `PlayerTableHeader`; explicitly exclude the field from `requestedFields` (DTO always carries it). Panel owns Modal open state; the shared Modal owns focus trap and restoration.
-- `src/features/squad/types/squad-player.ts` — mirror `suggestedTraining` (nullable struct: `laneId, ipRoleId, ipRoleDisplay, oopRoleId, oopRoleDisplay, focus, focusAttributes, contributingAttributes, combinedGain`).
+- `src/features/squad/components/squad-overview-panel.tsx` — `tableColumnForMetric` fallback for the Squad-only ID (via the Squad metrics list, not the shared catalog); cell renders the focus string or `—` with an appropriate accessible name for the visible value or dash; no Modal, no open state, no Details action; fixed row heights preserved; pass the Squad metrics list to `PlayerTableHeader`; explicitly exclude the field from `requestedFields` (the DTO always carries it).
+- `src/features/squad/types/squad-player.ts` — mirror `suggestedTraining: string | null`.
 - `src/features/squad/types/squad-sort.ts` — no change; the ID is already rejected as a sort field.
-- `src/stores/use-player-table-store.ts` — version `6 → 7`: Squad-specific default (`DEFAULT_SQUAD_TABLE_COLUMN_IDS`: v6 squad default + `suggested_training` far right; `search` keeps sharing `DEFAULT_PLAYER_TABLE_COLUMN_IDS` unchanged); `isAllowedColumnId` accepts the ID for `squad` only via the shared predicate; v6→v7 migration appends it to persisted Squad layouts exactly equal to the v6 default, otherwise sanitizes (strips it elsewhere).
-- `src/testing/squad-ipc-mock.ts` — support `suggestedTraining` fixtures; no `suggested_training` mock sort path is added (unknown-sort fallback behavior for the ID needs no dedicated test because the UI can never emit it).
-- `src/app/routes/my-club-squad.test.tsx` — default header present; suggestion text + Details action opening the Modal with expected focus, role labels, focus-mapped plus contributing attributes, and gain; Modal close returns focus to the invoking Details action; `—` for unassigned and unavailable with accessible explanations; non-sortable header (clicking it never changes sort state); remove/re-add via header menu.
-- `src/components/player-table/player-table-header.test.tsx` (new or colocated) — focused header tests: non-sortable column renders no sort affordance, click does not call `onSortChange`, `title`/`aria-sort` carry the non-sortable shape; Add menu lists a valid non-sortable metric; existing sortable columns keep click/title/`aria-sort`/Add behavior.
+- `src/stores/use-player-table-store.ts` — version `6 → 7`: Squad-specific default (`DEFAULT_SQUAD_TABLE_COLUMN_IDS`: v6 squad default + `suggested_training` far right; `search` keeps sharing `DEFAULT_PLAYER_TABLE_COLUMN_IDS` unchanged); `isAllowedColumnId` accepts the ID for `squad` only via the shared predicate from `src/utils/suggested-training.ts`; v6→v7 migration appends it to persisted Squad layouts exactly equal to the v6 default, otherwise sanitizes (strips it elsewhere).
+- `src/testing/squad-ipc-mock.ts` — support `suggestedTraining: string | null` fixtures; no mock sort path is added (the UI can never emit it).
+- `src/app/routes/my-club-squad.test.tsx` — default header present; focus text renders; `—` renders for null with the accessible name; non-sortable header (clicking it never changes sort state); remove/re-add via header menu.
+- `src/components/player-table/player-table-header.test.tsx` (new or colocated) — non-sortable column renders no sort affordance, click does not call `onSortChange`, `title`/`aria-sort` carry the non-sortable shape; Add menu lists a valid non-sortable metric; existing sortable columns keep click/title/`aria-sort`/Add behavior.
 - `src/app/routes/search.test.tsx` — Search-side absence proof: Search tables/menus never offer the ID and layout sanitization drops it; Search production paths stay behaviorally untouched.
 - `src/stores/use-player-table-store.test.ts` — v7 migration: old-default gains the column; customized keeps order/content; other tables reject it; version bump sanitization.
 - `e2e/smoke.spec.ts` — verify Squad overview block against the new default header set; update only assertions the new default legitimately changes.
 
 **Behavior and data flow:**
 
-- Layout contains `suggested_training` → column renders from `player.suggestedTraining` (excluded from `requestedFields`; DTO always carries it). `focus != null` → focus text + Details action opening the Modal evidence. Assigned but `focus == null` → `—` + unavailable explanation naming lane roles; Modal still opens from Details with the same explanation. `suggestedTraining == null` → `—` + not-assigned text. Header click on this column never sorts. Remove via menu; re-add via Add column (Squad menu only, backed by the header extension). New/default-matching layouts show it far right; customized layouts untouched.
+- Layout contains `suggested_training` → column renders from `player.suggestedTraining` (excluded from `requestedFields`; DTO always carries it). A focus string renders as-is; `null` renders `—` with the accessible name. Header click on this column never sorts. Remove via menu; re-add via Add column (Squad menu only, backed by the header extension). New/default-matching layouts show it far right; customized layouts untouched.
 
 **Ordered implementation steps:**
 
-1. RED: failing shared-ID/predicate test (if unit-tested at the Squad seam), failing header tests (per-column non-sortable behavior + Add listing), failing route tests (default header; suggestion + Details + Modal content incl. focus restoration; both `—` states; non-sortable click), failing store migration tests.
-2. GREEN: shared ID module → Squad-only metric module → header extension → panel render + Details + Modal → store v7 + migration → DTO mirror → mock fixtures, in the smallest slices that turn each proof green.
+1. RED: failing header tests (per-column non-sortable behavior + Add listing), failing route tests (default header; focus and `—` states; non-sortable click), failing store migration tests. Keep the suite proportionate; do not rebuild the discarded oversized suite.
+2. GREEN: ID/constant → Squad-only metric module → header extension → panel cell → store v7 + migration → DTO mirror → mock fixtures, in the smallest slices that turn each proof green.
 3. Refactor only while green; keep Search/Moneyball/Staff production paths behaviorally untouched (test files may change for regression proof; verify with diff).
 4. Run targeted suites, then full frontend gate + smoke.
 
 **Tests and proof:**
 
-- Route suite: named meaningful cases (default column order/position; Details opens Modal with focus, both role labels, contributing attributes, labeled gain; Escape/close returns focus to Details; unassigned vs unavailable distinction; header click on this column leaves sort state unchanged; menu remove → column gone + query unchanged; menu re-add → column back).
+- Route suite: default column order/position; focus string renders; null renders `—` with the accessible name; header click leaves sort state unchanged; menu remove → column gone + query unchanged; menu re-add → column back.
 - Header suite: per-column sortability cases above, proving existing sortable columns are unaffected.
 - Store suite: migration cases above + cross-table rejection test.
-- Search-side absence proof in `search.test.tsx` (picker/menu never offers the ID; layout sanitization drops it); Search/Moneyball/Staff production paths stay behaviorally untouched (test files may change for regression proof).
-- Accessibility proof: Details is a keyboard-reachable button, the Modal uses the shared dialog semantics, and no evidence is hover-only (route + smoke coverage, not `title`-only text).
-- Smoke: Squad overview passes with the new default; no new IPC stub paths beyond the extended Squad fixture shape.
+- Search-side absence proof in `search.test.tsx`; Search/Moneyball/Staff production paths stay behaviorally untouched (test files may change for regression proof).
+- Accessibility proof: the cell exposes an appropriate accessible name for the visible value or dash; no information is hover-only.
+- Smoke: Squad overview passes with the new default; no new IPC stub paths beyond the narrowed Squad fixture shape.
 
 **Patterns to verify:**
 
-- `squad-overview-panel.tsx` Club DNA `ScoreBadge`/`—` cell pattern; `nationality-cell` accessible-name pattern; `player-table-header.tsx` menu + `metrics` prop override; Club DNA store-append precedent (`addColumns("squad", ["club_dna"])`); existing Modal consumers for `open`/`onClose`/focus-restoration ownership shape.
+- `squad-overview-panel.tsx` Club DNA `ScoreBadge`/`—` cell pattern; `nationality-cell` accessible-name pattern; `player-table-header.tsx` menu + `metrics` prop override; Club DNA store-append precedent (`addColumns("squad", ["club_dna"])`).
 
 **Constraints and non-goals:**
 
-- Do not add the ID to `PLAYER_METRICS`/Moneyball catalogs, Search components, filter ASTs, `getPlayerMetric`, or any sort validation. Do not change Search defaults. Do not add a UI primitive, tooltip component, or hover-only evidence. Keep rows at fixed heights; evidence lives in the Modal + accessible text, never in wrapped cell text. Respect `shared → features → app` imports (neutral shared module owns only the ID + predicate; Squad owns label/metric/presentation).
+- Do not add the ID to `PLAYER_METRICS`/Moneyball catalogs, Search components, filter ASTs, `getPlayerMetric`, or any sort validation. Do not change Search defaults. Do not add a Details action, Modal, tooltip, or any evidence UI. Keep rows at fixed heights. Respect `shared → features → app` imports.
 
 **Dependencies and sequencing:**
 
-- Requires Commits 2–3 (engine + DTO shape consumed unchanged).
+- Requires Commit 4 (string/null DTO shape consumed unchanged).
 
 **Validation:** `./scripts/dev test src/app/routes/my-club-squad.test.tsx` then `./scripts/dev test src/app/routes/search.test.tsx` then `./scripts/dev test src/stores/use-player-table-store.test.ts` then `./scripts/dev test` then `./scripts/dev check` then `./scripts/dev smoke`.
 
-**Stop conditions:** Stop if the shared Modal cannot carry the evidence within fixed row heights (escalate the presentation choice, do not invent a new primitive), if the v6→v7 migration cannot distinguish default from customized layouts exactly, if any existing catalog already supplies `sortable: false` (escalate before changing shared-header Add semantics), or if Search exclusion cannot be held structurally (escalate before touching shared catalogs).
+**Stop conditions:** Stop if the v6→v7 migration cannot distinguish default from customized layouts exactly, if any existing catalog already supplies `sortable: false` (escalate before changing shared-header Add semantics), or if Search exclusion cannot be held structurally (escalate before touching shared catalogs).
 
-**Review mandate:** (1) single literal owner (shared module) with no shared→feature import and no duplicated literal; (2) header diff is the minimum per-column extension with focused tests green and existing sortable behavior unchanged; (3) Search/Moneyball/Staff production paths behaviorally untouched (`search.test.tsx` absence proof green; test files may change for regression proof); (4) store migration exact-equality + customized-layout preservation; (5) Modal shows focus, both role labels, mapped/contributing attributes, labeled gain; (6) no hover-only information (keyboard Details + dialog semantics + focus restoration, all covered by tests); (7) fixed row heights kept; (8) `requestedFields` excludes the field while the DTO always carries it; (9) no sort path for the field in URL, backend, mock, or tests; (10) smoke proves the user-visible default column.
+**Review mandate:** (1) the ID and predicate have one neutral owner in `src/utils/suggested-training.ts`, imported by both the store and Squad, with no shared→feature import and no duplicated literal; (2) header diff is the minimum per-column extension with focused tests green and existing sortable behavior unchanged; (3) Search/Moneyball/Staff production paths behaviorally untouched; (4) store migration exact-equality + customized-layout preservation; (5) cell renders only the focus string or `—` with the accessible name and no Modal, state, or details affordance; (6) no hover-only information; (7) fixed row heights kept; (8) `requestedFields` excludes the field while the DTO always carries it; (9) no sort path for the field in URL, backend, mock, or tests; (10) smoke proves the user-visible default column.
 
 ## Active work
 
 **PR:** Suggested individual training in Club Squad
 
-**Commit:** Attach suggestions to the Squad read model
+**Commit:** Show Suggested Training in the Squad table
 
 ### RED or removal proof
 
-Add focused Rust Squad tests that fail before the read model exposes suggestions: assigned and unassigned rows, zero and partial tactic rows, both unavailable shapes, and read-only behavior.
+Add failing header, Squad route, Search-absence, and store-migration tests for the Squad-only non-sortable default column and its focus-or-dash cells.
 
 ### Expected outcome
 
-Bounded Squad pages additively carry a typed suggestion derived from the current attributes and Planner assignment without persistence, seeding, extra IPC, or a suggestion sort path.
+Club Squad shows the Suggested Training focus name or `—` in a default, configurable, non-sortable column without exposing the field to Search or backend requested/sort fields.
 
 ### Explicit exclusions
 
-Frontend and store changes, SQLite migrations, Search/query changes, suggestion sorting, persistence of suggestions, and the unrelated `snapshot-date-edit.md` modification.
+Backend ranking/read-model changes, Search/Moneyball/Staff production behavior, new UI primitives, Details actions, Modals, tooltips, evidence UI, release work, and the unrelated `snapshot-date-edit.md` modification.
 
 ## Discoveries and replanning
 
-- None yet.
+- 2026-09-05 developer-approved simplification (value-or-dash): the cell shows only the most beneficial Training Focus name or `—`, with an accessible name for the visible value or dash and no Details action, Modal, gain, role labels, or attribute evidence. `CA >= PA` always renders `—` with no displayed focus. This is a material contract change: the Delivery fingerprint is reset to `Pending plan review`, remaining packets are replanned as Commit 4 (backend simplification + max-CA gate, Active) and Commit 5 (simple Squad-only default column, Pending), and completed Commits 1–3 are preserved with immutable refs. The original Commit 4 partial work was interrupted before validation/review and discarded from the worktree; the recovery stash is not delivery truth.
 
 ## Completed work
 
@@ -474,12 +535,14 @@ Frontend and store changes, SQLite migrations, Search/query changes, suggestion 
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Suggested individual training in Club Squad | Commit 1 — Record the approved feature plan | 13b32b264f84d866dce03198374ba9f967118785 | Added the accepted schema 2 ledger and TODO Active pointer. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — Suggested individual training in Club Squad | Commit 2 — Rank training focuses for an assigned tactic lane | 797ad112653f9913c340208290a597f78ab8b62e | Added the shared unrounded role scorer and pure exact-inventory lane-based training-focus ranker with whole-inventory gating and evidence attributes. | `./scripts/dev check-rust`: 787 passed, 2 ignored; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | None. |
+| PR 1 — Suggested individual training in Club Squad | Commit 3 — Attach suggestions to the Squad read model | 076a77f1530774c54c9988da92a0a72e0c4d870c | Added read-only tactic and assignment resolution plus per-row derived suggestions and the typed Squad DTO while preserving bounded paging and existing sorts. | `./scripts/dev check-rust`: 793 passed, 2 ignored; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | None. |
+| PR 1 — Suggested individual training in Club Squad | Commit 4 — Simplify the outward suggestion to value-or-dash | Pending record | Replaced the evidence-rich result with a focus string or null, added the `ca >= pa` gate, and removed obsolete evidence fields and helpers without changing ranking behavior. | `cargo test --lib planner::`: 126 passed; `./scripts/dev check-rust`: 794 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --check`: passed. | Pass | Clear | 0 | None. |
 
 ## Final validation
 
 - `./scripts/dev test` (full) green.
 - `./scripts/dev check` (commit gate) green.
-- `./scripts/dev smoke` green (user-visible table workflow with Modal evidence).
+- `./scripts/dev smoke` green (user-visible table workflow with the simple value-or-dash column).
 - Feature review clear with no blocking findings.
 - Documentation reconciliation: TODO active entry, completed-record archive on close-out, no ADR, BACKLOG unchanged.
 

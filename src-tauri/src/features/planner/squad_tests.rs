@@ -1210,6 +1210,12 @@ fn attaches_ranked_suggestion_for_the_assigned_lane_only() {
     super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
         .expect("seed tactic");
     set_player_attributes(&conn, save_id, 77, &full_attributes_json(10));
+    conn.execute(
+        "UPDATE players SET ca = 160, pa = 170
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![current_snapshot_id(&conn, save_id)],
+    )
+    .expect("set developing ca/pa");
     assign_lane(&conn, save_id, "centre_forward", 77);
     deny_suggestion_writes(&conn);
 
@@ -1228,31 +1234,73 @@ fn attaches_ranked_suggestion_for_the_assigned_lane_only() {
         .iter()
         .find(|player| player.uid == 77)
         .expect("assigned player");
-    let suggestion = assigned
-        .suggested_training
-        .as_ref()
-        .expect("assigned suggestion");
-    assert_eq!(suggestion.lane_id, "centre_forward");
-    assert_eq!(suggestion.ip_role_id, "centre_forward_ip");
-    assert_eq!(suggestion.ip_role_display, "Centre Forward");
-    assert_eq!(suggestion.oop_role_id, "central_outlet_centre_forward_oop");
-    assert_eq!(suggestion.oop_role_display, "Central Outlet Centre Forward");
-    assert_eq!(suggestion.focus.as_deref(), Some("Attacking Movement"));
     assert_eq!(
-        suggestion.focus_attributes,
-        ["Anticipation", "Decisions", "OffTheBall"]
+        assigned.suggested_training.as_deref(),
+        Some("Attacking Movement")
     );
-    assert_eq!(
-        suggestion.contributing_attributes,
-        ["Anticipation", "Decisions", "OffTheBall"]
-    );
-    assert!(suggestion.combined_gain.is_some_and(|gain| gain > 0.0));
     assert!(
         page.players
             .iter()
             .filter(|player| player.uid != 77)
             .all(|player| player.suggested_training.is_none()),
         "unassigned players carry no suggestion"
+    );
+}
+
+#[test]
+fn fully_developed_players_carry_no_suggestion_while_developing_control_keeps_focus() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
+        .expect("seed tactic");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    for uid in [77, 78, 79] {
+        set_player_attributes(&conn, save_id, uid, &full_attributes_json(10));
+    }
+    for (uid, ca, pa) in [(77, 150, 150), (78, 160, 150), (79, 120, 150)] {
+        conn.execute(
+            "UPDATE players SET ca = ?1, pa = ?2 WHERE snapshot_id = ?3 AND uid = ?4",
+            params![ca, pa, snapshot_id, uid],
+        )
+        .expect("set ca/pa");
+    }
+    for (order, player_uid) in [77, 78, 79].into_iter().enumerate() {
+        conn.execute(
+            "INSERT INTO planner_strings (save_id, team, string_order) VALUES (?1, 'senior', ?2)",
+            params![save_id, order as i64],
+        )
+        .expect("insert planner string");
+        let string_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO planner_assignments (save_id, string_id, lane_id, player_uid, last_known_name)
+             VALUES (?1, ?2, 'centre_forward', ?3, 'Squad Player')",
+            params![save_id, string_id, player_uid],
+        )
+        .expect("insert assignment");
+    }
+    deny_suggestion_writes(&conn);
+
+    let page = squad_page(&conn, save_id);
+
+    for uid in [77, 78] {
+        let player = page
+            .players
+            .iter()
+            .find(|player| player.uid == uid)
+            .expect("gated player");
+        assert_eq!(
+            player.suggested_training, None,
+            "ca >= pa yields no suggestion for {uid}"
+        );
+    }
+    let control = page
+        .players
+        .iter()
+        .find(|player| player.uid == 79)
+        .expect("control player");
+    assert_eq!(
+        control.suggested_training.as_deref(),
+        Some("Attacking Movement")
     );
 }
 
@@ -1306,7 +1354,7 @@ fn partial_tactic_rows_surface_an_honest_error() {
 }
 
 #[test]
-fn missing_lane_role_attribute_keeps_lane_identity_without_focus() {
+fn missing_lane_role_attribute_yields_no_suggestion() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
@@ -1316,23 +1364,12 @@ fn missing_lane_role_attribute_keeps_lane_identity_without_focus() {
 
     let page = squad_page(&conn, save_id);
 
-    let suggestion = page
+    let player = page
         .players
         .iter()
         .find(|player| player.uid == 77)
-        .expect("assigned player")
-        .suggested_training
-        .as_ref()
-        .expect("unavailable suggestion keeps lane identity");
-    assert_eq!(suggestion.lane_id, "goalkeeper");
-    assert_eq!(suggestion.ip_role_id, "goalkeeper_ip");
-    assert_eq!(suggestion.ip_role_display, "Goalkeeper");
-    assert_eq!(suggestion.oop_role_id, "line_holding_keeper_oop");
-    assert_eq!(suggestion.oop_role_display, "Line-Holding Keeper");
-    assert_eq!(suggestion.focus, None);
-    assert!(suggestion.focus_attributes.is_empty());
-    assert!(suggestion.contributing_attributes.is_empty());
-    assert_eq!(suggestion.combined_gain, None);
+        .expect("assigned player");
+    assert_eq!(player.suggested_training, None);
 }
 
 #[test]
@@ -1346,21 +1383,12 @@ fn missing_inventory_attribute_has_no_fallback_focus() {
 
     let page = squad_page(&conn, save_id);
 
-    let suggestion = page
+    let player = page
         .players
         .iter()
         .find(|player| player.uid == 77)
-        .expect("assigned player")
-        .suggested_training
-        .as_ref()
-        .expect("unavailable suggestion keeps lane identity");
-    assert_eq!(suggestion.lane_id, "centre_forward");
-    assert_eq!(suggestion.ip_role_id, "centre_forward_ip");
-    assert_eq!(suggestion.oop_role_id, "central_outlet_centre_forward_oop");
-    assert_eq!(suggestion.focus, None);
-    assert!(suggestion.focus_attributes.is_empty());
-    assert!(suggestion.contributing_attributes.is_empty());
-    assert_eq!(suggestion.combined_gain, None);
+        .expect("assigned player");
+    assert_eq!(player.suggested_training, None);
 }
 
 #[test]
