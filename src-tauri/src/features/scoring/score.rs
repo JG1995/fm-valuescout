@@ -13,6 +13,20 @@ use super::catalog::RoleDefinition;
 ///
 /// Returns `None` when any required attribute is missing or JSON-null.
 pub fn score_role(attributes: &HashMap<String, Option<u8>>, role: &RoleDefinition) -> Option<u8> {
+    score_role_unrounded(attributes, role).map(|unrounded| unrounded.round() as u8)
+}
+
+/// Computes the same 0–100 role-fit score as [`score_role`] without rounding.
+///
+/// Shares the band means, 75/25 blend, and `/ 20 × 100` scale with
+/// [`score_role`]; callers compare gains on these unrounded values so that
+/// sub-integer improvements are not lost to rounding.
+///
+/// Returns `None` when any required attribute is missing or JSON-null.
+pub fn score_role_unrounded(
+    attributes: &HashMap<String, Option<u8>>,
+    role: &RoleDefinition,
+) -> Option<f64> {
     let primary_mean = band_mean(role.primary, attributes)?;
 
     let blended = if role.secondary.is_empty() {
@@ -22,7 +36,7 @@ pub fn score_role(attributes: &HashMap<String, Option<u8>>, role: &RoleDefinitio
         (0.75 * primary_mean) + (0.25 * secondary_mean)
     };
 
-    Some(scale_to_hundred(blended))
+    Some((blended / 20.0) * 100.0)
 }
 
 fn band_mean(keys: &[&str], attributes: &HashMap<String, Option<u8>>) -> Option<f64> {
@@ -36,10 +50,6 @@ fn band_mean(keys: &[&str], attributes: &HashMap<String, Option<u8>>) -> Option<
     })?;
 
     Some(f64::from(sum) / f64::from(keys.len() as u32))
-}
-
-fn scale_to_hundred(mean: f64) -> u8 {
-    ((mean / 20.0) * 100.0).round() as u8
 }
 
 #[cfg(test)]
@@ -150,5 +160,55 @@ mod tests {
         let attributes = attrs(&[("Finishing", Some(10)), ("Composure", None)]);
 
         assert_eq!(band_mean(&["Finishing", "Composure"], &attributes), None);
+    }
+
+    #[test]
+    fn unrounded_score_rounds_to_the_rounded_score() {
+        let attributes = attrs(&[
+            ("Finishing", Some(10)),
+            ("Composure", Some(10)),
+            ("OffTheBall", Some(20)),
+            ("Anticipation", Some(20)),
+        ]);
+
+        let unrounded = score_role_unrounded(&attributes, &FIXTURE_ROLE).expect("scored");
+        assert!((unrounded - 62.5).abs() < 1e-9);
+        assert_eq!(
+            score_role(&attributes, &FIXTURE_ROLE),
+            Some(unrounded.round() as u8)
+        );
+    }
+
+    #[test]
+    fn unrounded_perfect_attributes_score_one_hundred() {
+        let attributes = attrs(&[
+            ("Finishing", Some(20)),
+            ("Composure", Some(20)),
+            ("OffTheBall", Some(20)),
+            ("Anticipation", Some(20)),
+        ]);
+
+        assert_eq!(
+            score_role_unrounded(&attributes, &FIXTURE_ROLE),
+            Some(100.0)
+        );
+    }
+
+    #[test]
+    fn unrounded_missing_or_null_attribute_returns_none() {
+        let missing = attrs(&[
+            ("Finishing", Some(15)),
+            ("OffTheBall", Some(15)),
+            ("Anticipation", Some(15)),
+        ]);
+        let null = attrs(&[
+            ("Finishing", Some(15)),
+            ("Composure", None),
+            ("OffTheBall", Some(15)),
+            ("Anticipation", Some(15)),
+        ]);
+
+        assert_eq!(score_role_unrounded(&missing, &FIXTURE_ROLE), None);
+        assert_eq!(score_role_unrounded(&null, &FIXTURE_ROLE), None);
     }
 }

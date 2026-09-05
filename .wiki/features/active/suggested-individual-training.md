@@ -202,7 +202,7 @@ The thinnest end-to-end path that proves the approach:
 
 #### Commit 1 — Record the approved feature plan
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(squad): record approved feature plan`
 
@@ -260,7 +260,7 @@ The thinnest end-to-end path that proves the approach:
 
 #### Commit 2 — Rank training focuses for an assigned tactic lane
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(planner): rank individual training focuses per lane`
 
@@ -450,19 +450,19 @@ The thinnest end-to-end path that proves the approach:
 
 **PR:** Suggested individual training in Club Squad
 
-**Commit:** Record the approved feature plan
+**Commit:** Rank training focuses for an assigned tactic lane
 
 ### RED or removal proof
 
-Not applicable — independently reviewed planning documents only. Proof is the ledger classifier (`ledger_state.py` via the installed workflow skill path) and the repository documentation check scoped to the selected/staged planning paths.
+Add focused Rust tests that fail before the unrounded scorer and suggested-training engine exist: rounding parity, exact inventory order, outfield and goalkeeper ranking, missing-input rejection, all-maxed tie behavior, and contributing-attribute overlap.
 
 ### Expected outcome
 
-Reviewed ledger at `.wiki/features/active/suggested-individual-training.md` plus an Active entry in `.wiki/TODO.md` (Next preserved), committed on `feature/suggested-individual-training` with no implementation or unrelated files (the permitted unstaged `snapshot-date-edit.md` modification remains out of scope).
+A pure Rust engine deterministically selects the training focus with the greatest unrounded assigned-lane gain while preserving the existing rounded role-score behavior.
 
 ### Explicit exclusions
 
-Implementation, tests, executable configuration, generated files, the unrelated `snapshot-date-edit.md` modification, BACKLOG changes, ADR creation, and any Linear/GitHub/Git mutation.
+Squad queries and DTOs, frontend and store changes, persistence and migrations, IPC changes, trainability rules, and the unrelated `snapshot-date-edit.md` modification.
 
 ## Discoveries and replanning
 
@@ -470,10 +470,9 @@ Implementation, tests, executable configuration, generated files, the unrelated 
 
 ## Completed work
 
-No completed commits yet. Schema 2 requires exactly one row per `Completed` commit; rows are added as commits complete.
-
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — Suggested individual training in Club Squad | Commit 1 — Record the approved feature plan | 13b32b264f84d866dce03198374ba9f967118785 | Added the accepted schema 2 ledger and TODO Active pointer. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
 
 ## Final validation
 
