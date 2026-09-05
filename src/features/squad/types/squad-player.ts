@@ -10,6 +10,7 @@ export type SquadPlayer = {
   ca: number;
   pa: number;
   marketValueGbp: number | null;
+  suggestedTraining: string | null;
   dynamicValues?: Record<string, number | string | null>;
 };
 

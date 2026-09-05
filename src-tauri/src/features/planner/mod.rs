@@ -4,6 +4,7 @@ pub(crate) mod fit;
 mod optimizer;
 mod role_reference;
 pub mod squad;
+pub mod suggested_training;
 pub mod tactic;
 pub(crate) mod teams;
 

@@ -11,6 +11,10 @@ import {
   PLAYER_TABLE_MIN_COLUMN_WIDTH,
 } from "@/utils/player-metrics";
 import { DEFAULT_STAFF_TABLE_COLUMN_IDS } from "@/utils/staff-table-layout";
+import {
+  isSuggestedTrainingColumnId,
+  SUGGESTED_TRAINING_COLUMN_ID,
+} from "@/utils/suggested-training";
 import { isTacticColumnId, isValidTacticColumnId } from "@/utils/tactic-ids";
 
 const DEFAULT_STAFF_SHORTLIST_COLUMN_IDS = [
@@ -32,7 +36,16 @@ const DEFAULT_STAFF_SHORTLIST_COLUMN_IDS = [
 export const PLAYER_TABLE_LAYOUT_STORAGE_KEY =
   "fm-valuescout-player-table-layouts";
 
-const PLAYER_TABLE_LAYOUT_VERSION = 6;
+const PLAYER_TABLE_LAYOUT_VERSION = 7;
+
+/**
+ * Squad default: the v6 Squad default with Suggested Training appended far
+ * right. Search keeps sharing `DEFAULT_PLAYER_TABLE_COLUMN_IDS` unchanged.
+ */
+export const DEFAULT_SQUAD_TABLE_COLUMN_IDS = [
+  ...withoutDuplicateIdentityColumns(DEFAULT_PLAYER_TABLE_COLUMN_IDS),
+  SUGGESTED_TRAINING_COLUMN_ID,
+] as const;
 
 export type PlayerTableId =
   | "search"
@@ -86,6 +99,9 @@ function isAllowedColumnId(table: PlayerTableId, id: string): boolean {
   if (typeof id !== "string" || id.length === 0) {
     return false;
   }
+  if (isSuggestedTrainingColumnId(id)) {
+    return table === "squad";
+  }
   if (isValidTacticColumnId(id)) {
     return table === "search" || table === "moneyball-search";
   }
@@ -110,18 +126,24 @@ function withoutDuplicateIdentityColumns(columnIds: readonly string[]) {
   );
 }
 
+function defaultColumnIds(table: PlayerTableId): string[] {
+  if (table === "moneyball-search") {
+    return withoutDuplicateIdentityColumns(DEFAULT_MONEYBALL_TABLE_COLUMN_IDS);
+  }
+  if (table === "squad") {
+    return [...DEFAULT_SQUAD_TABLE_COLUMN_IDS];
+  }
+  if (table === "search") {
+    return withoutDuplicateIdentityColumns(DEFAULT_PLAYER_TABLE_COLUMN_IDS);
+  }
+  if (table === "staff-shortlist") {
+    return [...DEFAULT_STAFF_SHORTLIST_COLUMN_IDS];
+  }
+  return [...DEFAULT_STAFF_TABLE_COLUMN_IDS];
+}
+
 function defaultLayout(table: PlayerTableId): PlayerTableLayout {
-  return {
-    columnIds:
-      table === "moneyball-search"
-        ? withoutDuplicateIdentityColumns(DEFAULT_MONEYBALL_TABLE_COLUMN_IDS)
-        : table === "search" || table === "squad"
-          ? withoutDuplicateIdentityColumns(DEFAULT_PLAYER_TABLE_COLUMN_IDS)
-          : table === "staff-shortlist"
-            ? [...DEFAULT_STAFF_SHORTLIST_COLUMN_IDS]
-            : [...DEFAULT_STAFF_TABLE_COLUMN_IDS],
-    widths: {},
-  };
+  return { columnIds: defaultColumnIds(table), widths: {} };
 }
 
 export function defaultPlayerTableLayouts(): PlayerTableLayouts {
@@ -221,19 +243,43 @@ function migratePersistedState(
   if (version >= PLAYER_TABLE_LAYOUT_VERSION) {
     return state;
   }
+  let layouts = state.layouts;
   if (version < 5) {
-    return {
-      layouts: {
-        ...state.layouts,
-        search: removeDuplicateIdentityColumns(state.layouts.search),
-        "moneyball-search": removeDuplicateIdentityColumns(
-          state.layouts["moneyball-search"],
-        ),
-        squad: removeDuplicateIdentityColumns(state.layouts.squad),
-      },
+    layouts = {
+      ...layouts,
+      search: removeDuplicateIdentityColumns(layouts.search),
+      "moneyball-search": removeDuplicateIdentityColumns(
+        layouts["moneyball-search"],
+      ),
+      squad: removeDuplicateIdentityColumns(layouts.squad),
     };
   }
-  return state;
+  if (version < 7) {
+    // Rollout: a persisted Squad layout still exactly equal to the v6
+    // default (default column IDs with default empty widths) gains Suggested
+    // Training far right; customized layouts keep their order and content.
+    // Other tables sanitize the ID away through `isAllowedColumnId`.
+    const v6DefaultSquadColumnIds = withoutDuplicateIdentityColumns(
+      DEFAULT_PLAYER_TABLE_COLUMN_IDS,
+    );
+    const squad = layouts.squad;
+    const isV6DefaultLike =
+      squad.columnIds.length === v6DefaultSquadColumnIds.length &&
+      squad.columnIds.every(
+        (id, index) => id === v6DefaultSquadColumnIds[index],
+      ) &&
+      Object.keys(squad.widths).length === 0;
+    if (isV6DefaultLike) {
+      layouts = {
+        ...layouts,
+        squad: {
+          ...squad,
+          columnIds: [...squad.columnIds, SUGGESTED_TRAINING_COLUMN_ID],
+        },
+      };
+    }
+  }
+  return { layouts };
 }
 
 export const usePlayerTableStore = create<PlayerTableStore>()(

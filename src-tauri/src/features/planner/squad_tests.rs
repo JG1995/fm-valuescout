@@ -2,7 +2,9 @@ use rusqlite::{params, Connection};
 use serde_json::json;
 
 use super::squad::{list_squad_players, SquadSortDir, SquadSortField, DEFAULT_SQUAD_PAGE_LIMIT};
-use super::test_support::{add_picker_candidates, current_snapshot_id, open_with_snapshot};
+use super::test_support::{
+    add_picker_candidates, current_snapshot_id, open_with_snapshot, set_player_attributes,
+};
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION, potential_scores::PROJECTION_MODEL_VERSION,
     resolver::DynamicValue,
@@ -1109,4 +1111,307 @@ fn non_potential_squad_query_ignores_corrupt_potential_state() {
     assert_eq!(page.total, 4);
     assert_eq!(page.players[0].uid, 77);
     assert_eq!(potential_state(&conn, snapshot_id), before);
+}
+
+fn full_attributes_json(value: u8) -> String {
+    let attributes = crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS
+        .iter()
+        .map(|key| ((*key).to_string(), serde_json::Value::from(value)))
+        .collect::<serde_json::Map<_, _>>();
+    serde_json::to_string(&serde_json::Value::Object(attributes)).expect("serialize attributes")
+}
+
+fn attributes_nulling(key: &str) -> String {
+    let mut attributes = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
+        &full_attributes_json(10),
+    )
+    .expect("parse attributes");
+    attributes.insert(key.to_string(), serde_json::Value::Null);
+    serde_json::to_string(&serde_json::Value::Object(attributes)).expect("serialize attributes")
+}
+
+fn assign_lane(conn: &Connection, save_id: i64, lane_id: &str, player_uid: i64) {
+    conn.execute(
+        "INSERT INTO planner_strings (save_id, team, string_order) VALUES (?1, 'senior', 0)",
+        [save_id],
+    )
+    .expect("insert planner string");
+    let string_id = conn.last_insert_rowid();
+    conn.execute(
+        "INSERT INTO planner_assignments (save_id, string_id, lane_id, player_uid, last_known_name)
+         VALUES (?1, ?2, ?3, ?4, 'Squad Player')",
+        params![save_id, string_id, lane_id, player_uid],
+    )
+    .expect("insert assignment");
+}
+
+fn tactic_row_count(conn: &Connection, save_id: i64) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM planner_tactic_lanes WHERE save_id = ?1",
+        [save_id],
+        |row| row.get(0),
+    )
+    .expect("count tactic rows")
+}
+
+fn assignment_row_count(conn: &Connection, save_id: i64) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM planner_assignments WHERE save_id = ?1",
+        [save_id],
+        |row| row.get(0),
+    )
+    .expect("count assignment rows")
+}
+
+fn deny_suggestion_writes(conn: &Connection) {
+    conn.execute_batch(
+        "CREATE TRIGGER deny_squad_tactic_inserts
+         BEFORE INSERT ON planner_tactic_lanes
+         BEGIN SELECT RAISE(ABORT, 'tactic writes are forbidden'); END;
+         CREATE TRIGGER deny_squad_tactic_updates
+         BEFORE UPDATE ON planner_tactic_lanes
+         BEGIN SELECT RAISE(ABORT, 'tactic writes are forbidden'); END;
+         CREATE TRIGGER deny_squad_tactic_deletes
+         BEFORE DELETE ON planner_tactic_lanes
+         BEGIN SELECT RAISE(ABORT, 'tactic writes are forbidden'); END;
+         CREATE TRIGGER deny_squad_assignment_inserts
+         BEFORE INSERT ON planner_assignments
+         BEGIN SELECT RAISE(ABORT, 'assignment writes are forbidden'); END;
+         CREATE TRIGGER deny_squad_assignment_updates
+         BEFORE UPDATE ON planner_assignments
+         BEGIN SELECT RAISE(ABORT, 'assignment writes are forbidden'); END;
+         CREATE TRIGGER deny_squad_assignment_deletes
+         BEFORE DELETE ON planner_assignments
+         BEGIN SELECT RAISE(ABORT, 'assignment writes are forbidden'); END;
+         CREATE TRIGGER deny_squad_player_updates
+         BEFORE UPDATE ON players
+         BEGIN SELECT RAISE(ABORT, 'player writes are forbidden'); END;",
+    )
+    .expect("deny suggestion writes");
+}
+
+fn squad_page(conn: &Connection, save_id: i64) -> super::squad::SquadPlayersPage {
+    list_squad_players(
+        conn,
+        save_id,
+        0,
+        DEFAULT_SQUAD_PAGE_LIMIT,
+        SquadSortField::DEFAULT,
+        SquadSortDir::DEFAULT,
+        &[],
+    )
+    .expect("list squad page")
+}
+
+#[test]
+fn attaches_ranked_suggestion_for_the_assigned_lane_only() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
+        .expect("seed tactic");
+    set_player_attributes(&conn, save_id, 77, &full_attributes_json(10));
+    conn.execute(
+        "UPDATE players SET ca = 160, pa = 170
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![current_snapshot_id(&conn, save_id)],
+    )
+    .expect("set developing ca/pa");
+    assign_lane(&conn, save_id, "centre_forward", 77);
+    deny_suggestion_writes(&conn);
+
+    let page = squad_page(&conn, save_id);
+
+    assert_eq!(page.total, 4);
+    assert_eq!(
+        page.players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        [77, 78, 79, 80]
+    );
+    let assigned = page
+        .players
+        .iter()
+        .find(|player| player.uid == 77)
+        .expect("assigned player");
+    assert_eq!(
+        assigned.suggested_training.as_deref(),
+        Some("Attacking Movement")
+    );
+    assert!(
+        page.players
+            .iter()
+            .filter(|player| player.uid != 77)
+            .all(|player| player.suggested_training.is_none()),
+        "unassigned players carry no suggestion"
+    );
+}
+
+#[test]
+fn fully_developed_players_carry_no_suggestion_while_developing_control_keeps_focus() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
+        .expect("seed tactic");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    for uid in [77, 78, 79] {
+        set_player_attributes(&conn, save_id, uid, &full_attributes_json(10));
+    }
+    for (uid, ca, pa) in [(77, 150, 150), (78, 160, 150), (79, 120, 150)] {
+        conn.execute(
+            "UPDATE players SET ca = ?1, pa = ?2 WHERE snapshot_id = ?3 AND uid = ?4",
+            params![ca, pa, snapshot_id, uid],
+        )
+        .expect("set ca/pa");
+    }
+    for (order, player_uid) in [77, 78, 79].into_iter().enumerate() {
+        conn.execute(
+            "INSERT INTO planner_strings (save_id, team, string_order) VALUES (?1, 'senior', ?2)",
+            params![save_id, order as i64],
+        )
+        .expect("insert planner string");
+        let string_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO planner_assignments (save_id, string_id, lane_id, player_uid, last_known_name)
+             VALUES (?1, ?2, 'centre_forward', ?3, 'Squad Player')",
+            params![save_id, string_id, player_uid],
+        )
+        .expect("insert assignment");
+    }
+    deny_suggestion_writes(&conn);
+
+    let page = squad_page(&conn, save_id);
+
+    for uid in [77, 78] {
+        let player = page
+            .players
+            .iter()
+            .find(|player| player.uid == uid)
+            .expect("gated player");
+        assert_eq!(
+            player.suggested_training, None,
+            "ca >= pa yields no suggestion for {uid}"
+        );
+    }
+    let control = page
+        .players
+        .iter()
+        .find(|player| player.uid == 79)
+        .expect("control player");
+    assert_eq!(
+        control.suggested_training.as_deref(),
+        Some("Attacking Movement")
+    );
+}
+
+#[test]
+fn tactic_less_save_yields_all_unassigned_without_seeding() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    assign_lane(&conn, save_id, "centre_forward", 77);
+    assert_eq!(tactic_row_count(&conn, save_id), 0);
+
+    let page = squad_page(&conn, save_id);
+
+    assert_eq!(page.total, 4);
+    assert!(
+        page.players
+            .iter()
+            .all(|player| player.suggested_training.is_none()),
+        "zero tactic rows leave every cell unassigned"
+    );
+    assert_eq!(tactic_row_count(&conn, save_id), 0);
+    assert_eq!(assignment_row_count(&conn, save_id), 1);
+}
+
+#[test]
+fn partial_tactic_rows_surface_an_honest_error() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
+        .expect("seed tactic");
+    conn.execute(
+        "DELETE FROM planner_tactic_lanes WHERE save_id = ?1 AND lane_order >= 6",
+        [save_id],
+    )
+    .expect("remove half the lanes");
+
+    let error = list_squad_players(
+        &conn,
+        save_id,
+        0,
+        DEFAULT_SQUAD_PAGE_LIMIT,
+        SquadSortField::DEFAULT,
+        SquadSortDir::DEFAULT,
+        &[],
+    )
+    .expect_err("reject partial tactic");
+
+    assert!(
+        error.contains("exactly 11 lanes"),
+        "unexpected partial-tactic error: {error}"
+    );
+}
+
+#[test]
+fn missing_lane_role_attribute_yields_no_suggestion() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
+        .expect("seed tactic");
+    set_player_attributes(&conn, save_id, 77, &attributes_nulling("AerialReach"));
+    assign_lane(&conn, save_id, "goalkeeper", 77);
+
+    let page = squad_page(&conn, save_id);
+
+    let player = page
+        .players
+        .iter()
+        .find(|player| player.uid == 77)
+        .expect("assigned player");
+    assert_eq!(player.suggested_training, None);
+}
+
+#[test]
+fn missing_inventory_attribute_has_no_fallback_focus() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
+        .expect("seed tactic");
+    set_player_attributes(&conn, save_id, 77, &attributes_nulling("Corners"));
+    assign_lane(&conn, save_id, "centre_forward", 77);
+
+    let page = squad_page(&conn, save_id);
+
+    let player = page
+        .players
+        .iter()
+        .find(|player| player.uid == 77)
+        .expect("assigned player");
+    assert_eq!(player.suggested_training, None);
+}
+
+#[test]
+fn corrupt_attributes_json_surfaces_an_honest_error() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
+        .expect("seed tactic");
+    set_player_attributes(&conn, save_id, 78, "not json");
+
+    let error = list_squad_players(
+        &conn,
+        save_id,
+        0,
+        DEFAULT_SQUAD_PAGE_LIMIT,
+        SquadSortField::DEFAULT,
+        SquadSortDir::DEFAULT,
+        &[],
+    )
+    .expect_err("reject corrupt attributes");
+
+    assert!(
+        error.contains("invalid attributes_json"),
+        "unexpected corrupt-attributes error: {error}"
+    );
 }

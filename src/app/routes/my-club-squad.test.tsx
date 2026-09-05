@@ -188,6 +188,7 @@ function squadPlayerNamed(name: string, uid: number, ca = 160): SquadPlayer {
     ca,
     pa: ca + 5,
     marketValueGbp: ca * 100_000,
+    suggestedTraining: null,
   };
 }
 
@@ -1290,7 +1291,9 @@ describe("My Club route", () => {
     if (!unavailableRow) {
       throw new Error("Expected the unavailable-score player row.");
     }
-    expect(within(unavailableRow).getByText("—")).toBeInTheDocument();
+    expect(
+      within(unavailableRow).getByText("—", { selector: "span" }),
+    ).toBeInTheDocument();
   });
 
   it("reorders Squad columns from the menu without changing its query, virtual row, or widths", async () => {
@@ -2484,9 +2487,11 @@ describe("My Club route", () => {
     }
     expect(identityRow).toHaveStyle({ height: "40px" });
     expect(identityRow).toHaveTextContent("Metro FC · Premier Division");
-    expect(missingContextRow).toHaveTextContent("No context");
-    expect(missingContextRow).not.toHaveTextContent("—");
-    expect(missingContextRow).not.toHaveTextContent(" · ");
+    const missingIdentityCell =
+      within(missingContextRow).getAllByRole("cell")[0];
+    expect(missingIdentityCell).toHaveTextContent("No context");
+    expect(missingIdentityCell).not.toHaveTextContent("—");
+    expect(missingIdentityCell).not.toHaveTextContent(" · ");
     expect(within(clubOnlyRow).getAllByRole("cell")[0]).toHaveTextContent(
       "Metro FC",
     );
@@ -6063,6 +6068,142 @@ describe("My Club route", () => {
     ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Clear all" })).toBeDisabled();
     expect(getPlannerOptimizeIpcMockBases()).toEqual(["potential"]);
+  });
+});
+
+describe("Suggested Training column", () => {
+  async function renderConfiguredSquad(players: SquadPlayer[]) {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride(players);
+    renderMyClubRoute({ initialEntry: "/my-club" });
+    return screen.findByRole("table", { name: "Squad overview" });
+  }
+
+  it("shows Suggested Training as the default far-right Squad column", async () => {
+    const table = await renderConfiguredSquad([
+      squadPlayerNamed("Alex Scout", 42),
+    ]);
+
+    const headerLabels = within(table)
+      .getAllByRole("columnheader")
+      .map((header) => header.getAttribute("aria-label"));
+    expect(headerLabels).toContain("Suggested Training");
+    expect(headerLabels[headerLabels.length - 1]).toBe("Suggested Training");
+  });
+
+  it("renders the focus name, and a dash with an accessible name for null", async () => {
+    usePlayerTableStore.getState().addColumns("squad", ["attr.Acceleration"]);
+    const table = await renderConfiguredSquad([
+      {
+        ...squadPlayerNamed("Focused Scout", 42),
+        dynamicValues: { "attr.Acceleration": 16 },
+        suggestedTraining: "Quickness",
+      },
+      {
+        ...squadPlayerNamed("Unassigned Scout", 43),
+        dynamicValues: { "attr.Acceleration": 14 },
+        suggestedTraining: null,
+      },
+    ]);
+
+    const focusedRow = within(table).getByText("Focused Scout").closest("tr");
+    if (!focusedRow) {
+      throw new Error("Expected the focused player row.");
+    }
+    const focusCell = within(focusedRow).getByText("Quickness").closest("td");
+    expect(focusCell).toHaveAccessibleName("Quickness");
+
+    const unassignedRow = within(table)
+      .getByText("Unassigned Scout")
+      .closest("tr");
+    if (!unassignedRow) {
+      throw new Error("Expected the unassigned player row.");
+    }
+    const dashCell = within(unassignedRow).getByText("—").closest("td");
+    expect(dashCell).toHaveAccessibleName("No suggested training");
+
+    await waitFor(() => {
+      expect(getLastSquadPlayersArgs()).toMatchObject({
+        requestedFields: ["attr.Acceleration"],
+      });
+    });
+    expect(
+      ((getLastSquadPlayersArgs()?.requestedFields as string[]) ?? []).includes(
+        "suggested_training",
+      ),
+    ).toBe(false);
+  });
+
+  it("never changes the sort when the Suggested Training header is clicked", async () => {
+    const user = userEvent.setup();
+    const table = await renderConfiguredSquad([
+      squadPlayerNamed("Alex Scout", 42),
+    ]);
+
+    const header = within(table).getByRole("columnheader", {
+      name: "Suggested Training",
+    });
+    expect(header).not.toHaveAttribute("aria-sort");
+    const button = within(header).getByRole("button", {
+      name: "Suggested Training",
+    });
+    expect(button).toHaveAttribute("title", "Suggested Training");
+    await user.click(button);
+
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toHaveAttribute("aria-sort", "descending");
+  });
+
+  it("removes and re-adds Suggested Training through the header menu", async () => {
+    const user = userEvent.setup();
+    const table = await renderConfiguredSquad([
+      squadPlayerNamed("Alex Scout", 42),
+    ]);
+
+    const header = within(table).getByRole("columnheader", {
+      name: "Suggested Training",
+    });
+    fireEvent.contextMenu(header);
+    await user.click(
+      screen.getByRole("menuitem", { name: "Remove Suggested Training" }),
+    );
+    expect(
+      within(table).queryByRole("columnheader", {
+        name: "Suggested Training",
+      }),
+    ).toBeNull();
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toHaveAttribute("aria-sort", "descending");
+
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Add column" }));
+    await user.click(
+      screen.getByRole("button", { name: "Column: Choose a metric" }),
+    );
+    await user.type(
+      screen.getByRole("combobox", { name: "Search columns" }),
+      "training",
+    );
+    await user.click(
+      screen.getByRole("option", { name: "Suggested Training" }),
+    );
+
+    expect(
+      await within(table).findByRole("columnheader", {
+        name: "Suggested Training",
+      }),
+    ).toBeInTheDocument();
+    expect(usePlayerTableStore.getState().layouts.squad.columnIds).toContain(
+      "suggested_training",
+    );
   });
 });
 

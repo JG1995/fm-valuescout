@@ -961,6 +961,9 @@ test.describe("application smoke", () => {
     await expect(
       table.getByRole("link", { name: "Alex Scout" }),
     ).toHaveAttribute("href", "/players/42");
+    await expect(
+      table.getByRole("columnheader", { name: "Suggested Training" }),
+    ).toBeVisible();
     await table.getByRole("button", { name: "Name", exact: true }).click();
     await expect(
       table.getByRole("columnheader", { name: "Name" }),
