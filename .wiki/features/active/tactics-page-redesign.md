@@ -382,7 +382,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 5 — Reset stored tactics to defaults once
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tactics): reset stored tactics to defaults`
 
@@ -441,7 +441,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 6 — Migrate the pitch to a simplified normalized canvas
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tactics): migrate pitch to normalized canvas`
 
@@ -909,19 +909,19 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **PR:** 1
 
-**Commit:** 5
+**Commit:** 6
 
 ### RED or removal proof
 
-Prove the v41-to-v42 reset at the migration seam, including two-save scope, retained assignments and planner teams, lazy reseeding, and recreated-tactic survival on a second migration application. Remove obsolete legacy-load tests with the retired normalization implementation.
+Rewrite the smallest route geometry assertion for the unique-placement normalized canvas; remove the retired duplicate/overflow geometry contracts with their implementation. Prove the preserved save flow through the existing smoke test.
 
 ### Expected outcome
 
-Stored tactic rows reset once; normal defaults reseed on demand. Planner assignments and all other save data remain intact.
+Reusable portrait single-phase canvas with qualified-placement coordinates, unchanged board composition and modal API, and no duplicate/overflow machinery.
 
 ### Explicit exclusions
 
-Frontend, renderer, new IPC, schema changes, ongoing resets, and deletion outside tactic rows.
+One-canvas consolidation, connectors, XI panel, inspector changes, orientation, containment, persistence, IPC, and Rust.
 
 ## Discoveries and replanning
 
@@ -945,7 +945,8 @@ Frontend, renderer, new IPC, schema changes, ongoing resets, and deletion outsid
 | PR 1 — Redesign the tactic workspace | Commit 1 — Record the approved feature plan | 119b51910fa2eaea3163f9716a68be933356cc1e | Recorded accepted ledger and active TODO link. | Ledger and delivery classifiers passed; check-fast and staged whitespace check passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — Redesign the tactic workspace | Commit 2 — Add orientation-aware pitch geometry projection | 8d9e142fa4000aa2c31ebc93f4e96d9d3b70b15a | Added pure coordinate projection, supported-placement table, and visual ordering without UI wiring. | Expected missing-module RED; focused 7/7 GREEN; full check and staged whitespace passed. | Pass | Clear | 0 | Worker accidentally applied an unrelated retained stash; developer restored the exact eight affected tracked paths. Verified recovery before validation and review. |
 | PR 1 — Redesign the tactic workspace | Commit 3 — Record the approved replan | e47d709 | Recorded the reviewed unique-placement swap and one-time reset plan with the revised commit sequence and TODO summary. | Ledger and delivery classifiers passed; check-fast and staged whitespace check passed. | Not applicable | Accepted findings — independent plan review cleared blockers; recorded MEDIUM and NITPICK advisories remain open; developer accepted the reviewed plan. | 1 | Developer requested planning commit before source-discard decision; abandoned implementation preserved unstaged. |
-| PR 1 — Redesign the tactic workspace | Commit 4 — Enforce unique-placement swaps in draft editing | Pending record | Added pure phase-placement swaps and wired the editor; preserved compatible roles, cleared incompatible roles, and replaced obsolete duplicate-rejection proof. | Unit 6/6, route 133/133, full check including 799 Rust tests passed; canonical literal-match mutation failed as expected; staged whitespace clean. | Pass | Clear | 1 | None. |
+| PR 1 — Redesign the tactic workspace | Commit 4 — Enforce unique-placement swaps in draft editing | edf6173f8a3817aeb0ed7354f64d116b78ed4160 | Added pure phase-placement swaps and wired the editor; preserved compatible roles, cleared incompatible roles, and replaced obsolete duplicate-rejection proof. | Unit 6/6, route 133/133, full check including 799 Rust tests passed; canonical literal-match mutation failed as expected; staged whitespace clean. | Pass | Clear | 1 | None. |
+| PR 1 — Redesign the tactic workspace | Commit 5 — Reset stored tactics to defaults once | Pending record | Registered data-only v42 tactic reset; removed legacy normalization and its two load tests. | Migration 60/60 and tactic 14/14 tests; check-rust and full check including 798 Rust tests passed; staged whitespace clean. | Pass | Clear | 0 | Older v8/v28 migration tests now prove their surviving contracts without asserting tactic preservation after the authorized reset; orphaned normalization constant removed. |
 
 ## Final validation
 
