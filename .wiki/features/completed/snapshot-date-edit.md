@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -130,7 +130,7 @@ Rename nothing: open Settings history with two dated snapshots, edit the older r
 
 **Required checks:** strict `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -363,7 +363,7 @@ The complete feature passes its recorded validation and review, durable document
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Snapshot date edit | Commit 1 — Record the approved feature plan | `092110cc53be697319703dc78edd601da7ac2388` | Added the accepted schema-2 JAY-48 ledger and made Snapshot Date Edit the sole TODO Active feature. | `ledger_state.py` runnable; `delivery_state.py` runnable; staged diff check clean; no repository documentation command exists. | Not applicable | Clear | 0 | None |
 | PR 1 — Snapshot date edit | Commit 2 — Update snapshot game date in Rust | `bb01feaafba67bb13c5f1a7239e0386735d8f674` | Added the validated token-bound game-date update transaction, shared current selection, compact reconciliation, current-selection exclusion, typed DTO, and command registration without Academy writes. | RED compile proof failed on missing symbols; focused snapshot tests passed 94/94; `./scripts/dev check-rust` passed; `./scripts/dev check` passed with 775 Rust tests, 0 failed, 2 ignored. | Pass | Clear | 0 | None |
-| PR 1 — Snapshot date edit | Commit 3 — Edit snapshot date from Settings history | Pending record | Added the accessible Settings date editor, typed IPC adapter, truthful mock/stub ordering and promotion, precise current-cache reconciliation, and browser smoke path. | RED action test failed on the missing control; component suite passed 35/35; `./scripts/dev smoke` passed 55/55 after one unrelated Squad progress timing retry; `./scripts/dev check` passed with 775 Rust tests, 0 failed, 2 ignored. | Pass | Clear | 1 | Added the required seven-line `src/testing/setup.ts` IPC route/reset seam omitted from the packet; corrected a cross-save current-cache identity defect found in review. |
+| PR 1 — Snapshot date edit | Commit 3 — Edit snapshot date from Settings history | `aab9506908651d3921c1014ed1c7e11ba7a15a4d` | Added the accessible Settings date editor, typed IPC adapter, truthful mock/stub ordering and promotion, precise current-cache reconciliation, and browser smoke path. | RED action test failed on the missing control; component suite passed 35/35; `./scripts/dev smoke` passed 55/55 after one unrelated Squad progress timing retry; `./scripts/dev check` passed with 775 Rust tests, 0 failed, 2 ignored. | Pass | Clear | 1 | Added the required seven-line `src/testing/setup.ts` IPC route/reset seam omitted from the packet; corrected a cross-save current-cache identity defect found in review. |
 
 ## Final validation
 
@@ -374,6 +374,63 @@ The complete feature passes its recorded validation and review, durable document
 - `./scripts/dev bridge-test` not run (no bridge change); `./scripts/dev mutate` unsupported and never reported as passed.
 - Native Windows/FM26/WebView/SQLite integration remains an explicit manual gap if unavailable; browser IPC stubs must not be presented as native proof.
 
+## Feature close-out
+
+- Feature validation passed: component suite 35/35, smoke 55/55, and `./scripts/dev check` with 775 Rust tests passed, 0 failed, 2 ignored. One unrelated Squad progress timing assertion required a retry; the JAY-48 smoke path passed throughout.
+- Feature review cleared after one correction round with no CRITICAL or HIGH findings. Test portfolio: Pass. Project fit: Conforms.
+- Correction evidence: fixed fake year-zero parity and added the no-refetch cache proof.
+
+## Exact implementation refs
+
+**Base:** `a024fb1c04e224489c99ebb043adc09ba89f62a1`
+
+| Ref | Subject | Role |
+| --- | --- | --- |
+| `092110cc53be697319703dc78edd601da7ac2388` | `docs(snapshot): record approved date-edit plan` | Planning record |
+| `bb01feaafba67bb13c5f1a7239e0386735d8f674` | `feat(snapshot): update snapshot game date` | Rust command, transaction, and selector behavior |
+| `aab9506908651d3921c1014ed1c7e11ba7a15a4d` | `feat(snapshot): edit snapshot date from Settings` | Settings Modal, IPC, mocks, and smoke path |
+| `5d5f2071153bd97e8da30b40aa0fef44db33be0f` | `test(snapshot): align date-edit fakes and cache proof` | Feature-review correction |
+
+The feature implementation range is `a024fb1c04e224489c99ebb043adc09ba89f62a1..5d5f2071153bd97e8da30b40aa0fef44db33be0f`. The documentation close-out ref remains `Pending record` until the close-out commit exists.
+
+## Final publication
+
+```yaml
+status: ready_for_publication
+pr_status: not_published
+merge_status: not_merged
+pr_ref: "Not published"
+merge_ref: "Not merged"
+branch: feat/snapshot-date-edit
+base_branch: main
+base_ref: a024fb1c04e224489c99ebb043adc09ba89f62a1
+publication_provider: GitHub
+pr_template: .github/pull_request_template.md
+merge_method: squash
+required_checks: strict_check
+required_check_name: check
+pr_count: 1
+earlier_prs: none
+feature_close_out: current
+feature_review_blocking: false
+feature_review_critical: none
+feature_review_high: none
+feature_review_medium: none
+feature_review_nitpick: none
+project_fit: conforms
+feature_review_action: skip
+feature_review_correction_rounds: 1
+ci_repair_rounds: 0
+implementation_range: a024fb1c04e224489c99ebb043adc09ba89f62a1..5d5f2071153bd97e8da30b40aa0fef44db33be0f
+implementation_refs:
+  - 092110cc53be697319703dc78edd601da7ac2388
+  - bb01feaafba67bb13c5f1a7239e0386735d8f674
+  - aab9506908651d3921c1014ed1c7e11ba7a15a4d
+  - 5d5f2071153bd97e8da30b40aa0fef44db33be0f
+close_out_documentation_ref: Pending record
+publication_correction_evidence: none
+```
+
 ## Documentation impact
 
-Planning commit only: this ledger plus the TODO Active entry. No ARCHITECTURE, CONCEPT, DESIGN, BACKLOG, ADR, current-state, or completed-record changes are planned; reconcile them only if implementation proves a documented contract wrong.
+Reconciliation completed after final validation and cleared feature review. `ARCHITECTURE.md` now records the date-edit command, transactional shared selection and compact reconciliation, cache behavior, and the absence of Academy writes. `DESIGN.md` now records the Edit date action, form Modal validation and focus behavior, and winner-change, same-current, and non-current refresh semantics. `TODO.md` no longer lists JAY-48 as Active. No CONCEPT, BACKLOG, ADR, or debug report change is warranted. No feature-owned `.work` artifacts are known. The active ledger `.wiki/features/active/snapshot-date-edit.md` is approved for removal after this completed record is inspected.
