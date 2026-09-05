@@ -51,6 +51,19 @@ describe("legacy club routes", () => {
     ).toBeInTheDocument();
   });
 
+  it("defaults a bare Planner link to the canonical Planner workspace", async () => {
+    const { history, router } = renderLegacyPlannerRoute("/planner");
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/my-club");
+      expect(router.state.location.search).toEqual({ view: "planner" });
+    });
+    expect(history.canGoBack()).toBe(false);
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "My Club" }),
+    ).toBeInTheDocument();
+  });
+
   it("normalizes retired Planner workspaces while preserving valid sort direction", async () => {
     const { router } = renderLegacyPlannerRoute(
       "/planner?view=clubs&sort=unknown&dir=asc",
@@ -58,7 +71,10 @@ describe("legacy club routes", () => {
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/my-club");
-      expect(router.state.location.search).toEqual({ squadDir: "asc" });
+      expect(router.state.location.search).toEqual({
+        view: "planner",
+        squadDir: "asc",
+      });
     });
     expect(
       await screen.findByRole("heading", { level: 1, name: "My Club" }),
@@ -70,7 +86,10 @@ describe("legacy club routes", () => {
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/my-club");
-      expect(router.state.location.search).toEqual({ squadDir: "asc" });
+      expect(router.state.location.search).toEqual({
+        view: "planner",
+        squadDir: "asc",
+      });
     });
     expect(
       await screen.findByRole("heading", { level: 1, name: "My Club" }),
@@ -93,20 +112,35 @@ describe("legacy club routes", () => {
     expect(history.canGoBack()).toBe(false);
   });
 
-  it("replaces legacy My Staff with the My Club Staff workspace", async () => {
+  it("replaces legacy Club Staff with canonical My Staff preserving sort", async () => {
     const { history, router } = renderLegacyPlannerRoute(
-      "/staff?view=my-staff&myStaffSort=pa&myStaffDir=asc",
+      "/my-club?view=staff&staffSort=pa&staffDir=asc",
     );
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/my-club");
-      expect(router.state.location.search).toEqual({
-        view: "staff",
-        staffSort: "pa",
-        staffDir: "asc",
+      expect(router.state.location.pathname).toBe("/staff");
+      expect(router.state.location.search).toMatchObject({
+        view: "my-staff",
+        myStaffSort: "pa",
+        myStaffDir: "asc",
       });
     });
     expect(history.canGoBack()).toBe(false);
+  });
+
+  it("defaults invalid legacy Club Staff sort through the staff validators", async () => {
+    const { router } = renderLegacyPlannerRoute(
+      "/my-club?view=staff&staffSort=bogus&staffDir=sideways",
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/staff");
+      expect(router.state.location.search).toMatchObject({
+        view: "my-staff",
+        myStaffSort: "ca",
+        myStaffDir: "desc",
+      });
+    });
   });
 
   it("replaces a legacy Staff Shortlist link with Staff Search filtering on", async () => {

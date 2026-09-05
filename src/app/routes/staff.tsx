@@ -12,7 +12,6 @@ import {
   useRouter,
 } from "@tanstack/react-router";
 import { Suspense, useMemo, useState } from "react";
-import type { MyClubSearch } from "@/app/routes/my-club";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
@@ -26,7 +25,10 @@ import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-sna
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { staffKeys } from "@/features/staff/api/staff-keys";
-import { staffSearchQueryOptions } from "@/features/staff/api/staff-query-options";
+import {
+  staffMyStaffQueryOptions,
+  staffSearchQueryOptions,
+} from "@/features/staff/api/staff-query-options";
 import { StaffAssignmentOptimizer } from "@/features/staff/components/staff-assignment-optimizer";
 import { StaffFilterBar } from "@/features/staff/components/staff-filter-bar";
 import { StaffSearchResultsPanel } from "@/features/staff/components/staff-search-results-panel";
@@ -84,14 +86,6 @@ function normalizedStaffSort(
   return {
     sort,
     dir: isStaffSortDir(rawDir) ? rawDir : defaultDirForStaffSortField(sort),
-  };
-}
-
-function toMyClubSearch(search: StaffSearch): MyClubSearch {
-  return {
-    view: "staff",
-    staffSort: search.myStaffSort,
-    staffDir: search.myStaffDir,
   };
 }
 
@@ -179,15 +173,12 @@ export const Route = createFileRoute("/staff")({
       });
     }
     if (location.pathname === "/staff" && search.view !== "search") {
-      throw Route.redirect({
-        to: "/my-club",
-        search: toMyClubSearch(search),
-        replace: true,
-      });
+      return;
     }
   },
   loaderDeps: ({
     search: {
+      view,
       sort,
       dir,
       filters,
@@ -197,6 +188,7 @@ export const Route = createFileRoute("/staff")({
       unemployedOnly,
     },
   }) => ({
+    view,
     sort,
     dir,
     filters,
@@ -208,6 +200,7 @@ export const Route = createFileRoute("/staff")({
   loader: ({
     context: { queryClient },
     deps: {
+      view,
       sort,
       dir,
       filters,
@@ -222,6 +215,15 @@ export const Route = createFileRoute("/staff")({
       currentSnapshotQueryOptions,
     );
     if (location.pathname !== "/staff") return currentSnapshot;
+    if (view === "my-staff") {
+      return Promise.all([
+        currentSnapshot,
+        queryClient.ensureQueryData(managedClubQueryOptions),
+        queryClient.ensureQueryData(
+          staffMyStaffQueryOptions(0, undefined, sort, dir, []),
+        ),
+      ]);
+    }
     return Promise.all([
       currentSnapshot,
       queryClient.prefetchQuery(managedClubQueryOptions),
@@ -257,7 +259,66 @@ function StaffFallback() {
   );
 }
 
-function StaffPageContent() {
+function MyStaffContent() {
+  const { myStaffSort, myStaffDir } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
+  const managedClubQuery = useQuery(managedClubQueryOptions);
+  const managedClub = managedClubQuery.data;
+
+  const onMyStaffSortChange = (
+    nextSort: StaffSortField,
+    nextDir: StaffSortDir,
+  ) => {
+    void navigate({
+      search: (previous) => ({
+        ...previous,
+        sort: nextSort,
+        dir: nextDir,
+        myStaffSort: nextSort,
+        myStaffDir: nextDir,
+      }),
+      replace: true,
+    });
+  };
+
+  const onMyStaffBoostSuccess = () =>
+    queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
+
+  return (
+    <>
+      <header className="flex flex-col items-start gap-2">
+        <h1 className="text-headline-lg text-on-surface">My Staff</h1>
+        {managedClub?.clubName ? (
+          <p className="text-body-sm text-on-surface-variant">
+            Managed club: {managedClub.clubName}
+          </p>
+        ) : null}
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <Suspense fallback={<StaffFallback />}>
+          <StaffSearchResultsPanel
+            activeSnapshotId={snapshot?.id ?? null}
+            scope="my-staff"
+            sortBy={myStaffSort}
+            sortDir={myStaffDir}
+            filters={[]}
+            filterCombine="and"
+            onSortChange={onMyStaffSortChange}
+            onBoostSuccess={onMyStaffBoostSuccess}
+            onRowActivate={(staff) =>
+              router.history.push(`/staff/${staff.uid}`)
+            }
+          />
+        </Suspense>
+      </div>
+    </>
+  );
+}
+
+function StaffSearchContent() {
   const {
     sort,
     dir,
@@ -550,6 +611,14 @@ function StaffPageContent() {
       />
     </>
   );
+}
+
+function StaffPageContent() {
+  const { view } = Route.useSearch();
+  if (view === "my-staff") {
+    return <MyStaffContent />;
+  }
+  return <StaffSearchContent />;
 }
 
 function StaffPage() {

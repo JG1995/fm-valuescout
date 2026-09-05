@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import type { MyClubSearch } from "@/app/routes/my-club";
 import {
+  type MyClubSearch,
   type MyClubWorkspace,
   parseMyClubWorkspace,
-} from "@/features/my-club/components/my-club-workspace-tabs";
+} from "@/app/routes/my-club";
 import type {
   SquadSortDir,
   SquadSortField,
@@ -25,19 +25,19 @@ function toMyClubSearch(search: {
   sort?: unknown;
   dir?: unknown;
 }): MyClubSearch {
-  const view = parseMyClubWorkspace(search.view);
+  const view = parseMyClubWorkspace(search.view) ?? "planner";
   const sort = isSquadSortField(search.sort) ? search.sort : undefined;
   const dir = isSquadSortDir(search.dir) ? search.dir : undefined;
 
   if (!sort) {
     return {
-      ...(view ? { view } : {}),
+      view,
       ...(dir ? { squadDir: dir } : {}),
     };
   }
 
   return {
-    ...(view ? { view } : {}),
+    view,
     squadSort: sort,
     squadDir: dir ?? defaultDirForSquadSortField(sort),
   };

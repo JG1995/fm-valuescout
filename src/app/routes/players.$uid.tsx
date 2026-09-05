@@ -39,7 +39,6 @@ import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { staffKeys } from "@/features/staff/api/staff-keys";
-import { useLayoutStore } from "@/stores/use-layout-store";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { cn } from "@/utils/cn";
 
@@ -117,8 +116,6 @@ function SkeletonBar({ className }: { className?: string }) {
 const SKELETON_SLOTS = ["s1", "s2", "s3", "s4", "s5", "s6"] as const;
 
 function ProfileFallback() {
-  const railExpanded = useLayoutStore((state) => state.railExpanded);
-
   return (
     <div
       className="flex min-h-0 flex-col gap-gutter lg:h-full lg:overflow-hidden"
@@ -135,7 +132,7 @@ function ProfileFallback() {
           </div>
         ))}
       </section>
-      <div className={profileWorkspaceClassName(railExpanded)}>
+      <div className={profileWorkspaceClassName()}>
         <Panel title="Attributes">
           <SkeletonBar className="mb-4 h-8 w-full rounded-full" />
           <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-3">
@@ -175,12 +172,10 @@ function ProfileFallback() {
   );
 }
 
-function profileWorkspaceClassName(railExpanded: boolean) {
+function profileWorkspaceClassName() {
   return cn(
     "grid min-h-0 gap-gutter [&>*]:min-h-0 lg:h-0 lg:flex-1",
-    railExpanded
-      ? "grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] 2xl:grid-rows-[minmax(0,1fr)]"
-      : "grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]",
+    "grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]",
   );
 }
 
@@ -310,7 +305,6 @@ function GeneralPlayerProfile({
   restoreAnalysisFocus: boolean;
   onAnalysisFocusRestored: () => void;
 }) {
-  const railExpanded = useLayoutStore((state) => state.railExpanded);
   const queryClient = useQueryClient();
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: player } = useSuspenseQuery(getPlayerQueryOptions(uid));
@@ -405,7 +399,7 @@ function GeneralPlayerProfile({
         id="player-analysis-panel"
         role="tabpanel"
         aria-labelledby="player-analysis-tab-general"
-        className={profileWorkspaceClassName(railExpanded)}
+        className={profileWorkspaceClassName()}
       >
         <PlayerAttributesPanel
           player={player}
@@ -436,7 +430,6 @@ function MoneyballPlayerProfile({
   restoreAnalysisFocus: boolean;
   onAnalysisFocusRestored: () => void;
 }) {
-  const railExpanded = useLayoutStore((state) => state.railExpanded);
   const { data: profile } = useSuspenseQuery(
     getPlayerMoneyballQueryOptions(uid),
   );
@@ -467,7 +460,7 @@ function MoneyballPlayerProfile({
         id="player-analysis-panel"
         role="tabpanel"
         aria-labelledby="player-analysis-tab-moneyball"
-        className={profileWorkspaceClassName(railExpanded)}
+        className={profileWorkspaceClassName()}
       >
         <MoneyballProfilePanel profile={profile} />
         {readyProfile ? (

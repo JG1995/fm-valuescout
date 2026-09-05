@@ -161,8 +161,6 @@ spacing:
     table-row-height-two-line: 40px
     table-header-height: 32px
     header-height: 56px
-    rail-width: 56px
-    rail-width-expanded: 208px
     inspector-width: 320px
     gutter: 16px
     stack-xs: 4px
@@ -179,7 +177,7 @@ spacing:
 
 > **Authority:** This document owns the visual language, design tokens, and UI decisions. It does not own product purpose ([CONCEPT.md](./CONCEPT.md)) or implemented system shape ([ARCHITECTURE.md](./ARCHITECTURE.md)).
 
-> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell, Settings management, My Club managed-club tools, format-specific CSV enrichment, Dashboard, Player Search with General and Moneyball views plus integrated shortlist upload and filtering, Staff Search with integrated shortlist and assignment controls, Staff and Player profiles, and the four-workspace My Club surface are implemented. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
+> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell, Settings management, My Club managed-club tools, format-specific CSV enrichment, Dashboard, Player Search with General and Moneyball views plus integrated shortlist upload and filtering, Staff Search with integrated shortlist and assignment controls, Staff and Player profiles, and the three-workspace My Club surface are implemented. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
 
 ## Brand & Style
 
@@ -244,7 +242,7 @@ Borders come in two roles with different rules:
 
 - **Score badges** always render the number. The tier colour is redundant encoding that speeds scanning; the number is the fact. A tier label is available in the badge `title` and in the accessible name.
 - **Status chips and banners** pair colour with an icon and a text label — never a bare coloured dot.
-- **Active nav item** pairs the gold fill with `aria-current="page"` and a filled-versus-outline icon change.
+- **Active nav item** pairs `primary-container`, a `primary` icon, a reinforced label, and `aria-current="page"`; the same Lucide component uses `strokeWidth` 2 when active and 1.5 when inactive.
 - **Selected table row** pairs the tint with a 2px gold left indicator and `aria-selected`.
 - **Chart series** differ by colour *and* stroke pattern — solid, dashed, dotted — plus a direct label or legend entry. A radar chart with three overlaid players is unreadable by colour alone at any palette.
 - **Trend arrows** carry direction as shape (up, down, flat), with colour as reinforcement.
@@ -332,7 +330,7 @@ The app is mostly formatted numbers, so formatting is a design decision, not a p
 
 Seven constraints. Every component and screen satisfies all of them.
 
-1. **Data outranks chrome.** No decorative element may take space a data column could use. *Test:* on the player search screen at 1600×900 with the rail collapsed and the filter editor closed, the results table covers at least 70% of the window area.
+1. **Data outranks chrome.** No decorative element may take space a data column could use. *Test:* on the player search screen at 1600×900 with the filter editor closed, the results table covers at least 70% of the window area.
 2. **Separate with hairlines, not boxes.** Rows, fields, and sections are divided by a 1px `outline-variant` rule or a tonal step. *Test:* no nested card inside a card, and no vertical rules between table columns.
 3. **Snapshot provenance is always visible.** Every screen that shows player data states which save is active and how old the snapshot is, without scrolling. Truncated and stale snapshots carry a warning wherever their data appears. *Test:* screenshot any data view and you can name the save and the snapshot age from the image alone. This follows the explicit-refresh principle in [CONCEPT.md](./CONCEPT.md) — the user must never mistake old data for current data.
 4. **Brightness carries value; the number carries the fact.** Score meaning comes from the ramp, and the number is always present. *Test:* convert a screenshot to greyscale — the ranking still reads.
@@ -342,13 +340,13 @@ Seven constraints. Every component and screen satisfies all of them.
 
 ## Layout & Spacing
 
-The app is a **single window with a persistent left rail and a top bar** — a desktop tool, not a set of pages. Minimum 1280×800; designed at 1600×900. Content fills the window width; `content-max-width` is `none` because a clamped column wastes the space a 20-column player table needs.
+The app is a **single window with a utility bar and grouped top navigation** — a desktop tool, not a set of pages. Minimum 1280×800; the top navigation fit is proven at 1280×800. Content fills the window width; `content-max-width` is `none` because a clamped column wastes the space a 20-column player table needs.
 
 Regions, in visual order:
 
-1. **Nav rail** (left, `rail-width` 56px, `rail-width-expanded` 208px). Icon-only by default with the label as a tooltip; expands to icon-plus-label. Sits on `surface-container-lowest` — the rail is the darkest region, which pushes the content forward. Collapsed state persists across launches.
-2. **Top bar** (`header-height` 56px, spans the area right of the rail). Left to right: global player search (pill, grows to fill), active save selector, snapshot freshness chip, optional **Cap players** toggle with a numeric limit when on, **Load Data** primary button. Load Data lives here rather than on a page because it is the app's one recurring action and must be reachable from every screen. Cap off means unlimited scan; cap on sends a positive `maxAccepted` (default 500 when enabling).
-3. **Page header** (inside the content area). Page title in `headline-lg`, then view-mode toggles and a local search or filter trigger on the right. One row, `stack-md` below it.
+1. **Utility bar** (`header-height` 56px). It contains Back and Forward, global player search, the active save selector, snapshot freshness, optional **Cap players** controls, and **Load Data**. It stays first so global controls remain separate from destination navigation.
+2. **Top navigation** follows the utility bar. It groups icon-plus-label links as Home (Dashboard), Players (Search and Moneyball), Staff (Staff Search and My Staff), Club (Squad, Planner, Tactic, and Youth), and Settings. Fine vertical separators divide groups. Each group has a low-emphasis caption under its links. The active link uses a contained state with a reinforced label.
+3. **Page header** (inside the content area). Page title in `headline-lg`, then local controls on the right. One row, `stack-md` below it.
 4. **Content area.** Panels on `surface-container` with `gutter` 16px between them and 16px page padding.
 5. **Inspector** (right, `inspector-width` 320px, optional and dismissible). Comparison and detail controls on a profile. Slides over the content edge; never squeezes the table below its usable width. **Search does not use the inspector for filters** — filters use the compact strip and editor modal below.
 
@@ -367,7 +365,7 @@ Hard dimensions: headers are `table-header-height` 32px. Single-line rows are `t
 Depth is tonal. Each level is a lighter surface than the one below it, and **every level boundary that matters also carries a 1px `outline-variant` border**. This second part is not optional: adjacent steps in the dark end of the ramp are only 1.05:1 to 1.14:1 apart, which is a real but subtle difference. The tonal step gives the impression of depth; the hairline makes the boundary unambiguous.
 
 - **Level 0 (Canvas):** `background` — the window itself. Nothing sits directly on it except panels.
-- **Level 1 (Recessed):** `surface-container-lowest` — nav rail, sticky table header, diagnostic and log wells. Darker than the canvas, so it reads as behind it.
+- **Level 1 (Recessed):** `surface-container-lowest` — sticky table headers, diagnostic and log wells. Darker than the canvas, so it reads as behind it.
 - **Level 2 (Panel):** `surface-container` — the default. Cards, tables, panels, the top bar.
 - **Level 3 (Raised):** `surface-container-high` — hovered table rows, input fields, nested blocks inside a panel, the inactive half of a segmented control.
 - **Level 4 (Overlay):** `surface-container-highest` — dropdowns, context menus, popovers, modals, toasts. This is the only level with a shadow: `0 8px 24px oklch(0 0 0 / 0.6)`, plus the standard hairline border. Modals also dim the content behind them with `oklch(0 0 0 / 0.6)`.
@@ -379,7 +377,7 @@ Layers are separated by steps of 10 to leave room for future insertion. No eleme
 | Layer         | Value  | Usage                                   |
 | ------------- | ------ | --------------------------------------- |
 | Base          | `z-0`  | Content area, tables, cards             |
-| Sticky        | `z-10` | Sticky table headers, top bar, nav rail |
+| Sticky        | `z-10` | Sticky table headers, utility bar, top navigation |
 | Dropdown      | `z-20` | Select dropdowns, autocomplete panels   |
 | Context Menu  | `z-30` | Right-click context menus               |
 | Overlay       | `z-40` | Modal backdrops, toast container region |
@@ -413,17 +411,16 @@ The action primitive. One primary action per screen region.
 - **Content / Anatomy:** optional 16px leading icon, label in `label-lg`, optional trailing chevron for menu buttons. Never icon-plus-text in the icon-only variant.
 - **Behaviour:** always a `<button>` with an explicit `type`. Icon-only buttons carry `aria-label` and a tooltip — the props type requires both an icon and an `aria-label` for that size, so an unlabelled icon button does not compile. A button that opens a menu sets `aria-expanded` and `aria-haspopup`.
 
-### Nav Rail
+### Top Navigation
 
-Primary navigation between the app's main surfaces.
+Primary navigation between the app's main destinations.
 
-- **Container:** `surface-container-lowest`, full height, `rail-width` 56px collapsed or `rail-width-expanded` 208px expanded, 1px `outline-variant` right border. Items are 40px tall, `md` radius, `stack-xs` apart.
-- **States:** default icon in `on-surface-variant`; hover fills `surface-container-high`; active item fills `primary-container` with a `primary` icon and label, plus a 2px `primary` left indicator; `:focus-visible` shows the gold ring inside the item bounds.
-- **Variants:** collapsed (icon only, label as tooltip after 400ms) and expanded (20px icon plus `label-lg`). One collapse toggle pinned at the bottom.
-- **Content / Anatomy:** app mark at top, then **Dashboard**, **Player Search**, **Staff Search**, **My Club**, **Youth Academy**, and **Settings**, followed by the collapse toggle. Six items maximum; new surfaces go inside an existing one, not beside it.
-- **Behaviour:** a `<nav>` containing a list of router links. The active item sets `aria-current="page"`. The collapsed state persists in the layout store across launches.
+- **Container:** `surface-container`, one row below the utility bar, with a bottom `outline-variant` border. Groups use fine vertical separators and low-emphasis captions below their links. The layout fits all destinations at the supported 1280×800 minimum window.
+- **States:** links use Lucide icons and ValueScout tokens. Hover changes colour only. The active link uses `primary-container`, a `primary` icon, and a reinforced label. `:focus-visible` shows the gold ring inside the link bounds.
+- **Content / Anatomy:** **Home** contains Dashboard; **Players** contains Search and Moneyball; **Staff** contains Staff Search and My Staff; **Club** contains Squad, Planner, Tactic, and Youth; **Settings** contains Settings. Search and Moneyball select `/search?view=general|moneyball`; Staff links select `/staff?view=search|my-staff`; Club links select `/my-club?view=squad|planner|tactic`; Youth selects `/academy`.
+- **Behaviour:** a `<nav>` contains router links. Each supported direct destination sets exactly one link to `aria-current="page"`. Unknown and not-found routes set no destination current. Player and staff profile routes set only the Players or Staff group caption to `aria-current="location"`; no child destination is current. Top-navigation Club destination changes use normal Link navigation, add a browser-history entry, and let browser Back return to the prior destination. Same-route Club changes retain `squadSort` and `squadDir`; route-local sort controls use replace navigation. Search view changes retain only the route's existing shortlist/combine state. Profile analysis tabs, Youth tabs, and Planner team tabs remain local.
 
-### Top Bar
+### Utility Bar
 
 Global search, save context, snapshot freshness, and the Load Data action.
 
@@ -558,7 +555,7 @@ Radar for role and attribute profiles; line or area for value and score trends.
 Cross-cutting rules rather than components.
 
 - **Scrollbars:** 10px, transparent track, `outline-variant` thumb with `full` radius, brightening to `outline` on hover. Applied via `scrollbar-color` and `scrollbar-width`. Never hide a scrollbar on a scrollable region — a dense table needs a visible position cue.
-- **Icons:** [Lucide](https://lucide.dev) via `lucide-react`, bundled. 16px in tables and chips, 20px in the rail and top bar, 24px in empty states. `strokeWidth` 1.5 and `currentColor` always, so an icon inherits its context. One icon set only, and no emoji as an icon anywhere.
+- **Icons:** [Lucide](https://lucide.dev) via `lucide-react`, bundled. 16px in tables and chips, 16px in top-navigation links, 20px in the utility bar, and 24px in empty states. Use `strokeWidth` 1.5 by default and 2 for active top-navigation links; use `currentColor` always, so an icon inherits its context. One icon set only, and no emoji as an icon anywhere.
 - **Motion:** 150ms ease-out for colour and opacity on hover, focus, and active. 200ms ease-out for overlay entrance; 150ms for exit. Nothing animates longer than 200ms, and layout, size, and position never animate on hover. Under `prefers-reduced-motion: reduce`, drop every transform and entrance animation and keep colour changes instant.
 
 ### Player profile layout
@@ -579,11 +576,11 @@ Dedicated route `/players/$uid` (not an inspector overlay). Comparison inspector
 
 ### Staff workspace layout
 
-The dedicated `/staff` route owns Staff Search and integrated shortlist tools; `/staff/$uid` owns Staff Profile. My Club owns **Squad**, **Planner**, **Tactic**, and managed-club **Staff** only.
+The `/staff` route owns Staff Search and canonical **My Staff**; `/staff/$uid` owns Staff Profile. My Club owns **Squad**, **Planner**, and **Tactic** only. Staff Search and My Staff are separate top-navigation destinations, and the managed-club selector remains in the My Club header.
 
 - **Staff Search:** the shared configurable virtual table and filter editor cover the current snapshot. **Upload Shortlist**, **Configure Club Staff**, and **Optimize assignments** stay visible in the filter header. A URL-backed toggle beside the result count enables shortlist filtering. Preferred Job and Only unemployed appear only when it is on. Filtering off uses the `staff-search` layout and normal metrics. Filtering on retains the `staff-shortlist` layout and presentation: All jobs uses configurable CSV metadata; mapped jobs use fixed identity and metadata plus their mapped score and current sort; Coach shows six outfield coaching scores without automatic score sorting; unrecognized jobs use CA behavior. Upload, configuration, optimizer setup and result feedback, immutable context guards, Staff Profile navigation, and row navigation retain their existing behavior.
-- **Managed-club Staff:** My Club shows every current-snapshot staff member whose club exactly matches the saved managed club. It has an independent table layout and sort state, no search filters, and one confirmed **Boost all CA** action.
-- **Navigation and states:** activating any Staff Search or managed-club Staff row opens `/staff/$uid`, and browser Back returns to the originating table URL. `/staff?view=shortlist` and `/my-club?view=staff-shortlist` replace-normalize to `/staff` with shortlist filtering on. No snapshot, no shortlist, empty, unavailable-score, loading, and error states use the shared patterns without page-level nested scrolling.
+- **My Staff:** `/staff?view=my-staff` shows every current-snapshot staff member whose club exactly matches the saved managed club. It has selected-club context, an independent table layout and sort state, no search filters, and one confirmed **Boost all CA** action. When no managed club is configured, it links to Club setup at `/my-club#managed-club`; it does not render the selector.
+- **Navigation and states:** activating any Staff Search or My Staff row opens `/staff/$uid`, and browser Back returns to the originating table URL. `/staff?view=shortlist` and `/my-club?view=staff-shortlist` replace-normalize to `/staff` with shortlist filtering on. `/my-club?view=staff&staffSort&staffDir` replace-redirects to `/staff?view=my-staff&myStaffSort&myStaffDir`, preserving valid sort values and applying existing validator defaults to invalid values. No snapshot, no shortlist, empty, unavailable-score, loading, and error states use the shared patterns without page-level nested scrolling.
 
 ### Club DNA definition
 
@@ -591,14 +588,14 @@ My Club places **Define DNA** beside **Save managed club**. The action is enable
 
 ### Squad workspace layout
 
-Dedicated route `/my-club`; `/planner` is a replace compatibility redirect. The My Club route contains the Squad overview, managed-club Staff, shared dual-phase tactic editor, and selected team's depth chart in four URL-backed workspaces: **Squad**, **Planner**, **Tactic**, and **Staff**. Squad is the default for every save. Only the active workspace is visible, while all four remain mounted so local drafts, table layouts, and selections survive workspace changes. An explicit valid `view` search value wins. Workspace changes replace the URL search state rather than adding browser-history entries. The route uses the active save and current snapshot shown in the global top bar.
+Dedicated route `/my-club`; `/planner` is a replace compatibility redirect to `/my-club?view=planner`. The My Club route contains the Squad overview, shared dual-phase tactic editor, and selected team's depth chart in three URL-backed workspaces: **Squad**, **Planner**, and **Tactic**. Squad is the default for every save. The active workspace is exposed while Planner and Tactic remain mounted with direct hidden props so local drafts, table layouts, and selections survive workspace changes. An explicit valid `view` search value wins. Top-navigation workspace links use normal Link navigation, so Club destination changes add browser-history entries and browser Back returns to the prior destination. Same-route changes preserve `squadSort` and `squadDir`; route-local sort controls use replace navigation. The route uses the active save and current snapshot shown in the utility bar.
 
 - **Managed club:** My Club shows one explicitly saved selector at the stable `/my-club#managed-club` target when a current snapshot exists. Its options are exact current-club names from the latest snapshot. The picker and **Save managed club** action share one responsive control row that wraps at narrow widths, while warning and error feedback remains below the row. A saved selection remains visible with a warning when a later snapshot no longer contains it; users replace it explicitly. Squad, Planner, Academy, and managed-club Staff derive membership from this one save-scoped selection. The integrated Staff Search shortlist remains save-owned and is not managed-club filtered. No attached-club or fuzzy-name inference exists.
-- **Page header:** `My Club` as `headline-lg`, the compact managed-club selector, supporting club context, and the **Squad** | **Planner** | **Tactic** | **Staff** tabs share one wrapping header. The depth matrix adds **Senior** | **Reserves** | **Youth** team tabs. The Tactic command bar has **IP** | **OOP** | **Both** view controls.
+- **Page header:** `My Club` as `headline-lg`, the compact managed-club selector, supporting club context, and the current Club workspace share one wrapping header. The depth matrix keeps **Senior** | **Reserves** | **Youth** team tabs. The Tactic command bar has **IP** | **OOP** | **Both** view controls.
 - **Squad overview:** a configured managed club shows one full-height, filter-free virtual table of its current-snapshot players. The initial columns are **Name**, **Age / DOB**, **Nationality**, **CA**, **PA**, and **Value**; the shared metric menu can add, remove, resize, and move any sortable Search metric while keeping at least one visible column. Absent values render `—`. CA descending is the default and sort stays in the route URL; column order and widths persist in the Squad layout independently from Search. The shared table requests bounded 50-row pages as the user scrolls, has no Previous / Next controls, keeps arrow-key traversal across page boundaries, and activates the full row or its name link to `/players/$uid`. An empty managed club explains that no current-snapshot players match.
 - **Squad development:** the overview header has a primary **Boost all CA** action, a secondary **Make all Wonderkids** action, and the secondary CSV uploads. The CA confirmation explains the fixed age rule: +5 at age 20 or younger, +10 from age 21 through 28, and no boost from age 29. The Wonderkid confirmation explains that known Ambition, Professionalism, and Determination values at 10 or below receive a random 11–20 value; unknown and higher values stay unchanged. Both actions run sequentially, prevent duplicate or overlapping submission, and report Rust-derived determinate progress as `processed / total` after the cohort is captured and after each terminal player outcome. The confirmation stays open while the command is pending and shows an indeterminate preparing state before the first progress payload. Final feedback appears in one reserved Squad overview region for the latest action, uses compact processed/updated/skipped/failed copy, and does not move the action header. If the app cannot verify a result or preserve the active context, it stops, disables both actions, focuses the shared feedback region, and tells the user to use Load Data before another boost. A newly current snapshot restores the actions and clears prior feedback. Neither action claims that skipped, failed, or recovery-stopped players changed.
 - **CSV uploads:** Search keeps **Upload Moneyball CSV**. My Club Squad offers **Upload Squad CSV** and **Upload Youth Academy CSV**. Each opens the shared format-bound Modal with a clear drop zone and keyboard-reachable **Browse files** action; it accepts exactly one CSV through either path and states the selected format. Pending, success, mismatch, and context feedback stay inside that modal, use text plus status icons, and never display a local path. Moneyball copy says that an upload adds or updates matched players and that omitted enrichment remains; it does not imply whole-cohort replacement. A format mismatch names the required export; changing the save or current snapshot clears feedback and closes the modal, returning focus to its action.
-- **Tactic editor:** one tactic per app save, shared by all teams. One command bar shows the phase view, save status when present, and **Save tactic** action. The pitches and selected-position settings shelf provide the current linked-position context without repeating it in the command bar. Both view places the IP and OOP pitches side by side above the shelf; IP and OOP views show only the chosen pitch and its phase controls. The complete command bar, pitch canvas, and shelf fit without document scrolling at 1600×900 and 1920×1080 with either navigation-rail width. At 1280×800, the shelf reflows while preserving both usable pitches, reachable controls, and document-level horizontal fit.
+- **Tactic editor:** one tactic per app save, shared by all teams. One command bar shows the phase view, save status when present, and **Save tactic** action. The pitches and selected-position settings shelf provide the current linked-position context without repeating it in the command bar. Both view places the IP and OOP pitches side by side above the shelf; IP and OOP views show only the chosen pitch and its phase controls. The complete command bar, pitch canvas, and shelf fit without document scrolling at 1600×900 and 1920×1080 with the top-navigation layout. At 1280×800, the shelf reflows while preserving both usable pitches, reachable controls, and document-level horizontal fit.
 - **Pitch geometry:** the editor starts from a 4-3-3 DM In-Possession shape linked to a 4-1-4-1 DM Out-of-Possession shape, with compatible general-purpose roles already selected. Each phase uses an attack-up pitch with the striker band at the top and the goalkeeper band at the bottom. Both pitches derive one shared card width from the densest visible row across IP and OOP, clamped to three through five slots, so every tactical slot has the same width within one tactic while different tactics can use different widths. A light base-position group contains its dark individual slot cards. Central selectors expose explicit right, centre, and left placements: `DCR` / `DC` / `DCL`, `DMCR` / `DM` / `DMCL`, `MCR` / `MC` / `MCL`, `AMCR` / `AMC` / `AMCL`, and `STCR` / `STC` / `STCL`. Each qualified placement occupies its matching horizontal column and can appear only once per phase. Wide slots remain centred within their groups, and empty outer groups absorb unused width. Existing tactics with one to three repeated base positions retain their previous visible order when they first load. Keyboard traversal follows visible pitch order. Current IP/OOP positions and roles describe each selection; focus, hover, and selection emphasize the linked counterpart across both pitches without numeric markers.
 - **Selected-position settings:** the shelf contains one IP/OOP weight control, one optional importance rank from 1 through 11, preferred foot (**Either**, **Left**, **Right**, or **Both**), **Preferred** or **Strict** mode, and the visible phase position and role controls. Both view does not duplicate shared state. Either foot disables the mode control. Controls use visible labels, native keyboard behavior, inline validation, and failed-save draft retention. Invalid or incomplete role-position pairs cannot be saved.
 - **Squad matrix:** available team tabs share one compact toolbar with **Optimize squads**, **Optimize by potential**, **Manage teams**, and **Clear all** when the available width cannot hold every team. When the Planner matrix container can hold the current strings at their readable minimum widths, one semantic table groups the available teams with ordered strings under each display-name header. Narrower containers show only the selected team's group with keyboard-operable tabs. Tactical positions are compact two-line rows in stable pitch order. Ordered strings are columns labelled **1st string**, **2nd string**, and so on. The matrix owns bounded horizontal and vertical overflow; its header and left position column stay sticky, and strings keep a readable minimum width rather than shrinking. Each position summary keeps the IP and OOP position/role context. Each occupied cell aligns the player name with a compact, accessible `Current → Potential` combined-score pair; the arrow is a visible direction cue and each badge names its basis. Unresolved and outside-pool assignments keep their occupied cell and show a warning; unknown scores render as `—`.
@@ -639,7 +636,7 @@ Verify before delivering any UI code.
 
 ### Visual Quality
 
-- [ ] No emojis used as icons — Lucide only, `strokeWidth` 1.5, `currentColor`
+- [ ] No emojis used as icons — Lucide only; `strokeWidth` 1.5 by default and 2 for active top-navigation links; `currentColor`
 - [ ] All icons from Lucide at 16 / 20 / 24px; no mixed icon sets
 - [ ] No raw colour values in components — every colour comes from a token
 - [ ] Colour is never the sole indicator of meaning — paired with text, icon, or shape

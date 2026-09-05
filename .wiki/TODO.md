@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-None.
+No active feature.
 
 ## Next
 
@@ -60,6 +60,7 @@ None.
 
 ## Completed
 
+- [Top Navigation](./features/completed/top-navigation.md) — replaced the persistent left rail with grouped top navigation, promoted Search, Staff, Club, and Youth destinations, and preserved route compatibility (Linear JAY-54).
 - [Integrated Shortlists](./features/completed/integrated-shortlists.md) — integrated save-owned player and staff replacement shortlists into Player Search General and Staff Search with CSV upload, URL-backed filtering, and Staff assignment controls; final PR not published.
 - [Tactic Columns for Player Tables](./features/completed/tactic-table-columns.md) — 11-lane Planner tactic groups (Current/Potential) as synthetic display columns for Search General, Moneyball, and Shortlist with interleaving, persistence, and blended adjusted scoring.
 - [Player Shortlist](./features/completed/player-shortlist.md) — third Search tab filtered to the current Moneyball cohort with General metrics and independent persisted layout (Linear JAY-52).

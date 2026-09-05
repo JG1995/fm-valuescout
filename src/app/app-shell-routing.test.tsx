@@ -4,17 +4,28 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
 import { routeTree } from "@/routeTree.gen";
-import { useLayoutStore } from "@/stores/use-layout-store";
+import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
+import {
+  fixturePlayerDetail,
+  setGetPlayerOverride,
+} from "@/testing/player-ipc-mock";
 import { renderWithProviders } from "@/testing/render-with-providers";
+import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
+import {
+  fixtureStaffDetail,
+  setStaffDetailOverride,
+} from "@/testing/staff-ipc-mock";
 
 describe("app shell routing", () => {
   beforeEach(() => {
-    useLayoutStore.setState({ railExpanded: false });
+    useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
+    setGetPlayerOverride(undefined);
+    setStaffDetailOverride(undefined);
   });
 
   it("renders the layout shell on the index route", async () => {
@@ -26,41 +37,148 @@ describe("app shell routing", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps the nav rail reachable and its label hidden while collapsed", async () => {
+  it("renders the utility bar before the navigation bar with no rail remnant", async () => {
     renderWithProviders();
 
-    const rail = await screen.findByRole("navigation", { name: "Primary" });
+    const header = await screen.findByTestId("app-header");
+    const nav = await screen.findByRole("navigation", { name: "Primary" });
 
-    expect(rail).toHaveAttribute("data-expanded", "false");
-    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
-      "aria-current",
-      "page",
+    expect(header.compareDocumentPosition(nav)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
     );
+    expect(screen.queryByTestId("app-nav-rail")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Toggle navigation" }),
+    ).toBeNull();
   });
 
-  it("expands the nav rail to show item labels", async () => {
-    const user = userEvent.setup();
+  it("lists all ten grouped destinations with working targets", async () => {
     renderWithProviders();
 
-    const rail = await screen.findByTestId("app-nav-rail");
-    const toggle = screen.getByRole("button", { name: "Toggle navigation" });
+    const nav = await screen.findByRole("navigation", { name: "Primary" });
+    const links = within(nav).getAllByRole("link");
 
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(
-      screen.queryByText("FM ValueScout", { selector: "span" }),
-    ).toBeNull();
-
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(rail).toHaveAttribute("data-expanded", "true");
+      links.map((link) => [link.textContent, link.getAttribute("href")]),
+    ).toEqual([
+      ["Dashboard", "/"],
+      ["Search", "/search?view=general"],
+      ["Moneyball", "/search?view=moneyball"],
+      ["Staff Search", "/staff?view=search"],
+      ["My Staff", "/staff?view=my-staff"],
+      ["Squad", "/my-club?view=squad"],
+      ["Planner", "/my-club?view=planner"],
+      ["Tactic", "/my-club?view=tactic"],
+      ["Youth", "/academy"],
+      ["Settings", "/settings"],
+    ]);
     expect(
-      screen.getByText("FM ValueScout", { selector: "span" }),
-    ).toBeInTheDocument();
-
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(rail).toHaveAttribute("data-expanded", "false");
+      [...nav.querySelectorAll("[data-nav-caption]")].map(
+        (caption) => caption.textContent,
+      ),
+    ).toEqual(["Home", "Players", "Staff", "Club", "Settings"]);
+    expect(nav.querySelectorAll("[data-nav-separator]")).toHaveLength(4);
   });
+
+  it.each([
+    ["/", "Dashboard"],
+    ["/search?view=general", "Search"],
+    ["/search?view=moneyball", "Moneyball"],
+    ["/search", "Search"],
+    ["/staff?view=search", "Staff Search"],
+    ["/staff", "Staff Search"],
+    ["/my-club?view=squad", "Squad"],
+    ["/my-club", "Squad"],
+    ["/my-club?view=planner", "Planner"],
+    ["/my-club?view=tactic", "Tactic"],
+    ["/academy", "Youth"],
+    ["/academy?view=graduates", "Youth"],
+    ["/settings", "Settings"],
+  ])("marks only %s as current at %s", async (entry, name) => {
+    renderWithProviders({ initialEntries: [entry] });
+
+    const nav = await screen.findByRole("navigation", { name: "Primary" });
+    const current = within(nav).getAllByRole("link", { current: "page" });
+
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveAccessibleName(name);
+  });
+
+  it("marks Moneyball current when the saved default selects it", async () => {
+    useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
+    renderWithProviders({ initialEntries: ["/search"] });
+
+    const nav = await screen.findByRole("navigation", { name: "Primary" });
+    const current = within(nav).getAllByRole("link", { current: "page" });
+
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveAccessibleName("Moneyball");
+  });
+
+  it("marks only the Players group on a player profile", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    renderWithProviders({ initialEntries: ["/players/42"] });
+
+    const nav = await screen.findByRole("navigation", { name: "Primary" });
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Alex Scout" }),
+    ).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { current: "page" })).toBeNull();
+    expect(nav.querySelectorAll("[aria-current]")).toHaveLength(1);
+    const playersCaption = within(nav).getByText("Players");
+    expect(playersCaption).toHaveAttribute("aria-current", "location");
+    expect(playersCaption).toHaveClass("text-primary", "font-bold");
+  });
+
+  it("marks only the Staff group on a staff profile", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffDetailOverride(fixtureStaffDetail());
+    renderWithProviders({ initialEntries: ["/staff/101"] });
+
+    const nav = await screen.findByRole("navigation", { name: "Primary" });
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Alex Coach" }),
+    ).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { current: "page" })).toBeNull();
+    expect(nav.querySelectorAll("[aria-current]")).toHaveLength(1);
+    const staffCaption = within(nav).getByText("Staff");
+    expect(staffCaption).toHaveAttribute("aria-current", "location");
+    expect(staffCaption).toHaveClass("text-primary", "font-bold");
+  });
+
+  it("marks My Staff current on its canonical Staff destination", async () => {
+    const user = userEvent.setup();
+    const { router } = renderWithProviders();
+
+    await user.click(await screen.findByRole("link", { name: "My Staff" }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/staff");
+      expect(router.state.location.search).toMatchObject({
+        view: "my-staff",
+      });
+    });
+
+    const nav = await screen.findByRole("navigation", { name: "Primary" });
+    const current = within(nav).getAllByRole("link", { current: "page" });
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveAccessibleName("My Staff");
+  });
+
+  it.each([["/players/42/extra"], ["/staff/101/extra"]])(
+    "marks nothing current on profile-shaped unknown route %s",
+    async (entry) => {
+      renderWithProviders({ initialEntries: [entry] });
+
+      expect(
+        await screen.findByRole("heading", { name: "Page not found" }),
+      ).toBeInTheDocument();
+      const nav = await screen.findByRole("navigation", { name: "Primary" });
+      expect(nav.querySelectorAll("[aria-current]")).toHaveLength(0);
+    },
+  );
 
   it("offers a skip link to the main region", async () => {
     renderWithProviders();
@@ -73,7 +191,7 @@ describe("app shell routing", () => {
     expect(screen.getByRole("main")).toHaveAttribute("id", "main-content");
   });
 
-  it("renders the not-found page for unknown routes", async () => {
+  it("renders the not-found page for unknown routes with no destination current", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -94,23 +212,9 @@ describe("app shell routing", () => {
     expect(
       await screen.findByRole("heading", { name: "Page not found" }),
     ).toBeInTheDocument();
-  });
-
-  it("lists My Club in the nav rail", async () => {
-    renderWithProviders();
-
-    expect(
-      await screen.findByRole("link", { name: "My Club" }),
-    ).toHaveAttribute("href", "/my-club");
-    expect(screen.queryByRole("link", { name: "Planner" })).toBeNull();
-  });
-
-  it("lists Youth Academy in the nav rail", async () => {
-    renderWithProviders();
-
-    expect(
-      await screen.findByRole("link", { name: "Youth Academy" }),
-    ).toHaveAttribute("href", "/academy");
+    const nav = await screen.findByRole("navigation", { name: "Primary" });
+    expect(within(nav).queryByRole("link", { current: "page" })).toBeNull();
+    expect(nav.querySelectorAll("[aria-current]")).toHaveLength(0);
   });
 
   it("navigates to Settings and preserves the route through browser history", async () => {

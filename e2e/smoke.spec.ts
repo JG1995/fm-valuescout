@@ -263,20 +263,59 @@ test.describe("application smoke", () => {
     });
   });
 
-  test("nav rail expands from its own toggle", async ({ page }) => {
+  test("top navigation fits every destination at 1280x800", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/");
 
-    const toggle = page.getByRole("button", { name: "Toggle navigation" });
-    const rail = page.getByTestId("app-nav-rail");
+    const header = page.getByTestId("app-header");
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    const main = page.getByRole("main");
+    await expect(header).toBeVisible();
+    await expect(nav).toBeVisible();
+    const [headerBox, navBox, mainBox] = await Promise.all([
+      header.boundingBox(),
+      nav.boundingBox(),
+      main.boundingBox(),
+    ]);
+    expect(headerBox).not.toBeNull();
+    expect(navBox).not.toBeNull();
+    expect(mainBox).not.toBeNull();
+    if (!headerBox || !navBox || !mainBox) {
+      throw new Error("Expected the shell bars to have a visible layout.");
+    }
+    expect(navBox.y).toBeGreaterThanOrEqual(headerBox.y + headerBox.height - 1);
+    expect(mainBox.y).toBeGreaterThanOrEqual(navBox.y + navBox.height - 1);
+    expect(mainBox.x + mainBox.width).toBeLessThanOrEqual(1280 + 1);
+    await expect(page.getByTestId("app-nav-rail")).toHaveCount(0);
 
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(rail).toHaveAttribute("data-expanded", "false");
-    await expect(rail.getByText("Dashboard")).toBeHidden();
+    for (const name of [
+      "Dashboard",
+      "Search",
+      "Moneyball",
+      "Staff Search",
+      "My Staff",
+      "Squad",
+      "Planner",
+      "Tactic",
+      "Youth",
+      "Settings",
+    ] as const) {
+      await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
+    }
+    await expect(
+      nav.locator("[data-nav-caption]").allTextContents(),
+    ).resolves.toEqual(["Home", "Players", "Staff", "Club", "Settings"]);
 
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(rail).toHaveAttribute("data-expanded", "true");
-    await expect(rail.getByText("Dashboard")).toBeVisible();
+    const navOverflow = await nav.evaluate((element) => {
+      const navElement = element as unknown as {
+        clientWidth: number;
+        scrollWidth: number;
+      };
+      return navElement.scrollWidth - navElement.clientWidth;
+    });
+    expect(navOverflow).toBeLessThanOrEqual(1);
   });
 
   test("search route shows no-snapshot empty state from stubbed IPC", async ({
@@ -290,11 +329,11 @@ test.describe("application smoke", () => {
     ).toBeVisible();
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
     await expect(
-      page.getByRole("link", { name: "Player Search" }),
+      page.getByRole("link", { name: "Search", exact: true }),
     ).toHaveAttribute("aria-current", "page");
   });
 
-  test("Staff Search stays standalone while My Club owns Staff workspaces", async ({
+  test("Staff Search stays standalone while My Staff owns the managed club", async ({
     page,
   }) => {
     await stubTauriIpc(page, { staffWorkspace: true });
@@ -315,10 +354,14 @@ test.describe("application smoke", () => {
       table.getByRole("columnheader", { name: "Coach — Goalkeeping" }),
     ).toBeVisible();
     await expect(table.getByText("Alex Coach")).toBeVisible();
-    await page.goto("/my-club?view=staff");
+    await page.goto("/staff?view=my-staff");
     await expect(
-      main.getByRole("tab", { name: "Staff", exact: true }),
-    ).toHaveAttribute("aria-selected", "true");
+      main.getByRole("heading", { level: 1, name: "My Staff" }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "My Staff" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     const staffTable = main.getByRole("table", { name: "Staff overview" });
     await expect(staffTable).toBeVisible();
     await expect(staffTable.getByText("Alex Coach")).toBeVisible();
@@ -746,14 +789,14 @@ test.describe("application smoke", () => {
     );
   });
 
-  test("My Club Staff fetches a later page from the configured family", async ({
+  test("My Staff fetches a later page from the configured family", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
       playerTableRowCount: 101,
       staffWorkspace: true,
     });
-    await page.goto("/my-club?view=staff");
+    await page.goto("/staff?view=my-staff");
 
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "Staff overview" });
@@ -769,9 +812,9 @@ test.describe("application smoke", () => {
     await expect(table.getByText("Staff member 101")).toBeVisible();
   });
 
-  test("My Club Staff confirms a managed-club CA boost", async ({ page }) => {
+  test("My Staff confirms a managed-club CA boost", async ({ page }) => {
     await stubTauriIpc(page, { staffWorkspace: true });
-    await page.goto("/my-club?view=staff");
+    await page.goto("/staff?view=my-staff");
 
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "Staff overview" });
@@ -787,16 +830,15 @@ test.describe("application smoke", () => {
     );
   });
 
-  test("My Club Staff points an unconfigured save to My Club managed club", async ({
+  test("My Staff points an unconfigured save to My Club managed club", async ({
     page,
   }) => {
     await stubTauriIpc(page, { staffFamily: "none", staffWorkspace: true });
-    await page.goto("/my-club?view=staff");
+    await page.goto("/staff?view=my-staff");
 
     const main = page.getByRole("main");
-    const staffPanel = main.getByRole("tabpanel", { name: "Staff" });
     await expect(
-      staffPanel.getByText("Choose your managed club", { exact: true }),
+      main.getByText("Choose your managed club", { exact: true }),
     ).toBeVisible();
     await expect(
       main.getByRole("link", { name: "Open Managed Club" }),
@@ -842,10 +884,12 @@ test.describe("application smoke", () => {
     await expect(
       main.getByRole("heading", { level: 1, name: "My Club" }),
     ).toBeVisible();
-    await expect(main.getByRole("tab", { name: "Squad" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    await expect(
+      page.getByRole("link", { name: "Squad", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(
+      page.getByRole("tablist", { name: "My Club workspaces" }),
+    ).toHaveCount(0);
     await expect(
       main.getByText("Choose your managed club", { exact: true }),
     ).toBeVisible();
@@ -1599,10 +1643,10 @@ test.describe("application smoke", () => {
     });
 
     await page.goto("/search");
-    const main = page.getByRole("main");
-    await expect(
-      main.getByRole("tab", { name: "Moneyball", selected: true }),
-    ).toBeVisible();
+    const nav = page.getByTestId("app-nav-bar");
+    const searchLink = nav.getByRole("link", { name: "Search", exact: true });
+    const moneyballLink = nav.getByRole("link", { name: "Moneyball" });
+    await expect(moneyballLink).toHaveAttribute("aria-current", "page");
 
     await page.goto("/players/1");
     await expect(
@@ -1610,22 +1654,16 @@ test.describe("application smoke", () => {
     ).toBeVisible();
 
     await page.goto("/search");
-    await main.getByRole("tab", { name: "General" }).click();
+    await searchLink.click();
     await expect(page).toHaveURL(/\/search\?.*view=general/);
-    await expect(
-      main.getByRole("tab", { name: "General", selected: true }),
-    ).toBeVisible();
+    await expect(searchLink).toHaveAttribute("aria-current", "page");
 
     await page.reload();
-    await expect(
-      main.getByRole("tab", { name: "General", selected: true }),
-    ).toBeVisible();
+    await expect(searchLink).toHaveAttribute("aria-current", "page");
 
     await page.goBack();
     await expect(page).not.toHaveURL(/view=/);
-    await expect(
-      main.getByRole("tab", { name: "Moneyball", selected: true }),
-    ).toBeVisible();
+    await expect(moneyballLink).toHaveAttribute("aria-current", "page");
   });
 
   test("configured Squad confirms and reports a closed CA boost", async ({
@@ -1703,7 +1741,7 @@ test.describe("application smoke", () => {
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Tactic" }).click();
+    await page.getByRole("link", { name: "Tactic", exact: true }).click();
     await expect(
       main.getByRole("region", { name: "Tactic controls" }),
     ).toBeVisible();
@@ -1852,12 +1890,12 @@ test.describe("application smoke", () => {
       level: 1,
       name: "My Club",
     });
-    const workspaceTabs = main.getByRole("tablist", {
-      name: "My Club workspaces",
-    });
-    const navToggle = page.getByRole("button", {
-      name: "Toggle navigation",
-    });
+    await expect(
+      page.getByRole("link", { name: "Tactic", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(
+      page.getByRole("tablist", { name: "My Club workspaces" }),
+    ).toHaveCount(0);
 
     const expectWorkspaceFit = async (
       width: number,
@@ -1877,15 +1915,8 @@ test.describe("application smoke", () => {
           settings.getByRole("combobox", { name: visibleRole }),
         ).toBeVisible();
 
-        const [headingBox, workspaceTabsBox] = await Promise.all([
-          plannerHeading.boundingBox(),
-          workspaceTabs.boundingBox(),
-        ]);
+        const [headingBox] = await Promise.all([plannerHeading.boundingBox()]);
         expect(headingBox).not.toBeNull();
-        expect(workspaceTabsBox).not.toBeNull();
-        expect(workspaceTabsBox?.y).toBeGreaterThanOrEqual(
-          (headingBox?.y ?? 0) + (headingBox?.height ?? 0),
-        );
 
         if (width >= 1600 && view === "Both") {
           const selectBoxes = await settings
@@ -1936,23 +1967,20 @@ test.describe("application smoke", () => {
       [1920, 1080, true],
     ] as const) {
       await expectWorkspaceFit(width, height, requireVerticalFit);
-      await navToggle.click();
-      await expect(navToggle).toHaveAttribute("aria-expanded", "true");
-      await expectWorkspaceFit(width, height, requireVerticalFit);
-      await navToggle.click();
-      await expect(navToggle).toHaveAttribute("aria-expanded", "false");
     }
   });
 
   test("planner depth adds strings for Senior, Reserves, and Youth", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 900, height: 800 });
+    // 844 keeps the 900px content geometry from before the 56px rail retired,
+    // so the depth matrix stays in tabbed mode.
+    await page.setViewportSize({ width: 844, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Planner" }).click();
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
     for (const team of ["Senior", "Reserves", "Youth"]) {
       await main.getByRole("tab", { name: team }).click();
       await main.getByRole("button", { name: "Manage 1st string" }).click();
@@ -2014,7 +2042,7 @@ test.describe("application smoke", () => {
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Planner" }).click();
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
     await main.getByRole("button", { name: "Optimize squads" }).click();
     await expect(main.getByRole("status")).toHaveText(
       "Squads optimized by current scores.",
@@ -2071,7 +2099,7 @@ test.describe("application smoke", () => {
       await page.goto("/my-club");
 
       const main = page.getByRole("main");
-      await main.getByRole("tab", { name: "Planner" }).click();
+      await page.getByRole("link", { name: "Planner", exact: true }).click();
       const controls = main.getByRole("group", { name: "Squad controls" });
       const current = main.getByRole("button", { name: "Optimize squads" });
       const potential = main.getByRole("button", {
@@ -2119,12 +2147,14 @@ test.describe("application smoke", () => {
   test("planner depth clears every squad from one confirmed action", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 900, height: 800 });
+    // 844 keeps the 900px content geometry from before the 56px rail retired,
+    // so the depth matrix stays in tabbed mode.
+    await page.setViewportSize({ width: 844, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Planner" }).click();
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
     await main.getByRole("button", { name: "Optimize squads" }).click();
     await expect(main.getByRole("status")).toHaveText(
       "Squads optimized by current scores.",
@@ -2155,7 +2185,7 @@ test.describe("application smoke", () => {
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Planner" }).click();
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
     const matrix = main.getByRole("region", {
       name: "All squads depth matrix",
     });
@@ -2182,7 +2212,7 @@ test.describe("application smoke", () => {
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Planner" }).click();
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
     const scoreCell = main.getByRole("button", {
       name: /Senior, 1st string, IP: GK .* Potential Keeper, Resolved, current score 82, potential score 91/,
     });
@@ -2634,9 +2664,8 @@ test.describe("application smoke", () => {
       }
     }
 
-    await page.getByRole("button", { name: "Toggle navigation" }).click();
     await page.setViewportSize({ width: 1280, height: 800 });
-    const expandedRoleFitDimensions = await roleFit.evaluate((element) => {
+    const roleFitDimensions = await roleFit.evaluate((element) => {
       const htmlElement = element as unknown as {
         clientWidth: number;
         scrollWidth: number;
@@ -2646,8 +2675,8 @@ test.describe("application smoke", () => {
         scrollWidth: htmlElement.scrollWidth,
       };
     });
-    expect(expandedRoleFitDimensions.scrollWidth).toBeLessThanOrEqual(
-      expandedRoleFitDimensions.clientWidth,
+    expect(roleFitDimensions.scrollWidth).toBeLessThanOrEqual(
+      roleFitDimensions.clientWidth,
     );
     for (const [region, label] of [
       [technical, "Passing"],
@@ -2682,39 +2711,40 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
-  test("Search shows General and Moneyball tabs with legacy shortlist normalization", async ({
+  test("Search shows General and Moneyball views in navigation with legacy shortlist normalization", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/search");
 
-    const tablist = page.getByRole("tablist", { name: "Search view" });
-    const generalTab = tablist.getByRole("tab", { name: "General" });
-    const moneyballTab = tablist.getByRole("tab", { name: "Moneyball" });
+    const nav = page.getByTestId("app-nav-bar");
+    const searchLink = nav.getByRole("link", { name: "Search", exact: true });
+    const moneyballLink = nav.getByRole("link", { name: "Moneyball" });
 
-    await expect(generalTab).toBeVisible();
-    await expect(moneyballTab).toBeVisible();
-    await expect(tablist.getByRole("tab", { name: "Shortlist" })).toHaveCount(
-      0,
-    );
-    await expect(tablist.getByRole("tab").nth(0)).toHaveText("General");
-    await expect(tablist.getByRole("tab").nth(1)).toHaveText("Moneyball");
+    await expect(searchLink).toBeVisible();
+    await expect(moneyballLink).toBeVisible();
+    await expect(searchLink).toHaveAttribute("aria-current", "page");
+    await expect(
+      page.getByRole("tablist", { name: "Search view" }),
+    ).toHaveCount(0);
 
-    await generalTab.focus();
-    await expect(generalTab).toHaveAttribute("aria-selected", "true");
-    await page.keyboard.press("ArrowRight");
-    await expect(moneyballTab).toBeFocused();
-    await expect(moneyballTab).toHaveAttribute("aria-selected", "true");
-    await page.keyboard.press("ArrowRight");
-    await expect(generalTab).toBeFocused();
-    await expect(generalTab).toHaveAttribute("aria-selected", "true");
+    await moneyballLink.click();
+    await expect(page).toHaveURL(/\/search\?.*view=moneyball/);
+    await expect(moneyballLink).toHaveAttribute("aria-current", "page");
+    await expect(
+      page.getByRole("tablist", { name: "Search view" }),
+    ).toHaveCount(0);
+
+    await searchLink.click();
+    await expect(page).toHaveURL(/\/search\?.*view=general/);
+    await expect(searchLink).toHaveAttribute("aria-current", "page");
 
     await expect(
       page.getByRole("button", { name: "Upload Shortlist" }),
     ).toBeVisible();
 
     await page.goto("/search?view=shortlist");
-    await expect(generalTab).toHaveAttribute("aria-selected", "true");
+    await expect(searchLink).toHaveAttribute("aria-current", "page");
     await expect(
       page.getByRole("switch", { name: "Shortlist: On" }),
     ).toBeVisible();
