@@ -323,7 +323,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 4 — Enforce unique-placement swaps in draft editing
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tactics): enforce unique-placement swaps`
 
@@ -382,7 +382,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 5 — Reset stored tactics to defaults once
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tactics): reset stored tactics to defaults`
 
@@ -909,21 +909,23 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **PR:** 1
 
-**Commit:** 4
+**Commit:** 5
 
 ### RED or removal proof
 
-Add the swap-helper unit proof and replace the obsolete occupied-placement rejection route test as specified in Commit 4.
+Prove the v41-to-v42 reset at the migration seam, including two-save scope, retained assignments and planner teams, lazy reseeding, and recreated-tactic survival on a second migration application. Remove obsolete legacy-load tests with the retired normalization implementation.
 
 ### Expected outcome
 
-Exact qualified placement picks preserve uniqueness by swapping occupied placements in the edited phase, retaining compatible roles and clearing incompatible ones. Lane identity, other-phase data, and non-placement settings remain unchanged.
+Stored tactic rows reset once; normal defaults reseed on demand. Planner assignments and all other save data remain intact.
 
 ### Explicit exclusions
 
-Renderer, persistence, migration, IPC, and later redesign work. Implementation remains paused until the abandoned source changes are removed with developer approval and execution is authorized.
+Frontend, renderer, new IPC, schema changes, ongoing resets, and deletion outside tactic rows.
 
 ## Discoveries and replanning
+
+- 2026-09-05: delivery resumed under fingerprint `bd0767c438e788e0db1560643e56bfa8773de559f7914bd35a0a46b4db9ae84c`. The developer explicitly approved discarding the abandoned canvas attempt. The safety tool required preserving those exact three paths in a recovery stash; they were removed from the worktree without reapplying them. Commit 4 started from clean HEAD. Its sole review finding was resolved by replacing the canonical self-selection test with a distinct-lane ST/STC occupant swap proof; literal occupancy matching makes that test fail.
 
 - 2026-09-05: the developer accepted the reviewed replan and explicitly requested its commit before deciding whether to discard the abandoned implementation. Commit 3 therefore records only the ledger and TODO; the three source files are preserved unstaged, pending separate discard approval. This changes the planning-recording order only. No new implementation, publication, or delivery authority is inferred.
 
@@ -942,7 +944,8 @@ Renderer, persistence, migration, IPC, and later redesign work. Implementation r
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Redesign the tactic workspace | Commit 1 — Record the approved feature plan | 119b51910fa2eaea3163f9716a68be933356cc1e | Recorded accepted ledger and active TODO link. | Ledger and delivery classifiers passed; check-fast and staged whitespace check passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — Redesign the tactic workspace | Commit 2 — Add orientation-aware pitch geometry projection | 8d9e142fa4000aa2c31ebc93f4e96d9d3b70b15a | Added pure coordinate projection, supported-placement table, and visual ordering without UI wiring. | Expected missing-module RED; focused 7/7 GREEN; full check and staged whitespace passed. | Pass | Clear | 0 | Worker accidentally applied an unrelated retained stash; developer restored the exact eight affected tracked paths. Verified recovery before validation and review. |
-| PR 1 — Redesign the tactic workspace | Commit 3 — Record the approved replan | Pending record | Recorded the reviewed unique-placement swap and one-time reset plan with the revised commit sequence and TODO summary. | Ledger and delivery classifiers passed; check-fast and staged whitespace check passed. | Not applicable | Accepted findings — independent plan review cleared blockers; recorded MEDIUM and NITPICK advisories remain open; developer accepted the reviewed plan. | 1 | Developer requested planning commit before source-discard decision; abandoned implementation preserved unstaged. |
+| PR 1 — Redesign the tactic workspace | Commit 3 — Record the approved replan | e47d709 | Recorded the reviewed unique-placement swap and one-time reset plan with the revised commit sequence and TODO summary. | Ledger and delivery classifiers passed; check-fast and staged whitespace check passed. | Not applicable | Accepted findings — independent plan review cleared blockers; recorded MEDIUM and NITPICK advisories remain open; developer accepted the reviewed plan. | 1 | Developer requested planning commit before source-discard decision; abandoned implementation preserved unstaged. |
+| PR 1 — Redesign the tactic workspace | Commit 4 — Enforce unique-placement swaps in draft editing | Pending record | Added pure phase-placement swaps and wired the editor; preserved compatible roles, cleared incompatible roles, and replaced obsolete duplicate-rejection proof. | Unit 6/6, route 133/133, full check including 799 Rust tests passed; canonical literal-match mutation failed as expected; staged whitespace clean. | Pass | Clear | 1 | None. |
 
 ## Final validation
 

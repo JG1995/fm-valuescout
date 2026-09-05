@@ -75,6 +75,43 @@ export function updatePhaseLane(
   return { ...lane, oopPosition: position, oopRoleId: roleId };
 }
 
+export function swapPhasePlacement(
+  lanes: readonly TacticLane[],
+  editingLaneId: string,
+  phase: TacticPhase,
+  picked: string,
+  options: TacticOptions,
+): TacticLane[] {
+  const editingLane = lanes.find((lane) => lane.laneId === editingLaneId);
+  if (!editingLane) {
+    return [...lanes];
+  }
+  const previous = phasePosition(editingLane, phase);
+  const occupant = lanes.find(
+    (lane) =>
+      lane.laneId !== editingLaneId &&
+      canonicalPlacement(phasePosition(lane, phase)) ===
+        canonicalPlacement(picked),
+  );
+  const keepRole = (lane: TacticLane, position: string): string => {
+    const roleId = phaseRoleId(lane, phase);
+    return rolesForPhase(options, phase, position).some(
+      (role) => role.roleId === roleId,
+    )
+      ? roleId
+      : "";
+  };
+  return lanes.map((lane) => {
+    if (lane.laneId === editingLaneId) {
+      return updatePhaseLane(lane, phase, picked, keepRole(lane, picked));
+    }
+    if (occupant && lane.laneId === occupant.laneId) {
+      return updatePhaseLane(lane, phase, previous, keepRole(lane, previous));
+    }
+    return lane;
+  });
+}
+
 export function rolesForPhase(
   options: TacticOptions,
   phase: TacticPhase,

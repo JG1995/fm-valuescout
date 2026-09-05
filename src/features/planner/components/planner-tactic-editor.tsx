@@ -8,8 +8,7 @@ import type { PlannerTactic, TacticLane, TacticOptions } from "../types/tactic";
 import {
   cloneTactic,
   phasePosition,
-  phaseRoleId,
-  rolesForPhase,
+  swapPhasePlacement,
   TACTIC_VIEWS,
   type TacticPhase,
   type TacticView,
@@ -202,26 +201,9 @@ export function PlannerTacticEditor({
     phase: TacticPhase,
     position: string,
   ) => {
-    const currentLane = draft.lanes.find((lane) => lane.laneId === laneId);
-    if (!currentLane) {
-      return;
-    }
-    const currentRoleId = phaseRoleId(currentLane, phase);
-    const keepsCurrentRole = rolesForPhase(options, phase, position).some(
-      (role) => role.roleId === currentRoleId,
-    );
     updateDraft({
       ...draft,
-      lanes: draft.lanes.map((lane) =>
-        lane.laneId === laneId
-          ? updatePhaseLane(
-              lane,
-              phase,
-              position,
-              keepsCurrentRole ? currentRoleId : "",
-            )
-          : lane,
-      ),
+      lanes: swapPhasePlacement(draft.lanes, laneId, phase, position, options),
     });
   };
 

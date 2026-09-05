@@ -3416,7 +3416,7 @@ describe("My Club route", () => {
     });
   });
 
-  it("blocks two lanes from using the same sided placement", async () => {
+  it("swaps two lanes when picking an occupied placement", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
@@ -3432,8 +3432,26 @@ describe("My Club route", () => {
       "MCL",
     );
 
+    expect(
+      screen.getByRole("button", { name: "IP: MCL · Central Midfielder" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "IP: MCR · Central Midfielder" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "OOP MCR position" }),
+    ).toHaveValue("MCR");
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "IP MCL position" }),
+      "ML",
+    );
+
+    expect(screen.getByRole("combobox", { name: "IP ML role" })).toHaveValue(
+      "",
+    );
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "MCL is already used in the In-Possession phase.",
+      "Choose a compatible IP role for ML.",
     );
     expect(screen.getByRole("button", { name: "Save tactic" })).toBeDisabled();
   });
