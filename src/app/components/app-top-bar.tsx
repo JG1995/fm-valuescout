@@ -1,11 +1,10 @@
 import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { clearPlayerResultContext } from "@/app/player-result-context";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
-import { fieldClasses } from "@/components/ui/field/field-styles";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
@@ -14,7 +13,6 @@ import {
   loadDataPhaseLabels,
 } from "@/features/memory-read/components/load-data-outcome";
 import { useLoadData } from "@/features/memory-read/hooks/use-load-data";
-import { useLoadDataPreferences } from "@/features/memory-read/stores/use-load-data-preferences";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
@@ -23,9 +21,8 @@ import { GlobalPlayerSearch } from "@/features/search/components/global-player-s
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { ActiveSaveSelect } from "@/features/snapshot/components/active-save-select";
-import { SnapshotFreshnessChip } from "@/features/snapshot/components/snapshot-freshness-chip";
 import { staffKeys } from "@/features/staff/api/staff-keys";
-import { cn } from "@/utils/cn";
+import appLogo from "../../../src-tauri/icons/icon.png";
 
 export function AppTopBar() {
   const queryClient = useQueryClient();
@@ -38,17 +35,6 @@ export function AppTopBar() {
   });
   const { data: saves } = useQuery(savesQueryOptions);
   const activeSave = saves?.find((save) => save.isActive);
-  const capCheckboxId = useId();
-  const capLimitId = useId();
-
-  const playerCapEnabled = useLoadDataPreferences(
-    (state) => state.playerCapEnabled,
-  );
-  const playerCap = useLoadDataPreferences((state) => state.playerCap);
-  const setPlayerCapEnabled = useLoadDataPreferences(
-    (state) => state.setPlayerCapEnabled,
-  );
-  const setPlayerCap = useLoadDataPreferences((state) => state.setPlayerCap);
 
   const clearResults = useCallback(
     (guard?: () => boolean) => clearPlayerResultContext(queryClient, guard),
@@ -93,8 +79,6 @@ export function AppTopBar() {
     loadedSave.id !== activeSave?.id ||
     loadedSave.contextToken !== activeSave?.contextToken;
 
-  const capValid = Number.isInteger(playerCap) && playerCap > 0;
-
   useEffect(
     () =>
       router.history.subscribe(({ action, location }) => {
@@ -113,6 +97,11 @@ export function AppTopBar() {
       className="z-10 shrink-0 border-b border-outline-variant bg-surface-container"
     >
       <div className="flex h-header-height items-center gap-3 px-4">
+        <img
+          alt="FM ValueScout"
+          className="size-9 shrink-0 rounded-lg"
+          src={appLogo}
+        />
         <div className="flex shrink-0 items-center gap-1">
           <Button
             aria-label="Back"
@@ -132,53 +121,24 @@ export function AppTopBar() {
           />
         </div>
         <GlobalPlayerSearch />
-        <ActiveSaveSelect
-          onBeforeContextChange={clearResults}
-          onSwitched={() => {
-            void queryClient.invalidateQueries({ queryKey: searchKeys.all });
-            void queryClient.invalidateQueries({ queryKey: playerKeys.all });
-            void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
-            void queryClient.invalidateQueries({ queryKey: clubDnaKeys.all });
-            void queryClient.invalidateQueries({
-              queryKey: managedClubKeys.all,
-            });
-            void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
-            void queryClient.resetQueries({ queryKey: academyKeys.all });
-            void queryClient.invalidateQueries({ queryKey: staffKeys.all });
-          }}
-        />
-        <SnapshotFreshnessChip />
-        <div className="flex items-center gap-2">
-          <label
-            className="flex cursor-pointer items-center gap-1.5 text-label-md text-on-surface-variant"
-            htmlFor={capCheckboxId}
-          >
-            <input
-              checked={playerCapEnabled}
-              className="size-3.5 accent-primary"
-              id={capCheckboxId}
-              type="checkbox"
-              onChange={(event) => {
-                setPlayerCapEnabled(event.target.checked);
-              }}
-            />
-            Cap players
-          </label>
-          {playerCapEnabled ? (
-            <input
-              aria-label="Player limit"
-              className={cn(fieldClasses, "w-20")}
-              id={capLimitId}
-              min={1}
-              step={1}
-              type="number"
-              value={playerCap}
-              onChange={(event) => {
-                const next = Number(event.target.value);
-                setPlayerCap(Number.isFinite(next) ? next : 0);
-              }}
-            />
-          ) : null}
+        <div className="ml-auto flex items-center gap-3">
+          <ActiveSaveSelect
+            onBeforeContextChange={clearResults}
+            onSwitched={() => {
+              void queryClient.invalidateQueries({ queryKey: searchKeys.all });
+              void queryClient.invalidateQueries({ queryKey: playerKeys.all });
+              void queryClient.invalidateQueries({
+                queryKey: moneyballKeys.all,
+              });
+              void queryClient.invalidateQueries({ queryKey: clubDnaKeys.all });
+              void queryClient.invalidateQueries({
+                queryKey: managedClubKeys.all,
+              });
+              void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
+              void queryClient.resetQueries({ queryKey: academyKeys.all });
+              void queryClient.invalidateQueries({ queryKey: staffKeys.all });
+            }}
+          />
           <Button
             size="lg"
             icon={RefreshCw}
@@ -195,11 +155,7 @@ export function AppTopBar() {
                       : undefined
             }
             className="min-w-36"
-            disabled={
-              !activeSave ||
-              (playerCapEnabled && !capValid) ||
-              isContextMutating
-            }
+            disabled={!activeSave || isContextMutating}
             onClick={() => {
               setLoadedSave(
                 activeSave
@@ -209,7 +165,7 @@ export function AppTopBar() {
                     }
                   : undefined,
               );
-              load.mutate(playerCapEnabled ? playerCap : null);
+              load.mutate(null);
             }}
           >
             Load Data

@@ -332,7 +332,7 @@ test.describe("application smoke", () => {
     }
     await expect(
       nav.locator("[data-nav-caption]").allTextContents(),
-    ).resolves.toEqual(["Home", "Players", "Staff", "Club", "Settings"]);
+    ).resolves.toEqual(["Players", "Staff", "Club"]);
 
     const navOverflow = await nav.evaluate((element) => {
       const navElement = element as unknown as {
