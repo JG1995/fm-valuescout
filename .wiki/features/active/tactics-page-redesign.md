@@ -192,7 +192,7 @@ Add the pure orientation-aware coordinate projection with unit tests, then migra
 
 #### Commit 2 — Add orientation-aware pitch geometry projection
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tactics): add orientation-aware pitch geometry`
 
@@ -248,7 +248,7 @@ Add the pure orientation-aware coordinate projection with unit tests, then migra
 
 #### Commit 3 — Migrate the pitch to a normalized canvas
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tactics): migrate pitch to normalized canvas`
 
@@ -714,19 +714,19 @@ Add the pure orientation-aware coordinate projection with unit tests, then migra
 
 **PR:** 1
 
-**Commit:** 2
+**Commit:** 3
 
 ### RED or removal proof
 
-Add the Commit 2 projection unit test and confirm the missing geometry module fails before implementation.
+Update route geometry assertions to the normalized canvas and confirm failure on the grid renderer.
 
 ### Expected outcome
 
-Pure normalized portrait and clockwise landscape projection with deterministic visual ordering; no UI wiring.
+Shared portrait single-phase canvas preserves current per-view board counts, dynamic placement, selection, and modal behavior.
 
 ### Explicit exclusions
 
-Components, styling, IPC, Rust, migrations, dependencies, and orientation subscriptions.
+One-canvas consolidation, connectors, XI panel, inspector changes, landscape, persistence, and dependencies.
 
 ## Discoveries and replanning
 
@@ -738,7 +738,8 @@ Components, styling, IPC, Rust, migrations, dependencies, and orientation subscr
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — Redesign the tactic workspace | Commit 1 — Record the approved feature plan | Pending record | Recorded accepted ledger and active TODO link. | Ledger and delivery classifiers passed; check-fast and staged whitespace check passed. | Not applicable | Clear | 0 | None. |
+| PR 1 — Redesign the tactic workspace | Commit 1 — Record the approved feature plan | 119b51910fa2eaea3163f9716a68be933356cc1e | Recorded accepted ledger and active TODO link. | Ledger and delivery classifiers passed; check-fast and staged whitespace check passed. | Not applicable | Clear | 0 | None. |
+| PR 1 — Redesign the tactic workspace | Commit 2 — Add orientation-aware pitch geometry projection | Pending record | Added pure coordinate projection, supported-placement table, and visual ordering without UI wiring. | Expected missing-module RED; focused 7/7 GREEN; full check and staged whitespace passed. | Pass | Clear | 0 | Worker accidentally applied an unrelated retained stash; developer restored the exact eight affected tracked paths. Verified recovery before validation and review. |
 
 ## Final validation
 
