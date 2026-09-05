@@ -114,7 +114,7 @@ Rename nothing: open Settings history with two dated snapshots, edit the older r
 
 **Status:** Ready for publication
 
-**PR ref:** https://github.com/JG1995/fm-valuescout/pull/117
+**PR ref:** <https://github.com/JG1995/fm-valuescout/pull/117>
 
 **Merge ref:** Not merged
 
