@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -193,7 +193,7 @@ The thinnest end-to-end path that proves the approach:
 
 **Required checks:** strict required GitHub Actions status `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -511,9 +511,9 @@ The thinnest end-to-end path that proves the approach:
 
 **PR:** Suggested individual training in Club Squad
 
-**Active work:** None — implementation complete
+**Active work:** None — documentation close-out complete; feature review and validation done
 
-**Commit:** None — feature validation and review
+**Commit:** None — documentation reconciliation complete
 
 ### RED or removal proof
 
@@ -530,7 +530,7 @@ New implementation scope, release work, unrelated refactors, and the unrelated `
 ## Discoveries and replanning
 
 - 2026-09-05 developer-approved simplification (value-or-dash): the cell shows only the most beneficial Training Focus name or `—`, with an accessible name for the visible value or dash and no Details action, Modal, gain, role labels, or attribute evidence. `CA >= PA` always renders `—` with no displayed focus. This is a material contract change: the Delivery fingerprint is reset to `Pending plan review`, remaining packets are replanned as Commit 4 (backend simplification + max-CA gate, Active) and Commit 5 (simple Squad-only default column, Pending), and completed Commits 1–3 are preserved with immutable refs. The original Commit 4 partial work was interrupted before validation/review and discarded from the worktree; the recovery stash is not delivery truth.
-- 2026-09-05 feature review correction: the initial whole-feature review found that exact focus-to-attribute mappings and endpoint `ip_weight` behavior lacked direct regression proof, plus one duplicate store test. The bounded test-only correction strengthens the inventory test, proves OOP-only and IP-only winners through the real ranker, and removes the duplicate. Full validation and correction review are clear. Correction ref: `Pending record`.
+- 2026-09-05 feature review correction: the initial whole-feature review found that exact focus-to-attribute mappings and endpoint `ip_weight` behavior lacked direct regression proof, plus one duplicate store test. The bounded test-only correction strengthens the inventory test, proves OOP-only and IP-only winners through the real ranker, and removes the duplicate. Full validation and correction review are clear. Correction ref: `6c485947d98c0acab53f4fd253f068fe1e1a2aa3`.
 
 ## Completed work
 
@@ -552,4 +552,4 @@ New implementation scope, release work, unrelated refactors, and the unrelated `
 
 ## Documentation impact
 
-Complete during reconciliation (TODO Active entry in Commit 1; close-out archive move before final merge).
+Complete: Architecture and TODO updated; no ADR, DESIGN, BACKLOG, or planned-spec change. Documentation reconciliation ref: `Pending record` (self-reference resolved by the close-out commit and not rewritten later).

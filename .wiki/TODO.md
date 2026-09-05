@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- **Suggested individual training** — advisory FM26 training-focus column in Club Squad driven by the Planner-assigned tactic lane ([active ledger](./features/active/suggested-individual-training.md), Linear JAY-46).
+_No active work._
 
 ## Next
 
