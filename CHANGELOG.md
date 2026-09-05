@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-05
+
+### Added
+
+- Player and Staff Search now integrate save-owned shortlist workflows, including CSV imports, shortlist filtering, and staff assignment recommendations.
+- Grouped top navigation provides direct access to Home, player and staff search, My Club workspaces including Youth, and Settings.
+- Snapshot history can edit an imported snapshot's in-game date.
+- Squad shows a Suggested Training focus for developing players, using explicit Planner assignments first and each unassigned player's best-fit tactic lane as a fallback.
+
+### Changed
+
+- General Player Search shortlist filtering now remains independent of Moneyball cohort membership.
+- The top utility bar now shows the app logo, a wider global search, and the active snapshot's in-game date while keeping save and data-loading actions together.
+
+### Removed
+
+- Removed the standalone Player Shortlist destination, the My Club Staff Shortlist workspace, the persistent left navigation rail, redundant workspace tabs, frontend player-cap controls, and the snapshot freshness indicator.
+
 ## [0.16.0] - 2026-09-03
 
 ### Added
