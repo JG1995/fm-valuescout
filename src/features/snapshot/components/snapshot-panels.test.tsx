@@ -756,6 +756,21 @@ describe("snapshot panels", () => {
         name: /^Edit date for snapshot 2026-06-01/,
       }),
     ).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "0000-02-29");
+    await user.click(save);
+    expect(
+      await within(dialog).findByText(
+        "Game date must be a valid date in YYYY-MM-DD format",
+      ),
+    ).toBeVisible();
+    expect(input).toHaveValue("0000-02-29");
+    expect(
+      screen.getByRole("button", {
+        name: /^Edit date for snapshot 2026-06-01/,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("promotes an older snapshot and notifies the route when the winner changes", async () => {
@@ -801,6 +816,12 @@ describe("snapshot panels", () => {
     const onBeforeContextChange = vi.fn(async () => undefined);
     const onCurrentContextChanged = vi.fn();
     renderPanels(onBeforeContextChange, onCurrentContextChanged);
+    let currentSnapshotCalls = 0;
+    observeSnapshotIpcCall("getCurrentSnapshot", () => {
+      currentSnapshotCalls += 1;
+    });
+    await screen.findByText(/24 players/);
+    const currentSnapshotCallsBeforeEdit = currentSnapshotCalls;
 
     await user.click(
       await screen.findByRole("button", {
@@ -827,6 +848,7 @@ describe("snapshot panels", () => {
     expect(rows[1]).toHaveTextContent("Transfer window");
     expect(rows[1]).toHaveTextContent("Current");
     expect(onCurrentContextChanged).not.toHaveBeenCalled();
+    expect(currentSnapshotCalls).toBe(currentSnapshotCallsBeforeEdit);
   });
 
   it("patches the cached current summary when the edited current snapshot stays current", async () => {
@@ -835,10 +857,15 @@ describe("snapshot panels", () => {
     const onBeforeContextChange = vi.fn(async () => undefined);
     const onCurrentContextChanged = vi.fn();
     renderPanels(onBeforeContextChange, onCurrentContextChanged);
+    let currentSnapshotCalls = 0;
+    observeSnapshotIpcCall("getCurrentSnapshot", () => {
+      currentSnapshotCalls += 1;
+    });
 
     expect(await screen.findByText(/24 players/)).toHaveTextContent(
       "2026-08-01",
     );
+    const currentSnapshotCallsBeforeEdit = currentSnapshotCalls;
     await user.click(
       await screen.findByRole("button", {
         name: /^Edit date for snapshot Transfer window/,
@@ -857,6 +884,7 @@ describe("snapshot panels", () => {
     });
     expect(screen.getByText(/24 players/)).toHaveTextContent("24 players");
     expect(onCurrentContextChanged).not.toHaveBeenCalled();
+    expect(currentSnapshotCalls).toBe(currentSnapshotCallsBeforeEdit);
   });
 
   it("keeps the switched save current summary unchanged when a retained date edit stays current", async () => {

@@ -90,6 +90,7 @@ let nextSnapshotId = 1;
 let onLoadDataCall: (() => void) | undefined;
 let onSetActiveSaveCall: (() => void) | undefined;
 let onDeleteSnapshotCall: (() => void) | undefined;
+let onGetCurrentSnapshotCall: (() => void) | undefined;
 let onUpdateSnapshotDateCall: (() => void) | undefined;
 let onDeleteSaveCall: (() => void) | undefined;
 
@@ -214,7 +215,7 @@ function isCanonicalGameDate(value: string) {
   const year = Number(value.slice(0, 4));
   const month = Number(value.slice(5, 7));
   const day = Number(value.slice(8, 10));
-  if (month < 1 || month > 12 || day < 1) {
+  if (year < 1 || month < 1 || month > 12 || day < 1) {
     return false;
   }
   const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
@@ -330,6 +331,7 @@ export function resetSnapshotIpcMock() {
   onLoadDataCall = undefined;
   onSetActiveSaveCall = undefined;
   onDeleteSnapshotCall = undefined;
+  onGetCurrentSnapshotCall = undefined;
   onUpdateSnapshotDateCall = undefined;
   onDeleteSaveCall = undefined;
 }
@@ -357,6 +359,7 @@ export function observeSnapshotIpcCall(
     | "loadData"
     | "setActiveSave"
     | "deleteSnapshot"
+    | "getCurrentSnapshot"
     | "updateSnapshotDate"
     | "deleteSave",
   observer: (() => void) | undefined,
@@ -364,6 +367,7 @@ export function observeSnapshotIpcCall(
   if (command === "loadData") onLoadDataCall = observer;
   if (command === "setActiveSave") onSetActiveSaveCall = observer;
   if (command === "deleteSnapshot") onDeleteSnapshotCall = observer;
+  if (command === "getCurrentSnapshot") onGetCurrentSnapshotCall = observer;
   if (command === "updateSnapshotDate") onUpdateSnapshotDateCall = observer;
   if (command === "deleteSave") onDeleteSaveCall = observer;
 }
@@ -553,6 +557,7 @@ export function resolveListSnapshotsIpcMock(args: unknown) {
 }
 
 export function resolveGetCurrentSnapshotIpcMock() {
+  onGetCurrentSnapshotCall?.();
   const state = activeSaveSnapshot();
   return state ? { ...state.snapshot } : null;
 }
