@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- **[Tactics Page Redesign](./features/active/tactics-page-redesign.md)** — one phase-aware tactical pitch with Tactical XI panel and beside-pitch inspector, landscape orientation at >= 1920px, ultrawide containment, and viewport-fit proof (Linear JAY-57).
+- **[Tactics Page Redesign](./features/active/tactics-page-redesign.md)** — one phase-aware tactical pitch with Tactical XI panel and beside-pitch inspector, unique-placement swaps, a one-time tactic reset to defaults, landscape orientation at >= 1920px, ultrawide containment, and viewport-fit proof (Linear JAY-57).
 
 ## Next
 
