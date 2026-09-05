@@ -679,6 +679,47 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             };
           }
 
+          if (cmd === "update_snapshot_game_date") {
+            const isCanonicalGameDate = (value) => {
+              if (typeof value !== "string" || value.length !== 10 || value[4] !== "-" || value[7] !== "-") {
+                return false;
+              }
+              for (let index = 0; index < 10; index += 1) {
+                if (index === 4 || index === 7) continue;
+                const code = value.charCodeAt(index);
+                if (code < 48 || code > 57) return false;
+              }
+              const year = Number(value.slice(0, 4));
+              const month = Number(value.slice(5, 7));
+              const day = Number(value.slice(8, 10));
+              if (month < 1 || month > 12 || day < 1) return false;
+              const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+              const daysInMonth = month === 2
+                ? (leap ? 29 : 28)
+                : [4, 6, 9, 11].includes(month) ? 30 : 31;
+              return day <= daysInMonth;
+            };
+            if (!isCanonicalGameDate(args?.gameDate)) {
+              throw new Error("Game date must be a valid date in YYYY-MM-DD format");
+            }
+            const target = snapshots.find((snapshot) =>
+              snapshot.id === args?.snapshotId &&
+              snapshot.contextToken === args?.contextToken,
+            );
+            if (!target) throw new Error("Snapshot changed or no longer exists");
+            const previousCurrentSnapshotId = snapshotsForSave(target.saveId)
+              .find((snapshot) => snapshot.isCurrent)?.id ?? null;
+            snapshots = snapshots.map((snapshot) => snapshot.id === target.id
+              ? { ...snapshot, gameDate: args.gameDate }
+              : snapshot);
+            const currentSnapshotId = promoteCurrentSnapshot(target.saveId);
+            return {
+              snapshot: { ...snapshots.find((snapshot) => snapshot.id === target.id) },
+              previousCurrentSnapshotId,
+              currentSnapshotId,
+            };
+          }
+
           if (cmd === "delete_save") {
             const target = saves.find((save) =>
               save.id === args?.saveId && save.contextToken === args?.contextToken,

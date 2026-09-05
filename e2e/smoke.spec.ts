@@ -124,6 +124,32 @@ test.describe("application smoke", () => {
     await expect(snapshotSummary).toContainText("21 players");
   });
 
+  test("Settings promotes an older snapshot after editing its date", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      snapshotHistory: true,
+    });
+    await page.goto("/settings");
+
+    const main = page.getByRole("main");
+    const history = main.getByRole("table", { name: "Snapshot history" });
+    const snapshotSummary = main.getByText(/In database:/).locator("..");
+    await expect(history.getByRole("row").nth(1)).toContainText("2026-08-01");
+    await expect(snapshotSummary).toContainText("24 players");
+
+    await history
+      .getByRole("button", { name: /^Edit date for snapshot 2026-06-01/ })
+      .click();
+    const editor = page.getByRole("dialog", { name: /Edit date/ });
+    await editor.getByLabel("In-game date").fill("2026-09-01");
+    await editor.getByRole("button", { name: "Save date" }).click();
+
+    await expect(history.getByRole("row").nth(1)).toContainText("2026-09-01");
+    await expect(history.getByRole("row").nth(1)).toContainText("Current");
+    await expect(snapshotSummary).toContainText("21 players");
+  });
+
   test("Settings deletes inactive and active saves with the right fallback", async ({
     page,
   }) => {

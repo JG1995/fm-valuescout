@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -112,7 +112,7 @@ Rename nothing: open Settings history with two dated snapshots, edit the older r
 
 ### PR 1 — Snapshot date edit
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -265,7 +265,7 @@ Rename nothing: open Settings history with two dated snapshots, edit the older r
 
 #### Commit 3 — Edit snapshot date from Settings history
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(snapshot): edit snapshot date from Settings`
 
@@ -336,32 +336,34 @@ Rename nothing: open Settings history with two dated snapshots, edit the older r
 
 **PR:** PR 1 — Snapshot date edit
 
-**Commit:** Edit snapshot date from Settings history
+**Active work:** None — feature validation and close-out
+
+**Commit:** None — feature validation and close-out
 
 ### RED or removal proof
 
-Add focused component tests that fail because Settings has no date-edit action or mutation flow, then implement the smallest UI, IPC adapter, mock, and smoke path that makes them pass.
+Not applicable — all planned implementation packets are complete and independently reviewed. The feature now requires full validation, feature review, and documentation reconciliation.
 
 ### Expected outcome
 
-Settings users can edit one snapshot date through an accessible form Modal. Successful edits reorder history, reconcile current metadata locally when the winner stays the same, and refresh all current-only views only when the winner changes.
+The complete feature passes its recorded validation and review, durable documentation reflects the implemented behavior, and the final PR becomes ready for publication.
 
 ### Explicit exclusions
 
-- No backend, migration, bridge, Set-active, provenance, source, Academy, or ingest-derived behavior changes.
-- No sibling-feature imports or new query-invalidation roots in the snapshot feature.
-- No Settings redesign, pagination, bulk editing, or historical-player browsing.
+- Release preparation and unrelated implementation or documentation.
+- Any expansion beyond the accepted JAY-48 date-edit behavior.
 
 ## Discoveries and replanning
 
-- None yet. Record material deviations, blockers, and decisions that change remaining work here with what was planned, what changed, and why.
+- Commit 3 also requires the existing `src/testing/setup.ts` IPC router to forward `update_snapshot_game_date` to the snapshot mock and reset its busy state. The packet named the mock but omitted this seven-line test-harness seam; the change is mechanical, stays inside frontend proof infrastructure, and does not alter scope, architecture, behavior, packet order, or authority.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Snapshot date edit | Commit 1 — Record the approved feature plan | `092110cc53be697319703dc78edd601da7ac2388` | Added the accepted schema-2 JAY-48 ledger and made Snapshot Date Edit the sole TODO Active feature. | `ledger_state.py` runnable; `delivery_state.py` runnable; staged diff check clean; no repository documentation command exists. | Not applicable | Clear | 0 | None |
-| PR 1 — Snapshot date edit | Commit 2 — Update snapshot game date in Rust | Pending record | Added the validated token-bound game-date update transaction, shared current selection, compact reconciliation, current-selection exclusion, typed DTO, and command registration without Academy writes. | RED compile proof failed on missing symbols; focused snapshot tests passed 94/94; `./scripts/dev check-rust` passed; `./scripts/dev check` passed with 775 Rust tests, 0 failed, 2 ignored. | Pass | Clear | 0 | None |
+| PR 1 — Snapshot date edit | Commit 2 — Update snapshot game date in Rust | `bb01feaafba67bb13c5f1a7239e0386735d8f674` | Added the validated token-bound game-date update transaction, shared current selection, compact reconciliation, current-selection exclusion, typed DTO, and command registration without Academy writes. | RED compile proof failed on missing symbols; focused snapshot tests passed 94/94; `./scripts/dev check-rust` passed; `./scripts/dev check` passed with 775 Rust tests, 0 failed, 2 ignored. | Pass | Clear | 0 | None |
+| PR 1 — Snapshot date edit | Commit 3 — Edit snapshot date from Settings history | Pending record | Added the accessible Settings date editor, typed IPC adapter, truthful mock/stub ordering and promotion, precise current-cache reconciliation, and browser smoke path. | RED action test failed on the missing control; component suite passed 35/35; `./scripts/dev smoke` passed 55/55 after one unrelated Squad progress timing retry; `./scripts/dev check` passed with 775 Rust tests, 0 failed, 2 ignored. | Pass | Clear | 1 | Added the required seven-line `src/testing/setup.ts` IPC route/reset seam omitted from the packet; corrected a cross-save current-cache identity defect found in review. |
 
 ## Final validation
 

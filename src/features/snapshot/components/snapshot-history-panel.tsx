@@ -24,7 +24,15 @@ import { renameSnapshot } from "../api/rename-snapshot";
 import { savesQueryOptions } from "../api/saves-query-options";
 import { snapshotKeys } from "../api/snapshot-keys";
 import { snapshotMetadataQueryOptions } from "../api/snapshot-metadata-query-options";
-import type { SnapshotDeleteResult, SnapshotMetadata } from "../types/snapshot";
+import {
+  type SnapshotGameDateUpdateResult,
+  updateSnapshotDate,
+} from "../api/update-snapshot-date";
+import type {
+  SnapshotDeleteResult,
+  SnapshotMetadata,
+  SnapshotSummary,
+} from "../types/snapshot";
 
 type SnapshotHistoryPanelProps = {
   /** Route-owned invalidation for products that only read the current snapshot. */
@@ -145,6 +153,117 @@ function SnapshotRenameModal({
   );
 }
 
+type SnapshotDateEditModalProps = SnapshotModalProps & {
+  onBeforeContextChange: ClearPlayerResultContext;
+  onDateUpdated: (
+    snapshot: SnapshotMetadata,
+    result: SnapshotGameDateUpdateResult,
+  ) => void;
+};
+
+function SnapshotDateEditModal({
+  target,
+  onClose,
+  fallbackFocusTo,
+  onBeforeContextChange,
+  onDateUpdated,
+}: SnapshotDateEditModalProps) {
+  const [visibleTarget, setVisibleTarget] = useState<SnapshotMetadata | null>(
+    target,
+  );
+  const [gameDate, setGameDate] = useState(target?.gameDate ?? "");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const formId = useId();
+  const editDate = useMutation({
+    mutationFn: async () => {
+      await onBeforeContextChange();
+      return updateSnapshotDate(
+        visibleTarget?.id ?? 0,
+        visibleTarget?.contextToken ?? "",
+        gameDate,
+      );
+    },
+    onSuccess: (result) => {
+      if (visibleTarget) {
+        onDateUpdated(visibleTarget, result);
+      }
+      onClose();
+    },
+  });
+  const { reset } = editDate;
+
+  useEffect(() => {
+    if (target) {
+      setVisibleTarget(target);
+      setGameDate(target.gameDate ?? "");
+      setLocalError(null);
+      reset();
+    }
+  }, [reset, target]);
+
+  if (!visibleTarget) {
+    return null;
+  }
+
+  return (
+    <Modal
+      open={target !== null}
+      title={`Edit date for snapshot ${snapshotTargetLabel(visibleTarget)}`}
+      variant="form"
+      onClose={() => {
+        if (!editDate.isPending) {
+          onClose();
+        }
+      }}
+      fallbackFocusTo={fallbackFocusTo}
+      footer={
+        <>
+          <Button
+            variant="secondary"
+            disabled={editDate.isPending}
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            form={formId}
+            type="submit"
+            loading={editDate.isPending}
+            loadingLabel="Saving…"
+          >
+            Save date
+          </Button>
+        </>
+      }
+    >
+      <form
+        id={formId}
+        className="space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(gameDate)) {
+            setLocalError("Enter a valid date in YYYY-MM-DD format.");
+            return;
+          }
+          setLocalError(null);
+          editDate.mutate();
+        }}
+      >
+        <TextField
+          label="In-game date"
+          value={gameDate}
+          placeholder="YYYY-MM-DD"
+          onChange={(event) => setGameDate(event.target.value)}
+          error={
+            localError ??
+            (editDate.isError ? editDate.error.message : undefined)
+          }
+        />
+      </form>
+    </Modal>
+  );
+}
+
 type SnapshotDeletionModalProps = SnapshotModalProps & {
   targetIsCurrent: boolean;
   onBeforeContextChange: ClearPlayerResultContext;
@@ -255,6 +374,9 @@ export function SnapshotHistoryPanel({
   const [deleteTarget, setDeleteTarget] = useState<SnapshotMetadata | null>(
     null,
   );
+  const [dateEditTarget, setDateEditTarget] = useState<SnapshotMetadata | null>(
+    null,
+  );
 
   if (!activeSave) {
     return null;
@@ -341,6 +463,13 @@ export function SnapshotHistoryPanel({
                         </Button>
                         <Button
                           variant="ghost"
+                          onClick={() => setDateEditTarget(snapshot)}
+                          aria-label={`Edit date for snapshot ${snapshotTargetLabel(snapshot)}`}
+                        >
+                          Edit date
+                        </Button>
+                        <Button
+                          variant="ghost"
                           onClick={() => setDeleteTarget(snapshot)}
                           aria-label={`Delete snapshot ${snapshotTargetLabel(snapshot)}`}
                         >
@@ -359,6 +488,31 @@ export function SnapshotHistoryPanel({
         target={renameTarget}
         onClose={() => setRenameTarget(null)}
         fallbackFocusTo={() => panelRef.current}
+      />
+      <SnapshotDateEditModal
+        target={dateEditTarget}
+        onClose={() => setDateEditTarget(null)}
+        fallbackFocusTo={() => panelRef.current}
+        onBeforeContextChange={onBeforeContextChange}
+        onDateUpdated={(snapshot, result) => {
+          void queryClient.invalidateQueries({
+            queryKey: snapshotKeys.history(snapshot.saveId),
+          });
+          if (result.previousCurrentSnapshotId !== result.currentSnapshotId) {
+            void queryClient.invalidateQueries({
+              queryKey: snapshotKeys.current(),
+            });
+            onCurrentContextChanged?.();
+          } else if (snapshot.id === result.currentSnapshotId) {
+            queryClient.setQueryData<SnapshotSummary | null>(
+              snapshotKeys.current(),
+              (cached) =>
+                cached && cached.id === result.currentSnapshotId
+                  ? { ...cached, gameDate: result.snapshot.gameDate }
+                  : cached,
+            );
+          }
+        }}
       />
       <SnapshotDeletionModal
         target={deleteTarget}
