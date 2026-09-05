@@ -1,6 +1,9 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExtension, Row};
+
+use super::{suggested_training, tactic};
+use crate::features::scoring::catalog::all_roles;
 
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
@@ -124,7 +127,21 @@ pub struct SquadPlayer {
     pub ca: i64,
     pub pa: i64,
     pub market_value_gbp: Option<i64>,
+    pub suggested_training: Option<SquadSuggestedTraining>,
     pub dynamic_values: BTreeMap<String, Option<DynamicValue>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SquadSuggestedTraining {
+    pub lane_id: String,
+    pub ip_role_id: String,
+    pub ip_role_display: String,
+    pub oop_role_id: String,
+    pub oop_role_display: String,
+    pub focus: Option<String>,
+    pub focus_attributes: Vec<String>,
+    pub contributing_attributes: Vec<String>,
+    pub combined_gain: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -186,6 +203,31 @@ pub fn list_squad_players(
     if !is_configured {
         return Ok(empty_page());
     }
+
+    let tactic_row_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM planner_tactic_lanes WHERE save_id = ?1",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    let tactic = if tactic_row_count == 0 {
+        None
+    } else {
+        Some(tactic::load_tactic(conn, save_id)?)
+    };
+    let assignments = match tactic {
+        None => HashMap::new(),
+        Some(_) => conn
+            .prepare("SELECT player_uid, lane_id FROM planner_assignments WHERE save_id = ?1")
+            .map_err(|error| error.to_string())?
+            .query_map(params![save_id], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|error| error.to_string())?
+            .collect::<Result<HashMap<_, _>, _>>()
+            .map_err(|error| error.to_string())?,
+    };
 
     let limit = limit.clamp(1, MAX_SQUAD_PAGE_LIMIT);
     let offset = i64::try_from(offset).map_err(|_| "squad offset out of range".to_string())?;
@@ -279,7 +321,8 @@ pub fn list_squad_players(
              p.division,
              p.ca,
              p.pa,
-             p.market_value_gbp{}
+             p.market_value_gbp,
+             p.attributes_json{}
          {from_sql}
          WHERE {membership_sql}
              {order_sql}
@@ -293,13 +336,20 @@ pub fn list_squad_players(
     let mut statement = conn
         .prepare(&select_sql)
         .map_err(|error| error.to_string())?;
-    let players = statement
+    let rows = statement
         .query_map(params_from_iter(query_bind_values.iter()), |row| {
             map_player(row, &dynamic_fields)
         })
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
+
+    let mut players = Vec::with_capacity(rows.len());
+    for (mut player, attributes) in rows {
+        player.suggested_training =
+            suggestion_for_player(tactic.as_ref(), &assignments, player.uid, &attributes)?;
+        players.push(player);
+    }
 
     Ok(SquadPlayersPage { players, total })
 }
@@ -311,7 +361,67 @@ fn empty_page() -> SquadPlayersPage {
     }
 }
 
-fn map_player(row: &Row<'_>, dynamic_fields: &[MetricField]) -> rusqlite::Result<SquadPlayer> {
+fn suggestion_for_player(
+    tactic: Option<&tactic::PlannerTactic>,
+    assignments: &HashMap<i64, String>,
+    player_uid: i64,
+    attributes: &HashMap<String, Option<u8>>,
+) -> Result<Option<SquadSuggestedTraining>, String> {
+    let Some(tactic) = tactic else {
+        return Ok(None);
+    };
+    let Some(lane_id) = assignments.get(&player_uid) else {
+        return Ok(None);
+    };
+    let lane = tactic
+        .lanes
+        .iter()
+        .find(|lane| lane.lane_id == *lane_id)
+        .ok_or_else(|| format!("Unknown tactic lane `{lane_id}`"))?;
+    let roles = all_roles();
+    let ip_role = roles
+        .iter()
+        .find(|role| role.role_id == lane.ip_role_id)
+        .ok_or_else(|| format!("Unknown tactic lane role `{}`", lane.ip_role_id))?;
+    let oop_role = roles
+        .iter()
+        .find(|role| role.role_id == lane.oop_role_id)
+        .ok_or_else(|| format!("Unknown tactic lane role `{}`", lane.oop_role_id))?;
+    let unavailable = SquadSuggestedTraining {
+        lane_id: lane.lane_id.clone(),
+        ip_role_id: lane.ip_role_id.clone(),
+        ip_role_display: ip_role.display_name.to_string(),
+        oop_role_id: lane.oop_role_id.clone(),
+        oop_role_display: oop_role.display_name.to_string(),
+        focus: None,
+        focus_attributes: Vec::new(),
+        contributing_attributes: Vec::new(),
+        combined_gain: None,
+    };
+    let Some(chosen) = suggested_training::suggest_for_lane(attributes, lane) else {
+        return Ok(Some(unavailable));
+    };
+    Ok(Some(SquadSuggestedTraining {
+        focus: Some(chosen.focus.to_string()),
+        focus_attributes: chosen
+            .focus_attributes
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        contributing_attributes: chosen
+            .contributing_attributes
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        combined_gain: Some(chosen.gain),
+        ..unavailable
+    }))
+}
+
+fn map_player(
+    row: &Row<'_>,
+    dynamic_fields: &[MetricField],
+) -> rusqlite::Result<(SquadPlayer, HashMap<String, Option<u8>>)> {
     let nationalities_json: String = row.get(5)?;
     let nationalities = serde_json::from_str(&nationalities_json).map_err(|error| {
         rusqlite::Error::FromSqlConversionFailure(
@@ -323,28 +433,44 @@ fn map_player(row: &Row<'_>, dynamic_fields: &[MetricField]) -> rusqlite::Result
             )),
         )
     })?;
+    let attributes_json: String = row.get(11)?;
+    let attributes: HashMap<String, Option<u8>> =
+        serde_json::from_str(&attributes_json).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(
+                11,
+                rusqlite::types::Type::Text,
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("invalid attributes_json: {error}"),
+                )),
+            )
+        })?;
     let mut dynamic_values = BTreeMap::new();
     for (offset, field) in dynamic_fields.iter().enumerate() {
         dynamic_values.insert(
             field.id().to_string(),
-            read_dynamic_value(row, 11 + offset, field)?,
+            read_dynamic_value(row, 12 + offset, field)?,
         );
     }
 
-    Ok(SquadPlayer {
-        uid: row.get(0)?,
-        name: row.get(1)?,
-        age: row.get(2)?,
-        birth_year: row.get(3)?,
-        birth_day_of_year: row.get(4)?,
-        nationalities,
-        club: row.get(6)?,
-        division: row.get(7)?,
-        ca: row.get(8)?,
-        pa: row.get(9)?,
-        market_value_gbp: row.get(10)?,
-        dynamic_values,
-    })
+    Ok((
+        SquadPlayer {
+            uid: row.get(0)?,
+            name: row.get(1)?,
+            age: row.get(2)?,
+            birth_year: row.get(3)?,
+            birth_day_of_year: row.get(4)?,
+            nationalities,
+            club: row.get(6)?,
+            division: row.get(7)?,
+            ca: row.get(8)?,
+            pa: row.get(9)?,
+            market_value_gbp: row.get(10)?,
+            suggested_training: None,
+            dynamic_values,
+        },
+        attributes,
+    ))
 }
 
 fn dynamic_select_sql(

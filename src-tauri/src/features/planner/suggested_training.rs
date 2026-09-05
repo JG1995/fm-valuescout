@@ -1,10 +1,6 @@
 //! Ranked FM26 individual-training focuses for an assigned tactic lane.
 //!
 //! Pure ranking engine: no SQL, no I/O, no side effects.
-//!
-//! Public API stays unused until the Squad read-model wiring consumes it.
-
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 

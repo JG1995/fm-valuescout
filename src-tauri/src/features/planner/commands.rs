@@ -15,13 +15,43 @@ use super::role_reference::{
 };
 use super::squad::{
     self as squad_service, SquadPlayer, SquadPlayersPage, SquadSortDir, SquadSortField,
-    DEFAULT_SQUAD_PAGE_LIMIT, MAX_SQUAD_PAGE_LIMIT,
+    SquadSuggestedTraining, DEFAULT_SQUAD_PAGE_LIMIT, MAX_SQUAD_PAGE_LIMIT,
 };
 use super::tactic::{self as tactic_service, PlannerTactic, TacticLane, TacticOptions};
 use super::teams::{
     self as teams_service, PlannerStaffingTargetRemovalImpact, PlannerTeamInput,
     PlannerTeamRemovalImpact,
 };
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadSuggestedTrainingDto {
+    pub lane_id: String,
+    pub ip_role_id: String,
+    pub ip_role_display: String,
+    pub oop_role_id: String,
+    pub oop_role_display: String,
+    pub focus: Option<String>,
+    pub focus_attributes: Vec<String>,
+    pub contributing_attributes: Vec<String>,
+    pub combined_gain: Option<f64>,
+}
+
+impl From<SquadSuggestedTraining> for SquadSuggestedTrainingDto {
+    fn from(suggestion: SquadSuggestedTraining) -> Self {
+        Self {
+            lane_id: suggestion.lane_id,
+            ip_role_id: suggestion.ip_role_id,
+            ip_role_display: suggestion.ip_role_display,
+            oop_role_id: suggestion.oop_role_id,
+            oop_role_display: suggestion.oop_role_display,
+            focus: suggestion.focus,
+            focus_attributes: suggestion.focus_attributes,
+            contributing_attributes: suggestion.contributing_attributes,
+            combined_gain: suggestion.combined_gain,
+        }
+    }
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +67,7 @@ pub struct SquadPlayerDto {
     pub ca: i64,
     pub pa: i64,
     pub market_value_gbp: Option<i64>,
+    pub suggested_training: Option<SquadSuggestedTrainingDto>,
     pub dynamic_values: std::collections::BTreeMap<String, Option<DynamicValueDto>>,
 }
 
@@ -76,6 +107,9 @@ impl From<SquadPlayer> for SquadPlayerDto {
             ca: player.ca,
             pa: player.pa,
             market_value_gbp: player.market_value_gbp,
+            suggested_training: player
+                .suggested_training
+                .map(SquadSuggestedTrainingDto::from),
             dynamic_values: player
                 .dynamic_values
                 .into_iter()
