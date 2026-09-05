@@ -777,7 +777,7 @@ fn require_optional_game_date(
     }
 }
 
-fn canonical_game_date(value: &str) -> bool {
+pub(crate) fn canonical_game_date(value: &str) -> bool {
     let bytes = value.as_bytes();
     if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
         return false;

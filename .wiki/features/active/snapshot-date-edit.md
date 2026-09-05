@@ -198,7 +198,7 @@ Rename nothing: open Settings history with two dated snapshots, edit the older r
 
 #### Commit 2 — Update snapshot game date in Rust
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(snapshot): update snapshot game date`
 
@@ -265,7 +265,7 @@ Rename nothing: open Settings history with two dated snapshots, edit the older r
 
 #### Commit 3 — Edit snapshot date from Settings history
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(snapshot): edit snapshot date from Settings`
 
@@ -336,21 +336,21 @@ Rename nothing: open Settings history with two dated snapshots, edit the older r
 
 **PR:** PR 1 — Snapshot date edit
 
-**Commit:** Update snapshot game date in Rust
+**Commit:** Edit snapshot date from Settings history
 
 ### RED or removal proof
 
-Add focused Rust tests that fail because the date-update service and command do not exist, then implement the smallest validated transactional path that makes them pass.
+Add focused component tests that fail because Settings has no date-edit action or mutation flow, then implement the smallest UI, IPC adapter, mock, and smoke path that makes them pass.
 
 ### Expected outcome
 
-Rust accepts only raw canonical calendar-valid dates, updates the token-bound snapshot row in one transaction, reapplies the shared selector and compact reconciliation, returns updated metadata and current IDs through the typed command DTO, and performs no Academy write.
+Settings users can edit one snapshot date through an accessible form Modal. Successful edits reorder history, reconcile current metadata locally when the winner stays the same, and refresh all current-only views only when the winner changes.
 
 ### Explicit exclusions
 
-- No frontend controls, IPC mocks, browser smoke changes, migrations, or bridge changes.
-- No `game_date_source`, provenance, Academy, ingest-derived historical data, CSV, Moneyball, or historical-player behavior changes.
-- No copied date validator, manual current selector, or second ordering implementation.
+- No backend, migration, bridge, Set-active, provenance, source, Academy, or ingest-derived behavior changes.
+- No sibling-feature imports or new query-invalidation roots in the snapshot feature.
+- No Settings redesign, pagination, bulk editing, or historical-player browsing.
 
 ## Discoveries and replanning
 
@@ -360,7 +360,8 @@ Rust accepts only raw canonical calendar-valid dates, updates the token-bound sn
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — Snapshot date edit | Commit 1 — Record the approved feature plan | Pending record | Added the accepted schema-2 JAY-48 ledger and made Snapshot Date Edit the sole TODO Active feature. | `ledger_state.py` runnable; `delivery_state.py` runnable; staged diff check clean; no repository documentation command exists. | Not applicable | Clear | 0 | None |
+| PR 1 — Snapshot date edit | Commit 1 — Record the approved feature plan | `092110cc53be697319703dc78edd601da7ac2388` | Added the accepted schema-2 JAY-48 ledger and made Snapshot Date Edit the sole TODO Active feature. | `ledger_state.py` runnable; `delivery_state.py` runnable; staged diff check clean; no repository documentation command exists. | Not applicable | Clear | 0 | None |
+| PR 1 — Snapshot date edit | Commit 2 — Update snapshot game date in Rust | Pending record | Added the validated token-bound game-date update transaction, shared current selection, compact reconciliation, current-selection exclusion, typed DTO, and command registration without Academy writes. | RED compile proof failed on missing symbols; focused snapshot tests passed 94/94; `./scripts/dev check-rust` passed; `./scripts/dev check` passed with 775 Rust tests, 0 failed, 2 ignored. | Pass | Clear | 0 | None |
 
 ## Final validation
 
