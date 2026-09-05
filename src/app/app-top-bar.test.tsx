@@ -19,10 +19,6 @@ import { playerResultContextMutationKey } from "@/components/player-table/player
 import { academyClassesQueryOptions } from "@/features/academy/api/academy-classes-query-options";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import { setBridgeStatusIpcMockMode } from "@/features/memory-read/api/bridge-status-ipc-mock";
-import {
-  DEFAULT_PLAYER_CAP,
-  useLoadDataPreferences,
-} from "@/features/memory-read/stores/use-load-data-preferences";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { squadKeys } from "@/features/squad/api/squad-keys";
 import { staffKeys } from "@/features/staff/api/staff-keys";
@@ -79,10 +75,6 @@ describe("app top bar", () => {
   beforeEach(() => {
     setBridgeStatusIpcMockMode("ready");
     setLoadDataIpcMockMode("success");
-    useLoadDataPreferences.setState({
-      playerCapEnabled: false,
-      playerCap: DEFAULT_PLAYER_CAP,
-    });
   });
 
   afterEach(() => {
@@ -218,7 +210,7 @@ describe("app top bar", () => {
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
-  it("sends unlimited maxAccepted when the player cap is off", async () => {
+  it("sends unlimited maxAccepted", async () => {
     const user = userEvent.setup();
     renderWithProviders();
 
@@ -229,27 +221,6 @@ describe("app top bar", () => {
     expect(args).toMatchObject({ maxAccepted: null });
     expect(args.onProgress).toBeDefined();
     expect(typeof args.onProgress).toBe("object");
-  });
-
-  it("sends the configured player cap when the toggle is on", async () => {
-    const user = userEvent.setup();
-    renderWithProviders();
-
-    await user.click(
-      await screen.findByRole("checkbox", { name: "Cap players" }),
-    );
-    const limitField = await screen.findByLabelText("Player limit");
-    expect(limitField).toHaveValue(DEFAULT_PLAYER_CAP);
-
-    await user.clear(limitField);
-    await user.type(limitField, "250");
-    await user.click(screen.getByRole("button", { name: "Load Data" }));
-    await screen.findByText(/Loaded 3 players into the database/i);
-
-    const args250 = getLastLoadDataIpcArgs() as Record<string, unknown>;
-    expect(args250).toMatchObject({ maxAccepted: 250 });
-    expect(args250.onProgress).toBeDefined();
-    expect(typeof args250.onProgress).toBe("object");
   });
 
   it("preserves player pages and does not use neutral key during Load Data", async () => {
