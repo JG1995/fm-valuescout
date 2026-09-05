@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No active feature.
+- [Snapshot Date Edit](./features/active/snapshot-date-edit.md) — correct a stored snapshot's in-game date from Settings history with validated canonical `YYYY-MM-DD` input, shared date-order promotion, and current-only refresh (Linear JAY-48).
 
 ## Next
 
