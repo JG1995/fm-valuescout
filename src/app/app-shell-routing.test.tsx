@@ -76,7 +76,7 @@ describe("app shell routing", () => {
       [...nav.querySelectorAll("[data-nav-caption]")].map(
         (caption) => caption.textContent,
       ),
-    ).toEqual(["Home", "Players", "Staff", "Club", "Settings"]);
+    ).toEqual(["Players", "Staff", "Club"]);
     expect(nav.querySelectorAll("[data-nav-separator]")).toHaveLength(4);
   });
 
