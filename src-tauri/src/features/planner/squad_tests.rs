@@ -3,7 +3,8 @@ use serde_json::json;
 
 use super::squad::{list_squad_players, SquadSortDir, SquadSortField, DEFAULT_SQUAD_PAGE_LIMIT};
 use super::test_support::{
-    add_picker_candidates, current_snapshot_id, open_with_snapshot, set_player_attributes,
+    add_picker_candidates, clear_current_scores_except, current_snapshot_id, open_with_snapshot,
+    set_player_attributes, set_player_positions, set_role_score,
 };
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION, potential_scores::PROJECTION_MODEL_VERSION,
@@ -1203,6 +1204,95 @@ fn squad_page(conn: &Connection, save_id: i64) -> super::squad::SquadPlayersPage
     .expect("list squad page")
 }
 
+fn seed_two_lane_fallback(conn: &Connection, save_id: i64, player_uid: i64) {
+    set_player_attributes(conn, save_id, player_uid, &full_attributes_json(10));
+    conn.execute(
+        "UPDATE players SET ca = 120, pa = 150 WHERE snapshot_id = ?1 AND uid = ?2",
+        params![current_snapshot_id(conn, save_id), player_uid],
+    )
+    .expect("set developing ca/pa");
+    set_player_positions(conn, save_id, player_uid, r#"{"ST": 20, "GK": 20}"#);
+    clear_current_scores_except(
+        conn,
+        save_id,
+        &[player_uid],
+        &[
+            "centre_forward_ip",
+            "central_outlet_centre_forward_oop",
+            "goalkeeper_ip",
+            "line_holding_keeper_oop",
+        ],
+    );
+    set_role_score(conn, save_id, player_uid, "centre_forward_ip", Some(80));
+    set_role_score(
+        conn,
+        save_id,
+        player_uid,
+        "central_outlet_centre_forward_oop",
+        Some(80),
+    );
+    set_role_score(conn, save_id, player_uid, "goalkeeper_ip", Some(40));
+    set_role_score(
+        conn,
+        save_id,
+        player_uid,
+        "line_holding_keeper_oop",
+        Some(40),
+    );
+}
+
+#[test]
+fn unassigned_player_falls_back_to_the_best_current_lane() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
+        .expect("seed tactic");
+    seed_two_lane_fallback(&conn, save_id, 77);
+    deny_suggestion_writes(&conn);
+
+    let page = squad_page(&conn, save_id);
+
+    let player = page
+        .players
+        .iter()
+        .find(|player| player.uid == 77)
+        .expect("unassigned player");
+    assert_eq!(
+        player.suggested_training.as_deref(),
+        Some("Attacking Movement")
+    );
+}
+
+#[test]
+fn explicit_assignment_wins_over_a_better_fallback_lane() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
+        .expect("seed tactic");
+    seed_two_lane_fallback(&conn, save_id, 77);
+    seed_two_lane_fallback(&conn, save_id, 78);
+    assign_lane(&conn, save_id, "goalkeeper", 77);
+    deny_suggestion_writes(&conn);
+
+    let page = squad_page(&conn, save_id);
+
+    let assigned = page
+        .players
+        .iter()
+        .find(|player| player.uid == 77)
+        .expect("assigned player");
+    assert_eq!(assigned.suggested_training.as_deref(), Some("GK Reactions"));
+    let fallback = page
+        .players
+        .iter()
+        .find(|player| player.uid == 78)
+        .expect("fallback control player");
+    assert_eq!(
+        fallback.suggested_training.as_deref(),
+        Some("Attacking Movement")
+    );
+}
+
 #[test]
 fn attaches_ranked_suggestion_for_the_assigned_lane_only() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
@@ -1414,4 +1504,83 @@ fn corrupt_attributes_json_surfaces_an_honest_error() {
         error.contains("invalid attributes_json"),
         "unexpected corrupt-attributes error: {error}"
     );
+}
+
+#[test]
+fn assigned_lane_suggestion_survives_unusable_fallback_only_inputs() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
+        .expect("seed tactic");
+    set_player_attributes(&conn, save_id, 77, &full_attributes_json(10));
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE players SET ca = 120, pa = 150 WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("set developing ca/pa");
+    assign_lane(&conn, save_id, "centre_forward", 77);
+    conn.execute(
+        "DELETE FROM player_role_metrics WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("remove fallback compact row");
+    set_player_positions(&conn, save_id, 77, "not json");
+    deny_suggestion_writes(&conn);
+
+    let page = squad_page(&conn, save_id);
+
+    let player = page
+        .players
+        .iter()
+        .find(|player| player.uid == 77)
+        .expect("assigned player");
+    assert_eq!(
+        player.suggested_training.as_deref(),
+        Some("Attacking Movement")
+    );
+}
+
+#[test]
+fn fallback_tie_keeps_the_earlier_tactic_lane() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
+        .expect("seed tactic");
+    set_player_attributes(&conn, save_id, 77, &full_attributes_json(10));
+    conn.execute(
+        "UPDATE players SET ca = 120, pa = 150 WHERE snapshot_id = ?1 AND uid = 77",
+        params![current_snapshot_id(&conn, save_id)],
+    )
+    .expect("set developing ca/pa");
+    set_player_positions(&conn, save_id, 77, r#"{"ST": 20, "GK": 20}"#);
+    clear_current_scores_except(
+        &conn,
+        save_id,
+        &[77],
+        &[
+            "centre_forward_ip",
+            "central_outlet_centre_forward_oop",
+            "goalkeeper_ip",
+            "line_holding_keeper_oop",
+        ],
+    );
+    for role_id in [
+        "centre_forward_ip",
+        "central_outlet_centre_forward_oop",
+        "goalkeeper_ip",
+        "line_holding_keeper_oop",
+    ] {
+        set_role_score(&conn, save_id, 77, role_id, Some(80));
+    }
+    deny_suggestion_writes(&conn);
+
+    let page = squad_page(&conn, save_id);
+
+    let player = page
+        .players
+        .iter()
+        .find(|player| player.uid == 77)
+        .expect("unassigned player");
+    assert_eq!(player.suggested_training.as_deref(), Some("GK Reactions"));
 }

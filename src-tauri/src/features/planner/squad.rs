@@ -1,12 +1,15 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExtension, Row};
 
-use super::{suggested_training, tactic};
+use super::{fit::tactic_adjusted_score, suggested_training, tactic};
 
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
-    compact::{assert_read_models_complete, player_metrics_join},
+    compact::{
+        assert_read_models_complete, player_current_column, player_metrics_join,
+        PLAYER_METRICS_ALIAS,
+    },
     resolver::{
         parse_requested_fields, read_dynamic_value, ClubDnaSqlBindings, DynamicValue, MetricField,
     },
@@ -331,6 +334,21 @@ pub fn list_squad_players(
         .map_err(|error| error.to_string())?;
 
     let mut players = Vec::with_capacity(rows.len());
+    // Fallback needs current two-phase role metrics, preferred foot, and
+    // positions only for page rows that actually use it: unassigned players
+    // still developing toward their potential. Assigned and fully developed
+    // players keep their existing guards, so their fallback-only inputs are
+    // never queried or parsed here; missing or wrong-version compact rows for
+    // an eligible row simply leave every lane ineligible via the versioned
+    // LEFT JOIN below and yield no suggestion.
+    let fallback_uids = rows
+        .iter()
+        .filter(|(player, _)| {
+            tactic.is_some() && !assignments.contains_key(&player.uid) && player.ca < player.pa
+        })
+        .map(|(player, _)| player.uid)
+        .collect::<Vec<_>>();
+    let fallback_inputs = load_fallback_inputs(conn, snapshot_id, tactic.as_ref(), &fallback_uids)?;
     for (mut player, attributes) in rows {
         player.suggested_training = suggestion_for_player(
             tactic.as_ref(),
@@ -339,6 +357,7 @@ pub fn list_squad_players(
             player.ca,
             player.pa,
             &attributes,
+            fallback_inputs.get(&player.uid),
         )?;
         players.push(player);
     }
@@ -360,22 +379,153 @@ fn suggestion_for_player(
     ca: i64,
     pa: i64,
     attributes: &HashMap<String, Option<u8>>,
+    fallback: Option<&FallbackInput>,
 ) -> Result<Option<String>, String> {
     let Some(tactic) = tactic else {
         return Ok(None);
     };
-    let Some(lane_id) = assignments.get(&player_uid) else {
-        return Ok(None);
-    };
-    let lane = tactic
-        .lanes
-        .iter()
-        .find(|lane| lane.lane_id == *lane_id)
-        .ok_or_else(|| format!("Unknown tactic lane `{lane_id}`"))?;
+    if let Some(lane_id) = assignments.get(&player_uid) {
+        let lane = tactic
+            .lanes
+            .iter()
+            .find(|lane| lane.lane_id == *lane_id)
+            .ok_or_else(|| format!("Unknown tactic lane `{lane_id}`"))?;
+        if ca >= pa {
+            return Ok(None);
+        }
+        return Ok(suggested_training::suggest_for_lane(attributes, lane).map(str::to_string));
+    }
     if ca >= pa {
         return Ok(None);
     }
+    let Some(input) = fallback else {
+        return Ok(None);
+    };
+    let Some(lane) = best_fallback_lane(tactic, input) else {
+        return Ok(None);
+    };
     Ok(suggested_training::suggest_for_lane(attributes, lane).map(str::to_string))
+}
+
+struct FallbackInput {
+    preferred_foot: String,
+    positions: BTreeMap<String, Option<i64>>,
+    role_scores: HashMap<String, Option<u8>>,
+}
+
+/// Highest current two-phase tactic-adjusted lane in tactic order; ties keep
+/// the earlier lane via a strict `>` comparison. `None` when no lane is
+/// eligible (missing scores, unfamiliar positions, or strict foot mismatch).
+fn best_fallback_lane<'a>(
+    tactic: &'a tactic::PlannerTactic,
+    input: &FallbackInput,
+) -> Option<&'a tactic::TacticLane> {
+    let mut best: Option<(&'a tactic::TacticLane, u8)> = None;
+    for lane in &tactic.lanes {
+        let Some(score) = tactic_adjusted_score(
+            input
+                .role_scores
+                .get(lane.ip_role_id.as_str())
+                .copied()
+                .flatten(),
+            input
+                .role_scores
+                .get(lane.oop_role_id.as_str())
+                .copied()
+                .flatten(),
+            lane.ip_weight,
+            &input.preferred_foot,
+            &input.positions,
+            lane,
+        ) else {
+            continue;
+        };
+        if best
+            .as_ref()
+            .map_or(true, |(_, best_score)| score > *best_score)
+        {
+            best = Some((lane, score));
+        }
+    }
+    best.map(|(lane, _)| lane)
+}
+
+fn load_fallback_inputs(
+    conn: &Connection,
+    snapshot_id: i64,
+    tactic: Option<&tactic::PlannerTactic>,
+    fallback_uids: &[i64],
+) -> Result<HashMap<i64, FallbackInput>, String> {
+    let Some(tactic) = tactic else {
+        return Ok(HashMap::new());
+    };
+    if fallback_uids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let mut role_ids = BTreeSet::new();
+    for lane in &tactic.lanes {
+        role_ids.insert(lane.ip_role_id.as_str());
+        role_ids.insert(lane.oop_role_id.as_str());
+    }
+    let role_ids = role_ids.into_iter().collect::<Vec<_>>();
+    let metric_select = role_ids
+        .iter()
+        .map(|role_id| {
+            Ok(format!(
+                ", {PLAYER_METRICS_ALIAS}.{}",
+                player_current_column(role_id)?
+            ))
+        })
+        .collect::<Result<String, String>>()?;
+    let placeholders = fallback_uids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT p.uid, p.preferred_foot, p.positions_json{metric_select}
+         FROM players p{}
+         WHERE p.snapshot_id = ?1 AND p.uid IN ({placeholders})",
+        player_metrics_join("p", true, false)
+    );
+    let mut values = vec![Value::Integer(snapshot_id)];
+    values.extend(fallback_uids.iter().map(|uid| Value::Integer(*uid)));
+    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
+    let inputs = statement
+        .query_map(params_from_iter(values.iter()), |row| {
+            let score_values = (0..role_ids.len())
+                .map(|index| row.get::<_, Option<u8>>(index + 3))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                score_values,
+            ))
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    inputs
+        .into_iter()
+        .map(|(uid, preferred_foot, positions_json, score_values)| {
+            let positions = serde_json::from_str(&positions_json)
+                .map_err(|error| format!("Invalid positions_json for player {uid}: {error}"))?;
+            let role_scores = role_ids
+                .iter()
+                .zip(score_values)
+                .map(|(role_id, score)| ((*role_id).to_string(), score))
+                .collect();
+            Ok((
+                uid,
+                FallbackInput {
+                    preferred_foot,
+                    positions,
+                    role_scores,
+                },
+            ))
+        })
+        .collect()
 }
 
 fn map_player(
