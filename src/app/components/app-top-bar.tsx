@@ -23,6 +23,7 @@ import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { ActiveSaveSelect } from "@/features/snapshot/components/active-save-select";
 import { SnapshotFreshnessChip } from "@/features/snapshot/components/snapshot-freshness-chip";
 import { staffKeys } from "@/features/staff/api/staff-keys";
+import appLogo from "../../../src-tauri/icons/icon.png";
 
 export function AppTopBar() {
   const queryClient = useQueryClient();
@@ -97,6 +98,11 @@ export function AppTopBar() {
       className="z-10 shrink-0 border-b border-outline-variant bg-surface-container"
     >
       <div className="flex h-header-height items-center gap-3 px-4">
+        <img
+          alt="FM ValueScout"
+          className="size-9 shrink-0 rounded-lg"
+          src={appLogo}
+        />
         <div className="flex shrink-0 items-center gap-1">
           <Button
             aria-label="Back"
@@ -116,53 +122,57 @@ export function AppTopBar() {
           />
         </div>
         <GlobalPlayerSearch />
-        <ActiveSaveSelect
-          onBeforeContextChange={clearResults}
-          onSwitched={() => {
-            void queryClient.invalidateQueries({ queryKey: searchKeys.all });
-            void queryClient.invalidateQueries({ queryKey: playerKeys.all });
-            void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
-            void queryClient.invalidateQueries({ queryKey: clubDnaKeys.all });
-            void queryClient.invalidateQueries({
-              queryKey: managedClubKeys.all,
-            });
-            void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
-            void queryClient.resetQueries({ queryKey: academyKeys.all });
-            void queryClient.invalidateQueries({ queryKey: staffKeys.all });
-          }}
-        />
-        <SnapshotFreshnessChip />
-        <Button
-          size="lg"
-          icon={RefreshCw}
-          loading={load.isCommandPending}
-          loadingLabel={
-            isContextMutating && load.isCommandPending
-              ? "Loading…"
-              : load.isPending && load.progress
-                ? loadDataPhaseLabels[load.progress.phase]
-                : load.isPending
-                  ? "Scanning…"
-                  : load.isCommandPending
-                    ? "Loading…"
-                    : undefined
-          }
-          className="min-w-36"
-          disabled={!activeSave || isContextMutating}
-          onClick={() => {
-            setLoadedSave(
-              activeSave
-                ? {
-                    id: activeSave.id,
-                    contextToken: activeSave.contextToken,
-                  }
-                : undefined,
-            );
-            load.mutate(null);
-          }}
-        >
-          Load Data
-        </Button>
+        <div className="ml-auto flex items-center gap-3">
+          <ActiveSaveSelect
+            onBeforeContextChange={clearResults}
+            onSwitched={() => {
+              void queryClient.invalidateQueries({ queryKey: searchKeys.all });
+              void queryClient.invalidateQueries({ queryKey: playerKeys.all });
+              void queryClient.invalidateQueries({
+                queryKey: moneyballKeys.all,
+              });
+              void queryClient.invalidateQueries({ queryKey: clubDnaKeys.all });
+              void queryClient.invalidateQueries({
+                queryKey: managedClubKeys.all,
+              });
+              void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
+              void queryClient.resetQueries({ queryKey: academyKeys.all });
+              void queryClient.invalidateQueries({ queryKey: staffKeys.all });
+            }}
+          />
+          <SnapshotFreshnessChip />
+          <Button
+            size="lg"
+            icon={RefreshCw}
+            loading={load.isCommandPending}
+            loadingLabel={
+              isContextMutating && load.isCommandPending
+                ? "Loading…"
+                : load.isPending && load.progress
+                  ? loadDataPhaseLabels[load.progress.phase]
+                  : load.isPending
+                    ? "Scanning…"
+                    : load.isCommandPending
+                      ? "Loading…"
+                      : undefined
+            }
+            className="min-w-36"
+            disabled={!activeSave || isContextMutating}
+            onClick={() => {
+              setLoadedSave(
+                activeSave
+                  ? {
+                      id: activeSave.id,
+                      contextToken: activeSave.contextToken,
+                    }
+                  : undefined,
+              );
+              load.mutate(null);
+            }}
+          >
+            Load Data
+          </Button>
+        </div>
       </div>
       <LoadDataOutcome
         error={stale ? null : load.error}

@@ -94,7 +94,7 @@ export function GlobalPlayerSearch() {
   };
 
   return (
-    <div className="relative min-w-0 flex-1">
+    <div className="relative w-120 shrink-0">
       <div ref={anchorRef} className="relative">
         <Search
           aria-hidden
