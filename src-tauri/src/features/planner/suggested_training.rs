@@ -186,55 +186,58 @@ mod tests {
 
     #[test]
     fn outfield_and_goalkeeper_inventories_match_linear_order_exactly() {
-        let outfield_names = OUTFIELD_FOCUSES
-            .iter()
-            .map(|(name, _)| *name)
-            .collect::<Vec<_>>();
-        assert_eq!(
-            outfield_names,
-            vec![
-                "Free Kick Taking",
-                "Corner Taking",
-                "Penalty Taking",
-                "Long Throws",
-                "Quickness",
-                "Agility and Balance",
-                "Strength",
-                "Endurance",
+        let expected_outfield: &[(&str, &[&str])] = &[
+            ("Free Kick Taking", &["Technique", "FreeKicks"]),
+            ("Corner Taking", &["Technique", "Corners"]),
+            ("Penalty Taking", &["Technique", "PenaltyTaking"]),
+            ("Long Throws", &["LongThrows"]),
+            ("Quickness", &["Acceleration", "Pace"]),
+            ("Agility and Balance", &["Agility", "Balance"]),
+            ("Strength", &["JumpingReach", "Strength"]),
+            ("Endurance", &["WorkRate", "Stamina"]),
+            (
                 "Defensive Positioning",
+                &["Marking", "Decisions", "Positioning"],
+            ),
+            (
                 "Attacking Movement",
-                "Shooting",
-                "Passing",
-                "Final Third",
-                "Crossing",
-                "Ball Control",
-                "Aerial",
-            ]
-        );
+                &["Anticipation", "Decisions", "OffTheBall"],
+            ),
+            ("Shooting", &["Finishing", "LongShots", "Technique"]),
+            ("Passing", &["Passing", "Technique", "Vision"]),
+            ("Final Third", &["Composure", "Decisions"]),
+            ("Crossing", &["Crossing", "Technique"]),
+            ("Ball Control", &["Dribbling", "FirstTouch", "Technique"]),
+            ("Aerial", &["Heading", "Bravery"]),
+        ];
+        assert_eq!(OUTFIELD_FOCUSES, expected_outfield);
 
-        let goalkeeper_names = GOALKEEPER_FOCUSES
-            .iter()
-            .map(|(name, _)| *name)
-            .collect::<Vec<_>>();
-        assert_eq!(
-            goalkeeper_names,
-            vec![
-                "Free Kick Taking",
-                "Corner Taking",
-                "Penalty Taking",
-                "Long Throws",
-                "Quickness",
-                "Agility and Balance",
-                "Strength",
-                "Endurance",
+        let expected_goalkeeper: &[(&str, &[&str])] = &[
+            ("Free Kick Taking", &["Technique", "FreeKicks"]),
+            ("Corner Taking", &["Technique", "Corners"]),
+            ("Penalty Taking", &["Technique", "PenaltyTaking"]),
+            ("Long Throws", &["LongThrows"]),
+            ("Quickness", &["Acceleration", "Pace"]),
+            ("Agility and Balance", &["Agility", "Balance"]),
+            ("Strength", &["JumpingReach", "Strength"]),
+            ("Endurance", &["WorkRate", "Stamina"]),
+            (
                 "GK Reactions",
+                &["Reflexes", "Anticipation", "Concentration"],
+            ),
+            (
                 "GK Tactical",
-                "GK Technique",
-                "GK Sweeping",
-                "GK Distribution (Long)",
+                &["Communication", "Decisions", "Positioning"],
+            ),
+            ("GK Technique", &["Handling", "Composure", "Technique"]),
+            ("GK Sweeping", &["CommandOfArea", "OneOnOnes", "RushingOut"]),
+            ("GK Distribution (Long)", &["Kicking", "Throwing"]),
+            (
                 "GK Distribution (Short)",
-            ]
-        );
+                &["FirstTouch", "Passing", "Vision"],
+            ),
+        ];
+        assert_eq!(GOALKEEPER_FOCUSES, expected_goalkeeper);
     }
 
     #[test]
@@ -255,6 +258,32 @@ mod tests {
             suggest_for_lane(&full_attributes(10), &centre_forward_lane()).expect("suggestion");
 
         assert_eq!(suggestion, "Attacking Movement");
+    }
+
+    #[test]
+    fn lane_weight_selects_between_oop_and_ip_winners() {
+        let attributes = full_attributes(10);
+        let oop_only = lane(
+            "centre_forward",
+            "centre_forward_ip",
+            "central_outlet_centre_forward_oop",
+            0.0,
+        );
+        let ip_only = lane(
+            "centre_forward",
+            "centre_forward_ip",
+            "central_outlet_centre_forward_oop",
+            1.0,
+        );
+
+        assert_eq!(
+            suggest_for_lane(&attributes, &oop_only),
+            Some("Attacking Movement")
+        );
+        assert_eq!(
+            suggest_for_lane(&attributes, &ip_only),
+            Some("Ball Control")
+        );
     }
 
     #[test]

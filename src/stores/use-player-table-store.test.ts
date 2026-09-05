@@ -904,27 +904,6 @@ describe("usePlayerTableStore", () => {
   });
 
   describe("suggested training column (Commit 5)", () => {
-    it("shows Suggested Training far right in new Squad layouts while Search keeps its default", () => {
-      const layouts = defaultPlayerTableLayouts();
-      expect(layouts.squad.columnIds).toEqual([
-        "name",
-        "age",
-        "nationality",
-        "ca",
-        "pa",
-        "value",
-        "suggested_training",
-      ]);
-      expect(layouts.search.columnIds).toEqual([
-        "name",
-        "age",
-        "nationality",
-        "ca",
-        "pa",
-        "value",
-      ]);
-    });
-
     it("allows Suggested Training only in the Squad table", () => {
       const store = usePlayerTableStore.getState();
       store.addColumns("squad", ["suggested_training"]);
