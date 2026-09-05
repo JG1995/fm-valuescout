@@ -189,7 +189,7 @@ export function AppNavBar() {
       data-testid="app-nav-bar"
       className="z-10 shrink-0 border-b border-outline-variant bg-surface-container"
     >
-      <div className="flex items-stretch gap-1 px-4">
+      <div className="flex items-stretch justify-center gap-1 px-4">
         {groups.map((group, groupIndex) => (
           <div key={group.caption} className="flex items-stretch">
             {groupIndex > 0 ? (
@@ -199,7 +199,7 @@ export function AppNavBar() {
                 className="my-2 w-px shrink-0 bg-outline-variant"
               />
             ) : null}
-            <div className="flex flex-col justify-center gap-0.5 px-2 py-1.5">
+            <div className="flex flex-col gap-0.5 px-2 py-1.5">
               <div className="flex items-center gap-1">
                 {group.ids.map((id) => {
                   const item = byId.get(id);
@@ -217,14 +217,14 @@ export function AppNavBar() {
                       activeOptions={{ exact: true }}
                       aria-current={isActive ? "page" : undefined}
                       className={cn(
-                        "flex h-8 items-center gap-1.5 rounded-md px-2 text-label-md text-on-surface-variant",
+                        "flex h-11 flex-col items-center justify-center gap-0.5 rounded-md px-2 text-label-md text-on-surface-variant",
                         "transition-colors duration-150 ease-out hover:bg-surface-container-high hover:text-on-surface",
                         isActive && "bg-primary-container text-primary",
                       )}
                     >
                       <item.icon
                         aria-hidden="true"
-                        size={16}
+                        size={24}
                         strokeWidth={isActive ? 2 : 1.5}
                         className="shrink-0"
                       />
@@ -235,18 +235,21 @@ export function AppNavBar() {
                   );
                 })}
               </div>
-              <span
-                data-nav-caption={group.caption}
-                aria-current={
-                  groupContext === group.caption ? "location" : undefined
-                }
-                className={cn(
-                  "px-2 text-label-sm text-on-surface-variant",
-                  groupContext === group.caption && "font-bold text-primary",
-                )}
-              >
-                {group.caption}
-              </span>
+              {group.ids.length > 1 ? (
+                <span
+                  data-nav-caption={group.caption}
+                  aria-current={
+                    groupContext === group.caption ? "location" : undefined
+                  }
+                  className={cn(
+                    "px-2 text-center text-label-sm text-on-surface-variant opacity-60",
+                    groupContext === group.caption &&
+                      "font-bold text-primary opacity-100",
+                  )}
+                >
+                  {group.caption}
+                </span>
+              ) : null}
             </div>
           </div>
         ))}
