@@ -21,7 +21,6 @@ import { GlobalPlayerSearch } from "@/features/search/components/global-player-s
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { ActiveSaveSelect } from "@/features/snapshot/components/active-save-select";
-import { SnapshotFreshnessChip } from "@/features/snapshot/components/snapshot-freshness-chip";
 import { staffKeys } from "@/features/staff/api/staff-keys";
 import appLogo from "../../../src-tauri/icons/icon.png";
 
@@ -140,7 +139,6 @@ export function AppTopBar() {
               void queryClient.invalidateQueries({ queryKey: staffKeys.all });
             }}
           />
-          <SnapshotFreshnessChip />
           <Button
             size="lg"
             icon={RefreshCw}

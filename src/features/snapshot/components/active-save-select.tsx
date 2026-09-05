@@ -5,6 +5,8 @@ import {
 } from "@/components/player-table/player-result-context";
 import { fieldClasses } from "@/components/ui/field/field-styles";
 import { cn } from "@/utils/cn";
+import { formatLongGameDate } from "@/utils/format";
+import { currentSnapshotQueryOptions } from "../api/current-snapshot-query-options";
 import { savesQueryOptions } from "../api/saves-query-options";
 import { setActiveSave } from "../api/set-active-save";
 import { snapshotKeys } from "../api/snapshot-keys";
@@ -26,6 +28,7 @@ export function ActiveSaveSelect({
 }: ActiveSaveSelectProps) {
   const queryClient = useQueryClient();
   const { data: saves } = useQuery(savesQueryOptions);
+  const { data: snapshot } = useQuery(currentSnapshotQueryOptions);
   const activeSave = saves?.find((save) => save.isActive) ?? saves?.[0];
 
   const switchSave = useMutation({
@@ -47,7 +50,7 @@ export function ActiveSaveSelect({
         aria-invalid={switchSave.isError || undefined}
         className={cn(
           fieldClasses,
-          "max-w-52",
+          "max-w-72",
           switchSave.isError && "border-error",
         )}
         disabled={!saves || switchSave.isPending}
@@ -63,6 +66,11 @@ export function ActiveSaveSelect({
           saves.map((save) => (
             <option key={save.id} value={save.id}>
               {save.name}
+              {save.id === activeSave?.id &&
+              snapshot?.saveId === save.id &&
+              snapshot.gameDate
+                ? ` - ${formatLongGameDate(snapshot.gameDate)}`
+                : ""}
             </option>
           ))
         ) : (

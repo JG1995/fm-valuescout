@@ -9,9 +9,8 @@ const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
 /**
- * Relative snapshot age, for the freshness chip and any "loaded" line. Relative
- * age is what tells the user whether to reload; the absolute stamp belongs in a
- * `title` attribute via {@link formatAbsoluteUtc}.
+ * Relative snapshot age for history and other "loaded" lines. The absolute
+ * stamp belongs in a `title` attribute via {@link formatAbsoluteUtc}.
  */
 export function formatRelativeAge(isoUtc: string, now = Date.now()): string {
   const then = Date.parse(isoUtc);
@@ -45,6 +44,38 @@ export function formatAbsoluteUtc(isoUtc: string): string {
     return isoUtc;
   }
   return `${parsed.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
+/** Canonical in-game date as `11th June 2027`. */
+export function formatLongGameDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value;
+
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return value;
+  }
+
+  const remainder = day % 100;
+  let suffix = "th";
+  if (remainder < 11 || remainder > 13) {
+    if (day % 10 === 1) suffix = "st";
+    if (day % 10 === 2) suffix = "nd";
+    if (day % 10 === 3) suffix = "rd";
+  }
+  const monthName = new Intl.DateTimeFormat("en-GB", {
+    month: "long",
+    timeZone: "UTC",
+  }).format(date);
+  return `${day}${suffix} ${monthName} ${year}`;
 }
 
 /** Integer counts with thousands separators: `1,247`. */

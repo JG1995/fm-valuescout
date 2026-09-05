@@ -320,7 +320,7 @@ The app is mostly formatted numbers, so formatting is a design decision, not a p
 - **FM attributes:** integer 1–20. **CA and PA:** integer 1–200. Both as raw integers — never rescaled to 0–100, because the user knows the FM scale.
 - **Age:** integer. Where both are shown, birth date first and age in parentheses: `21/03/2001 (25)`.
 - **Snapshot timestamps:** relative in the UI (`4 min ago`, `2 hours ago`, `yesterday`), absolute ISO-like in the `title` attribute (`2026-07-29 20:14 UTC`). Relative age is what tells the user whether to reload.
-- **In-game dates:** exactly as FM reports them. Do not reformat or localize game dates.
+- **In-game dates:** use the canonical stored value in data-management views. The active-save selector formats it as an English ordinal date, such as `11th June 2027`, for compact context.
 - **Percentages:** one decimal maximum, `%` suffix, no space: `62.5%`.
 - **Missing values:** an em dash `—` in `on-surface-variant`. Never `null`, `N/A`, `0`, or an empty cell. Absent data and zero are different facts.
 - **Truncated counts:** never show a total from a truncated scan without the cap. Render `1,247 players (scan capped)` with the warning chip, not a bare count.
@@ -332,7 +332,7 @@ Seven constraints. Every component and screen satisfies all of them.
 
 1. **Data outranks chrome.** No decorative element may take space a data column could use. *Test:* on the player search screen at 1600×900 with the filter editor closed, the results table covers at least 70% of the window area.
 2. **Separate with hairlines, not boxes.** Rows, fields, and sections are divided by a 1px `outline-variant` rule or a tonal step. *Test:* no nested card inside a card, and no vertical rules between table columns.
-3. **Snapshot provenance is always visible.** Every screen that shows player data states which save is active and how old the snapshot is, without scrolling. Truncated and stale snapshots carry a warning wherever their data appears. *Test:* screenshot any data view and you can name the save and the snapshot age from the image alone. This follows the explicit-refresh principle in [CONCEPT.md](./CONCEPT.md) — the user must never mistake old data for current data.
+3. **Snapshot provenance is always visible.** Every screen that shows player data states which save is active and its current snapshot's in-game date, without scrolling. *Test:* screenshot any data view and you can name the save and in-game date from the image alone. This follows the explicit-refresh principle in [CONCEPT.md](./CONCEPT.md) — the user must never mistake one save's data for another.
 4. **Brightness carries value; the number carries the fact.** Score meaning comes from the ramp, and the number is always present. *Test:* convert a screenshot to greyscale — the ranking still reads.
 5. **Every mutation reports its phase.** Long operations name what they are doing and which stage failed. Load Data distinguishes a scan failure from an ingest failure, because the fixes differ: start FM versus retry the ingest. *Test:* every mutation has a pending label, a success state, and a phase-specific error message.
 6. **Keyboard reaches everything; hover reveals nothing.** Hover may only change colour. Any action or information available on hover is also available from the keyboard and visible without a pointer. *Test:* complete a full search-to-profile pass with the keyboard alone.
@@ -344,8 +344,8 @@ The app is a **single window with a utility bar and grouped top navigation** —
 
 Regions, in visual order:
 
-1. **Utility bar** (`header-height` 56px). It contains the app logo, Back and Forward, a fixed-width global player search, the active save selector, snapshot freshness, and **Load Data**. It stays first so global controls remain separate from destination navigation.
-2. **Top navigation** follows the utility bar. It groups icon-plus-label links as Home (Dashboard), Players (Search and Moneyball), Staff (Staff Search and My Staff), Club (Squad, Planner, Tactic, and Youth), and Settings. Fine vertical separators divide groups. Each group has a low-emphasis caption under its links. The active link uses a contained state with a reinforced label.
+1. **Utility bar** (`header-height` 56px). It contains the app logo, Back and Forward, a fixed-width global player search, the active save selector with its current in-game date, and **Load Data**. It stays first so global controls remain separate from destination navigation.
+2. **Top navigation** follows the utility bar. It groups icon-over-label links as Home (Dashboard), Players (Search and Moneyball), Staff (Staff Search and My Staff), Club (Squad, Planner, Tactic, and Youth), and Settings. Fine vertical separators divide groups. Multi-destination groups have a centered low-emphasis caption under their links; Home and Settings do not repeat their labels. The active link uses a contained state with a reinforced label.
 3. **Page header** (inside the content area). Page title in `headline-lg`, then local controls on the right. One row, `stack-md` below it.
 4. **Content area.** Panels on `surface-container` with `gutter` 16px between them and 16px page padding.
 5. **Inspector** (right, `inspector-width` 320px, optional and dismissible). Comparison and detail controls on a profile. Slides over the content edge; never squeezes the table below its usable width. **Search does not use the inspector for filters** — filters use the compact strip and editor modal below.
@@ -415,19 +415,19 @@ The action primitive. One primary action per screen region.
 
 Primary navigation between the app's main destinations.
 
-- **Container:** `surface-container`, one row below the utility bar, with a bottom `outline-variant` border. Groups use fine vertical separators and low-emphasis captions below their links. The layout fits all destinations at the supported 1280×800 minimum window.
+- **Container:** `surface-container`, one centered row below the utility bar, with a bottom `outline-variant` border. Groups use fine vertical separators; multi-destination groups have centered low-emphasis captions below their links. The layout fits all destinations at the supported 1280×800 minimum window.
 - **States:** links use Lucide icons and ValueScout tokens. Hover changes colour only. The active link uses `primary-container`, a `primary` icon, and a reinforced label. `:focus-visible` shows the gold ring inside the link bounds.
 - **Content / Anatomy:** **Home** contains Dashboard; **Players** contains Search and Moneyball; **Staff** contains Staff Search and My Staff; **Club** contains Squad, Planner, Tactic, and Youth; **Settings** contains Settings. Search and Moneyball select `/search?view=general|moneyball`; Staff links select `/staff?view=search|my-staff`; Club links select `/my-club?view=squad|planner|tactic`; Youth selects `/academy`.
 - **Behaviour:** a `<nav>` contains router links. Each supported direct destination sets exactly one link to `aria-current="page"`. Unknown and not-found routes set no destination current. Player and staff profile routes set only the Players or Staff group caption to `aria-current="location"`; no child destination is current. Top-navigation Club destination changes use normal Link navigation, add a browser-history entry, and let browser Back return to the prior destination. Same-route Club changes retain `squadSort` and `squadDir`; route-local sort controls use replace navigation. Search view changes retain only the route's existing shortlist/combine state. Profile analysis tabs, Youth tabs, and Planner team tabs remain local.
 
 ### Utility Bar
 
-Global search, save context, snapshot freshness, and the Load Data action.
+Global search, save and snapshot context, and the Load Data action.
 
 - **Container:** `surface-container`, `header-height` 56px, 1px `outline-variant` bottom border, 16px horizontal padding, sticky at `z-10`.
-- **States:** static. Its children carry their own states. When no snapshot exists for the active save, the freshness chip reads "No data loaded" in `on-surface-variant` and Load Data is the only emphasized element on screen.
+- **States:** static. Its children carry their own states.
 - **Variants:** none.
-- **Content / Anatomy:** 36px app logo, **Back** and **Forward** icon buttons, 480px global search field (pill), right-aligned save selector (`secondary` menu button showing the active save name), snapshot freshness chip (`label-md` relative age; `success` under 30 minutes, `on-surface-variant` under 6 hours, `warning` beyond that or when the scan was truncated), and Load Data (`primary` button).
+- **Content / Anatomy:** 36px app logo, **Back** and **Forward** icon buttons, 480px global search field (pill), right-aligned save selector showing the active save name and current snapshot's in-game date, and Load Data (`primary` button).
 - **Behaviour:** the search field takes focus on `Ctrl+K` from anywhere. Back and Forward use only the current TanStack Router session history. They are disabled at the reachable history boundaries, and a new navigation after Back removes Forward availability. They do not persist history, own separate scroll state, or add custom scroll restoration. TanStack Router's existing scroll restoration remains authoritative. Switching saves swaps all snapshot-scoped views and suppresses any stale Load Data progress or outcome from a prior invocation. Load Data is an async Tauri command with command-scoped best-effort `Channel`; the frontend hook captures the active save ID/token and `api/load-data.ts` constructs the `Channel`; Rust verifies the supplied `saveId`/`contextToken` before scan and again before publication and echoes them on every progress event, rejecting stale publication while still allowing the active-save switch to succeed concurrently. The top-bar banner keeps a stable polite live-region text and an adjacent native `<progress>` (indeterminate for scan, determinate only when counts are truthful). Phases are `scan` → `preparing` → `scoring` → `saving` → `finalizing`; success shows the detailed `scanMs`, `prepareMs`, `scoringMs`, `saveMs`, `finalizeMs`, and `totalMs` timings, while the result retains undisplayed compatibility `ingestMs = saveMs + finalizeMs`. Search and Squad remain mounted during the command and on failure; a successful matching current replacement cancels/removes the exact Search/Squad roots under a continuation guard, then schedules current-owner invalidations; mutation settlement does not await those refetches, while suppressing stale updates. The final command result and phase-specific error remain authoritative if a progress message is missed.
 
 ### Settings management
@@ -464,7 +464,7 @@ A role or position fit score. The most repeated element in the app.
 
 ### Status Chip
 
-Compact non-interactive state: snapshot freshness, transfer status, bridge state, qualifiers.
+Compact non-interactive state: transfer status, bridge state, and qualifiers.
 
 - **Container:** `full` radius, 20px tall, `stack-xs` vertical and `stack-sm` horizontal padding, `label-md` text. Fill is the matching `*-container` token with a 1px border in the semantic tone at 40% alpha, because container fills sit only 1.4:1 above the panel and need the edge to read.
 - **States:** static. A chip is never a button; if it needs a click, it is a Filter Tag or a Button.
@@ -680,7 +680,7 @@ Verify before delivering any UI code.
 ### States & Data Honesty
 
 - [ ] Loading, empty, and error states defined for every data view — never blank space
-- [ ] Active save and snapshot age visible without scrolling on every data view
+- [ ] Active save and current in-game date visible without scrolling on every data view
 - [ ] Truncated snapshots carry a warning wherever their data appears, with the cap named
 - [ ] Loading skeletons match the final layout at the real row height
 - [ ] Toast auto-dismiss timers pause on hover and focus; error toasts do not auto-dismiss
