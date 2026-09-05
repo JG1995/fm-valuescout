@@ -26,6 +26,7 @@ import {
   formatPlayerDob,
 } from "@/utils/format";
 import { getPlayerMetric } from "@/utils/player-metrics";
+import { SUGGESTED_TRAINING_COLUMN_ID } from "@/utils/suggested-training";
 import type { SquadPlayerPageContext } from "../api/squad-keys";
 import {
   SQUAD_PAGE_SIZE,
@@ -37,6 +38,10 @@ import {
   defaultDirForSquadSortField,
   SQUAD_SORT_FIELDS,
 } from "../types/squad-sort";
+import {
+  getSquadTableMetric,
+  SQUAD_HEADER_METRICS,
+} from "../utils/squad-columns";
 
 const TEXT_CELL =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
@@ -148,7 +153,7 @@ function tableColumnForMetric(
   metricId: string,
   width: number | undefined,
 ): TableColumn | undefined {
-  const metric = getPlayerMetric(metricId);
+  const metric = getSquadTableMetric(metricId) ?? getPlayerMetric(metricId);
   if (!metric) {
     return undefined;
   }
@@ -213,6 +218,7 @@ function SquadOverviewTable({
       header={
         <PlayerTableHeader
           columns={columns}
+          metrics={SQUAD_HEADER_METRICS}
           sortBy={sortBy}
           sortDir={sortDir}
           onSortChange={(metricId) => {
@@ -240,6 +246,25 @@ function SquadOverviewTable({
       pageSize={SQUAD_PAGE_SIZE}
       renderCells={(player) =>
         columns.map((column) => {
+          if (column.id === SUGGESTED_TRAINING_COLUMN_ID) {
+            if (player === undefined) {
+              return (
+                <td key={column.id} className={`${TEXT_CELL} text-on-surface`}>
+                  …
+                </td>
+              );
+            }
+            const suggestion = player.suggestedTraining;
+            return (
+              <td
+                key={column.id}
+                className={`${TEXT_CELL} text-on-surface`}
+                aria-label={suggestion ?? "No suggested training"}
+              >
+                {suggestion ?? "—"}
+              </td>
+            );
+          }
           if (!(SQUAD_SORT_FIELDS as readonly string[]).includes(column.id)) {
             if (column.id === "club_dna") {
               const score = player?.dynamicValues?.[column.id];
@@ -373,7 +398,8 @@ export function SquadOverviewPanel({
       columns
         .filter(
           (column) =>
-            !(SQUAD_SORT_FIELDS as readonly string[]).includes(column.id),
+            !(SQUAD_SORT_FIELDS as readonly string[]).includes(column.id) &&
+            column.id !== SUGGESTED_TRAINING_COLUMN_ID,
         )
         .map((column) => column.id)
         .sort(),

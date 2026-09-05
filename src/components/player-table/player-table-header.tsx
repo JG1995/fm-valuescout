@@ -167,13 +167,19 @@ export function ConfigurableTableHeader({
   const [pickingColumnId, setPickingColumnId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
+  // No currently supplied catalog contains `sortable: false`, so listing
+  // every not-yet-visible metric keeps all existing Add menus unchanged
+  // while letting a valid non-sortable Squad-only entry stay re-addable.
   const availableMetrics = useMemo(
     () =>
       metrics.filter(
-        (metric) =>
-          metric.sortable && !columns.some((column) => column.id === metric.id),
+        (metric) => !columns.some((column) => column.id === metric.id),
       ),
     [columns, metrics],
+  );
+  const metricById = useMemo(
+    () => new Map(metrics.map((metric) => [metric.id, metric])),
+    [metrics],
   );
 
   useEffect(() => {
@@ -211,6 +217,10 @@ export function ConfigurableTableHeader({
           const open = openColumnId === column.id;
           const picking = pickingColumnId === column.id;
           const columnIndex = columns.findIndex(({ id }) => id === column.id);
+          // A supplied non-sortable metric (today only the Squad-only
+          // Suggested Training entry) keeps no sort affordance at all.
+          const columnSortable =
+            sortable && metricById.get(column.id)?.sortable !== false;
           const ariaSort = active
             ? sortDir === "asc"
               ? "ascending"
@@ -223,7 +233,7 @@ export function ConfigurableTableHeader({
               key={column.id}
               scope="col"
               aria-label={column.label}
-              aria-sort={ariaSort}
+              aria-sort={columnSortable ? ariaSort : undefined}
               className={`relative h-table-header-height px-2 ${
                 column.align === "right" ? "text-right" : "text-left"
               }`}
@@ -249,14 +259,16 @@ export function ConfigurableTableHeader({
                   type="button"
                   aria-keyshortcuts="Shift+F10"
                   title={
-                    sortable
+                    columnSortable
                       ? `${column.label}: click to sort; right-click or press Shift+F10 for column options`
                       : column.label
                   }
                   className={`inline-flex w-full min-w-0 items-center gap-1 truncate text-label-md uppercase ${
                     column.align === "right" ? "justify-end" : "justify-start"
                   } ${active ? "text-primary" : "text-on-surface-variant"}`}
-                  onClick={sortable ? () => onSortChange(column.id) : undefined}
+                  onClick={
+                    columnSortable ? () => onSortChange(column.id) : undefined
+                  }
                   onKeyDown={(event) => {
                     if (
                       configurable &&

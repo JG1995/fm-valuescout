@@ -42,7 +42,12 @@ describe("usePlayerTableStore", () => {
           "moneyball.xa_per_90",
         ],
       },
-      squad: { columnIds: DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS },
+      squad: {
+        columnIds: [
+          ...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS,
+          "suggested_training",
+        ],
+      },
     });
   });
 
@@ -323,7 +328,10 @@ describe("usePlayerTableStore", () => {
       widths: { ca: 72, name: 360 },
     });
     expect(usePlayerTableStore.getState().layouts.squad).toEqual({
-      columnIds: [...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS],
+      columnIds: [
+        ...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS,
+        "suggested_training",
+      ],
       widths: { ca: 200 },
     });
   });
@@ -376,7 +384,10 @@ describe("usePlayerTableStore", () => {
       widths: { "attr.Acceleration": 360 },
     });
     expect(usePlayerTableStore.getState().layouts.squad).toEqual({
-      columnIds: [...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS],
+      columnIds: [
+        ...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS,
+        "suggested_training",
+      ],
       widths: {},
     });
   });
@@ -476,7 +487,10 @@ describe("usePlayerTableStore", () => {
       widths: { club: 248 },
     });
     expect(usePlayerTableStore.getState().layouts.squad).toEqual({
-      columnIds: [...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS],
+      columnIds: [
+        ...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS,
+        "suggested_training",
+      ],
       widths: {},
     });
   });
@@ -886,6 +900,165 @@ describe("usePlayerTableStore", () => {
       expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual(
         defaultPlayerTableLayouts().search.columnIds,
       );
+    });
+  });
+
+  describe("suggested training column (Commit 5)", () => {
+    it("shows Suggested Training far right in new Squad layouts while Search keeps its default", () => {
+      const layouts = defaultPlayerTableLayouts();
+      expect(layouts.squad.columnIds).toEqual([
+        "name",
+        "age",
+        "nationality",
+        "ca",
+        "pa",
+        "value",
+        "suggested_training",
+      ]);
+      expect(layouts.search.columnIds).toEqual([
+        "name",
+        "age",
+        "nationality",
+        "ca",
+        "pa",
+        "value",
+      ]);
+    });
+
+    it("allows Suggested Training only in the Squad table", () => {
+      const store = usePlayerTableStore.getState();
+      store.addColumns("squad", ["suggested_training"]);
+      expect(usePlayerTableStore.getState().layouts.squad.columnIds).toContain(
+        "suggested_training",
+      );
+
+      for (const table of [
+        "search",
+        "moneyball-search",
+        "staff-search",
+        "my-staff",
+        "staff-shortlist",
+      ] as const) {
+        const before = usePlayerTableStore.getState().layouts[table];
+        usePlayerTableStore
+          .getState()
+          .addColumns(table, ["suggested_training"]);
+        expect(usePlayerTableStore.getState().layouts[table]).toEqual(before);
+      }
+    });
+
+    it("appends Suggested Training to a v6 default-like Squad layout", async () => {
+      localStorage.setItem(
+        PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layouts: {
+              search: {
+                columnIds: ["name", "age", "nationality", "ca", "pa", "value"],
+                widths: {},
+              },
+              squad: {
+                columnIds: ["name", "age", "nationality", "ca", "pa", "value"],
+                widths: {},
+              },
+            },
+          },
+          version: 6,
+        }),
+      );
+
+      await usePlayerTableStore.persist.rehydrate();
+
+      const layouts = usePlayerTableStore.getState().layouts;
+      expect(layouts.squad.columnIds).toEqual([
+        "name",
+        "age",
+        "nationality",
+        "ca",
+        "pa",
+        "value",
+        "suggested_training",
+      ]);
+      expect(layouts.search.columnIds).not.toContain("suggested_training");
+    });
+
+    it("preserves a customized v6 Squad layout without appending", async () => {
+      localStorage.setItem(
+        PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layouts: {
+              squad: {
+                columnIds: ["name", "ca", "attr.Acceleration"],
+                widths: { name: 240 },
+              },
+            },
+          },
+          version: 6,
+        }),
+      );
+
+      await usePlayerTableStore.persist.rehydrate();
+
+      expect(usePlayerTableStore.getState().layouts.squad).toEqual({
+        columnIds: ["name", "ca", "attr.Acceleration"],
+        widths: { name: 240 },
+      });
+    });
+
+    it("preserves a v6 default-ID Squad layout with custom widths without appending", async () => {
+      localStorage.setItem(
+        PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layouts: {
+              squad: {
+                columnIds: ["name", "age", "nationality", "ca", "pa", "value"],
+                widths: { name: 240 },
+              },
+            },
+          },
+          version: 6,
+        }),
+      );
+
+      await usePlayerTableStore.persist.rehydrate();
+
+      expect(usePlayerTableStore.getState().layouts.squad).toEqual({
+        columnIds: ["name", "age", "nationality", "ca", "pa", "value"],
+        widths: { name: 240 },
+      });
+    });
+
+    it("strips Suggested Training from every non-Squad layout", async () => {
+      localStorage.setItem(
+        PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layouts: {
+              search: {
+                columnIds: ["name", "suggested_training", "ca"],
+                widths: {},
+              },
+              squad: {
+                columnIds: ["name", "suggested_training", "ca"],
+                widths: {},
+              },
+            },
+          },
+          version: 7,
+        }),
+      );
+
+      await usePlayerTableStore.persist.rehydrate();
+
+      const layouts = usePlayerTableStore.getState().layouts;
+      expect(layouts.search.columnIds).toEqual(["name", "ca"]);
+      expect(layouts.squad.columnIds).toEqual([
+        "name",
+        "suggested_training",
+        "ca",
+      ]);
     });
   });
 });

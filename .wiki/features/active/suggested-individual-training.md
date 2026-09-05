@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -175,7 +175,7 @@ The thinnest end-to-end path that proves the approach:
 
 ### PR 1 — Suggested individual training in Club Squad
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -439,7 +439,7 @@ The thinnest end-to-end path that proves the approach:
 
 #### Commit 5 — Show Suggested Training in the Squad table
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(squad): show suggested training column by default`
 
@@ -511,19 +511,21 @@ The thinnest end-to-end path that proves the approach:
 
 **PR:** Suggested individual training in Club Squad
 
-**Commit:** Show Suggested Training in the Squad table
+**Active work:** None — implementation complete
+
+**Commit:** None — feature validation and review
 
 ### RED or removal proof
 
-Add failing header, Squad route, Search-absence, and store-migration tests for the Squad-only non-sortable default column and its focus-or-dash cells.
+All five planned packets completed their recorded RED → GREEN or planning proof.
 
 ### Expected outcome
 
-Club Squad shows the Suggested Training focus name or `—` in a default, configurable, non-sortable column without exposing the field to Search or backend requested/sort fields.
+The complete focus-or-dash Suggested Training feature is ready for full validation, feature review, and documentation reconciliation.
 
 ### Explicit exclusions
 
-Backend ranking/read-model changes, Search/Moneyball/Staff production behavior, new UI primitives, Details actions, Modals, tooltips, evidence UI, release work, and the unrelated `snapshot-date-edit.md` modification.
+New implementation scope, release work, unrelated refactors, and the unrelated `snapshot-date-edit.md` modification.
 
 ## Discoveries and replanning
 
@@ -536,7 +538,8 @@ Backend ranking/read-model changes, Search/Moneyball/Staff production behavior, 
 | PR 1 — Suggested individual training in Club Squad | Commit 1 — Record the approved feature plan | 13b32b264f84d866dce03198374ba9f967118785 | Added the accepted schema 2 ledger and TODO Active pointer. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — Suggested individual training in Club Squad | Commit 2 — Rank training focuses for an assigned tactic lane | 797ad112653f9913c340208290a597f78ab8b62e | Added the shared unrounded role scorer and pure exact-inventory lane-based training-focus ranker with whole-inventory gating and evidence attributes. | `./scripts/dev check-rust`: 787 passed, 2 ignored; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | None. |
 | PR 1 — Suggested individual training in Club Squad | Commit 3 — Attach suggestions to the Squad read model | 076a77f1530774c54c9988da92a0a72e0c4d870c | Added read-only tactic and assignment resolution plus per-row derived suggestions and the typed Squad DTO while preserving bounded paging and existing sorts. | `./scripts/dev check-rust`: 793 passed, 2 ignored; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | None. |
-| PR 1 — Suggested individual training in Club Squad | Commit 4 — Simplify the outward suggestion to value-or-dash | Pending record | Replaced the evidence-rich result with a focus string or null, added the `ca >= pa` gate, and removed obsolete evidence fields and helpers without changing ranking behavior. | `cargo test --lib planner::`: 126 passed; `./scripts/dev check-rust`: 794 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --check`: passed. | Pass | Clear | 0 | None. |
+| PR 1 — Suggested individual training in Club Squad | Commit 4 — Simplify the outward suggestion to value-or-dash | ab73d3a69ea7ad411a1c4ce69a4f7d96582cfaf6 | Replaced the evidence-rich result with a focus string or null, added the `ca >= pa` gate, and removed obsolete evidence fields and helpers without changing ranking behavior. | `cargo test --lib planner::`: 126 passed; `./scripts/dev check-rust`: 794 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --check`: passed. | Pass | Clear | 0 | None. |
+| PR 1 — Suggested individual training in Club Squad | Commit 5 — Show Suggested Training in the Squad table | Pending record | Added the Squad-only default non-sortable column, focus-or-dash cell, exact-default layout migration, neutral ID ownership, and structural Search exclusion without evidence UI or a sort path. | Focused Squad: 133 passed; Search: 73 passed; store: 33 passed; header: 3 passed; `./scripts/dev test`: 846 passed; `./scripts/dev check`: passed; `TMPDIR=/home/jonas/.cache/pi-tmp ./scripts/dev smoke`: 55 passed; LSP and `git diff --check`: passed. | Pass | Clear | 1 | Initial review found custom-width layouts were migrated as defaults and redundant Search store assertions; correction preserved custom widths, shrank the test, and passed correction review. |
 
 ## Final validation
 

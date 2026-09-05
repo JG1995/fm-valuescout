@@ -1031,6 +1031,38 @@ describe("search route", () => {
     });
   });
 
+  it("never offers Suggested Training in Search columns or menus", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Search Scout", 160)]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(
+      within(table).queryByRole("columnheader", {
+        name: "Suggested Training",
+      }),
+    ).toBeNull();
+
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Add column" }));
+    await user.click(
+      screen.getByRole("button", { name: "Column: Choose a metric" }),
+    );
+    await user.type(
+      screen.getByRole("combobox", { name: "Search columns" }),
+      "training",
+    );
+    expect(
+      screen.queryByRole("option", { name: "Suggested Training" }),
+    ).toBeNull();
+    await user.keyboard("{Escape}");
+  });
+
   it("reorders Search columns from the menu without changing its query, virtual row, or widths", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
