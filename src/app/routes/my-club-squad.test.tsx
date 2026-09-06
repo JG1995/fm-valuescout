@@ -3949,9 +3949,6 @@ describe("My Club route", () => {
     expect(
       within(board).getAllByRole("columnheader", { name: "2nd string" }),
     ).toHaveLength(1);
-    const slotChips = board.querySelectorAll("[data-planner-slot-chip]");
-    expect(slotChips).toHaveLength(11);
-    expect(slotChips[0]).toHaveTextContent("GK");
     expect(within(board).getAllByRole("rowheader")).toHaveLength(11);
     expect(
       within(board).getByRole("row", { name: /Goalkeeper/ }),

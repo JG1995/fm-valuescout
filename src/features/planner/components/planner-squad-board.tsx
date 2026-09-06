@@ -285,12 +285,6 @@ export function PlannerSquadBoard({
                   scope="row"
                   className="sticky left-0 z-10 h-table-row-height-two-line w-52 max-w-52 min-w-52 border-b border-r border-outline-variant bg-surface-container px-3 py-1.5 align-middle"
                 >
-                  <span
-                    data-planner-slot-chip
-                    className="mb-1 inline-flex items-center rounded-full bg-surface-container-high px-2 py-0.5 font-mono text-mono-sm text-on-surface"
-                  >
-                    {lane.ipPosition}
-                  </span>
                   <span className="block min-w-0 text-body-sm text-on-surface-variant">
                     <span
                       className="block min-w-0 truncate"

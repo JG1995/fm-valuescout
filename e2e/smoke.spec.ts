@@ -3542,6 +3542,37 @@ test.describe("application smoke", () => {
     await expect(main.getByRole("tab", { name: "Senior" })).toHaveCount(0);
   });
 
+  test("planner board shows all tactical slots without vertical scrolling at 1920x1080", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await stubTauriIpc(page, {
+      plannerPotentialScores: true,
+      plannerSnapshot: true,
+    });
+    await page.goto("/my-club");
+
+    const main = page.getByRole("main");
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
+    const board = main.getByRole("region", { name: "Squad depth board" });
+    await expect(board).toBeVisible();
+    await expect(board.getByRole("rowheader")).toHaveCount(11);
+
+    const verticalBounds = await board.evaluate((element) => {
+      const boardElement = element as unknown as {
+        clientHeight: number;
+        scrollHeight: number;
+      };
+      return {
+        clientHeight: boardElement.clientHeight,
+        scrollHeight: boardElement.scrollHeight,
+      };
+    });
+    expect(verticalBounds.scrollHeight).toBeLessThanOrEqual(
+      verticalBounds.clientHeight + 1,
+    );
+  });
+
   test("planner board bounds overflow with a sticky slot band from 1280 to 3440", async ({
     page,
   }) => {
