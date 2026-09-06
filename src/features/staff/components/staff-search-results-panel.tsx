@@ -11,6 +11,7 @@ import {
   type ConfigurableTableColumn,
   ConfigurableTableHeader,
 } from "@/components/player-table/player-table-header";
+import type { TableGroupInput } from "@/components/player-table/table-groups";
 import { ConfigurableVirtualizedTable } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
@@ -170,6 +171,63 @@ function basicCell(
   }
 }
 
+export const STAFF_TABLE_GROUPS: TableGroupInput = {
+  groups: [
+    { id: "profile", label: "Profile" },
+    { id: "ability", label: "Ability" },
+    { id: "attributes", label: "Attributes" },
+    { id: "role-fit", label: "Role Fit" },
+    { id: "contract", label: "Contract" },
+  ],
+  groupForColumn: (columnId) => {
+    if (columnId === "name" || columnId === "club" || columnId === "division") {
+      return "profile";
+    }
+    switch (getStaffMetric(columnId)?.category) {
+      case "identity":
+        return "profile";
+      case "ability-reputation":
+        return "ability";
+      case "staff-attributes":
+        return "attributes";
+      case "current-role-scores":
+        return "role-fit";
+      case "club-contract":
+        return "contract";
+      default:
+        return "other";
+    }
+  },
+};
+
+export const STAFF_SHORTLIST_TABLE_GROUPS: TableGroupInput = {
+  groups: [
+    ...STAFF_TABLE_GROUPS.groups,
+    { id: "recruitment", label: "Recruitment" },
+  ],
+  groupForColumn: (columnId) => {
+    if (columnId === "name" || columnId === "club" || columnId === "division") {
+      return "profile";
+    }
+    switch (getStaffShortlistMetric(columnId)?.category) {
+      case "identity":
+        return "profile";
+      case "ability-reputation":
+        return "ability";
+      case "staff-attributes":
+        return "attributes";
+      case "current-role-scores":
+        return "role-fit";
+      case "club-contract":
+        return "contract";
+      case "shortlist":
+        return "recruitment";
+      default:
+        return "other";
+    }
+  },
+};
+
 function StaffSearchTable({
   total,
   sortBy,
@@ -222,6 +280,7 @@ function StaffSearchTable({
         <ConfigurableTableHeader
           columns={columns}
           configurable={configurable}
+          groups={shortlist ? STAFF_SHORTLIST_TABLE_GROUPS : STAFF_TABLE_GROUPS}
           sortable
           metrics={shortlist ? STAFF_SHORTLIST_METRICS : STAFF_METRICS}
           sortBy={sortBy}

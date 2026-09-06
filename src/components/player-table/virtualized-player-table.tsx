@@ -10,8 +10,12 @@ import type { ConfigurableTableFixedColumn } from "./player-table-header";
 
 /** Must match `--spacing-table-row-height-two-line` / `h-table-row-height-two-line`. */
 const ROW_HEIGHT = 40;
-/** Must match `--spacing-table-header-height` / sticky `<thead>` height. */
-const HEADER_HEIGHT = 32;
+/**
+ * Must match two `--spacing-table-header-height` rows: the grouped group
+ * row plus the leaf row. The virtualizer `scrollPaddingStart` below keeps
+ * keyboard-focused rows fully under the two-row sticky `<thead>`.
+ */
+export const HEADER_HEIGHT = 64;
 
 type TablePage = {
   total: number;

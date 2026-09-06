@@ -1328,6 +1328,7 @@ describe("My Club route", () => {
     await waitFor(() => {
       const headerLabels = within(table)
         .getAllByRole("columnheader")
+        .filter((header) => header.getAttribute("scope") === "col")
         .map((header) => header.getAttribute("aria-label"));
       expect(headerLabels.indexOf("Agility")).toBeLessThan(
         headerLabels.indexOf("Acceleration"),
@@ -1335,6 +1336,7 @@ describe("My Club route", () => {
     });
     const headerLabels = within(table)
       .getAllByRole("columnheader")
+      .filter((header) => header.getAttribute("scope") === "col")
       .map((header) => header.getAttribute("aria-label"));
     const cellTexts = within(focusedRow)
       .getAllByRole("cell")

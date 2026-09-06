@@ -102,7 +102,11 @@ describe("staff route", () => {
     const table = await screen.findByRole("table", {
       name: "Staff search results",
     });
-    expect(within(table).getAllByRole("columnheader")).toHaveLength(26);
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .filter((header) => header.getAttribute("scope") === "col"),
+    ).toHaveLength(26);
     expect(
       within(table).getByRole("columnheader", { name: "Coach — Goalkeeping" }),
     ).toBeInTheDocument();

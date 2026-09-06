@@ -17,6 +17,7 @@ import {
   PLAYER_TABLE_MIN_COLUMN_WIDTH,
   type PlayerMetricAlignment,
 } from "@/utils/player-metrics";
+import { resolveTableGroupRuns, type TableGroupInput } from "./table-groups";
 
 const KEYBOARD_RESIZE_STEP = 16;
 
@@ -38,6 +39,7 @@ export type ConfigurableTableMetric = MetricPickerMetric & {
 export type ConfigurableTableHeaderProps = {
   columns: readonly ConfigurableTableColumn[];
   fixedColumns?: readonly ConfigurableTableFixedColumn[];
+  groups?: TableGroupInput;
   configurable?: boolean;
   sortable?: boolean;
   metrics: readonly ConfigurableTableMetric[];
@@ -152,6 +154,7 @@ function ColumnResizeHandle({
 export function ConfigurableTableHeader({
   columns,
   fixedColumns = [],
+  groups,
   configurable = true,
   sortable = true,
   metrics,
@@ -209,8 +212,40 @@ export function ConfigurableTableHeader({
     }
   };
 
+  const groupRuns = resolveTableGroupRuns(columns, groups);
+  const grouped = groupRuns.length > 0;
+
   return (
     <thead className="sticky top-0 z-10">
+      {grouped ? (
+        <tr className="bg-surface-container-lowest">
+          {groupRuns.map((run) => (
+            <th
+              key={`${run.group.id}-${run.startIndex}`}
+              scope="colgroup"
+              colSpan={run.span}
+              className="h-table-header-height px-2 text-left text-label-md text-on-surface-variant uppercase"
+            >
+              <span className="block truncate">{run.group.label}</span>
+            </th>
+          ))}
+          {fixedColumns.map((column) => (
+            <th
+              key={column.id}
+              scope="col"
+              aria-label={column.label}
+              rowSpan={2}
+              className={`h-table-header-height px-2 ${
+                column.align === "right" ? "text-right" : "text-left"
+              }`}
+            >
+              <span className="text-label-md text-on-surface-variant uppercase">
+                {column.label}
+              </span>
+            </th>
+          ))}
+        </tr>
+      ) : null}
       <tr className="bg-surface-container-lowest">
         {columns.map((column) => {
           const active = column.id === sortBy;
@@ -395,20 +430,22 @@ export function ConfigurableTableHeader({
             </th>
           );
         })}
-        {fixedColumns.map((column) => (
-          <th
-            key={column.id}
-            scope="col"
-            aria-label={column.label}
-            className={`h-table-header-height px-2 ${
-              column.align === "right" ? "text-right" : "text-left"
-            }`}
-          >
-            <span className="text-label-md text-on-surface-variant uppercase">
-              {column.label}
-            </span>
-          </th>
-        ))}
+        {grouped
+          ? null
+          : fixedColumns.map((column) => (
+              <th
+                key={column.id}
+                scope="col"
+                aria-label={column.label}
+                className={`h-table-header-height px-2 ${
+                  column.align === "right" ? "text-right" : "text-left"
+                }`}
+              >
+                <span className="text-label-md text-on-surface-variant uppercase">
+                  {column.label}
+                </span>
+              </th>
+            ))}
       </tr>
     </thead>
   );

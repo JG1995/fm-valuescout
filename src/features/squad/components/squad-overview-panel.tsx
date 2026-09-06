@@ -14,6 +14,7 @@ import {
   type PlayerTableColumn,
   PlayerTableHeader,
 } from "@/components/player-table/player-table-header";
+import type { TableGroupInput } from "@/components/player-table/table-groups";
 import { VirtualizedPlayerTable } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
@@ -179,6 +180,50 @@ function formatDynamicCell(
   return String(value);
 }
 
+export const SQUAD_TABLE_GROUPS: TableGroupInput = {
+  groups: [
+    { id: "profile", label: "Profile" },
+    { id: "ability", label: "Ability" },
+    { id: "market", label: "Market" },
+    { id: "development", label: "Development" },
+    { id: "role-fit", label: "Role Fit" },
+  ],
+  groupForColumn: (columnId) => {
+    if (columnId === "name" || columnId === "club" || columnId === "division") {
+      return "profile";
+    }
+    if (columnId === SUGGESTED_TRAINING_COLUMN_ID) {
+      return "development";
+    }
+    if (
+      columnId.startsWith("role.") ||
+      columnId.startsWith("potential_role.") ||
+      columnId === "club_dna"
+    ) {
+      return "role-fit";
+    }
+    switch (
+      (getSquadTableMetric(columnId) ?? getPlayerMetric(columnId))?.category
+    ) {
+      case "identity":
+        return "profile";
+      case "ability-reputation":
+      case "visible-attributes":
+      case "hidden-attributes":
+      case "personality":
+        return "ability";
+      case "club-contract":
+        return "market";
+      case "position-suitability":
+      case "current-role-scores":
+      case "potential-role-scores":
+        return "role-fit";
+      default:
+        return "other";
+    }
+  },
+};
+
 function SquadOverviewTable({
   total,
   sortBy,
@@ -218,6 +263,7 @@ function SquadOverviewTable({
       header={
         <PlayerTableHeader
           columns={columns}
+          groups={SQUAD_TABLE_GROUPS}
           metrics={SQUAD_HEADER_METRICS}
           sortBy={sortBy}
           sortDir={sortDir}

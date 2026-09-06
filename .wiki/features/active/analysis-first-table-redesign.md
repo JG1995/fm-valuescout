@@ -223,7 +223,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 #### Commit 2 — Support grouped table headers
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tables): support grouped table headers`
 
@@ -294,7 +294,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 #### Commit 3 — Establish the sticky identity shell
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tables): establish the sticky identity shell`
 
@@ -821,19 +821,19 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 **PR:** Redesign shared table for analysis-first views
 
-**Commit:** Support grouped table headers
+**Commit:** Establish the sticky identity shell
 
 ### RED or removal proof
 
-Add failing header tests for two-row groups, contiguous spans, repeated groups after moves, the Other fallback, transitional identity mapping, fixed-leaf row spans, and preserved leaf interactions.
+Add failing contract tests for the optional identity region's order, sticky offsets, layering, bounded resize callbacks, actual shell-to-header handoff, and absent-identity parity before implementing the seam.
 
 ### Expected outcome
 
-All six shared table layouts render caller-owned two-row grouped headers with 64px sticky-header geometry while current sorting, menus, resizing, virtualization, and focus behavior remain unchanged.
+The shared shell exposes one storage-agnostic optional identity contract and `renderHeader` callback while all current consumers remain visually and behaviorally unchanged because they omit identity.
 
 ### Explicit exclusions
 
-Identity extraction, store migration, toolbar work, tactic-label shortening, cell consolidation, width-model changes, backend changes, and unrelated refactors.
+Identity activation or content, store persistence, grouped Columns, toolbar work, tactic labels, cell consolidation, backend changes, and unrelated refactors.
 
 ## Discoveries and replanning
 
@@ -843,7 +843,8 @@ Identity extraction, store migration, toolbar work, tactic-label shortening, cel
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — Redesign shared table for analysis-first views | Commit 1 — Record the approved feature plan | Pending record | Recorded the accepted schema 2 feature ledger and TODO Active entry on the authorized feature branch. | `ledger_state.py` and `delivery_state.py` runnable with the accepted fingerprint; staged diff check clean. | Not applicable | Clear | 0 | Branch authority was renamed to `feature/analysis-first-tables` and re-fingerprinted before delivery at the developer's request. |
+| PR 1 — Redesign shared table for analysis-first views | Commit 1 — Record the approved feature plan | 8de6d8fc26092383c53fbd423df3568471ac0193 | Recorded the accepted schema 2 feature ledger and TODO Active entry on the authorized feature branch. | `ledger_state.py` and `delivery_state.py` runnable with the accepted fingerprint; staged diff check clean. | Not applicable | Clear | 0 | Branch authority was renamed to `feature/analysis-first-tables` and re-fingerprinted before delivery at the developer's request. |
+| PR 1 — Redesign shared table for analysis-first views | Commit 2 — Support grouped table headers | Pending record | Added shared contiguous group resolution, semantic two-row headers, exact group maps for all six layouts, and 64px sticky-header focus geometry. | Component tests 21/21; affected route tests 243/243; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review required direct proofs for all six panel-owned maps and runtime virtualizer focus geometry; correction review accepted them. |
 
 ## Final validation
 
