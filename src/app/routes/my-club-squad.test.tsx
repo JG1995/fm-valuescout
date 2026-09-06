@@ -3071,10 +3071,11 @@ describe("My Club route", () => {
     setPlannerDepthIpcMock(depth);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
-    const ipButton = await screen.findByRole("button", {
+    const pitch = (await screen.findAllByRole("group", { name: /pitch$/ }))[0];
+    const ipButton = await within(pitch).findByRole("button", {
       name: /IP: AMC · Winger/,
     });
-    const oopButton = screen.getByRole("button", {
+    const oopButton = within(pitch).getByRole("button", {
       name: /OOP: ML · Tracking Wide Midfielder/,
     });
     expect(screen.queryByText("11 linked positions")).not.toBeInTheDocument();
@@ -3396,6 +3397,85 @@ describe("My Club route", () => {
       await screen.findAllByRole("group", { name: /pitch$/ })
     )[0];
     expect(ipPitch.querySelectorAll("[data-tactic-connector]")).toHaveLength(0);
+  });
+
+  it("syncs Tactical XI panel selection with the pitch and inspector", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes = [...tactic.lanes.slice(1), tactic.lanes[0]];
+    setPlannerTacticIpcMock(tactic);
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
+
+    await screen.findByRole("region", { name: "Tactic controls" });
+    const panel = await screen.findByRole("region", { name: "Tactical XI" });
+    expect(within(panel).queryByRole("listbox")).toBeNull();
+
+    // All 11 lanes render in lane order even though the draft array was
+    // rotated: the goalkeeper still leads with a readable transition.
+    const rows = within(panel).getAllByRole("button");
+    expect(rows).toHaveLength(11);
+    expect(rows[0]).toHaveTextContent(
+      "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+    );
+    expect(rows[10]).toHaveTextContent(
+      "IP: STC · Centre Forward / OOP: STC · Central Outlet Centre Forward",
+    );
+    for (const row of rows) {
+      expect(row).toHaveAttribute("aria-pressed");
+      expect(row).not.toHaveAttribute("aria-selected");
+      expect(row).not.toHaveAttribute("aria-current");
+    }
+
+    // The rotated draft selects the second lane, so exactly one non-leading
+    // row starts pressed.
+    const initiallyPressed = rows.filter(
+      (row) => row.getAttribute("aria-pressed") === "true",
+    );
+    expect(initiallyPressed).toHaveLength(1);
+    expect(initiallyPressed[0]).toHaveTextContent("IP: DL · Full-Back");
+
+    // Panel to pitch and inspector: activating the goalkeeper row selects
+    // it everywhere.
+    await user.click(rows[0]);
+    const afterPanelSelect = within(panel).getAllByRole("button");
+    expect(
+      afterPanelSelect.filter(
+        (row) => row.getAttribute("aria-pressed") === "true",
+      ),
+    ).toHaveLength(1);
+    expect(afterPanelSelect[0]).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("button", { name: "IP: GK · Goalkeeper" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(
+        screen.getByRole("region", { name: "Selected position settings" }),
+      ).getByText("IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper"),
+    ).toBeInTheDocument();
+
+    // Pitch to panel: selecting a marker updates the pressed panel row.
+    await user.click(
+      screen.getByRole("button", { name: "IP: DL · Full-Back" }),
+    );
+    const afterMarkerSelect = within(panel).getAllByRole("button");
+    const markerPressed = afterMarkerSelect.filter(
+      (row) => row.getAttribute("aria-pressed") === "true",
+    );
+    expect(markerPressed).toHaveLength(1);
+    expect(markerPressed[0]).toHaveTextContent("IP: DL · Full-Back");
+
+    // Ordinary-button rows stay keyboard operable: Enter on the leading
+    // row moves selection back and the inspector follows.
+    afterMarkerSelect[0].focus();
+    await user.keyboard("{Enter}");
+    expect(afterMarkerSelect[0]).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(
+        screen.getByRole("region", { name: "Selected position settings" }),
+      ).getByText("IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper"),
+    ).toBeInTheDocument();
   });
 
   it("treats legacy ST and canonical STC as the same placement", () => {

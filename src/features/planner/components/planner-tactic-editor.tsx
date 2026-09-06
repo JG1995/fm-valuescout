@@ -18,6 +18,7 @@ import {
 } from "../utils/tactic-editor";
 import { PlannerPhaseAwareTacticPitch } from "./planner-phase-aware-tactic-pitch";
 import { PlannerTacticInspector } from "./planner-tactic-inspector";
+import { PlannerTacticLaneList } from "./planner-tactic-lane-list";
 
 type PlannerTacticEditorProps = {
   context: PlannerContext;
@@ -314,18 +315,31 @@ export function PlannerTacticEditor({
           </Button>
         </section>
 
-        <PlannerPhaseAwareTacticPitch
-          view={view}
-          lanes={draft.lanes}
-          options={options}
-          selectedLaneId={selectedLaneId}
-          highlightedLaneId={highlightedLaneId}
-          onHighlight={setHighlightedLaneId}
-          onSelectLane={(laneId) => {
-            setSelectedLaneId(laneId);
-            setHighlightedLaneId(laneId);
-          }}
-        />
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <PlannerPhaseAwareTacticPitch
+              view={view}
+              lanes={draft.lanes}
+              options={options}
+              selectedLaneId={selectedLaneId}
+              highlightedLaneId={highlightedLaneId}
+              onHighlight={setHighlightedLaneId}
+              onSelectLane={(laneId) => {
+                setSelectedLaneId(laneId);
+                setHighlightedLaneId(laneId);
+              }}
+            />
+          </div>
+          <PlannerTacticLaneList
+            lanes={draft.lanes}
+            options={options}
+            selectedLaneId={selectedLaneId}
+            onSelectLane={(laneId) => {
+              setSelectedLaneId(laneId);
+              setHighlightedLaneId(laneId);
+            }}
+          />
+        </div>
 
         {selectedLane ? (
           <PlannerTacticInspector

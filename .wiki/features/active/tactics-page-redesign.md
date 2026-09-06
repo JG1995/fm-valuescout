@@ -620,7 +620,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 9 — Add persistent Tactical XI panel
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tactics): add persistent Tactical XI panel`
 
@@ -677,7 +677,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 10 — Expose persistent Selected Slot controls
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tactics): expose persistent Selected Slot controls`
 
@@ -910,19 +910,19 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **PR:** 1
 
-**Commit:** 9
+**Commit:** 10
 
 ### RED or removal proof
 
-Prove the persistent eleven-lane Tactical XI list, phase transitions, and selection shared with the pitch through the existing route seam.
+Prove Selected Slot naming and both-phase controls in every pitch view, retaining existing edit and save behavior.
 
 ### Expected outcome
 
-Tactical XI lists ordered lanes and selects the same lane as pitch markers without parallel state or mutation logic.
+The existing inspector exposes all controls persistently in place, with phase weights associated clearly and unchanged callbacks.
 
 ### Explicit exclusions
 
-Inspector changes, orientation, containment, persistence, IPC, and Rust.
+Inspector relocation, orientation, containment, persistence, IPC, and Rust.
 
 ## Discoveries and replanning
 
@@ -953,7 +953,8 @@ Inspector changes, orientation, containment, persistence, IPC, and Rust.
 | PR 1 — Redesign the tactic workspace | Commit 5 — Reset stored tactics to defaults once | 2b9186c4e6749d07cd576ec3550472a2418f2c44 | Registered data-only v42 tactic reset; removed legacy normalization and its two load tests. | Migration 60/60 and tactic 14/14 tests; check-rust and full check including 798 Rust tests passed; staged whitespace clean. | Pass | Clear | 0 | Older v8/v28 migration tests now prove their surviving contracts without asserting tactic preservation after the authorized reset; orphaned normalization constant removed. |
 | PR 1 — Redesign the tactic workspace | Commit 6 — Migrate the pitch to a simplified normalized canvas | e4b2f9f40a6ce773829c23f1b61fda35d2b06937 | Replaced grid rendering with the portrait coordinate canvas, pitch markings and attack description; simplified labels and exported canonical identity; widened modal pitch column to 330px. Removed five obsolete geometry tests and added two route proofs. | Route 130/130, exact smoke 55/55, full check including 798 Rust tests passed. Saved central-triple modal overlap RED now passes disjoint 44px-target and containment assertions. | Pass | Clear | 2 | Modal layout scope required reviewed replan and renewed delivery authority; prior MEDIUM unused phasePositionLayout/types remains open and undelegated. |
 | PR 1 — Redesign the tactic workspace | Commit 7 — Consolidate onto one phase-aware canvas | b52b70fecb22260c30962838691252d21f91971b | Added shared canvas and workspace wrapper with 11/11/22 phase markers; split coincident phase markers and fixed cross-lane phase tie ordering. | Route 130/130, smoke 55/55, full check passed; cross-lane ordering regression confirmed RED then GREEN. | Pass | Clear | 1 | Developer explicitly approved including the one-line Squad smoke-stub initial progress delay increase from 50ms to 200ms; assertions and production behavior unchanged, three consecutive full smoke runs passed after the repair. |
-| PR 1 — Redesign the tactic workspace | Commit 8 — Add Both-mode tactical transitions | Pending record | Added canonical-identity conditional connectors, visible selected-slot transitions, and accessible per-slot descriptions; corrected split-marker endpoint attachment. | Route 131/131, exact smoke 55/55, full check including 798 Rust tests passed; browser proof covers visible transition selection and cross-lane endpoint attachment. | Pass | Clear | 1 | Full visible transition follows existing selected-lane state; landscape projection remains Commit 13. |
+| PR 1 — Redesign the tactic workspace | Commit 8 — Add Both-mode tactical transitions | 5325a1a8d7b05cdfafffc261f61d03f39489317e | Added canonical-identity conditional connectors, visible selected-slot transitions, and accessible per-slot descriptions; corrected split-marker endpoint attachment. | Route 131/131, exact smoke 55/55, full check including 798 Rust tests passed; browser proof covers visible transition selection and cross-lane endpoint attachment. | Pass | Clear | 1 | Full visible transition follows existing selected-lane state; landscape projection remains Commit 13. |
+| PR 1 — Redesign the tactic workspace | Commit 9 — Add persistent Tactical XI panel | Pending record | Added eleven ordered readable transition rows with ordinary-button pressed semantics and selection shared with the pitch and inspector. | Route 132/132 and full check passed; independent reviewer verified focused selection proof, existing 1280/1600/1920 viewport-fit smoke, and clean LSP. | Pass | Clear | 0 | Two existing route button queries scoped to the pitch to distinguish new panel rows. |
 
 ## Final validation
 
