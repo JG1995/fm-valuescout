@@ -15,6 +15,7 @@ import { plannerSlotCandidatesQueryOptions } from "../api/planner-slot-candidate
 import type { PlannerSlotCandidate } from "../types/depth";
 import type { PlannerTactic, TacticOptions } from "../types/tactic";
 import type { PlannerTeam } from "../types/team";
+import { ordinalStringLabel } from "../utils/string-label";
 import { linkedPositionDescriptionForId } from "../utils/tactic-editor";
 
 const SEARCH_DEBOUNCE_MS = 200;
@@ -43,21 +44,6 @@ function scoreEvidence(score: number | null) {
   return score === null ? "—" : score;
 }
 
-function ordinal(value: number) {
-  const number = value + 1;
-  const suffix =
-    number % 100 >= 11 && number % 100 <= 13
-      ? "th"
-      : number % 10 === 1
-        ? "st"
-        : number % 10 === 2
-          ? "nd"
-          : number % 10 === 3
-            ? "rd"
-            : "th";
-  return `${number}${suffix} string`;
-}
-
 function assignmentLocation(
   candidate: PlannerSlotCandidate,
   tactic: PlannerTactic,
@@ -82,7 +68,7 @@ function slotLocation(
   laneName: string,
   teamLabels: Partial<Record<PlannerTeam, string>>,
 ) {
-  return `${teamLabels[team] ?? team} · ${ordinal(stringOrder)} · ${laneName}`;
+  return `${teamLabels[team] ?? team} · ${ordinalStringLabel(stringOrder)} · ${laneName}`;
 }
 
 function targetLocation(

@@ -54,7 +54,6 @@ import {
   setCsvImportIpcMockResult,
 } from "@/testing/csv-import-ipc-mock";
 import {
-  getPlannerAddStringIpcMockCalls,
   getPlannerClearAllIpcMockCalls,
   getPlannerDepthIpcMockCalls,
   getPlannerOptimizeIpcMockBases,
@@ -75,8 +74,6 @@ import {
   setManagedClubIpcMock,
   setManagedClubOptionsError,
   setManagedClubSavePending,
-  setPlannerAddStringError,
-  setPlannerAddStringPending,
   setPlannerAssignmentError,
   setPlannerAvailableClubs,
   setPlannerClearAllError,
@@ -4379,7 +4376,7 @@ describe("My Club route", () => {
     await waitFor(() => expect(document.activeElement).toBe(clearAll));
   });
 
-  it("keeps the selected team and string focus across responsive mode changes", async () => {
+  it("keeps the selected team and cell focus across responsive mode changes", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
@@ -4398,64 +4395,18 @@ describe("My Club route", () => {
     });
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        within(combinedFromTab).getAllByRole("button", {
-          name: "Manage 1st string",
-        })[1],
-      ),
-    );
-    await setPlannerMatrixWidth(1200);
-    const constrainedAfterTab = await screen.findByRole("region", {
-      name: "Reserves squad depth matrix",
-    });
-    await waitFor(() =>
-      expect(
-        within(constrainedAfterTab).getByRole("button", {
-          name: "Manage 1st string",
+        within(combinedFromTab).getByRole("button", {
+          name: /Reserves, 1st string, IP: GK .* Empty/,
         }),
-      ).toHaveFocus(),
-    );
-
-    const constrainedHeader = within(
-      screen.getByRole("region", { name: "Reserves squad depth matrix" }),
-    ).getByRole("button", { name: "Manage 1st string" });
-    constrainedHeader.focus();
-
-    await setPlannerMatrixWidth(1600);
-    const combined = await screen.findByRole("region", {
-      name: "All squads depth matrix",
-    });
-    const combinedHeaders = within(combined).getAllByRole("button", {
-      name: "Manage 1st string",
-    });
-    await waitFor(() =>
-      expect(document.activeElement).toBe(combinedHeaders[1]),
-    );
-
-    await setPlannerMatrixWidth(1200);
-    const constrained = await screen.findByRole("region", {
-      name: "Reserves squad depth matrix",
-    });
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        within(constrained).getByRole("button", { name: "Manage 1st string" }),
       ),
     );
-
-    const constrainedCell = within(constrained).getByRole("button", {
-      name: /Reserves, 1st string, IP: GK .* Empty/,
-    });
-    constrainedCell.focus();
-    await setPlannerMatrixWidth(1600);
-    await screen.findByRole("region", {
-      name: "All squads depth matrix",
-    });
     await setPlannerMatrixWidth(1200);
-    const constrainedFromCell = await screen.findByRole("region", {
+    const constrainedFromTab = await screen.findByRole("region", {
       name: "Reserves squad depth matrix",
     });
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        within(constrainedFromCell).getByRole("button", {
+        within(constrainedFromTab).getByRole("button", {
           name: /Reserves, 1st string, IP: GK .* Empty/,
         }),
       ),
@@ -4480,41 +4431,6 @@ describe("My Club route", () => {
     });
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Clear all" })).toHaveFocus(),
-    );
-  });
-
-  it("keeps the acted-on team visible when adding a string crosses the fit threshold", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    renderMyClubRoute();
-    await setPlannerMatrixWidth(900);
-
-    const combined = await screen.findByRole("region", {
-      name: "All squads depth matrix",
-    });
-    within(combined).getByRole("columnheader", {
-      name: "Senior squad",
-    });
-    const seniorHeader = within(combined).getAllByRole("columnheader", {
-      name: "1st string",
-    })[0];
-    await user.click(
-      within(seniorHeader).getByRole("button", { name: "Manage 1st string" }),
-    );
-    await user.click(
-      within(seniorHeader).getByRole("menuitem", { name: "Add string" }),
-    );
-
-    const constrained = await screen.findByRole("region", {
-      name: "Senior squad depth matrix",
-    });
-    const addedHeader = await within(constrained).findByRole("columnheader", {
-      name: "2nd string",
-    });
-    expect(addedHeader).toBeInTheDocument();
-    await waitFor(() =>
-      expect(document.activeElement).toHaveAccessibleName("Manage 2nd string"),
     );
   });
 
@@ -4700,81 +4616,6 @@ describe("My Club route", () => {
     ).toHaveTextContent(
       `Move Cache Keeper from ${SENIOR_FIRST_KEEPER} to ${SENIOR_SECOND_KEEPER}?`,
     );
-  });
-
-  it("refreshes 60-second cached candidates after removing a populated string", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const depth = withSecondSeniorString(resolvePlannerDepthIpcMock());
-    depth.teams = depth.teams.map((team) =>
-      team.team === "senior"
-        ? {
-            ...team,
-            strings: team.strings.map((plannerString, index) =>
-              index === 0
-                ? {
-                    ...plannerString,
-                    assignments: [
-                      {
-                        id: 201,
-                        laneId: "goalkeeper",
-                        playerUid: 77,
-                        lastKnownName: "String Keeper",
-                        currentName: "String Keeper",
-                        state: "resolved",
-                        combinedScore: 82,
-                        potentialCombinedScore: null,
-                      },
-                    ],
-                  }
-                : plannerString,
-            ),
-          }
-        : team,
-    );
-    setPlannerDepthIpcMock(depth);
-    setPlannerSlotCandidates([
-      slotCandidate({
-        playerUid: 77,
-        name: "String Keeper",
-        currentClub: "Barcelona",
-        ipScore: 85,
-        oopScore: 75,
-        combinedScore: 80,
-      }),
-    ]);
-    renderMyClubRoute({ staleTime: 60_000 });
-
-    await user.click(
-      await screen.findByRole("button", {
-        name: /Senior, 2nd string, IP: GK .* Empty/,
-      }),
-    );
-    expect(
-      await screen.findByRole("option", { name: /String Keeper/ }),
-    ).toHaveTextContent(`Assigned: ${SENIOR_FIRST_KEEPER}`);
-    await user.keyboard("{Escape}");
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
-
-    await user.click(screen.getByRole("button", { name: "Manage 1st string" }));
-    await user.click(
-      within(
-        screen.getByRole("menu", { name: "1st string actions" }),
-      ).getByRole("menuitem", { name: "Remove string" }),
-    );
-    await user.click(screen.getByRole("button", { name: "Remove string" }));
-
-    await user.click(
-      screen.getByRole("button", {
-        name: /Senior, 1st string, IP: GK .* Empty/,
-      }),
-    );
-    expect(
-      await screen.findByRole("option", { name: /String Keeper/ }),
-    ).toHaveTextContent("Unassigned");
   });
 
   it("requires confirmation before clearing an occupied slot", async () => {
@@ -4966,223 +4807,6 @@ describe("My Club route", () => {
     expect(
       screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
     ).toBeInTheDocument();
-  });
-
-  it("manages ordered strings from equivalent header menus", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const depth = withSecondSeniorString(resolvePlannerDepthIpcMock());
-    depth.teams = depth.teams.map((team) =>
-      team.team === "senior"
-        ? {
-            ...team,
-            strings: team.strings.map((plannerString, index) =>
-              index === 0
-                ? {
-                    ...plannerString,
-                    assignments: [
-                      {
-                        id: 201,
-                        laneId: "goalkeeper",
-                        playerUid: 77,
-                        lastKnownName: "Senior Keeper",
-                        currentName: "Senior Keeper",
-                        state: "resolved",
-                        combinedScore: 82,
-                        potentialCombinedScore: null,
-                      },
-                    ],
-                  }
-                : plannerString,
-            ),
-          }
-        : team,
-    );
-    setPlannerDepthIpcMock(depth);
-    renderMyClubRoute();
-
-    const firstHeader = await screen.findByRole("button", {
-      name: "Manage 1st string",
-    });
-    firstHeader.focus();
-    await user.keyboard("{Enter}");
-    const firstMenu = screen.getByRole("menu", { name: "1st string actions" });
-    await user.click(
-      within(firstMenu).getByRole("menuitem", { name: "Add string" }),
-    );
-    expect(
-      await screen.findByRole("columnheader", { name: "3rd string" }),
-    ).toBeInTheDocument();
-
-    const secondHeader = screen.getByRole("button", {
-      name: "Manage 2nd string",
-    });
-    await user.pointer({ target: secondHeader, keys: "[MouseRight]" });
-    const secondMenu = screen.getByRole("menu", { name: "2nd string actions" });
-    await user.click(
-      within(secondMenu).getByRole("menuitem", { name: "Remove string" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("columnheader", { name: "3rd string" }),
-      ).not.toBeInTheDocument(),
-    );
-    expect(
-      screen.getByRole("columnheader", { name: "2nd string" }),
-    ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(document.activeElement).toHaveAccessibleName("Manage 2nd string"),
-    );
-
-    await user.click(firstHeader);
-    await user.click(
-      within(
-        screen.getByRole("menu", { name: "1st string actions" }),
-      ).getByRole("menuitem", { name: "Remove string" }),
-    );
-    const confirmation = screen.getByRole("dialog", {
-      name: "Remove 1st string?",
-    });
-    expect(confirmation).toHaveTextContent("Senior Keeper");
-    await user.click(
-      within(confirmation).getByRole("button", { name: "Cancel" }),
-    );
-    await waitFor(() => expect(document.activeElement).toBe(firstHeader));
-    expect(
-      screen.getByRole("button", { name: /Senior Keeper, Resolved/ }),
-    ).toBeInTheDocument();
-
-    setPlannerAssignmentError("Remove failed");
-    await user.click(firstHeader);
-    await user.click(
-      within(
-        screen.getByRole("menu", { name: "1st string actions" }),
-      ).getByRole("menuitem", { name: "Remove string" }),
-    );
-    await user.click(screen.getByRole("button", { name: "Remove string" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Remove failed");
-    await waitFor(() => expect(document.activeElement).toBe(firstHeader));
-    expect(
-      screen.getByRole("button", { name: /Senior Keeper, Resolved/ }),
-    ).toBeInTheDocument();
-
-    setPlannerAssignmentError(null);
-    await user.click(firstHeader);
-    await user.click(
-      within(
-        screen.getByRole("menu", { name: "1st string actions" }),
-      ).getByRole("menuitem", { name: "Remove string" }),
-    );
-    await user.click(screen.getByRole("button", { name: "Remove string" }));
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("button", { name: /Senior Keeper, Resolved/ }),
-      ).not.toBeInTheDocument(),
-    );
-    await user.click(screen.getByRole("button", { name: "Manage 1st string" }));
-    expect(
-      within(
-        screen.getByRole("menu", { name: "1st string actions" }),
-      ).getByRole("menuitem", { name: "Remove string" }),
-    ).toBeDisabled();
-  });
-
-  it("returns focus to the string trigger when Escape closes its menu", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    renderMyClubRoute();
-
-    const trigger = await screen.findByRole("button", {
-      name: "Manage 1st string",
-    });
-    await user.click(trigger);
-    screen.getByRole("menuitem", { name: "Add string" }).focus();
-
-    await user.keyboard("{Escape}");
-
-    expect(
-      screen.queryByRole("menu", { name: "1st string actions" }),
-    ).not.toBeInTheDocument();
-    expect(trigger).toHaveFocus();
-  });
-
-  it("closes a keyboard-opened string menu with Escape from its trigger", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    renderMyClubRoute();
-
-    const trigger = await screen.findByRole("button", {
-      name: "Manage 1st string",
-    });
-    trigger.focus();
-    await user.keyboard("{Enter}{Escape}");
-
-    expect(
-      screen.queryByRole("menu", { name: "1st string actions" }),
-    ).not.toBeInTheDocument();
-    expect(trigger).toHaveFocus();
-  });
-
-  it("opens the string menu from the whole header context menu", async () => {
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    renderMyClubRoute();
-
-    const header = await screen.findByRole("columnheader", {
-      name: "1st string",
-    });
-
-    expect(fireEvent.contextMenu(header)).toBe(false);
-    expect(
-      screen.getByRole("menu", { name: "1st string actions" }),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps focus on the originating header when adding a string fails", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    setPlannerDepthIpcMock(
-      withSecondSeniorString(resolvePlannerDepthIpcMock()),
-    );
-    setPlannerAddStringError("Add failed");
-    renderMyClubRoute();
-
-    const firstHeader = await screen.findByRole("button", {
-      name: "Manage 1st string",
-    });
-    await user.click(firstHeader);
-    await user.click(
-      within(
-        screen.getByRole("menu", { name: "1st string actions" }),
-      ).getByRole("menuitem", { name: "Add string" }),
-    );
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("Add failed");
-    await waitFor(() => expect(document.activeElement).toBe(firstHeader));
-    expect(
-      screen.getByRole("columnheader", { name: "2nd string" }),
-    ).toBeInTheDocument();
-  });
-
-  it("starts one add mutation while the header action is pending", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    setPlannerAddStringPending(true);
-    renderMyClubRoute();
-
-    await user.click(
-      await screen.findByRole("button", { name: "Manage 1st string" }),
-    );
-    const addButton = screen.getByRole("menuitem", { name: "Add string" });
-    await user.click(addButton);
-    await user.click(addButton);
-
-    expect(getPlannerAddStringIpcMockCalls()).toBe(1);
   });
 
   it("confirms clearing every squad and reconciles all candidates", async () => {
@@ -5687,6 +5311,15 @@ describe("My Club route", () => {
       { id: 4, displayName: "2nd string" },
     ]);
     expect(await screen.findByText("Team settings saved.")).toBeInTheDocument();
+    const matrix = await screen.findByRole("region", {
+      name: "Senior squad depth matrix",
+    });
+    expect(
+      within(matrix).getByRole("columnheader", { name: "First Choice" }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("button", { name: /Alex Keeper/ }),
+    ).toBeInTheDocument();
   });
 
   it("reorders planner strings while keeping stable ids", async () => {

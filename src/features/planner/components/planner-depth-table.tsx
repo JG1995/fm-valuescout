@@ -1,7 +1,3 @@
-import { Ellipsis, Plus, Trash2 } from "lucide-react";
-import { useRef } from "react";
-import { Button } from "@/components/ui/button/button";
-import { Modal } from "@/components/ui/modal/modal";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import type {
   PlannerAssignment,
@@ -18,21 +14,6 @@ import {
 } from "../utils/tactic-editor";
 import { joinPlannerTeamNames } from "../utils/team-display";
 import type { PlannerSlotTarget } from "./planner-slot-fit-picker";
-
-function ordinal(value: number): string {
-  const number = value + 1;
-  const suffix =
-    number % 100 >= 11 && number % 100 <= 13
-      ? "th"
-      : number % 10 === 1
-        ? "st"
-        : number % 10 === 2
-          ? "nd"
-          : number % 10 === 3
-            ? "rd"
-            : "th";
-  return `${number}${suffix} string`;
-}
 
 function assignmentForLane(
   plannerString: PlannerString,
@@ -117,118 +98,6 @@ function AssignmentScores({
   );
 }
 
-function PlannerStringHeader({
-  team,
-  plannerString,
-  headerId,
-  combined,
-  teamStart,
-  canRemove,
-  menuOpen,
-  onOpenMenu,
-  onCloseMenu,
-  onAdd,
-  onRemove,
-  addDisabled,
-  triggerRef,
-  onFocus,
-}: {
-  team: PlannerTeam;
-  plannerString: PlannerString;
-  headerId: string;
-  combined: boolean;
-  teamStart: boolean;
-  canRemove: boolean;
-  menuOpen: boolean;
-  onOpenMenu: () => void;
-  onCloseMenu: () => void;
-  onAdd: () => void;
-  onRemove: () => void;
-  addDisabled: boolean;
-  triggerRef: (element: HTMLButtonElement | null) => void;
-  onFocus: () => void;
-}) {
-  const label = ordinal(plannerString.stringOrder);
-  const localTriggerRef = useRef<HTMLButtonElement>(null);
-  const closeMenuAndRestoreFocus = () => {
-    localTriggerRef.current?.focus();
-    onCloseMenu();
-  };
-
-  return (
-    <th
-      id={headerId}
-      scope="col"
-      className={`${combined ? "sticky top-8 z-20" : ""} ${teamStart ? "border-l-2" : ""} h-table-header-height min-w-52 border-b border-outline-variant bg-surface-container-high px-3 text-right font-mono text-mono-sm text-on-surface tabular-nums`}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        onOpenMenu();
-      }}
-    >
-      <div className="relative flex items-center justify-between gap-2">
-        <span>{label}</span>
-        <button
-          ref={(element) => {
-            localTriggerRef.current = element;
-            triggerRef(element);
-          }}
-          type="button"
-          data-planner-team={team}
-          data-planner-string-id={plannerString.id}
-          aria-label={`Manage ${label}`}
-          aria-expanded={menuOpen}
-          aria-haspopup="menu"
-          className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          onFocus={onFocus}
-          onClick={() => (menuOpen ? onCloseMenu() : onOpenMenu())}
-          onKeyDown={(event) => {
-            if (menuOpen && event.key === "Escape") {
-              event.preventDefault();
-              closeMenuAndRestoreFocus();
-            }
-          }}
-        >
-          <Ellipsis aria-hidden="true" size={16} strokeWidth={1.5} />
-        </button>
-        {menuOpen ? (
-          <div
-            role="menu"
-            aria-label={`${label} actions`}
-            className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-outline-variant bg-surface-container-highest p-1 text-left shadow-overlay"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                closeMenuAndRestoreFocus();
-              }
-            }}
-          >
-            <button
-              type="button"
-              role="menuitem"
-              disabled={addDisabled}
-              className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-label-md text-on-surface hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-45"
-              onClick={onAdd}
-            >
-              <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
-              Add string
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              disabled={!canRemove}
-              className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-label-md text-error hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-45"
-              onClick={onRemove}
-            >
-              <Trash2 aria-hidden="true" size={16} strokeWidth={1.5} />
-              Remove string
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </th>
-  );
-}
-
 function AssignmentCell({
   team,
   teamLabel,
@@ -256,7 +125,7 @@ function AssignmentCell({
   cellRef: (element: HTMLButtonElement | null) => void;
   onFocus: () => void;
 }) {
-  const stringLabel = ordinal(plannerString.stringOrder);
+  const stringLabel = plannerString.displayName;
   const assignment = assignmentForLane(plannerString, laneId);
   const name = assignmentName(assignment);
   const state = assignmentStateLabel(assignment);
@@ -328,16 +197,6 @@ type PlannerDepthTableProps = {
   tactic: PlannerDepth["tactic"];
   options: TacticOptions;
   onOpen: (target: PlannerSlotTarget) => void;
-  openStringId: number | null;
-  onOpenStringMenu: (stringId: number) => void;
-  onCloseStringMenu: () => void;
-  onAddString: (team: PlannerTeam, stringId: number) => void;
-  onRemoveString: (plannerString: PlannerString) => void;
-  addDisabled: boolean;
-  stringHeaderRef: (
-    stringId: number,
-  ) => (element: HTMLButtonElement | null) => void;
-  onStringHeaderFocus: (team: PlannerTeam, stringId: number) => void;
   cellRef: (
     team: PlannerTeam,
     stringId: number,
@@ -352,14 +211,6 @@ export function PlannerDepthTable({
   tactic,
   options,
   onOpen,
-  openStringId,
-  onOpenStringMenu,
-  onCloseStringMenu,
-  onAddString,
-  onRemoveString,
-  addDisabled,
-  stringHeaderRef,
-  onStringHeaderFocus,
   cellRef,
   onCellFocus,
 }: PlannerDepthTableProps) {
@@ -380,28 +231,16 @@ export function PlannerDepthTable({
     : `planner-${teamDepths[0].team}`;
   const renderStringHeaders = () =>
     allStrings.map(({ team, plannerString }, index) => {
-      const teamDepth = teamDepths.find((candidate) => candidate.team === team);
       const headerId = `${idPrefix}-${team}-string-${plannerString.id}`;
       return (
-        <PlannerStringHeader
+        <th
           key={plannerString.id}
-          team={team}
-          plannerString={plannerString}
-          headerId={headerId}
-          combined={combined}
-          teamStart={
-            combined && (index === 0 || allStrings[index - 1]?.team !== team)
-          }
-          canRemove={(teamDepth?.strings.length ?? 0) > 1}
-          menuOpen={openStringId === plannerString.id}
-          onOpenMenu={() => onOpenStringMenu(plannerString.id)}
-          onCloseMenu={onCloseStringMenu}
-          onAdd={() => onAddString(team, plannerString.id)}
-          onRemove={() => onRemoveString(plannerString)}
-          addDisabled={addDisabled}
-          triggerRef={stringHeaderRef(plannerString.id)}
-          onFocus={() => onStringHeaderFocus(team, plannerString.id)}
-        />
+          id={headerId}
+          scope="col"
+          className={`${combined ? "sticky top-8 z-20" : ""} ${combined && (index === 0 || allStrings[index - 1]?.team !== team) ? "border-l-2" : ""} h-table-header-height min-w-52 border-b border-outline-variant bg-surface-container-high px-3 text-left font-mono text-mono-sm text-on-surface tabular-nums`}
+        >
+          {plannerString.displayName}
+        </th>
       );
     });
 
@@ -538,54 +377,5 @@ export function PlannerDepthTable({
         </tbody>
       </table>
     </section>
-  );
-}
-
-type PlannerStringRemovalConfirmationProps = {
-  target: PlannerString | null;
-  open: boolean;
-  pending: boolean;
-  onClose: () => void;
-  onConfirm: (plannerString: PlannerString) => void;
-};
-
-export function PlannerStringRemovalConfirmation({
-  target,
-  open,
-  pending,
-  onClose,
-  onConfirm,
-}: PlannerStringRemovalConfirmationProps) {
-  if (!target) {
-    return null;
-  }
-
-  return (
-    <Modal
-      open={open}
-      title={`Remove ${ordinal(target.stringOrder)}?`}
-      variant="destructive"
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button disabled={pending} onClick={() => onConfirm(target)}>
-            {pending ? "Removing…" : "Remove string"}
-          </Button>
-        </>
-      }
-    >
-      <p className="text-body-md text-on-surface-variant">
-        This removes {ordinal(target.stringOrder)} and its{" "}
-        {target.assignments.length} assignment
-        {target.assignments.length === 1 ? "" : "s"}:{" "}
-        {target.assignments
-          .map((assignment) => assignmentName(assignment))
-          .join(", ")}
-        .
-      </p>
-    </Modal>
   );
 }

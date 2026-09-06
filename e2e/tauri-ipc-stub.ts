@@ -1742,6 +1742,19 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               return {
                 team: input.team,
                 displayName: input.displayName.trim(),
+                strings: input.strings.map((plannerString) => {
+                  if (
+                    (plannerString?.id !== null &&
+                      typeof plannerString?.id !== "number") ||
+                    typeof plannerString?.displayName !== "string"
+                  ) {
+                    throw new Error("Invalid planner team settings");
+                  }
+                  return {
+                    id: plannerString.id,
+                    displayName: plannerString.displayName.trim(),
+                  };
+                }),
               };
             });
             const removedPopulated = plannerDepth.teams.some(
@@ -1766,9 +1779,40 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   (candidate) => candidate.team === team,
                 );
                 const input = inputs.find((candidate) => candidate.team === team);
-                return existing
-                  ? { ...existing, displayName: input.displayName }
-                  : {
+                if (existing) {
+                  const retained = new Map(
+                    existing.strings.map((plannerString) => [
+                      plannerString.id,
+                      plannerString,
+                    ]),
+                  );
+                  return {
+                    ...existing,
+                    displayName: input.displayName,
+                    strings: input.strings.map((plannerString, stringOrder) => {
+                      if (plannerString.id === null) {
+                        return {
+                          id: nextStringId++,
+                          stringOrder,
+                          displayName:
+                            plannerString.displayName ||
+                            ordinalStringLabel(stringOrder),
+                          assignments: [],
+                        };
+                      }
+                      const current = retained.get(plannerString.id);
+                      if (!current) {
+                        throw new Error("Planner string not found");
+                      }
+                      return {
+                        ...current,
+                        stringOrder,
+                        displayName: plannerString.displayName,
+                      };
+                    }),
+                  };
+                }
+                return {
                       team,
                       displayName: input.displayName,
                       strings: [{ id: nextStringId++, stringOrder: 0, displayName: ordinalStringLabel(0), assignments: [] }],
@@ -1802,46 +1846,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 potentialCombinedScore: 91,
               },
             ];
-            return plannerDepth;
-          }
-
-          if (cmd === "add_planner_string") {
-            const team = plannerDepth.teams.find(
-              (candidate) => candidate.team === args?.team,
-            );
-            if (!team) {
-              throw new Error("Planner team not found");
-            }
-            const id = Math.max(
-              ...plannerDepth.teams.flatMap((candidate) =>
-                candidate.strings.map((plannerString) => plannerString.id),
-              ),
-            ) + 1;
-            team.strings.push({ id, stringOrder: team.strings.length, displayName: ordinalStringLabel(team.strings.length), assignments: [] });
-            return plannerDepth;
-          }
-
-          if (cmd === "remove_planner_string") {
-            const team = plannerDepth.teams.find((candidate) =>
-              candidate.strings.some(
-                (plannerString) => plannerString.id === args?.stringId,
-              ),
-            );
-            const plannerString = team?.strings.find(
-              (candidate) => candidate.id === args?.stringId,
-            );
-            if (!team || !plannerString) {
-              throw new Error("Planner string not found");
-            }
-            if (team.strings.length <= 1) {
-              throw new Error("The " + team.team + " team must keep at least one string");
-            }
-            if (plannerString.assignments.length > 0 && !args?.confirmPopulated) {
-              throw new Error("Removing a populated string requires confirmation");
-            }
-            team.strings = team.strings
-              .filter((candidate) => candidate.id !== plannerString.id)
-              .map((candidate, index) => ({ ...candidate, stringOrder: index }));
             return plannerDepth;
           }
 

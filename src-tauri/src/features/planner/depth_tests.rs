@@ -1,6 +1,5 @@
 use rusqlite::{params, Connection};
 
-use crate::db::migrations;
 use crate::features::managed_club::service as managed_club_service;
 use crate::features::planner::tactic;
 use crate::features::player_metrics::potential_scores;
@@ -8,8 +7,8 @@ use crate::features::scoring::combine::combine_role_scores;
 use crate::features::snapshot;
 
 use super::depth::{
-    add_string, assign_player, clear_all, clear_assignment, get_depth, get_slot_candidates,
-    move_player, remove_string, AssignmentState, PlannerTeam,
+    assign_player, clear_all, clear_assignment, get_depth, get_slot_candidates, move_player,
+    AssignmentState, PlannerTeam,
 };
 use super::teams::{save_team_settings, PlannerStringInput, PlannerTeamInput};
 use super::test_support::{
@@ -183,41 +182,6 @@ fn creates_one_default_string_for_each_team() {
         .all(|team| team.strings[0].display_name == "1st string"));
 }
 
-#[test]
-fn added_strings_carry_the_next_ordinal_label() {
-    let (_temp_dir, conn, save_id) = open_with_snapshot();
-    get_depth(&conn, save_id).expect("create planner depth");
-
-    let added = add_string(&conn, save_id, PlannerTeam::Senior).expect("add string");
-    assert_eq!(added.0.string_order, 1);
-    assert_eq!(added.0.display_name, "2nd string");
-
-    let expected = [
-        "3rd string",
-        "4th string",
-        "5th string",
-        "6th string",
-        "7th string",
-        "8th string",
-        "9th string",
-        "10th string",
-        "11th string",
-        "12th string",
-        "13th string",
-    ];
-    for label in expected {
-        let added = add_string(&conn, save_id, PlannerTeam::Senior).expect("add string");
-        assert_eq!(added.0.display_name, label);
-    }
-
-    let reloaded = get_depth(&conn, save_id).expect("reload depth");
-    let strings = team_strings(&reloaded, PlannerTeam::Senior);
-    assert_eq!(strings.len(), 13);
-    assert_eq!(strings[10].display_name, "11th string");
-    assert_eq!(strings[11].display_name, "12th string");
-    assert_eq!(strings[12].display_name, "13th string");
-}
-
 fn retained_strings(
     depth: &super::depth::PlannerDepth,
     team: PlannerTeam,
@@ -229,6 +193,35 @@ fn retained_strings(
             display_name: string.display_name.clone(),
         })
         .collect()
+}
+
+fn add_second_senior_string(conn: &Connection, save_id: i64) -> i64 {
+    let depth = get_depth(conn, save_id).expect("load planner depth");
+    let inputs = depth
+        .teams
+        .iter()
+        .map(|team| {
+            let mut strings = retained_strings(&depth, team.team);
+            if team.team == PlannerTeam::Senior {
+                strings.push(PlannerStringInput {
+                    id: None,
+                    display_name: "2nd string".to_string(),
+                });
+            }
+            PlannerTeamInput {
+                team: team.team.as_str().to_string(),
+                display_name: team.display_name.clone(),
+                strings,
+            }
+        })
+        .collect::<Vec<_>>();
+    save_team_settings(conn, save_id, &inputs, false).expect("add second senior string");
+    let reloaded = get_depth(conn, save_id).expect("reload planner depth");
+    team_strings(&reloaded, PlannerTeam::Senior)
+        .iter()
+        .map(|string| string.id)
+        .max()
+        .expect("new senior string id")
 }
 
 #[test]
@@ -305,9 +298,6 @@ fn direct_depth_commands_reject_an_unavailable_team_without_recreating_it() {
     )
     .expect("remove unused teams");
 
-    let add_error = add_string(&conn, save_id, PlannerTeam::Reserves)
-        .expect_err("reject adding a string to an unavailable team");
-    assert!(add_error.contains("not available"));
     let candidate_error =
         get_slot_candidates(&conn, save_id, PlannerTeam::Reserves, "goalkeeper", "")
             .expect_err("reject loading candidates for an unavailable team");
@@ -324,72 +314,13 @@ fn assign_and_move_player_persist_manual_provenance() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
     let depth = get_depth(&conn, save_id).expect("create planner depth");
     let first_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
-    let second_string_id = add_string(&conn, save_id, PlannerTeam::Senior)
-        .expect("add destination string")
-        .0
-        .id;
+    let second_string_id = add_second_senior_string(&conn, save_id);
 
     assign_player(&conn, save_id, first_string_id, "goalkeeper", 77).expect("assign player");
     assert_eq!(assignment_provenance(&conn, 77), "manual");
 
     move_player(&conn, save_id, second_string_id, "goalkeeper", 77).expect("move player");
     assert_eq!(assignment_provenance(&conn, 77), "manual");
-}
-
-#[test]
-fn adds_ordered_strings_and_rejects_removing_the_final_string() {
-    let (_temp_dir, conn, save_id) = open_with_snapshot();
-    let first = get_depth(&conn, save_id).expect("create planner depth");
-    let first_senior_id = team_strings(&first, PlannerTeam::Senior)[0].id;
-
-    let added = add_string(&conn, save_id, PlannerTeam::Senior).expect("add string");
-    assert_eq!(added.0.string_order, 1);
-    remove_string(&conn, save_id, first_senior_id, false).expect("remove empty string");
-
-    let error =
-        remove_string(&conn, save_id, added.0.id, false).expect_err("keep the final string");
-    assert!(error.contains("at least one string"));
-    let reloaded = get_depth(&conn, save_id).expect("reload depth");
-    let strings = team_strings(&reloaded, PlannerTeam::Senior);
-    assert_eq!(
-        strings
-            .iter()
-            .map(|string| string.string_order)
-            .collect::<Vec<_>>(),
-        [0]
-    );
-
-    let next = add_string(&conn, save_id, PlannerTeam::Senior).expect("add next string");
-    assert_eq!(next.0.string_order, 1);
-}
-
-#[test]
-fn populated_string_requires_confirmation_and_deletes_only_its_assignments() {
-    let (_temp_dir, conn, save_id) = open_with_snapshot();
-    let depth = get_depth(&conn, save_id).expect("create planner depth");
-    let populated_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
-    let remaining = add_string(&conn, save_id, PlannerTeam::Senior).expect("add string");
-    assign_player(&conn, save_id, populated_id, "goalkeeper", 77).expect("assign player");
-
-    let error = remove_string(&conn, save_id, populated_id, false)
-        .expect_err("require populated confirmation");
-    assert!(error.contains("requires confirmation"));
-    assert_eq!(
-        team_strings(
-            &get_depth(&conn, save_id).expect("reload depth"),
-            PlannerTeam::Senior
-        )[0]
-        .assignments
-        .len(),
-        1
-    );
-
-    remove_string(&conn, save_id, populated_id, true).expect("remove confirmed string");
-    let reloaded = get_depth(&conn, save_id).expect("reload depth");
-    let strings = team_strings(&reloaded, PlannerTeam::Senior);
-    assert_eq!(strings.len(), 1);
-    assert_eq!(strings[0].id, remaining.0.id);
-    assert!(strings[0].assignments.is_empty());
 }
 
 #[test]
@@ -411,37 +342,6 @@ fn unconfirmed_clear_returns_confirmation_before_potential_preflight() {
     let error = clear_all(&conn, save_id, false).expect_err("require confirmation");
     assert_eq!(error, "Clearing all squads requires confirmation");
     assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
-}
-
-#[test]
-fn adding_string_without_a_snapshot_preserves_existing_depth_result() {
-    let temp_dir = tempfile::tempdir().expect("temp dir");
-    let conn = Connection::open(temp_dir.path().join("planner-depth.db")).expect("open db");
-    conn.pragma_update(None, "foreign_keys", true)
-        .expect("enable foreign keys");
-    migrations::apply(&conn).expect("apply migrations");
-    let save_id = snapshot::service::list_saves(&conn)
-        .expect("seed default save")
-        .into_iter()
-        .find(|save| save.is_active)
-        .expect("active save")
-        .id;
-
-    let (added, snapshot_id) =
-        add_string(&conn, save_id, PlannerTeam::Senior).expect("add string without snapshot");
-
-    assert_eq!(snapshot_id, None);
-    assert_eq!(added.string_order, 1);
-    assert_eq!(
-        team_strings(
-            &get_depth(&conn, save_id).expect("load depth without snapshot"),
-            PlannerTeam::Senior
-        )
-        .iter()
-        .map(|planner_string| planner_string.string_order)
-        .collect::<Vec<_>>(),
-        [0, 1]
-    );
 }
 
 #[test]
@@ -559,10 +459,10 @@ fn enforces_player_uniqueness_and_moves_in_one_save() {
     let depth = get_depth(&conn, save_id).expect("create planner depth");
     let first_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
     let reserve_id = team_strings(&depth, PlannerTeam::Reserves)[0].id;
-    let second = add_string(&conn, save_id, PlannerTeam::Senior).expect("add string");
+    let second_id = add_second_senior_string(&conn, save_id);
     assign_player(&conn, save_id, first_id, "goalkeeper", 77).expect("assign player");
 
-    let error = assign_player(&conn, save_id, second.0.id, "goalkeeper", 77)
+    let error = assign_player(&conn, save_id, second_id, "goalkeeper", 77)
         .expect_err("reject duplicate player");
     assert!(error.contains("already assigned"));
     let error = assign_player(&conn, save_id, reserve_id, "goalkeeper", 77)
@@ -793,10 +693,7 @@ fn corrupt_potential_state_blocks_assignment_move_before_writes() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
     let depth = get_depth(&conn, save_id).expect("create planner depth");
     let first_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
-    let second_string_id = add_string(&conn, save_id, PlannerTeam::Senior)
-        .expect("add destination string")
-        .0
-        .id;
+    let second_string_id = add_second_senior_string(&conn, save_id);
     assign_player(&conn, save_id, first_string_id, "goalkeeper", 77).expect("assign player");
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(

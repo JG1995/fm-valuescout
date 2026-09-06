@@ -50,7 +50,6 @@ import {
 } from "@/testing/moneyball-ipc-mock";
 import {
   resetPlannerIpcMock,
-  resolveAddPlannerStringIpcMock,
   resolveAssignPlannerPlayerIpcMock,
   resolveClearPlannerAssignmentIpcMock,
   resolveClearPlannerDepthIpcMock,
@@ -64,7 +63,6 @@ import {
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
   resolvePlannerTeamRemovalImpactsIpcMock,
-  resolveRemovePlannerStringIpcMock,
   resolveSavePlannerTacticIpcMock,
   resolveSavePlannerTeamsIpcMock,
   resolveSetManagedClubIpcMock,
@@ -333,14 +331,6 @@ function registerIpcMocks() {
 
     if (cmd === "get_planner_depth") {
       return resolvePlannerDepthIpcMock();
-    }
-
-    if (cmd === "add_planner_string") {
-      return resolveAddPlannerStringIpcMock(args);
-    }
-
-    if (cmd === "remove_planner_string") {
-      return resolveRemovePlannerStringIpcMock(args);
     }
 
     if (cmd === "clear_planner_depth") {

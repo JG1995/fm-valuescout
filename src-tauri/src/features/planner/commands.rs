@@ -746,32 +746,6 @@ pub fn get_planner_slot_candidates(
 }
 
 #[tauri::command]
-pub fn add_planner_string(team: String, db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
-    let team = PlannerTeam::parse(&team)?;
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    let (_, snapshot_id) = depth_service::add_string(&conn, save_id, team)?;
-    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
-}
-
-#[tauri::command]
-pub fn remove_planner_string(
-    string_id: i64,
-    confirm_populated: bool,
-    db: State<'_, Db>,
-) -> Result<PlannerDepthDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    let (_, snapshot_id) =
-        depth_service::remove_string(&conn, save_id, string_id, confirm_populated)?;
-    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
-}
-
-#[tauri::command]
 pub fn clear_planner_depth(confirmed: bool, db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
     let conn =
         db.0.lock()

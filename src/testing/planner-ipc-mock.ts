@@ -290,9 +290,6 @@ let depthFetchCount = 0;
 let tacticSaveError: string | null = null;
 let slotCandidates: PlannerSlotCandidate[] = [];
 let assignmentError: string | null = null;
-let addStringError: string | null = null;
-let addStringPending = false;
-let addStringCalls = 0;
 let clearAllError: string | null = null;
 let clearAllPending = false;
 let clearAllCalls = 0;
@@ -484,9 +481,6 @@ export function resetPlannerIpcMock() {
   tacticSaveError = null;
   slotCandidates = [];
   assignmentError = null;
-  addStringError = null;
-  addStringPending = false;
-  addStringCalls = 0;
   clearAllError = null;
   clearAllPending = false;
   clearAllCalls = 0;
@@ -659,18 +653,6 @@ export function setPlannerSlotCandidates(value: PlannerSlotCandidate[]) {
 
 export function setPlannerAssignmentError(message: string | null) {
   assignmentError = message;
-}
-
-export function setPlannerAddStringError(message: string | null) {
-  addStringError = message;
-}
-
-export function setPlannerAddStringPending(value: boolean) {
-  addStringPending = value;
-}
-
-export function getPlannerAddStringIpcMockCalls() {
-  return addStringCalls;
 }
 
 export function setPlannerClearAllError(message: string | null) {
@@ -901,80 +883,6 @@ export function resolveClearPlannerAssignmentIpcMock(args: unknown) {
   return cloneDepth(depth);
 }
 
-export function resolveAddPlannerStringIpcMock(args: unknown) {
-  addStringCalls += 1;
-  if (addStringError) {
-    throw addStringError;
-  }
-  if (addStringPending) {
-    return new Promise<PlannerDepth>(() => {});
-  }
-  if (
-    typeof args !== "object" ||
-    args === null ||
-    !("team" in args) ||
-    (args.team !== "senior" &&
-      args.team !== "reserves" &&
-      args.team !== "youth")
-  ) {
-    throw new Error("Invalid planner team");
-  }
-  const team = depth.teams.find((candidate) => candidate.team === args.team);
-  if (!team) {
-    throw new Error("Planner team not found");
-  }
-  const id =
-    Math.max(
-      ...depth.teams.flatMap((candidate) =>
-        candidate.strings.map((plannerString) => plannerString.id),
-      ),
-    ) + 1;
-  team.strings.push({
-    id,
-    stringOrder: team.strings.length,
-    displayName: ordinalStringLabel(team.strings.length),
-    assignments: [],
-  });
-  return cloneDepth(depth);
-}
-
-export function resolveRemovePlannerStringIpcMock(args: unknown) {
-  if (
-    typeof args !== "object" ||
-    args === null ||
-    !("stringId" in args) ||
-    !("confirmPopulated" in args) ||
-    typeof args.stringId !== "number" ||
-    typeof args.confirmPopulated !== "boolean"
-  ) {
-    throw new Error("Invalid planner string");
-  }
-  if (assignmentError) {
-    throw assignmentError;
-  }
-  const team = depth.teams.find((candidate) =>
-    candidate.strings.some(
-      (plannerString) => plannerString.id === args.stringId,
-    ),
-  );
-  const plannerString = team?.strings.find(
-    (candidate) => candidate.id === args.stringId,
-  );
-  if (!team || !plannerString) {
-    throw new Error("Planner string not found");
-  }
-  if (team.strings.length <= 1) {
-    throw `The ${team.team} team must keep at least one string`;
-  }
-  if (plannerString.assignments.length > 0 && !args.confirmPopulated) {
-    throw new Error("Removing a populated string requires confirmation");
-  }
-  team.strings = team.strings
-    .filter((candidate) => candidate.id !== args.stringId)
-    .map((candidate, index) => ({ ...candidate, stringOrder: index }));
-  return cloneDepth(depth);
-}
-
 export function resolveClearPlannerDepthIpcMock(args: unknown) {
   clearAllCalls += 1;
   if (
@@ -1193,7 +1101,11 @@ export function resolvePendingPlannerTeamSaveIpcMock() {
 }
 
 function applyPlannerTeamSave(
-  inputs: Array<{ team: PlannerTeam; displayName: string }>,
+  inputs: Array<{
+    team: PlannerTeam;
+    displayName: string;
+    strings: Array<{ id: number | null; displayName: string }>;
+  }>,
   confirmPopulatedRemoval: boolean,
 ) {
   const removedPopulatedTeams = depth.teams.filter(
@@ -1221,23 +1133,61 @@ function applyPlannerTeamSave(
   ).map((team) => {
     const current = depth.teams.find((candidate) => candidate.team === team);
     const input = inputs.find((candidate) => candidate.team === team);
+    const inputStrings = input?.strings ?? [];
     if (current) {
       return {
         ...current,
         displayName: input?.displayName ?? current.displayName,
+        strings: inputStrings.map((plannerString, index) => {
+          if (plannerString.id !== null) {
+            const existing = current.strings.find(
+              (candidate) => candidate.id === plannerString.id,
+            );
+            if (existing) {
+              return {
+                ...existing,
+                stringOrder: index,
+                displayName: plannerString.displayName,
+                assignments: existing.assignments.map((assignment) => ({
+                  ...assignment,
+                })),
+              };
+            }
+            return {
+              id: plannerString.id,
+              stringOrder: index,
+              displayName: plannerString.displayName,
+              assignments: [],
+            };
+          }
+          return {
+            id: nextStringId++,
+            stringOrder: index,
+            displayName: plannerString.displayName,
+            assignments: [],
+          };
+        }),
       };
     }
     return {
       team,
       displayName: input?.displayName ?? team,
-      strings: [
-        {
-          id: nextStringId++,
-          stringOrder: 0,
-          displayName: ordinalStringLabel(0),
-          assignments: [],
-        },
-      ],
+      strings:
+        inputStrings.length > 0
+          ? inputStrings.map((plannerString, index) => ({
+              id: plannerString.id !== null ? plannerString.id : nextStringId++,
+              stringOrder: index,
+              displayName: plannerString.displayName,
+              assignments: [],
+            }))
+          : [
+              {
+                id: nextStringId++,
+                stringOrder: 0,
+                displayName: ordinalStringLabel(0),
+                assignments: [],
+              },
+            ],
     };
   });
   depth.teams = nextTeams;

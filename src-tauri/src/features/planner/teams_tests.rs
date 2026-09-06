@@ -3,7 +3,7 @@ use rusqlite::params;
 use crate::features::snapshot::service;
 use crate::features::staff::assignment_targets::{self, StaffAssignmentTargetInput};
 
-use super::depth::{add_string, assign_player, get_depth, PlannerTeam};
+use super::depth::{assign_player, get_depth, PlannerTeam};
 use super::teams::{
     get_team_settings, planner_team_removal_impacts, save_team_settings, PlannerStringInput,
     PlannerTeamInput,
@@ -393,10 +393,37 @@ fn structural_save_keeps_stable_ids_and_assignments_across_rename_and_reorder() 
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let depth = get_depth(&conn, save_id).expect("initialize planner depth");
     let first_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
-    let second_id = add_string(&conn, save_id, PlannerTeam::Senior)
-        .expect("add second string")
-        .0
-        .id;
+    let first_name = team_strings(&depth, PlannerTeam::Senior)[0]
+        .display_name
+        .clone();
+    save_team_settings(
+        &conn,
+        save_id,
+        &[
+            input_with_strings(
+                "senior",
+                "Senior",
+                vec![
+                    retained_string(first_id, &first_name),
+                    new_string("2nd string"),
+                ],
+            ),
+            input_with_strings(
+                "reserves",
+                "Reserves",
+                current_strings_input(&conn, save_id, PlannerTeam::Reserves),
+            ),
+            input_with_strings(
+                "youth",
+                "Youth",
+                current_strings_input(&conn, save_id, PlannerTeam::Youth),
+            ),
+        ],
+        false,
+    )
+    .expect("add second string");
+    let depth = get_depth(&conn, save_id).expect("reload planner depth");
+    let second_id = team_strings(&depth, PlannerTeam::Senior)[1].id;
     assign_player(&conn, save_id, first_id, "goalkeeper", 77).expect("assign first player");
     assign_player(&conn, save_id, second_id, "left_back", 78).expect("assign second player");
 
@@ -460,10 +487,37 @@ fn structural_save_swaps_adjacent_orders_without_unique_constraint_failure() {
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let depth = get_depth(&conn, save_id).expect("initialize planner depth");
     let first_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
-    let second_id = add_string(&conn, save_id, PlannerTeam::Senior)
-        .expect("add second string")
-        .0
-        .id;
+    let first_name = team_strings(&depth, PlannerTeam::Senior)[0]
+        .display_name
+        .clone();
+    save_team_settings(
+        &conn,
+        save_id,
+        &[
+            input_with_strings(
+                "senior",
+                "Senior",
+                vec![
+                    retained_string(first_id, &first_name),
+                    new_string("2nd string"),
+                ],
+            ),
+            input_with_strings(
+                "reserves",
+                "Reserves",
+                current_strings_input(&conn, save_id, PlannerTeam::Reserves),
+            ),
+            input_with_strings(
+                "youth",
+                "Youth",
+                current_strings_input(&conn, save_id, PlannerTeam::Youth),
+            ),
+        ],
+        false,
+    )
+    .expect("add second string");
+    let depth = get_depth(&conn, save_id).expect("reload planner depth");
+    let second_id = team_strings(&depth, PlannerTeam::Senior)[1].id;
     assign_player(&conn, save_id, first_id, "goalkeeper", 77).expect("assign first player");
     assign_player(&conn, save_id, second_id, "left_back", 78).expect("assign second player");
 
@@ -519,10 +573,37 @@ fn structural_save_removes_only_the_excluded_strings_assignments() {
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let depth = get_depth(&conn, save_id).expect("initialize planner depth");
     let first_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
-    let second_id = add_string(&conn, save_id, PlannerTeam::Senior)
-        .expect("add second string")
-        .0
-        .id;
+    let first_name = team_strings(&depth, PlannerTeam::Senior)[0]
+        .display_name
+        .clone();
+    save_team_settings(
+        &conn,
+        save_id,
+        &[
+            input_with_strings(
+                "senior",
+                "Senior",
+                vec![
+                    retained_string(first_id, &first_name),
+                    new_string("2nd string"),
+                ],
+            ),
+            input_with_strings(
+                "reserves",
+                "Reserves",
+                current_strings_input(&conn, save_id, PlannerTeam::Reserves),
+            ),
+            input_with_strings(
+                "youth",
+                "Youth",
+                current_strings_input(&conn, save_id, PlannerTeam::Youth),
+            ),
+        ],
+        false,
+    )
+    .expect("add second string");
+    let depth = get_depth(&conn, save_id).expect("reload planner depth");
+    let second_id = team_strings(&depth, PlannerTeam::Senior)[1].id;
     assign_player(&conn, save_id, first_id, "goalkeeper", 77).expect("assign first player");
     assign_player(&conn, save_id, second_id, "left_back", 78).expect("assign second player");
 
@@ -785,11 +866,37 @@ fn removal_impacts_name_excluded_strings_with_assignment_counts() {
     let senior_name = team_strings(&depth, PlannerTeam::Senior)[0]
         .display_name
         .clone();
-    let extra = add_string(&conn, save_id, PlannerTeam::Senior)
-        .expect("add second string")
-        .0;
-    let extra_id = extra.id;
-    let extra_name = extra.display_name.clone();
+    save_team_settings(
+        &conn,
+        save_id,
+        &[
+            input_with_strings(
+                "senior",
+                "Senior",
+                vec![
+                    retained_string(senior_id, &senior_name),
+                    new_string("2nd string"),
+                ],
+            ),
+            input_with_strings(
+                "reserves",
+                "Reserves",
+                current_strings_input(&conn, save_id, PlannerTeam::Reserves),
+            ),
+            input_with_strings(
+                "youth",
+                "Youth",
+                current_strings_input(&conn, save_id, PlannerTeam::Youth),
+            ),
+        ],
+        false,
+    )
+    .expect("add second string");
+    let depth = get_depth(&conn, save_id).expect("reload planner depth");
+    let extra_id = team_strings(&depth, PlannerTeam::Senior)[1].id;
+    let extra_name = team_strings(&depth, PlannerTeam::Senior)[1]
+        .display_name
+        .clone();
     assign_player(&conn, save_id, extra_id, "goalkeeper", 77).expect("assign player");
 
     let impacts = planner_team_removal_impacts(

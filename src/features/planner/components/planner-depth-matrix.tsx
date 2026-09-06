@@ -8,26 +8,17 @@ import {
 } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
-import { addPlannerString } from "../api/add-planner-string";
 import { clearPlannerDepth } from "../api/clear-planner-depth";
 import {
   optimizePlannerDepth,
   type PlannerScoreBasis,
 } from "../api/optimize-planner-depth";
 import { plannerKeys } from "../api/planner-keys";
-import { removePlannerString } from "../api/remove-planner-string";
-import type {
-  PlannerDepth,
-  PlannerDepthTeam,
-  PlannerString,
-} from "../types/depth";
+import type { PlannerDepth, PlannerDepthTeam } from "../types/depth";
 import type { TacticOptions } from "../types/tactic";
 import { PLANNER_TEAMS, type PlannerTeam } from "../types/team";
 import { PlannerClearAllControl } from "./planner-clear-all-control";
-import {
-  PlannerDepthTable,
-  PlannerStringRemovalConfirmation,
-} from "./planner-depth-table";
+import { PlannerDepthTable } from "./planner-depth-table";
 import { PlannerOptimizerControls } from "./planner-optimizer-controls";
 import { PlannerRoleReferenceModal } from "./planner-role-reference-modal";
 import {
@@ -133,12 +124,6 @@ export function PlannerDepthMatrix({
   const [picker, setPicker] = useState<PlannerSlotTarget | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
-  const [stringError, setStringError] = useState<string | null>(null);
-  const [openStringId, setOpenStringId] = useState<number | null>(null);
-  const [removalTarget, setRemovalTarget] = useState<PlannerString | null>(
-    null,
-  );
-  const [removalOpen, setRemovalOpen] = useState(false);
   const [clearAllOpen, setClearAllOpen] = useState(false);
   const [clearAllError, setClearAllError] = useState<string | null>(null);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
@@ -151,9 +136,7 @@ export function PlannerDepthMatrix({
   const matrixWidth = useElementWidth(matrixContainerRef);
   const queryClient = useQueryClient();
   const closeTimerRef = useRef<number | null>(null);
-  const removalTimerRef = useRef<number | null>(null);
   const teamFocusTimerRef = useRef<number | null>(null);
-  const stringHeaderRefs = useRef(new Map<number, HTMLButtonElement>());
   const cellRefs = useRef(new Map<string, HTMLButtonElement>());
   const tabRefs = useRef<Record<PlannerTeam, HTMLButtonElement | null>>({
     senior: null,
@@ -163,7 +146,6 @@ export function PlannerDepthMatrix({
   const lastFocusContext = useRef<
     | { kind: "tab"; team: PlannerTeam }
     | { kind: "clear" }
-    | { kind: "string"; team: PlannerTeam; stringId: number }
     | {
         kind: "cell";
         team: PlannerTeam;
@@ -177,9 +159,6 @@ export function PlannerDepthMatrix({
     return () => {
       if (closeTimerRef.current !== null) {
         window.clearTimeout(closeTimerRef.current);
-      }
-      if (removalTimerRef.current !== null) {
-        window.clearTimeout(removalTimerRef.current);
       }
       if (teamFocusTimerRef.current !== null) {
         window.clearTimeout(teamFocusTimerRef.current);
@@ -222,10 +201,6 @@ export function PlannerDepthMatrix({
       return;
     }
     const frame = window.requestAnimationFrame(() => {
-      if (context.kind === "string") {
-        stringHeaderRefs.current.get(context.stringId)?.focus();
-        return;
-      }
       if (context.kind === "cell") {
         cellRefs.current
           .get(`${context.team}:${context.stringId}:${context.laneId}`)
@@ -241,7 +216,7 @@ export function PlannerDepthMatrix({
       if (showCombinedTeams) {
         document
           .querySelector<HTMLButtonElement>(
-            `[data-planner-team="${context.team}"][data-planner-string-id]`,
+            `[data-planner-team="${context.team}"]`,
           )
           ?.focus();
         return;
@@ -278,102 +253,6 @@ export function PlannerDepthMatrix({
     setSelectedTeam(next);
     lastFocusContext.current = { kind: "tab", team: next };
     tabRefs.current[next]?.focus();
-  };
-
-  const returnToStringHeader = (
-    stringId: number,
-    clearRemovalTarget = false,
-  ) => {
-    if (removalTimerRef.current !== null) {
-      window.clearTimeout(removalTimerRef.current);
-    }
-    removalTimerRef.current = window.setTimeout(() => {
-      stringHeaderRefs.current.get(stringId)?.focus();
-      if (clearRemovalTarget) {
-        setRemovalTarget(null);
-      }
-      removalTimerRef.current = null;
-    }, 200);
-  };
-
-  const completeStringAction = (stringId: number) => {
-    setOpenStringId(null);
-    setRemovalOpen(false);
-    returnToStringHeader(stringId, true);
-  };
-
-  const addString = useMutation({
-    mutationFn: ({ team }: { team: PlannerTeam; originStringId: number }) =>
-      addPlannerString(team),
-    onSuccess: (nextDepth, { team }) => {
-      setSelectedTeam(team);
-      queryClient.setQueryData(plannerKeys.depth(), nextDepth);
-      setOpenStringId(null);
-      const teamDepth = nextDepth.teams.find(
-        (candidate) => candidate.team === team,
-      );
-      const addedString = teamDepth?.strings.at(-1);
-      if (addedString) {
-        returnToStringHeader(addedString.id);
-      }
-    },
-    onError: (error, { originStringId }) => {
-      setStringError(errorMessage(error));
-      setOpenStringId(null);
-      returnToStringHeader(originStringId);
-    },
-  });
-
-  const removeString = useMutation({
-    mutationFn: ({
-      plannerString,
-      confirmPopulated,
-    }: {
-      plannerString: PlannerString;
-      confirmPopulated: boolean;
-    }) => removePlannerString(plannerString.id, confirmPopulated),
-    onSuccess: async (nextDepth, variables) => {
-      queryClient.setQueryData(plannerKeys.depth(), nextDepth);
-      await queryClient.invalidateQueries({
-        queryKey: plannerKeys.slotCandidates(),
-      });
-      const team = depth.teams.find((candidate) =>
-        candidate.strings.some(
-          (plannerString) => plannerString.id === variables.plannerString.id,
-        ),
-      );
-      const remainingStrings = nextDepth.teams.find(
-        (candidate) => candidate.team === team?.team,
-      )?.strings;
-      const focusTarget = remainingStrings?.at(
-        Math.min(
-          variables.plannerString.stringOrder,
-          (remainingStrings.length ?? 1) - 1,
-        ),
-      );
-      completeStringAction(focusTarget?.id ?? variables.plannerString.id);
-    },
-    onError: (error, variables) => {
-      setStringError(errorMessage(error));
-      completeStringAction(variables.plannerString.id);
-    },
-  });
-
-  const requestRemoveString = (plannerString: PlannerString) => {
-    const owner = orderedTeamDepths.find((teamDepth) =>
-      teamDepth.strings.some((candidate) => candidate.id === plannerString.id),
-    );
-    if (owner) {
-      setSelectedTeam(owner.team);
-    }
-    setStringError(null);
-    if (plannerString.assignments.length === 0) {
-      removeString.mutate({ plannerString, confirmPopulated: false });
-      return;
-    }
-    setOpenStringId(null);
-    setRemovalTarget(plannerString);
-    setRemovalOpen(true);
   };
 
   const clearAll = useMutation({
@@ -439,13 +318,6 @@ export function PlannerDepthMatrix({
     }
   };
 
-  const closeRemoval = () => {
-    if (!removalTarget) {
-      return;
-    }
-    completeStringAction(removalTarget.id);
-  };
-
   const reconcileTeamSettings = (
     nextDepth: PlannerDepth,
     removedTeams: PlannerTeam[],
@@ -460,11 +332,7 @@ export function PlannerDepthMatrix({
     }
     setPickerOpen(false);
     setPicker(null);
-    setOpenStringId(null);
-    setRemovalOpen(false);
-    setRemovalTarget(null);
     setPickerError(null);
-    setStringError(null);
     setOptimizeError(null);
     setActionStatus("Team settings saved.");
 
@@ -498,17 +366,6 @@ export function PlannerDepthMatrix({
     }, 220);
   };
 
-  const stringHeaderRef =
-    (stringId: number) => (element: HTMLButtonElement | null) => {
-      if (element) {
-        stringHeaderRefs.current.set(stringId, element);
-      } else {
-        stringHeaderRefs.current.delete(stringId);
-      }
-    };
-  const onStringHeaderFocus = (team: PlannerTeam, stringId: number) => {
-    lastFocusContext.current = { kind: "string", team, stringId };
-  };
   const cellRef =
     (team: PlannerTeam, stringId: number, laneId: string) =>
     (element: HTMLButtonElement | null) => {
@@ -537,18 +394,6 @@ export function PlannerDepthMatrix({
       tactic={tactic}
       options={options}
       onOpen={openPicker}
-      openStringId={openStringId}
-      onOpenStringMenu={setOpenStringId}
-      onCloseStringMenu={() => setOpenStringId(null)}
-      onAddString={(team, originStringId) => {
-        setSelectedTeam(team);
-        setStringError(null);
-        addString.mutate({ team, originStringId });
-      }}
-      onRemoveString={requestRemoveString}
-      addDisabled={addString.isPending || teamManagementPending}
-      stringHeaderRef={stringHeaderRef}
-      onStringHeaderFocus={onStringHeaderFocus}
       cellRef={cellRef}
       onCellFocus={onCellFocus}
     />
@@ -629,9 +474,7 @@ export function PlannerDepthMatrix({
               disabled={
                 teamManagementPending ||
                 clearAll.isPending ||
-                optimize.isPending ||
-                addString.isPending ||
-                removeString.isPending
+                optimize.isPending
               }
               onPendingChange={setTeamManagementPending}
               onSaved={reconcileTeamSettings}
@@ -673,11 +516,6 @@ export function PlannerDepthMatrix({
             {pickerError}
           </p>
         ) : null}
-        {stringError ? (
-          <p className="text-body-sm text-error" role="alert">
-            {stringError}
-          </p>
-        ) : null}
         {optimizeError ? (
           <p className="text-body-sm text-error" role="alert">
             {optimizeError}
@@ -715,15 +553,6 @@ export function PlannerDepthMatrix({
           onMutationError={setPickerError}
         />
       ) : null}
-      <PlannerStringRemovalConfirmation
-        target={removalTarget}
-        open={removalOpen}
-        pending={removeString.isPending}
-        onClose={closeRemoval}
-        onConfirm={(plannerString) =>
-          removeString.mutate({ plannerString, confirmPopulated: true })
-        }
-      />
       <PlannerRoleReferenceModal
         activeSaveId={activeSaveId}
         open={roleReferenceOpen}

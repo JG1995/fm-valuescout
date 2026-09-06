@@ -3222,10 +3222,23 @@ test.describe("application smoke", () => {
 
     const main = page.getByRole("main");
     await page.getByRole("link", { name: "Planner", exact: true }).click();
+    await main.getByRole("button", { name: "Manage teams" }).click();
+    const management = page.getByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await management
+      .getByRole("button", { name: "Add string to Senior" })
+      .click();
+    await management
+      .getByRole("button", { name: "Add string to Reserves" })
+      .click();
+    await management
+      .getByRole("button", { name: "Add string to Youth" })
+      .click();
+    await management.getByRole("button", { name: "Save teams" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     for (const team of ["Senior", "Reserves", "Youth"]) {
       await main.getByRole("tab", { name: team }).click();
-      await main.getByRole("button", { name: "Manage 1st string" }).click();
-      await main.getByRole("menuitem", { name: "Add string" }).click();
       await expect(
         main.getByRole("columnheader", { name: "2nd string" }),
       ).toBeVisible();
