@@ -1774,21 +1774,23 @@ test.describe("application smoke", () => {
     await expect(
       main.getByRole("region", { name: "Tactic controls" }),
     ).toBeVisible();
-    await expect(
-      main.getByRole("button", { name: "IP: AML · Winger" }),
-    ).toBeVisible();
-    const rightMc = main.getByRole("button", {
-      name: "IP: MCR · Central Midfielder",
-    });
-    const leftMc = main.getByRole("button", {
-      name: "IP: MCL · Central Midfielder",
-    });
-    const leftWinger = main.getByRole("button", { name: "IP: AML · Winger" });
-    const rightWinger = main.getByRole("button", {
-      name: "IP: AMR · Winger",
-    });
     const pitches = main.getByRole("group", { name: /pitch$/ });
     const ipPitch = pitches.first();
+    await expect(
+      ipPitch.getByRole("button", { name: "IP: AML · Winger" }),
+    ).toBeVisible();
+    const rightMc = ipPitch.getByRole("button", {
+      name: "IP: MCR · Central Midfielder",
+    });
+    const leftMc = ipPitch.getByRole("button", {
+      name: "IP: MCL · Central Midfielder",
+    });
+    const leftWinger = ipPitch.getByRole("button", {
+      name: "IP: AML · Winger",
+    });
+    const rightWinger = ipPitch.getByRole("button", {
+      name: "IP: AMR · Winger",
+    });
     await expect(pitches).toHaveCount(1);
     // Both renders two phase-distinguished markers per lane on one canvas.
     await expect(ipPitch.locator("[data-pitch-marker]")).toHaveCount(22);
@@ -1813,10 +1815,10 @@ test.describe("application smoke", () => {
       .getByRole("combobox", { name: "IP MC position" })
       .selectOption("MCR");
     await expect(rightMcMarker).toHaveAttribute("data-placement", "MCR");
-    const striker = main.getByRole("button", {
+    const striker = ipPitch.getByRole("button", {
       name: "IP: STC · Centre Forward",
     });
-    const goalkeeper = main.getByRole("button", {
+    const goalkeeper = ipPitch.getByRole("button", {
       name: "IP: GK · Goalkeeper",
     });
     const [
@@ -1932,7 +1934,9 @@ test.describe("application smoke", () => {
     // A cross-lane DCR/DCL swap shares coordinates across lanes: each
     // connector end must land inside its own displayed marker, not the
     // 4px gap between the split pair.
-    await main.getByRole("button", { name: "IP: DCR · Centre-Back" }).click();
+    await ipPitch
+      .getByRole("button", { name: "IP: DCR · Centre-Back" })
+      .click();
     await main
       .getByRole("combobox", { name: "IP DCR position" })
       .selectOption("DCL");
@@ -2038,7 +2042,7 @@ test.describe("application smoke", () => {
       .selectOption("DCR");
     await expect(ipPitch.locator("[data-tactic-connector]")).toHaveCount(2);
     // Form the supported unique MC triple (MCL/MC/MCR) through the edit flow.
-    await main
+    await ipPitch
       .getByRole("button", { name: "IP: DM · Defensive Midfielder" })
       .click();
     await main
@@ -2133,7 +2137,7 @@ test.describe("application smoke", () => {
       pitches.first().getByRole("button").last(),
     ).toHaveAccessibleName(/: GK · /);
     await expect(main.getByText("Left winger")).toHaveCount(0);
-    await main
+    await ipPitch
       .getByRole("button", { name: "IP: GK · Goalkeeper" })
       .press("Enter");
 
@@ -2301,7 +2305,7 @@ test.describe("application smoke", () => {
     const main = page.getByRole("main");
     const pitches = main.getByRole("group", { name: /pitch$/ });
     const settings = main.getByRole("region", {
-      name: "Selected position settings",
+      name: "Selected Slot",
     });
     const plannerHeading = main.getByRole("heading", {
       level: 1,

@@ -35,10 +35,6 @@ const VIEW_LABELS: Record<TacticView, string> = {
   both: "Both",
 };
 
-function visiblePhases(view: TacticView): TacticPhase[] {
-  return view === "both" ? ["ip", "oop"] : [view];
-}
-
 function nextView(view: TacticView, key: string): TacticView | null {
   const index = TACTIC_VIEWS.indexOf(view);
   if (index < 0) {
@@ -346,7 +342,7 @@ export function PlannerTacticEditor({
             selectedLane={selectedLane}
             lanes={draft.lanes}
             options={options}
-            phases={visiblePhases(view)}
+            phases={["ip", "oop"]}
             disabled={readOnly}
             onWeightChange={updateSelectedLaneWeight}
             onRankChange={updateSelectedLaneRank}

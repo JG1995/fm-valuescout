@@ -137,7 +137,7 @@ export function PlannerTacticInspector({
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3 id={headingId} className="text-label-lg text-on-surface">
-          Selected position settings
+          Selected Slot
         </h3>
         <p className="text-body-sm text-on-surface-variant">
           {linkedPositionDescription(selectedLane, lanes, options)}

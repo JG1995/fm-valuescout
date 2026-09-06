@@ -2725,7 +2725,7 @@ describe("My Club route", () => {
     const bothView = within(viewGroup).getByRole("button", { name: "Both" });
     expect(bothView).toHaveAttribute("aria-pressed", "true");
     const inspectors = screen.getAllByRole("region", {
-      name: "Selected position settings",
+      name: "Selected Slot",
     });
     expect(inspectors).toHaveLength(1);
     const inspector = inspectors[0];
@@ -2845,7 +2845,7 @@ describe("My Club route", () => {
     });
     const pitches = screen.getAllByRole("group", { name: /pitch$/ });
     const settings = screen.getByRole("region", {
-      name: "Selected position settings",
+      name: "Selected Slot",
     });
 
     expect(
@@ -3131,7 +3131,7 @@ describe("My Club route", () => {
     expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
   });
 
-  it("keeps phase controls in one inspector for each tactic view", async () => {
+  it("exposes both phase controls in the Selected Slot inspector for each tactic view", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
@@ -3142,29 +3142,29 @@ describe("My Club route", () => {
       name: "Tactic phase views",
     });
 
-    for (const [view, phase, hiddenPhase] of [
-      ["IP", "IP", "OOP"],
-      ["OOP", "OOP", "IP"],
-      ["Both", "IP", ""],
-    ] as const) {
+    for (const view of ["IP", "OOP", "Both"] as const) {
       await user.click(within(viewGroup).getByRole("button", { name: view }));
-      const inspectors = screen.getAllByRole("region", {
-        name: "Selected position settings",
+      const inspector = screen.getByRole("region", {
+        name: "Selected Slot",
       });
-      expect(inspectors).toHaveLength(1);
-      const inspector = inspectors[0];
+      expect(
+        within(inspector).getByRole("heading", { name: "Selected Slot" }),
+      ).toBeInTheDocument();
       expect(
         within(inspector).getByRole("combobox", {
-          name: `${phase} GK position`,
+          name: "IP GK position",
         }),
       ).toBeInTheDocument();
-      if (hiddenPhase) {
-        expect(
-          within(inspector).queryByRole("combobox", {
-            name: `${hiddenPhase} GK position`,
-          }),
-        ).not.toBeInTheDocument();
-      }
+      expect(
+        within(inspector).getByRole("combobox", {
+          name: "OOP GK position",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        within(inspector).getByRole("slider", {
+          name: "IP/OOP score weight",
+        }),
+      ).toBeInTheDocument();
     }
   });
 
@@ -3450,9 +3450,9 @@ describe("My Club route", () => {
       screen.getByRole("button", { name: "IP: GK · Goalkeeper" }),
     ).toHaveAttribute("aria-pressed", "true");
     expect(
-      within(
-        screen.getByRole("region", { name: "Selected position settings" }),
-      ).getByText("IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper"),
+      within(screen.getByRole("region", { name: "Selected Slot" })).getByText(
+        "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+      ),
     ).toBeInTheDocument();
 
     // Pitch to panel: selecting a marker updates the pressed panel row.
@@ -3472,9 +3472,9 @@ describe("My Club route", () => {
     await user.keyboard("{Enter}");
     expect(afterMarkerSelect[0]).toHaveAttribute("aria-pressed", "true");
     expect(
-      within(
-        screen.getByRole("region", { name: "Selected position settings" }),
-      ).getByText("IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper"),
+      within(screen.getByRole("region", { name: "Selected Slot" })).getByText(
+        "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+      ),
     ).toBeInTheDocument();
   });
 
