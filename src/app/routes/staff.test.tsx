@@ -1085,7 +1085,7 @@ describe("staff route", () => {
     resolvePendingPlannerTeamSaveIpcMock();
     router.history.push("/my-club?view=planner");
     expect(
-      await screen.findByRole("tab", { name: "First Team" }),
+      await screen.findByRole("columnheader", { name: "First Team" }),
     ).toBeInTheDocument();
     router.history.push("/staff?shortlistOnly=true");
     await waitFor(() =>

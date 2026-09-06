@@ -54,7 +54,6 @@ import {
   setCsvImportIpcMockResult,
 } from "@/testing/csv-import-ipc-mock";
 import {
-  getPlannerAddStringIpcMockCalls,
   getPlannerClearAllIpcMockCalls,
   getPlannerDepthIpcMockCalls,
   getPlannerOptimizeIpcMockBases,
@@ -75,8 +74,6 @@ import {
   setManagedClubIpcMock,
   setManagedClubOptionsError,
   setManagedClubSavePending,
-  setPlannerAddStringError,
-  setPlannerAddStringPending,
   setPlannerAssignmentError,
   setPlannerAvailableClubs,
   setPlannerClearAllError,
@@ -216,22 +213,14 @@ function withSecondStringForEveryTeam(depth: PlannerDepth): PlannerDepth {
         {
           id: nextStringId++,
           stringOrder: team.strings.length,
+          displayName: `${team.strings.length + 1}${
+            team.strings.length + 1 === 2 ? "nd" : "th"
+          } string`,
           assignments: [],
         },
       ],
     })),
   };
-}
-
-async function setPlannerMatrixWidth(width: number) {
-  const matrixContainer = await screen.findByTestId(
-    "planner-depth-matrix-container",
-  );
-  Object.defineProperty(matrixContainer, "clientWidth", {
-    configurable: true,
-    value: width,
-  });
-  fireEvent(window, new Event("resize"));
 }
 
 function mockScrollerScrollTo(scroller: HTMLElement) {
@@ -2647,13 +2636,13 @@ describe("My Club route", () => {
       within(navigation).getByRole("link", { name: "Planner" }),
     ).toHaveAttribute("aria-current", "page");
     const matrix = await screen.findByRole("region", {
-      name: "Senior squad depth matrix",
+      name: "Squad depth board",
     });
     expect(matrix).toBeVisible();
     expect(
       within(matrix)
         .getAllByRole("row")
-        .slice(1)
+        .slice(2)
         .map(
           (row) => row.getAttribute("aria-label")?.match(/^IP: ([^ ]+)/)?.[1],
         ),
@@ -3115,7 +3104,7 @@ describe("My Club route", () => {
 
     await openMyClubWorkspace(user, "planner");
     const matrix = screen.getByRole("region", {
-      name: "Senior squad depth matrix",
+      name: "Squad depth board",
     });
     expect(within(matrix).getByText("IP: AMC · Winger")).toBeInTheDocument();
     expect(within(matrix).queryByText("Left winger")).not.toBeInTheDocument();
@@ -3924,7 +3913,7 @@ describe("My Club route", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders shared lanes, ordered strings, keyboard tabs, and truthful assignment states", async () => {
+  it("renders every squad simultaneously with slot context, named strings, and truthful cards", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
@@ -3932,64 +3921,89 @@ describe("My Club route", () => {
     setPlannerDepthIpcMock(withDepthAssignments(depth));
     renderMyClubRoute();
 
-    const matrix = await screen.findByRole("region", {
-      name: "Senior squad depth matrix",
+    const board = await screen.findByRole("region", {
+      name: "Squad depth board",
     });
-    expect(matrix).toHaveClass("overflow-auto");
+    expect(board).toHaveClass("overflow-x-auto");
+    expect(board).toHaveClass("max-h-[min(70vh,720px)]");
+    const boardTable = within(board).getByRole("table", {
+      name: "Squad depth board",
+    });
+    expect(boardTable).toHaveClass("w-max");
+    expect(boardTable).not.toHaveClass("w-full");
     expect(
-      within(matrix).getByRole("columnheader", { name: "1st string" }),
+      screen.queryByRole("tablist", { name: "Squad planner teams" }),
+    ).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Senior" })).toBeNull();
+    for (const squad of ["Senior", "Reserves", "Youth"]) {
+      expect(
+        within(board).getByRole("columnheader", { name: squad }),
+      ).toBeInTheDocument();
+    }
+    expect(
+      within(board).queryByRole("columnheader", { name: "Senior squad" }),
+    ).toBeNull();
+    expect(
+      within(board).getAllByRole("columnheader", { name: "1st string" }),
+    ).toHaveLength(3);
+    expect(
+      within(board).getAllByRole("columnheader", { name: "2nd string" }),
+    ).toHaveLength(1);
+    const slotChips = board.querySelectorAll("[data-planner-slot-chip]");
+    expect(slotChips).toHaveLength(11);
+    expect(slotChips[0]).toHaveTextContent("GK");
+    expect(within(board).getAllByRole("rowheader")).toHaveLength(11);
+    expect(
+      within(board).getByRole("row", { name: /Goalkeeper/ }),
+    ).toBeInTheDocument();
+    expect(within(board).getByText("IP: GK · Goalkeeper")).toBeInTheDocument();
+    expect(
+      within(board).getByText("OOP: GK · Line-Holding Keeper"),
     ).toBeInTheDocument();
     expect(
-      within(matrix).getByRole("columnheader", { name: "2nd string" }),
-    ).toBeInTheDocument();
-    expect(
-      within(matrix).getByRole("row", { name: /Goalkeeper/ }),
-    ).toBeInTheDocument();
-    expect(within(matrix).getByText("IP: GK · Goalkeeper")).toBeInTheDocument();
-    expect(
-      within(matrix).getByText("OOP: GK · Line-Holding Keeper"),
-    ).toBeInTheDocument();
-    expect(
-      within(matrix).getByRole("img", {
+      within(board).getByRole("img", {
         name: /Current combined role score: 82/,
       }),
     ).toBeInTheDocument();
     expect(
-      within(matrix).getByRole("img", {
+      within(board).getByRole("img", {
         name: /Potential combined role score: 91/,
       }),
     ).toBeInTheDocument();
-    expect(within(matrix).getByText("Outside pool")).toBeInTheDocument();
-    expect(within(matrix).getByText("Unresolved")).toBeInTheDocument();
+    expect(within(board).getByText("Outside pool")).toBeInTheDocument();
+    expect(within(board).getByText("Unresolved")).toBeInTheDocument();
     expect(
-      within(matrix).getByRole("button", {
+      within(board).getByRole("button", {
         name: /Missing Centre-Back/,
       }),
     ).toBeInTheDocument();
-    const unavailableCell = within(matrix).getByRole("button", {
+    const unavailableCell = within(board).getByRole("button", {
       name: /No Score Player, Resolved, current score —, potential score —/,
     });
     expect(unavailableCell).not.toBeDisabled();
     unavailableCell.focus();
     expect(document.activeElement).toBe(unavailableCell);
-    expect(within(matrix).getAllByText("—").length).toBeGreaterThan(0);
+    expect(within(board).getAllByText("—").length).toBeGreaterThan(0);
 
-    const seniorTab = screen.getByRole("tab", { name: "Senior" });
-    seniorTab.focus();
-    await user.keyboard("{ArrowRight}");
-    const reservesTab = screen.getByRole("tab", { name: "Reserves" });
-    expect(reservesTab).toHaveAttribute("aria-selected", "true");
-    expect(document.activeElement).toBe(reservesTab);
-    expect(
-      screen.getByRole("region", { name: "Reserves squad depth matrix" }),
-    ).toBeInTheDocument();
-
-    const cell = screen.getAllByRole("button", {
+    const assignActions = within(board).getAllByText("Assign");
+    expect(assignActions.length).toBeGreaterThan(0);
+    const emptyCell = within(board).getByRole("button", {
       name: /Reserves, 1st string, IP: GK .* Empty/,
-    })[0];
-    expect(cell).not.toBeDisabled();
-    cell.focus();
-    expect(document.activeElement).toBe(cell);
+    });
+    expect(emptyCell).not.toBeDisabled();
+    expect(within(emptyCell).getByText("Assign")).toBeInTheDocument();
+    emptyCell.focus();
+    expect(document.activeElement).toBe(emptyCell);
+    await user.click(
+      within(board).getByRole("button", {
+        name: /Youth, 1st string, IP: GK .* Empty/,
+      }),
+    );
+    expect(
+      screen.getByRole("dialog", {
+        name: `Find a player for ${KEEPER_POSITION}`,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("groups squad actions above a bounded compact matrix", async () => {
@@ -4002,8 +4016,8 @@ describe("My Club route", () => {
       name: "Squad controls",
     });
     expect(
-      within(toolbar).getByRole("tablist", { name: "Squad planner teams" }),
-    ).toBeInTheDocument();
+      within(toolbar).queryByRole("tablist", { name: "Squad planner teams" }),
+    ).toBeNull();
     expect(
       within(toolbar).getByRole("button", { name: "Optimize squads" }),
     ).toBeInTheDocument();
@@ -4011,12 +4025,12 @@ describe("My Club route", () => {
       within(toolbar).getByRole("button", { name: "Clear all" }),
     ).toBeInTheDocument();
 
-    const matrix = screen.getByRole("region", {
-      name: "Senior squad depth matrix",
+    const board = screen.getByRole("region", {
+      name: "Squad depth board",
     });
-    expect(matrix).toHaveClass("max-h-[min(70vh,720px)]");
-    expect(matrix).toHaveClass("overflow-auto");
-    expect(within(matrix).getByRole("row", { name: /Goalkeeper/ })).toHaveClass(
+    expect(board).toHaveClass("max-h-[min(70vh,720px)]");
+    expect(board).toHaveClass("overflow-x-auto");
+    expect(within(board).getByRole("row", { name: /Goalkeeper/ })).toHaveClass(
       "h-table-row-height-two-line",
     );
   });
@@ -4319,7 +4333,7 @@ describe("My Club route", () => {
     expect(trigger).toHaveFocus();
   });
 
-  it("groups all teams in one semantic table when the matrix fits", async () => {
+  it("renders every enabled squad at once with no width-dependent fallback", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
@@ -4327,30 +4341,32 @@ describe("My Club route", () => {
       withSecondStringForEveryTeam(resolvePlannerDepthIpcMock()),
     );
     renderMyClubRoute();
-    await setPlannerMatrixWidth(1600);
 
-    const matrix = await screen.findByRole("region", {
-      name: "All squads depth matrix",
+    const board = await screen.findByRole("region", {
+      name: "Squad depth board",
     });
     expect(
-      within(matrix).getByRole("columnheader", { name: "Senior squad" }),
+      within(board).getByRole("columnheader", { name: "Senior" }),
     ).toBeInTheDocument();
     expect(
-      within(matrix).getByRole("columnheader", { name: "Reserves squad" }),
+      within(board).getByRole("columnheader", { name: "Reserves" }),
     ).toBeInTheDocument();
     expect(
-      within(matrix).getByRole("columnheader", { name: "Youth squad" }),
+      within(board).getByRole("columnheader", { name: "Youth" }),
     ).toBeInTheDocument();
     expect(
-      within(matrix).getAllByRole("columnheader", { name: "1st string" }),
+      within(board).getAllByRole("columnheader", { name: "1st string" }),
     ).toHaveLength(3);
     expect(
-      within(matrix).getByRole("button", {
+      within(board).getAllByRole("columnheader", { name: "2nd string" }),
+    ).toHaveLength(3);
+    expect(
+      within(board).getByRole("button", {
         name: /Youth, 2nd string, IP: GK .* Empty/,
       }),
     ).toBeInTheDocument();
     expect(
-      within(matrix)
+      within(board)
         .getByRole("button", { name: /Reserves, 1st string, IP: GK .* Empty/ })
         .closest("td"),
     ).toHaveAttribute(
@@ -4363,7 +4379,7 @@ describe("My Club route", () => {
 
     const clearAll = screen.getByRole("button", { name: "Clear all" });
     expect(
-      within(matrix).queryByRole("button", { name: /Clear .* squad/ }),
+      within(board).queryByRole("button", { name: /Clear .* squad/ }),
     ).toBeNull();
     await user.click(clearAll);
     const confirmation = screen.getByRole("dialog", {
@@ -4376,143 +4392,55 @@ describe("My Club route", () => {
     await waitFor(() => expect(document.activeElement).toBe(clearAll));
   });
 
-  it("keeps the selected team and string focus across responsive mode changes", async () => {
-    const user = userEvent.setup();
+  it("keeps string columns at bounded fixed widths that never stretch", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerDepthIpcMock(
       withSecondStringForEveryTeam(resolvePlannerDepthIpcMock()),
     );
     renderMyClubRoute();
-    await setPlannerMatrixWidth(1200);
 
-    await user.click(await screen.findByRole("tab", { name: "Reserves" }));
-    const reservesTab = screen.getByRole("tab", { name: "Reserves" });
-    reservesTab.focus();
-    await setPlannerMatrixWidth(1600);
-    const combinedFromTab = await screen.findByRole("region", {
-      name: "All squads depth matrix",
+    const board = await screen.findByRole("region", {
+      name: "Squad depth board",
     });
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        within(combinedFromTab).getAllByRole("button", {
-          name: "Manage 1st string",
-        })[1],
-      ),
-    );
-    await setPlannerMatrixWidth(1200);
-    const constrainedAfterTab = await screen.findByRole("region", {
-      name: "Reserves squad depth matrix",
+    expect(board).toHaveClass("overflow-x-auto");
+    const boardTable = within(board).getByRole("table", {
+      name: "Squad depth board",
     });
-    await waitFor(() =>
-      expect(
-        within(constrainedAfterTab).getByRole("button", {
-          name: "Manage 1st string",
-        }),
-      ).toHaveFocus(),
-    );
-
-    const constrainedHeader = within(
-      screen.getByRole("region", { name: "Reserves squad depth matrix" }),
-    ).getByRole("button", { name: "Manage 1st string" });
-    constrainedHeader.focus();
-
-    await setPlannerMatrixWidth(1600);
-    const combined = await screen.findByRole("region", {
-      name: "All squads depth matrix",
-    });
-    const combinedHeaders = within(combined).getAllByRole("button", {
-      name: "Manage 1st string",
-    });
-    await waitFor(() =>
-      expect(document.activeElement).toBe(combinedHeaders[1]),
-    );
-
-    await setPlannerMatrixWidth(1200);
-    const constrained = await screen.findByRole("region", {
-      name: "Reserves squad depth matrix",
-    });
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        within(constrained).getByRole("button", { name: "Manage 1st string" }),
-      ),
-    );
-
-    const constrainedCell = within(constrained).getByRole("button", {
-      name: /Reserves, 1st string, IP: GK .* Empty/,
-    });
-    constrainedCell.focus();
-    await setPlannerMatrixWidth(1600);
-    await screen.findByRole("region", {
-      name: "All squads depth matrix",
-    });
-    await setPlannerMatrixWidth(1200);
-    const constrainedFromCell = await screen.findByRole("region", {
-      name: "Reserves squad depth matrix",
-    });
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        within(constrainedFromCell).getByRole("button", {
-          name: /Reserves, 1st string, IP: GK .* Empty/,
-        }),
-      ),
-    );
-
-    await setPlannerMatrixWidth(1600);
-    const combinedFromClear = await screen.findByRole("region", {
-      name: "All squads depth matrix",
-    });
-    await waitFor(() =>
-      expect(
-        within(combinedFromClear).getByRole("button", {
-          name: /Reserves, 1st string, IP: GK .* Empty/,
-        }),
-      ).toHaveFocus(),
-    );
-    const clearAll = screen.getByRole("button", { name: "Clear all" });
-    clearAll.focus();
-    await setPlannerMatrixWidth(1200);
-    await screen.findByRole("region", {
-      name: "Reserves squad depth matrix",
-    });
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Clear all" })).toHaveFocus(),
-    );
+    expect(boardTable).toHaveClass("w-max");
+    expect(boardTable).not.toHaveClass("w-full");
+    const stringCell = within(board)
+      .getByRole("button", { name: /Senior, 1st string, IP: GK .* Empty/ })
+      .closest("td");
+    expect(stringCell).toHaveClass("min-w-52");
+    expect(stringCell).toHaveClass("max-w-52");
+    const slotHeader = within(board).getAllByRole("rowheader")[0];
+    expect(slotHeader).toHaveClass("sticky");
+    expect(slotHeader).toHaveClass("min-w-52");
+    expect(slotHeader).toHaveClass("max-w-52");
   });
 
-  it("keeps the acted-on team visible when adding a string crosses the fit threshold", async () => {
-    const user = userEvent.setup();
+  it("renders board cards on the container-high surface without primary text", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(withDepthAssignments(resolvePlannerDepthIpcMock()));
     renderMyClubRoute();
-    await setPlannerMatrixWidth(900);
 
-    const combined = await screen.findByRole("region", {
-      name: "All squads depth matrix",
+    const board = await screen.findByRole("region", {
+      name: "Squad depth board",
     });
-    within(combined).getByRole("columnheader", {
-      name: "Senior squad",
+    const assignedCard = within(board).getByRole("button", {
+      name: /Alex Keeper/,
     });
-    const seniorHeader = within(combined).getAllByRole("columnheader", {
-      name: "1st string",
-    })[0];
-    await user.click(
-      within(seniorHeader).getByRole("button", { name: "Manage 1st string" }),
-    );
-    await user.click(
-      within(seniorHeader).getByRole("menuitem", { name: "Add string" }),
-    );
-
-    const constrained = await screen.findByRole("region", {
-      name: "Senior squad depth matrix",
+    const emptyCard = within(board).getByRole("button", {
+      name: /Senior, 2nd string, IP: GK .* Empty/,
     });
-    const addedHeader = await within(constrained).findByRole("columnheader", {
-      name: "2nd string",
-    });
-    expect(addedHeader).toBeInTheDocument();
-    await waitFor(() =>
-      expect(document.activeElement).toHaveAccessibleName("Manage 2nd string"),
-    );
+    for (const card of [assignedCard, emptyCard]) {
+      expect(card).toHaveClass("bg-surface-container-high");
+      expect(card).toHaveClass("border-outline-variant");
+      expect(card).toHaveClass("rounded-md");
+    }
+    expect(board.querySelector(".text-primary")).toBeNull();
   });
 
   it("announces only the latest successful squad action", async () => {
@@ -4699,81 +4627,6 @@ describe("My Club route", () => {
     );
   });
 
-  it("refreshes 60-second cached candidates after removing a populated string", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const depth = withSecondSeniorString(resolvePlannerDepthIpcMock());
-    depth.teams = depth.teams.map((team) =>
-      team.team === "senior"
-        ? {
-            ...team,
-            strings: team.strings.map((plannerString, index) =>
-              index === 0
-                ? {
-                    ...plannerString,
-                    assignments: [
-                      {
-                        id: 201,
-                        laneId: "goalkeeper",
-                        playerUid: 77,
-                        lastKnownName: "String Keeper",
-                        currentName: "String Keeper",
-                        state: "resolved",
-                        combinedScore: 82,
-                        potentialCombinedScore: null,
-                      },
-                    ],
-                  }
-                : plannerString,
-            ),
-          }
-        : team,
-    );
-    setPlannerDepthIpcMock(depth);
-    setPlannerSlotCandidates([
-      slotCandidate({
-        playerUid: 77,
-        name: "String Keeper",
-        currentClub: "Barcelona",
-        ipScore: 85,
-        oopScore: 75,
-        combinedScore: 80,
-      }),
-    ]);
-    renderMyClubRoute({ staleTime: 60_000 });
-
-    await user.click(
-      await screen.findByRole("button", {
-        name: /Senior, 2nd string, IP: GK .* Empty/,
-      }),
-    );
-    expect(
-      await screen.findByRole("option", { name: /String Keeper/ }),
-    ).toHaveTextContent(`Assigned: ${SENIOR_FIRST_KEEPER}`);
-    await user.keyboard("{Escape}");
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
-
-    await user.click(screen.getByRole("button", { name: "Manage 1st string" }));
-    await user.click(
-      within(
-        screen.getByRole("menu", { name: "1st string actions" }),
-      ).getByRole("menuitem", { name: "Remove string" }),
-    );
-    await user.click(screen.getByRole("button", { name: "Remove string" }));
-
-    await user.click(
-      screen.getByRole("button", {
-        name: /Senior, 1st string, IP: GK .* Empty/,
-      }),
-    );
-    expect(
-      await screen.findByRole("option", { name: /String Keeper/ }),
-    ).toHaveTextContent("Unassigned");
-  });
-
   it("requires confirmation before clearing an occupied slot", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -4795,11 +4648,10 @@ describe("My Club route", () => {
     ]);
     renderMyClubRoute({ staleTime: 60_000 });
 
-    await user.click(await screen.findByRole("tab", { name: "Reserves" }));
-    const occupiedCell = screen.getByRole("button", {
+    const occupiedCell = await screen.findByRole("button", {
       name: /Reserves, 1st string, IP: GK .* Reserve Keeper, Resolved/,
     });
-    const emptyCell = screen.getByRole("button", {
+    const emptyCell = await screen.findByRole("button", {
       name: /Reserves, 2nd string, IP: GK .* Empty/,
     });
 
@@ -4906,7 +4758,6 @@ describe("My Club route", () => {
     expect(
       screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "Reserves" }));
     expect(
       screen.getByRole("button", {
         name: /Reserves, 1st string, IP: GK .* Empty/,
@@ -4959,227 +4810,9 @@ describe("My Club route", () => {
         name: /Senior, 1st string, IP: GK .* Empty/,
       }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "Reserves" }));
     expect(
       screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
     ).toBeInTheDocument();
-  });
-
-  it("manages ordered strings from equivalent header menus", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const depth = withSecondSeniorString(resolvePlannerDepthIpcMock());
-    depth.teams = depth.teams.map((team) =>
-      team.team === "senior"
-        ? {
-            ...team,
-            strings: team.strings.map((plannerString, index) =>
-              index === 0
-                ? {
-                    ...plannerString,
-                    assignments: [
-                      {
-                        id: 201,
-                        laneId: "goalkeeper",
-                        playerUid: 77,
-                        lastKnownName: "Senior Keeper",
-                        currentName: "Senior Keeper",
-                        state: "resolved",
-                        combinedScore: 82,
-                        potentialCombinedScore: null,
-                      },
-                    ],
-                  }
-                : plannerString,
-            ),
-          }
-        : team,
-    );
-    setPlannerDepthIpcMock(depth);
-    renderMyClubRoute();
-
-    const firstHeader = await screen.findByRole("button", {
-      name: "Manage 1st string",
-    });
-    firstHeader.focus();
-    await user.keyboard("{Enter}");
-    const firstMenu = screen.getByRole("menu", { name: "1st string actions" });
-    await user.click(
-      within(firstMenu).getByRole("menuitem", { name: "Add string" }),
-    );
-    expect(
-      await screen.findByRole("columnheader", { name: "3rd string" }),
-    ).toBeInTheDocument();
-
-    const secondHeader = screen.getByRole("button", {
-      name: "Manage 2nd string",
-    });
-    await user.pointer({ target: secondHeader, keys: "[MouseRight]" });
-    const secondMenu = screen.getByRole("menu", { name: "2nd string actions" });
-    await user.click(
-      within(secondMenu).getByRole("menuitem", { name: "Remove string" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("columnheader", { name: "3rd string" }),
-      ).not.toBeInTheDocument(),
-    );
-    expect(
-      screen.getByRole("columnheader", { name: "2nd string" }),
-    ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(document.activeElement).toHaveAccessibleName("Manage 2nd string"),
-    );
-
-    await user.click(firstHeader);
-    await user.click(
-      within(
-        screen.getByRole("menu", { name: "1st string actions" }),
-      ).getByRole("menuitem", { name: "Remove string" }),
-    );
-    const confirmation = screen.getByRole("dialog", {
-      name: "Remove 1st string?",
-    });
-    expect(confirmation).toHaveTextContent("Senior Keeper");
-    await user.click(
-      within(confirmation).getByRole("button", { name: "Cancel" }),
-    );
-    await waitFor(() => expect(document.activeElement).toBe(firstHeader));
-    expect(
-      screen.getByRole("button", { name: /Senior Keeper, Resolved/ }),
-    ).toBeInTheDocument();
-
-    setPlannerAssignmentError("Remove failed");
-    await user.click(firstHeader);
-    await user.click(
-      within(
-        screen.getByRole("menu", { name: "1st string actions" }),
-      ).getByRole("menuitem", { name: "Remove string" }),
-    );
-    await user.click(screen.getByRole("button", { name: "Remove string" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Remove failed");
-    await waitFor(() => expect(document.activeElement).toBe(firstHeader));
-    expect(
-      screen.getByRole("button", { name: /Senior Keeper, Resolved/ }),
-    ).toBeInTheDocument();
-
-    setPlannerAssignmentError(null);
-    await user.click(firstHeader);
-    await user.click(
-      within(
-        screen.getByRole("menu", { name: "1st string actions" }),
-      ).getByRole("menuitem", { name: "Remove string" }),
-    );
-    await user.click(screen.getByRole("button", { name: "Remove string" }));
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("button", { name: /Senior Keeper, Resolved/ }),
-      ).not.toBeInTheDocument(),
-    );
-    await user.click(screen.getByRole("button", { name: "Manage 1st string" }));
-    expect(
-      within(
-        screen.getByRole("menu", { name: "1st string actions" }),
-      ).getByRole("menuitem", { name: "Remove string" }),
-    ).toBeDisabled();
-  });
-
-  it("returns focus to the string trigger when Escape closes its menu", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    renderMyClubRoute();
-
-    const trigger = await screen.findByRole("button", {
-      name: "Manage 1st string",
-    });
-    await user.click(trigger);
-    screen.getByRole("menuitem", { name: "Add string" }).focus();
-
-    await user.keyboard("{Escape}");
-
-    expect(
-      screen.queryByRole("menu", { name: "1st string actions" }),
-    ).not.toBeInTheDocument();
-    expect(trigger).toHaveFocus();
-  });
-
-  it("closes a keyboard-opened string menu with Escape from its trigger", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    renderMyClubRoute();
-
-    const trigger = await screen.findByRole("button", {
-      name: "Manage 1st string",
-    });
-    trigger.focus();
-    await user.keyboard("{Enter}{Escape}");
-
-    expect(
-      screen.queryByRole("menu", { name: "1st string actions" }),
-    ).not.toBeInTheDocument();
-    expect(trigger).toHaveFocus();
-  });
-
-  it("opens the string menu from the whole header context menu", async () => {
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    renderMyClubRoute();
-
-    const header = await screen.findByRole("columnheader", {
-      name: "1st string",
-    });
-
-    expect(fireEvent.contextMenu(header)).toBe(false);
-    expect(
-      screen.getByRole("menu", { name: "1st string actions" }),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps focus on the originating header when adding a string fails", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    setPlannerDepthIpcMock(
-      withSecondSeniorString(resolvePlannerDepthIpcMock()),
-    );
-    setPlannerAddStringError("Add failed");
-    renderMyClubRoute();
-
-    const firstHeader = await screen.findByRole("button", {
-      name: "Manage 1st string",
-    });
-    await user.click(firstHeader);
-    await user.click(
-      within(
-        screen.getByRole("menu", { name: "1st string actions" }),
-      ).getByRole("menuitem", { name: "Add string" }),
-    );
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("Add failed");
-    await waitFor(() => expect(document.activeElement).toBe(firstHeader));
-    expect(
-      screen.getByRole("columnheader", { name: "2nd string" }),
-    ).toBeInTheDocument();
-  });
-
-  it("starts one add mutation while the header action is pending", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    setPlannerAddStringPending(true);
-    renderMyClubRoute();
-
-    await user.click(
-      await screen.findByRole("button", { name: "Manage 1st string" }),
-    );
-    const addButton = screen.getByRole("menuitem", { name: "Add string" });
-    await user.click(addButton);
-    await user.click(addButton);
-
-    expect(getPlannerAddStringIpcMockCalls()).toBe(1);
   });
 
   it("confirms clearing every squad and reconciles all candidates", async () => {
@@ -5255,19 +4888,16 @@ describe("My Club route", () => {
         screen.queryByRole("button", { name: /Senior Keeper, Resolved/ }),
       ).not.toBeInTheDocument(),
     );
-    await user.click(screen.getByRole("tab", { name: "Reserves" }));
     expect(
       screen.getByRole("button", {
         name: /Reserves, 1st string, IP: GK .* Empty/,
       }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "Youth" }));
     expect(
       screen.getByRole("button", {
         name: /Youth, 1st string, IP: GK .* Empty/,
       }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "Senior" }));
     await user.click(secondSeniorCell);
     expect(
       await screen.findByRole("option", { name: /Senior Keeper/ }),
@@ -5293,23 +4923,25 @@ describe("My Club route", () => {
     renderMyClubRoute();
 
     expect(
-      await screen.findByRole("tab", { name: "First Team" }),
+      await screen.findByRole("columnheader", { name: "First Team" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "U19" })).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Reserves" })).toBeNull();
+    expect(
+      screen.getByRole("columnheader", { name: "U19" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Reserves" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "First Team" })).toBeNull();
 
-    await setPlannerMatrixWidth(2_000);
-    const matrix = await screen.findByRole("region", {
-      name: "All squads depth matrix",
+    const board = await screen.findByRole("region", {
+      name: "Squad depth board",
     });
     expect(
-      within(matrix).getByRole("columnheader", { name: "First Team squad" }),
+      within(board).getByRole("columnheader", { name: "First Team" }),
     ).toBeInTheDocument();
     expect(
-      within(matrix).getByRole("columnheader", { name: "U19 squad" }),
+      within(board).getByRole("columnheader", { name: "U19" }),
     ).toBeInTheDocument();
     expect(
-      within(matrix).queryByRole("columnheader", { name: "Reserves squad" }),
+      within(board).queryByRole("columnheader", { name: "Reserves" }),
     ).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Clear all" }));
@@ -5380,6 +5012,7 @@ describe("My Club route", () => {
         staffingTargets: [
           { jobId: "manager", jobLabel: "Manager", slotCount: 2 },
         ],
+        strings: [],
       },
     ]);
     renderMyClubRoute();
@@ -5451,15 +5084,27 @@ describe("My Club route", () => {
     expect(getPlannerTeamSaveIpcMockCalls()).toEqual([
       {
         teams: [
-          { team: "senior", displayName: "First Team" },
-          { team: "youth", displayName: "U19" },
+          {
+            team: "senior",
+            displayName: "First Team",
+            strings: [{ id: 1, displayName: "1st string" }],
+          },
+          {
+            team: "youth",
+            displayName: "U19",
+            strings: [{ id: 3, displayName: "1st string" }],
+          },
         ],
         confirmPopulatedRemoval: true,
       },
     ]);
-    expect(screen.getByRole("tab", { name: "First Team" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "U19" })).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "B Team" })).toBeNull();
+    expect(
+      screen.getByRole("columnheader", { name: "First Team" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "U19" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "B Team" })).toBeNull();
     expect(await screen.findByText("Team settings saved.")).toBeInTheDocument();
   });
 
@@ -5503,14 +5148,28 @@ describe("My Club route", () => {
     expect(getPlannerTeamSaveIpcMockCalls()).toEqual([
       {
         teams: [
-          { team: "senior", displayName: "First Team" },
-          { team: "reserves", displayName: "B Team" },
-          { team: "youth", displayName: "U19" },
+          {
+            team: "senior",
+            displayName: "First Team",
+            strings: [{ id: 1, displayName: "1st string" }],
+          },
+          {
+            team: "reserves",
+            displayName: "B Team",
+            strings: [{ id: null, displayName: "1st string" }],
+          },
+          {
+            team: "youth",
+            displayName: "U19",
+            strings: [{ id: 3, displayName: "1st string" }],
+          },
         ],
         confirmPopulatedRemoval: false,
       },
     ]);
-    expect(screen.getByRole("tab", { name: "B Team" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "B Team" }),
+    ).toBeInTheDocument();
     const restoredDepth = resolvePlannerDepthIpcMock();
     const restoredReserves = restoredDepth.teams.find(
       (team) => team.team === "reserves",
@@ -5546,14 +5205,410 @@ describe("My Club route", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
-    expect(screen.getByRole("tab", { name: "Reserves" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Youth" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Reserves" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Youth" }),
+    ).toBeInTheDocument();
     const restoredDepth = resolvePlannerDepthIpcMock();
     const restoredIds = restoredDepth.teams
       .filter((team) => team.team !== "senior")
       .flatMap((team) => team.strings.map((plannerString) => plannerString.id));
     expect(restoredIds).toHaveLength(2);
     expect(new Set(restoredIds).size).toBe(2);
+  });
+
+  it("submits retained string ids, names, and orders unchanged", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const depth = resolvePlannerDepthIpcMock();
+    setPlannerDepthIpcMock({
+      ...depth,
+      teams: depth.teams.map((team) =>
+        team.team === "senior"
+          ? {
+              ...team,
+              strings: [
+                {
+                  id: 7,
+                  stringOrder: 1,
+                  displayName: "Second",
+                  assignments: [],
+                },
+                {
+                  id: 5,
+                  stringOrder: 0,
+                  displayName: "First",
+                  assignments: [],
+                },
+              ],
+            }
+          : team,
+      ),
+    });
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(getPlannerTeamSaveIpcMockCalls()).toEqual([
+      {
+        teams: [
+          {
+            team: "senior",
+            displayName: "Senior",
+            strings: [
+              { id: 5, displayName: "First" },
+              { id: 7, displayName: "Second" },
+            ],
+          },
+          {
+            team: "reserves",
+            displayName: "Reserves",
+            strings: [{ id: 2, displayName: "1st string" }],
+          },
+          {
+            team: "youth",
+            displayName: "Youth",
+            strings: [{ id: 3, displayName: "1st string" }],
+          },
+        ],
+        confirmPopulatedRemoval: false,
+      },
+    ]);
+  });
+
+  it("renames a planner string while keeping its assignments", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(withDepthAssignments(resolvePlannerDepthIpcMock()));
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    const renameField = within(dialog).getByRole("textbox", {
+      name: "Senior string 1 name",
+    });
+    expect(renameField).toHaveValue("1st string");
+    await user.clear(renameField);
+    await user.type(renameField, "First Choice");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    const seniorSave = getPlannerTeamSaveIpcMockCalls().find((call) =>
+      call.teams.some((team) => team.team === "senior"),
+    );
+    expect(
+      seniorSave?.teams.find((team) => team.team === "senior")?.strings,
+    ).toEqual([
+      { id: 1, displayName: "First Choice" },
+      { id: 4, displayName: "2nd string" },
+    ]);
+    expect(await screen.findByText("Team settings saved.")).toBeInTheDocument();
+    const matrix = await screen.findByRole("region", {
+      name: "Squad depth board",
+    });
+    expect(
+      within(matrix).getByRole("columnheader", { name: "First Choice" }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("button", { name: /Alex Keeper/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("reorders planner strings while keeping stable ids", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(
+      withSecondSeniorString(resolvePlannerDepthIpcMock()),
+    );
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Move Senior string 2 up" }),
+    );
+    expect(
+      within(dialog).getByRole("textbox", { name: "Senior string 1 name" }),
+    ).toHaveValue("2nd string");
+    expect(
+      within(dialog).getByRole("textbox", { name: "Senior string 2 name" }),
+    ).toHaveValue("1st string");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    const seniorSave = getPlannerTeamSaveIpcMockCalls().find((call) =>
+      call.teams.some((team) => team.team === "senior"),
+    );
+    expect(
+      seniorSave?.teams.find((team) => team.team === "senior")?.strings,
+    ).toEqual([
+      { id: 4, displayName: "2nd string" },
+      { id: 1, displayName: "1st string" },
+    ]);
+  });
+
+  it("confirms populated string removal by name and deletes only that string", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(withDepthAssignments(resolvePlannerDepthIpcMock()));
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Remove Senior string 1" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+
+    const confirmation = await screen.findByRole("dialog", {
+      name: "Remove planner strings?",
+    });
+    expect(confirmation).toHaveTextContent("1st string: 4 assignments");
+    expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(0);
+    await user.click(
+      within(confirmation).getByRole("button", { name: "Remove strings" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(getPlannerTeamSaveIpcMockCalls()).toEqual([
+      {
+        teams: [
+          {
+            team: "senior",
+            displayName: "Senior",
+            strings: [{ id: 4, displayName: "2nd string" }],
+          },
+          {
+            team: "reserves",
+            displayName: "Reserves",
+            strings: [{ id: 2, displayName: "1st string" }],
+          },
+          {
+            team: "youth",
+            displayName: "Youth",
+            strings: [{ id: 3, displayName: "1st string" }],
+          },
+        ],
+        confirmPopulatedRemoval: true,
+      },
+    ]);
+  });
+
+  it("confirms mixed team and string removal with combined wording", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const depth = withSecondSeniorString(
+      withReserveGoalkeeper(resolvePlannerDepthIpcMock()),
+    );
+    setPlannerDepthIpcMock({
+      ...depth,
+      teams: depth.teams.map((team) => ({
+        ...team,
+        displayName:
+          team.team === "senior"
+            ? "First Team"
+            : team.team === "reserves"
+              ? "B Team"
+              : "U19",
+      })),
+    });
+    setPlannerTeamRemovalImpacts([
+      {
+        team: "senior",
+        displayName: "First Team",
+        assignmentCount: 1,
+        staffingTargets: [],
+        strings: [
+          { stringId: 1, displayName: "1st string", assignmentCount: 1 },
+        ],
+      },
+      {
+        team: "reserves",
+        displayName: "B Team",
+        assignmentCount: 1,
+        staffingTargets: [
+          { jobId: "manager", jobLabel: "Manager", slotCount: 2 },
+        ],
+        strings: [],
+      },
+    ]);
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Remove Senior string 1" }),
+    );
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Reserves" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+
+    const confirmation = await screen.findByRole("dialog", {
+      name: "Remove planner teams and strings?",
+    });
+    expect(confirmation).toHaveTextContent(
+      "Removing these teams and strings permanently deletes their assignments and staffing targets.",
+    );
+    expect(confirmation).toHaveTextContent(
+      "B Team: 1 assignment; Manager: 2 slots",
+    );
+    expect(confirmation).toHaveTextContent("1st string: 1 assignment");
+    expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(0);
+    await user.click(
+      within(confirmation).getByRole("button", {
+        name: "Remove teams and strings",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(getPlannerTeamSaveIpcMockCalls()).toEqual([
+      {
+        teams: [
+          {
+            team: "senior",
+            displayName: "First Team",
+            strings: [{ id: 4, displayName: "2nd string" }],
+          },
+          {
+            team: "youth",
+            displayName: "U19",
+            strings: [{ id: 3, displayName: "1st string" }],
+          },
+        ],
+        confirmPopulatedRemoval: true,
+      },
+    ]);
+  });
+
+  it("prefills the next ordinal default for a new planner string", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(
+      withSecondSeniorString(resolvePlannerDepthIpcMock()),
+    );
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Add string to Senior" }),
+    );
+    expect(
+      within(dialog).getByRole("textbox", { name: "Senior string 3 name" }),
+    ).toHaveValue("3rd string");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    const seniorSave = getPlannerTeamSaveIpcMockCalls().find((call) =>
+      call.teams.some((team) => team.team === "senior"),
+    );
+    expect(
+      seniorSave?.teams.find((team) => team.team === "senior")?.strings,
+    ).toEqual([
+      { id: 1, displayName: "1st string" },
+      { id: 4, displayName: "2nd string" },
+      { id: null, displayName: "3rd string" },
+    ]);
+  });
+
+  it("blocks invalid planner string names with field errors", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(
+      withSecondSeniorString(resolvePlannerDepthIpcMock()),
+    );
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    const firstName = within(dialog).getByRole("textbox", {
+      name: "Senior string 1 name",
+    });
+    await user.clear(firstName);
+    expect(within(dialog).getByText("Enter a string name")).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    ).toBeDisabled();
+    await user.type(firstName, "2ND STRING");
+    expect(
+      within(dialog).getAllByText("String names must be unique"),
+    ).toHaveLength(2);
+    expect(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    ).toBeDisabled();
+    fireEvent.change(firstName, { target: { value: "x".repeat(41) } });
+    expect(
+      within(dialog).getByText("Use 40 characters or fewer"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    ).toBeDisabled();
+    expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(0);
   });
 
   it("keeps team-management drafts on validation and backend failure", async () => {
@@ -5733,10 +5788,17 @@ describe("My Club route", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
+    const board = await screen.findByRole("region", {
+      name: "Squad depth board",
+    });
     expect(
-      await screen.findByRole("tab", { name: "Fresh Save Team" }),
+      await within(board).findByRole("columnheader", {
+        name: "Fresh Save Team",
+      }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Draft Only" })).toBeNull();
+    expect(
+      within(board).queryByRole("columnheader", { name: "Draft Only" }),
+    ).toBeNull();
   });
 
   it("refetches picker candidates after team settings change", async () => {
@@ -5790,39 +5852,13 @@ describe("My Club route", () => {
     );
   });
 
-  it("keeps one team selected and moves focus after removing the selected team", async () => {
+  it("moves focus to management after removing a squad", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     renderMyClubRoute();
 
-    const reservesTab = await screen.findByRole("tab", { name: "Reserves" });
-    await user.click(reservesTab);
-    await user.click(screen.getByRole("button", { name: "Manage teams" }));
-    const dialog = await screen.findByRole("dialog", {
-      name: "Manage squad teams",
-    });
-    await user.click(
-      within(dialog).getByRole("checkbox", { name: "Reserves" }),
-    );
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save teams" }),
-    );
-
-    const youthTab = await screen.findByRole("tab", { name: "Youth" });
-    await waitFor(() => expect(youthTab).toHaveFocus());
-    expect(screen.queryByRole("tab", { name: "Reserves" })).toBeNull();
-    expect(screen.getByRole("tab", { name: "Senior" })).toBeInTheDocument();
-  });
-
-  it("returns focus to management after removing a selected team in the combined layout", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    renderMyClubRoute();
-
-    await user.click(await screen.findByRole("tab", { name: "Reserves" }));
-    await setPlannerMatrixWidth(800);
+    await screen.findByRole("columnheader", { name: "Reserves" });
     await user.click(screen.getByRole("button", { name: "Manage teams" }));
     const dialog = await screen.findByRole("dialog", {
       name: "Manage squad teams",
@@ -5838,66 +5874,17 @@ describe("My Club route", () => {
       name: "Manage teams",
     });
     await waitFor(() => expect(manageButton).toHaveFocus());
+    expect(screen.queryByRole("columnheader", { name: "Reserves" })).toBeNull();
     expect(
-      screen.getByRole("columnheader", { name: "Senior squad" }),
+      screen.getByRole("columnheader", { name: "Senior" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("columnheader", { name: "Youth squad" }),
+      screen.getByRole("columnheader", { name: "Youth" }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("columnheader", { name: "Reserves squad" }),
-    ).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Reserves" })).toBeNull();
   });
 
-  it("cycles keyboard team selection through only the available teams", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const configuredDepth = resolvePlannerDepthIpcMock();
-    configuredDepth.teams = configuredDepth.teams
-      .filter((team) => team.team !== "reserves")
-      .map((team) => ({
-        ...team,
-        displayName: team.team === "senior" ? "First Team" : "U19",
-      }));
-    setPlannerDepthIpcMock(configuredDepth);
-    renderMyClubRoute();
-
-    const firstTeamTab = await screen.findByRole("tab", { name: "First Team" });
-    firstTeamTab.focus();
-    await user.keyboard("{ArrowRight}");
-    expect(screen.getByRole("tab", { name: "U19" })).toHaveFocus();
-    await user.keyboard("{ArrowRight}");
-    expect(firstTeamTab).toHaveFocus();
-    await user.keyboard("{End}");
-    expect(screen.getByRole("tab", { name: "U19" })).toHaveFocus();
-    await user.keyboard("{Home}");
-    expect(firstTeamTab).toHaveFocus();
-  });
-
-  it("keeps keyboard team selection on the only available team", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const configuredDepth = resolvePlannerDepthIpcMock();
-    configuredDepth.teams = configuredDepth.teams
-      .filter((team) => team.team === "senior")
-      .map((team) => ({ ...team, displayName: "First Team" }));
-    setPlannerDepthIpcMock(configuredDepth);
-    renderMyClubRoute();
-
-    const firstTeamTab = await screen.findByRole("tab", { name: "First Team" });
-    firstTeamTab.focus();
-    await user.keyboard("{ArrowRight}{ArrowLeft}{Home}{End}");
-    expect(firstTeamTab).toHaveFocus();
-    expect(
-      within(
-        screen.getByRole("tablist", { name: "Squad planner teams" }),
-      ).getAllByRole("tab"),
-    ).toHaveLength(1);
-  });
-
-  it("resets matrix state when the active save changes", async () => {
+  it("resets board state when the active save changes", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
@@ -5911,13 +5898,10 @@ describe("My Club route", () => {
     setPlannerDepthIpcMock(previousDepth);
     const { queryClient } = renderMyClubRoute();
 
-    const previousTeamTab = await screen.findByRole("tab", { name: "U19" });
-    await user.click(previousTeamTab);
-    await user.click(
-      await screen.findByRole("button", {
-        name: /U19, 1st string, IP: GK .* Empty/,
-      }),
-    );
+    const previousCell = await screen.findByRole("button", {
+      name: /U19, 1st string, IP: GK .* Empty/,
+    });
+    await user.click(previousCell);
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
 
     const nextDepth = resolvePlannerDepthIpcMock();
@@ -5929,13 +5913,20 @@ describe("My Club route", () => {
     switchToSecondSave(queryClient);
 
     expect(
-      await screen.findByRole("tab", { name: "Fresh Save Team" }),
+      await screen.findByRole("columnheader", {
+        name: "Fresh Save Team",
+      }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "U19" })).toBeNull();
+    const board = await screen.findByRole("region", {
+      name: "Squad depth board",
+    });
+    expect(
+      within(board).queryByRole("columnheader", { name: "U19" }),
+    ).toBeNull();
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
-    expect(document.activeElement).not.toBe(previousTeamTab);
+    expect(document.activeElement).not.toBe(previousCell);
   });
 
   it("uses configured display names for picker assignment locations", async () => {
@@ -5955,7 +5946,6 @@ describe("My Club route", () => {
     ]);
     renderMyClubRoute();
 
-    await user.click(await screen.findByRole("tab", { name: "U19" }));
     const target = await screen.findByRole("button", {
       name: /U19, 1st string, IP: GK .* Empty/,
     });
@@ -6028,11 +6018,9 @@ describe("My Club route", () => {
     );
     expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
     expect(getPlannerOptimizeIpcMockBases()).toEqual(["current"]);
-    await user.click(screen.getByRole("tab", { name: "Reserves" }));
     expect(
       screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "Senior" }));
     await user.click(seniorCell);
     expect(
       await screen.findByRole("option", { name: /Reserve Keeper/ }),
@@ -6315,7 +6303,12 @@ function withSecondSeniorString(depth: PlannerDepth): PlannerDepth {
             ...team,
             strings: [
               ...team.strings,
-              { id: 4, stringOrder: 1, assignments: [] },
+              {
+                id: 4,
+                stringOrder: 1,
+                displayName: "2nd string",
+                assignments: [],
+              },
             ],
           }
         : team,
@@ -6332,7 +6325,12 @@ function withSecondReserveString(depth: PlannerDepth): PlannerDepth {
             ...team,
             strings: [
               ...team.strings,
-              { id: 4, stringOrder: 1, assignments: [] },
+              {
+                id: 4,
+                stringOrder: 1,
+                displayName: "2nd string",
+                assignments: [],
+              },
             ],
           }
         : team,
@@ -6393,7 +6391,12 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                   },
                 ],
               },
-              { id: 4, stringOrder: 1, assignments: [] },
+              {
+                id: 4,
+                stringOrder: 1,
+                displayName: "2nd string",
+                assignments: [],
+              },
             ],
           }
         : team,
@@ -6445,7 +6448,12 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
           team.team === "senior"
             ? [
                 { ...team.strings[0], assignments: [assignment] },
-                { id: 4, stringOrder: 1, assignments: [] },
+                {
+                  id: 4,
+                  stringOrder: 1,
+                  displayName: "2nd string",
+                  assignments: [],
+                },
               ]
             : team.strings.map((plannerString) => ({
                 ...plannerString,

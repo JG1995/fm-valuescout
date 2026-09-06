@@ -270,6 +270,20 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         reserves: "Reserves",
         youth: "Youth",
       };
+      const ordinalStringLabel = (stringOrder) => {
+        const number = stringOrder + 1;
+        const suffix =
+          number % 100 >= 11 && number % 100 <= 13
+            ? "th"
+            : number % 10 === 1
+              ? "st"
+              : number % 10 === 2
+                ? "nd"
+                : number % 10 === 3
+                  ? "rd"
+                  : "th";
+        return number + suffix + " string";
+      };
       const plannerDepth = {
         tactic: plannerTactic,
         teams: ["senior", "reserves", "youth"].map((team, index) => ({
@@ -278,6 +292,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           strings: [{
             id: index + 1,
             stringOrder: 0,
+            displayName: ordinalStringLabel(0),
             assignments: plannerPotentialScores && team === "senior" ? [{
               id: 77,
               laneId: "goalkeeper",
@@ -1659,19 +1674,57 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             if (!Array.isArray(args?.teams)) {
               throw new Error("Invalid planner team settings");
             }
-            const included = new Set(args.teams.map((team) => team?.team));
-            return plannerDepth.teams
-              .filter((team) => !included.has(team.team))
-              .map((team) => ({
-                team: team.team,
-                displayName: team.displayName,
-                assignmentCount: team.strings.reduce(
-                  (count, plannerString) =>
-                    count + plannerString.assignments.length,
-                  0,
-                ),
-                staffingTargets: [],
-              }));
+            const included = new Map(args.teams.map((team) => [team?.team, team]));
+            const impacts = [];
+            for (const team of plannerDepth.teams) {
+              const input = included.get(team.team);
+              if (!input) {
+                impacts.push({
+                  team: team.team,
+                  displayName: team.displayName,
+                  assignmentCount: team.strings.reduce(
+                    (count, plannerString) =>
+                      count + plannerString.assignments.length,
+                    0,
+                  ),
+                  staffingTargets: [],
+                  strings: team.strings.map((plannerString) => ({
+                    stringId: plannerString.id,
+                    displayName: plannerString.displayName,
+                    assignmentCount: plannerString.assignments.length,
+                  })),
+                });
+                continue;
+              }
+              const desiredIds = new Set(
+                Array.isArray(input?.strings)
+                  ? input.strings
+                      .map((plannerString) => plannerString?.id)
+                      .filter((id) => typeof id === "number")
+                  : [],
+              );
+              const removed = team.strings.filter(
+                (plannerString) => !desiredIds.has(plannerString.id),
+              );
+              if (removed.length > 0) {
+                impacts.push({
+                  team: team.team,
+                  displayName: team.displayName,
+                  assignmentCount: removed.reduce(
+                    (count, plannerString) =>
+                      count + plannerString.assignments.length,
+                    0,
+                  ),
+                  staffingTargets: [],
+                  strings: removed.map((plannerString) => ({
+                    stringId: plannerString.id,
+                    displayName: plannerString.displayName,
+                    assignmentCount: plannerString.assignments.length,
+                  })),
+                });
+              }
+            }
+            return impacts;
           }
 
           if (cmd === "save_planner_teams") {
@@ -1681,13 +1734,27 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             const inputs = args.teams.map((input) => {
               if (
                 !["senior", "reserves", "youth"].includes(input?.team) ||
-                typeof input?.displayName !== "string"
+                typeof input?.displayName !== "string" ||
+                !Array.isArray(input?.strings)
               ) {
                 throw new Error("Invalid planner team settings");
               }
               return {
                 team: input.team,
                 displayName: input.displayName.trim(),
+                strings: input.strings.map((plannerString) => {
+                  if (
+                    (plannerString?.id !== null &&
+                      typeof plannerString?.id !== "number") ||
+                    typeof plannerString?.displayName !== "string"
+                  ) {
+                    throw new Error("Invalid planner team settings");
+                  }
+                  return {
+                    id: plannerString.id,
+                    displayName: plannerString.displayName.trim(),
+                  };
+                }),
               };
             });
             const removedPopulated = plannerDepth.teams.some(
@@ -1712,12 +1779,43 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   (candidate) => candidate.team === team,
                 );
                 const input = inputs.find((candidate) => candidate.team === team);
-                return existing
-                  ? { ...existing, displayName: input.displayName }
-                  : {
+                if (existing) {
+                  const retained = new Map(
+                    existing.strings.map((plannerString) => [
+                      plannerString.id,
+                      plannerString,
+                    ]),
+                  );
+                  return {
+                    ...existing,
+                    displayName: input.displayName,
+                    strings: input.strings.map((plannerString, stringOrder) => {
+                      if (plannerString.id === null) {
+                        return {
+                          id: nextStringId++,
+                          stringOrder,
+                          displayName:
+                            plannerString.displayName ||
+                            ordinalStringLabel(stringOrder),
+                          assignments: [],
+                        };
+                      }
+                      const current = retained.get(plannerString.id);
+                      if (!current) {
+                        throw new Error("Planner string not found");
+                      }
+                      return {
+                        ...current,
+                        stringOrder,
+                        displayName: plannerString.displayName,
+                      };
+                    }),
+                  };
+                }
+                return {
                       team,
                       displayName: input.displayName,
-                      strings: [{ id: nextStringId++, stringOrder: 0, assignments: [] }],
+                      strings: [{ id: nextStringId++, stringOrder: 0, displayName: ordinalStringLabel(0), assignments: [] }],
                     };
               });
             return plannerDepth;
@@ -1748,46 +1846,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 potentialCombinedScore: 91,
               },
             ];
-            return plannerDepth;
-          }
-
-          if (cmd === "add_planner_string") {
-            const team = plannerDepth.teams.find(
-              (candidate) => candidate.team === args?.team,
-            );
-            if (!team) {
-              throw new Error("Planner team not found");
-            }
-            const id = Math.max(
-              ...plannerDepth.teams.flatMap((candidate) =>
-                candidate.strings.map((plannerString) => plannerString.id),
-              ),
-            ) + 1;
-            team.strings.push({ id, stringOrder: team.strings.length, assignments: [] });
-            return plannerDepth;
-          }
-
-          if (cmd === "remove_planner_string") {
-            const team = plannerDepth.teams.find((candidate) =>
-              candidate.strings.some(
-                (plannerString) => plannerString.id === args?.stringId,
-              ),
-            );
-            const plannerString = team?.strings.find(
-              (candidate) => candidate.id === args?.stringId,
-            );
-            if (!team || !plannerString) {
-              throw new Error("Planner string not found");
-            }
-            if (team.strings.length <= 1) {
-              throw new Error("The " + team.team + " team must keep at least one string");
-            }
-            if (plannerString.assignments.length > 0 && !args?.confirmPopulated) {
-              throw new Error("Removing a populated string requires confirmation");
-            }
-            team.strings = team.strings
-              .filter((candidate) => candidate.id !== plannerString.id)
-              .map((candidate, index) => ({ ...candidate, stringOrder: index }));
             return plannerDepth;
           }
 

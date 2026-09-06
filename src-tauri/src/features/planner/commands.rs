@@ -19,8 +19,8 @@ use super::squad::{
 };
 use super::tactic::{self as tactic_service, PlannerTactic, TacticLane, TacticOptions};
 use super::teams::{
-    self as teams_service, PlannerStaffingTargetRemovalImpact, PlannerTeamInput,
-    PlannerTeamRemovalImpact,
+    self as teams_service, PlannerStaffingTargetRemovalImpact, PlannerStringInput,
+    PlannerStringRemovalImpact, PlannerTeamInput, PlannerTeamRemovalImpact,
 };
 
 #[derive(Serialize)]
@@ -362,6 +362,7 @@ impl From<PlannerSlotCandidate> for PlannerSlotCandidateDto {
 pub struct PlannerStringDto {
     pub id: i64,
     pub string_order: i64,
+    pub display_name: String,
     pub assignments: Vec<PlannerAssignmentDto>,
 }
 
@@ -370,6 +371,7 @@ impl From<PlannerString> for PlannerStringDto {
         Self {
             id: planner_string.id,
             string_order: planner_string.string_order,
+            display_name: planner_string.display_name,
             assignments: planner_string
                 .assignments
                 .into_iter()
@@ -576,9 +578,26 @@ pub fn get_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PlannerStringInputDto {
+    pub id: Option<i64>,
+    pub display_name: String,
+}
+
+impl From<PlannerStringInputDto> for PlannerStringInput {
+    fn from(input: PlannerStringInputDto) -> Self {
+        Self {
+            id: input.id,
+            display_name: input.display_name,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PlannerTeamInputDto {
     pub team: String,
     pub display_name: String,
+    pub strings: Vec<PlannerStringInputDto>,
 }
 
 impl From<PlannerTeamInputDto> for PlannerTeamInput {
@@ -586,6 +605,11 @@ impl From<PlannerTeamInputDto> for PlannerTeamInput {
         Self {
             team: input.team,
             display_name: input.display_name,
+            strings: input
+                .strings
+                .into_iter()
+                .map(PlannerStringInput::from)
+                .collect(),
         }
     }
 }
@@ -610,11 +634,30 @@ impl From<PlannerStaffingTargetRemovalImpact> for PlannerStaffingTargetRemovalIm
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PlannerStringRemovalImpactDto {
+    pub string_id: i64,
+    pub display_name: String,
+    pub assignment_count: i64,
+}
+
+impl From<PlannerStringRemovalImpact> for PlannerStringRemovalImpactDto {
+    fn from(impact: PlannerStringRemovalImpact) -> Self {
+        Self {
+            string_id: impact.string_id,
+            display_name: impact.display_name,
+            assignment_count: impact.assignment_count,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PlannerTeamRemovalImpactDto {
     pub team: String,
     pub display_name: String,
     pub assignment_count: i64,
     pub staffing_targets: Vec<PlannerStaffingTargetRemovalImpactDto>,
+    pub strings: Vec<PlannerStringRemovalImpactDto>,
 }
 
 impl From<PlannerTeamRemovalImpact> for PlannerTeamRemovalImpactDto {
@@ -628,6 +671,7 @@ impl From<PlannerTeamRemovalImpact> for PlannerTeamRemovalImpactDto {
                 .into_iter()
                 .map(Into::into)
                 .collect(),
+            strings: impact.strings.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -699,32 +743,6 @@ pub fn get_planner_slot_candidates(
             .map(PlannerSlotCandidateDto::from)
             .collect()
     })
-}
-
-#[tauri::command]
-pub fn add_planner_string(team: String, db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
-    let team = PlannerTeam::parse(&team)?;
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    let (_, snapshot_id) = depth_service::add_string(&conn, save_id, team)?;
-    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
-}
-
-#[tauri::command]
-pub fn remove_planner_string(
-    string_id: i64,
-    confirm_populated: bool,
-    db: State<'_, Db>,
-) -> Result<PlannerDepthDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    let (_, snapshot_id) =
-        depth_service::remove_string(&conn, save_id, string_id, confirm_populated)?;
-    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
 }
 
 #[tauri::command]

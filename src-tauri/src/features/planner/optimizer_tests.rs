@@ -1,17 +1,30 @@
 use rusqlite::params;
 
-use super::depth::{add_string, assign_player, get_depth, PlannerTeam};
+use super::depth::{assign_player, get_depth, PlannerTeam};
 use super::optimizer::{
     match_lanes, optimize_depth, optimize_depth_with_basis, OptimizerCandidate, ScoreBasis,
 };
 use super::tactic;
-use super::teams::{save_team_settings, PlannerTeamInput};
+use super::teams::{save_team_settings, PlannerStringInput, PlannerTeamInput};
 use super::test_support::{
     add_picker_candidates, assigned_player_uid, assignment_provenance, clear_current_scores_except,
     current_snapshot_id, deny_potential_writes, open_with_snapshot, planner_potential_state,
     set_player_age, set_player_positions, set_player_preferred_foot, set_potential_role_score,
     set_right_winger_scores, set_role_score, team_strings,
 };
+
+fn retained_strings(
+    depth: &super::depth::PlannerDepth,
+    team: PlannerTeam,
+) -> Vec<PlannerStringInput> {
+    team_strings(depth, team)
+        .iter()
+        .map(|string| PlannerStringInput {
+            id: Some(string.id),
+            display_name: string.display_name.clone(),
+        })
+        .collect()
+}
 
 #[test]
 fn matcher_finds_the_best_total_instead_of_greedily_filling_the_first_lane() {
@@ -191,7 +204,7 @@ fn optimizer_skips_an_unavailable_team_for_current_and_potential_scores() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     set_right_winger_scores(&conn, save_id, 79, Some(100));
-    get_depth(&conn, save_id).expect("initialize planner depth");
+    let depth = get_depth(&conn, save_id).expect("initialize planner depth");
     save_team_settings(
         &conn,
         save_id,
@@ -199,10 +212,12 @@ fn optimizer_skips_an_unavailable_team_for_current_and_potential_scores() {
             PlannerTeamInput {
                 team: "senior".to_string(),
                 display_name: "Senior".to_string(),
+                strings: retained_strings(&depth, PlannerTeam::Senior),
             },
             PlannerTeamInput {
                 team: "youth".to_string(),
                 display_name: "Youth".to_string(),
+                strings: retained_strings(&depth, PlannerTeam::Youth),
             },
         ],
         false,
@@ -510,10 +525,43 @@ fn optimizer_allocates_strings_in_ascending_order_within_a_team() {
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let depth = get_depth(&conn, save_id).expect("create planner depth");
     let first_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
-    let second_string_id = add_string(&conn, save_id, PlannerTeam::Senior)
-        .expect("add second string")
-        .0
-        .id;
+    let senior_name = team_strings(&depth, PlannerTeam::Senior)[0]
+        .display_name
+        .clone();
+    save_team_settings(
+        &conn,
+        save_id,
+        &[
+            PlannerTeamInput {
+                team: "senior".to_string(),
+                display_name: "Senior".to_string(),
+                strings: vec![
+                    PlannerStringInput {
+                        id: Some(first_string_id),
+                        display_name: senior_name,
+                    },
+                    PlannerStringInput {
+                        id: None,
+                        display_name: "2nd string".to_string(),
+                    },
+                ],
+            },
+            PlannerTeamInput {
+                team: "reserves".to_string(),
+                display_name: "Reserves".to_string(),
+                strings: retained_strings(&depth, PlannerTeam::Reserves),
+            },
+            PlannerTeamInput {
+                team: "youth".to_string(),
+                display_name: "Youth".to_string(),
+                strings: retained_strings(&depth, PlannerTeam::Youth),
+            },
+        ],
+        false,
+    )
+    .expect("add second string");
+    let depth = get_depth(&conn, save_id).expect("reload planner depth");
+    let second_string_id = team_strings(&depth, PlannerTeam::Senior)[1].id;
     set_right_winger_scores(&conn, save_id, 77, Some(100));
     set_right_winger_scores(&conn, save_id, 78, Some(90));
     let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
@@ -643,13 +691,14 @@ fn optimizer_excludes_players_with_a_missing_role_score() {
     set_role_score(&conn, save_id, 78, "winger_ip", None);
     set_player_age(&conn, save_id, 79, Some(23));
     set_right_winger_scores(&conn, save_id, 79, Some(50));
-    get_depth(&conn, save_id).expect("initialize planner depth");
+    let depth = get_depth(&conn, save_id).expect("initialize planner depth");
     save_team_settings(
         &conn,
         save_id,
         &[PlannerTeamInput {
             team: "reserves".to_string(),
             display_name: "Reserves".to_string(),
+            strings: retained_strings(&depth, PlannerTeam::Reserves),
         }],
         false,
     )

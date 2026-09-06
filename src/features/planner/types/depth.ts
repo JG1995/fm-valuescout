@@ -17,6 +17,7 @@ export type PlannerAssignment = {
 export type PlannerString = {
   id: number;
   stringOrder: number;
+  displayName: string;
   assignments: PlannerAssignment[];
 };
 

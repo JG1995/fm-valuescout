@@ -405,7 +405,8 @@ fn existing_assignments_and_team_age_do_not_filter_reference_players() {
     )
     .expect("set ignored planner fields");
     conn.execute(
-        "INSERT INTO planner_strings (save_id, team, string_order) VALUES (?1, 'senior', 0)",
+        "INSERT INTO planner_strings (save_id, team, string_order, display_name)
+         VALUES (?1, 'senior', 0, '1st string')",
         [save_id],
     )
     .expect("insert planner string");

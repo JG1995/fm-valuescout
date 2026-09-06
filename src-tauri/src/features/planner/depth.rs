@@ -92,6 +92,7 @@ pub struct PlannerSlotCandidate {
 pub struct PlannerString {
     pub id: i64,
     pub string_order: i64,
+    pub display_name: String,
     pub assignments: Vec<PlannerAssignment>,
 }
 
@@ -123,6 +124,22 @@ impl AssignmentProvenance {
     }
 }
 
+pub(super) fn ordinal_label(string_order: i64) -> String {
+    let number = string_order + 1;
+    let suffix = if (11..=13).contains(&(number % 100)) {
+        "th"
+    } else if number % 10 == 1 {
+        "st"
+    } else if number % 10 == 2 {
+        "nd"
+    } else if number % 10 == 3 {
+        "rd"
+    } else {
+        "th"
+    };
+    format!("{number}{suffix} string")
+}
+
 pub fn get_depth(conn: &Connection, save_id: i64) -> Result<PlannerDepth, String> {
     let snapshot_id = current_snapshot_id(conn, save_id)?;
     load_depth(conn, save_id, snapshot_id)
@@ -146,7 +163,7 @@ pub(super) fn load_depth(
 
     let mut statement = conn
         .prepare(
-            "SELECT id, team, string_order
+            "SELECT id, team, string_order, display_name
              FROM planner_strings
              WHERE save_id = ?1
              ORDER BY CASE team
@@ -162,18 +179,20 @@ pub(super) fn load_depth(
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, i64>(2)?,
+                row.get::<_, String>(3)?,
             ))
         })
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
 
-    for (id, team, string_order) in strings {
+    for (id, team, string_order, display_name) in strings {
         let team = PlannerTeam::parse(&team)?;
         let assignments = load_assignments(conn, save_id, id, snapshot_id, &tactic)?;
         let planner_string = PlannerString {
             id,
             string_order,
+            display_name,
             assignments,
         };
         let team_depth = teams
@@ -297,117 +316,6 @@ pub fn get_slot_candidates(
     });
     candidates.truncate(MAX_SLOT_CANDIDATES);
     Ok(candidates)
-}
-
-pub fn add_string(
-    conn: &Connection,
-    save_id: i64,
-    team: PlannerTeam,
-) -> Result<(PlannerString, Option<i64>), String> {
-    let snapshot_id = preflight_depth_snapshot(conn, save_id)?;
-    ensure_depth(conn, save_id)?;
-    teams::ensure_available(conn, save_id, team)?;
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|error| error.to_string())?;
-    let string_order: i64 = tx
-        .query_row(
-            "SELECT COALESCE(MAX(string_order), -1) + 1
-             FROM planner_strings
-             WHERE save_id = ?1 AND team = ?2",
-            params![save_id, team.as_str()],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    tx.execute(
-        "INSERT INTO planner_strings (save_id, team, string_order)
-         VALUES (?1, ?2, ?3)",
-        params![save_id, team.as_str(), string_order],
-    )
-    .map_err(|error| error.to_string())?;
-    let id = tx.last_insert_rowid();
-    tx.commit().map_err(|error| error.to_string())?;
-
-    Ok((
-        PlannerString {
-            id,
-            string_order,
-            assignments: Vec::new(),
-        },
-        snapshot_id,
-    ))
-}
-
-pub fn remove_string(
-    conn: &Connection,
-    save_id: i64,
-    string_id: i64,
-    confirm_populated: bool,
-) -> Result<((), Option<i64>), String> {
-    let snapshot_id = preflight_depth_snapshot(conn, save_id)?;
-    ensure_depth(conn, save_id)?;
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|error| error.to_string())?;
-    let team = string_team(&tx, save_id, string_id)?;
-    let string_count: i64 = tx
-        .query_row(
-            "SELECT COUNT(*) FROM planner_strings WHERE save_id = ?1 AND team = ?2",
-            params![save_id, team.as_str()],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if string_count <= 1 {
-        return Err(format!(
-            "The {} team must keep at least one string",
-            team.as_str()
-        ));
-    }
-
-    let assignment_count: i64 = tx
-        .query_row(
-            "SELECT COUNT(*) FROM planner_assignments WHERE string_id = ?1",
-            params![string_id],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if assignment_count > 0 && !confirm_populated {
-        return Err("Removing a populated string requires confirmation".to_string());
-    }
-
-    tx.execute(
-        "DELETE FROM planner_assignments WHERE save_id = ?1 AND string_id = ?2",
-        params![save_id, string_id],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "DELETE FROM planner_strings WHERE id = ?1 AND save_id = ?2",
-        params![string_id, save_id],
-    )
-    .map_err(|error| error.to_string())?;
-    let mut statement = tx
-        .prepare(
-            "SELECT id
-             FROM planner_strings
-             WHERE save_id = ?1 AND team = ?2
-             ORDER BY string_order",
-        )
-        .map_err(|error| error.to_string())?;
-    let string_ids = statement
-        .query_map(params![save_id, team.as_str()], |row| row.get::<_, i64>(0))
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-    drop(statement);
-    for (string_order, remaining_string_id) in string_ids.into_iter().enumerate() {
-        tx.execute(
-            "UPDATE planner_strings SET string_order = ?1 WHERE id = ?2",
-            params![string_order as i64, remaining_string_id],
-        )
-        .map_err(|error| error.to_string())?;
-    }
-    tx.commit().map_err(|error| error.to_string())?;
-    Ok(((), snapshot_id))
 }
 
 pub fn clear_all(
@@ -546,14 +454,14 @@ pub(super) fn ensure_depth(conn: &Connection, save_id: i64) -> Result<PlannerTac
         .map_err(|error| error.to_string())?;
     for setting in settings {
         tx.execute(
-            "INSERT INTO planner_strings (save_id, team, string_order)
-             SELECT ?1, ?2, 0
+            "INSERT INTO planner_strings (save_id, team, string_order, display_name)
+             SELECT ?1, ?2, 0, ?3
              WHERE NOT EXISTS (
                  SELECT 1
                  FROM planner_strings
                  WHERE save_id = ?1 AND team = ?2
              )",
-            params![save_id, setting.team.as_str()],
+            params![save_id, setting.team.as_str(), ordinal_label(0)],
         )
         .map_err(|error| error.to_string())?;
     }

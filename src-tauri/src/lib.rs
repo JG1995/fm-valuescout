@@ -106,8 +106,6 @@ pub fn run() {
             features::planner::commands::save_planner_teams,
             features::planner::commands::optimize_planner_depth,
             features::planner::commands::get_planner_slot_candidates,
-            features::planner::commands::add_planner_string,
-            features::planner::commands::remove_planner_string,
             features::planner::commands::clear_planner_depth,
             features::planner::commands::clear_planner_assignment,
             features::planner::commands::assign_planner_player,

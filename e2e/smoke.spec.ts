@@ -3214,22 +3214,39 @@ test.describe("application smoke", () => {
   test("planner depth adds strings for Senior, Reserves, and Youth", async ({
     page,
   }) => {
-    // 844 keeps the 900px content geometry from before the 56px rail retired,
-    // so the depth matrix stays in tabbed mode.
     await page.setViewportSize({ width: 844, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await page.getByRole("link", { name: "Planner", exact: true }).click();
-    for (const team of ["Senior", "Reserves", "Youth"]) {
-      await main.getByRole("tab", { name: team }).click();
-      await main.getByRole("button", { name: "Manage 1st string" }).click();
-      await main.getByRole("menuitem", { name: "Add string" }).click();
+    await main.getByRole("button", { name: "Manage teams" }).click();
+    const management = page.getByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await management
+      .getByRole("button", { name: "Add string to Senior" })
+      .click();
+    await management
+      .getByRole("button", { name: "Add string to Reserves" })
+      .click();
+    await management
+      .getByRole("button", { name: "Add string to Youth" })
+      .click();
+    await management.getByRole("button", { name: "Save teams" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const board = main.getByRole("region", { name: "Squad depth board" });
+    await expect(board).toBeVisible();
+    // Every enabled squad renders at once: no tabs remain.
+    await expect(main.getByRole("tab", { name: "Senior" })).toHaveCount(0);
+    for (const squad of ["Senior", "Reserves", "Youth"]) {
       await expect(
-        main.getByRole("columnheader", { name: "2nd string" }),
+        board.getByRole("columnheader", { name: squad }),
       ).toBeVisible();
     }
+    await expect(
+      board.getByRole("columnheader", { name: "2nd string" }),
+    ).toHaveCount(3);
   });
 
   test("planner opens the best role fit reference modal", async ({ page }) => {
@@ -3353,9 +3370,18 @@ test.describe("application smoke", () => {
     });
     await expect(removal).toContainText("Reserves: 1 assignment");
     await removal.getByRole("button", { name: "Remove teams" }).click();
-    await expect(main.getByRole("tab", { name: "First Team" })).toBeVisible();
-    await expect(main.getByRole("tab", { name: "Youth" })).toBeVisible();
-    await expect(main.getByRole("tab", { name: "Reserves" })).toHaveCount(0);
+    const removedBoard = main.getByRole("region", {
+      name: "Squad depth board",
+    });
+    await expect(
+      removedBoard.getByRole("columnheader", { name: "First Team" }),
+    ).toBeVisible();
+    await expect(
+      removedBoard.getByRole("columnheader", { name: "Youth" }),
+    ).toBeVisible();
+    await expect(
+      removedBoard.getByRole("columnheader", { name: "Reserves" }),
+    ).toHaveCount(0);
 
     await main.getByRole("button", { name: "Manage teams" }).click();
     const restoration = page.getByRole("dialog", {
@@ -3364,18 +3390,40 @@ test.describe("application smoke", () => {
     await restoration.getByRole("checkbox", { name: "Reserves" }).check();
     await restoration.getByLabel("Reserves display name").fill("B Team");
     await restoration.getByRole("button", { name: "Save teams" }).click();
-    await expect(main.getByRole("tab", { name: "B Team" })).toBeVisible();
+    await expect(
+      main
+        .getByRole("region", { name: "Squad depth board" })
+        .getByRole("columnheader", { name: "B Team" }),
+    ).toBeVisible();
+
+    await main.getByRole("button", { name: "Manage teams" }).click();
+    const strings = page.getByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await strings.getByLabel("Senior string 1 name").fill("First Choice");
+    await strings.getByRole("button", { name: "Add string to Senior" }).click();
+    await strings.getByLabel("Senior string 2 name").fill("Second Line");
+    await strings
+      .getByRole("button", { name: "Move Senior string 2 up" })
+      .click();
+    await expect(strings.getByLabel("Senior string 1 name")).toHaveValue(
+      "Second Line",
+    );
+    await strings.getByRole("button", { name: "Save teams" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
 
     await page.setViewportSize({ width: 1920, height: 900 });
+    const board = main.getByRole("region", { name: "Squad depth board" });
     await expect(
-      main.getByRole("columnheader", { name: "First Team squad" }),
+      board.getByRole("columnheader", { name: "First Team" }),
     ).toBeVisible();
     await expect(
-      main.getByRole("columnheader", { name: "B Team squad" }),
+      board.getByRole("columnheader", { name: "B Team" }),
     ).toBeVisible();
     await expect(
-      main.getByRole("columnheader", { name: "Youth squad" }),
+      board.getByRole("columnheader", { name: "Youth" }),
     ).toBeVisible();
+    await expect(main.getByRole("tab", { name: "First Team" })).toHaveCount(0);
   });
 
   test("planner depth optimizes current and potential squads within desktop widths", async ({
@@ -3461,7 +3509,6 @@ test.describe("application smoke", () => {
     await confirmation.getByRole("button", { name: "Clear all" }).click();
     await expect(main.getByRole("status")).toHaveText("All squads cleared.");
 
-    await main.getByRole("tab", { name: "Reserves" }).click();
     await expect(
       main.getByRole("button", {
         name: /Reserves, 1st string, IP: GK .* Empty/,
@@ -3469,29 +3516,262 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
-  test("planner depth groups all teams when the matrix fits", async ({
-    page,
-  }) => {
+  test("planner board renders every squad simultaneously", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 900 });
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await page.getByRole("link", { name: "Planner", exact: true }).click();
-    const matrix = main.getByRole("region", {
-      name: "All squads depth matrix",
+    const board = main.getByRole("region", {
+      name: "Squad depth board",
     });
-    await expect(matrix).toBeVisible();
+    await expect(board).toBeVisible();
     await expect(
-      matrix.getByRole("columnheader", { name: "Senior squad" }),
+      board.getByRole("columnheader", { name: "Senior" }),
     ).toBeVisible();
     await expect(
-      matrix.getByRole("columnheader", { name: "Reserves squad" }),
+      board.getByRole("columnheader", { name: "Reserves" }),
     ).toBeVisible();
     await expect(
-      matrix.getByRole("columnheader", { name: "Youth squad" }),
+      board.getByRole("columnheader", { name: "Youth" }),
     ).toBeVisible();
+    await expect(
+      board.getByRole("columnheader", { name: "1st string" }),
+    ).toHaveCount(3);
     await expect(main.getByRole("tab", { name: "Senior" })).toHaveCount(0);
+  });
+
+  test("planner board bounds overflow with a sticky slot band from 1280 to 3440", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stubTauriIpc(page, {
+      plannerPotentialScores: true,
+      plannerSnapshot: true,
+    });
+    await page.goto("/my-club");
+
+    const main = page.getByRole("main");
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
+    // Three strings per squad overflows the 1280 board: 9 fixed string
+    // columns plus the slot band exceed the available content width.
+    await main.getByRole("button", { name: "Manage teams" }).click();
+    const management = page.getByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    for (const squad of ["Senior", "Reserves", "Youth"]) {
+      await management
+        .getByRole("button", { name: `Add string to ${squad}` })
+        .click();
+      await management
+        .getByRole("button", { name: `Add string to ${squad}` })
+        .click();
+    }
+    await management.getByRole("button", { name: "Save teams" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    const board = main.getByRole("region", { name: "Squad depth board" });
+    await expect(board).toBeVisible();
+    await expect(
+      board.getByRole("columnheader", { name: "3rd string" }),
+    ).toHaveCount(3);
+
+    const boardOverflow = await board.evaluate((element) => {
+      const boardElement = element as unknown as {
+        clientWidth: number;
+        scrollWidth: number;
+      };
+      return {
+        clientWidth: boardElement.clientWidth,
+        scrollWidth: boardElement.scrollWidth,
+      };
+    });
+    // The board owns horizontal overflow at 1280.
+    expect(boardOverflow.scrollWidth).toBeGreaterThan(
+      boardOverflow.clientWidth,
+    );
+    // No page-level horizontal overflow at 1280x800.
+    expect(
+      await page
+        .locator("html")
+        .evaluate(
+          (element) =>
+            (element as unknown as { scrollWidth: number }).scrollWidth,
+        ),
+    ).toBeLessThanOrEqual(1280);
+
+    const cardWidthAt1280 = await board
+      .getByRole("columnheader", { name: "1st string" })
+      .first()
+      .evaluate(
+        (element) =>
+          (
+            element as unknown as {
+              getBoundingClientRect: () => { width: number };
+            }
+          ).getBoundingClientRect().width,
+      );
+
+    // Measure actual card buttons, not just the fixed string headers: one
+    // assigned card and one empty Assign card share the fixed column width.
+    const assignedCard = board
+      .getByRole("button", { name: /Potential Keeper/ })
+      .first();
+    const emptyCard = board.getByRole("button", { name: /, Empty$/ }).first();
+    await expect(assignedCard).toBeVisible();
+    await expect(emptyCard).toBeVisible();
+    const assignedCardWidthAt1280 = await assignedCard.evaluate(
+      (element) =>
+        (
+          element as unknown as {
+            getBoundingClientRect: () => { width: number };
+          }
+        ).getBoundingClientRect().width,
+    );
+    const emptyCardWidthAt1280 = await emptyCard.evaluate(
+      (element) =>
+        (
+          element as unknown as {
+            getBoundingClientRect: () => { width: number };
+          }
+        ).getBoundingClientRect().width,
+    );
+    // Both cards fill the fixed column despite different content lengths, so
+    // a fit-content regression would split them apart.
+    expect(
+      Math.abs(assignedCardWidthAt1280 - emptyCardWidthAt1280),
+    ).toBeLessThanOrEqual(2);
+    expect(assignedCardWidthAt1280).toBeGreaterThanOrEqual(
+      cardWidthAt1280 - 48,
+    );
+    expect(assignedCardWidthAt1280).toBeLessThanOrEqual(cardWidthAt1280 + 1);
+    expect(emptyCardWidthAt1280).toBeGreaterThanOrEqual(cardWidthAt1280 - 48);
+    expect(emptyCardWidthAt1280).toBeLessThanOrEqual(cardWidthAt1280 + 1);
+
+    // The sticky slot band stays visible after board-level horizontal scroll.
+    const slotHeader = board.getByRole("rowheader").first();
+    await expect(slotHeader).toBeVisible();
+    await board.evaluate((element) => {
+      (element as unknown as { scrollLeft: number }).scrollLeft = 400;
+    });
+    const [boardBox, slotBox] = await Promise.all([
+      board.boundingBox(),
+      slotHeader.boundingBox(),
+    ]);
+    expect(boardBox).not.toBeNull();
+    expect(slotBox).not.toBeNull();
+    if (!boardBox || !slotBox) {
+      throw new Error("Expected visible board geometry after scrolling.");
+    }
+    expect(slotBox.x).toBeGreaterThanOrEqual(boardBox.x - 1);
+    expect(slotBox.x).toBeLessThanOrEqual(boardBox.x + 1);
+
+    const visibleAt1280 = await board
+      .getByRole("columnheader", { name: /string/ })
+      .evaluateAll(
+        (elements, boardBox) => {
+          const box = boardBox as unknown as {
+            x: number;
+            width: number;
+          };
+          return elements.filter((element) => {
+            const rect = (
+              element as unknown as {
+                getBoundingClientRect: () => {
+                  left: number;
+                  right: number;
+                };
+              }
+            ).getBoundingClientRect();
+            return (
+              rect.left >= box.x - 1 && rect.right <= box.x + box.width + 1
+            );
+          }).length;
+        },
+        await board.boundingBox(),
+      );
+
+    await page.setViewportSize({ width: 3440, height: 1440 });
+    const cardWidthAt3440 = await board
+      .getByRole("columnheader", { name: "1st string" })
+      .first()
+      .evaluate(
+        (element) =>
+          (
+            element as unknown as {
+              getBoundingClientRect: () => { width: number };
+            }
+          ).getBoundingClientRect().width,
+      );
+    // Fixed card widths do not grow with the viewport.
+    expect(cardWidthAt3440).toBeGreaterThanOrEqual(cardWidthAt1280 - 1);
+    expect(cardWidthAt3440).toBeLessThanOrEqual(cardWidthAt1280 + 1);
+
+    // Actual card buttons keep their bounded widths at ultrawide.
+    const assignedCardWidthAt3440 = await assignedCard.evaluate(
+      (element) =>
+        (
+          element as unknown as {
+            getBoundingClientRect: () => { width: number };
+          }
+        ).getBoundingClientRect().width,
+    );
+    const emptyCardWidthAt3440 = await emptyCard.evaluate(
+      (element) =>
+        (
+          element as unknown as {
+            getBoundingClientRect: () => { width: number };
+          }
+        ).getBoundingClientRect().width,
+    );
+    expect(assignedCardWidthAt3440).toBeGreaterThanOrEqual(
+      assignedCardWidthAt1280 - 1,
+    );
+    expect(assignedCardWidthAt3440).toBeLessThanOrEqual(
+      assignedCardWidthAt1280 + 1,
+    );
+    expect(emptyCardWidthAt3440).toBeGreaterThanOrEqual(
+      emptyCardWidthAt1280 - 1,
+    );
+    expect(emptyCardWidthAt3440).toBeLessThanOrEqual(emptyCardWidthAt1280 + 1);
+    expect(assignedCardWidthAt3440).toBeLessThanOrEqual(cardWidthAt3440 + 1);
+    expect(emptyCardWidthAt3440).toBeLessThanOrEqual(cardWidthAt3440 + 1);
+
+    const visibleAt3440 = await board
+      .getByRole("columnheader", { name: /string/ })
+      .evaluateAll(
+        (elements, boardBox) => {
+          const box = boardBox as unknown as {
+            x: number;
+            width: number;
+          };
+          return elements.filter((element) => {
+            const rect = (
+              element as unknown as {
+                getBoundingClientRect: () => {
+                  left: number;
+                  right: number;
+                };
+              }
+            ).getBoundingClientRect();
+            return (
+              rect.left >= box.x - 1 && rect.right <= box.x + box.width + 1
+            );
+          }).length;
+        },
+        await board.boundingBox(),
+      );
+    // Ultrawide reveals more fixed-width columns.
+    expect(visibleAt3440).toBeGreaterThan(visibleAt1280);
+    expect(
+      await page
+        .locator("html")
+        .evaluate(
+          (element) =>
+            (element as unknown as { scrollWidth: number }).scrollWidth,
+        ),
+    ).toBeLessThanOrEqual(3440);
   });
 
   test("planner depth keeps assigned current and potential scores readable at desktop widths", async ({
