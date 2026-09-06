@@ -2867,13 +2867,13 @@ describe("My Club route", () => {
     expect(
       within(commandBar).getByRole("button", { name: "Save tactic" }),
     ).toBeInTheDocument();
-    expect(pitches).toHaveLength(2);
+    expect(pitches).toHaveLength(1);
     expect(
       commandBar.compareDocumentPosition(pitches[0]) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      pitches[1].compareDocumentPosition(settings) &
+      pitches[0].compareDocumentPosition(settings) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
@@ -2909,19 +2909,22 @@ describe("My Club route", () => {
       name: "Tactic phase views",
     });
 
-    for (const view of ["Both", "IP", "OOP"] as const) {
+    for (const [view, markerCount] of [
+      ["Both", 22],
+      ["IP", 11],
+      ["OOP", 11],
+    ] as const) {
       await user.click(within(viewGroup).getByRole("button", { name: view }));
 
       const pitches = screen.getAllByRole("group", { name: /pitch$/ });
-      expect(pitches).toHaveLength(view === "Both" ? 2 : 1);
+      expect(pitches).toHaveLength(1);
 
-      for (const pitch of pitches) {
-        const positionButtons = within(pitch).getAllByRole("button");
-        expect(positionButtons[0]).toHaveAccessibleName(/: STC · /);
-        expect(
-          positionButtons[positionButtons.length - 1],
-        ).toHaveAccessibleName(/: GK · /);
-      }
+      const positionButtons = within(pitches[0]).getAllByRole("button");
+      expect(positionButtons).toHaveLength(markerCount);
+      expect(positionButtons[0]).toHaveAccessibleName(/: STC · /);
+      expect(positionButtons[positionButtons.length - 1]).toHaveAccessibleName(
+        /: GK · /,
+      );
     }
   });
 
@@ -2931,36 +2934,72 @@ describe("My Club route", () => {
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     const pitches = await screen.findAllByRole("group", { name: /pitch$/ });
-    expect(pitches).toHaveLength(2);
+    expect(pitches).toHaveLength(1);
 
-    for (const pitch of pitches) {
-      const markers = pitch.querySelectorAll("[data-pitch-marker]");
-      expect(markers).toHaveLength(11);
-      const markerPositions = Array.from(markers).map(
-        (marker) =>
-          `${(marker as HTMLElement).style.left}/${(marker as HTMLElement).style.top}`,
-      );
-      expect(new Set(markerPositions).size).toBe(11);
-      expect(markers[0]).toHaveAttribute("data-placement", "STC");
-      expect(markers[markers.length - 1]).toHaveAttribute(
-        "data-placement",
-        "GK",
-      );
-    }
+    const pitch = pitches[0];
+    const markers = pitch.querySelectorAll("[data-pitch-marker]");
+    // Both renders two phase-distinguished markers per lane on one canvas.
+    expect(markers).toHaveLength(22);
+    // Nine lanes share their IP/OOP placement, so both phase markers sit on
+    // one normalized point; the two winger lanes place IP and OOP apart.
+    const markerPositions = Array.from(markers).map(
+      (marker) =>
+        `${(marker as HTMLElement).style.left}/${(marker as HTMLElement).style.top}`,
+    );
+    expect(new Set(markerPositions).size).toBe(13);
+    expect(
+      pitch.querySelectorAll(
+        '[data-pitch-marker="centre_forward"][data-phase="ip"]',
+      ),
+    ).toHaveLength(1);
+    expect(
+      pitch.querySelectorAll(
+        '[data-pitch-marker="centre_forward"][data-phase="oop"]',
+      ),
+    ).toHaveLength(1);
+    expect(markers[0]).toHaveAttribute("data-placement", "STC");
+    expect(markers[markers.length - 1]).toHaveAttribute("data-placement", "GK");
 
-    const ipPitch = pitches[0];
-    const striker = ipPitch.querySelector(
-      '[data-pitch-marker="centre_forward"]',
+    // Colliding same-placement markers stay distinguishable: each phase
+    // keeps its own accessible name, visible phase treatment, normalized
+    // placement, and DOM order (IP before OOP).
+    const strikerPair = Array.from(markers).filter(
+      (marker) =>
+        (marker as HTMLElement).style.left === "50%" &&
+        (marker as HTMLElement).style.top === "8%",
+    );
+    expect(strikerPair).toHaveLength(2);
+    expect(strikerPair[0]).toHaveAttribute("data-phase", "ip");
+    expect(strikerPair[1]).toHaveAttribute("data-phase", "oop");
+    expect(
+      within(strikerPair[0] as HTMLElement).getByRole("button", {
+        name: "IP: STC · Centre Forward",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(strikerPair[1] as HTMLElement).getByRole("button", {
+        name: "OOP: STC · Central Outlet Centre Forward",
+      }),
+    ).toBeInTheDocument();
+    // Every Both-mode marker carries a visible phase badge.
+    expect(
+      within(pitch as HTMLElement).getAllByText("IP", { selector: "span" }),
+    ).toHaveLength(11);
+    expect(
+      within(pitch as HTMLElement).getAllByText("OOP", { selector: "span" }),
+    ).toHaveLength(11);
+    const striker = pitch.querySelector(
+      '[data-pitch-marker="centre_forward"][data-phase="ip"]',
     );
     expect(striker).toHaveAttribute("data-placement", "STC");
     expect(striker).toHaveStyle({ left: "50%", top: "8%" });
-    const goalkeeper = ipPitch.querySelector(
-      '[data-pitch-marker="goalkeeper"]',
+    const goalkeeper = pitch.querySelector(
+      '[data-pitch-marker="goalkeeper"][data-phase="ip"]',
     );
     expect(goalkeeper).toHaveAttribute("data-placement", "GK");
     expect(goalkeeper).toHaveStyle({ left: "50%", top: "93%" });
-    const rightMidfielder = ipPitch.querySelector(
-      '[data-pitch-marker="left_central_midfielder"]',
+    const rightMidfielder = pitch.querySelector(
+      '[data-pitch-marker="left_central_midfielder"][data-phase="ip"]',
     );
     expect(rightMidfielder).toHaveAttribute("data-placement", "MCR");
     expect(rightMidfielder).toHaveStyle({ left: "65%", top: "46%" });
@@ -2969,10 +3008,10 @@ describe("My Club route", () => {
       { name: "IP: MCR · Central Midfielder" },
     );
     expect(markerButton.className).toContain("min-h-11");
-    const attackNote = within(ipPitch as HTMLElement).getByText(/attack/i);
+    const attackNote = within(pitch as HTMLElement).getByText(/attack/i);
     expect(attackNote).toBeVisible();
-    expect(ipPitch).toHaveAttribute("aria-describedby", attackNote.id);
-    const markings = ipPitch.querySelector('svg[aria-hidden="true"]');
+    expect(pitch).toHaveAttribute("aria-describedby", attackNote.id);
+    const markings = pitch.querySelector('svg[aria-hidden="true"]');
     expect(markings).not.toBeNull();
     expect(markings?.getAttribute("class")).toContain("pointer-events-none");
   });
@@ -2988,11 +3027,11 @@ describe("My Club route", () => {
         name: "IP: MCR · Central Midfielder",
       }),
     );
-    const ipPitch = (
-      await screen.findAllByRole("group", { name: /pitch$/ })
-    )[0];
+    const pitch = (await screen.findAllByRole("group", { name: /pitch$/ }))[0];
     expect(
-      ipPitch.querySelector('[data-pitch-marker="left_central_midfielder"]'),
+      pitch.querySelector(
+        '[data-pitch-marker="left_central_midfielder"][data-phase="ip"]',
+      ),
     ).toHaveAttribute("data-placement", "MCR");
 
     await user.selectOptions(
@@ -3000,14 +3039,20 @@ describe("My Club route", () => {
       "MC",
     );
 
-    const movedMarker = ipPitch.querySelector(
-      '[data-pitch-marker="left_central_midfielder"]',
+    const movedMarker = pitch.querySelector(
+      '[data-pitch-marker="left_central_midfielder"][data-phase="ip"]',
     );
     expect(movedMarker).toHaveAttribute("data-placement", "MC");
     expect(movedMarker).toHaveStyle({ left: "50%", top: "46%" });
     expect(
       screen.getByRole("button", { name: "IP: MC · Central Midfielder" }),
     ).toBeInTheDocument();
+    // The linked OOP marker keeps its own normalized placement.
+    expect(
+      pitch.querySelector(
+        '[data-pitch-marker="left_central_midfielder"][data-phase="oop"]',
+      ),
+    ).toHaveAttribute("data-placement", "MCR");
   });
 
   it("presents current linked positions without lane terminology", async () => {
@@ -3197,6 +3242,17 @@ describe("My Club route", () => {
     expect(
       screen.getByRole("combobox", { name: "OOP MCR position" }),
     ).toHaveValue("MCR");
+    // After the cross-lane IP swap each shared point pairs one IP and one
+    // OOP marker; DOM order keeps IP before OOP so tab order matches the
+    // IP-left/OOP-right split.
+    const pitch = (await screen.findAllByRole("group", { name: /pitch$/ }))[0];
+    const markers = Array.from(pitch.querySelectorAll("[data-pitch-marker]"));
+    for (const placement of ["MCL", "MCR"]) {
+      const phases = markers
+        .filter((marker) => marker.getAttribute("data-placement") === placement)
+        .map((marker) => marker.getAttribute("data-phase"));
+      expect(phases).toEqual(["ip", "oop"]);
+    }
 
     await user.selectOptions(
       screen.getByRole("combobox", { name: "IP MCL position" }),

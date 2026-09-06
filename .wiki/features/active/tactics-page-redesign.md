@@ -502,7 +502,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 7 — Consolidate onto one phase-aware canvas
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tactics): consolidate one phase-aware canvas`
 
@@ -563,7 +563,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 8 — Add Both-mode tactical transitions
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tactics): add Both-mode tactical transitions`
 
@@ -910,19 +910,19 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **PR:** 1
 
-**Commit:** 7
+**Commit:** 8
 
 ### RED or removal proof
 
-Update the existing route and smoke board-count contracts to one workspace pitch in every view, with phase-appropriate marker sets.
+Prove Both-only connector conditionality for changed canonical placements versus legacy-equivalent ST/STC, and readable per-slot phase transitions, through existing route and smoke seams.
 
 ### Expected outcome
 
-One workspace-only phase-aware wrapper reuses the shared canvas. IP/OOP show one marker per lane; Both shows distinct phase markers with shared selection and highlighting. The modal retains its portrait single-phase canvas.
+Both mode adds conditional connectors and accurate IP-to-OOP role transitions; single-phase modes and shared selection remain unchanged.
 
 ### Explicit exclusions
 
-Connectors, role transitions, XI panel, inspector changes, orientation, containment, persistence, IPC, and Rust.
+Marker-set and composition changes, XI panel, inspector changes, orientation, containment, persistence, IPC, and Rust.
 
 ## Discoveries and replanning
 
@@ -951,7 +951,8 @@ Connectors, role transitions, XI panel, inspector changes, orientation, containm
 | PR 1 — Redesign the tactic workspace | Commit 3 — Record the approved replan | e47d709 | Recorded the reviewed unique-placement swap and one-time reset plan with the revised commit sequence and TODO summary. | Ledger and delivery classifiers passed; check-fast and staged whitespace check passed. | Not applicable | Accepted findings — independent plan review cleared blockers; recorded MEDIUM and NITPICK advisories remain open; developer accepted the reviewed plan. | 1 | Developer requested planning commit before source-discard decision; abandoned implementation preserved unstaged. |
 | PR 1 — Redesign the tactic workspace | Commit 4 — Enforce unique-placement swaps in draft editing | edf6173f8a3817aeb0ed7354f64d116b78ed4160 | Added pure phase-placement swaps and wired the editor; preserved compatible roles, cleared incompatible roles, and replaced obsolete duplicate-rejection proof. | Unit 6/6, route 133/133, full check including 799 Rust tests passed; canonical literal-match mutation failed as expected; staged whitespace clean. | Pass | Clear | 1 | None. |
 | PR 1 — Redesign the tactic workspace | Commit 5 — Reset stored tactics to defaults once | 2b9186c4e6749d07cd576ec3550472a2418f2c44 | Registered data-only v42 tactic reset; removed legacy normalization and its two load tests. | Migration 60/60 and tactic 14/14 tests; check-rust and full check including 798 Rust tests passed; staged whitespace clean. | Pass | Clear | 0 | Older v8/v28 migration tests now prove their surviving contracts without asserting tactic preservation after the authorized reset; orphaned normalization constant removed. |
-| PR 1 — Redesign the tactic workspace | Commit 6 — Migrate the pitch to a simplified normalized canvas | Pending record | Replaced grid rendering with the portrait coordinate canvas, pitch markings and attack description; simplified labels and exported canonical identity; widened modal pitch column to 330px. Removed five obsolete geometry tests and added two route proofs. | Route 130/130, exact smoke 55/55, full check including 798 Rust tests passed. Saved central-triple modal overlap RED now passes disjoint 44px-target and containment assertions. | Pass | Clear | 2 | Modal layout scope required reviewed replan and renewed delivery authority; prior MEDIUM unused phasePositionLayout/types remains open and undelegated. |
+| PR 1 — Redesign the tactic workspace | Commit 6 — Migrate the pitch to a simplified normalized canvas | e4b2f9f40a6ce773829c23f1b61fda35d2b06937 | Replaced grid rendering with the portrait coordinate canvas, pitch markings and attack description; simplified labels and exported canonical identity; widened modal pitch column to 330px. Removed five obsolete geometry tests and added two route proofs. | Route 130/130, exact smoke 55/55, full check including 798 Rust tests passed. Saved central-triple modal overlap RED now passes disjoint 44px-target and containment assertions. | Pass | Clear | 2 | Modal layout scope required reviewed replan and renewed delivery authority; prior MEDIUM unused phasePositionLayout/types remains open and undelegated. |
+| PR 1 — Redesign the tactic workspace | Commit 7 — Consolidate onto one phase-aware canvas | Pending record | Added shared canvas and workspace wrapper with 11/11/22 phase markers; split coincident phase markers and fixed cross-lane phase tie ordering. | Route 130/130, smoke 55/55, full check passed; cross-lane ordering regression confirmed RED then GREEN. | Pass | Clear | 1 | Developer explicitly approved including the one-line Squad smoke-stub initial progress delay increase from 50ms to 200ms; assertions and production behavior unchanged, three consecutive full smoke runs passed after the repair. |
 
 ## Final validation
 

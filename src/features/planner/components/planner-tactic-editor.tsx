@@ -16,8 +16,8 @@ import {
   updatePhaseLane,
   validateTacticDraft,
 } from "../utils/tactic-editor";
+import { PlannerPhaseAwareTacticPitch } from "./planner-phase-aware-tactic-pitch";
 import { PlannerTacticInspector } from "./planner-tactic-inspector";
-import { PlannerTacticPitch } from "./planner-tactic-pitch";
 
 type PlannerTacticEditorProps = {
   context: PlannerContext;
@@ -314,23 +314,18 @@ export function PlannerTacticEditor({
           </Button>
         </section>
 
-        <div className="grid gap-3 lg:grid-cols-2">
-          {visiblePhases(view).map((phase) => (
-            <PlannerTacticPitch
-              key={phase}
-              phase={phase}
-              lanes={draft.lanes}
-              options={options}
-              selectedLaneId={selectedLaneId}
-              highlightedLaneId={highlightedLaneId}
-              onHighlight={setHighlightedLaneId}
-              onSelectLane={(laneId) => {
-                setSelectedLaneId(laneId);
-                setHighlightedLaneId(laneId);
-              }}
-            />
-          ))}
-        </div>
+        <PlannerPhaseAwareTacticPitch
+          view={view}
+          lanes={draft.lanes}
+          options={options}
+          selectedLaneId={selectedLaneId}
+          highlightedLaneId={highlightedLaneId}
+          onHighlight={setHighlightedLaneId}
+          onSelectLane={(laneId) => {
+            setSelectedLaneId(laneId);
+            setHighlightedLaneId(laneId);
+          }}
+        />
 
         {selectedLane ? (
           <PlannerTacticInspector

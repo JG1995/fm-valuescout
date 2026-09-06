@@ -1789,14 +1789,14 @@ test.describe("application smoke", () => {
     });
     const pitches = main.getByRole("group", { name: /pitch$/ });
     const ipPitch = pitches.first();
-    await expect(pitches).toHaveCount(2);
-    for (const index of [0, 1]) {
-      await expect(
-        pitches.nth(index).locator("[data-pitch-marker]"),
-      ).toHaveCount(11);
-    }
+    await expect(pitches).toHaveCount(1);
+    // Both renders two phase-distinguished markers per lane on one canvas.
+    await expect(ipPitch.locator("[data-pitch-marker]")).toHaveCount(22);
+    await expect(
+      ipPitch.locator('[data-pitch-marker="left_central_midfielder"]'),
+    ).toHaveCount(2);
     const rightMcMarker = ipPitch.locator(
-      '[data-pitch-marker="left_central_midfielder"]',
+      '[data-pitch-marker="left_central_midfielder"][data-phase="ip"]',
     );
     await expect(rightMcMarker).toHaveAttribute("data-placement", "MCR");
     await expect(rightMc).toBeVisible();
@@ -1887,7 +1887,7 @@ test.describe("application smoke", () => {
       .getByRole("combobox", { name: "IP MC role" })
       .selectOption("central_midfielder_ip");
     const dmMarker = ipPitch.locator(
-      '[data-pitch-marker="defensive_midfielder"]',
+      '[data-pitch-marker="defensive_midfielder"][data-phase="ip"]',
     );
     await expect(dmMarker).toHaveAttribute("data-placement", "MC");
     // Same-band and vertical-neighbour markers share no pixels at the
@@ -1932,7 +1932,7 @@ test.describe("application smoke", () => {
       if (!pitchBox) {
         throw new Error("Expected visible pitch geometry");
       }
-      expect(markerBoxes).toHaveLength(11);
+      expect(markerBoxes).toHaveLength(22);
       for (const box of markerBoxes) {
         expect(box.width).toBeLessThan(pitchBox.width * 0.15);
         expect(box.width).toBeGreaterThanOrEqual(44);
@@ -1955,16 +1955,16 @@ test.describe("application smoke", () => {
     }
     expect(singlePitchBox.width).toBeCloseTo(bothPitchBox.width, 1);
     await main.getByRole("button", { name: "Both", exact: true }).click();
-    await expect(pitches).toHaveCount(2);
-    for (const index of [0, 1]) {
-      const pitch = pitches.nth(index);
-      await expect(pitch.getByRole("button").first()).toHaveAccessibleName(
-        /: STC · /,
-      );
-      await expect(pitch.getByRole("button").last()).toHaveAccessibleName(
-        /: GK · /,
-      );
-    }
+    await expect(pitches).toHaveCount(1);
+    await expect(pitches.first().locator("[data-pitch-marker]")).toHaveCount(
+      22,
+    );
+    await expect(
+      pitches.first().getByRole("button").first(),
+    ).toHaveAccessibleName(/: STC · /);
+    await expect(
+      pitches.first().getByRole("button").last(),
+    ).toHaveAccessibleName(/: GK · /);
     await expect(main.getByText("Left winger")).toHaveCount(0);
     await main
       .getByRole("button", { name: "IP: GK · Goalkeeper" })
@@ -2154,7 +2154,7 @@ test.describe("application smoke", () => {
     ) => {
       await page.setViewportSize({ width, height });
       for (const [view, pitchCount, visibleRole] of [
-        ["Both", 2, "OOP GK role"],
+        ["Both", 1, "OOP GK role"],
         ["IP", 1, "IP GK role"],
         ["OOP", 1, "OOP GK role"],
       ] as const) {
