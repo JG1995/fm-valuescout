@@ -30,7 +30,6 @@ import {
   staffSearchQueryOptions,
 } from "@/features/staff/api/staff-query-options";
 import { StaffAssignmentOptimizer } from "@/features/staff/components/staff-assignment-optimizer";
-import { StaffFilterBar } from "@/features/staff/components/staff-filter-bar";
 import { StaffSearchResultsPanel } from "@/features/staff/components/staff-search-results-panel";
 import type { StaffShortlistImportSummary } from "@/features/staff/components/staff-shortlist-import-modal";
 import { StaffShortlistImportModal } from "@/features/staff/components/staff-shortlist-import-modal";
@@ -521,48 +520,29 @@ function StaffSearchContent() {
 
   return (
     <>
-      <header className="flex flex-col items-start gap-2">
+      {/* Page header owns the title and every page action (Upload
+      Shortlist, Configure, Optimize): the generic table toolbar below owns
+      only dataset slots and never hosts these controls. */}
+      <header
+        data-testid="staff-page-header"
+        className="flex w-full flex-wrap items-start justify-between gap-3"
+      >
         <h1 className="text-headline-lg text-on-surface">Staff Search</h1>
+        <div
+          className="flex flex-wrap items-center justify-end gap-2"
+          data-testid="staff-page-actions"
+        >
+          <Button onClick={() => setImportOpen(true)}>Upload CSV</Button>
+          {staffAssignmentContext ? (
+            <StaffAssignmentOptimizer
+              context={staffAssignmentContext}
+              contextKey={staffAssignmentContextKey}
+              contextUnavailable={staffAssignmentContextUnavailable}
+            />
+          ) : null}
+        </div>
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-gutter">
-        <StaffFilterBar
-          rules={filters}
-          combine={combine}
-          onRulesChange={(rules) => updateSearch({ filters: rules })}
-          onApply={(rules, nextCombine) => {
-            void updateSearch({
-              filters: rules,
-              combine: nextCombine,
-            }).then(() =>
-              addColumns(
-                shortlistOnly && !shortlistPresentation
-                  ? "staff-shortlist"
-                  : "staff-search",
-                rules.map((rule) => rule.field),
-              ),
-            );
-          }}
-          headerActions={
-            <>
-              <Button onClick={() => setImportOpen(true)}>Upload CSV</Button>
-              {staffAssignmentContext ? (
-                <StaffAssignmentOptimizer
-                  context={staffAssignmentContext}
-                  contextKey={staffAssignmentContextKey}
-                  contextUnavailable={staffAssignmentContextUnavailable}
-                />
-              ) : null}
-            </>
-          }
-          shortlistOnly={shortlistOnly}
-          preferredJob={routePreferredJob}
-          preferredJobOptions={shortlistOptionsPage.preferredJobOptions ?? []}
-          unemployedOnly={unemployedOnly}
-          onPreferredJobChange={onPreferredJobChange}
-          onUnemployedOnlyChange={(value) =>
-            void updateSearch({ unemployedOnly: value })
-          }
-        />
         {shortlistImport?.contextKey === shortlistContextKey ? (
           <p role="status" className="text-body-sm text-on-surface-variant">
             Stored {shortlistImport.summary.storedStaff} of{" "}
@@ -579,6 +559,9 @@ function StaffSearchContent() {
               filters={filters}
               filterCombine={combine}
               preferredJob={routePreferredJob}
+              preferredJobOptions={
+                shortlistOptionsPage.preferredJobOptions ?? []
+              }
               unemployedOnly={unemployedOnly}
               shortlistOnly={shortlistOnly}
               onSortChange={
@@ -587,10 +570,28 @@ function StaffSearchContent() {
                   : (nextSort, nextDir) =>
                       updateSearch({ sort: nextSort, dir: nextDir })
               }
+              onRulesChange={(rules) => updateSearch({ filters: rules })}
+              onApplyFilters={(rules, nextCombine) => {
+                void updateSearch({
+                  filters: rules,
+                  combine: nextCombine,
+                }).then(() =>
+                  addColumns(
+                    shortlistOnly && !shortlistPresentation
+                      ? "staff-shortlist"
+                      : "staff-search",
+                    rules.map((rule) => rule.field),
+                  ),
+                );
+              }}
               onShortlistOnlyChange={(next) =>
                 void updateSearch({
                   shortlistOnly: next ? true : undefined,
                 })
+              }
+              onPreferredJobChange={onPreferredJobChange}
+              onUnemployedOnlyChange={(value: boolean) =>
+                void updateSearch({ unemployedOnly: value })
               }
               onRowActivate={(staff) =>
                 router.history.push(`/staff/${staff.uid}`)

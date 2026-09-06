@@ -1367,4 +1367,216 @@ describe("staff route", () => {
     fireEvent.contextMenu(headers[1]);
     expect(screen.queryByRole("menuitem", { name: "Add column" })).toBeNull();
   });
+
+  describe("staff table toolbar", () => {
+    it("associates summary, chips, edit, columns, and dataset toggles in one table toolbar", async () => {
+      await resolveLoadDataIpcMock();
+      renderStaffRoute();
+
+      await screen.findByRole("table", { name: "Staff search results" });
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Staff results toolbar",
+      });
+      expect(
+        within(toolbar).getByText(/staff · sorted by/),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Edit filters" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Columns" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("switch", { name: "Shortlist: Off" }),
+      ).toBeInTheDocument();
+      const table = screen.getByRole("table", {
+        name: "Staff search results",
+      });
+      expect(
+        toolbar.compareDocumentPosition(table) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it("keeps Upload, Configure, and Optimize outside the generic toolbar", async () => {
+      await resolveLoadDataIpcMock();
+      renderStaffRoute();
+
+      await screen.findByRole("table", { name: "Staff search results" });
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Staff results toolbar",
+      });
+      const header = screen.getByTestId("staff-page-header");
+      expect(
+        within(header).getByRole("heading", {
+          level: 1,
+          name: "Staff Search",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        within(header).getByTestId("staff-page-actions"),
+      ).toBeInTheDocument();
+      for (const name of [
+        "Upload CSV",
+        "Configure Club Staff",
+        "Optimize assignments",
+      ]) {
+        expect(screen.getByRole("button", { name })).toBeInTheDocument();
+        expect(
+          within(header).getByRole("button", { name }),
+        ).toBeInTheDocument();
+        expect(within(toolbar).queryByRole("button", { name })).toBeNull();
+      }
+    });
+
+    it("removes chips and clears all through the toolbar", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      const { router } = renderStaffRoute(
+        `/staff?combine=and&filters=${encodeURIComponent(
+          JSON.stringify([
+            { field: "ca", op: "gt", value: 100 },
+            { field: "pa", op: "gt", value: 100 },
+          ]),
+        )}`,
+      );
+
+      await screen.findByRole("table", { name: "Staff search results" });
+      const getToolbar = () =>
+        screen.getByRole("toolbar", {
+          name: "Staff results toolbar",
+        });
+      expect(
+        within(getToolbar()).getAllByRole("button", {
+          name: /Remove .* filter/i,
+        }),
+      ).toHaveLength(2);
+      expect(
+        within(getToolbar()).getByRole("button", { name: "Clear all" }),
+      ).toBeInTheDocument();
+
+      await user.click(
+        within(getToolbar()).getByRole("button", {
+          name: /Remove CA filter/i,
+        }),
+      );
+      await waitFor(() => {
+        expect(router.state.location.search.filters).toHaveLength(1);
+      });
+      await waitFor(() => {
+        expect(
+          within(getToolbar()).queryByRole("button", {
+            name: /Remove CA filter/i,
+          }),
+        ).toBeNull();
+      });
+
+      await user.click(
+        within(getToolbar()).getByRole("button", { name: "Clear all" }),
+      );
+      await waitFor(() => {
+        expect(router.state.location.search.filters).toEqual([]);
+      });
+      await waitFor(() => {
+        expect(
+          within(getToolbar()).queryByRole("button", {
+            name: /Remove .* filter/i,
+          }),
+        ).toBeNull();
+      });
+    });
+
+    it("hosts shortlist metadata toggles in the toolbar dataset slot", async () => {
+      await resolveLoadDataIpcMock();
+      setStaffShortlistOverride([fixtureStaff()]);
+      renderStaffRoute("/staff?shortlistOnly=true");
+
+      await screen.findByRole("table", { name: "Staff Shortlist" });
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Staff results toolbar",
+      });
+      expect(
+        within(toolbar).getByRole("switch", { name: "Shortlist: On" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("combobox", { name: "Preferred Job" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("checkbox", { name: "Only unemployed" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Columns" }),
+      ).toBeInTheDocument();
+    });
+
+    it("keeps the My Staff boost outside the table toolbar", async () => {
+      await resolveLoadDataIpcMock();
+      renderStaffRoute("/staff?view=my-staff");
+
+      await screen.findByRole("table", { name: "Staff overview" });
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Staff results toolbar",
+      });
+      expect(
+        within(toolbar).getByText(/staff · sorted by/),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Columns" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Boost all CA" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).queryByRole("button", { name: "Boost all CA" }),
+      ).toBeNull();
+    });
+
+    it("recovers a failed dynamic-column replacement without false missing values", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      renderStaffRoute();
+
+      const table = await screen.findByRole("table", {
+        name: "Staff search results",
+      });
+      expect(
+        within(table).getByRole("columnheader", { name: "CA" }),
+      ).toHaveAttribute("aria-sort", "descending");
+      // Baseline truthful-missing markers (the fixture never scores
+      // role.manager, which the backend returns as null when requested).
+      const baselineMissing = within(table).queryAllByText("—");
+      expect(baselineMissing).not.toHaveLength(0);
+
+      setStaffSearchIpcMockMode("error");
+      await user.click(screen.getByRole("button", { name: "Columns" }));
+      const dialog = screen.getByRole("dialog", { name: "Columns" });
+      await user.click(
+        within(dialog).getByRole("checkbox", { name: "Authority" }),
+      );
+      await user.keyboard("{Escape}");
+
+      expect(
+        within(table).getByRole("columnheader", { name: "Authority" }),
+      ).toBeInTheDocument();
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Could not load staff columns.");
+      expect(
+        within(alert).getByRole("button", { name: "Retry" }),
+      ).toBeInTheDocument();
+      // Committed rows stay mounted with loading placeholders, never new
+      // truthful-missing markers for values the failed query never fetched.
+      expect(within(table).getAllByText("…")).toHaveLength(2);
+      expect(within(table).queryAllByText("—")).toHaveLength(
+        baselineMissing.length,
+      );
+      expect(within(table).getByText("Alex Coach")).toBeInTheDocument();
+
+      setStaffSearchIpcMockMode("success");
+      await user.click(within(alert).getByRole("button", { name: "Retry" }));
+      await waitFor(() => {
+        expect(screen.queryByRole("alert")).toBeNull();
+      });
+      expect(within(table).getAllByText("15")).not.toHaveLength(0);
+    });
+  });
 });
