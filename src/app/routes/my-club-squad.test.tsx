@@ -3268,6 +3268,136 @@ describe("My Club route", () => {
     expect(screen.getByRole("button", { name: "Save tactic" })).toBeDisabled();
   });
 
+  it("connects Both-mode markers only when canonical placement changes", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes[2] = {
+      ...tactic.lanes[2],
+      ipPosition: "DCR",
+      ipRoleId: "centre_back_ip",
+      oopPosition: "DCL",
+      oopRoleId: "covering_centre_back_oop",
+    };
+    tactic.lanes[3] = {
+      ...tactic.lanes[3],
+      ipPosition: "DCL",
+      ipRoleId: "centre_back_ip",
+      oopPosition: "DC",
+      oopRoleId: "covering_centre_back_oop",
+    };
+    tactic.lanes[10] = {
+      ...tactic.lanes[10],
+      ipPosition: "ST",
+      ipRoleId: "centre_forward_ip",
+      oopPosition: "STC",
+      oopRoleId: "central_outlet_centre_forward_oop",
+    };
+    setPlannerTacticIpcMock(tactic);
+    const depth = resolvePlannerDepthIpcMock();
+    depth.tactic = tactic;
+    setPlannerDepthIpcMock(depth);
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
+
+    await screen.findByRole("region", { name: "Tactic controls" });
+    const pitch = (await screen.findAllByRole("group", { name: /pitch$/ }))[0];
+
+    // A canonical placement change connects; legacy-equivalent ST/STC and
+    // unchanged placements render no connector.
+    expect(pitch.querySelectorAll("[data-tactic-connector]")).toHaveLength(4);
+    expect(
+      pitch.querySelector('[data-tactic-connector="left_centre_back"]'),
+    ).not.toBeNull();
+    expect(
+      pitch.querySelector('[data-tactic-connector="right_centre_back"]'),
+    ).not.toBeNull();
+    expect(
+      pitch.querySelector('[data-tactic-connector="centre_forward"]'),
+    ).toBeNull();
+    expect(
+      pitch.querySelector('[data-tactic-connector="goalkeeper"]'),
+    ).toBeNull();
+
+    // Cross-lane split ends stop at the displayed marker inner edge, not
+    // the shared gap anchor: DCL is shared by left_centre_back OOP and
+    // right_centre_back IP, so those ends shift one viewBox unit into
+    // their own button while unshared ends stay on the anchor.
+    expect(
+      pitch.querySelector('[data-tactic-connector="left_centre_back"]'),
+    ).toHaveAttribute("x1", "65");
+    expect(
+      pitch.querySelector('[data-tactic-connector="left_centre_back"]'),
+    ).toHaveAttribute("x2", "36");
+    expect(
+      pitch.querySelector('[data-tactic-connector="right_centre_back"]'),
+    ).toHaveAttribute("x1", "34");
+    expect(
+      pitch.querySelector('[data-tactic-connector="right_centre_back"]'),
+    ).toHaveAttribute("x2", "50");
+
+    // The connector overlay carries no inert title: the transition text
+    // below is the readable surface for sighted and AT users alike.
+    expect(pitch.querySelector("[data-tactic-connector] title")).toBeNull();
+
+    // Every slot keeps its readable IP role to OOP role transition for AT.
+    expect(
+      pitch.querySelector('[data-slot-transition="left_centre_back"]'),
+    ).toHaveTextContent(
+      "IP: DCR · Centre-Back / OOP: DCL · Covering Centre-Back",
+    );
+    expect(
+      pitch.querySelector('[data-slot-transition="centre_forward"]'),
+    ).toHaveTextContent(
+      "IP: STC · Centre Forward / OOP: STC · Central Outlet Centre Forward",
+    );
+
+    // The selected slot transition is also visible: the default selection
+    // is the goalkeeper and it follows selection via click and keyboard.
+    const visibleTransition = pitch.querySelector(
+      "[data-selected-slot-transition]",
+    );
+    expect(visibleTransition).toHaveAttribute(
+      "data-selected-slot-transition",
+      "goalkeeper",
+    );
+    expect(visibleTransition).toHaveTextContent(
+      "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+    );
+    expect(visibleTransition?.classList.contains("sr-only")).toBe(false);
+    await user.click(
+      screen.getByRole("button", { name: "IP: DCR · Centre-Back" }),
+    );
+    expect(
+      pitch.querySelector("[data-selected-slot-transition]"),
+    ).toHaveAttribute("data-selected-slot-transition", "left_centre_back");
+    expect(
+      pitch.querySelector("[data-selected-slot-transition]"),
+    ).toHaveTextContent(
+      "IP: DCR · Centre-Back / OOP: DCL · Covering Centre-Back",
+    );
+    screen.getByRole("button", { name: "IP: DCL · Centre-Back" }).focus();
+    await user.keyboard("{Enter}");
+    expect(
+      pitch.querySelector("[data-selected-slot-transition]"),
+    ).toHaveAttribute("data-selected-slot-transition", "right_centre_back");
+    expect(
+      pitch.querySelector("[data-selected-slot-transition]"),
+    ).toHaveTextContent(
+      "IP: DCL · Centre-Back / OOP: DC · Covering Centre-Back",
+    );
+
+    // Single-phase modes render no connectors.
+    const viewGroup = screen.getByRole("group", {
+      name: "Tactic phase views",
+    });
+    await user.click(within(viewGroup).getByRole("button", { name: "IP" }));
+    const ipPitch = (
+      await screen.findAllByRole("group", { name: /pitch$/ })
+    )[0];
+    expect(ipPitch.querySelectorAll("[data-tactic-connector]")).toHaveLength(0);
+  });
+
   it("treats legacy ST and canonical STC as the same placement", () => {
     const tactic = resolvePlannerTacticIpcMock();
     tactic.lanes[0] = {

@@ -2,6 +2,7 @@ import { useId } from "react";
 import type { TacticLane, TacticOptions } from "../types/tactic";
 import {
   canonicalPlacement,
+  linkedPositionDescription,
   phaseDescription,
   phasePosition,
   phasePositionLabel,
@@ -175,6 +176,60 @@ function pitchMarkers(phase: TacticPhase, lanes: TacticLane[]): PitchMarker[] {
   return pitchMarkersForView(phase, lanes);
 }
 
+type TacticConnector = {
+  lane: TacticLane;
+  from: PitchCoordinate;
+  to: PitchCoordinate;
+};
+
+// A collided pair splits around its shared anchor: the IP button ends at
+// anchor - 2px and the OOP button starts at anchor + 2px, so a connector
+// ending exactly on the anchor lands in the gap between the buttons.
+// Chromium resolves mixed percent+px calc() against SVG user units rather
+// than viewport pixels (headless probe 2026-09-06: attribute calc(35% - 2px)
+// rendered at 165px instead of 173px; style geometry props had no effect),
+// so shift the colliding end one viewBox unit into its own button instead:
+// one unit clears the 2px gap wherever the Both pitch is at least 200px
+// wide (the supported desktop widths) while staying inside the >= 44px
+// marker. Only the colliding end shifts; centered markers already attach
+// at the button middle.
+
+function tacticConnectors(markers: PitchMarker[]): TacticConnector[] {
+  const byLane = new Map<
+    string,
+    { lane: TacticLane; ip?: PitchMarker; oop?: PitchMarker }
+  >();
+  for (const marker of markers) {
+    const entry = byLane.get(marker.lane.laneId) ?? { lane: marker.lane };
+    entry[marker.phase] = marker;
+    byLane.set(marker.lane.laneId, entry);
+  }
+  const connectors: TacticConnector[] = [];
+  for (const { lane, ip, oop } of byLane.values()) {
+    // Both-mode only: single-phase marker sets never hold both phases.
+    // Placement is already canonicalized, so legacy-equivalent ST/STC
+    // pairs share an identity and render no connector.
+    if (ip && oop && ip.placement !== oop.placement) {
+      connectors.push({
+        lane,
+        from: {
+          x: ip.coordinate.x - (ip.collides ? 0.01 : 0),
+          y: ip.coordinate.y,
+        },
+        to: {
+          x: oop.coordinate.x + (oop.collides ? 0.01 : 0),
+          y: oop.coordinate.y,
+        },
+      });
+    }
+  }
+  return connectors;
+}
+
+function toPercent(coordinate: number): number {
+  return Math.round(coordinate * 100);
+}
+
 export function TacticPitchCanvas({
   legend,
   markers,
@@ -199,6 +254,10 @@ export function TacticPitchCanvas({
   onSelectLane: (laneId: string) => void;
 }) {
   const attackDescriptionId = useId();
+  // Both-only transitions: the shared single-phase canvas never holds both
+  // phases for a lane, so single-phase modes and the modal render nothing.
+  const connectors = dual ? tacticConnectors(markers) : [];
+  const selectedLane = lanes.find((lane) => lane.laneId === selectedLaneId);
   return (
     <fieldset
       aria-describedby={attackDescriptionId}
@@ -227,6 +286,29 @@ export function TacticPitchCanvas({
           <rect height="12" width="30" x="35" y="2" />
           <rect height="12" width="30" x="35" y="86" />
         </svg>
+        {connectors.length > 0 ? (
+          <svg
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 h-full w-full text-primary"
+            fill="none"
+            preserveAspectRatio="none"
+            stroke="currentColor"
+            strokeWidth={0.75}
+            viewBox="0 0 100 100"
+          >
+            {connectors.map((connector) => (
+              <line
+                data-tactic-connector={connector.lane.laneId}
+                key={connector.lane.laneId}
+                strokeLinecap="round"
+                x1={toPercent(connector.from.x)}
+                x2={toPercent(connector.to.x)}
+                y1={toPercent(connector.from.y)}
+                y2={toPercent(connector.to.y)}
+              />
+            ))}
+          </svg>
+        ) : null}
         {markers.map((marker) => (
           <div
             className={`absolute min-w-11 -translate-y-1/2 ${dual ? "w-[6%]" : "w-[12%]"} ${
@@ -260,6 +342,25 @@ export function TacticPitchCanvas({
           </div>
         ))}
       </div>
+      {dual ? (
+        <p
+          data-selected-slot-transition={selectedLane?.laneId ?? "none"}
+          className="pt-1 text-center text-label-md text-on-surface"
+        >
+          {selectedLane
+            ? linkedPositionDescription(selectedLane, lanes, options)
+            : "Select a position"}
+        </p>
+      ) : null}
+      {dual ? (
+        <div className="sr-only">
+          {lanes.map((lane) => (
+            <p data-slot-transition={lane.laneId} key={lane.laneId}>
+              {linkedPositionDescription(lane, lanes, options)}
+            </p>
+          ))}
+        </div>
+      ) : null}
     </fieldset>
   );
 }

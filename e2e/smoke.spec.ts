@@ -1876,6 +1876,167 @@ test.describe("application smoke", () => {
     const goalkeeperCentre = goalkeeperBox.y + goalkeeperBox.height / 2;
     expect(strikerCentre).toBeLessThan(midfieldCentre);
     expect(midfieldCentre).toBeLessThan(goalkeeperCentre);
+    // Both-mode draws a connector only where the canonical placement
+    // changes: the two winger lanes connect, unchanged lanes do not.
+    await expect(ipPitch.locator("[data-tactic-connector]")).toHaveCount(2);
+    const wingerConnector = ipPitch.locator(
+      '[data-tactic-connector="left_winger"]',
+    );
+    await expect(wingerConnector).toBeVisible();
+    await expect(wingerConnector).toHaveAttribute("x1", "13");
+    await expect(wingerConnector).toHaveAttribute("y1", "28");
+    await expect(wingerConnector).toHaveAttribute("x2", "12");
+    await expect(wingerConnector).toHaveAttribute("y2", "46");
+    await expect(
+      ipPitch.locator('[data-tactic-connector="goalkeeper"]'),
+    ).toHaveCount(0);
+    // The selected-slot transition is readable without hover: it follows
+    // the existing marker selection for pointer and keyboard activation.
+    await leftWinger.click();
+    const selectedTransition = ipPitch.locator(
+      "[data-selected-slot-transition]",
+    );
+    await expect(selectedTransition).toBeVisible();
+    await expect(selectedTransition).toHaveText(
+      "IP: AML · Winger / OOP: ML · Tracking Wide Midfielder",
+    );
+    await expect(selectedTransition).not.toHaveClass(/sr-only/);
+    const transitionBox = await selectedTransition.boundingBox();
+    if (
+      !transitionBox ||
+      transitionBox.width <= 0 ||
+      transitionBox.height <= 0
+    ) {
+      throw new Error("Expected a visible selected-slot transition");
+    }
+    const transitionFontSize = await selectedTransition.evaluate((element) => {
+      const scope = element as unknown as {
+        ownerDocument: {
+          defaultView: {
+            getComputedStyle: (target: unknown) => { fontSize: string };
+          } | null;
+        };
+      };
+      return (
+        scope.ownerDocument.defaultView?.getComputedStyle(element).fontSize ??
+        ""
+      );
+    });
+    expect(Number.parseFloat(transitionFontSize)).toBeGreaterThan(0);
+    await rightWinger.focus();
+    await page.keyboard.press("Enter");
+    await expect(selectedTransition).toHaveText(
+      "IP: AMR · Winger / OOP: MR · Tracking Wide Midfielder",
+    );
+    await expect(selectedTransition).toBeVisible();
+    // A cross-lane DCR/DCL swap shares coordinates across lanes: each
+    // connector end must land inside its own displayed marker, not the
+    // 4px gap between the split pair.
+    await main.getByRole("button", { name: "IP: DCR · Centre-Back" }).click();
+    await main
+      .getByRole("combobox", { name: "IP DCR position" })
+      .selectOption("DCL");
+    await expect(ipPitch.locator("[data-tactic-connector]")).toHaveCount(4);
+    const splitAttachment = await ipPitch.evaluate((pitch) => {
+      const scope = pitch as unknown as {
+        querySelector: (selector: string) => unknown;
+      };
+      const endpointFor = (laneId: string, end: "start" | "end") => {
+        const line = scope.querySelector(
+          `[data-tactic-connector="${laneId}"]`,
+        ) as unknown as {
+          getAttribute: (name: string) => string | null;
+          ownerSVGElement: {
+            getBoundingClientRect: () => {
+              x: number;
+              y: number;
+              width: number;
+              height: number;
+            };
+          } | null;
+        } | null;
+        // The overlay uses preserveAspectRatio="none" on a 0-100
+        // viewBox, so endpoint percents map linearly onto the SVG box.
+        const svg = line?.ownerSVGElement?.getBoundingClientRect();
+        if (!line || !svg) {
+          return null;
+        }
+        const at = end === "start" ? "1" : "2";
+        return {
+          x: svg.x + (Number(line.getAttribute(`x${at}`)) / 100) * svg.width,
+          y: svg.y + (Number(line.getAttribute(`y${at}`)) / 100) * svg.height,
+        };
+      };
+      const rectFor = (laneId: string, phase: string) => {
+        const marker = scope.querySelector(
+          `[data-pitch-marker="${laneId}"][data-phase="${phase}"]`,
+        ) as unknown as {
+          getBoundingClientRect: () => {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          };
+        } | null;
+        return marker?.getBoundingClientRect() ?? null;
+      };
+      const inside = (
+        point: { x: number; y: number } | null,
+        rect: {
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+        } | null,
+      ) => {
+        if (!point || !rect) {
+          return false;
+        }
+        const tolerance = 0.5;
+        return (
+          point.x >= rect.x - tolerance &&
+          point.x <= rect.x + rect.width + tolerance &&
+          point.y >= rect.y - tolerance &&
+          point.y <= rect.y + rect.height + tolerance
+        );
+      };
+      return {
+        leftStartInOwn: inside(
+          endpointFor("left_centre_back", "start"),
+          rectFor("left_centre_back", "ip"),
+        ),
+        leftEndInOwn: inside(
+          endpointFor("left_centre_back", "end"),
+          rectFor("left_centre_back", "oop"),
+        ),
+        rightStartInOwn: inside(
+          endpointFor("right_centre_back", "start"),
+          rectFor("right_centre_back", "ip"),
+        ),
+        rightEndInOwn: inside(
+          endpointFor("right_centre_back", "end"),
+          rectFor("right_centre_back", "oop"),
+        ),
+        leftEndInOther: inside(
+          endpointFor("left_centre_back", "end"),
+          rectFor("right_centre_back", "ip"),
+        ),
+        rightStartInOther: inside(
+          endpointFor("right_centre_back", "start"),
+          rectFor("left_centre_back", "oop"),
+        ),
+      };
+    });
+    expect(splitAttachment.leftStartInOwn).toBe(true);
+    expect(splitAttachment.leftEndInOwn).toBe(true);
+    expect(splitAttachment.rightStartInOwn).toBe(true);
+    expect(splitAttachment.rightEndInOwn).toBe(true);
+    expect(splitAttachment.leftEndInOther).toBe(false);
+    expect(splitAttachment.rightStartInOther).toBe(false);
+    await main
+      .getByRole("combobox", { name: "IP DCL position" })
+      .selectOption("DCR");
+    await expect(ipPitch.locator("[data-tactic-connector]")).toHaveCount(2);
     // Form the supported unique MC triple (MCL/MC/MCR) through the edit flow.
     await main
       .getByRole("button", { name: "IP: DM · Defensive Midfielder" })
@@ -1949,6 +2110,9 @@ test.describe("application smoke", () => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await main.getByRole("button", { name: "IP", exact: true }).click();
     await expect(pitches).toHaveCount(1);
+    await expect(
+      pitches.first().locator("[data-tactic-connector]"),
+    ).toHaveCount(0);
     const singlePitchBox = await pitches.first().boundingBox();
     if (!singlePitchBox) {
       throw new Error("Expected visible single-phase pitch geometry");
@@ -1956,6 +2120,9 @@ test.describe("application smoke", () => {
     expect(singlePitchBox.width).toBeCloseTo(bothPitchBox.width, 1);
     await main.getByRole("button", { name: "Both", exact: true }).click();
     await expect(pitches).toHaveCount(1);
+    await expect(
+      pitches.first().locator('[data-tactic-connector="left_winger"]'),
+    ).toBeVisible();
     await expect(pitches.first().locator("[data-pitch-marker]")).toHaveCount(
       22,
     );

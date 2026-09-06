@@ -563,7 +563,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 8 — Add Both-mode tactical transitions
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tactics): add Both-mode tactical transitions`
 
@@ -620,7 +620,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 9 — Add persistent Tactical XI panel
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tactics): add persistent Tactical XI panel`
 
@@ -910,19 +910,19 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **PR:** 1
 
-**Commit:** 8
+**Commit:** 9
 
 ### RED or removal proof
 
-Prove Both-only connector conditionality for changed canonical placements versus legacy-equivalent ST/STC, and readable per-slot phase transitions, through existing route and smoke seams.
+Prove the persistent eleven-lane Tactical XI list, phase transitions, and selection shared with the pitch through the existing route seam.
 
 ### Expected outcome
 
-Both mode adds conditional connectors and accurate IP-to-OOP role transitions; single-phase modes and shared selection remain unchanged.
+Tactical XI lists ordered lanes and selects the same lane as pitch markers without parallel state or mutation logic.
 
 ### Explicit exclusions
 
-Marker-set and composition changes, XI panel, inspector changes, orientation, containment, persistence, IPC, and Rust.
+Inspector changes, orientation, containment, persistence, IPC, and Rust.
 
 ## Discoveries and replanning
 
@@ -952,7 +952,8 @@ Marker-set and composition changes, XI panel, inspector changes, orientation, co
 | PR 1 — Redesign the tactic workspace | Commit 4 — Enforce unique-placement swaps in draft editing | edf6173f8a3817aeb0ed7354f64d116b78ed4160 | Added pure phase-placement swaps and wired the editor; preserved compatible roles, cleared incompatible roles, and replaced obsolete duplicate-rejection proof. | Unit 6/6, route 133/133, full check including 799 Rust tests passed; canonical literal-match mutation failed as expected; staged whitespace clean. | Pass | Clear | 1 | None. |
 | PR 1 — Redesign the tactic workspace | Commit 5 — Reset stored tactics to defaults once | 2b9186c4e6749d07cd576ec3550472a2418f2c44 | Registered data-only v42 tactic reset; removed legacy normalization and its two load tests. | Migration 60/60 and tactic 14/14 tests; check-rust and full check including 798 Rust tests passed; staged whitespace clean. | Pass | Clear | 0 | Older v8/v28 migration tests now prove their surviving contracts without asserting tactic preservation after the authorized reset; orphaned normalization constant removed. |
 | PR 1 — Redesign the tactic workspace | Commit 6 — Migrate the pitch to a simplified normalized canvas | e4b2f9f40a6ce773829c23f1b61fda35d2b06937 | Replaced grid rendering with the portrait coordinate canvas, pitch markings and attack description; simplified labels and exported canonical identity; widened modal pitch column to 330px. Removed five obsolete geometry tests and added two route proofs. | Route 130/130, exact smoke 55/55, full check including 798 Rust tests passed. Saved central-triple modal overlap RED now passes disjoint 44px-target and containment assertions. | Pass | Clear | 2 | Modal layout scope required reviewed replan and renewed delivery authority; prior MEDIUM unused phasePositionLayout/types remains open and undelegated. |
-| PR 1 — Redesign the tactic workspace | Commit 7 — Consolidate onto one phase-aware canvas | Pending record | Added shared canvas and workspace wrapper with 11/11/22 phase markers; split coincident phase markers and fixed cross-lane phase tie ordering. | Route 130/130, smoke 55/55, full check passed; cross-lane ordering regression confirmed RED then GREEN. | Pass | Clear | 1 | Developer explicitly approved including the one-line Squad smoke-stub initial progress delay increase from 50ms to 200ms; assertions and production behavior unchanged, three consecutive full smoke runs passed after the repair. |
+| PR 1 — Redesign the tactic workspace | Commit 7 — Consolidate onto one phase-aware canvas | b52b70fecb22260c30962838691252d21f91971b | Added shared canvas and workspace wrapper with 11/11/22 phase markers; split coincident phase markers and fixed cross-lane phase tie ordering. | Route 130/130, smoke 55/55, full check passed; cross-lane ordering regression confirmed RED then GREEN. | Pass | Clear | 1 | Developer explicitly approved including the one-line Squad smoke-stub initial progress delay increase from 50ms to 200ms; assertions and production behavior unchanged, three consecutive full smoke runs passed after the repair. |
+| PR 1 — Redesign the tactic workspace | Commit 8 — Add Both-mode tactical transitions | Pending record | Added canonical-identity conditional connectors, visible selected-slot transitions, and accessible per-slot descriptions; corrected split-marker endpoint attachment. | Route 131/131, exact smoke 55/55, full check including 798 Rust tests passed; browser proof covers visible transition selection and cross-lane endpoint attachment. | Pass | Clear | 1 | Full visible transition follows existing selected-lane state; landscape projection remains Commit 13. |
 
 ## Final validation
 
