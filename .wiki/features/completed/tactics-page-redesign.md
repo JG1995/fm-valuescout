@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -10,11 +10,11 @@ Validation
 
 **Delivery fingerprint:** 0c2340811e03a629583391e0d6995dabddab1e8f684dbf7cfba583a2b2340b00
 
-Provisional: recorded for structural consistency only — it confers no delivery authority until a fresh complete plan review passes and the developer accepts it.
+Accepted invocation: the developer invoked delivery under this fingerprint after the fresh complete plan review and acceptance. The independent feature review occurred after implementation and cleared the 13-commit range recorded below. It remains the authority for the recorded branch, PR, packets, and delivery fields below.
 
 The previously recorded fingerprint `7eddf349067b6cc8ce02abc05f0664f956203bcf31f0185e84852e38b7be58c8` was superseded by this bounded Commit 11 packet replan (retired inspector single-row smoke assertion plus editor-local inner pitch/XI stacking permission, replacing the bottom-shelf-era single-row contract).
 
-The previously accepted fingerprint `0404c69ef4ddf846a4a20f646fed2bf223381c4138d21c0eaee32bbc5794016d` was invalidated by this material replanning (unique-placement swap contract plus one-time tactic reset, replacing draft-overflow support). The previously recorded fingerprint `bd0767c438e788e0db1560643e56bfa8773de559f7914bd35a0a46b4db9ae84c` was invalidated by this material packet correction (Best role fit modal pitch-column widening in Commit 6, replacing the deliberately-unchanged modal contract). The fingerprint recorded here confers no delivery authority until a fresh complete plan review passes, the developer accepts it, and the developer invokes it for delivery.
+The previously accepted fingerprint `0404c69ef4ddf846a4a20f646fed2bf223381c4138d21c0eaee32bbc5794016d` was invalidated by this material replanning (unique-placement swap contract plus one-time tactic reset, replacing draft-overflow support). The previously recorded fingerprint `bd0767c438e788e0db1560643e56bfa8773de559f7914bd35a0a46b4db9ae84c` was invalidated by this material packet correction (Best role fit modal pitch-column widening in Commit 6, replacing the deliberately-unchanged modal contract). The fingerprint recorded here is the accepted delivery authority for this feature's recorded packets and delivery fields.
 
 ## Intent
 
@@ -146,7 +146,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **Required checks:** strict status `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -948,7 +948,7 @@ None — implementation complete; feature validation and close-out remain.
 | PR 1 — Redesign the tactic workspace | Commit 10 — Expose persistent Selected Slot controls | 7ba2ced95e71e82da2a26a6536858bce3e730aac | Renamed the inspector and exposed both phase controls in every view, preserving callbacks and location. | Route 132/132, exact smoke 55/55, full check including 798 Rust tests passed; independent review clear. | Pass | Clear | 0 | Developer explicitly approved scoping smoke marker locators to the pitch to repair the Commit 9 Tactical XI name collision; assertions unchanged. |
 | PR 1 — Redesign the tactic workspace | Commit 11 — Compose the responsive tactic workspace | df92e20430d1eb036cf617b499965d90a346b0f6 | Moved Selected Slot beside pitch/XI; stacked XI below the pitch below 2xl. Replaced the retired single-row inspector assertion with sidebar containment, disjointness, and phase/weight checks. | Route 132/132, exact smoke 55/55, full check including 798 Rust tests passed. Browser probe: 1280 pitch widened from 622px to 890px, overlap pairs fell from two to zero; 1600/1920 remain disjoint. Perturbations confirmed control overlap/clipping detection. | Pass | Clear | 0 | Accepted reviewed sidebar replan under delivery fingerprint 0c2340811e03a629583391e0d6995dabddab1e8f684dbf7cfba583a2b2340b00; callbacks and controls unchanged. |
 | PR 1 — Redesign the tactic workspace | Commit 12 — Contain the tactic workspace on ultrawide | 85b516255c4b60dfb613a154feb6b618225c345e | Centered and capped only the tactic workspace at 1920px, preserving other workspace containers. | Route 132/132, exact smoke 55/55, full check passed. At actual 3440px viewport, content spread is 1894px with symmetric 773px margins; unconstrained RED spread was 3382px. | Pass | Clear | 0 | Existing fit scenario extended; normal desktop fit retained. |
-| PR 1 — Redesign the tactic workspace | Commit 13 — Orient the pitch landscape at wide viewports | Pending record | Added workspace-local 1920px orientation subscription and projected markers, markings, connectors, direction text, and visual ordering; modal remains portrait. | Route 132/132, exact smoke 56/56, full check passed. Browser proof covers live breakpoint crossing, actual Tab traversal, upright ancestry, edited swap/triple disjointness and connector attachment; perturbations detect rotation and skipped tab stops. | Pass | Clear | 1 | Correction strengthened browser proof only; no production defect found. Intermittent pre-existing Squad boost timing smoke failure passed on rerun. |
+| PR 1 — Redesign the tactic workspace | Commit 13 — Orient the pitch landscape at wide viewports | 81b23abaf04dcf46b54122cacf4529c6385ad484 | Added workspace-local 1920px orientation subscription and projected markers, markings, connectors, direction text, and visual ordering; modal remains portrait. | Route 132/132, exact smoke 56/56, full check passed. Browser proof covers live breakpoint crossing, actual Tab traversal, upright ancestry, edited swap/triple disjointness and connector attachment; perturbations detect rotation and skipped tab stops. | Pass | Clear | 1 | Correction strengthened browser proof only; no production defect found. Intermittent pre-existing Squad boost timing smoke failure passed on rerun. Optional physical-display pass remains a gap; headless viewport evidence is complete. MEDIUM unused `phasePositionLayout`/grid-type/`PLACEMENT_COLUMNS` cleanup remains undelegated. |
 
 ## Final validation
 
@@ -959,6 +959,10 @@ None — implementation complete; feature validation and close-out remain.
 - `git diff --cached --check` plus staged-diff inspection before every commit.
 - Manual viewport pass at 1280×800, 1600×900, 1920×1080, and 3440×1440 where a matching display is available; report as a gap where headless-only.
 
+## Close-out evidence
+
+Full frontend validation passed: 856 tests across 76 files. Exact smoke passed 56/56; the full quality gate passed, including 798 Rust tests. Independent feature review cleared the recorded 13-commit range `63e9d246c3e3ef87a1619bd057019004f45fd872..81b23abaf04dcf46b54122cacf4529c6385ad484`. Physical-display validation remains optional and unperformed; the headless viewport matrix passed. The unused legacy grid helper remains an undelegated MEDIUM advisory.
+
 ## Documentation impact
 
-No documentation change in this planning commit beyond the ledger and TODO state. Implementation commits in this PR must not edit `.wiki/ARCHITECTURE.md` or `.wiki/DESIGN.md`: both describe the old two-pitch layout (dual boards, bottom settings shelf) and go stale while the redesign lands. Reconciliation of the Planner tactic, pitch geometry, and selected-position settings sections happens at feature close-out after behavior exists. No ADR is warranted; no debug report is expected.
+Feature close-out reconciles `.wiki/ARCHITECTURE.md`, `.wiki/DESIGN.md`, and `.wiki/TODO.md` with the implemented v42 tactic reset, phase-aware canvas, shared selection, responsive workspace, and landscape orientation. No ADR or debug report is warranted. The supervisor owns archival and cleanup of this active ledger.
