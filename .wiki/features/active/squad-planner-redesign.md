@@ -317,7 +317,7 @@ Land the v43 string-name persistence with ordinal backfill and ordinal defaults 
 
 #### Commit 4 — Manage strings inside Manage Teams
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): manage strings in Manage Teams`
 
@@ -375,7 +375,7 @@ Land the v43 string-name persistence with ordinal backfill and ordinal defaults 
 
 #### Commit 5 — Retire legacy string path; Manage Teams owns structure
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(planner): retire legacy string path`
 
@@ -498,19 +498,19 @@ Land the v43 string-name persistence with ordinal backfill and ordinal defaults 
 
 **PR:** PR 1 — Redesign Squad Planner around a configurable squad-depth board
 
-**Commit:** Manage strings inside Manage Teams
+**Commit:** Retire legacy string path; Manage Teams owns structure
 
 ### RED or removal proof
 
-Add route tests that fail on the team-only modal for string rename, reorder, confirmed removal, ordinal defaults, and invalid names.
+Rewrite surviving setup through `save_team_settings`, then remove the header structural controls and every legacy add/remove service, command, API, double, stub, and retired-only test with their final callers.
 
 ### Expected outcome
 
-Manage Teams edits each enabled squad's complete ordered string set and submits one confirmed structural save while the legacy header path remains intact.
+Manage Teams is the sole structural writer while the existing depth table remains a static renderer of stored string names and assignment cells with unchanged tabs.
 
 ### Explicit exclusions
 
-Board rendering, header-menu removal, command retirement, picker or optimizer changes, and unrelated UI changes.
+Board rendering, tab-fallback retirement, responsive width changes, picker or optimizer behavior changes, and unrelated cleanup.
 
 ## Discoveries and replanning
 
@@ -522,7 +522,8 @@ Board rendering, header-menu removal, command retirement, picker or optimizer ch
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 1 — Record the approved feature plan | 4e53fb047353405d1758a3125f2951cda19924df | Recorded the accepted ledger and active TODO link on the authorized feature branch. | Ledger and delivery classifiers passed; staged whitespace check passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 2 — Persist named planner strings with ordinal backfill | 33167621cf0826d8612bd9e5e78f823f1d5680f6 | Added v43 string-name persistence, exact ordinal backfill, shared writer defaults, and typed DTO fixtures without changing UI behavior. | Expected migration RED; check-rust and full check passed with 801 Rust tests, 0 failed, 2 intentionally ignored; LSP and whitespace checks clean. | Pass | Clear | 0 | None. |
-| PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 3 — Own full squad structure in one team-settings transaction | Pending record | Extended the team-settings transaction and adapter to validate and persist complete ordered string structure with stable IDs, scoped removals, and retained legacy mutations. | Structural RED produced four expected failures; planner 22/22, route 133/133, check-rust 809 passed, full check passed, and focused Planner smoke 1/1 passed. | Pass | Clear | 1 | Corrected target-name assertions and the E2E impact shape. Full smoke also exposed one reproducible unrelated Squad CA-boost progress failure outside this packet; focused Planner smoke passed. |
+| PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 3 — Own full squad structure in one team-settings transaction | e8694a26a735fc1ff321eb6800ea0110847c67f0 | Extended the team-settings transaction and adapter to validate and persist complete ordered string structure with stable IDs, scoped removals, and retained legacy mutations. | Structural RED produced four expected failures; planner 22/22, route 133/133, check-rust 809 passed, full check passed, and focused Planner smoke 1/1 passed. | Pass | Clear | 1 | Corrected target-name assertions and the E2E impact shape. Full smoke also exposed one reproducible unrelated Squad CA-boost progress failure outside this packet; focused Planner smoke passed. |
+| PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 4 — Manage strings inside Manage Teams | Pending record | Added ordered string add, rename, reorder, and removal controls to Manage Teams with frontend validation and target-specific team, string, and mixed confirmations. | Expected five-test RED; route 139/139, smoke 56/56, full check with 809 Rust tests, LSP, and whitespace checks passed. | Pass | Clear | 1 | Corrected mixed-removal confirmation wording and added direct combined-impact proof. |
 
 ## Final validation
 

@@ -3366,6 +3366,22 @@ test.describe("application smoke", () => {
     await restoration.getByRole("button", { name: "Save teams" }).click();
     await expect(main.getByRole("tab", { name: "B Team" })).toBeVisible();
 
+    await main.getByRole("button", { name: "Manage teams" }).click();
+    const strings = page.getByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await strings.getByLabel("Senior string 1 name").fill("First Choice");
+    await strings.getByRole("button", { name: "Add string to Senior" }).click();
+    await strings.getByLabel("Senior string 2 name").fill("Second Line");
+    await strings
+      .getByRole("button", { name: "Move Senior string 2 up" })
+      .click();
+    await expect(strings.getByLabel("Senior string 1 name")).toHaveValue(
+      "Second Line",
+    );
+    await strings.getByRole("button", { name: "Save teams" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
     await page.setViewportSize({ width: 1920, height: 900 });
     await expect(
       main.getByRole("columnheader", { name: "First Team squad" }),
