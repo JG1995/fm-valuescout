@@ -2515,6 +2515,376 @@ test.describe("application smoke", () => {
     }
   });
 
+  test("planner tactic pitch orients landscape at wide viewports", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+
+    // Initial load at 1920 renders the landscape orientation immediately.
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto("/my-club?view=tactic");
+
+    const main = page.getByRole("main");
+    const pitches = main.getByRole("group", { name: /pitch$/ });
+    const pitch = pitches.first();
+    const striker = pitch.getByRole("button", {
+      name: "IP: STC · Centre Forward",
+    });
+    const goalkeeper = pitch.getByRole("button", {
+      name: "IP: GK · Goalkeeper",
+    });
+    await expect(striker).toBeVisible();
+    await expect(pitch).toContainText("Attack toward the right");
+
+    const centre = (box: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }) => ({
+      x: box.x + box.width / 2,
+      y: box.y + box.height / 2,
+    });
+    const landscapeBoxes = await Promise.all([
+      striker.boundingBox(),
+      goalkeeper.boundingBox(),
+    ]);
+    if (landscapeBoxes.some((box) => !box)) {
+      throw new Error("Expected visible landscape striker and goalkeeper");
+    }
+    const [landscapeStriker, landscapeGoalkeeper] = landscapeBoxes as [
+      { x: number; y: number; width: number; height: number },
+      { x: number; y: number; width: number; height: number },
+    ];
+    // Portrait attack-up (striker above the goalkeeper) inverts to
+    // landscape attack-right (striker right of the goalkeeper).
+    expect(landscapeStriker.x).toBeGreaterThan(
+      landscapeGoalkeeper.x + landscapeGoalkeeper.width,
+    );
+    const landscapeHorizontalGap =
+      landscapeStriker.x - (landscapeGoalkeeper.x + landscapeGoalkeeper.width);
+    const landscapeVerticalDrift = Math.abs(
+      centre(landscapeStriker).y - centre(landscapeGoalkeeper).y,
+    );
+    expect(landscapeVerticalDrift).toBeLessThan(landscapeHorizontalGap);
+
+    // Both-mode connectors project with the markers: the portrait AML/ML
+    // geometry (x1 13, y1 28, x2 12, y2 46) becomes landscape geometry.
+    const wingerConnector = pitch.locator(
+      '[data-tactic-connector="left_winger"]',
+    );
+    await expect(wingerConnector).toBeVisible();
+    await expect(wingerConnector).toHaveAttribute("x1", "72");
+    await expect(wingerConnector).toHaveAttribute("y1", "13");
+    await expect(wingerConnector).toHaveAttribute("x2", "54");
+    await expect(wingerConnector).toHaveAttribute("y2", "12");
+
+    // Marker text stays upright: no marker button — and no ancestor up
+    // to and including the pitch — carries rotation. Both the CSS
+    // individual `rotate` property and the rotation component of the
+    // computed `transform` matrix count; pure translation (used for marker
+    // placement) does not.
+    type RotationProbeNode = {
+      getAttribute: (name: string) => string | null;
+      parentElement: RotationProbeNode | null;
+    };
+    const rotatedMarkers = await pitch.evaluate((element) => {
+      const scope = element as unknown as {
+        ownerDocument: {
+          defaultView: {
+            getComputedStyle: (target: unknown) => { transform: string };
+          } | null;
+        };
+        querySelectorAll: (selector: string) => RotationProbeNode[];
+      };
+      const view = scope.ownerDocument.defaultView;
+      const hasRotation = (target: unknown) => {
+        if (!view) {
+          return false;
+        }
+        const style = view.getComputedStyle(target);
+        const rotate =
+          (style as unknown as { rotate?: string }).rotate ?? "none";
+        if (rotate !== "none") {
+          return true;
+        }
+        const matrix = style.transform.match(/^matrix\((.+)\)$/);
+        if (!matrix) {
+          return false;
+        }
+        const [, b, c] = matrix[1].split(",").map(Number);
+        return Math.abs(b ?? 0) > 1e-6 || Math.abs(c ?? 0) > 1e-6;
+      };
+      const offenders: string[] = [];
+      for (const button of scope.querySelectorAll(
+        "[data-pitch-marker] button",
+      )) {
+        let node: RotationProbeNode | null = button;
+        while (node) {
+          if (hasRotation(node)) {
+            offenders.push(button.getAttribute("aria-label") ?? "marker");
+            break;
+          }
+          if ((node as unknown) === (element as unknown)) {
+            break;
+          }
+          node = node.parentElement;
+        }
+      }
+      return offenders;
+    });
+    expect(rotatedMarkers).toEqual([]);
+
+    // Keyboard order follows the current visual pitch order: focusing the
+    // first marker button and pressing Tab through every marker button
+    // visits the accessible names in the same top-to-bottom,
+    // left-to-right order as their boxes. Reused at 1920 and 1919.
+    const tabOrderMatchesVisual = async () => {
+      const visualLabels = await pitch
+        .getByRole("button")
+        .evaluateAll((elements) =>
+          elements
+            .map((element) => {
+              const node = element as unknown as {
+                getAttribute: (name: string) => string | null;
+                getBoundingClientRect: () => { x: number; y: number };
+              };
+              const rect = node.getBoundingClientRect();
+              return {
+                label: node.getAttribute("aria-label") ?? "",
+                x: rect.x,
+                y: rect.y,
+              };
+            })
+            .sort((left, right) => left.y - right.y || left.x - right.x)
+            .map((entry) => entry.label),
+        );
+      expect(visualLabels).toHaveLength(22);
+      await pitch.getByRole("button").first().focus();
+      const tabbedLabels: string[] = [];
+      for (let index = 0; index < visualLabels.length; index += 1) {
+        const focused = await pitch.evaluate((activeElement) => {
+          const scope = activeElement as unknown as {
+            ownerDocument: {
+              activeElement: {
+                getAttribute: (name: string) => string | null;
+              } | null;
+            };
+          };
+          return (
+            scope.ownerDocument.activeElement?.getAttribute("aria-label") ?? ""
+          );
+        });
+        tabbedLabels.push(focused);
+        await page.keyboard.press("Tab");
+      }
+      expect(tabbedLabels).toEqual(visualLabels);
+    };
+
+    // Realistic edited layout at 1920: a cross-lane DCR/DCL swap (a shared
+    // coordinate collides across lanes) plus the supported MCL/MC/MCR
+    // triple, using the existing combobox flows from the portrait seam.
+    await pitch.getByRole("button", { name: "IP: DCR · Centre-Back" }).click();
+    await main
+      .getByRole("combobox", { name: "IP DCR position" })
+      .selectOption("DCL");
+    await expect(pitch.locator("[data-tactic-connector]")).toHaveCount(4);
+    await pitch
+      .getByRole("button", { name: "IP: DM · Defensive Midfielder" })
+      .click();
+    await main
+      .getByRole("combobox", { name: "IP DM position" })
+      .selectOption("MC");
+    await main
+      .getByRole("combobox", { name: "IP MC role" })
+      .selectOption("central_midfielder_ip");
+    await expect(
+      pitch.locator(
+        '[data-pitch-marker="defensive_midfielder"][data-phase="ip"]',
+      ),
+    ).toHaveAttribute("data-placement", "MC");
+
+    // Edited landscape markers keep the 44px target floor and stay disjoint,
+    // covering the swap collision and the MC triple.
+    const landscapeMarkerBoxes = await pitch
+      .locator("[data-pitch-marker]")
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = (
+            element as unknown as {
+              getBoundingClientRect: () => {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+              };
+            }
+          ).getBoundingClientRect();
+          return {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          };
+        }),
+      );
+    expect(landscapeMarkerBoxes).toHaveLength(22);
+    for (const box of landscapeMarkerBoxes) {
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+    for (let left = 0; left < landscapeMarkerBoxes.length; left += 1) {
+      for (
+        let right = left + 1;
+        right < landscapeMarkerBoxes.length;
+        right += 1
+      ) {
+        const leftBox = landscapeMarkerBoxes[left];
+        const rightBox = landscapeMarkerBoxes[right];
+        expect(
+          leftBox.x + leftBox.width <= rightBox.x ||
+            rightBox.x + rightBox.width <= leftBox.x ||
+            leftBox.y + leftBox.height <= rightBox.y ||
+            rightBox.y + rightBox.height <= leftBox.y,
+        ).toBe(true);
+      }
+    }
+    // Every Both-mode connector endpoint lands inside its owning displayed
+    // marker: the line start in the lane's IP marker, the line end in the
+    // lane's OOP marker. The overlay maps its 0-100 viewBox linearly onto
+    // the SVG box (preserveAspectRatio="none"), as in the portrait seam.
+    const landscapeAttachment = await pitch.evaluate((element) => {
+      const scope = element as unknown as {
+        querySelector: (selector: string) => {
+          getBoundingClientRect: () => {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          };
+        } | null;
+        querySelectorAll: (selector: string) => {
+          getAttribute: (name: string) => string | null;
+          ownerSVGElement: {
+            getBoundingClientRect: () => {
+              x: number;
+              y: number;
+              width: number;
+              height: number;
+            };
+          } | null;
+        }[];
+      };
+      const boxOf = (selector: string) => {
+        const target = scope.querySelector(selector);
+        if (!target) {
+          return null;
+        }
+        const rect = target.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      };
+      const inside = (
+        point: { x: number; y: number } | null,
+        rect: { x: number; y: number; width: number; height: number } | null,
+      ) => {
+        if (!point || !rect) {
+          return false;
+        }
+        const tolerance = 0.5;
+        return (
+          point.x >= rect.x - tolerance &&
+          point.x <= rect.x + rect.width + tolerance &&
+          point.y >= rect.y - tolerance &&
+          point.y <= rect.y + rect.height + tolerance
+        );
+      };
+      return Array.from(scope.querySelectorAll("[data-tactic-connector]")).map(
+        (line) => {
+          const laneId = line.getAttribute("data-tactic-connector") ?? "";
+          const svg = line.ownerSVGElement?.getBoundingClientRect() ?? null;
+          const point = (at: "1" | "2") => {
+            if (!svg) {
+              return null;
+            }
+            return {
+              x:
+                svg.x + (Number(line.getAttribute(`x${at}`)) / 100) * svg.width,
+              y:
+                svg.y +
+                (Number(line.getAttribute(`y${at}`)) / 100) * svg.height,
+            };
+          };
+          return {
+            lane: laneId,
+            startInOwn: inside(
+              point("1"),
+              boxOf(`[data-pitch-marker="${laneId}"][data-phase="ip"]`),
+            ),
+            endInOwn: inside(
+              point("2"),
+              boxOf(`[data-pitch-marker="${laneId}"][data-phase="oop"]`),
+            ),
+          };
+        },
+      );
+    });
+    // The edited layout draws five connectors: the winger pair, the swap
+    // pair, and the triple lane whose IP moved DM → MC.
+    expect(landscapeAttachment).toHaveLength(5);
+    for (const entry of landscapeAttachment) {
+      expect(entry.startInOwn).toBe(true);
+      expect(entry.endInOwn).toBe(true);
+    }
+
+    // Tab order matches the edited visual order at 1920.
+    await tabOrderMatchesVisual();
+
+    // Live crossing: the orientation follows actual viewport bounds.
+    await page.setViewportSize({ width: 1919, height: 1080 });
+    await expect(pitch).toContainText("Attack toward the top");
+    await expect(wingerConnector).toHaveAttribute("x1", "13");
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await expect(pitch).toContainText("Attack toward the right");
+    await expect(wingerConnector).toHaveAttribute("x1", "72");
+    await page.setViewportSize({ width: 1919, height: 1080 });
+    await expect(pitch).toContainText("Attack toward the top");
+    const portraitBoxes = await Promise.all([
+      striker.boundingBox(),
+      goalkeeper.boundingBox(),
+    ]);
+    if (portraitBoxes.some((box) => !box)) {
+      throw new Error("Expected visible portrait striker and goalkeeper");
+    }
+    const [portraitStriker, portraitGoalkeeper] = portraitBoxes as [
+      { x: number; y: number; width: number; height: number },
+      { x: number; y: number; width: number; height: number },
+    ];
+    expect(centre(portraitStriker).y).toBeLessThan(
+      centre(portraitGoalkeeper).y,
+    );
+    const portraitVerticalGap =
+      centre(portraitGoalkeeper).y - centre(portraitStriker).y;
+    const portraitHorizontalDrift = Math.abs(
+      centre(portraitStriker).x - centre(portraitGoalkeeper).x,
+    );
+    expect(portraitVerticalGap).toBeGreaterThan(portraitHorizontalDrift);
+
+    // Tab order matches the edited visual order in portrait as well.
+    await tabOrderMatchesVisual();
+
+    // The role-reference modal stays portrait at wide viewports.
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
+    await main.getByRole("button", { name: "Best role fit" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: "Best role fit reference",
+    });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Attack toward the top");
+    await expect(dialog).not.toContainText("Attack toward the right");
+    await dialog.getByRole("button", { name: "Close" }).click();
+  });
+
   test("planner depth adds strings for Senior, Reserves, and Youth", async ({
     page,
   }) => {

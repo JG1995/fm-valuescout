@@ -14,6 +14,7 @@ import {
 import {
   comparePitchOrder,
   type PitchCoordinate,
+  type PitchOrientation,
   portraitCoordinateForPlacement,
   projectPosition,
 } from "../utils/tactic-pitch-geometry";
@@ -22,6 +23,7 @@ type PlannerTacticPitchProps = {
   phase: TacticPhase;
   lanes: TacticLane[];
   options: TacticOptions;
+  orientation?: PitchOrientation;
   selectionHint?: string;
   selectedLaneId: string;
   highlightedLaneId: string | null;
@@ -112,7 +114,11 @@ type PitchMarker = {
   collides: boolean;
 };
 
-function toMarker(lane: TacticLane, phase: TacticPhase): PitchMarker | null {
+function toMarker(
+  lane: TacticLane,
+  phase: TacticPhase,
+  orientation: PitchOrientation,
+): PitchMarker | null {
   const placement = canonicalPlacement(phasePosition(lane, phase));
   const coordinate = portraitCoordinateForPlacement(placement);
   if (!coordinate) {
@@ -123,7 +129,7 @@ function toMarker(lane: TacticLane, phase: TacticPhase): PitchMarker | null {
     lane,
     phase,
     placement,
-    coordinate: projectPosition(coordinate, "portrait"),
+    coordinate: projectPosition(coordinate, orientation),
     collides: false,
   };
 }
@@ -131,19 +137,23 @@ function toMarker(lane: TacticLane, phase: TacticPhase): PitchMarker | null {
 export function pitchMarkersForView(
   view: TacticView,
   lanes: TacticLane[],
+  orientation: PitchOrientation = "portrait",
 ): PitchMarker[] {
   const phases: TacticPhase[] = view === "both" ? ["ip", "oop"] : [view];
   const markers: PitchMarker[] = [];
   for (const lane of lanes) {
     for (const phase of phases) {
-      const marker = toMarker(lane, phase);
+      const marker = toMarker(lane, phase, orientation);
       if (marker) {
         markers.push(marker);
       }
     }
   }
   // Unique placements have distinct coordinates, so this order is total and
-  // matches the visual attack-to-goalkeeper, left-to-right reading order.
+  // matches the current visual reading order (top-to-bottom,
+  // left-to-right) in the active orientation: coordinates are already
+  // projected, so portrait attack-up and landscape attack-right both sort
+  // by their displayed position.
   // A shared coordinate always pairs one IP and one OOP marker; the phase
   // tie-break keeps IP before OOP in the DOM so tab order matches the
   // IP-left/OOP-right split regardless of lane iteration order.
@@ -172,8 +182,12 @@ export function pitchMarkersForView(
   }));
 }
 
-function pitchMarkers(phase: TacticPhase, lanes: TacticLane[]): PitchMarker[] {
-  return pitchMarkersForView(phase, lanes);
+function pitchMarkers(
+  phase: TacticPhase,
+  lanes: TacticLane[],
+  orientation: PitchOrientation,
+): PitchMarker[] {
+  return pitchMarkersForView(phase, lanes, orientation);
 }
 
 type TacticConnector = {
@@ -192,7 +206,9 @@ type TacticConnector = {
 // one unit clears the 2px gap wherever the Both pitch is at least 200px
 // wide (the supported desktop widths) while staying inside the >= 44px
 // marker. Only the colliding end shifts; centered markers already attach
-// at the button middle.
+// at the button middle. The shift applies on the x axis in projected space
+// (after projectPosition), so it follows the displayed horizontal
+// IP-left/OOP-right split in both portrait and landscape orientations.
 
 function tacticConnectors(markers: PitchMarker[]): TacticConnector[] {
   const byLane = new Map<
@@ -236,6 +252,7 @@ export function TacticPitchCanvas({
   lanes,
   options,
   dual = false,
+  orientation = "portrait",
   selectedLaneId,
   highlightedLaneId,
   linkedHintId,
@@ -247,6 +264,7 @@ export function TacticPitchCanvas({
   lanes: TacticLane[];
   options: TacticOptions;
   dual?: boolean;
+  orientation?: PitchOrientation;
   selectedLaneId: string;
   highlightedLaneId: string | null;
   linkedHintId: string;
@@ -254,6 +272,13 @@ export function TacticPitchCanvas({
   onSelectLane: (laneId: string) => void;
 }) {
   const attackDescriptionId = useId();
+  // Landscape is a clockwise 90-degree rotation of the portrait canvas, so
+  // portrait attack-up becomes landscape attack-right. Marker labels stay
+  // upright HTML; only coordinates and line markings project.
+  const attack =
+    orientation === "landscape"
+      ? { arrow: "→", text: "Attack toward the right" }
+      : { arrow: "↑", text: "Attack toward the top" };
   // Both-only transitions: the shared single-phase canvas never holds both
   // phases for a lane, so single-phase modes and the modal render nothing.
   const connectors = dual ? tacticConnectors(markers) : [];
@@ -268,7 +293,7 @@ export function TacticPitchCanvas({
         className="flex items-center gap-1 pb-2 text-label-md text-on-surface-variant"
         id={attackDescriptionId}
       >
-        <span aria-hidden="true">↑</span> Attack toward the top
+        <span aria-hidden="true">{attack.arrow}</span> {attack.text}
       </p>
       <div className="relative h-[420px] w-full overflow-hidden rounded-md border border-outline-variant bg-surface-container-high">
         <svg
@@ -280,11 +305,25 @@ export function TacticPitchCanvas({
           strokeWidth={0.5}
           viewBox="0 0 100 100"
         >
-          <rect height="96" width="96" x="2" y="2" />
-          <line x1="2" x2="98" y1="50" y2="50" />
-          <circle cx="50" cy="50" r="8" />
-          <rect height="12" width="30" x="35" y="2" />
-          <rect height="12" width="30" x="35" y="86" />
+          {orientation === "landscape" ? (
+            // Clockwise-projected markings: the halfway line runs vertically
+            // and the boxes guard the left (own) and right (attack) goals.
+            <>
+              <rect height="96" width="96" x="2" y="2" />
+              <line x1="50" x2="50" y1="2" y2="98" />
+              <circle cx="50" cy="50" r="8" />
+              <rect height="30" width="12" x="2" y="35" />
+              <rect height="30" width="12" x="86" y="35" />
+            </>
+          ) : (
+            <>
+              <rect height="96" width="96" x="2" y="2" />
+              <line x1="2" x2="98" y1="50" y2="50" />
+              <circle cx="50" cy="50" r="8" />
+              <rect height="12" width="30" x="35" y="2" />
+              <rect height="12" width="30" x="35" y="86" />
+            </>
+          )}
         </svg>
         {connectors.length > 0 ? (
           <svg
@@ -369,6 +408,7 @@ export function PlannerTacticPitch({
   phase,
   lanes,
   options,
+  orientation = "portrait",
   selectionHint = "Focus or select this position to highlight its linked counterpart in the other phase.",
   selectedLaneId,
   highlightedLaneId,
@@ -379,7 +419,7 @@ export function PlannerTacticPitch({
   const selectedLane = lanes.find((lane) => lane.laneId === selectedLaneId);
   const headingId = useId();
   const linkedHintId = useId();
-  const markers = pitchMarkers(phase, lanes);
+  const markers = pitchMarkers(phase, lanes, orientation);
 
   return (
     <section className="space-y-2" aria-labelledby={headingId}>
@@ -401,6 +441,7 @@ export function PlannerTacticPitch({
         markers={markers}
         lanes={lanes}
         options={options}
+        orientation={orientation}
         selectedLaneId={selectedLaneId}
         highlightedLaneId={highlightedLaneId}
         linkedHintId={linkedHintId}
