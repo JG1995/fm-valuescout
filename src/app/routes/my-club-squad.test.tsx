@@ -5383,6 +5383,7 @@ describe("My Club route", () => {
         staffingTargets: [
           { jobId: "manager", jobLabel: "Manager", slotCount: 2 },
         ],
+        strings: [],
       },
     ]);
     renderMyClubRoute();
@@ -5454,8 +5455,16 @@ describe("My Club route", () => {
     expect(getPlannerTeamSaveIpcMockCalls()).toEqual([
       {
         teams: [
-          { team: "senior", displayName: "First Team" },
-          { team: "youth", displayName: "U19" },
+          {
+            team: "senior",
+            displayName: "First Team",
+            strings: [{ id: 1, displayName: "1st string" }],
+          },
+          {
+            team: "youth",
+            displayName: "U19",
+            strings: [{ id: 3, displayName: "1st string" }],
+          },
         ],
         confirmPopulatedRemoval: true,
       },
@@ -5506,9 +5515,21 @@ describe("My Club route", () => {
     expect(getPlannerTeamSaveIpcMockCalls()).toEqual([
       {
         teams: [
-          { team: "senior", displayName: "First Team" },
-          { team: "reserves", displayName: "B Team" },
-          { team: "youth", displayName: "U19" },
+          {
+            team: "senior",
+            displayName: "First Team",
+            strings: [{ id: 1, displayName: "1st string" }],
+          },
+          {
+            team: "reserves",
+            displayName: "B Team",
+            strings: [{ id: null, displayName: "1st string" }],
+          },
+          {
+            team: "youth",
+            displayName: "U19",
+            strings: [{ id: 3, displayName: "1st string" }],
+          },
         ],
         confirmPopulatedRemoval: false,
       },
@@ -5557,6 +5578,77 @@ describe("My Club route", () => {
       .flatMap((team) => team.strings.map((plannerString) => plannerString.id));
     expect(restoredIds).toHaveLength(2);
     expect(new Set(restoredIds).size).toBe(2);
+  });
+
+  it("submits retained string ids, names, and orders unchanged", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const depth = resolvePlannerDepthIpcMock();
+    setPlannerDepthIpcMock({
+      ...depth,
+      teams: depth.teams.map((team) =>
+        team.team === "senior"
+          ? {
+              ...team,
+              strings: [
+                {
+                  id: 7,
+                  stringOrder: 1,
+                  displayName: "Second",
+                  assignments: [],
+                },
+                {
+                  id: 5,
+                  stringOrder: 0,
+                  displayName: "First",
+                  assignments: [],
+                },
+              ],
+            }
+          : team,
+      ),
+    });
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(getPlannerTeamSaveIpcMockCalls()).toEqual([
+      {
+        teams: [
+          {
+            team: "senior",
+            displayName: "Senior",
+            strings: [
+              { id: 5, displayName: "First" },
+              { id: 7, displayName: "Second" },
+            ],
+          },
+          {
+            team: "reserves",
+            displayName: "Reserves",
+            strings: [{ id: 2, displayName: "1st string" }],
+          },
+          {
+            team: "youth",
+            displayName: "Youth",
+            strings: [{ id: 3, displayName: "1st string" }],
+          },
+        ],
+        confirmPopulatedRemoval: false,
+      },
+    ]);
   });
 
   it("keeps team-management drafts on validation and backend failure", async () => {

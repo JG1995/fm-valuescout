@@ -11,7 +11,7 @@ use super::depth::{
     add_string, assign_player, clear_all, clear_assignment, get_depth, get_slot_candidates,
     move_player, remove_string, AssignmentState, PlannerTeam,
 };
-use super::teams::{save_team_settings, PlannerTeamInput};
+use super::teams::{save_team_settings, PlannerStringInput, PlannerTeamInput};
 use super::test_support::{
     add_picker_candidates, assignment_provenance, current_snapshot_id, deny_potential_writes,
     open_with_snapshot, planner_potential_state, team_strings,
@@ -218,10 +218,25 @@ fn added_strings_carry_the_next_ordinal_label() {
     assert_eq!(strings[12].display_name, "13th string");
 }
 
+fn retained_strings(
+    depth: &super::depth::PlannerDepth,
+    team: PlannerTeam,
+) -> Vec<PlannerStringInput> {
+    team_strings(depth, team)
+        .iter()
+        .map(|string| PlannerStringInput {
+            id: Some(string.id),
+            display_name: string.display_name.clone(),
+        })
+        .collect()
+}
+
 #[test]
 fn restored_team_creates_the_ordinal_labeled_string() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
-    get_depth(&conn, save_id).expect("initialize planner depth");
+    let depth = get_depth(&conn, save_id).expect("initialize planner depth");
+    let senior_strings = retained_strings(&depth, PlannerTeam::Senior);
+    let reserves_strings = retained_strings(&depth, PlannerTeam::Reserves);
     save_team_settings(
         &conn,
         save_id,
@@ -229,10 +244,12 @@ fn restored_team_creates_the_ordinal_labeled_string() {
             PlannerTeamInput {
                 team: "senior".to_string(),
                 display_name: "Senior".to_string(),
+                strings: senior_strings.clone(),
             },
             PlannerTeamInput {
                 team: "reserves".to_string(),
                 display_name: "Reserves".to_string(),
+                strings: reserves_strings.clone(),
             },
         ],
         false,
@@ -245,14 +262,20 @@ fn restored_team_creates_the_ordinal_labeled_string() {
             PlannerTeamInput {
                 team: "senior".to_string(),
                 display_name: "Senior".to_string(),
+                strings: senior_strings,
             },
             PlannerTeamInput {
                 team: "reserves".to_string(),
                 display_name: "Reserves".to_string(),
+                strings: reserves_strings,
             },
             PlannerTeamInput {
                 team: "youth".to_string(),
                 display_name: "Youth".to_string(),
+                strings: vec![PlannerStringInput {
+                    id: None,
+                    display_name: String::new(),
+                }],
             },
         ],
         false,
@@ -269,13 +292,14 @@ fn restored_team_creates_the_ordinal_labeled_string() {
 #[test]
 fn direct_depth_commands_reject_an_unavailable_team_without_recreating_it() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
-    get_depth(&conn, save_id).expect("initialize planner depth");
+    let depth = get_depth(&conn, save_id).expect("initialize planner depth");
     save_team_settings(
         &conn,
         save_id,
         &[PlannerTeamInput {
             team: "senior".to_string(),
             display_name: "Senior".to_string(),
+            strings: retained_strings(&depth, PlannerTeam::Senior),
         }],
         false,
     )

@@ -308,11 +308,19 @@ let teamRemovalImpactOverride: PlannerTeamRemovalImpact[] | null = null;
 let teamRemovalImpactPending = false;
 let pendingTeamRemovalImpact: (() => void) | null = null;
 let teamSaveCalls: Array<{
-  teams: Array<{ team: PlannerTeam; displayName: string }>;
+  teams: Array<{
+    team: PlannerTeam;
+    displayName: string;
+    strings: Array<{ id: number | null; displayName: string }>;
+  }>;
   confirmPopulatedRemoval: boolean;
 }> = [];
 let pendingPlannerTeamSave: {
-  teams: Array<{ team: PlannerTeam; displayName: string }>;
+  teams: Array<{
+    team: PlannerTeam;
+    displayName: string;
+    strings: Array<{ id: number | null; displayName: string }>;
+  }>;
   confirmPopulatedRemoval: boolean;
   resolve: (depth: PlannerDepth) => void;
 } | null = null;
@@ -1032,6 +1040,7 @@ export function resolvePlannerTeamRemovalImpactsIpcMock(args: unknown) {
     ? teamRemovalImpactOverride.map((impact) => ({
         ...impact,
         staffingTargets: [...impact.staffingTargets],
+        strings: [...impact.strings],
       }))
     : removalImpactsForTeams({ teams: args.teams });
   if (teamRemovalImpactPending) {
@@ -1043,29 +1052,66 @@ export function resolvePlannerTeamRemovalImpactsIpcMock(args: unknown) {
 }
 
 function removalImpactsForTeams(args: { teams: unknown[] }) {
-  const included = new Set(
+  const included = new Map(
     args.teams
       .filter(
-        (team): team is { team: PlannerTeam } =>
+        (team): team is { team: PlannerTeam; strings?: unknown } =>
           typeof team === "object" &&
           team !== null &&
           "team" in team &&
           typeof team.team === "string" &&
           PLANNER_TEAMS.includes(team.team as PlannerTeam),
       )
-      .map((team) => team.team),
+      .map((team) => [team.team, team] as const),
   );
-  return depth.teams
-    .filter((team) => !included.has(team.team))
-    .map((team) => ({
-      team: team.team,
-      displayName: team.displayName,
-      assignmentCount: team.strings.reduce(
-        (count, plannerString) => count + plannerString.assignments.length,
-        0,
-      ),
-      staffingTargets: [],
-    }));
+  const impacts: PlannerTeamRemovalImpact[] = [];
+  for (const team of depth.teams) {
+    const input = included.get(team.team);
+    if (!input) {
+      impacts.push({
+        team: team.team,
+        displayName: team.displayName,
+        assignmentCount: team.strings.reduce(
+          (count, plannerString) => count + plannerString.assignments.length,
+          0,
+        ),
+        staffingTargets: [],
+        strings: team.strings.map((plannerString) => ({
+          stringId: plannerString.id,
+          displayName: plannerString.displayName,
+          assignmentCount: plannerString.assignments.length,
+        })),
+      });
+      continue;
+    }
+    const desiredIds = new Set(
+      Array.isArray((input as { strings?: unknown }).strings)
+        ? ((input as { strings: Array<{ id?: unknown }> }).strings ?? [])
+            .map((plannerString) => plannerString.id)
+            .filter((id): id is number => typeof id === "number")
+        : [],
+    );
+    const removed = team.strings.filter(
+      (plannerString) => !desiredIds.has(plannerString.id),
+    );
+    if (removed.length > 0) {
+      impacts.push({
+        team: team.team,
+        displayName: team.displayName,
+        assignmentCount: removed.reduce(
+          (count, plannerString) => count + plannerString.assignments.length,
+          0,
+        ),
+        staffingTargets: [],
+        strings: removed.map((plannerString) => ({
+          stringId: plannerString.id,
+          displayName: plannerString.displayName,
+          assignmentCount: plannerString.assignments.length,
+        })),
+      });
+    }
+  }
+  return impacts;
 }
 
 export function resolveSavePlannerTeamsIpcMock(args: unknown) {
@@ -1082,6 +1128,7 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
   const teams = args.teams as Array<{
     team: unknown;
     displayName: unknown;
+    strings: unknown;
   }>;
   if (teams.length < 1 || teams.length > PLANNER_TEAMS.length) {
     throw new Error("Planner configuration must contain one to three teams");
@@ -1090,13 +1137,28 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
     if (
       typeof team.team !== "string" ||
       !PLANNER_TEAMS.includes(team.team as PlannerTeam) ||
-      typeof team.displayName !== "string"
+      typeof team.displayName !== "string" ||
+      !Array.isArray(team.strings)
     ) {
       throw new Error("Invalid planner team settings");
     }
     return {
       team: team.team as PlannerTeam,
       displayName: team.displayName.trim(),
+      strings: (
+        team.strings as Array<{ id?: unknown; displayName?: unknown }>
+      ).map((plannerString) => {
+        if (
+          (plannerString.id !== null && typeof plannerString.id !== "number") ||
+          typeof plannerString.displayName !== "string"
+        ) {
+          throw new Error("Invalid planner team settings");
+        }
+        return {
+          id: plannerString.id as number | null,
+          displayName: (plannerString.displayName as string).trim(),
+        };
+      }),
     };
   });
   teamSaveCalls.push({

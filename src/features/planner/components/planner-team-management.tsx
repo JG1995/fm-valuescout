@@ -17,7 +17,9 @@ import {
 } from "../types/team";
 import type { PlannerTeamRemovalImpact } from "../types/team-removal-impact";
 
-type PlannerTeamDraft = PlannerTeamSettingInput & {
+type PlannerTeamDraft = {
+  team: PlannerTeam;
+  displayName: string;
   included: boolean;
 };
 
@@ -194,10 +196,30 @@ export function PlannerTeamManagement({
   const inputs = () =>
     draft
       .filter((team) => team.included)
-      .map(({ team, displayName }) => ({
-        team,
-        displayName: displayName.trim(),
-      }));
+      .map(({ team, displayName }) => {
+        const current = depth.teams.find(
+          (candidate) => candidate.team === team,
+        );
+        if (!current) {
+          // A newly restored team has no stored strings yet; the single
+          // order-0 string matches the server ordinal default ("1st string").
+          return {
+            team,
+            displayName: displayName.trim(),
+            strings: [{ id: null, displayName: "1st string" }],
+          };
+        }
+        return {
+          team,
+          displayName: displayName.trim(),
+          strings: [...current.strings]
+            .sort((left, right) => left.stringOrder - right.stringOrder)
+            .map((plannerString) => ({
+              id: plannerString.id,
+              displayName: plannerString.displayName,
+            })),
+        };
+      });
 
   const submit = (
     teams: PlannerTeamSettingInput[],

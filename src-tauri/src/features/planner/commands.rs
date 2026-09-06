@@ -19,8 +19,8 @@ use super::squad::{
 };
 use super::tactic::{self as tactic_service, PlannerTactic, TacticLane, TacticOptions};
 use super::teams::{
-    self as teams_service, PlannerStaffingTargetRemovalImpact, PlannerTeamInput,
-    PlannerTeamRemovalImpact,
+    self as teams_service, PlannerStaffingTargetRemovalImpact, PlannerStringInput,
+    PlannerStringRemovalImpact, PlannerTeamInput, PlannerTeamRemovalImpact,
 };
 
 #[derive(Serialize)]
@@ -578,9 +578,26 @@ pub fn get_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PlannerStringInputDto {
+    pub id: Option<i64>,
+    pub display_name: String,
+}
+
+impl From<PlannerStringInputDto> for PlannerStringInput {
+    fn from(input: PlannerStringInputDto) -> Self {
+        Self {
+            id: input.id,
+            display_name: input.display_name,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PlannerTeamInputDto {
     pub team: String,
     pub display_name: String,
+    pub strings: Vec<PlannerStringInputDto>,
 }
 
 impl From<PlannerTeamInputDto> for PlannerTeamInput {
@@ -588,6 +605,11 @@ impl From<PlannerTeamInputDto> for PlannerTeamInput {
         Self {
             team: input.team,
             display_name: input.display_name,
+            strings: input
+                .strings
+                .into_iter()
+                .map(PlannerStringInput::from)
+                .collect(),
         }
     }
 }
@@ -612,11 +634,30 @@ impl From<PlannerStaffingTargetRemovalImpact> for PlannerStaffingTargetRemovalIm
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PlannerStringRemovalImpactDto {
+    pub string_id: i64,
+    pub display_name: String,
+    pub assignment_count: i64,
+}
+
+impl From<PlannerStringRemovalImpact> for PlannerStringRemovalImpactDto {
+    fn from(impact: PlannerStringRemovalImpact) -> Self {
+        Self {
+            string_id: impact.string_id,
+            display_name: impact.display_name,
+            assignment_count: impact.assignment_count,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PlannerTeamRemovalImpactDto {
     pub team: String,
     pub display_name: String,
     pub assignment_count: i64,
     pub staffing_targets: Vec<PlannerStaffingTargetRemovalImpactDto>,
+    pub strings: Vec<PlannerStringRemovalImpactDto>,
 }
 
 impl From<PlannerTeamRemovalImpact> for PlannerTeamRemovalImpactDto {
@@ -630,6 +671,7 @@ impl From<PlannerTeamRemovalImpact> for PlannerTeamRemovalImpactDto {
                 .into_iter()
                 .map(Into::into)
                 .collect(),
+            strings: impact.strings.into_iter().map(Into::into).collect(),
         }
     }
 }

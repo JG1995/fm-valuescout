@@ -1674,19 +1674,57 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             if (!Array.isArray(args?.teams)) {
               throw new Error("Invalid planner team settings");
             }
-            const included = new Set(args.teams.map((team) => team?.team));
-            return plannerDepth.teams
-              .filter((team) => !included.has(team.team))
-              .map((team) => ({
-                team: team.team,
-                displayName: team.displayName,
-                assignmentCount: team.strings.reduce(
-                  (count, plannerString) =>
-                    count + plannerString.assignments.length,
-                  0,
-                ),
-                staffingTargets: [],
-              }));
+            const included = new Map(args.teams.map((team) => [team?.team, team]));
+            const impacts = [];
+            for (const team of plannerDepth.teams) {
+              const input = included.get(team.team);
+              if (!input) {
+                impacts.push({
+                  team: team.team,
+                  displayName: team.displayName,
+                  assignmentCount: team.strings.reduce(
+                    (count, plannerString) =>
+                      count + plannerString.assignments.length,
+                    0,
+                  ),
+                  staffingTargets: [],
+                  strings: team.strings.map((plannerString) => ({
+                    stringId: plannerString.id,
+                    displayName: plannerString.displayName,
+                    assignmentCount: plannerString.assignments.length,
+                  })),
+                });
+                continue;
+              }
+              const desiredIds = new Set(
+                Array.isArray(input?.strings)
+                  ? input.strings
+                      .map((plannerString) => plannerString?.id)
+                      .filter((id) => typeof id === "number")
+                  : [],
+              );
+              const removed = team.strings.filter(
+                (plannerString) => !desiredIds.has(plannerString.id),
+              );
+              if (removed.length > 0) {
+                impacts.push({
+                  team: team.team,
+                  displayName: team.displayName,
+                  assignmentCount: removed.reduce(
+                    (count, plannerString) =>
+                      count + plannerString.assignments.length,
+                    0,
+                  ),
+                  staffingTargets: [],
+                  strings: removed.map((plannerString) => ({
+                    stringId: plannerString.id,
+                    displayName: plannerString.displayName,
+                    assignmentCount: plannerString.assignments.length,
+                  })),
+                });
+              }
+            }
+            return impacts;
           }
 
           if (cmd === "save_planner_teams") {
@@ -1696,7 +1734,8 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             const inputs = args.teams.map((input) => {
               if (
                 !["senior", "reserves", "youth"].includes(input?.team) ||
-                typeof input?.displayName !== "string"
+                typeof input?.displayName !== "string" ||
+                !Array.isArray(input?.strings)
               ) {
                 throw new Error("Invalid planner team settings");
               }

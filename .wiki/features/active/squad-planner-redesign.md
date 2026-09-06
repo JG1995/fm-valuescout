@@ -251,7 +251,7 @@ Land the v43 string-name persistence with ordinal backfill and ordinal defaults 
 
 #### Commit 3 — Own full squad structure in one team-settings transaction
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): save squad structure transactionally`
 
@@ -317,7 +317,7 @@ Land the v43 string-name persistence with ordinal backfill and ordinal defaults 
 
 #### Commit 4 — Manage strings inside Manage Teams
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(planner): manage strings in Manage Teams`
 
@@ -498,19 +498,19 @@ Land the v43 string-name persistence with ordinal backfill and ordinal defaults 
 
 **PR:** PR 1 — Redesign Squad Planner around a configurable squad-depth board
 
-**Commit:** Own full squad structure in one team-settings transaction
+**Commit:** Manage strings inside Manage Teams
 
 ### RED or removal proof
 
-Add structural-save tests that fail on the team-only input, covering stable IDs, scoped removal, confirmation, name rules, hostile IDs, and collision-safe reorder.
+Add route tests that fail on the team-only modal for string rename, reorder, confirmed removal, ordinal defaults, and invalid names.
 
 ### Expected outcome
 
-One `save_planner_teams` transaction validates and persists complete team and string structure while retaining the working legacy add/remove path.
+Manage Teams edits each enabled squad's complete ordered string set and submits one confirmed structural save while the legacy header path remains intact.
 
 ### Explicit exclusions
 
-Manage Teams string-editing UI, board rendering, picker or optimizer behavior changes, and legacy command retirement.
+Board rendering, header-menu removal, command retirement, picker or optimizer changes, and unrelated UI changes.
 
 ## Discoveries and replanning
 
@@ -521,7 +521,8 @@ Manage Teams string-editing UI, board rendering, picker or optimizer behavior ch
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 1 — Record the approved feature plan | 4e53fb047353405d1758a3125f2951cda19924df | Recorded the accepted ledger and active TODO link on the authorized feature branch. | Ledger and delivery classifiers passed; staged whitespace check passed. | Not applicable | Clear | 0 | None. |
-| PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 2 — Persist named planner strings with ordinal backfill | Pending record | Added v43 string-name persistence, exact ordinal backfill, shared writer defaults, and typed DTO fixtures without changing UI behavior. | Expected migration RED; check-rust and full check passed with 801 Rust tests, 0 failed, 2 intentionally ignored; LSP and whitespace checks clean. | Pass | Clear | 0 | None. |
+| PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 2 — Persist named planner strings with ordinal backfill | 33167621cf0826d8612bd9e5e78f823f1d5680f6 | Added v43 string-name persistence, exact ordinal backfill, shared writer defaults, and typed DTO fixtures without changing UI behavior. | Expected migration RED; check-rust and full check passed with 801 Rust tests, 0 failed, 2 intentionally ignored; LSP and whitespace checks clean. | Pass | Clear | 0 | None. |
+| PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 3 — Own full squad structure in one team-settings transaction | Pending record | Extended the team-settings transaction and adapter to validate and persist complete ordered string structure with stable IDs, scoped removals, and retained legacy mutations. | Structural RED produced four expected failures; planner 22/22, route 133/133, check-rust 809 passed, full check passed, and focused Planner smoke 1/1 passed. | Pass | Clear | 1 | Corrected target-name assertions and the E2E impact shape. Full smoke also exposed one reproducible unrelated Squad CA-boost progress failure outside this packet; focused Planner smoke passed. |
 
 ## Final validation
 
