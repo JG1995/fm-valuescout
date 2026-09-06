@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
@@ -76,19 +76,22 @@ describe("my club squad retains interaction during delayed Load Data", () => {
         0,
     ).toBe(false);
 
-    // Exercise sort while pending: click Name header
-    const nameHeader = within(table).getByRole("button", { name: "Name" });
-    await user.click(nameHeader);
+    // Exercise sort while pending: click the sortable Value analysis leaf
+    // (identity is required and unsortable, so it offers no sort affordance)
+    const valueHeader = within(table).getByRole("button", { name: "Value" });
+    await user.click(valueHeader);
     await waitFor(() =>
       expect(router.state.location.search).toMatchObject({
-        squadSort: "name",
+        squadSort: "value",
       }),
     );
     expect(within(table).getByText("Alice Squad")).toBeInTheDocument();
 
-    // Exercise row activation while pending: click Squad player link/row
-    const aliceLink = within(table).getByRole("link", { name: /Alice Squad/ });
-    await user.click(aliceLink);
+    // Exercise row activation while pending: whole-row click navigates to
+    // the player profile (the required identity cell carries no link)
+    const aliceRow = within(table).getByText("Alice Squad").closest("tr");
+    if (!aliceRow) throw new Error("Expected Alice row");
+    fireEvent.click(aliceRow);
     await waitFor(() =>
       expect(router.state.location.pathname).toBe("/players/201"),
     );

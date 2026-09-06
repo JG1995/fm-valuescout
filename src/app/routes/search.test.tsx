@@ -2423,7 +2423,7 @@ describe("search route", () => {
       screen.queryByText("No players in this Moneyball import"),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText(/Adjust or clear filters in the strip above/),
+      screen.getByText(/Adjust or clear filters in the toolbar above/),
     ).toBeInTheDocument();
   });
 
@@ -3083,5 +3083,185 @@ describe("search route", () => {
     expect(
       screen.queryByText("Last import: 3 players, 2 stored, 1 skipped."),
     ).toBeNull();
+  });
+
+  describe("search table toolbar", () => {
+    it("associates summary, chips, edit, columns, and dataset toggles in one table toolbar", async () => {
+      await resolveLoadDataIpcMock();
+      setSearchPlayersOverride([playerNamed("High CA", 180)]);
+      renderSearchRoute();
+
+      await screen.findByText("High CA");
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Player results toolbar",
+      });
+      expect(
+        within(toolbar).getByText(/players · sorted by/),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Edit filters" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Columns" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("switch", { name: "Shortlist: Off" }),
+      ).toBeInTheDocument();
+      const table = screen.getByRole("table", {
+        name: "Player search results",
+      });
+      expect(
+        toolbar.compareDocumentPosition(table) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it("keeps Add Tactic and Upload Shortlist outside the generic toolbar", async () => {
+      await resolveLoadDataIpcMock();
+      setSearchPlayersOverride([playerNamed("High CA", 180)]);
+      renderSearchRoute("/search?view=general");
+
+      await screen.findByText("High CA");
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Player results toolbar",
+      });
+      const header = screen.getByTestId("search-page-header");
+      expect(
+        within(header).getByRole("heading", {
+          level: 1,
+          name: "Player Search",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        within(header).getByTestId("search-page-actions"),
+      ).toBeInTheDocument();
+      for (const name of [
+        "Add Tactic (Current)",
+        "Add Tactic (Potential)",
+        "Upload Shortlist",
+      ]) {
+        expect(screen.getByRole("button", { name })).toBeInTheDocument();
+        expect(
+          within(header).getByRole("button", { name }),
+        ).toBeInTheDocument();
+        expect(within(toolbar).queryByRole("button", { name })).toBeNull();
+      }
+    });
+
+    it("removes chips and clears all through the toolbar", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      setSearchPlayersOverride([
+        playerNamed("High CA", 180),
+        playerNamed("Low CA", 100),
+      ]);
+      const { router } = renderSearchRoute(
+        `/search?sort=ca&dir=desc&combine=and&filters=${encodeURIComponent(
+          JSON.stringify([
+            { field: "ca", op: "gt", value: 150 },
+            { field: "pa", op: "gt", value: 150 },
+          ]),
+        )}`,
+      );
+
+      await screen.findByText("High CA");
+      const getToolbar = () =>
+        screen.getByRole("toolbar", {
+          name: "Player results toolbar",
+        });
+      const toolbar = getToolbar();
+      expect(
+        within(toolbar).getAllByRole("button", { name: /Remove filter/i }),
+      ).toHaveLength(2);
+      expect(
+        within(toolbar).getByRole("button", { name: "Clear all" }),
+      ).toBeInTheDocument();
+
+      await user.click(
+        within(getToolbar()).getByRole("button", {
+          name: /Remove filter CA > 150/i,
+        }),
+      );
+      await waitFor(() => {
+        expect(router.state.location.search.filters).toHaveLength(1);
+      });
+      await waitFor(() => {
+        expect(
+          within(getToolbar()).queryByRole("button", {
+            name: /Remove filter CA > 150/i,
+          }),
+        ).toBeNull();
+      });
+
+      await user.click(
+        within(getToolbar()).getByRole("button", { name: "Clear all" }),
+      );
+      await waitFor(() => {
+        expect(router.state.location.search.filters).toEqual([]);
+      });
+      await waitFor(() => {
+        expect(
+          within(getToolbar()).queryByRole("button", {
+            name: /Remove filter/i,
+          }),
+        ).toBeNull();
+      });
+      expect(await screen.findByText("Low CA")).toBeInTheDocument();
+    });
+
+    it("hosts the comparison-pool toggle in the toolbar dataset slot", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
+      renderSearchRoute("/search?view=moneyball");
+
+      await screen.findByText("Moneyball Scout");
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Player results toolbar",
+      });
+      expect(
+        within(toolbar).getByRole("button", { name: "Filtered cohort" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Full CSV" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Edit filters" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Upload Moneyball CSV" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).queryByRole("button", {
+          name: "Upload Moneyball CSV",
+        }),
+      ).toBeNull();
+      const header = screen.getByTestId("search-page-header");
+      expect(
+        within(header).getByRole("heading", {
+          level: 1,
+          name: "Player Search",
+        }),
+      ).toBeInTheDocument();
+      for (const name of [
+        "Add Tactic (Current)",
+        "Add Tactic (Potential)",
+        "Upload Moneyball CSV",
+      ]) {
+        expect(
+          within(header).getByRole("button", { name }),
+        ).toBeInTheDocument();
+        expect(within(toolbar).queryByRole("button", { name })).toBeNull();
+      }
+
+      await user.click(
+        within(toolbar).getByRole("button", { name: "Full CSV" }),
+      );
+      await waitFor(() => {
+        expect(getLastSearchPlayersArgs()).toMatchObject({
+          comparisonPool: "fullCsv",
+        });
+      });
+    });
   });
 });

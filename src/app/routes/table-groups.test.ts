@@ -23,7 +23,7 @@ type LayoutCase = {
 // My Staff renders StaffSearchTable with scope "my-staff", which selects the
 // shared STAFF_TABLE_GROUPS (shortlist is false outside shortlistOnly mode).
 const STAFF_SEARCH_COLUMNS = [
-  { id: "name" },
+  { id: "age" },
   { id: "ca" },
   { id: "attr.Attacking" },
   { id: "role.assistant_manager" },
@@ -42,8 +42,8 @@ const CASES: LayoutCase[] = [
     layout: "Search",
     input: SEARCH_TABLE_GROUPS,
     columns: [
-      { id: "name" },
-      { id: "club" },
+      { id: "age" },
+      { id: "nationality" },
       { id: "ca" },
       { id: "value" },
       { id: "tactic_current.goalkeeper" },
@@ -59,7 +59,7 @@ const CASES: LayoutCase[] = [
     layout: "Moneyball",
     input: MONEYBALL_TABLE_GROUPS,
     columns: [
-      { id: "name" },
+      { id: "age" },
       { id: "value" },
       { id: "moneyball.starts" },
       { id: "moneyball.average_rating" },
@@ -77,7 +77,7 @@ const CASES: LayoutCase[] = [
     layout: "Squad",
     input: SQUAD_TABLE_GROUPS,
     columns: [
-      { id: "name" },
+      { id: "age" },
       { id: "ca" },
       { id: "value" },
       { id: "suggested_training" },

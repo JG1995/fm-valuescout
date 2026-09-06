@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { SearchX } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { NationalityCell } from "@/components/player-table/nationality-cell";
 import {
   ConfigurableColumnsControl,
@@ -59,6 +59,7 @@ import type { ComparisonPool, SearchView } from "../types/search-view";
 import { defaultSearchSort } from "../types/search-view";
 import { completeFilterRules } from "../utils/filter-registry";
 import { buildTacticColumnOrder } from "../utils/tactic-columns";
+import { SearchFilterBar } from "./search-filter-bar";
 
 const TEXT_CELL =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
@@ -85,7 +86,9 @@ type SearchResultsPanelProps = {
   filters: FilterRule[];
   filterCombine: FilterCombineMode;
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
-  onShortlistOnlyChange: (shortlistOnly: boolean) => void;
+  onRulesChange: (rules: FilterRule[]) => void;
+  onApplyFilters: (rules: FilterRule[], combine: FilterCombineMode) => void;
+  datasetToggles?: ReactNode;
   view: SearchView;
   comparisonPool: ComparisonPool;
   shortlistOnly: boolean;
@@ -590,7 +593,9 @@ export function SearchResultsPanel({
   filters,
   filterCombine,
   onSortChange,
-  onShortlistOnlyChange,
+  onRulesChange,
+  onApplyFilters,
+  datasetToggles,
   view,
   comparisonPool,
   shortlistOnly,
@@ -781,9 +786,35 @@ export function SearchResultsPanel({
     requestMatchesCommitted || isSortReplacement
       ? committedQuery.data
       : undefined;
+  const columnsControl = (
+    <ConfigurableColumnsControl
+      groups={
+        view === "moneyball" ? MONEYBALL_TABLE_GROUPS : SEARCH_TABLE_GROUPS
+      }
+      metrics={
+        view === "moneyball" ? MONEYBALL_HEADER_METRICS : SEARCH_HEADER_METRICS
+      }
+      visibleColumnIds={layout.columnIds}
+      onAddColumn={(metricId) => addColumns(tableId, [metricId])}
+      onRemoveColumn={removeColumn}
+    />
+  );
+  const renderToolbar = (summary?: ReactNode) => (
+    <SearchFilterBar
+      rules={filters}
+      combine={filterCombine}
+      onRulesChange={onRulesChange}
+      onApply={onApplyFilters}
+      view={view}
+      summary={summary}
+      columnsControl={columnsControl}
+      datasetToggles={datasetToggles}
+    />
+  );
   if (!page) {
     return (
       <Panel title="Results" flush>
+        {renderToolbar()}
         <EmptyState
           icon={SearchX}
           title={
@@ -820,18 +851,6 @@ export function SearchResultsPanel({
       ? "Age / DOB"
       : sortMetric.label
     : (sortColumn?.accessibleLabel ?? sortColumn?.label ?? committed.sortBy);
-  const shortlistSwitch =
-    view === "general" ? (
-      <button
-        type="button"
-        role="switch"
-        aria-checked={shortlistOnly}
-        onClick={() => onShortlistOnlyChange(!shortlistOnly)}
-        className="inline-flex items-center gap-2 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      >
-        Shortlist: {shortlistOnly ? "On" : "Off"}
-      </button>
-    ) : null;
   if (page.total === 0) {
     const appliedFilters = completeFilterRules(filters, view);
     const shortlistEmpty = view === "general" && shortlistOnly;
@@ -846,10 +865,10 @@ export function SearchResultsPanel({
           : "No players in snapshot";
     const emptyBody = shortlistEmpty
       ? appliedFilters.length > 0
-        ? "Adjust or clear filters in the strip above, or turn Shortlist off to widen the result set."
+        ? "Adjust or clear filters in the toolbar above, or turn Shortlist off to widen the result set."
         : "Upload a shortlist CSV for this save, or turn Shortlist off to browse every snapshot player."
       : appliedFilters.length > 0
-        ? "Adjust or clear filters in the strip above to widen the result set."
+        ? "Adjust or clear filters in the toolbar above to widen the result set."
         : view === "moneyball"
           ? "Upload a Moneyball CSV for the current snapshot to analyse its matched players."
           : "The snapshot exists but holds no player rows. Run Load Data again with Football Manager in an active save.";
@@ -861,13 +880,12 @@ export function SearchResultsPanel({
         className="flex min-h-0 flex-1 flex-col"
         contentClassName="flex min-h-0 flex-1 flex-col"
       >
-        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-4 pb-3">
+        {renderToolbar(
           <p className="text-body-md text-on-surface-variant">
             <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
             players · sorted by {sortLabel} ({dirLabel})
-          </p>
-          {shortlistSwitch}
-        </div>
+          </p>,
+        )}
         <EmptyState icon={SearchX} title={emptyTitle}>
           {emptyBody}
         </EmptyState>
@@ -875,7 +893,7 @@ export function SearchResultsPanel({
     );
   }
 
-  const removeColumn = (metricId: string) => {
+  function removeColumn(metricId: string) {
     let nextColumnIds = layout.columnIds.filter((id) => id !== metricId);
     if (nextColumnIds.length === layout.columnIds.length) {
       return;
@@ -932,7 +950,7 @@ export function SearchResultsPanel({
       return;
     }
     onSortChange(nextSort, defaultDirForSortField(nextSort));
-  };
+  }
 
   return (
     <Panel
@@ -941,26 +959,12 @@ export function SearchResultsPanel({
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-4 pb-3">
+      {renderToolbar(
         <p className="text-body-md text-on-surface-variant">
           <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
           players · sorted by {sortLabel} ({dirLabel})
-        </p>
-        {shortlistSwitch}
-        <ConfigurableColumnsControl
-          groups={
-            view === "moneyball" ? MONEYBALL_TABLE_GROUPS : SEARCH_TABLE_GROUPS
-          }
-          metrics={
-            view === "moneyball"
-              ? MONEYBALL_HEADER_METRICS
-              : SEARCH_HEADER_METRICS
-          }
-          visibleColumnIds={layout.columnIds}
-          onAddColumn={(metricId) => addColumns(tableId, [metricId])}
-          onRemoveColumn={removeColumn}
-        />
-      </div>
+        </p>,
+      )}
       {isReplacementPending ? (
         <p
           className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"

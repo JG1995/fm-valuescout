@@ -537,7 +537,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 #### Commit 7 — Integrate the Search table toolbar
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tables): integrate the Search table toolbar`
 
@@ -595,7 +595,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 #### Commit 8 — Integrate the Staff table toolbar
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tables): integrate the Staff table toolbar`
 
@@ -821,19 +821,19 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 **PR:** Redesign shared table for analysis-first views
 
-**Commit:** Integrate the Search table toolbar
+**Commit:** Integrate the Staff table toolbar
 
 ### RED or removal proof
 
-Add failing toolbar-contract and Search route tests for associated summary, chips, removal, Clear, Edit, Columns, dataset toggles, silent drafts, and page-action non-descendance.
+Add failing Staff route tests for table-associated controls, silent drafts, URL-backed chips and removal, shortlist toggles and path degradation, and page-action non-descendance.
 
 ### Expected outcome
 
-Search and Moneyball Search use one minimal shared table-associated toolbar while Add Tactic and Upload Shortlist remain page-header actions outside it.
+Staff Search, My Staff, and both Staff Shortlist paths reuse the shared toolbar while Staff page actions and My Staff boosts remain outside it.
 
 ### Explicit exclusions
 
-Staff or Squad toolbar adoption, filter or sort semantic changes, page-action behavior changes, backend changes, and unrelated refactors.
+Toolbar-contract redesign, Search or Squad changes, filter or sort semantic changes, backend changes, and unrelated refactors.
 
 ## Discoveries and replanning
 
@@ -848,7 +848,8 @@ Staff or Squad toolbar adoption, filter or sort semantic changes, page-action be
 | PR 1 — Redesign shared table for analysis-first views | Commit 3 — Establish the sticky identity shell | 98c0cf80a9d60880e00f1a7a5aca199eb143e176 | Added one optional storage-agnostic identity contract, exact shell-to-header callback handoff, strict identity-analysis-fixed ordering, sticky layering, and bounded identity resizing; migrated all callers with identity omitted. | Component tests 32/32; affected route tests 243/243; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review required a combined menu-over-sticky-identity layering proof; correction review accepted it. |
 | PR 1 — Redesign shared table for analysis-first views | Commit 4 — Activate required table identity | 10f9a9fa815a1427b79e1b87e1b425d5952a35bd | Migrated layouts to version 8 with separate identity widths and conservative custom-layout retention, then activated sticky caller-owned identity across all six table modes without imagery or duplication. | Store tests 51/51; affected component and route tests 279/279; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review found nonempty layout replacement dropped identity width; correction preserved it and added persistence regression proof. |
 | PR 1 — Redesign shared table for analysis-first views | Commit 5 — Add grouped column management | 484a8bf6bb5ccf853121c1049a9e98ef1a55a78d | Added one keyboard-operable grouped Columns control driven by the header group input, with analysis-only toggles, identity exclusion, zero-analysis support, and fixed-shortlist degradation. | Component and store tests 93/93; Search 78/78; Staff 47/47; Squad 130/130; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review found missing dialog focus and tactic-only removal restoring defaults; correction fixed leaf and whole-group identity-only paths. |
-| PR 1 — Redesign shared table for analysis-first views | Commit 6 — Present compact accessible tactic headers | Pending record | Added compact tactic placement labels with restrained role context while preserving full accessible definitions through keyboard-focus and hover disclosure for all 11 lanes. | Header and Search tests 123/123; affected Staff, Squad, and store tests 228/228; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 0 | None |
+| PR 1 — Redesign shared table for analysis-first views | Commit 6 — Present compact accessible tactic headers | 64fdf8b4cb270797ef91f7514ee803d4de607d58 | Added compact tactic placement labels with restrained role context while preserving full accessible definitions through keyboard-focus and hover disclosure for all 11 lanes. | Header and Search tests 123/123; affected Staff, Squad, and store tests 228/228; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 0 | None |
+| PR 1 — Redesign shared table for analysis-first views | Commit 7 — Integrate the Search table toolbar | Pending record | Added a minimal shared table-associated toolbar and adopted it in Search and Moneyball while keeping tactic and upload actions in the route-owned page header. | Full frontend suite 931/931; `./scripts/dev check` passed; diff check clean. | Pass | Clear | 2 | Corrected three obsolete post-v8 test assumptions from earlier packets; reviews then required same-row page-header actions, current analysis group fixtures, and removal of an invalid type-only test. |
 
 ## Final validation
 

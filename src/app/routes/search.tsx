@@ -165,9 +165,12 @@ export const Route = createFileRoute("/search")({
 
 function PanelFallback() {
   return (
-    <div className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
-      Loading search results…
-    </div>
+    <>
+      <h1 className="text-headline-lg text-on-surface">Player Search</h1>
+      <div className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
+        Loading search results…
+      </div>
+    </>
   );
 }
 
@@ -293,6 +296,56 @@ function SearchPageContent() {
       replace: patch.replace ?? true,
     });
 
+  const handleRulesChange = (rules: FilterRule[]) => {
+    updateSearch({ filters: rules });
+  };
+  const handleApplyFilters = (
+    rules: FilterRule[],
+    nextCombine: FilterCombineMode,
+  ) => {
+    void updateSearch({ filters: rules, combine: nextCombine }).then(() => {
+      addColumns(
+        tableId,
+        rules.map((rule) => rule.field),
+      );
+    });
+  };
+  const shortlistSwitch = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={shortlistOnly}
+      onClick={() => {
+        updateSearch({ shortlistOnly: !shortlistOnly ? true : undefined });
+      }}
+      className="inline-flex items-center gap-2 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    >
+      Shortlist: {shortlistOnly ? "On" : "Off"}
+    </button>
+  );
+  const comparisonPoolToggle = (
+    <fieldset className="inline-flex rounded-full border border-outline bg-surface-container-high p-0.5">
+      <legend className="sr-only">Comparison pool</legend>
+      {(["filtered", "fullCsv"] as const).map((pool) => (
+        <button
+          key={pool}
+          type="button"
+          aria-pressed={comparisonPool === pool}
+          className={
+            comparisonPool === pool
+              ? "rounded-full bg-primary px-3 py-1 text-label-md text-on-primary"
+              : "rounded-full px-3 py-1 text-label-md text-on-surface-variant hover:text-on-surface"
+          }
+          onClick={() => updateSearch({ comparisonPool: pool })}
+        >
+          {pool === "filtered" ? "Filtered cohort" : "Full CSV"}
+        </button>
+      ))}
+    </fieldset>
+  );
+  const datasetToggles =
+    view === "general" ? shortlistSwitch : comparisonPoolToggle;
+
   const renderSearchBody = (tacticState: TacticContextBoundaryState | null) => {
     const tactic = tacticState?.tactic;
     const options = tacticState?.options;
@@ -384,55 +437,80 @@ function SearchPageContent() {
       }
     };
 
+    // Page-header owns the title and every page action (Add Tactic groups,
+    // General Upload Shortlist, Moneyball upload): the generic table toolbar
+    // below owns only dataset slots and never hosts these controls.
+    const pageHeader = (
+      <header
+        data-testid="search-page-header"
+        className="flex w-full flex-wrap items-start justify-between gap-3"
+      >
+        <h1 className="text-headline-lg text-on-surface">Player Search</h1>
+        <div
+          className="flex flex-wrap items-center justify-end gap-2"
+          data-testid="search-page-actions"
+        >
+          <TacticColumnToggles
+            currentActive={currentActive}
+            potentialActive={potentialActive}
+            disabled={toggleDisabled}
+            onToggleGroup={toggleGroup}
+          />
+          {view === "general" ? (
+            <>
+              <Button
+                variant="secondary"
+                icon={FileUp}
+                disabled={!resultContext}
+                onClick={() => setShortlistImportOpen(true)}
+              >
+                Upload Shortlist
+              </Button>
+              {lastShortlistImport ? (
+                <p className="text-body-sm text-on-surface-variant">
+                  Last import: {lastShortlistImport.totalPlayers} players,{" "}
+                  {lastShortlistImport.storedPlayers} stored,{" "}
+                  {lastShortlistImport.skippedPlayers} skipped.
+                </p>
+              ) : null}
+            </>
+          ) : null}
+          {view === "moneyball" ? (
+            <>
+              <Button
+                variant="secondary"
+                icon={FileUp}
+                onClick={() => setImportOpen(true)}
+              >
+                Upload Moneyball CSV
+              </Button>
+              {lastMoneyballImport ? (
+                <p className="text-body-sm text-on-surface-variant">
+                  Last import: {lastMoneyballImport.storedPlayers} stored,{" "}
+                  {lastMoneyballImport.skippedPlayers} skipped.
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      </header>
+    );
+
     return (
       <>
-        <SearchFilterBar
-          rules={filters}
-          combine={combine}
-          onRulesChange={(rules) => {
-            updateSearch({ filters: rules });
-          }}
-          onApply={(rules, nextCombine) => {
-            void updateSearch({ filters: rules, combine: nextCombine }).then(
-              () => {
-                addColumns(
-                  tableId,
-                  rules.map((rule) => rule.field),
-                );
-              },
-            );
-          }}
-          actions={
-            <TacticColumnToggles
-              currentActive={currentActive}
-              potentialActive={potentialActive}
-              disabled={toggleDisabled}
-              onToggleGroup={toggleGroup}
-            />
-          }
-          afterEditActions={
-            view === "general" ? (
-              <>
-                <Button
-                  variant="secondary"
-                  icon={FileUp}
-                  disabled={!resultContext}
-                  onClick={() => setShortlistImportOpen(true)}
-                >
-                  Upload Shortlist
-                </Button>
-                {lastShortlistImport ? (
-                  <p className="text-body-sm text-on-surface-variant">
-                    Last import: {lastShortlistImport.totalPlayers} players,{" "}
-                    {lastShortlistImport.storedPlayers} stored,{" "}
-                    {lastShortlistImport.skippedPlayers} skipped.
-                  </p>
-                ) : null}
-              </>
-            ) : undefined
-          }
-          view={view}
-        />
+        {pageHeader}
+        {resultContext ? null : (
+          <SearchFilterBar
+            rules={filters}
+            combine={combine}
+            onRulesChange={handleRulesChange}
+            onApply={handleApplyFilters}
+            view={view}
+            datasetToggles={
+              view === "moneyball" ? comparisonPoolToggle : undefined
+            }
+          />
+        )}
         {tacticMessage ? (
           <div
             className={`flex items-center justify-between gap-3 text-body-sm ${tacticMessageIsError ? "text-error" : "text-on-surface-variant"}`}
@@ -478,9 +556,9 @@ function SearchPageContent() {
               onSortChange={(nextSort, nextDir) => {
                 updateSearch({ sort: nextSort, dir: nextDir });
               }}
-              onShortlistOnlyChange={(next: boolean) => {
-                updateSearch({ shortlistOnly: next ? true : undefined });
-              }}
+              onRulesChange={handleRulesChange}
+              onApplyFilters={handleApplyFilters}
+              datasetToggles={datasetToggles}
             />
           ) : (
             <Panel title="Results" flush>
@@ -500,41 +578,6 @@ function SearchPageContent() {
 
   return (
     <>
-      {view === "moneyball" ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <fieldset className="inline-flex rounded-full border border-outline bg-surface-container-high p-0.5">
-            <legend className="sr-only">Comparison pool</legend>
-            {(["filtered", "fullCsv"] as const).map((pool) => (
-              <button
-                key={pool}
-                type="button"
-                aria-pressed={comparisonPool === pool}
-                className={
-                  comparisonPool === pool
-                    ? "rounded-full bg-primary px-3 py-1 text-label-md text-on-primary"
-                    : "rounded-full px-3 py-1 text-label-md text-on-surface-variant hover:text-on-surface"
-                }
-                onClick={() => updateSearch({ comparisonPool: pool })}
-              >
-                {pool === "filtered" ? "Filtered cohort" : "Full CSV"}
-              </button>
-            ))}
-          </fieldset>
-          <Button
-            variant="secondary"
-            icon={FileUp}
-            onClick={() => setImportOpen(true)}
-          >
-            Upload Moneyball CSV
-          </Button>
-          {lastMoneyballImport ? (
-            <p className="text-body-sm text-on-surface-variant">
-              Last import: {lastMoneyballImport.storedPlayers} stored,{" "}
-              {lastMoneyballImport.skippedPlayers} skipped.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
       {resultContext ? (
         <TacticContextBoundary
           context={{
@@ -602,7 +645,6 @@ function SearchPageContent() {
 function SearchPage() {
   return (
     <div className="flex h-full min-w-0 flex-col gap-gutter">
-      <h1 className="text-headline-lg text-on-surface">Player Search</h1>
       <Suspense fallback={<PanelFallback />}>
         <SearchPageContent />
       </Suspense>
