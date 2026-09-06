@@ -139,8 +139,11 @@ export function PlannerTacticInspector({
         <h3 id={headingId} className="text-label-lg text-on-surface">
           Selected Slot
         </h3>
-        <p className="text-body-sm text-on-surface-variant">
-          {linkedPositionDescription(selectedLane, lanes, options)}
+        <p className="whitespace-pre-line text-body-sm text-on-surface-variant">
+          {linkedPositionDescription(selectedLane, lanes, options).replace(
+            " / ",
+            "\n",
+          )}
         </p>
       </div>
 

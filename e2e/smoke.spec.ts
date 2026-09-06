@@ -1900,9 +1900,11 @@ test.describe("application smoke", () => {
     );
     await expect(selectedTransition).toBeVisible();
     await expect(selectedTransition).toHaveText(
-      "IP: AML · Winger / OOP: ML · Tracking Wide Midfielder",
+      "IP: AML · Winger OOP: ML · Tracking Wide Midfielder",
     );
     await expect(selectedTransition).not.toHaveClass(/sr-only/);
+    await expect(selectedTransition).toHaveCSS("white-space", "pre-line");
+    expect(await selectedTransition.textContent()).toContain("Winger\nOOP:");
     const transitionBox = await selectedTransition.boundingBox();
     if (
       !transitionBox ||
@@ -1928,7 +1930,7 @@ test.describe("application smoke", () => {
     await rightWinger.focus();
     await page.keyboard.press("Enter");
     await expect(selectedTransition).toHaveText(
-      "IP: AMR · Winger / OOP: MR · Tracking Wide Midfielder",
+      "IP: AMR · Winger OOP: MR · Tracking Wide Midfielder",
     );
     await expect(selectedTransition).toBeVisible();
     // A cross-lane DCR/DCL swap shares coordinates across lanes: each

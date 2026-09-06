@@ -3377,7 +3377,7 @@ describe("My Club route", () => {
       "goalkeeper",
     );
     expect(visibleTransition).toHaveTextContent(
-      "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+      "IP: GK · Goalkeeper OOP: GK · Line-Holding Keeper",
     );
     expect(visibleTransition?.classList.contains("sr-only")).toBe(false);
     await user.click(
@@ -3389,7 +3389,7 @@ describe("My Club route", () => {
     expect(
       pitch.querySelector("[data-selected-slot-transition]"),
     ).toHaveTextContent(
-      "IP: DCR · Centre-Back / OOP: DCL · Covering Centre-Back",
+      "IP: DCR · Centre-Back OOP: DCL · Covering Centre-Back",
     );
     screen.getByRole("button", { name: "IP: DCL · Centre-Back" }).focus();
     await user.keyboard("{Enter}");
@@ -3398,9 +3398,7 @@ describe("My Club route", () => {
     ).toHaveAttribute("data-selected-slot-transition", "right_centre_back");
     expect(
       pitch.querySelector("[data-selected-slot-transition]"),
-    ).toHaveTextContent(
-      "IP: DCL · Centre-Back / OOP: DC · Covering Centre-Back",
-    );
+    ).toHaveTextContent("IP: DCL · Centre-Back OOP: DC · Covering Centre-Back");
 
     // Single-phase modes render no connectors.
     const viewGroup = screen.getByRole("group", {
@@ -3430,11 +3428,13 @@ describe("My Club route", () => {
     // rotated: the goalkeeper still leads with a readable transition.
     const rows = within(panel).getAllByRole("button");
     expect(rows).toHaveLength(11);
+    expect(rows[0].textContent).toContain("Goalkeeper\nOOP:");
+    expect(rows[0]).toHaveClass("whitespace-pre-line");
     expect(rows[0]).toHaveTextContent(
-      "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+      "IP: GK · Goalkeeper OOP: GK · Line-Holding Keeper",
     );
     expect(rows[10]).toHaveTextContent(
-      "IP: STC · Centre Forward / OOP: STC · Central Outlet Centre Forward",
+      "IP: STC · Centre Forward OOP: STC · Central Outlet Centre Forward",
     );
     for (const row of rows) {
       expect(row).toHaveAttribute("aria-pressed");
@@ -3465,7 +3465,7 @@ describe("My Club route", () => {
     ).toHaveAttribute("aria-pressed", "true");
     expect(
       within(screen.getByRole("region", { name: "Selected Slot" })).getByText(
-        "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+        "IP: GK · Goalkeeper OOP: GK · Line-Holding Keeper",
       ),
     ).toBeInTheDocument();
 
@@ -3487,7 +3487,7 @@ describe("My Club route", () => {
     expect(afterMarkerSelect[0]).toHaveAttribute("aria-pressed", "true");
     expect(
       within(screen.getByRole("region", { name: "Selected Slot" })).getByText(
-        "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+        "IP: GK · Goalkeeper OOP: GK · Line-Holding Keeper",
       ),
     ).toBeInTheDocument();
   });

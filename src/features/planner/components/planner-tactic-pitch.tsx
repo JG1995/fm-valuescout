@@ -395,10 +395,13 @@ export function TacticPitchCanvas({
       {dual ? (
         <p
           data-selected-slot-transition={selectedLane?.laneId ?? "none"}
-          className="pt-1 text-center text-label-md text-on-surface"
+          className="whitespace-pre-line pt-1 text-center text-label-md text-on-surface"
         >
           {selectedLane
-            ? linkedPositionDescription(selectedLane, lanes, options)
+            ? linkedPositionDescription(selectedLane, lanes, options).replace(
+                " / ",
+                "\n",
+              )
             : "Select a position"}
         </p>
       ) : null}
