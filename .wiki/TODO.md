@@ -52,6 +52,8 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
+- **Squad Planner Redesign** — squad-depth board around Manage Teams configuration with named strings, sticky tactical slots, and bounded ultrawide overflow ([active ledger](./features/active/squad-planner-redesign.md), Linear JAY-58).
+
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
