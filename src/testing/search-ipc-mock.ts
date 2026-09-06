@@ -472,7 +472,7 @@ export function resolveSearchPlayersIpcMock(
   if (
     (offset >= 50 && searchPlayersPageMode === "pendingSecondPage") ||
     (offset === 0 &&
-      sortBy === "name" &&
+      (sortBy === "name" || sortBy === "value") &&
       searchPlayersPageMode === "pendingReplacement") ||
     (offset === 0 &&
       sortBy === "attr.Acceleration" &&
@@ -502,7 +502,7 @@ export function resolveSearchPlayersIpcMock(
 
   if (
     offset === 0 &&
-    sortBy === "name" &&
+    (sortBy === "name" || sortBy === "value") &&
     searchPlayersPageMode === "rejectReplacementOnce" &&
     !rejectedReplacement
   ) {

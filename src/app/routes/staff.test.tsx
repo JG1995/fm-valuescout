@@ -179,12 +179,10 @@ describe("staff route", () => {
     const allJobsTable = await screen.findByRole("table", {
       name: "Staff Shortlist",
     });
-    await user.click(
-      within(allJobsTable).getByRole("button", { name: "Name" }),
-    );
+    await user.click(within(allJobsTable).getByRole("button", { name: "CA" }));
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        shortlistSort: "name",
+        shortlistSort: "ca",
         shortlistDir: "asc",
       });
     });
@@ -195,7 +193,7 @@ describe("staff route", () => {
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
         preferredJob: "Technical Director",
-        shortlistSort: "name",
+        shortlistSort: "ca",
         shortlistDir: "asc",
         shortlistContextSort: "role.technical_director",
         shortlistContextDir: "desc",
@@ -213,7 +211,7 @@ describe("staff route", () => {
     );
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        shortlistSort: "name",
+        shortlistSort: "ca",
         shortlistDir: "asc",
         shortlistContextSort: "coaching_qualifications",
         shortlistContextDir: "asc",
@@ -225,7 +223,7 @@ describe("staff route", () => {
     );
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        shortlistSort: "name",
+        shortlistSort: "ca",
         shortlistDir: "asc",
       });
       expect(router.state.location.search).not.toHaveProperty(
@@ -238,7 +236,7 @@ describe("staff route", () => {
     expect(
       within(
         await screen.findByRole("table", { name: "Staff Shortlist" }),
-      ).getByRole("columnheader", { name: "Name" }),
+      ).getByRole("columnheader", { name: "CA" }),
     ).toHaveAttribute("aria-sort", "ascending");
   });
 
@@ -275,12 +273,12 @@ describe("staff route", () => {
       name: "Staff search results",
     });
 
-    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await user.click(within(table).getByRole("button", { name: "CA" }));
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        sort: "name",
+        sort: "ca",
         dir: "asc",
-        searchSort: "name",
+        searchSort: "ca",
         searchDir: "asc",
       });
     });
@@ -288,7 +286,7 @@ describe("staff route", () => {
       name: "Staff search results",
     });
     expect(
-      within(sortedTable).getByRole("columnheader", { name: "Name" }),
+      within(sortedTable).getByRole("columnheader", { name: "CA" }),
     ).toHaveAttribute("aria-sort", "ascending");
   });
 
@@ -464,7 +462,7 @@ describe("staff route", () => {
       name: "Staff search results",
     });
     fireEvent.contextMenu(
-      within(updatedTable).getByRole("columnheader", { name: "Name" }),
+      within(updatedTable).getByRole("columnheader", { name: "CA" }),
     );
     await user.click(screen.getByRole("menuitem", { name: "Add column" }));
     await user.click(
@@ -489,7 +487,7 @@ describe("staff route", () => {
     usePlayerTableStore.setState({
       layouts: {
         ...defaultPlayerTableLayouts(),
-        "staff-search": { columnIds: ["name", "ca"], widths: {} },
+        "staff-search": { columnIds: ["ca"], widths: {}, identityWidth: 280 },
       },
     });
     renderStaffRoute();
@@ -805,8 +803,12 @@ describe("staff route", () => {
     usePlayerTableStore.setState({
       layouts: {
         ...defaultPlayerTableLayouts(),
-        "staff-search": { columnIds: ["name"], widths: {} },
-        "staff-shortlist": { columnIds: ["name"], widths: {} },
+        "staff-search": { columnIds: ["age"], widths: {}, identityWidth: 280 },
+        "staff-shortlist": {
+          columnIds: ["age"],
+          widths: {},
+          identityWidth: 280,
+        },
       },
     });
     const filters = encodeURIComponent(
@@ -825,7 +827,7 @@ describe("staff route", () => {
     });
     expect(
       usePlayerTableStore.getState().layouts["staff-search"].columnIds,
-    ).toEqual(["name"]);
+    ).toEqual(["age"]);
   });
 
   it("shows setup feedback with Upload available when filtering on with no list", async () => {
@@ -1110,8 +1112,9 @@ describe("staff route", () => {
       layouts: {
         ...defaultPlayerTableLayouts(),
         "staff-search": {
-          columnIds: ["name", "wage", "job_id"],
+          columnIds: ["wage", "job_id"],
           widths: {},
+          identityWidth: 280,
         },
       },
     });
@@ -1177,5 +1180,131 @@ describe("staff route", () => {
         sortDir: "asc",
       });
     });
+  });
+
+  it("renders required sticky staff identity without duplicate columns", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setStaffOverride([
+      {
+        ...fixtureStaff(),
+        uid: 201,
+        name: "Identity Coach",
+        club: "Test FC",
+        division: "Premier Division",
+      },
+      {
+        ...fixtureStaff(),
+        uid: 202,
+        name: "No context",
+        club: null,
+        division: null,
+      },
+    ]);
+    const { router } = renderStaffRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Staff search results",
+    });
+    expect(
+      within(table).queryByRole("columnheader", { name: "Club" }),
+    ).toBeNull();
+    expect(
+      within(table).queryByRole("columnheader", { name: "Division" }),
+    ).toBeNull();
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Staff");
+    expect(headers[0]).toHaveAttribute("rowspan", "2");
+    expect(headers[0].className).toContain("sticky");
+    expect(headers[0].className).toContain("left-0");
+    expect(table.querySelector("img")).toBeNull();
+
+    const row = within(table).getByText("Identity Coach").closest("tr");
+    const noContextRow = within(table).getByText("No context").closest("tr");
+    if (!row || !noContextRow) {
+      throw new Error("Expected staff identity rows.");
+    }
+    expect(row).toHaveStyle({ height: "40px" });
+    const cells = within(row).getAllByRole("cell");
+    expect(cells[0].className).toContain("sticky");
+    expect(cells[0]).toHaveTextContent("Test FC · Premier Division");
+    const noContextCell = within(noContextRow).getAllByRole("cell")[0];
+    expect(noContextCell).toHaveTextContent("No context");
+    expect(noContextCell).not.toHaveTextContent(" · ");
+
+    await user.click(within(row).getByText("Test FC · Premier Division"));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/staff/201");
+    });
+  });
+
+  it("renders sticky staff identity first in the managed-club overview", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffOverride([fixtureStaff()]);
+    renderStaffRoute("/staff?view=my-staff");
+
+    const table = await screen.findByRole("table", {
+      name: "Staff overview",
+    });
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Staff");
+    expect(headers[0].className).toContain("sticky");
+    expect(table.querySelector("img")).toBeNull();
+    const row = within(table).getByText("Alex Coach").closest("tr");
+    if (!row) {
+      throw new Error("Expected a managed-club staff identity row.");
+    }
+    expect(within(row).getAllByRole("cell")[0].className).toContain("sticky");
+  });
+
+  it("renders sticky staff identity first on the All-jobs shortlist path", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([fixtureStaff()]);
+    renderStaffRoute("/staff?shortlistOnly=true");
+
+    const table = await screen.findByRole("table", {
+      name: "Staff Shortlist",
+    });
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Staff");
+    expect(headers[0].className).toContain("sticky");
+    expect(table.querySelector("img")).toBeNull();
+    expect(
+      within(table).getByRole("columnheader", { name: "Preferred Job" }),
+    ).toBeInTheDocument();
+    expect(within(table).getByText("Alex Coach")).toBeInTheDocument();
+  });
+
+  it("renders sticky staff identity first on a fixed shortlist presentation", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([
+      fixtureStaff({
+        shortlist: {
+          preferredJob: "Coach",
+          clubJob: "Coach",
+          coachingQualifications: "Continental A",
+        },
+      }),
+    ]);
+    renderStaffRoute("/staff?shortlistOnly=true&preferredJob=Coach");
+
+    const table = await screen.findByRole("table", {
+      name: "Staff Shortlist",
+    });
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Staff");
+    expect(headers[0]).toHaveAttribute("rowspan", "2");
+    expect(headers[0].className).toContain("sticky");
+    expect(table.querySelector("img")).toBeNull();
+    expect(
+      within(table).queryByRole("columnheader", { name: "Name" }),
+    ).toBeNull();
+    const row = within(table).getByText("Alex Coach").closest("tr");
+    if (!row) {
+      throw new Error("Expected a fixed-presentation identity row.");
+    }
+    expect(within(row).getAllByRole("cell")[0].className).toContain("sticky");
+    fireEvent.contextMenu(headers[1]);
+    expect(screen.queryByRole("menuitem", { name: "Add column" })).toBeNull();
   });
 });

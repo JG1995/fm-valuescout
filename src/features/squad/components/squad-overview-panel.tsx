@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { UsersRound } from "lucide-react";
 import {
   type ReactNode,
@@ -15,11 +15,17 @@ import {
   PlayerTableHeader,
 } from "@/components/player-table/player-table-header";
 import type { TableGroupInput } from "@/components/player-table/table-groups";
-import { VirtualizedPlayerTable } from "@/components/player-table/virtualized-player-table";
+import {
+  type ConfigurableTableIdentity,
+  VirtualizedPlayerTable,
+} from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
-import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import {
+  isIdentityColumnId,
+  usePlayerTableStore,
+} from "@/stores/use-player-table-store";
 import {
   formatCount,
   formatMissable,
@@ -180,6 +186,52 @@ function formatDynamicCell(
   return String(value);
 }
 
+const SQUAD_CONFIGURABLE_METRICS = SQUAD_HEADER_METRICS.filter(
+  (metric) => !isIdentityColumnId(metric.id),
+);
+
+function SquadIdentityCell({
+  name,
+  club,
+  division,
+}: {
+  name: string | undefined;
+  club: string | null | undefined;
+  division: string | null | undefined;
+}) {
+  const context =
+    name === undefined
+      ? null
+      : [club, division]
+          .filter((value): value is string => value !== null && value !== "")
+          .join(" · ");
+  return (
+    <div className="flex h-table-row-height-two-line items-center gap-2 px-2">
+      <span
+        aria-hidden="true"
+        className="h-7 w-7 shrink-0 rounded-sm bg-surface-container-high"
+      />
+      <span className="min-w-0 flex-1">
+        <span
+          className="block truncate text-body-sm text-on-surface"
+          title={name}
+        >
+          {name ?? "…"}
+        </span>
+        {context ? (
+          <span className="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-on-surface-variant">
+            <span
+              aria-hidden="true"
+              className="h-3 w-3 shrink-0 rounded-[2px] bg-surface-container-high"
+            />
+            <span className="block truncate">{context}</span>
+          </span>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
 export const SQUAD_TABLE_GROUPS: TableGroupInput = {
   groups: [
     { id: "profile", label: "Profile" },
@@ -189,9 +241,6 @@ export const SQUAD_TABLE_GROUPS: TableGroupInput = {
     { id: "role-fit", label: "Role Fit" },
   ],
   groupForColumn: (columnId) => {
-    if (columnId === "name" || columnId === "club" || columnId === "division") {
-      return "profile";
-    }
     if (columnId === SUGGESTED_TRAINING_COLUMN_ID) {
       return "development";
     }
@@ -229,6 +278,7 @@ function SquadOverviewTable({
   sortBy,
   sortDir,
   columns,
+  identity,
   requestedFields,
   onSortChange,
   onAddColumn,
@@ -243,6 +293,7 @@ function SquadOverviewTable({
   sortBy: SquadSortField;
   sortDir: SquadSortDir;
   columns: TableColumn[];
+  identity: ConfigurableTableIdentity<SquadPlayer>;
   requestedFields: string[];
   onSortChange: SquadOverviewPanelProps["onSortChange"];
   onAddColumn: (metricId: string) => void;
@@ -260,12 +311,14 @@ function SquadOverviewTable({
       caption="Squad overview"
       columnCount={columns.length}
       columns={columns}
-      renderHeader={({ columns: tableColumns, fixedColumns }) => (
+      identity={identity}
+      renderHeader={({ identity, columns: tableColumns, fixedColumns }) => (
         <PlayerTableHeader
           columns={tableColumns}
           fixedColumns={fixedColumns}
           groups={SQUAD_TABLE_GROUPS}
-          metrics={SQUAD_HEADER_METRICS}
+          identity={identity}
+          metrics={SQUAD_CONFIGURABLE_METRICS}
           sortBy={sortBy}
           sortDir={sortDir}
           onSortChange={(metricId) => {
@@ -353,43 +406,6 @@ function SquadOverviewTable({
             );
           }
           const cell = basicCell(player, column.id as BasicSquadSortField);
-          if (column.id === "name" && player) {
-            const identityContext = [player.club, player.division]
-              .filter(
-                (value): value is string => value !== null && value !== "",
-              )
-              .join(" · ");
-            return (
-              <td
-                key={column.id}
-                className={`${TEXT_CELL} text-on-surface`}
-                title={cell.title}
-              >
-                {isReplacementActive ? (
-                  <span className="block text-on-surface">{cell.text}</span>
-                ) : (
-                  <Link
-                    to="/players/$uid"
-                    params={{ uid: String(player.uid) }}
-                    search={{}}
-                    tabIndex={-1}
-                    className="block text-on-surface underline decoration-outline-variant underline-offset-2 transition-colors duration-150 ease-out hover:text-primary"
-                    title={player.name}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                    }}
-                  >
-                    <span className="block truncate">{cell.text}</span>
-                    {identityContext ? (
-                      <span className="block truncate text-[11px] leading-4 text-on-surface-variant">
-                        {identityContext}
-                      </span>
-                    ) : null}
-                  </Link>
-                )}
-              </td>
-            );
-          }
           return (
             <td
               key={column.id}
@@ -432,6 +448,28 @@ export function SquadOverviewPanel({
   const removeStoredColumn = usePlayerTableStore((state) => state.removeColumn);
   const moveColumn = usePlayerTableStore((state) => state.moveColumn);
   const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
+  const identityWidth = usePlayerTableStore(
+    (state) => state.layouts.squad.identityWidth,
+  );
+  const setIdentityWidth = usePlayerTableStore(
+    (state) => state.setIdentityWidth,
+  );
+  const identity = useMemo<ConfigurableTableIdentity<SquadPlayer>>(
+    () => ({
+      id: "identity",
+      label: "Player",
+      width: identityWidth,
+      onResize: (width) => setIdentityWidth("squad", width),
+      renderCell: (player) => (
+        <SquadIdentityCell
+          name={player?.name}
+          club={player?.club}
+          division={player?.division}
+        />
+      ),
+    }),
+    [identityWidth, setIdentityWidth],
+  );
   const columns = useMemo<TableColumn[]>(
     () =>
       layout.columnIds.flatMap((metricId) => {
@@ -639,6 +677,7 @@ export function SquadOverviewPanel({
         sortBy={committed.sortBy}
         sortDir={committed.sortDir}
         columns={columns}
+        identity={identity}
         requestedFields={committed.requestedFields}
         pageContext={committed.pageContext}
         firstPageQueryOptions={committedOptions}

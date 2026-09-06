@@ -12,11 +12,18 @@ import {
   ConfigurableTableHeader,
 } from "@/components/player-table/player-table-header";
 import type { TableGroupInput } from "@/components/player-table/table-groups";
-import { ConfigurableVirtualizedTable } from "@/components/player-table/virtualized-player-table";
+import {
+  type ConfigurableTableIdentity,
+  ConfigurableVirtualizedTable,
+} from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
-import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import {
+  isIdentityColumnId,
+  usePlayerTableStore,
+  withoutIdentityColumnIds,
+} from "@/stores/use-player-table-store";
 import {
   formatCount,
   formatMissable,
@@ -171,6 +178,56 @@ function basicCell(
   }
 }
 
+const STAFF_CONFIGURABLE_METRICS = STAFF_METRICS.filter(
+  (metric) => !isIdentityColumnId(metric.id),
+);
+
+const STAFF_SHORTLIST_CONFIGURABLE_METRICS = STAFF_SHORTLIST_METRICS.filter(
+  (metric) => !isIdentityColumnId(metric.id),
+);
+
+function StaffIdentityCell({
+  name,
+  club,
+  division,
+}: {
+  name: string | undefined;
+  club: string | null | undefined;
+  division: string | null | undefined;
+}) {
+  const context =
+    name === undefined
+      ? null
+      : [club, division]
+          .filter((value): value is string => value !== null && value !== "")
+          .join(" · ");
+  return (
+    <div className="flex h-table-row-height-two-line items-center gap-2 px-2">
+      <span
+        aria-hidden="true"
+        className="h-7 w-7 shrink-0 rounded-sm bg-surface-container-high"
+      />
+      <span className="min-w-0 flex-1">
+        <span
+          className="block truncate text-body-sm text-on-surface"
+          title={name}
+        >
+          {name ?? "…"}
+        </span>
+        {context ? (
+          <span className="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-on-surface-variant">
+            <span
+              aria-hidden="true"
+              className="h-3 w-3 shrink-0 rounded-[2px] bg-surface-container-high"
+            />
+            <span className="block truncate">{context}</span>
+          </span>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
 export const STAFF_TABLE_GROUPS: TableGroupInput = {
   groups: [
     { id: "profile", label: "Profile" },
@@ -180,9 +237,6 @@ export const STAFF_TABLE_GROUPS: TableGroupInput = {
     { id: "contract", label: "Contract" },
   ],
   groupForColumn: (columnId) => {
-    if (columnId === "name" || columnId === "club" || columnId === "division") {
-      return "profile";
-    }
     switch (getStaffMetric(columnId)?.category) {
       case "identity":
         return "profile";
@@ -206,9 +260,6 @@ export const STAFF_SHORTLIST_TABLE_GROUPS: TableGroupInput = {
     { id: "recruitment", label: "Recruitment" },
   ],
   groupForColumn: (columnId) => {
-    if (columnId === "name" || columnId === "club" || columnId === "division") {
-      return "profile";
-    }
     switch (getStaffShortlistMetric(columnId)?.category) {
       case "identity":
         return "profile";
@@ -233,6 +284,7 @@ function StaffSearchTable({
   sortBy,
   sortDir,
   columns,
+  identity,
   pageQueryOptions,
   caption,
   testId,
@@ -249,6 +301,7 @@ function StaffSearchTable({
   sortBy: StaffSortField;
   sortDir: StaffSortDir;
   columns: ConfigurableTableColumn[];
+  identity: ConfigurableTableIdentity<StaffSummary>;
   pageQueryOptions: (
     offset: number,
     limit: number,
@@ -275,15 +328,21 @@ function StaffSearchTable({
       columns={columns}
       getPageRows={(page) => page.staff}
       getRowKey={(staff) => staff.uid}
+      identity={identity}
       onRowActivate={onRowActivate}
-      renderHeader={({ columns: tableColumns, fixedColumns }) => (
+      renderHeader={({ identity, columns: tableColumns, fixedColumns }) => (
         <ConfigurableTableHeader
           columns={tableColumns}
           configurable={configurable}
           fixedColumns={fixedColumns}
           groups={shortlist ? STAFF_SHORTLIST_TABLE_GROUPS : STAFF_TABLE_GROUPS}
+          identity={identity}
           sortable
-          metrics={shortlist ? STAFF_SHORTLIST_METRICS : STAFF_METRICS}
+          metrics={
+            shortlist
+              ? STAFF_SHORTLIST_CONFIGURABLE_METRICS
+              : STAFF_CONFIGURABLE_METRICS
+          }
           sortBy={sortBy}
           sortDir={sortDir}
           onSortChange={(metricId) => {
@@ -417,7 +476,9 @@ export function StaffSearchResultsPanel({
   const shortlistPresentation = isShortlist
     ? staffShortlistPresentation(preferredJob)
     : undefined;
-  const fixedColumnIds = shortlistPresentation?.columnIds;
+  const fixedColumnIds = shortlistPresentation
+    ? withoutIdentityColumnIds(shortlistPresentation.columnIds)
+    : undefined;
   const layoutId: StaffLayoutId =
     scope === "my-staff"
       ? "my-staff"
@@ -429,6 +490,28 @@ export function StaffSearchResultsPanel({
   const removeColumn = usePlayerTableStore((state) => state.removeColumn);
   const moveColumn = usePlayerTableStore((state) => state.moveColumn);
   const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
+  const identityWidth = usePlayerTableStore(
+    (state) => state.layouts[layoutId].identityWidth,
+  );
+  const setIdentityWidth = usePlayerTableStore(
+    (state) => state.setIdentityWidth,
+  );
+  const identity = useMemo<ConfigurableTableIdentity<StaffSummary>>(
+    () => ({
+      id: "identity",
+      label: "Staff",
+      width: identityWidth,
+      onResize: (width) => setIdentityWidth(layoutId, width),
+      renderCell: (staff) => (
+        <StaffIdentityCell
+          name={staff?.name ?? undefined}
+          club={staff?.club}
+          division={staff?.division}
+        />
+      ),
+    }),
+    [identityWidth, layoutId, setIdentityWidth],
+  );
   const queryClient = useQueryClient();
   const boost = useMutation({
     mutationFn: ({
@@ -626,12 +709,13 @@ export function StaffSearchResultsPanel({
     );
   const removeStoredColumn = (metricId: string) => {
     if (isShortlist && fixedColumnIds) return;
-    if (columns.length <= 1) return;
+    if (!columns.some((column) => column.id === metricId)) return;
     removeColumn(layoutId, metricId);
     if (sortBy === metricId) {
-      const next =
-        columns.find((column) => column.id !== metricId) ?? columns[0];
-      onSortChange(next.id, defaultDirForStaffSortField(next.id));
+      const next = columns.find((column) => column.id !== metricId);
+      if (next) {
+        onSortChange(next.id, defaultDirForStaffSortField(next.id));
+      }
     }
   };
 
@@ -705,6 +789,7 @@ export function StaffSearchResultsPanel({
         sortBy={sortBy}
         sortDir={sortDir}
         columns={columns}
+        identity={identity}
         pageQueryOptions={resolvePageOptions}
         caption={
           scope === "my-staff"

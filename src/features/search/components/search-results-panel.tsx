@@ -8,11 +8,17 @@ import {
   PlayerTableHeader,
 } from "@/components/player-table/player-table-header";
 import type { TableGroupInput } from "@/components/player-table/table-groups";
-import { VirtualizedPlayerTable } from "@/components/player-table/virtualized-player-table";
+import {
+  type ConfigurableTableIdentity,
+  VirtualizedPlayerTable,
+} from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
-import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import {
+  isIdentityColumnId,
+  usePlayerTableStore,
+} from "@/stores/use-player-table-store";
 import {
   formatCount,
   formatMissable,
@@ -24,7 +30,7 @@ import {
   getMoneyballSearchMetric,
   MONEYBALL_SEARCH_METRICS,
 } from "@/utils/moneyball-search-metrics";
-import { getPlayerMetric } from "@/utils/player-metrics";
+import { getPlayerMetric, PLAYER_METRICS } from "@/utils/player-metrics";
 import {
   isFullTacticGroup,
   isTacticColumnId,
@@ -196,6 +202,56 @@ function tableColumnForMetric(
   };
 }
 
+const SEARCH_HEADER_METRICS = PLAYER_METRICS.filter(
+  (metric) => !isIdentityColumnId(metric.id),
+);
+
+const MONEYBALL_HEADER_METRICS = MONEYBALL_SEARCH_METRICS.filter(
+  (metric) => !isIdentityColumnId(metric.id),
+);
+
+function PlayerIdentityCell({
+  name,
+  club,
+  division,
+}: {
+  name: string | undefined;
+  club: string | null | undefined;
+  division: string | null | undefined;
+}) {
+  const context =
+    name === undefined
+      ? null
+      : [club, division]
+          .filter((value): value is string => value !== null && value !== "")
+          .join(" · ");
+  return (
+    <div className="flex h-table-row-height-two-line items-center gap-2 px-2">
+      <span
+        aria-hidden="true"
+        className="h-7 w-7 shrink-0 rounded-sm bg-surface-container-high"
+      />
+      <span className="min-w-0 flex-1">
+        <span
+          className="block truncate text-body-sm text-on-surface"
+          title={name}
+        >
+          {name ?? "…"}
+        </span>
+        {context ? (
+          <span className="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-on-surface-variant">
+            <span
+              aria-hidden="true"
+              className="h-3 w-3 shrink-0 rounded-[2px] bg-surface-container-high"
+            />
+            <span className="block truncate">{context}</span>
+          </span>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
 export const SEARCH_TABLE_GROUPS: TableGroupInput = {
   groups: [
     { id: "profile", label: "Profile" },
@@ -204,9 +260,6 @@ export const SEARCH_TABLE_GROUPS: TableGroupInput = {
     { id: "tactic-fit", label: "Tactic Fit" },
   ],
   groupForColumn: (columnId) => {
-    if (columnId === "name" || columnId === "club" || columnId === "division") {
-      return "profile";
-    }
     if (
       isValidTacticColumnId(columnId) ||
       columnId.startsWith("role.") ||
@@ -244,12 +297,7 @@ export const MONEYBALL_TABLE_GROUPS: TableGroupInput = {
     { id: "role-fit", label: "Role Fit" },
   ],
   groupForColumn: (columnId) => {
-    if (
-      columnId === "name" ||
-      columnId === "club" ||
-      columnId === "division" ||
-      columnId === "position"
-    ) {
+    if (columnId === "position") {
       return "profile";
     }
     if (columnId.startsWith("moneyball_role.")) {
@@ -288,6 +336,7 @@ function SearchResultsVirtualTable({
   filters,
   filterCombine,
   columns,
+  identity,
   requestedFields,
   onSortChange,
   onAddColumn,
@@ -307,6 +356,7 @@ function SearchResultsVirtualTable({
   filters: FilterRule[];
   filterCombine: FilterCombineMode;
   columns: TableColumn[];
+  identity: ConfigurableTableIdentity<PlayerSummary>;
   requestedFields: string[];
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
   onAddColumn: (metricId: string) => void;
@@ -327,13 +377,15 @@ function SearchResultsVirtualTable({
       caption="Player search results"
       columnCount={columns.length}
       columns={columns}
-      renderHeader={({ columns: tableColumns, fixedColumns }) => (
+      identity={identity}
+      renderHeader={({ identity, columns: tableColumns, fixedColumns }) => (
         <PlayerTableHeader
           columns={tableColumns}
           fixedColumns={fixedColumns}
           groups={
             view === "moneyball" ? MONEYBALL_TABLE_GROUPS : SEARCH_TABLE_GROUPS
           }
+          identity={identity}
           sortBy={sortBy}
           sortDir={sortDir}
           onSortChange={(metricId) => {
@@ -344,7 +396,11 @@ function SearchResultsVirtualTable({
           onRemoveColumn={onRemoveColumn}
           onMoveColumn={onMoveColumn}
           onResizeColumn={onResizeColumn}
-          metrics={view === "moneyball" ? MONEYBALL_SEARCH_METRICS : undefined}
+          metrics={
+            view === "moneyball"
+              ? MONEYBALL_HEADER_METRICS
+              : SEARCH_HEADER_METRICS
+          }
         />
       )}
       firstPageQueryOptions={firstPageQueryOptions}
@@ -478,27 +534,6 @@ function SearchResultsVirtualTable({
               </td>
             );
           }
-          if (column.id === "name" && player) {
-            const identityContext = [player.club, player.division]
-              .filter(
-                (value): value is string => value !== null && value !== "",
-              )
-              .join(" · ");
-            return (
-              <td
-                key={column.id}
-                className={`${TEXT_CELL} text-on-surface`}
-                title={player.name}
-              >
-                <span className="block truncate">{player.name}</span>
-                {identityContext ? (
-                  <span className="block truncate text-[11px] leading-4 text-on-surface-variant">
-                    {identityContext}
-                  </span>
-                ) : null}
-              </td>
-            );
-          }
           const cell = basicCell(
             player,
             column.id as (typeof BASIC_SEARCH_SORT_FIELDS)[number],
@@ -553,6 +588,28 @@ export function SearchResultsPanel({
   const replaceLayout = usePlayerTableStore((state) => state.replaceLayout);
   const moveColumn = usePlayerTableStore((state) => state.moveColumn);
   const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
+  const identityWidth = usePlayerTableStore(
+    (state) => state.layouts[tableId].identityWidth,
+  );
+  const setIdentityWidth = usePlayerTableStore(
+    (state) => state.setIdentityWidth,
+  );
+  const identity = useMemo<ConfigurableTableIdentity<PlayerSummary>>(
+    () => ({
+      id: "identity",
+      label: "Player",
+      width: identityWidth,
+      onResize: (width) => setIdentityWidth(tableId, width),
+      renderCell: (player) => (
+        <PlayerIdentityCell
+          name={player?.name}
+          club={player?.club}
+          division={player?.division}
+        />
+      ),
+    }),
+    [identityWidth, setIdentityWidth, tableId],
+  );
   const columns = useMemo<TableColumn[]>(
     () =>
       layout.columnIds.flatMap((metricId) => {
@@ -895,6 +952,7 @@ export function SearchResultsPanel({
         filters={committed.filters}
         filterCombine={committed.filterCombine}
         columns={columns}
+        identity={identity}
         requestedFields={committed.requestedFields}
         view={committed.view}
         comparisonPool={committed.comparisonPool}

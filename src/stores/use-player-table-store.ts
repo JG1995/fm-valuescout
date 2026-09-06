@@ -36,7 +36,33 @@ const DEFAULT_STAFF_SHORTLIST_COLUMN_IDS = [
 export const PLAYER_TABLE_LAYOUT_STORAGE_KEY =
   "fm-valuescout-player-table-layouts";
 
-const PLAYER_TABLE_LAYOUT_VERSION = 7;
+const PLAYER_TABLE_LAYOUT_VERSION = 8;
+
+export const IDENTITY_COLUMN_MIN_WIDTH = 240;
+export const IDENTITY_COLUMN_DEFAULT_WIDTH = 280;
+export const IDENTITY_COLUMN_MAX_WIDTH = 360;
+
+const IDENTITY_COLUMN_IDS = new Set(["name", "club", "division"]);
+
+export function isIdentityColumnId(metricId: string): boolean {
+  return IDENTITY_COLUMN_IDS.has(metricId);
+}
+
+export function withoutIdentityColumnIds(
+  columnIds: readonly string[],
+): string[] {
+  return columnIds.filter((columnId) => !isIdentityColumnId(columnId));
+}
+
+function clampIdentityWidth(width: number | undefined): number {
+  if (!Number.isFinite(width)) {
+    return IDENTITY_COLUMN_DEFAULT_WIDTH;
+  }
+  return Math.min(
+    IDENTITY_COLUMN_MAX_WIDTH,
+    Math.max(IDENTITY_COLUMN_MIN_WIDTH, width as number),
+  );
+}
 
 /**
  * Squad default: the v6 Squad default with Suggested Training appended far
@@ -58,6 +84,7 @@ export type PlayerTableId =
 export type PlayerTableLayout = {
   columnIds: string[];
   widths: Record<string, number>;
+  identityWidth: number;
 };
 
 type PlayerTableLayouts = Record<PlayerTableId, PlayerTableLayout>;
@@ -76,6 +103,7 @@ type PlayerTableStore = {
     metricId: string,
     width: number,
   ) => void;
+  setIdentityWidth: (table: PlayerTableId, width: number) => void;
   replaceLayout: (
     table: PlayerTableId,
     nextColumnIds: readonly string[],
@@ -95,8 +123,34 @@ function clampWidth(width: number): number {
   );
 }
 
-function isAllowedColumnId(table: PlayerTableId, id: string): boolean {
+/** Pre-v8 allowlist: permits identity IDs so step (2) reproduces v7 exactly. */
+function isAllowedV7ColumnId(table: PlayerTableId, id: string): boolean {
   if (typeof id !== "string" || id.length === 0) {
+    return false;
+  }
+  if (isSuggestedTrainingColumnId(id)) {
+    return table === "squad";
+  }
+  if (isValidTacticColumnId(id)) {
+    return table === "search" || table === "moneyball-search";
+  }
+  if (isTacticColumnId(id)) {
+    return false;
+  }
+  if (table === "moneyball-search") {
+    return (
+      getMoneyballSearchMetric(id)?.sortable === true ||
+      ["name", "age", "nationality", "club", "division", "value"].includes(id)
+    );
+  }
+  if (table === "search" || table === "squad") {
+    return getPlayerMetric(id)?.sortable === true;
+  }
+  return id.length > 0;
+}
+
+function isAllowedColumnId(table: PlayerTableId, id: string): boolean {
+  if (typeof id !== "string" || id.length === 0 || isIdentityColumnId(id)) {
     return false;
   }
   if (isSuggestedTrainingColumnId(id)) {
@@ -128,6 +182,39 @@ function withoutDuplicateIdentityColumns(columnIds: readonly string[]) {
 
 function defaultColumnIds(table: PlayerTableId): string[] {
   if (table === "moneyball-search") {
+    return [
+      "age",
+      "nationality",
+      "moneyball.minutes",
+      "moneyball.average_rating",
+      "moneyball.goals_per_90",
+      "moneyball.assists_per_90",
+      "moneyball.xg_per_90",
+      "moneyball.xa_per_90",
+    ];
+  }
+  if (table === "squad") {
+    return [
+      "age",
+      "nationality",
+      "ca",
+      "pa",
+      "value",
+      SUGGESTED_TRAINING_COLUMN_ID,
+    ];
+  }
+  if (table === "search") {
+    return ["age", "nationality", "ca", "pa", "value"];
+  }
+  if (table === "staff-shortlist") {
+    return withoutIdentityColumnIds(DEFAULT_STAFF_SHORTLIST_COLUMN_IDS);
+  }
+  return withoutIdentityColumnIds(DEFAULT_STAFF_TABLE_COLUMN_IDS);
+}
+
+/** Resulting v7 defaults per table, used only for default-like detection. */
+function v7DefaultColumnIds(table: PlayerTableId): string[] {
+  if (table === "moneyball-search") {
     return withoutDuplicateIdentityColumns(DEFAULT_MONEYBALL_TABLE_COLUMN_IDS);
   }
   if (table === "squad") {
@@ -143,7 +230,11 @@ function defaultColumnIds(table: PlayerTableId): string[] {
 }
 
 function defaultLayout(table: PlayerTableId): PlayerTableLayout {
-  return { columnIds: defaultColumnIds(table), widths: {} };
+  return {
+    columnIds: defaultColumnIds(table),
+    widths: {},
+    identityWidth: IDENTITY_COLUMN_DEFAULT_WIDTH,
+  };
 }
 
 export function defaultPlayerTableLayouts(): PlayerTableLayouts {
@@ -157,18 +248,88 @@ export function defaultPlayerTableLayouts(): PlayerTableLayouts {
   };
 }
 
+function sanitizeIdentityWidth(record: Record<string, unknown>): number {
+  const width = record.identityWidth;
+  return clampIdentityWidth(typeof width === "number" ? width : undefined);
+}
+
 function sanitizeLayout(
   value: unknown,
   table: PlayerTableId,
-  identityOnlyFallback = false,
 ): PlayerTableLayout {
+  const record = isRecord(value) ? value : {};
+  const rawIds = record.columnIds;
+  const identityWidth = sanitizeIdentityWidth(record);
+  if (!Array.isArray(rawIds) || rawIds.length === 0) {
+    if (
+      Array.isArray(rawIds) &&
+      rawIds.length === 0 &&
+      typeof record.identityWidth === "number" &&
+      Number.isFinite(record.identityWidth)
+    ) {
+      return { columnIds: [], widths: {}, identityWidth };
+    }
+    return { ...defaultLayout(table), identityWidth };
+  }
+  const columnIds = rawIds.filter(
+    (metricId, index, all): metricId is string => {
+      if (typeof metricId !== "string" || all.indexOf(metricId) !== index) {
+        return false;
+      }
+      return isAllowedColumnId(table, metricId);
+    },
+  );
+  const rawWidths = isRecord(record.widths) ? record.widths : {};
+  const widths = Object.fromEntries(
+    columnIds.flatMap((metricId) => {
+      const width = rawWidths[metricId];
+      return typeof width === "number" && Number.isFinite(width)
+        ? [[metricId, clampWidth(width)]]
+        : [];
+    }),
+  );
+
+  return { columnIds, widths, identityWidth };
+}
+
+function sanitizePersistedState(value: unknown): PersistedPlayerTableState {
+  const record = isRecord(value) ? value : {};
+  const layouts = isRecord(record.layouts) ? record.layouts : {};
+  return {
+    layouts: {
+      search: sanitizeLayout(layouts.search, "search"),
+      "moneyball-search": sanitizeLayout(
+        layouts["moneyball-search"],
+        "moneyball-search",
+      ),
+      squad: sanitizeLayout(layouts.squad, "squad"),
+      "staff-search": sanitizeLayout(layouts["staff-search"], "staff-search"),
+      "my-staff": sanitizeLayout(layouts["my-staff"], "my-staff"),
+      "staff-shortlist": sanitizeLayout(
+        layouts["staff-shortlist"],
+        "staff-shortlist",
+      ),
+    },
+  };
+}
+
+type V7TableLayout = {
+  columnIds: string[];
+  widths: Record<string, number>;
+};
+
+function sanitizeV7Layout(
+  value: unknown,
+  table: PlayerTableId,
+  identityOnlyFallback: boolean,
+): V7TableLayout {
   const record = isRecord(value) ? value : {};
   const columnIds = Array.isArray(record.columnIds)
     ? record.columnIds.filter((metricId, index, all): metricId is string => {
         if (typeof metricId !== "string" || all.indexOf(metricId) !== index) {
           return false;
         }
-        return isAllowedColumnId(table, metricId);
+        return isAllowedV7ColumnId(table, metricId);
       })
     : [];
   const useNameFallback =
@@ -180,7 +341,7 @@ function sanitizeLayout(
     ? ["name"]
     : columnIds.length > 0
       ? columnIds
-      : [...defaultLayout(table).columnIds];
+      : [...v7DefaultColumnIds(table)];
   const rawWidths = isRecord(record.widths) ? record.widths : {};
   const widths = useNameFallback
     ? {}
@@ -196,34 +357,7 @@ function sanitizeLayout(
   return { columnIds: visibleColumnIds, widths };
 }
 
-function sanitizePersistedState(
-  value: unknown,
-  identityOnlyFallback = false,
-): PersistedPlayerTableState {
-  const record = isRecord(value) ? value : {};
-  const layouts = isRecord(record.layouts) ? record.layouts : {};
-  return {
-    layouts: {
-      search: sanitizeLayout(layouts.search, "search", identityOnlyFallback),
-      "moneyball-search": sanitizeLayout(
-        layouts["moneyball-search"],
-        "moneyball-search",
-        identityOnlyFallback,
-      ),
-      squad: sanitizeLayout(layouts.squad, "squad", identityOnlyFallback),
-      "staff-search": sanitizeLayout(layouts["staff-search"], "staff-search"),
-      "my-staff": sanitizeLayout(layouts["my-staff"], "my-staff"),
-      "staff-shortlist": sanitizeLayout(
-        layouts["staff-shortlist"],
-        "staff-shortlist",
-      ),
-    },
-  };
-}
-
-function removeDuplicateIdentityColumns(
-  layout: PlayerTableLayout,
-): PlayerTableLayout {
+function removeDuplicateIdentityColumns(layout: V7TableLayout): V7TableLayout {
   const columnIds = withoutDuplicateIdentityColumns(layout.columnIds);
   return {
     columnIds,
@@ -235,51 +369,128 @@ function removeDuplicateIdentityColumns(
   };
 }
 
-function migratePersistedState(
-  persistedState: unknown,
+function migrateTableToV8(
+  value: unknown,
+  table: PlayerTableId,
   version: number,
-): PersistedPlayerTableState {
-  const state = sanitizePersistedState(persistedState, version < 5);
-  if (version >= PLAYER_TABLE_LAYOUT_VERSION) {
-    return state;
-  }
-  let layouts = state.layouts;
-  if (version < 5) {
-    layouts = {
-      ...layouts,
-      search: removeDuplicateIdentityColumns(layouts.search),
-      "moneyball-search": removeDuplicateIdentityColumns(
-        layouts["moneyball-search"],
-      ),
-      squad: removeDuplicateIdentityColumns(layouts.squad),
+): PlayerTableLayout {
+  const record = isRecord(value) ? value : {};
+  // (1) Capture the original finite `widths.name` first as the
+  // `identityWidth` candidate. It survives even when later normalization
+  // strips the name width.
+  const rawWidths = isRecord(record.widths) ? record.widths : {};
+  const nameWidth = rawWidths.name;
+  const identityWidth = clampIdentityWidth(
+    typeof nameWidth === "number" ? nameWidth : undefined,
+  );
+  // (7) Missing/non-array/empty raw `columnIds` is malformed and falls back
+  // to the exact v8 defaults with `identityWidth` 280.
+  const rawIds = record.columnIds;
+  if (!Array.isArray(rawIds) || rawIds.length === 0) {
+    return {
+      columnIds: defaultColumnIds(table),
+      widths: {},
+      identityWidth: IDENTITY_COLUMN_DEFAULT_WIDTH,
     };
+  }
+  // (2) Run the pre-v8 upgrades unchanged to produce a v7-equivalent layout.
+  let v7 = sanitizeV7Layout(value, table, version < 5);
+  if (version < 5) {
+    if (
+      table === "search" ||
+      table === "moneyball-search" ||
+      table === "squad"
+    ) {
+      v7 = removeDuplicateIdentityColumns(v7);
+    }
   }
   if (version < 7) {
     // Rollout: a persisted Squad layout still exactly equal to the v6
     // default (default column IDs with default empty widths) gains Suggested
     // Training far right; customized layouts keep their order and content.
-    // Other tables sanitize the ID away through `isAllowedColumnId`.
     const v6DefaultSquadColumnIds = withoutDuplicateIdentityColumns(
       DEFAULT_PLAYER_TABLE_COLUMN_IDS,
     );
-    const squad = layouts.squad;
-    const isV6DefaultLike =
-      squad.columnIds.length === v6DefaultSquadColumnIds.length &&
-      squad.columnIds.every(
-        (id, index) => id === v6DefaultSquadColumnIds[index],
-      ) &&
-      Object.keys(squad.widths).length === 0;
-    if (isV6DefaultLike) {
-      layouts = {
-        ...layouts,
-        squad: {
-          ...squad,
-          columnIds: [...squad.columnIds, SUGGESTED_TRAINING_COLUMN_ID],
-        },
-      };
+    if (table === "squad") {
+      const isV6DefaultLike =
+        v7.columnIds.length === v6DefaultSquadColumnIds.length &&
+        v7.columnIds.every(
+          (id, index) => id === v6DefaultSquadColumnIds[index],
+        ) &&
+        Object.keys(v7.widths).length === 0;
+      if (isV6DefaultLike) {
+        v7 = {
+          ...v7,
+          columnIds: [...v7.columnIds, SUGGESTED_TRAINING_COLUMN_ID],
+        };
+      }
     }
   }
-  return { layouts };
+  // (5) Default-like means the v7-equivalent `columnIds` exactly equal that
+  // table's resulting v7 defaults in order with exactly empty widths. Any
+  // reorder, resize, add, or remove is custom.
+  const v7Defaults = v7DefaultColumnIds(table);
+  const isDefaultLike =
+    v7.columnIds.length === v7Defaults.length &&
+    v7.columnIds.every((id, index) => id === v7Defaults[index]) &&
+    Object.keys(v7.widths).length === 0;
+  if (isDefaultLike) {
+    return {
+      columnIds: defaultColumnIds(table),
+      widths: {},
+      identityWidth,
+    };
+  }
+  // (3, 4, 6) Strip identity IDs/widths, sanitize the remainder through the
+  // allowlists with dedupe and width clamping, and keep the custom remainder
+  // verbatim — including an empty remainder, which is valid identity-only.
+  const stripped = withoutIdentityColumnIds(v7.columnIds);
+  const columnIds = stripped.filter(
+    (metricId, index, all) =>
+      all.indexOf(metricId) === index && isAllowedColumnId(table, metricId),
+  );
+  const widths = Object.fromEntries(
+    columnIds.flatMap((metricId) => {
+      const width = v7.widths[metricId];
+      return typeof width === "number" && Number.isFinite(width)
+        ? [[metricId, clampWidth(width)]]
+        : [];
+    }),
+  );
+  return { columnIds, widths, identityWidth };
+}
+
+function migratePersistedState(
+  persistedState: unknown,
+  version: number,
+): PersistedPlayerTableState {
+  if (version >= PLAYER_TABLE_LAYOUT_VERSION) {
+    return sanitizePersistedState(persistedState);
+  }
+  const record = isRecord(persistedState) ? persistedState : {};
+  const layouts = isRecord(record.layouts) ? record.layouts : {};
+  return {
+    layouts: {
+      search: migrateTableToV8(layouts.search, "search", version),
+      "moneyball-search": migrateTableToV8(
+        layouts["moneyball-search"],
+        "moneyball-search",
+        version,
+      ),
+      squad: migrateTableToV8(layouts.squad, "squad", version),
+      "staff-search": migrateTableToV8(
+        layouts["staff-search"],
+        "staff-search",
+        version,
+      ),
+      "my-staff": migrateTableToV8(layouts["my-staff"], "my-staff", version),
+      "staff-shortlist": migrateTableToV8(
+        layouts["staff-shortlist"],
+        "staff-shortlist",
+        version,
+      ),
+    },
+  };
 }
 
 export const usePlayerTableStore = create<PlayerTableStore>()(
@@ -312,10 +523,7 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
       removeColumn: (table, metricId) => {
         set((state) => {
           const layout = state.layouts[table];
-          if (
-            layout.columnIds.length === 1 ||
-            !layout.columnIds.includes(metricId)
-          ) {
+          if (!layout.columnIds.includes(metricId)) {
             return state;
           }
           const { [metricId]: _removedWidth, ...widths } = layout.widths;
@@ -325,6 +533,7 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
               [table]: {
                 columnIds: layout.columnIds.filter((id) => id !== metricId),
                 widths,
+                identityWidth: layout.identityWidth,
               },
             },
           };
@@ -335,6 +544,7 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
           const layout = state.layouts[table];
           const currentIndex = layout.columnIds.indexOf(metricId);
           if (
+            isIdentityColumnId(metricId) ||
             currentIndex < 0 ||
             !Number.isInteger(targetIndex) ||
             targetIndex < 0 ||
@@ -357,7 +567,11 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
       setColumnWidth: (table, metricId, width) => {
         set((state) => {
           const layout = state.layouts[table];
-          if (!layout.columnIds.includes(metricId) || !Number.isFinite(width)) {
+          if (
+            isIdentityColumnId(metricId) ||
+            !layout.columnIds.includes(metricId) ||
+            !Number.isFinite(width)
+          ) {
             return state;
           }
           return {
@@ -370,6 +584,17 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
             },
           };
         });
+      },
+      setIdentityWidth: (table, width) => {
+        set((state) => ({
+          layouts: {
+            ...state.layouts,
+            [table]: {
+              ...state.layouts[table],
+              identityWidth: clampIdentityWidth(width),
+            },
+          },
+        }));
       },
       replaceLayout: (table, nextColumnIds) => {
         set((state) => {
@@ -394,7 +619,11 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
             return {
               layouts: {
                 ...state.layouts,
-                [table]: { columnIds: finalIds, widths: {} },
+                [table]: {
+                  columnIds: finalIds,
+                  widths: {},
+                  identityWidth: layout.identityWidth,
+                },
               },
             };
           }
@@ -408,7 +637,11 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
           return {
             layouts: {
               ...state.layouts,
-              [table]: { columnIds: finalIds, widths },
+              [table]: {
+                columnIds: finalIds,
+                widths,
+                identityWidth: layout.identityWidth,
+              },
             },
           };
         });
