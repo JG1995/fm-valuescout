@@ -59,6 +59,13 @@ function LaneButton({
   const description = phaseDescription(lane, phase, lanes, options);
   const { shortLabel } = TACTIC_PHASES[phase];
   const highlighted = highlightedLaneId === lane.laneId;
+  // Categorical phase accents (chart steel for IP, chart magenta for OOP),
+  // never success/error semantics. Borders are opaque so the edge clears
+  // 3:1 against both adjacent surfaces; text stays on-surface so small
+  // type keeps its contrast. The dual badge always renders, so phase
+  // identity stays visible under the gold selected treatment.
+  const phaseBorder = phase === "ip" ? "border-chart-2" : "border-chart-3";
+  const phaseBadge = phase === "ip" ? "border-chart-2" : "border-chart-3";
 
   return (
     <button
@@ -70,8 +77,8 @@ function LaneButton({
         selected
           ? "border-primary bg-primary-container text-primary ring-2 ring-primary/60"
           : highlighted
-            ? "border-primary bg-surface-container-high text-on-surface ring-2 ring-primary/60"
-            : "border-outline-variant bg-surface-container text-on-surface hover:bg-surface-container-high"
+            ? `${phaseBorder} bg-surface-container-high text-on-surface ring-2 ring-primary/60`
+            : `${phaseBorder} bg-surface-container text-on-surface hover:bg-surface-container-high`
       } ${dual && phase === "oop" ? "border-dashed" : ""}`}
       onBlur={() => {
         if (!selected) {
@@ -90,7 +97,7 @@ function LaneButton({
       {dual ? (
         <span
           aria-hidden="true"
-          className="mx-auto mb-0.5 block w-fit rounded-full bg-surface-container-highest px-1 font-mono text-mono-sm text-on-surface-variant"
+          className={`mx-auto mb-0.5 block w-fit rounded-full border bg-surface-container-highest px-1 font-mono text-mono-sm text-on-surface ${phaseBadge}`}
         >
           {shortLabel}
         </span>
@@ -258,6 +265,7 @@ export function TacticPitchCanvas({
   linkedHintId,
   onHighlight,
   onSelectLane,
+  canvasClassName = "h-[420px]",
 }: {
   legend: string;
   markers: PitchMarker[];
@@ -270,6 +278,7 @@ export function TacticPitchCanvas({
   linkedHintId: string;
   onHighlight: (laneId: string | null) => void;
   onSelectLane: (laneId: string) => void;
+  canvasClassName?: string;
 }) {
   const attackDescriptionId = useId();
   // Landscape is a clockwise 90-degree rotation of the portrait canvas, so
@@ -295,7 +304,9 @@ export function TacticPitchCanvas({
       >
         <span aria-hidden="true">{attack.arrow}</span> {attack.text}
       </p>
-      <div className="relative h-[420px] w-full overflow-hidden rounded-md border border-outline-variant bg-surface-container-high">
+      <div
+        className={`relative w-full overflow-hidden rounded-md border border-outline-variant bg-surface-container-high ${canvasClassName}`}
+      >
         <svg
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 h-full w-full text-outline-variant"
@@ -414,7 +425,8 @@ export function PlannerTacticPitch({
   highlightedLaneId,
   onHighlight,
   onSelectLane,
-}: PlannerTacticPitchProps) {
+  canvasClassName,
+}: PlannerTacticPitchProps & { canvasClassName?: string }) {
   const { label } = TACTIC_PHASES[phase];
   const selectedLane = lanes.find((lane) => lane.laneId === selectedLaneId);
   const headingId = useId();
@@ -447,6 +459,7 @@ export function PlannerTacticPitch({
         linkedHintId={linkedHintId}
         onHighlight={onHighlight}
         onSelectLane={onSelectLane}
+        canvasClassName={canvasClassName}
       />
     </section>
   );

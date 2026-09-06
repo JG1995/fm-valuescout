@@ -2307,6 +2307,9 @@ test.describe("application smoke", () => {
     const settings = main.getByRole("region", {
       name: "Selected Slot",
     });
+    const laneList = main.getByRole("region", {
+      name: "Tactical XI",
+    });
     const plannerHeading = main.getByRole("heading", {
       level: 1,
       name: "My Club",
@@ -2408,10 +2411,39 @@ test.describe("application smoke", () => {
         await expect(
           settings.getByRole("group", { name: "Out-of-Possession settings" }),
         ).toBeVisible();
+        // The inspector fills the available sibling height with hairline-
+        // separated sections instead of a compact auto-fit grid.
+        for (const sectionName of [
+          "Phase Influence",
+          "General Settings",
+          "In Possession (IP)",
+          "Out of Possession (OOP)",
+        ] as const) {
+          await expect(
+            settings.getByRole("heading", { name: sectionName }),
+          ).toBeVisible();
+        }
         const weightSlider = settings.getByRole("slider", {
           name: "IP/OOP score weight",
         });
         await expect(weightSlider).toBeVisible();
+        // The weight slider spans the inspector width.
+        const [sliderBox, sliderInspectorBox] = await Promise.all([
+          weightSlider.boundingBox(),
+          settings.boundingBox(),
+        ]);
+        expect(sliderBox).not.toBeNull();
+        expect(sliderInspectorBox).not.toBeNull();
+        if (!sliderBox || !sliderInspectorBox) {
+          throw new Error("Expected a visible weight slider layout.");
+        }
+        expect(sliderBox.x).toBeGreaterThanOrEqual(sliderInspectorBox.x - 1);
+        expect(sliderBox.x + sliderBox.width).toBeLessThanOrEqual(
+          sliderInspectorBox.x + sliderInspectorBox.width + 1,
+        );
+        expect(sliderBox.width).toBeGreaterThanOrEqual(
+          sliderInspectorBox.width - 32,
+        );
         await expect(weightSlider).toHaveAttribute(
           "aria-valuetext",
           /IP \d+%, OOP \d+/,
@@ -2442,17 +2474,23 @@ test.describe("application smoke", () => {
         if (width >= 1600) {
           // The Selected Slot inspector sits beside the pitch (horizontally
           // adjacent with vertical overlap), not on a bottom shelf below it.
-          const [pitchBox, settingsBox] = await Promise.all([
+          // Wide visual order is Tactical XI left, pitch middle, inspector
+          // right, and the inspector stretches to the row height.
+          const [pitchBox, settingsBox, xiBox] = await Promise.all([
             pitches.first().boundingBox(),
             settings.boundingBox(),
+            laneList.boundingBox(),
           ]);
           expect(pitchBox).not.toBeNull();
           expect(settingsBox).not.toBeNull();
-          if (!pitchBox || !settingsBox) {
+          expect(xiBox).not.toBeNull();
+          if (!pitchBox || !settingsBox || !xiBox) {
             throw new Error(
-              "Expected the pitch and inspector to have a visible layout.",
+              "Expected the XI, pitch, and inspector to have a visible layout.",
             );
           }
+          await expect(laneList).toBeVisible();
+          expect(xiBox.x + xiBox.width).toBeLessThanOrEqual(pitchBox.x + 1);
           expect(settingsBox.x).toBeGreaterThanOrEqual(
             pitchBox.x + pitchBox.width - 1,
           );
@@ -2462,6 +2500,40 @@ test.describe("application smoke", () => {
           expect(pitchBox.y).toBeLessThanOrEqual(
             settingsBox.y + settingsBox.height - 1,
           );
+          expect(xiBox.y).toBeLessThanOrEqual(pitchBox.y + pitchBox.height - 1);
+          expect(pitchBox.y).toBeLessThanOrEqual(xiBox.y + xiBox.height - 1);
+          // The inspector fills its stretched grid wrapper, and both grid
+          // children share the row height: the Selected Slot uses the full
+          // vertical region instead of collapsing to its content.
+          const inspectorGeometry = await settings.evaluate((element) => {
+            const node = element as unknown as {
+              getBoundingClientRect: () => { height: number };
+              parentElement: {
+                getBoundingClientRect: () => { height: number };
+                previousElementSibling: {
+                  getBoundingClientRect: () => { height: number };
+                } | null;
+              } | null;
+            };
+            return {
+              selfHeight: node.getBoundingClientRect().height,
+              parentHeight:
+                node.parentElement?.getBoundingClientRect().height ?? -1,
+              siblingHeight:
+                node.parentElement?.previousElementSibling?.getBoundingClientRect()
+                  .height ?? -1,
+            };
+          });
+          expect(
+            Math.abs(
+              inspectorGeometry.selfHeight - inspectorGeometry.parentHeight,
+            ),
+          ).toBeLessThanOrEqual(1);
+          expect(
+            Math.abs(
+              inspectorGeometry.parentHeight - inspectorGeometry.siblingHeight,
+            ),
+          ).toBeLessThanOrEqual(1);
         }
       }
       if (width >= 3000) {
@@ -2473,16 +2545,27 @@ test.describe("application smoke", () => {
             () => (globalThis as unknown as { innerWidth: number }).innerWidth,
           ),
         ).toBe(width);
-        const [ultrawidePitchBox, ultrawideSettingsBox, ultrawideMainBox] =
-          await Promise.all([
-            pitches.first().boundingBox(),
-            settings.boundingBox(),
-            main.boundingBox(),
-          ]);
+        const [
+          ultrawidePitchBox,
+          ultrawideSettingsBox,
+          ultrawideMainBox,
+          ultrawideXiBox,
+        ] = await Promise.all([
+          pitches.first().boundingBox(),
+          settings.boundingBox(),
+          main.boundingBox(),
+          laneList.boundingBox(),
+        ]);
         expect(ultrawidePitchBox).not.toBeNull();
         expect(ultrawideSettingsBox).not.toBeNull();
         expect(ultrawideMainBox).not.toBeNull();
-        if (!ultrawidePitchBox || !ultrawideSettingsBox || !ultrawideMainBox) {
+        expect(ultrawideXiBox).not.toBeNull();
+        if (
+          !ultrawidePitchBox ||
+          !ultrawideSettingsBox ||
+          !ultrawideMainBox ||
+          !ultrawideXiBox
+        ) {
           throw new Error(
             "Expected the ultrawide workspace to have a visible layout.",
           );
@@ -2490,10 +2573,12 @@ test.describe("application smoke", () => {
         const spreadLeft = Math.min(
           ultrawidePitchBox.x,
           ultrawideSettingsBox.x,
+          ultrawideXiBox.x,
         );
         const spreadRight = Math.max(
           ultrawidePitchBox.x + ultrawidePitchBox.width,
           ultrawideSettingsBox.x + ultrawideSettingsBox.width,
+          ultrawideXiBox.x + ultrawideXiBox.width,
         );
         expect(spreadRight - spreadLeft).toBeLessThanOrEqual(2000);
         const leftMargin = spreadLeft - ultrawideMainBox.x;
@@ -2520,8 +2605,8 @@ test.describe("application smoke", () => {
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
 
-    // Initial load at 1920 renders the landscape orientation immediately.
-    await page.setViewportSize({ width: 1920, height: 1080 });
+    // Initial load at 2100 renders the landscape orientation immediately.
+    await page.setViewportSize({ width: 2100, height: 1080 });
     await page.goto("/my-club?view=tactic");
 
     const main = page.getByRole("main");
@@ -2638,7 +2723,7 @@ test.describe("application smoke", () => {
     // Keyboard order follows the current visual pitch order: focusing the
     // first marker button and pressing Tab through every marker button
     // visits the accessible names in the same top-to-bottom,
-    // left-to-right order as their boxes. Reused at 1920 and 1919.
+    // left-to-right order as their boxes. Reused at 2100 and 2099.
     const tabOrderMatchesVisual = async () => {
       const visualLabels = await pitch
         .getByRole("button")
@@ -2681,7 +2766,7 @@ test.describe("application smoke", () => {
       expect(tabbedLabels).toEqual(visualLabels);
     };
 
-    // Realistic edited layout at 1920: a cross-lane DCR/DCL swap (a shared
+    // Realistic edited layout at 2100: a cross-lane DCR/DCL swap (a shared
     // coordinate collides across lanes) plus the supported MCL/MC/MCR
     // triple, using the existing combobox flows from the portrait seam.
     await pitch.getByRole("button", { name: "IP: DCR · Centre-Back" }).click();
@@ -2836,17 +2921,221 @@ test.describe("application smoke", () => {
       expect(entry.endInOwn).toBe(true);
     }
 
-    // Tab order matches the edited visual order at 1920.
+    // Tab order matches the edited visual order at 2100.
     await tabOrderMatchesVisual();
 
+    // Phase identity rides categorical accents, not text colour: IP and OOP
+    // markers carry distinct border colours while their labels share one
+    // on-surface colour, and OOP keeps its dashed edge.
+    const phaseIdentity = await pitch.evaluate((element) => {
+      const scope = element as unknown as {
+        ownerDocument: {
+          defaultView: {
+            getComputedStyle: (target: unknown) => {
+              borderColor: string;
+              borderStyle: string;
+              color: string;
+            };
+          } | null;
+        };
+        querySelector: (selector: string) => unknown | null;
+      };
+      const styleOf = (selector: string) => {
+        const target = scope.querySelector(selector);
+        if (!target || !scope.ownerDocument.defaultView) {
+          return null;
+        }
+        const style = scope.ownerDocument.defaultView.getComputedStyle(target);
+        return {
+          borderColor: style.borderColor,
+          borderStyle: style.borderStyle,
+          color: style.color,
+        };
+      };
+      return {
+        ipButton: styleOf(
+          '[data-pitch-marker="goalkeeper"][data-phase="ip"] button',
+        ),
+        oopButton: styleOf(
+          '[data-pitch-marker="goalkeeper"][data-phase="oop"] button',
+        ),
+        ipBadge: styleOf(
+          '[data-pitch-marker="goalkeeper"][data-phase="ip"] span[aria-hidden="true"]',
+        ),
+        oopBadge: styleOf(
+          '[data-pitch-marker="goalkeeper"][data-phase="oop"] span[aria-hidden="true"]',
+        ),
+      };
+    });
+    expect(phaseIdentity.ipButton).not.toBeNull();
+    expect(phaseIdentity.oopButton).not.toBeNull();
+    expect(phaseIdentity.ipButton?.borderColor).not.toBe(
+      phaseIdentity.oopButton?.borderColor,
+    );
+    expect(phaseIdentity.ipButton?.color).toBe(phaseIdentity.oopButton?.color);
+    expect(phaseIdentity.oopButton?.borderStyle).toBe("dashed");
+    expect(phaseIdentity.ipBadge?.borderColor).not.toBe(
+      phaseIdentity.oopBadge?.borderColor,
+    );
+
+    // Selecting a marker takes the gold treatment but keeps its phase
+    // badge edge, so phase identity stays visible when selected.
+    await pitch.getByRole("button", { name: "IP: GK · Goalkeeper" }).click();
+    const selectedIdentity = await pitch.evaluate((element) => {
+      const scope = element as unknown as {
+        ownerDocument: {
+          defaultView: {
+            getComputedStyle: (target: unknown) => {
+              borderColor: string;
+            };
+          } | null;
+        };
+        querySelector: (selector: string) => unknown | null;
+      };
+      const borderOf = (selector: string) => {
+        const target = scope.querySelector(selector);
+        if (!target || !scope.ownerDocument.defaultView) {
+          return null;
+        }
+        return scope.ownerDocument.defaultView.getComputedStyle(target)
+          .borderColor;
+      };
+      return {
+        selectedBadge: borderOf(
+          '[data-pitch-marker="goalkeeper"][data-phase="ip"] span[aria-hidden="true"]',
+        ),
+        oopBadge: borderOf(
+          '[data-pitch-marker="goalkeeper"][data-phase="oop"] span[aria-hidden="true"]',
+        ),
+      };
+    });
+    expect(selectedIdentity.selectedBadge).toBe(
+      phaseIdentity.ipBadge?.borderColor,
+    );
+    expect(selectedIdentity.selectedBadge).not.toBe(selectedIdentity.oopBadge);
+
+    // Categorical borders must clear 3:1 against both adjacent surfaces.
+    // Every input below is a live computed style; translucent borders are
+    // composited over the real adjacent background before the WCAG ratio.
+    const phaseContrast = await pitch.evaluate((element) => {
+      const scope = element as unknown as {
+        ownerDocument: {
+          createElement: (tag: string) => {
+            width: number;
+            height: number;
+            getContext: (kind: string) => {
+              fillStyle: string;
+              clearRect: (x: number, y: number, w: number, h: number) => void;
+              fillRect: (x: number, y: number, w: number, h: number) => void;
+              getImageData: (
+                x: number,
+                y: number,
+                w: number,
+                h: number,
+              ) => { data: ArrayLike<number> };
+            } | null;
+          };
+          defaultView: {
+            getComputedStyle: (target: unknown) => {
+              [key: string]: string;
+            };
+          } | null;
+        };
+        querySelector: (selector: string) => unknown | null;
+      };
+      // Read back one filled pixel: the browser resolves oklch, color-mix,
+      // and rgba syntaxes to the same sRGB bytes the screen composites.
+      const probe = scope.ownerDocument.createElement("canvas");
+      probe.width = 1;
+      probe.height = 1;
+      const toRgba = (css: string) => {
+        const context = probe.getContext("2d");
+        if (!context) {
+          throw new Error("Expected a 2d canvas context");
+        }
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = css;
+        context.fillRect(0, 0, 1, 1);
+        const [r, g, b, a] = Array.from(context.getImageData(0, 0, 1, 1).data);
+        return { r, g, b, a: (a ?? 255) / 255 };
+      };
+      const luminance = (color: { r: number; g: number; b: number }) => {
+        const channel = (value: number) => {
+          const s = value / 255;
+          return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        };
+        return (
+          0.2126 * channel(color.r) +
+          0.7152 * channel(color.g) +
+          0.0722 * channel(color.b)
+        );
+      };
+      const composite = (
+        foreground: { r: number; g: number; b: number; a: number },
+        background: { r: number; g: number; b: number },
+      ) => ({
+        r: foreground.r * foreground.a + background.r * (1 - foreground.a),
+        g: foreground.g * foreground.a + background.g * (1 - foreground.a),
+        b: foreground.b * foreground.a + background.b * (1 - foreground.a),
+      });
+      const ratio = (
+        first: { r: number; g: number; b: number },
+        second: { r: number; g: number; b: number },
+      ) => {
+        const high = Math.max(luminance(first), luminance(second));
+        const low = Math.min(luminance(first), luminance(second));
+        return (high + 0.05) / (low + 0.05);
+      };
+      const styleOf = (selector: string, property: string) => {
+        const target = scope.querySelector(selector);
+        if (!target || !scope.ownerDocument.defaultView) {
+          throw new Error(`Missing ${selector}`);
+        }
+        return scope.ownerDocument.defaultView.getComputedStyle(target)[
+          property
+        ];
+      };
+      const canvasBg = toRgba(styleOf("div.relative", "backgroundColor"));
+      // The goalkeeper IP marker is selected (gold container); the
+      // left-winger pair is untouched, covering both states.
+      const report = (lane: string, phase: string) => {
+        const base = `[data-pitch-marker="${lane}"][data-phase="${phase}"]`;
+        const border = toRgba(styleOf(`${base} button`, "borderTopColor"));
+        const buttonBg = toRgba(styleOf(`${base} button`, "backgroundColor"));
+        const badgeBorder = toRgba(
+          styleOf(`${base} span[aria-hidden="true"]`, "borderTopColor"),
+        );
+        const badgeBg = toRgba(
+          styleOf(`${base} span[aria-hidden="true"]`, "backgroundColor"),
+        );
+        return {
+          buttonOuter: ratio(composite(border, canvasBg), canvasBg),
+          buttonInner: ratio(composite(border, buttonBg), buttonBg),
+          badgeOuter: ratio(composite(badgeBorder, buttonBg), buttonBg),
+          badgeInner: ratio(composite(badgeBorder, badgeBg), badgeBg),
+        };
+      };
+      return {
+        selectedIp: report("goalkeeper", "ip"),
+        plainIp: report("left_winger", "ip"),
+        plainOop: report("left_winger", "oop"),
+      };
+    });
+    for (const [state, ratios] of Object.entries(phaseContrast)) {
+      for (const [pair, value] of Object.entries(ratios)) {
+        expect(`${state} ${pair}`).not.toBe("");
+        expect(value).toBeGreaterThanOrEqual(3);
+      }
+    }
+
     // Live crossing: the orientation follows actual viewport bounds.
-    await page.setViewportSize({ width: 1919, height: 1080 });
+    await page.setViewportSize({ width: 2099, height: 1080 });
     await expect(pitch).toContainText("Attack toward the top");
     await expect(wingerConnector).toHaveAttribute("x1", "13");
-    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.setViewportSize({ width: 2100, height: 1080 });
     await expect(pitch).toContainText("Attack toward the right");
     await expect(wingerConnector).toHaveAttribute("x1", "72");
-    await page.setViewportSize({ width: 1919, height: 1080 });
+    await page.setViewportSize({ width: 2099, height: 1080 });
     await expect(pitch).toContainText("Attack toward the top");
     const portraitBoxes = await Promise.all([
       striker.boundingBox(),
@@ -2872,8 +3161,43 @@ test.describe("application smoke", () => {
     // Tab order matches the edited visual order in portrait as well.
     await tabOrderMatchesVisual();
 
-    // The role-reference modal stays portrait at wide viewports.
+    // Explicit 1920x1080 portrait: below the 2100 breakpoint the workspace
+    // keeps attack-up geometry on a visibly vertical canvas, not unrotated
+    // positions on a wide horizontal rectangle.
     await page.setViewportSize({ width: 1920, height: 1080 });
+    await expect(pitch).toContainText("Attack toward the top");
+    const workspaceCanvasBox = await pitch
+      .locator("div.relative")
+      .first()
+      .boundingBox();
+    expect(workspaceCanvasBox).not.toBeNull();
+    if (!workspaceCanvasBox) {
+      throw new Error("Expected visible workspace pitch canvas");
+    }
+    expect(workspaceCanvasBox.height).toBeGreaterThan(workspaceCanvasBox.width);
+    const explicitBoxes = await Promise.all([
+      striker.boundingBox(),
+      goalkeeper.boundingBox(),
+    ]);
+    if (explicitBoxes.some((box) => !box)) {
+      throw new Error("Expected visible portrait striker and goalkeeper");
+    }
+    const [explicitStriker, explicitGoalkeeper] = explicitBoxes as [
+      { x: number; y: number; width: number; height: number },
+      { x: number; y: number; width: number; height: number },
+    ];
+    expect(centre(explicitStriker).y).toBeLessThan(
+      centre(explicitGoalkeeper).y,
+    );
+    const explicitVerticalGap =
+      centre(explicitGoalkeeper).y - centre(explicitStriker).y;
+    const explicitHorizontalDrift = Math.abs(
+      centre(explicitStriker).x - centre(explicitGoalkeeper).x,
+    );
+    expect(explicitVerticalGap).toBeGreaterThan(explicitHorizontalDrift);
+
+    // The role-reference modal stays portrait at wide viewports.
+    await page.setViewportSize({ width: 2100, height: 1080 });
     await page.getByRole("link", { name: "Planner", exact: true }).click();
     await main.getByRole("button", { name: "Best role fit" }).click();
     const dialog = page.getByRole("dialog", {

@@ -312,10 +312,20 @@ export function PlannerTacticEditor({
         </section>
 
         <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          {/* Stack the pitch/XI pair below 2xl so the 1280 pitch keeps
-              full width for disjoint markers; row returns at 2xl where
-              1600/1920 have room for the 256px XI beside the pitch. */}
+          {/* XI left, pitch middle, inspector right. Below 2xl the XI/pitch
+              pair stacks so the 1280 pitch keeps full width for disjoint
+              markers; the row returns at 2xl where wider viewports have
+              room for the 256px XI beside the pitch. */}
           <div className="flex min-w-0 flex-col gap-3 2xl:flex-row 2xl:items-start">
+            <PlannerTacticLaneList
+              lanes={draft.lanes}
+              options={options}
+              selectedLaneId={selectedLaneId}
+              onSelectLane={(laneId) => {
+                setSelectedLaneId(laneId);
+                setHighlightedLaneId(laneId);
+              }}
+            />
             <div className="min-w-0 flex-1">
               <PlannerPhaseAwareTacticPitch
                 view={view}
@@ -330,15 +340,6 @@ export function PlannerTacticEditor({
                 }}
               />
             </div>
-            <PlannerTacticLaneList
-              lanes={draft.lanes}
-              options={options}
-              selectedLaneId={selectedLaneId}
-              onSelectLane={(laneId) => {
-                setSelectedLaneId(laneId);
-                setHighlightedLaneId(laneId);
-              }}
-            />
           </div>
 
           {selectedLane ? (
