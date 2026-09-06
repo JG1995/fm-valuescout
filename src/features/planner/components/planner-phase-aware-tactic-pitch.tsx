@@ -23,7 +23,7 @@ type PlannerPhaseAwareTacticPitchProps = {
 // Both composes the shared canvas with two phase-distinguished markers per
 // lane. Owns no geometry, scoring, persistence, or mutation logic. This
 // wrapper owns the single orientation source: one colocated
-// matchMedia("(min-width: 1920px)") read with change subscription and
+// matchMedia("(min-width: 2100px)") read with change subscription and
 // cleanup. No dependency, no shared hook; the modal and the shared
 // single-phase component never subscribe and stay portrait.
 export function PlannerPhaseAwareTacticPitch({
@@ -41,7 +41,7 @@ export function PlannerPhaseAwareTacticPitch({
     () =>
       typeof window !== "undefined" &&
       typeof window.matchMedia === "function" &&
-      window.matchMedia("(min-width: 1920px)").matches,
+      window.matchMedia("(min-width: 2100px)").matches,
   );
 
   useEffect(() => {
@@ -51,7 +51,7 @@ export function PlannerPhaseAwareTacticPitch({
     ) {
       return;
     }
-    const query = window.matchMedia("(min-width: 1920px)");
+    const query = window.matchMedia("(min-width: 2100px)");
     // Catch a crossing between the initial read and subscription.
     setLandscape(query.matches);
     const onChange = (event: MediaQueryListEvent) => {
@@ -64,6 +64,15 @@ export function PlannerPhaseAwareTacticPitch({
   }, []);
 
   const orientation: PitchOrientation = landscape ? "landscape" : "portrait";
+  // Workspace-only portrait geometry: a centered, visibly vertical canvas
+  // so portrait attack-up reads as a vertical pitch at 1920x1080 instead
+  // of unrotated positions on a wide horizontal rectangle. Landscape keeps
+  // the full-width canvas; the role-reference modal never passes this and
+  // stays on the shared default.
+  const workspaceCanvasClassName =
+    orientation === "portrait"
+      ? "mx-auto h-[560px] w-full max-w-[520px]"
+      : undefined;
 
   if (view !== "both") {
     return (
@@ -76,6 +85,7 @@ export function PlannerPhaseAwareTacticPitch({
         highlightedLaneId={highlightedLaneId}
         onHighlight={onHighlight}
         onSelectLane={onSelectLane}
+        canvasClassName={workspaceCanvasClassName}
       />
     );
   }
@@ -106,6 +116,7 @@ export function PlannerPhaseAwareTacticPitch({
         linkedHintId={linkedHintId}
         onHighlight={onHighlight}
         onSelectLane={onSelectLane}
+        canvasClassName={workspaceCanvasClassName}
       />
     </section>
   );

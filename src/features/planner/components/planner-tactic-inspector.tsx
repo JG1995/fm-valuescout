@@ -78,7 +78,7 @@ function PhaseControls({
   return (
     <fieldset
       aria-label={`${label} settings`}
-      className="col-span-2 -my-2 grid grid-cols-2 gap-3 rounded-md bg-surface-container p-2 ring-1 ring-inset ring-outline-variant"
+      className="grid grid-cols-2 gap-3"
     >
       <SelectField
         label={`${shortLabel} ${positionLabel} position`}
@@ -132,109 +132,135 @@ export function PlannerTacticInspector({
 
   return (
     <section
-      className="space-y-2 rounded-lg border border-outline-variant bg-surface-container-high p-3"
+      className="flex h-full flex-col rounded-lg border border-outline-variant bg-surface-container-high p-3"
       aria-labelledby={headingId}
     >
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pb-3">
         <h3 id={headingId} className="text-label-lg text-on-surface">
           Selected Slot
         </h3>
-        <p className="text-body-sm text-on-surface-variant">
-          {linkedPositionDescription(selectedLane, lanes, options)}
+        <p className="whitespace-pre-line text-body-sm text-on-surface-variant">
+          {linkedPositionDescription(selectedLane, lanes, options).replace(
+            " / ",
+            "\n",
+          )}
         </p>
       </div>
 
-      <fieldset
-        disabled={disabled}
-        className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))]"
-      >
-        <div className="space-y-1">
-          <label
-            className="block text-label-md text-on-surface-variant"
-            htmlFor={weightId}
-          >
-            IP/OOP score weight
-          </label>
-          <input
-            id={weightId}
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value={weight}
-            aria-label="IP/OOP score weight"
-            aria-valuetext={`IP ${weight}%, OOP ${100 - weight}%`}
-            className="h-2 w-full cursor-pointer accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            onKeyDown={(event) => {
-              const next = nextWeight(weight, event.key);
-              if (next === null) {
-                return;
+      <fieldset disabled={disabled} className="flex flex-1 flex-col">
+        <div className="space-y-2 pb-4">
+          <h4 className="text-label-md text-on-surface-variant">
+            Phase Influence
+          </h4>
+          <div className="space-y-1">
+            <label
+              className="block text-label-md text-on-surface-variant"
+              htmlFor={weightId}
+            >
+              IP/OOP score weight
+            </label>
+            <input
+              id={weightId}
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={weight}
+              aria-label="IP/OOP score weight"
+              aria-valuetext={`IP ${weight}%, OOP ${100 - weight}%`}
+              className="h-2 w-full cursor-pointer accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              onKeyDown={(event) => {
+                const next = nextWeight(weight, event.key);
+                if (next === null) {
+                  return;
+                }
+                event.preventDefault();
+                onWeightChange(next / 100);
+              }}
+              onChange={(event) =>
+                onWeightChange(Number(event.target.value) / 100)
               }
-              event.preventDefault();
-              onWeightChange(next / 100);
-            }}
-            onChange={(event) =>
-              onWeightChange(Number(event.target.value) / 100)
-            }
-          />
-          <p className="font-mono text-mono-sm text-on-surface tabular-nums">
-            IP {weight}% / OOP {100 - weight}%
-          </p>
+            />
+            <p className="font-mono text-mono-sm text-on-surface tabular-nums">
+              IP {weight}% / OOP {100 - weight}%
+            </p>
+          </div>
         </div>
 
-        <SelectField
-          label="Importance rank"
-          value={selectedLane.importanceRank?.toString() ?? ""}
-          onChange={(event) =>
-            onRankChange(
-              event.target.value === "" ? null : Number(event.target.value),
-            )
-          }
-        >
-          <option value="">No rank</option>
-          {TACTIC_LANE_IDS.map((laneId, index) => (
-            <option key={laneId} value={index + 1}>
-              {index + 1}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField
-          label="Preferred foot"
-          value={selectedLane.preferredFoot}
-          onChange={(event) =>
-            onPreferredFootChange(
-              event.target.value as TacticLane["preferredFoot"],
-            )
-          }
-        >
-          <option value="any">Either</option>
-          <option value="left">Left</option>
-          <option value="right">Right</option>
-          <option value="both">Both</option>
-        </SelectField>
-        <SelectField
-          label="Foot preference"
-          value={selectedLane.footPreference}
-          disabled={selectedLane.preferredFoot === "any"}
-          onChange={(event) =>
-            onFootPreferenceChange(
-              event.target.value as TacticLane["footPreference"],
-            )
-          }
-        >
-          <option value="preferred">Preferred</option>
-          <option value="strict">Strict</option>
-        </SelectField>
+        <div className="space-y-2 border-t border-outline-variant py-4">
+          <h4 className="text-label-md text-on-surface-variant">
+            General Settings
+          </h4>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SelectField
+              label="Importance rank"
+              value={selectedLane.importanceRank?.toString() ?? ""}
+              onChange={(event) =>
+                onRankChange(
+                  event.target.value === "" ? null : Number(event.target.value),
+                )
+              }
+            >
+              <option value="">No rank</option>
+              {TACTIC_LANE_IDS.map((laneId, index) => (
+                <option key={laneId} value={index + 1}>
+                  {index + 1}
+                </option>
+              ))}
+            </SelectField>
+            <SelectField
+              label="Preferred foot"
+              value={selectedLane.preferredFoot}
+              onChange={(event) =>
+                onPreferredFootChange(
+                  event.target.value as TacticLane["preferredFoot"],
+                )
+              }
+            >
+              <option value="any">Either</option>
+              <option value="left">Left</option>
+              <option value="right">Right</option>
+              <option value="both">Both</option>
+            </SelectField>
+            <SelectField
+              label="Foot preference"
+              value={selectedLane.footPreference}
+              disabled={selectedLane.preferredFoot === "any"}
+              onChange={(event) =>
+                onFootPreferenceChange(
+                  event.target.value as TacticLane["footPreference"],
+                )
+              }
+            >
+              <option value="preferred">Preferred</option>
+              <option value="strict">Strict</option>
+            </SelectField>
+          </div>
+        </div>
+
         {phases.map((phase) => (
-          <PhaseControls
+          <div
             key={phase}
-            phase={phase}
-            lane={selectedLane}
-            lanes={lanes}
-            options={options}
-            onPositionChange={(position) => onPositionChange(phase, position)}
-            onRoleChange={(roleId) => onRoleChange(phase, roleId)}
-          />
+            className="space-y-2 border-t border-outline-variant py-4 last:pb-0"
+          >
+            <h4 className="flex items-center gap-2 text-label-md text-on-surface-variant">
+              <span
+                aria-hidden="true"
+                className={`inline-block size-2 rounded-full ${phase === "ip" ? "bg-chart-2" : "bg-chart-3"}`}
+              />
+              {phase === "ip"
+                ? "In Possession (IP)"
+                : "Out of Possession (OOP)"}
+            </h4>
+            <PhaseControls
+              phase={phase}
+              lane={selectedLane}
+              lanes={lanes}
+              options={options}
+              onPositionChange={(position) => onPositionChange(phase, position)}
+              onRoleChange={(roleId) => onRoleChange(phase, roleId)}
+            />
+          </div>
         ))}
       </fieldset>
     </section>
