@@ -1774,26 +1774,33 @@ test.describe("application smoke", () => {
     await expect(
       main.getByRole("region", { name: "Tactic controls" }),
     ).toBeVisible();
+    const pitches = main.getByRole("group", { name: /pitch$/ });
+    const ipPitch = pitches.first();
     await expect(
-      main.getByRole("button", { name: "IP: AML · Winger" }),
+      ipPitch.getByRole("button", { name: "IP: AML · Winger" }),
     ).toBeVisible();
-    const rightMc = main.getByRole("button", {
+    const rightMc = ipPitch.getByRole("button", {
       name: "IP: MCR · Central Midfielder",
     });
-    const leftMc = main.getByRole("button", {
+    const leftMc = ipPitch.getByRole("button", {
       name: "IP: MCL · Central Midfielder",
     });
-    const leftWinger = main.getByRole("button", { name: "IP: AML · Winger" });
-    const rightWinger = main.getByRole("button", {
+    const leftWinger = ipPitch.getByRole("button", {
+      name: "IP: AML · Winger",
+    });
+    const rightWinger = ipPitch.getByRole("button", {
       name: "IP: AMR · Winger",
     });
-    const pitches = main.getByRole("group", { name: /pitch$/ });
-    const leftWingerGroup = pitches
-      .first()
-      .locator('[data-position-group="AML"]');
-    const rightWingerGroup = pitches
-      .first()
-      .locator('[data-position-group="AMR"]');
+    await expect(pitches).toHaveCount(1);
+    // Both renders two phase-distinguished markers per lane on one canvas.
+    await expect(ipPitch.locator("[data-pitch-marker]")).toHaveCount(22);
+    await expect(
+      ipPitch.locator('[data-pitch-marker="left_central_midfielder"]'),
+    ).toHaveCount(2);
+    const rightMcMarker = ipPitch.locator(
+      '[data-pitch-marker="left_central_midfielder"][data-phase="ip"]',
+    );
+    await expect(rightMcMarker).toHaveAttribute("data-placement", "MCR");
     await expect(rightMc).toBeVisible();
     await expect(leftMc).toBeVisible();
     await rightMc.click();
@@ -1803,27 +1810,32 @@ test.describe("application smoke", () => {
     await expect(
       main.getByRole("combobox", { name: "IP MC role" }),
     ).toHaveValue("central_midfielder_ip");
+    await expect(rightMcMarker).toHaveAttribute("data-placement", "MC");
     await main
       .getByRole("combobox", { name: "IP MC position" })
       .selectOption("MCR");
-    await expect(pitches).toHaveCount(2);
-    await expect(pitches.first()).toHaveAttribute("data-pitch-slot-count", "5");
-    await expect(pitches.last()).toHaveAttribute("data-pitch-slot-count", "5");
+    await expect(rightMcMarker).toHaveAttribute("data-placement", "MCR");
+    const striker = ipPitch.getByRole("button", {
+      name: "IP: STC · Centre Forward",
+    });
+    const goalkeeper = ipPitch.getByRole("button", {
+      name: "IP: GK · Goalkeeper",
+    });
     const [
       rightMcBox,
       leftMcBox,
       leftWingerBox,
       rightWingerBox,
-      leftWingerGroupBox,
-      rightWingerGroupBox,
+      strikerBox,
+      goalkeeperBox,
       bothPitchBox,
     ] = await Promise.all([
       rightMc.boundingBox(),
       leftMc.boundingBox(),
       leftWinger.boundingBox(),
       rightWinger.boundingBox(),
-      leftWingerGroup.boundingBox(),
-      rightWingerGroup.boundingBox(),
+      striker.boundingBox(),
+      goalkeeper.boundingBox(),
       pitches.first().boundingBox(),
     ]);
     if (
@@ -1831,8 +1843,8 @@ test.describe("application smoke", () => {
       !leftMcBox ||
       !leftWingerBox ||
       !rightWingerBox ||
-      !leftWingerGroupBox ||
-      !rightWingerGroupBox ||
+      !strikerBox ||
+      !goalkeeperBox ||
       !bothPitchBox
     ) {
       throw new Error("Expected visible tactic cards and pitch geometry");
@@ -1841,47 +1853,291 @@ test.describe("application smoke", () => {
     expect(rightMcBox.width).toBeCloseTo(leftMcBox.width, 1);
     expect(rightMcBox.width).toBeCloseTo(leftWingerBox.width, 1);
     expect(rightMcBox.width).toBeCloseTo(rightWingerBox.width, 1);
-    expect(rightMcBox.width).toBeGreaterThan(bothPitchBox.width * 0.15);
+    expect(rightMcBox.width).toBeLessThan(bothPitchBox.width * 0.15);
+    expect(rightMcBox.width).toBeGreaterThanOrEqual(44);
+    expect(rightMcBox.height).toBeGreaterThanOrEqual(44);
     expect(leftMcBox.x + leftMcBox.width).toBeLessThan(rightMcBox.x);
     expect(leftWingerBox.x + leftWingerBox.width).toBeLessThan(
       rightWingerBox.x,
     );
-    expect(
-      Math.abs(
-        leftWingerBox.x +
-          leftWingerBox.width / 2 -
-          (leftWingerGroupBox.x + leftWingerGroupBox.width / 2),
-      ),
-    ).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs(
-        rightWingerBox.x +
-          rightWingerBox.width / 2 -
-          (rightWingerGroupBox.x + rightWingerGroupBox.width / 2),
-      ),
-    ).toBeLessThanOrEqual(1);
-    const pairCentre = (leftMcBox.x + rightMcBox.x + rightMcBox.width) / 2;
-    expect(pairCentre).toBeCloseTo(bothPitchBox.x + bothPitchBox.width / 2, 1);
+    for (const box of [
+      rightMcBox,
+      leftMcBox,
+      leftWingerBox,
+      rightWingerBox,
+      strikerBox,
+      goalkeeperBox,
+    ]) {
+      expect(box.x).toBeGreaterThanOrEqual(bothPitchBox.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(
+        bothPitchBox.x + bothPitchBox.width + 1,
+      );
+    }
+    const strikerCentre = strikerBox.y + strikerBox.height / 2;
+    const midfieldCentre = rightMcBox.y + rightMcBox.height / 2;
+    const goalkeeperCentre = goalkeeperBox.y + goalkeeperBox.height / 2;
+    expect(strikerCentre).toBeLessThan(midfieldCentre);
+    expect(midfieldCentre).toBeLessThan(goalkeeperCentre);
+    // Both-mode draws a connector only where the canonical placement
+    // changes: the two winger lanes connect, unchanged lanes do not.
+    await expect(ipPitch.locator("[data-tactic-connector]")).toHaveCount(2);
+    const wingerConnector = ipPitch.locator(
+      '[data-tactic-connector="left_winger"]',
+    );
+    await expect(wingerConnector).toBeVisible();
+    await expect(wingerConnector).toHaveAttribute("x1", "13");
+    await expect(wingerConnector).toHaveAttribute("y1", "28");
+    await expect(wingerConnector).toHaveAttribute("x2", "12");
+    await expect(wingerConnector).toHaveAttribute("y2", "46");
+    await expect(
+      ipPitch.locator('[data-tactic-connector="goalkeeper"]'),
+    ).toHaveCount(0);
+    // The selected-slot transition is readable without hover: it follows
+    // the existing marker selection for pointer and keyboard activation.
+    await leftWinger.click();
+    const selectedTransition = ipPitch.locator(
+      "[data-selected-slot-transition]",
+    );
+    await expect(selectedTransition).toBeVisible();
+    await expect(selectedTransition).toHaveText(
+      "IP: AML · Winger / OOP: ML · Tracking Wide Midfielder",
+    );
+    await expect(selectedTransition).not.toHaveClass(/sr-only/);
+    const transitionBox = await selectedTransition.boundingBox();
+    if (
+      !transitionBox ||
+      transitionBox.width <= 0 ||
+      transitionBox.height <= 0
+    ) {
+      throw new Error("Expected a visible selected-slot transition");
+    }
+    const transitionFontSize = await selectedTransition.evaluate((element) => {
+      const scope = element as unknown as {
+        ownerDocument: {
+          defaultView: {
+            getComputedStyle: (target: unknown) => { fontSize: string };
+          } | null;
+        };
+      };
+      return (
+        scope.ownerDocument.defaultView?.getComputedStyle(element).fontSize ??
+        ""
+      );
+    });
+    expect(Number.parseFloat(transitionFontSize)).toBeGreaterThan(0);
+    await rightWinger.focus();
+    await page.keyboard.press("Enter");
+    await expect(selectedTransition).toHaveText(
+      "IP: AMR · Winger / OOP: MR · Tracking Wide Midfielder",
+    );
+    await expect(selectedTransition).toBeVisible();
+    // A cross-lane DCR/DCL swap shares coordinates across lanes: each
+    // connector end must land inside its own displayed marker, not the
+    // 4px gap between the split pair.
+    await ipPitch
+      .getByRole("button", { name: "IP: DCR · Centre-Back" })
+      .click();
+    await main
+      .getByRole("combobox", { name: "IP DCR position" })
+      .selectOption("DCL");
+    await expect(ipPitch.locator("[data-tactic-connector]")).toHaveCount(4);
+    const splitAttachment = await ipPitch.evaluate((pitch) => {
+      const scope = pitch as unknown as {
+        querySelector: (selector: string) => unknown;
+      };
+      const endpointFor = (laneId: string, end: "start" | "end") => {
+        const line = scope.querySelector(
+          `[data-tactic-connector="${laneId}"]`,
+        ) as unknown as {
+          getAttribute: (name: string) => string | null;
+          ownerSVGElement: {
+            getBoundingClientRect: () => {
+              x: number;
+              y: number;
+              width: number;
+              height: number;
+            };
+          } | null;
+        } | null;
+        // The overlay uses preserveAspectRatio="none" on a 0-100
+        // viewBox, so endpoint percents map linearly onto the SVG box.
+        const svg = line?.ownerSVGElement?.getBoundingClientRect();
+        if (!line || !svg) {
+          return null;
+        }
+        const at = end === "start" ? "1" : "2";
+        return {
+          x: svg.x + (Number(line.getAttribute(`x${at}`)) / 100) * svg.width,
+          y: svg.y + (Number(line.getAttribute(`y${at}`)) / 100) * svg.height,
+        };
+      };
+      const rectFor = (laneId: string, phase: string) => {
+        const marker = scope.querySelector(
+          `[data-pitch-marker="${laneId}"][data-phase="${phase}"]`,
+        ) as unknown as {
+          getBoundingClientRect: () => {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          };
+        } | null;
+        return marker?.getBoundingClientRect() ?? null;
+      };
+      const inside = (
+        point: { x: number; y: number } | null,
+        rect: {
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+        } | null,
+      ) => {
+        if (!point || !rect) {
+          return false;
+        }
+        const tolerance = 0.5;
+        return (
+          point.x >= rect.x - tolerance &&
+          point.x <= rect.x + rect.width + tolerance &&
+          point.y >= rect.y - tolerance &&
+          point.y <= rect.y + rect.height + tolerance
+        );
+      };
+      return {
+        leftStartInOwn: inside(
+          endpointFor("left_centre_back", "start"),
+          rectFor("left_centre_back", "ip"),
+        ),
+        leftEndInOwn: inside(
+          endpointFor("left_centre_back", "end"),
+          rectFor("left_centre_back", "oop"),
+        ),
+        rightStartInOwn: inside(
+          endpointFor("right_centre_back", "start"),
+          rectFor("right_centre_back", "ip"),
+        ),
+        rightEndInOwn: inside(
+          endpointFor("right_centre_back", "end"),
+          rectFor("right_centre_back", "oop"),
+        ),
+        leftEndInOther: inside(
+          endpointFor("left_centre_back", "end"),
+          rectFor("right_centre_back", "ip"),
+        ),
+        rightStartInOther: inside(
+          endpointFor("right_centre_back", "start"),
+          rectFor("left_centre_back", "oop"),
+        ),
+      };
+    });
+    expect(splitAttachment.leftStartInOwn).toBe(true);
+    expect(splitAttachment.leftEndInOwn).toBe(true);
+    expect(splitAttachment.rightStartInOwn).toBe(true);
+    expect(splitAttachment.rightEndInOwn).toBe(true);
+    expect(splitAttachment.leftEndInOther).toBe(false);
+    expect(splitAttachment.rightStartInOther).toBe(false);
+    await main
+      .getByRole("combobox", { name: "IP DCL position" })
+      .selectOption("DCR");
+    await expect(ipPitch.locator("[data-tactic-connector]")).toHaveCount(2);
+    // Form the supported unique MC triple (MCL/MC/MCR) through the edit flow.
+    await ipPitch
+      .getByRole("button", { name: "IP: DM · Defensive Midfielder" })
+      .click();
+    await main
+      .getByRole("combobox", { name: "IP DM position" })
+      .selectOption("MC");
+    await main
+      .getByRole("combobox", { name: "IP MC role" })
+      .selectOption("central_midfielder_ip");
+    const dmMarker = ipPitch.locator(
+      '[data-pitch-marker="defensive_midfielder"][data-phase="ip"]',
+    );
+    await expect(dmMarker).toHaveAttribute("data-placement", "MC");
+    // Same-band and vertical-neighbour markers share no pixels at the
+    // supported desktop widths, covering the MC triple and the other
+    // central families present in the layout.
+    const pitchRectsDisjoint = (
+      left: { x: number; y: number; width: number; height: number },
+      right: { x: number; y: number; width: number; height: number },
+    ) =>
+      left.x + left.width <= right.x ||
+      right.x + right.width <= left.x ||
+      left.y + left.height <= right.y ||
+      right.y + right.height <= left.y;
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      const pitchBox = await pitches.first().boundingBox();
+      const markerBoxes = await ipPitch
+        .locator("[data-pitch-marker]")
+        .evaluateAll((elements) =>
+          elements.map((element) => {
+            const rect = (
+              element as unknown as {
+                getBoundingClientRect: () => {
+                  x: number;
+                  y: number;
+                  width: number;
+                  height: number;
+                };
+              }
+            ).getBoundingClientRect();
+            return {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+            };
+          }),
+        );
+      if (!pitchBox) {
+        throw new Error("Expected visible pitch geometry");
+      }
+      expect(markerBoxes).toHaveLength(22);
+      for (const box of markerBoxes) {
+        expect(box.width).toBeLessThan(pitchBox.width * 0.15);
+        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+      }
+      for (let left = 0; left < markerBoxes.length; left += 1) {
+        for (let right = left + 1; right < markerBoxes.length; right += 1) {
+          expect(
+            pitchRectsDisjoint(markerBoxes[left], markerBoxes[right]),
+          ).toBe(true);
+        }
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
     await main.getByRole("button", { name: "IP", exact: true }).click();
     await expect(pitches).toHaveCount(1);
+    await expect(
+      pitches.first().locator("[data-tactic-connector]"),
+    ).toHaveCount(0);
     const singlePitchBox = await pitches.first().boundingBox();
     if (!singlePitchBox) {
       throw new Error("Expected visible single-phase pitch geometry");
     }
     expect(singlePitchBox.width).toBeCloseTo(bothPitchBox.width, 1);
     await main.getByRole("button", { name: "Both", exact: true }).click();
-    await expect(pitches).toHaveCount(2);
-    for (const index of [0, 1]) {
-      const pitch = pitches.nth(index);
-      await expect(pitch.getByRole("button").first()).toHaveAccessibleName(
-        /: STC · /,
-      );
-      await expect(pitch.getByRole("button").last()).toHaveAccessibleName(
-        /: GK · /,
-      );
-    }
+    await expect(pitches).toHaveCount(1);
+    await expect(
+      pitches.first().locator('[data-tactic-connector="left_winger"]'),
+    ).toBeVisible();
+    await expect(pitches.first().locator("[data-pitch-marker]")).toHaveCount(
+      22,
+    );
+    await expect(
+      pitches.first().getByRole("button").first(),
+    ).toHaveAccessibleName(/: STC · /);
+    await expect(
+      pitches.first().getByRole("button").last(),
+    ).toHaveAccessibleName(/: GK · /);
     await expect(main.getByText("Left winger")).toHaveCount(0);
-    await main
+    await ipPitch
       .getByRole("button", { name: "IP: GK · Goalkeeper" })
       .press("Enter");
 
@@ -1902,6 +2158,142 @@ test.describe("application smoke", () => {
     await main.getByRole("button", { name: "Save tactic" }).click();
 
     await expect(main.getByRole("status")).toHaveText("Tactic saved.");
+
+    // The saved MC triple (MCL/MC/MCR) must also render without overlap in
+    // the narrow Best role fit modal: marker buttons keep the 44px floor,
+    // stay pairwise disjoint and contained, with no horizontal overflow.
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
+    await main.getByRole("button", { name: "Best role fit" }).click();
+    const referenceDialog = page.getByRole("dialog", {
+      name: "Best role fit reference",
+    });
+    await expect(referenceDialog).toBeVisible();
+    const referencePitch = referenceDialog.getByRole("group", {
+      name: /pitch$/,
+    });
+    await expect(referencePitch.locator("[data-pitch-marker]")).toHaveCount(11);
+    await expect(referencePitch.locator('[data-placement="MC"]')).toHaveCount(
+      1,
+    );
+    const referenceCanvasBox = await referencePitch
+      .locator("div.relative")
+      .first()
+      .boundingBox();
+    if (!referenceCanvasBox) {
+      throw new Error("Expected visible modal pitch canvas");
+    }
+    // Adjacent MC-triple gaps report the exact overlap measurement.
+    const tripleBoxes = (
+      await Promise.all(
+        [
+          "IP: MCL · Central Midfielder",
+          "IP: MC · Central Midfielder",
+          "IP: MCR · Central Midfielder",
+        ].map((name) =>
+          referencePitch.getByRole("button", { name }).boundingBox(),
+        ),
+      )
+    ).sort((left, right) => (left?.x ?? 0) - (right?.x ?? 0));
+    if (tripleBoxes.some((box) => !box)) {
+      throw new Error("Expected visible saved MC triple buttons");
+    }
+    const [tripleLeft, tripleMiddle, tripleRight] = tripleBoxes as [
+      { x: number; y: number; width: number; height: number },
+      { x: number; y: number; width: number; height: number },
+      { x: number; y: number; width: number; height: number },
+    ];
+    expect(
+      tripleMiddle.x - (tripleLeft.x + tripleLeft.width),
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      tripleRight.x - (tripleMiddle.x + tripleMiddle.width),
+    ).toBeGreaterThanOrEqual(0);
+    // Central triple lanes sit 15% of the canvas apart, so the 44px marker
+    // floor needs a canvas of at least 44 / 0.15 px to stay disjoint.
+    expect(referenceCanvasBox.width).toBeGreaterThanOrEqual(44 / 0.15);
+    const referenceButtonBoxes = await referencePitch
+      .getByRole("button")
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = (
+            element as unknown as {
+              getBoundingClientRect: () => {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+              };
+            }
+          ).getBoundingClientRect();
+          return {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          };
+        }),
+      );
+    expect(referenceButtonBoxes).toHaveLength(11);
+    const referencePitchBox = await referencePitch.boundingBox();
+    if (!referencePitchBox) {
+      throw new Error("Expected visible modal pitch geometry");
+    }
+    for (const box of referenceButtonBoxes) {
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.x).toBeGreaterThanOrEqual(referencePitchBox.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(
+        referencePitchBox.x + referencePitchBox.width + 1,
+      );
+    }
+    const modalRectsDisjoint = (
+      left: { x: number; y: number; width: number; height: number },
+      right: { x: number; y: number; width: number; height: number },
+    ) =>
+      left.x + left.width <= right.x ||
+      right.x + right.width <= left.x ||
+      left.y + left.height <= right.y ||
+      right.y + right.height <= left.y;
+    for (let left = 0; left < referenceButtonBoxes.length; left += 1) {
+      for (
+        let right = left + 1;
+        right < referenceButtonBoxes.length;
+        right += 1
+      ) {
+        expect(
+          modalRectsDisjoint(
+            referenceButtonBoxes[left],
+            referenceButtonBoxes[right],
+          ),
+        ).toBe(true);
+      }
+    }
+    const referenceOverflow = await referenceDialog.evaluate((element) => {
+      const dialogElement = element as unknown as {
+        clientWidth: number;
+        scrollWidth: number;
+      };
+      return {
+        clientWidth: dialogElement.clientWidth,
+        scrollWidth: dialogElement.scrollWidth,
+      };
+    });
+    expect(referenceOverflow.scrollWidth).toBeLessThanOrEqual(
+      referenceOverflow.clientWidth + 1,
+    );
+    const plannerOverflow = await main.evaluate((element) => {
+      const mainElement = element as unknown as {
+        clientWidth: number;
+        scrollWidth: number;
+      };
+      return {
+        clientWidth: mainElement.clientWidth,
+        scrollWidth: mainElement.scrollWidth,
+      };
+    });
+    expect(plannerOverflow.scrollWidth).toBeLessThanOrEqual(
+      plannerOverflow.clientWidth + 1,
+    );
   });
 
   test("planner tactic workspace fits its supported desktop viewports", async ({
@@ -1913,7 +2305,7 @@ test.describe("application smoke", () => {
     const main = page.getByRole("main");
     const pitches = main.getByRole("group", { name: /pitch$/ });
     const settings = main.getByRole("region", {
-      name: "Selected position settings",
+      name: "Selected Slot",
     });
     const plannerHeading = main.getByRole("heading", {
       level: 1,
@@ -1933,7 +2325,7 @@ test.describe("application smoke", () => {
     ) => {
       await page.setViewportSize({ width, height });
       for (const [view, pitchCount, visibleRole] of [
-        ["Both", 2, "OOP GK role"],
+        ["Both", 1, "OOP GK role"],
         ["IP", 1, "IP GK role"],
         ["OOP", 1, "OOP GK role"],
       ] as const) {
@@ -1947,23 +2339,83 @@ test.describe("application smoke", () => {
         const [headingBox] = await Promise.all([plannerHeading.boundingBox()]);
         expect(headingBox).not.toBeNull();
 
-        if (width >= 1600 && view === "Both") {
-          const selectBoxes = await settings
-            .getByRole("combobox")
-            .evaluateAll((elements) =>
-              elements.map(
-                (element) =>
-                  (
-                    element as unknown as {
-                      getBoundingClientRect: () => { top: number };
-                    }
-                  ).getBoundingClientRect().top,
-              ),
-            );
-          expect(
-            Math.max(...selectBoxes) - Math.min(...selectBoxes),
-          ).toBeLessThanOrEqual(1);
+        // The beside-pitch inspector wraps its controls instead of sharing
+        // one bottom-shelf row: every combobox stays visible, inside the
+        // inspector bounds, and pairwise disjoint, with phase/weight
+        // association readable from the existing fieldset and slider labels.
+        const inspectorBox = await settings.boundingBox();
+        expect(inspectorBox).not.toBeNull();
+        if (!inspectorBox) {
+          throw new Error("Expected a visible inspector layout.");
         }
+        const inspectorControls = await settings
+          .getByRole("combobox")
+          .evaluateAll((elements) =>
+            elements.map((element) => {
+              const rect = (
+                element as unknown as {
+                  getBoundingClientRect: () => {
+                    x: number;
+                    y: number;
+                    width: number;
+                    height: number;
+                  };
+                }
+              ).getBoundingClientRect();
+              return {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height,
+              };
+            }),
+          );
+        expect(inspectorControls.length).toBeGreaterThan(0);
+        for (let index = 0; index < inspectorControls.length; index += 1) {
+          await expect(settings.getByRole("combobox").nth(index)).toBeVisible();
+          const controlBox = inspectorControls[index];
+          expect(controlBox.x).toBeGreaterThanOrEqual(inspectorBox.x - 1);
+          expect(controlBox.y).toBeGreaterThanOrEqual(inspectorBox.y - 1);
+          expect(controlBox.x + controlBox.width).toBeLessThanOrEqual(
+            inspectorBox.x + inspectorBox.width + 1,
+          );
+          expect(controlBox.y + controlBox.height).toBeLessThanOrEqual(
+            inspectorBox.y + inspectorBox.height + 1,
+          );
+        }
+        for (let left = 0; left < inspectorControls.length; left += 1) {
+          for (
+            let right = left + 1;
+            right < inspectorControls.length;
+            right += 1
+          ) {
+            const leftBox = inspectorControls[left];
+            const rightBox = inspectorControls[right];
+            const xOverlap =
+              Math.min(leftBox.x + leftBox.width, rightBox.x + rightBox.width) -
+              Math.max(leftBox.x, rightBox.x);
+            const yOverlap =
+              Math.min(
+                leftBox.y + leftBox.height,
+                rightBox.y + rightBox.height,
+              ) - Math.max(leftBox.y, rightBox.y);
+            expect(xOverlap <= 0 || yOverlap <= 0).toBe(true);
+          }
+        }
+        await expect(
+          settings.getByRole("group", { name: "In-Possession settings" }),
+        ).toBeVisible();
+        await expect(
+          settings.getByRole("group", { name: "Out-of-Possession settings" }),
+        ).toBeVisible();
+        const weightSlider = settings.getByRole("slider", {
+          name: "IP/OOP score weight",
+        });
+        await expect(weightSlider).toBeVisible();
+        await expect(weightSlider).toHaveAttribute(
+          "aria-valuetext",
+          /IP \d+%, OOP \d+/,
+        );
 
         const dimensions = await main.evaluate((element) => {
           const mainElement = element as unknown as {
@@ -1987,6 +2439,69 @@ test.describe("application smoke", () => {
             dimensions.clientHeight + 1,
           );
         }
+        if (width >= 1600) {
+          // The Selected Slot inspector sits beside the pitch (horizontally
+          // adjacent with vertical overlap), not on a bottom shelf below it.
+          const [pitchBox, settingsBox] = await Promise.all([
+            pitches.first().boundingBox(),
+            settings.boundingBox(),
+          ]);
+          expect(pitchBox).not.toBeNull();
+          expect(settingsBox).not.toBeNull();
+          if (!pitchBox || !settingsBox) {
+            throw new Error(
+              "Expected the pitch and inspector to have a visible layout.",
+            );
+          }
+          expect(settingsBox.x).toBeGreaterThanOrEqual(
+            pitchBox.x + pitchBox.width - 1,
+          );
+          expect(settingsBox.y).toBeLessThanOrEqual(
+            pitchBox.y + pitchBox.height - 1,
+          );
+          expect(pitchBox.y).toBeLessThanOrEqual(
+            settingsBox.y + settingsBox.height - 1,
+          );
+        }
+      }
+      if (width >= 3000) {
+        // Ultrawide containment: the tactic workspace stays bounded and
+        // centered instead of stretching pitch and side panels across the
+        // full viewport width.
+        expect(
+          await page.evaluate(
+            () => (globalThis as unknown as { innerWidth: number }).innerWidth,
+          ),
+        ).toBe(width);
+        const [ultrawidePitchBox, ultrawideSettingsBox, ultrawideMainBox] =
+          await Promise.all([
+            pitches.first().boundingBox(),
+            settings.boundingBox(),
+            main.boundingBox(),
+          ]);
+        expect(ultrawidePitchBox).not.toBeNull();
+        expect(ultrawideSettingsBox).not.toBeNull();
+        expect(ultrawideMainBox).not.toBeNull();
+        if (!ultrawidePitchBox || !ultrawideSettingsBox || !ultrawideMainBox) {
+          throw new Error(
+            "Expected the ultrawide workspace to have a visible layout.",
+          );
+        }
+        const spreadLeft = Math.min(
+          ultrawidePitchBox.x,
+          ultrawideSettingsBox.x,
+        );
+        const spreadRight = Math.max(
+          ultrawidePitchBox.x + ultrawidePitchBox.width,
+          ultrawideSettingsBox.x + ultrawideSettingsBox.width,
+        );
+        expect(spreadRight - spreadLeft).toBeLessThanOrEqual(2000);
+        const leftMargin = spreadLeft - ultrawideMainBox.x;
+        const rightMargin =
+          ultrawideMainBox.x + ultrawideMainBox.width - spreadRight;
+        expect(leftMargin).toBeGreaterThan(100);
+        expect(rightMargin).toBeGreaterThan(100);
+        expect(Math.abs(leftMargin - rightMargin)).toBeLessThanOrEqual(16);
       }
     };
 
@@ -1994,9 +2509,380 @@ test.describe("application smoke", () => {
       [1280, 800, false],
       [1600, 900, true],
       [1920, 1080, true],
+      [3440, 1440, true],
     ] as const) {
       await expectWorkspaceFit(width, height, requireVerticalFit);
     }
+  });
+
+  test("planner tactic pitch orients landscape at wide viewports", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+
+    // Initial load at 1920 renders the landscape orientation immediately.
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto("/my-club?view=tactic");
+
+    const main = page.getByRole("main");
+    const pitches = main.getByRole("group", { name: /pitch$/ });
+    const pitch = pitches.first();
+    const striker = pitch.getByRole("button", {
+      name: "IP: STC · Centre Forward",
+    });
+    const goalkeeper = pitch.getByRole("button", {
+      name: "IP: GK · Goalkeeper",
+    });
+    await expect(striker).toBeVisible();
+    await expect(pitch).toContainText("Attack toward the right");
+
+    const centre = (box: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }) => ({
+      x: box.x + box.width / 2,
+      y: box.y + box.height / 2,
+    });
+    const landscapeBoxes = await Promise.all([
+      striker.boundingBox(),
+      goalkeeper.boundingBox(),
+    ]);
+    if (landscapeBoxes.some((box) => !box)) {
+      throw new Error("Expected visible landscape striker and goalkeeper");
+    }
+    const [landscapeStriker, landscapeGoalkeeper] = landscapeBoxes as [
+      { x: number; y: number; width: number; height: number },
+      { x: number; y: number; width: number; height: number },
+    ];
+    // Portrait attack-up (striker above the goalkeeper) inverts to
+    // landscape attack-right (striker right of the goalkeeper).
+    expect(landscapeStriker.x).toBeGreaterThan(
+      landscapeGoalkeeper.x + landscapeGoalkeeper.width,
+    );
+    const landscapeHorizontalGap =
+      landscapeStriker.x - (landscapeGoalkeeper.x + landscapeGoalkeeper.width);
+    const landscapeVerticalDrift = Math.abs(
+      centre(landscapeStriker).y - centre(landscapeGoalkeeper).y,
+    );
+    expect(landscapeVerticalDrift).toBeLessThan(landscapeHorizontalGap);
+
+    // Both-mode connectors project with the markers: the portrait AML/ML
+    // geometry (x1 13, y1 28, x2 12, y2 46) becomes landscape geometry.
+    const wingerConnector = pitch.locator(
+      '[data-tactic-connector="left_winger"]',
+    );
+    await expect(wingerConnector).toBeVisible();
+    await expect(wingerConnector).toHaveAttribute("x1", "72");
+    await expect(wingerConnector).toHaveAttribute("y1", "13");
+    await expect(wingerConnector).toHaveAttribute("x2", "54");
+    await expect(wingerConnector).toHaveAttribute("y2", "12");
+
+    // Marker text stays upright: no marker button — and no ancestor up
+    // to and including the pitch — carries rotation. Both the CSS
+    // individual `rotate` property and the rotation component of the
+    // computed `transform` matrix count; pure translation (used for marker
+    // placement) does not.
+    type RotationProbeNode = {
+      getAttribute: (name: string) => string | null;
+      parentElement: RotationProbeNode | null;
+    };
+    const rotatedMarkers = await pitch.evaluate((element) => {
+      const scope = element as unknown as {
+        ownerDocument: {
+          defaultView: {
+            getComputedStyle: (target: unknown) => { transform: string };
+          } | null;
+        };
+        querySelectorAll: (selector: string) => RotationProbeNode[];
+      };
+      const view = scope.ownerDocument.defaultView;
+      const hasRotation = (target: unknown) => {
+        if (!view) {
+          return false;
+        }
+        const style = view.getComputedStyle(target);
+        const rotate =
+          (style as unknown as { rotate?: string }).rotate ?? "none";
+        if (rotate !== "none") {
+          return true;
+        }
+        const matrix = style.transform.match(/^matrix\((.+)\)$/);
+        if (!matrix) {
+          return false;
+        }
+        const [, b, c] = matrix[1].split(",").map(Number);
+        return Math.abs(b ?? 0) > 1e-6 || Math.abs(c ?? 0) > 1e-6;
+      };
+      const offenders: string[] = [];
+      for (const button of scope.querySelectorAll(
+        "[data-pitch-marker] button",
+      )) {
+        let node: RotationProbeNode | null = button;
+        while (node) {
+          if (hasRotation(node)) {
+            offenders.push(button.getAttribute("aria-label") ?? "marker");
+            break;
+          }
+          if ((node as unknown) === (element as unknown)) {
+            break;
+          }
+          node = node.parentElement;
+        }
+      }
+      return offenders;
+    });
+    expect(rotatedMarkers).toEqual([]);
+
+    // Keyboard order follows the current visual pitch order: focusing the
+    // first marker button and pressing Tab through every marker button
+    // visits the accessible names in the same top-to-bottom,
+    // left-to-right order as their boxes. Reused at 1920 and 1919.
+    const tabOrderMatchesVisual = async () => {
+      const visualLabels = await pitch
+        .getByRole("button")
+        .evaluateAll((elements) =>
+          elements
+            .map((element) => {
+              const node = element as unknown as {
+                getAttribute: (name: string) => string | null;
+                getBoundingClientRect: () => { x: number; y: number };
+              };
+              const rect = node.getBoundingClientRect();
+              return {
+                label: node.getAttribute("aria-label") ?? "",
+                x: rect.x,
+                y: rect.y,
+              };
+            })
+            .sort((left, right) => left.y - right.y || left.x - right.x)
+            .map((entry) => entry.label),
+        );
+      expect(visualLabels).toHaveLength(22);
+      await pitch.getByRole("button").first().focus();
+      const tabbedLabels: string[] = [];
+      for (let index = 0; index < visualLabels.length; index += 1) {
+        const focused = await pitch.evaluate((activeElement) => {
+          const scope = activeElement as unknown as {
+            ownerDocument: {
+              activeElement: {
+                getAttribute: (name: string) => string | null;
+              } | null;
+            };
+          };
+          return (
+            scope.ownerDocument.activeElement?.getAttribute("aria-label") ?? ""
+          );
+        });
+        tabbedLabels.push(focused);
+        await page.keyboard.press("Tab");
+      }
+      expect(tabbedLabels).toEqual(visualLabels);
+    };
+
+    // Realistic edited layout at 1920: a cross-lane DCR/DCL swap (a shared
+    // coordinate collides across lanes) plus the supported MCL/MC/MCR
+    // triple, using the existing combobox flows from the portrait seam.
+    await pitch.getByRole("button", { name: "IP: DCR · Centre-Back" }).click();
+    await main
+      .getByRole("combobox", { name: "IP DCR position" })
+      .selectOption("DCL");
+    await expect(pitch.locator("[data-tactic-connector]")).toHaveCount(4);
+    await pitch
+      .getByRole("button", { name: "IP: DM · Defensive Midfielder" })
+      .click();
+    await main
+      .getByRole("combobox", { name: "IP DM position" })
+      .selectOption("MC");
+    await main
+      .getByRole("combobox", { name: "IP MC role" })
+      .selectOption("central_midfielder_ip");
+    await expect(
+      pitch.locator(
+        '[data-pitch-marker="defensive_midfielder"][data-phase="ip"]',
+      ),
+    ).toHaveAttribute("data-placement", "MC");
+
+    // Edited landscape markers keep the 44px target floor and stay disjoint,
+    // covering the swap collision and the MC triple.
+    const landscapeMarkerBoxes = await pitch
+      .locator("[data-pitch-marker]")
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = (
+            element as unknown as {
+              getBoundingClientRect: () => {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+              };
+            }
+          ).getBoundingClientRect();
+          return {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          };
+        }),
+      );
+    expect(landscapeMarkerBoxes).toHaveLength(22);
+    for (const box of landscapeMarkerBoxes) {
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+    for (let left = 0; left < landscapeMarkerBoxes.length; left += 1) {
+      for (
+        let right = left + 1;
+        right < landscapeMarkerBoxes.length;
+        right += 1
+      ) {
+        const leftBox = landscapeMarkerBoxes[left];
+        const rightBox = landscapeMarkerBoxes[right];
+        expect(
+          leftBox.x + leftBox.width <= rightBox.x ||
+            rightBox.x + rightBox.width <= leftBox.x ||
+            leftBox.y + leftBox.height <= rightBox.y ||
+            rightBox.y + rightBox.height <= leftBox.y,
+        ).toBe(true);
+      }
+    }
+    // Every Both-mode connector endpoint lands inside its owning displayed
+    // marker: the line start in the lane's IP marker, the line end in the
+    // lane's OOP marker. The overlay maps its 0-100 viewBox linearly onto
+    // the SVG box (preserveAspectRatio="none"), as in the portrait seam.
+    const landscapeAttachment = await pitch.evaluate((element) => {
+      const scope = element as unknown as {
+        querySelector: (selector: string) => {
+          getBoundingClientRect: () => {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          };
+        } | null;
+        querySelectorAll: (selector: string) => {
+          getAttribute: (name: string) => string | null;
+          ownerSVGElement: {
+            getBoundingClientRect: () => {
+              x: number;
+              y: number;
+              width: number;
+              height: number;
+            };
+          } | null;
+        }[];
+      };
+      const boxOf = (selector: string) => {
+        const target = scope.querySelector(selector);
+        if (!target) {
+          return null;
+        }
+        const rect = target.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      };
+      const inside = (
+        point: { x: number; y: number } | null,
+        rect: { x: number; y: number; width: number; height: number } | null,
+      ) => {
+        if (!point || !rect) {
+          return false;
+        }
+        const tolerance = 0.5;
+        return (
+          point.x >= rect.x - tolerance &&
+          point.x <= rect.x + rect.width + tolerance &&
+          point.y >= rect.y - tolerance &&
+          point.y <= rect.y + rect.height + tolerance
+        );
+      };
+      return Array.from(scope.querySelectorAll("[data-tactic-connector]")).map(
+        (line) => {
+          const laneId = line.getAttribute("data-tactic-connector") ?? "";
+          const svg = line.ownerSVGElement?.getBoundingClientRect() ?? null;
+          const point = (at: "1" | "2") => {
+            if (!svg) {
+              return null;
+            }
+            return {
+              x:
+                svg.x + (Number(line.getAttribute(`x${at}`)) / 100) * svg.width,
+              y:
+                svg.y +
+                (Number(line.getAttribute(`y${at}`)) / 100) * svg.height,
+            };
+          };
+          return {
+            lane: laneId,
+            startInOwn: inside(
+              point("1"),
+              boxOf(`[data-pitch-marker="${laneId}"][data-phase="ip"]`),
+            ),
+            endInOwn: inside(
+              point("2"),
+              boxOf(`[data-pitch-marker="${laneId}"][data-phase="oop"]`),
+            ),
+          };
+        },
+      );
+    });
+    // The edited layout draws five connectors: the winger pair, the swap
+    // pair, and the triple lane whose IP moved DM → MC.
+    expect(landscapeAttachment).toHaveLength(5);
+    for (const entry of landscapeAttachment) {
+      expect(entry.startInOwn).toBe(true);
+      expect(entry.endInOwn).toBe(true);
+    }
+
+    // Tab order matches the edited visual order at 1920.
+    await tabOrderMatchesVisual();
+
+    // Live crossing: the orientation follows actual viewport bounds.
+    await page.setViewportSize({ width: 1919, height: 1080 });
+    await expect(pitch).toContainText("Attack toward the top");
+    await expect(wingerConnector).toHaveAttribute("x1", "13");
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await expect(pitch).toContainText("Attack toward the right");
+    await expect(wingerConnector).toHaveAttribute("x1", "72");
+    await page.setViewportSize({ width: 1919, height: 1080 });
+    await expect(pitch).toContainText("Attack toward the top");
+    const portraitBoxes = await Promise.all([
+      striker.boundingBox(),
+      goalkeeper.boundingBox(),
+    ]);
+    if (portraitBoxes.some((box) => !box)) {
+      throw new Error("Expected visible portrait striker and goalkeeper");
+    }
+    const [portraitStriker, portraitGoalkeeper] = portraitBoxes as [
+      { x: number; y: number; width: number; height: number },
+      { x: number; y: number; width: number; height: number },
+    ];
+    expect(centre(portraitStriker).y).toBeLessThan(
+      centre(portraitGoalkeeper).y,
+    );
+    const portraitVerticalGap =
+      centre(portraitGoalkeeper).y - centre(portraitStriker).y;
+    const portraitHorizontalDrift = Math.abs(
+      centre(portraitStriker).x - centre(portraitGoalkeeper).x,
+    );
+    expect(portraitVerticalGap).toBeGreaterThan(portraitHorizontalDrift);
+
+    // Tab order matches the edited visual order in portrait as well.
+    await tabOrderMatchesVisual();
+
+    // The role-reference modal stays portrait at wide viewports.
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
+    await main.getByRole("button", { name: "Best role fit" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: "Best role fit reference",
+    });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Attack toward the top");
+    await expect(dialog).not.toContainText("Attack toward the right");
+    await dialog.getByRole("button", { name: "Close" }).click();
   });
 
   test("planner depth adds strings for Senior, Reserves, and Youth", async ({
@@ -2032,6 +2918,57 @@ test.describe("application smoke", () => {
       name: "Best role fit reference",
     });
     await expect(dialog).toBeVisible();
+    const dialogPitch = dialog.getByRole("group", { name: /pitch$/ });
+    await expect(dialogPitch.locator("[data-pitch-marker]")).toHaveCount(11);
+    await expect(dialogPitch.getByText(/attack/i)).toBeVisible();
+    const dialogPitchBox = await dialogPitch.boundingBox();
+    const dialogMarkerBoxes = await dialogPitch
+      .locator("[data-pitch-marker]")
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = (
+            element as unknown as {
+              getBoundingClientRect: () => {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+              };
+            }
+          ).getBoundingClientRect();
+          return {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          };
+        }),
+      );
+    if (!dialogPitchBox) {
+      throw new Error("Expected visible modal pitch geometry");
+    }
+    for (const box of dialogMarkerBoxes) {
+      // The narrow modal pitch keeps the 44px target floor instead of the
+      // proportional width, so markers stay usable without overlapping.
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.x).toBeGreaterThanOrEqual(dialogPitchBox.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(
+        dialogPitchBox.x + dialogPitchBox.width + 1,
+      );
+    }
+    for (let left = 0; left < dialogMarkerBoxes.length; left += 1) {
+      for (let right = left + 1; right < dialogMarkerBoxes.length; right += 1) {
+        const leftBox = dialogMarkerBoxes[left];
+        const rightBox = dialogMarkerBoxes[right];
+        expect(
+          leftBox.x + leftBox.width <= rightBox.x ||
+            rightBox.x + rightBox.width <= leftBox.x ||
+            leftBox.y + leftBox.height <= rightBox.y ||
+            rightBox.y + rightBox.height <= leftBox.y,
+        ).toBe(true);
+      }
+    }
     await expect(
       dialog.getByRole("radio", { name: "In Possession" }),
     ).toBeChecked();

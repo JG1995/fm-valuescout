@@ -139,8 +139,6 @@ const DEFAULT_LANES: [DefaultLane; TACTIC_LANE_COUNT] = [
     },
 ];
 
-const SIDED_BASE_POSITIONS: [&str; 5] = ["DC", "DM", "MC", "AMC", "ST"];
-
 fn sided_placements(base_position: &str) -> Option<[&'static str; 3]> {
     match base_position {
         "DC" => Some(["DCR", "DC", "DCL"]),
@@ -334,50 +332,9 @@ pub(super) fn load_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTact
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
 
-    let mut tactic = PlannerTactic { lanes };
-    normalize_legacy_placements(&mut tactic);
+    let tactic = PlannerTactic { lanes };
     validate_tactic_contents(&tactic, false)?;
     Ok(tactic)
-}
-
-fn normalize_legacy_placements(tactic: &mut PlannerTactic) {
-    let ip_positions =
-        normalize_legacy_phase(tactic.lanes.iter().map(|lane| lane.ip_position.as_str()));
-    let oop_positions =
-        normalize_legacy_phase(tactic.lanes.iter().map(|lane| lane.oop_position.as_str()));
-
-    for ((lane, ip_position), oop_position) in
-        tactic.lanes.iter_mut().zip(ip_positions).zip(oop_positions)
-    {
-        lane.ip_position = ip_position;
-        lane.oop_position = oop_position;
-    }
-}
-
-fn normalize_legacy_phase<'a>(positions: impl Iterator<Item = &'a str>) -> Vec<String> {
-    let mut normalized = positions.map(str::to_string).collect::<Vec<_>>();
-
-    for base_position in SIDED_BASE_POSITIONS {
-        let indices = normalized
-            .iter()
-            .enumerate()
-            .filter_map(|(index, position)| (position == base_position).then_some(index))
-            .collect::<Vec<_>>();
-        let Some(sided) = sided_placements(base_position) else {
-            continue;
-        };
-        let placements: &[&str] = match indices.len() {
-            1 => &sided[1..2],
-            2 => &[sided[0], sided[2]],
-            3 => &sided,
-            _ => continue,
-        };
-        for (index, placement) in indices.into_iter().zip(placements) {
-            normalized[index] = (*placement).to_string();
-        }
-    }
-
-    normalized
 }
 
 fn ensure_save_exists(conn: &Connection, save_id: i64) -> Result<(), String> {
@@ -583,52 +540,6 @@ mod tests {
             get_tactic(&conn, second_save_id).expect("reload second tactic"),
             second
         );
-    }
-
-    #[test]
-    fn legacy_repeated_base_positions_keep_their_existing_visual_order() {
-        let (_temp_dir, conn, save_id) = open_with_save();
-        get_tactic(&conn, save_id).expect("seed default tactic");
-
-        conn.execute(
-            "UPDATE planner_tactic_lanes
-             SET ip_position = 'MC'
-             WHERE save_id = ?1
-               AND lane_id IN ('left_central_midfielder', 'right_central_midfielder')",
-            [save_id],
-        )
-        .expect("restore legacy midfield placements");
-
-        let tactic = get_tactic(&conn, save_id).expect("load legacy tactic");
-        assert_eq!(tactic.lanes[6].ip_position, "MCR");
-        assert_eq!(tactic.lanes[7].ip_position, "MCL");
-    }
-
-    #[test]
-    fn legacy_groups_larger_than_three_load_but_require_resolution_before_save() {
-        let (_temp_dir, conn, save_id) = open_with_save();
-        get_tactic(&conn, save_id).expect("seed default tactic");
-
-        conn.execute(
-            "UPDATE planner_tactic_lanes
-             SET ip_position = 'MC', ip_role_id = 'central_midfielder_ip'
-             WHERE save_id = ?1 AND lane_order < 4",
-            [save_id],
-        )
-        .expect("create oversized legacy group");
-
-        let tactic = get_tactic(&conn, save_id).expect("load legacy tactic");
-        assert_eq!(
-            tactic
-                .lanes
-                .iter()
-                .filter(|lane| lane.ip_position == "MC")
-                .count(),
-            4
-        );
-        let error = save_tactic(&conn, save_id, &tactic)
-            .expect_err("require distinct placements before save");
-        assert!(error.contains("MC is already used in the in-possession phase"));
     }
 
     #[test]

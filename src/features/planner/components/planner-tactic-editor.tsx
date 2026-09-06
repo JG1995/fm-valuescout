@@ -8,8 +8,7 @@ import type { PlannerTactic, TacticLane, TacticOptions } from "../types/tactic";
 import {
   cloneTactic,
   phasePosition,
-  phaseRoleId,
-  rolesForPhase,
+  swapPhasePlacement,
   TACTIC_VIEWS,
   type TacticPhase,
   type TacticView,
@@ -17,8 +16,9 @@ import {
   updatePhaseLane,
   validateTacticDraft,
 } from "../utils/tactic-editor";
+import { PlannerPhaseAwareTacticPitch } from "./planner-phase-aware-tactic-pitch";
 import { PlannerTacticInspector } from "./planner-tactic-inspector";
-import { PlannerTacticPitch } from "./planner-tactic-pitch";
+import { PlannerTacticLaneList } from "./planner-tactic-lane-list";
 
 type PlannerTacticEditorProps = {
   context: PlannerContext;
@@ -34,10 +34,6 @@ const VIEW_LABELS: Record<TacticView, string> = {
   oop: "OOP",
   both: "Both",
 };
-
-function visiblePhases(view: TacticView): TacticPhase[] {
-  return view === "both" ? ["ip", "oop"] : [view];
-}
 
 function nextView(view: TacticView, key: string): TacticView | null {
   const index = TACTIC_VIEWS.indexOf(view);
@@ -202,26 +198,9 @@ export function PlannerTacticEditor({
     phase: TacticPhase,
     position: string,
   ) => {
-    const currentLane = draft.lanes.find((lane) => lane.laneId === laneId);
-    if (!currentLane) {
-      return;
-    }
-    const currentRoleId = phaseRoleId(currentLane, phase);
-    const keepsCurrentRole = rolesForPhase(options, phase, position).some(
-      (role) => role.roleId === currentRoleId,
-    );
     updateDraft({
       ...draft,
-      lanes: draft.lanes.map((lane) =>
-        lane.laneId === laneId
-          ? updatePhaseLane(
-              lane,
-              phase,
-              position,
-              keepsCurrentRole ? currentRoleId : "",
-            )
-          : lane,
-      ),
+      lanes: swapPhasePlacement(draft.lanes, laneId, phase, position, options),
     });
   };
 
@@ -332,43 +311,58 @@ export function PlannerTacticEditor({
           </Button>
         </section>
 
-        <div className="grid gap-3 lg:grid-cols-2">
-          {visiblePhases(view).map((phase) => (
-            <PlannerTacticPitch
-              key={phase}
-              phase={phase}
+        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          {/* Stack the pitch/XI pair below 2xl so the 1280 pitch keeps
+              full width for disjoint markers; row returns at 2xl where
+              1600/1920 have room for the 256px XI beside the pitch. */}
+          <div className="flex min-w-0 flex-col gap-3 2xl:flex-row 2xl:items-start">
+            <div className="min-w-0 flex-1">
+              <PlannerPhaseAwareTacticPitch
+                view={view}
+                lanes={draft.lanes}
+                options={options}
+                selectedLaneId={selectedLaneId}
+                highlightedLaneId={highlightedLaneId}
+                onHighlight={setHighlightedLaneId}
+                onSelectLane={(laneId) => {
+                  setSelectedLaneId(laneId);
+                  setHighlightedLaneId(laneId);
+                }}
+              />
+            </div>
+            <PlannerTacticLaneList
               lanes={draft.lanes}
               options={options}
               selectedLaneId={selectedLaneId}
-              highlightedLaneId={highlightedLaneId}
-              onHighlight={setHighlightedLaneId}
               onSelectLane={(laneId) => {
                 setSelectedLaneId(laneId);
                 setHighlightedLaneId(laneId);
               }}
             />
-          ))}
-        </div>
+          </div>
 
-        {selectedLane ? (
-          <PlannerTacticInspector
-            selectedLane={selectedLane}
-            lanes={draft.lanes}
-            options={options}
-            phases={visiblePhases(view)}
-            disabled={readOnly}
-            onWeightChange={updateSelectedLaneWeight}
-            onRankChange={updateSelectedLaneRank}
-            onPreferredFootChange={updateSelectedLaneFoot}
-            onFootPreferenceChange={updateSelectedLaneFootPreference}
-            onPositionChange={(phase, position) =>
-              updatePosition(selectedLane.laneId, phase, position)
-            }
-            onRoleChange={(phase, roleId) =>
-              updateRole(selectedLane.laneId, phase, roleId)
-            }
-          />
-        ) : null}
+          {selectedLane ? (
+            <div className="min-w-0">
+              <PlannerTacticInspector
+                selectedLane={selectedLane}
+                lanes={draft.lanes}
+                options={options}
+                phases={["ip", "oop"]}
+                disabled={readOnly}
+                onWeightChange={updateSelectedLaneWeight}
+                onRankChange={updateSelectedLaneRank}
+                onPreferredFootChange={updateSelectedLaneFoot}
+                onFootPreferenceChange={updateSelectedLaneFootPreference}
+                onPositionChange={(phase, position) =>
+                  updatePosition(selectedLane.laneId, phase, position)
+                }
+                onRoleChange={(phase, roleId) =>
+                  updateRole(selectedLane.laneId, phase, roleId)
+                }
+              />
+            </div>
+          ) : null}
+        </div>
       </div>
     </Panel>
   );

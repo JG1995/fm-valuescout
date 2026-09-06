@@ -75,6 +75,43 @@ export function updatePhaseLane(
   return { ...lane, oopPosition: position, oopRoleId: roleId };
 }
 
+export function swapPhasePlacement(
+  lanes: readonly TacticLane[],
+  editingLaneId: string,
+  phase: TacticPhase,
+  picked: string,
+  options: TacticOptions,
+): TacticLane[] {
+  const editingLane = lanes.find((lane) => lane.laneId === editingLaneId);
+  if (!editingLane) {
+    return [...lanes];
+  }
+  const previous = phasePosition(editingLane, phase);
+  const occupant = lanes.find(
+    (lane) =>
+      lane.laneId !== editingLaneId &&
+      canonicalPlacement(phasePosition(lane, phase)) ===
+        canonicalPlacement(picked),
+  );
+  const keepRole = (lane: TacticLane, position: string): string => {
+    const roleId = phaseRoleId(lane, phase);
+    return rolesForPhase(options, phase, position).some(
+      (role) => role.roleId === roleId,
+    )
+      ? roleId
+      : "";
+  };
+  return lanes.map((lane) => {
+    if (lane.laneId === editingLaneId) {
+      return updatePhaseLane(lane, phase, picked, keepRole(lane, picked));
+    }
+    if (occupant && lane.laneId === occupant.laneId) {
+      return updatePhaseLane(lane, phase, previous, keepRole(lane, previous));
+    }
+    return lane;
+  });
+}
+
 export function rolesForPhase(
   options: TacticOptions,
   phase: TacticPhase,
@@ -106,8 +143,6 @@ export type PhasePositionPlacement = {
   rowSize: 1 | 2 | 3;
 };
 
-const CENTRAL_BASE_POSITIONS = new Set(["DC", "DM", "MC", "AMC", "ST"]);
-
 const PLACEMENT_COLUMNS: Record<string, PhasePositionColumn> = {
   DCR: "right",
   DC: "centre",
@@ -127,63 +162,22 @@ const PLACEMENT_COLUMNS: Record<string, PhasePositionColumn> = {
   STCL: "left",
 };
 
-function canonicalPlacement(placement: string): string {
+export function canonicalPlacement(placement: string): string {
   return placement === "ST" ? "STC" : placement;
-}
-
-const CENTRAL_COLUMNS: Record<1 | 2 | 3, PhasePositionColumn[]> = {
-  1: ["centre"],
-  2: ["right", "left"],
-  3: ["right", "centre", "left"],
-};
-
-function positionPlacement(
-  position: string,
-  index: number,
-  count: number,
-): PhasePositionPlacement {
-  if (!CENTRAL_BASE_POSITIONS.has(basePosition(position))) {
-    return { column: "centre", row: index, rowSize: 1 };
-  }
-
-  const row = Math.floor(index / 3);
-  const rowSize = Math.min(3, count - row * 3) as 1 | 2 | 3;
-  const column = CENTRAL_COLUMNS[rowSize][index % 3] ?? "centre";
-
-  return { column, row, rowSize };
 }
 
 export function phasePositionLayout(
   phase: TacticPhase,
   lanes: TacticLane[],
 ): Map<string, PhasePositionPlacement> {
-  const grouped = new Map<string, TacticLane[]>();
-  for (const lane of lanes) {
-    const position = basePosition(phasePosition(lane, phase));
-    const positionLanes = grouped.get(position) ?? [];
-    positionLanes.push(lane);
-    grouped.set(position, positionLanes);
-  }
-
   const layout = new Map<string, PhasePositionPlacement>();
-  for (const [base, positionLanes] of grouped) {
-    const placements = positionLanes.map((lane) => phasePosition(lane, phase));
-    const hasExplicitUniquePlacements =
-      CENTRAL_BASE_POSITIONS.has(base) &&
-      new Set(placements.map(canonicalPlacement)).size === placements.length &&
-      placements.every((placement) => placement in PLACEMENT_COLUMNS);
-
-    positionLanes.forEach((lane, index) => {
-      layout.set(
-        lane.laneId,
-        hasExplicitUniquePlacements
-          ? {
-              column: PLACEMENT_COLUMNS[phasePosition(lane, phase)],
-              row: 0,
-              rowSize: 3,
-            }
-          : positionPlacement(base, index, positionLanes.length),
-      );
+  for (const lane of lanes) {
+    layout.set(lane.laneId, {
+      column:
+        PLACEMENT_COLUMNS[canonicalPlacement(phasePosition(lane, phase))] ??
+        "centre",
+      row: 0,
+      rowSize: 1,
     });
   }
   return layout;
@@ -192,38 +186,14 @@ export function phasePositionLayout(
 export function phasePositionLabel(
   lane: TacticLane,
   phase: TacticPhase,
-  lanes: TacticLane[],
+  _lanes: TacticLane[],
 ): string {
   const position = phasePosition(lane, phase);
   if (!position) {
     return "Position";
   }
 
-  const placement = phasePositionLayout(phase, lanes).get(lane.laneId);
-  if (!placement) {
-    return position;
-  }
-
-  const matchingPlacementCount = lanes.filter(
-    (candidate) => phasePosition(candidate, phase) === position,
-  ).length;
-  if (
-    position in PLACEMENT_COLUMNS &&
-    (position !== basePosition(position) || matchingPlacementCount === 1)
-  ) {
-    return position === "ST" ? "STC" : position;
-  }
-
-  const positionedLabel =
-    CENTRAL_BASE_POSITIONS.has(basePosition(position)) &&
-    placement.column !== "centre"
-      ? `${basePosition(position)}${placement.column === "left" ? "L" : "R"}`
-      : position === "ST"
-        ? "STC"
-        : position;
-  return placement.row === 0
-    ? positionedLabel
-    : `${positionedLabel} (row ${placement.row + 1})`;
+  return canonicalPlacement(position);
 }
 
 export function phaseDescription(

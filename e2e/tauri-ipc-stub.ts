@@ -515,7 +515,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           skipped: 0,
           failed: 0,
         });
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 200));
         sendSquadBoostProgress(args, {
           processed: 1,
           total: 2,

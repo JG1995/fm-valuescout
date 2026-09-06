@@ -28,10 +28,7 @@ import type {
 } from "@/features/planner/types/depth";
 import type { PlannerRoleReference } from "@/features/planner/types/role-reference";
 import type { PlannerTactic } from "@/features/planner/types/tactic";
-import {
-  phasePositionLabel,
-  validateTacticDraft,
-} from "@/features/planner/utils/tactic-editor";
+import { validateTacticDraft } from "@/features/planner/utils/tactic-editor";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
@@ -2728,7 +2725,7 @@ describe("My Club route", () => {
     const bothView = within(viewGroup).getByRole("button", { name: "Both" });
     expect(bothView).toHaveAttribute("aria-pressed", "true");
     const inspectors = screen.getAllByRole("region", {
-      name: "Selected position settings",
+      name: "Selected Slot",
     });
     expect(inspectors).toHaveLength(1);
     const inspector = inspectors[0];
@@ -2838,7 +2835,7 @@ describe("My Club route", () => {
     );
   });
 
-  it("orders the tactic command bar, pitches, and one settings shelf", async () => {
+  it("orders the tactic command bar, pitch/XI area, and beside-pitch inspector", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
@@ -2848,7 +2845,7 @@ describe("My Club route", () => {
     });
     const pitches = screen.getAllByRole("group", { name: /pitch$/ });
     const settings = screen.getByRole("region", {
-      name: "Selected position settings",
+      name: "Selected Slot",
     });
 
     expect(
@@ -2870,15 +2867,29 @@ describe("My Club route", () => {
     expect(
       within(commandBar).getByRole("button", { name: "Save tactic" }),
     ).toBeInTheDocument();
-    expect(pitches).toHaveLength(2);
+    expect(pitches).toHaveLength(1);
     expect(
       commandBar.compareDocumentPosition(pitches[0]) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      pitches[1].compareDocumentPosition(settings) &
+      pitches[0].compareDocumentPosition(settings) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    // The inspector sits beside the pitch/XI area in a shared responsive
+    // grid (stacking below lg), not on a full-width bottom shelf.
+    const workspaceGrid = settings.closest("div.grid");
+    expect(workspaceGrid?.className).toContain("lg:grid-cols-");
+    expect(
+      within(workspaceGrid as HTMLElement).getByRole("region", {
+        name: "Tactical XI",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(workspaceGrid as HTMLElement).getByRole("group", {
+        name: /pitch$/,
+      }),
+    ).toBe(pitches[0]);
     expect(
       within(settings).getAllByRole("slider", {
         name: "IP/OOP score weight",
@@ -2912,20 +2923,150 @@ describe("My Club route", () => {
       name: "Tactic phase views",
     });
 
-    for (const view of ["Both", "IP", "OOP"] as const) {
+    for (const [view, markerCount] of [
+      ["Both", 22],
+      ["IP", 11],
+      ["OOP", 11],
+    ] as const) {
       await user.click(within(viewGroup).getByRole("button", { name: view }));
 
       const pitches = screen.getAllByRole("group", { name: /pitch$/ });
-      expect(pitches).toHaveLength(view === "Both" ? 2 : 1);
+      expect(pitches).toHaveLength(1);
 
-      for (const pitch of pitches) {
-        const positionButtons = within(pitch).getAllByRole("button");
-        expect(positionButtons[0]).toHaveAccessibleName(/: STC · /);
-        expect(
-          positionButtons[positionButtons.length - 1],
-        ).toHaveAccessibleName(/: GK · /);
-      }
+      const positionButtons = within(pitches[0]).getAllByRole("button");
+      expect(positionButtons).toHaveLength(markerCount);
+      expect(positionButtons[0]).toHaveAccessibleName(/: STC · /);
+      expect(positionButtons[positionButtons.length - 1]).toHaveAccessibleName(
+        /: GK · /,
+      );
     }
+  });
+
+  it("places unique lanes on normalized canvas coordinates", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
+
+    const pitches = await screen.findAllByRole("group", { name: /pitch$/ });
+    expect(pitches).toHaveLength(1);
+
+    const pitch = pitches[0];
+    const markers = pitch.querySelectorAll("[data-pitch-marker]");
+    // Both renders two phase-distinguished markers per lane on one canvas.
+    expect(markers).toHaveLength(22);
+    // Nine lanes share their IP/OOP placement, so both phase markers sit on
+    // one normalized point; the two winger lanes place IP and OOP apart.
+    const markerPositions = Array.from(markers).map(
+      (marker) =>
+        `${(marker as HTMLElement).style.left}/${(marker as HTMLElement).style.top}`,
+    );
+    expect(new Set(markerPositions).size).toBe(13);
+    expect(
+      pitch.querySelectorAll(
+        '[data-pitch-marker="centre_forward"][data-phase="ip"]',
+      ),
+    ).toHaveLength(1);
+    expect(
+      pitch.querySelectorAll(
+        '[data-pitch-marker="centre_forward"][data-phase="oop"]',
+      ),
+    ).toHaveLength(1);
+    expect(markers[0]).toHaveAttribute("data-placement", "STC");
+    expect(markers[markers.length - 1]).toHaveAttribute("data-placement", "GK");
+
+    // Colliding same-placement markers stay distinguishable: each phase
+    // keeps its own accessible name, visible phase treatment, normalized
+    // placement, and DOM order (IP before OOP).
+    const strikerPair = Array.from(markers).filter(
+      (marker) =>
+        (marker as HTMLElement).style.left === "50%" &&
+        (marker as HTMLElement).style.top === "8%",
+    );
+    expect(strikerPair).toHaveLength(2);
+    expect(strikerPair[0]).toHaveAttribute("data-phase", "ip");
+    expect(strikerPair[1]).toHaveAttribute("data-phase", "oop");
+    expect(
+      within(strikerPair[0] as HTMLElement).getByRole("button", {
+        name: "IP: STC · Centre Forward",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(strikerPair[1] as HTMLElement).getByRole("button", {
+        name: "OOP: STC · Central Outlet Centre Forward",
+      }),
+    ).toBeInTheDocument();
+    // Every Both-mode marker carries a visible phase badge.
+    expect(
+      within(pitch as HTMLElement).getAllByText("IP", { selector: "span" }),
+    ).toHaveLength(11);
+    expect(
+      within(pitch as HTMLElement).getAllByText("OOP", { selector: "span" }),
+    ).toHaveLength(11);
+    const striker = pitch.querySelector(
+      '[data-pitch-marker="centre_forward"][data-phase="ip"]',
+    );
+    expect(striker).toHaveAttribute("data-placement", "STC");
+    expect(striker).toHaveStyle({ left: "50%", top: "8%" });
+    const goalkeeper = pitch.querySelector(
+      '[data-pitch-marker="goalkeeper"][data-phase="ip"]',
+    );
+    expect(goalkeeper).toHaveAttribute("data-placement", "GK");
+    expect(goalkeeper).toHaveStyle({ left: "50%", top: "93%" });
+    const rightMidfielder = pitch.querySelector(
+      '[data-pitch-marker="left_central_midfielder"][data-phase="ip"]',
+    );
+    expect(rightMidfielder).toHaveAttribute("data-placement", "MCR");
+    expect(rightMidfielder).toHaveStyle({ left: "65%", top: "46%" });
+    const markerButton = within(rightMidfielder as HTMLElement).getByRole(
+      "button",
+      { name: "IP: MCR · Central Midfielder" },
+    );
+    expect(markerButton.className).toContain("min-h-11");
+    const attackNote = within(pitch as HTMLElement).getByText(/attack/i);
+    expect(attackNote).toBeVisible();
+    expect(pitch).toHaveAttribute("aria-describedby", attackNote.id);
+    const markings = pitch.querySelector('svg[aria-hidden="true"]');
+    expect(markings).not.toBeNull();
+    expect(markings?.getAttribute("class")).toContain("pointer-events-none");
+  });
+
+  it("moves a marker when its qualified position is edited", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "IP: MCR · Central Midfielder",
+      }),
+    );
+    const pitch = (await screen.findAllByRole("group", { name: /pitch$/ }))[0];
+    expect(
+      pitch.querySelector(
+        '[data-pitch-marker="left_central_midfielder"][data-phase="ip"]',
+      ),
+    ).toHaveAttribute("data-placement", "MCR");
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "IP MCR position" }),
+      "MC",
+    );
+
+    const movedMarker = pitch.querySelector(
+      '[data-pitch-marker="left_central_midfielder"][data-phase="ip"]',
+    );
+    expect(movedMarker).toHaveAttribute("data-placement", "MC");
+    expect(movedMarker).toHaveStyle({ left: "50%", top: "46%" });
+    expect(
+      screen.getByRole("button", { name: "IP: MC · Central Midfielder" }),
+    ).toBeInTheDocument();
+    // The linked OOP marker keeps its own normalized placement.
+    expect(
+      pitch.querySelector(
+        '[data-pitch-marker="left_central_midfielder"][data-phase="oop"]',
+      ),
+    ).toHaveAttribute("data-placement", "MCR");
   });
 
   it("presents current linked positions without lane terminology", async () => {
@@ -2944,10 +3085,11 @@ describe("My Club route", () => {
     setPlannerDepthIpcMock(depth);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
-    const ipButton = await screen.findByRole("button", {
+    const pitch = (await screen.findAllByRole("group", { name: /pitch$/ }))[0];
+    const ipButton = await within(pitch).findByRole("button", {
       name: /IP: AMC · Winger/,
     });
-    const oopButton = screen.getByRole("button", {
+    const oopButton = within(pitch).getByRole("button", {
       name: /OOP: ML · Tracking Wide Midfielder/,
     });
     expect(screen.queryByText("11 linked positions")).not.toBeInTheDocument();
@@ -2979,332 +3121,6 @@ describe("My Club route", () => {
     expect(within(matrix).queryByText("Left winger")).not.toBeInTheDocument();
   });
 
-  it("keeps repeated positions distinguishable without numeric labels", () => {
-    const tactic = resolvePlannerTacticIpcMock();
-    const lanes = tactic.lanes.map((lane, index) =>
-      index < 5 ? { ...lane, ipPosition: "AMC", ipRoleId: "winger_ip" } : lane,
-    );
-    const labels = lanes
-      .slice(0, 5)
-      .map((lane) => phasePositionLabel(lane, "ip", lanes));
-
-    expect(new Set(labels).size).toBe(5);
-    expect(labels.every((label) => !label.includes("additional"))).toBe(true);
-  });
-
-  it("arranges repeated positions in stable central slots regardless of role", async () => {
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const tactic = resolvePlannerTacticIpcMock();
-    tactic.lanes = tactic.lanes.map((lane, index) => {
-      if (index === 0) {
-        return {
-          ...lane,
-          ipPosition: "MC",
-          ipRoleId: "central_midfielder_ip",
-          oopPosition: "MC",
-          oopRoleId: "pressing_central_midfielder_oop",
-        };
-      }
-      if (index === 1) {
-        return {
-          ...lane,
-          ipPosition: "MC",
-          ipRoleId: "advanced_playmaker_ip",
-          oopPosition: "MC",
-          oopRoleId: "pressing_central_midfielder_oop",
-        };
-      }
-      if (index === 2) {
-        return {
-          ...lane,
-          ipPosition: "MC",
-          ipRoleId: "box_to_box_midfielder_ip",
-          oopPosition: "MC",
-          oopRoleId: "pressing_central_midfielder_oop",
-        };
-      }
-      if (index === 3) {
-        return {
-          ...lane,
-          ipPosition: "DC",
-          ipRoleId: "centre_back_ip",
-          oopPosition: "DC",
-          oopRoleId: "covering_centre_back_oop",
-        };
-      }
-      if (index === 4) {
-        return {
-          ...lane,
-          ipPosition: "DC",
-          ipRoleId: "ball_playing_centre_back_ip",
-          oopPosition: "DC",
-          oopRoleId: "stopping_centre_back_oop",
-        };
-      }
-      if (index === 6) {
-        return {
-          ...lane,
-          ipPosition: "ML",
-          ipRoleId: "wide_midfielder_ip",
-          oopPosition: "ML",
-          oopRoleId: "tracking_wide_midfielder_oop",
-        };
-      }
-      if (index === 7) {
-        return {
-          ...lane,
-          ipPosition: "MR",
-          ipRoleId: "wide_midfielder_ip",
-          oopPosition: "MR",
-          oopRoleId: "tracking_wide_midfielder_oop",
-        };
-      }
-      return lane;
-    });
-    setPlannerTacticIpcMock(tactic);
-    const depth = resolvePlannerDepthIpcMock();
-    depth.tactic = tactic;
-    setPlannerDepthIpcMock(depth);
-    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
-
-    const rightMc = await screen.findByRole("button", {
-      name: "IP: MCR · Central Midfielder",
-    });
-    const centreMc = screen.getByRole("button", {
-      name: "IP: MC · Advanced Playmaker",
-    });
-    const leftMc = screen.getByRole("button", {
-      name: "IP: MCL · Box-to-Box Midfielder",
-    });
-    const mcGroup = rightMc.closest('[data-position-group="MC"]');
-    expect(mcGroup).not.toBeNull();
-    expect(mcGroup).toContainElement(centreMc);
-    expect(mcGroup).toContainElement(leftMc);
-    expect(
-      within(mcGroup as HTMLElement)
-        .getAllByRole("button")
-        .map((button) => button.getAttribute("aria-label")),
-    ).toEqual([
-      "IP: MCL · Box-to-Box Midfielder",
-      "IP: MC · Advanced Playmaker",
-      "IP: MCR · Central Midfielder",
-    ]);
-    expect(mcGroup).toHaveAttribute("data-position-slot-count", "3");
-    for (const pitch of await screen.findAllByRole("group", {
-      name: /pitch$/,
-    })) {
-      expect(pitch).toHaveAttribute("data-pitch-slot-count", "5");
-    }
-    expect(rightMc.parentElement).toHaveStyle({
-      gridColumn: "5 / span 2",
-      gridRow: "1",
-    });
-    expect(centreMc.parentElement).toHaveStyle({
-      gridColumn: "3 / span 2",
-      gridRow: "1",
-    });
-    expect(leftMc.parentElement).toHaveStyle({
-      gridColumn: "1 / span 2",
-      gridRow: "1",
-    });
-    expect(mcGroup).toHaveStyle({ gridColumn: "3 / span 6" });
-    expect(mcGroup).toHaveClass("bg-surface-container-high");
-
-    const rightDc = screen.getByRole("button", {
-      name: "IP: DCR · Centre-Back",
-    });
-    const leftDc = screen.getByRole("button", {
-      name: "IP: DCL · Ball-Playing Centre-Back",
-    });
-    expect(rightDc.parentElement).toHaveStyle({
-      gridColumn: "3 / span 2",
-      gridRow: "1",
-    });
-    expect(leftDc.parentElement).toHaveStyle({
-      gridColumn: "1 / span 2",
-      gridRow: "1",
-    });
-    const dcGroup = rightDc.closest('[data-position-group="DC"]');
-    expect(dcGroup).not.toBeNull();
-    expect(dcGroup).toContainElement(leftDc);
-    expect(dcGroup).toHaveStyle({ gridColumn: "4 / span 4" });
-    const defensiveMidfielder = screen.getByRole("button", {
-      name: "IP: DM · Defensive Midfielder",
-    });
-    expect(defensiveMidfielder).toBeInTheDocument();
-    expect(defensiveMidfielder.parentElement).toHaveStyle({
-      gridColumn: "3 / span 2",
-      gridRow: "1",
-    });
-    expect(
-      defensiveMidfielder.closest('[data-position-group="DM"]'),
-    ).toHaveStyle({ gridColumn: "3 / span 6" });
-    const leftMidfielder = screen.getByRole("button", {
-      name: "IP: ML · Wide Midfielder",
-    });
-    const rightMidfielder = screen.getByRole("button", {
-      name: "IP: MR · Wide Midfielder",
-    });
-    expect(leftMidfielder.parentElement).toHaveStyle({
-      gridColumn: "1 / span 2",
-      gridRow: "1",
-    });
-    expect(rightMidfielder.parentElement).toHaveStyle({
-      gridColumn: "1 / span 2",
-      gridRow: "1",
-    });
-    expect(leftMidfielder.closest('[data-position-group="ML"]')).toHaveStyle({
-      gridColumn: "1 / span 2",
-    });
-    expect(rightMidfielder.closest('[data-position-group="MR"]')).toHaveStyle({
-      gridColumn: "9 / span 2",
-    });
-
-    expect(
-      screen.getByRole("button", {
-        name: "OOP: DCR · Covering Centre-Back",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "OOP: DCL · Stopping Centre-Back",
-      }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /^IP:/ })).toHaveLength(11);
-    expect(
-      screen.getByRole("button", { name: "IP: STC · Centre Forward" }),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps every position button when a base position has more than three lanes", async () => {
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const tactic = resolvePlannerTacticIpcMock();
-    tactic.lanes = tactic.lanes.map((lane, index) =>
-      index < 5 ? { ...lane, ipPosition: "AMC", ipRoleId: "winger_ip" } : lane,
-    );
-    setPlannerTacticIpcMock(tactic);
-    const depth = resolvePlannerDepthIpcMock();
-    depth.tactic = tactic;
-    setPlannerDepthIpcMock(depth);
-    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
-
-    for (const pitch of await screen.findAllByRole("group", {
-      name: /pitch$/,
-    })) {
-      expect(pitch).toHaveAttribute("data-pitch-slot-count", "5");
-    }
-    const secondRowRight = await screen.findByRole("button", {
-      name: "IP: AMCR (row 2) · Winger",
-    });
-    const secondRowLeft = screen.getByRole("button", {
-      name: "IP: AMCL (row 2) · Winger",
-    });
-    expect(secondRowRight).toBeInTheDocument();
-    expect(secondRowRight.parentElement).toHaveStyle({
-      gridColumn: "3 / span 2",
-      gridRow: "1",
-    });
-    const secondRowGroup = secondRowRight.closest(
-      '[data-position-group="AMC"]',
-    );
-    expect(secondRowGroup).not.toBeNull();
-    expect(secondRowGroup).toContainElement(secondRowLeft);
-    expect(secondRowGroup).toHaveStyle({ gridColumn: "4 / span 4" });
-    expect(secondRowGroup).toHaveAttribute("data-position-slot-count", "2");
-    expect(screen.getAllByRole("button", { name: /^IP:/ })).toHaveLength(11);
-  });
-
-  it("follows visible row order when a wide position overflows", async () => {
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const tactic = resolvePlannerTacticIpcMock();
-    tactic.lanes = tactic.lanes.map((lane, index) => {
-      if (index < 2) {
-        return { ...lane, ipPosition: "AML", ipRoleId: "winger_ip" };
-      }
-      if (index === 2) {
-        return { ...lane, ipPosition: "AMC", ipRoleId: "winger_ip" };
-      }
-      if (index === 3) {
-        return { ...lane, ipPosition: "AMR", ipRoleId: "winger_ip" };
-      }
-      if (lane.ipPosition === "AML" || lane.ipPosition === "AMR") {
-        return {
-          ...lane,
-          ipPosition: "MC",
-          ipRoleId: "central_midfielder_ip",
-        };
-      }
-      return lane;
-    });
-    setPlannerTacticIpcMock(tactic);
-    const depth = resolvePlannerDepthIpcMock();
-    depth.tactic = tactic;
-    setPlannerDepthIpcMock(depth);
-    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
-
-    const ipPitch = (
-      await screen.findAllByRole("group", { name: /pitch$/ })
-    )[0];
-    const attackMidfieldRows = ipPitch.querySelectorAll(
-      '[data-pitch-band="attack-midfield"]',
-    );
-    expect(attackMidfieldRows).toHaveLength(2);
-    expect(
-      within(attackMidfieldRows[0] as HTMLElement)
-        .getAllByRole("button")
-        .map((button) => button.getAttribute("aria-label")),
-    ).toEqual(["IP: AML · Winger", "IP: AMC · Winger", "IP: AMR · Winger"]);
-    expect(
-      within(attackMidfieldRows[1] as HTMLElement)
-        .getAllByRole("button")
-        .map((button) => button.getAttribute("aria-label")),
-    ).toEqual(["IP: AML (row 2) · Winger"]);
-  });
-
-  it("keeps a three-slot minimum when every tactic row has at most two positions", async () => {
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const tactic = resolvePlannerTacticIpcMock();
-    const compactRows = [
-      ["ST", "centre_forward_ip", "central_outlet_centre_forward_oop"],
-      ["ST", "centre_forward_ip", "central_outlet_centre_forward_oop"],
-      ["AML", "winger_ip", "tracking_winger_oop"],
-      ["AMR", "winger_ip", "tracking_winger_oop"],
-      ["MC", "central_midfielder_ip", "pressing_central_midfielder_oop"],
-      ["MC", "central_midfielder_ip", "pressing_central_midfielder_oop"],
-      ["DM", "defensive_midfielder_ip", "screening_defensive_midfielder_oop"],
-      ["DM", "defensive_midfielder_ip", "screening_defensive_midfielder_oop"],
-      ["DC", "centre_back_ip", "covering_centre_back_oop"],
-      ["DC", "centre_back_ip", "covering_centre_back_oop"],
-      ["GK", "goalkeeper_ip", "line_holding_keeper_oop"],
-    ] as const;
-    tactic.lanes = tactic.lanes.map((lane, index) => {
-      const [position, ipRoleId, oopRoleId] = compactRows[index];
-      return {
-        ...lane,
-        ipPosition: position,
-        ipRoleId,
-        oopPosition: position,
-        oopRoleId,
-      };
-    });
-    setPlannerTacticIpcMock(tactic);
-    const depth = resolvePlannerDepthIpcMock();
-    depth.tactic = tactic;
-    setPlannerDepthIpcMock(depth);
-    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
-
-    for (const pitch of await screen.findAllByRole("group", {
-      name: /pitch$/,
-    })) {
-      expect(pitch).toHaveAttribute("data-pitch-slot-count", "3");
-    }
-    expect(screen.getAllByRole("button", { name: /^IP:/ })).toHaveLength(11);
-  });
-
   it("retains the edited tactic draft when save fails", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -3329,7 +3145,7 @@ describe("My Club route", () => {
     expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
   });
 
-  it("keeps phase controls in one inspector for each tactic view", async () => {
+  it("exposes both phase controls in the Selected Slot inspector for each tactic view", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
@@ -3340,29 +3156,29 @@ describe("My Club route", () => {
       name: "Tactic phase views",
     });
 
-    for (const [view, phase, hiddenPhase] of [
-      ["IP", "IP", "OOP"],
-      ["OOP", "OOP", "IP"],
-      ["Both", "IP", ""],
-    ] as const) {
+    for (const view of ["IP", "OOP", "Both"] as const) {
       await user.click(within(viewGroup).getByRole("button", { name: view }));
-      const inspectors = screen.getAllByRole("region", {
-        name: "Selected position settings",
+      const inspector = screen.getByRole("region", {
+        name: "Selected Slot",
       });
-      expect(inspectors).toHaveLength(1);
-      const inspector = inspectors[0];
+      expect(
+        within(inspector).getByRole("heading", { name: "Selected Slot" }),
+      ).toBeInTheDocument();
       expect(
         within(inspector).getByRole("combobox", {
-          name: `${phase} GK position`,
+          name: "IP GK position",
         }),
       ).toBeInTheDocument();
-      if (hiddenPhase) {
-        expect(
-          within(inspector).queryByRole("combobox", {
-            name: `${hiddenPhase} GK position`,
-          }),
-        ).not.toBeInTheDocument();
-      }
+      expect(
+        within(inspector).getByRole("combobox", {
+          name: "OOP GK position",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        within(inspector).getByRole("slider", {
+          name: "IP/OOP score weight",
+        }),
+      ).toBeInTheDocument();
     }
   });
 
@@ -3416,7 +3232,7 @@ describe("My Club route", () => {
     });
   });
 
-  it("blocks two lanes from using the same sided placement", async () => {
+  it("swaps two lanes when picking an occupied placement", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
@@ -3432,10 +3248,248 @@ describe("My Club route", () => {
       "MCL",
     );
 
+    expect(
+      screen.getByRole("button", { name: "IP: MCL · Central Midfielder" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "IP: MCR · Central Midfielder" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "OOP MCR position" }),
+    ).toHaveValue("MCR");
+    // After the cross-lane IP swap each shared point pairs one IP and one
+    // OOP marker; DOM order keeps IP before OOP so tab order matches the
+    // IP-left/OOP-right split.
+    const pitch = (await screen.findAllByRole("group", { name: /pitch$/ }))[0];
+    const markers = Array.from(pitch.querySelectorAll("[data-pitch-marker]"));
+    for (const placement of ["MCL", "MCR"]) {
+      const phases = markers
+        .filter((marker) => marker.getAttribute("data-placement") === placement)
+        .map((marker) => marker.getAttribute("data-phase"));
+      expect(phases).toEqual(["ip", "oop"]);
+    }
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "IP MCL position" }),
+      "ML",
+    );
+
+    expect(screen.getByRole("combobox", { name: "IP ML role" })).toHaveValue(
+      "",
+    );
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "MCL is already used in the In-Possession phase.",
+      "Choose a compatible IP role for ML.",
     );
     expect(screen.getByRole("button", { name: "Save tactic" })).toBeDisabled();
+  });
+
+  it("connects Both-mode markers only when canonical placement changes", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes[2] = {
+      ...tactic.lanes[2],
+      ipPosition: "DCR",
+      ipRoleId: "centre_back_ip",
+      oopPosition: "DCL",
+      oopRoleId: "covering_centre_back_oop",
+    };
+    tactic.lanes[3] = {
+      ...tactic.lanes[3],
+      ipPosition: "DCL",
+      ipRoleId: "centre_back_ip",
+      oopPosition: "DC",
+      oopRoleId: "covering_centre_back_oop",
+    };
+    tactic.lanes[10] = {
+      ...tactic.lanes[10],
+      ipPosition: "ST",
+      ipRoleId: "centre_forward_ip",
+      oopPosition: "STC",
+      oopRoleId: "central_outlet_centre_forward_oop",
+    };
+    setPlannerTacticIpcMock(tactic);
+    const depth = resolvePlannerDepthIpcMock();
+    depth.tactic = tactic;
+    setPlannerDepthIpcMock(depth);
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
+
+    await screen.findByRole("region", { name: "Tactic controls" });
+    const pitch = (await screen.findAllByRole("group", { name: /pitch$/ }))[0];
+
+    // A canonical placement change connects; legacy-equivalent ST/STC and
+    // unchanged placements render no connector.
+    expect(pitch.querySelectorAll("[data-tactic-connector]")).toHaveLength(4);
+    expect(
+      pitch.querySelector('[data-tactic-connector="left_centre_back"]'),
+    ).not.toBeNull();
+    expect(
+      pitch.querySelector('[data-tactic-connector="right_centre_back"]'),
+    ).not.toBeNull();
+    expect(
+      pitch.querySelector('[data-tactic-connector="centre_forward"]'),
+    ).toBeNull();
+    expect(
+      pitch.querySelector('[data-tactic-connector="goalkeeper"]'),
+    ).toBeNull();
+
+    // Cross-lane split ends stop at the displayed marker inner edge, not
+    // the shared gap anchor: DCL is shared by left_centre_back OOP and
+    // right_centre_back IP, so those ends shift one viewBox unit into
+    // their own button while unshared ends stay on the anchor.
+    expect(
+      pitch.querySelector('[data-tactic-connector="left_centre_back"]'),
+    ).toHaveAttribute("x1", "65");
+    expect(
+      pitch.querySelector('[data-tactic-connector="left_centre_back"]'),
+    ).toHaveAttribute("x2", "36");
+    expect(
+      pitch.querySelector('[data-tactic-connector="right_centre_back"]'),
+    ).toHaveAttribute("x1", "34");
+    expect(
+      pitch.querySelector('[data-tactic-connector="right_centre_back"]'),
+    ).toHaveAttribute("x2", "50");
+
+    // The connector overlay carries no inert title: the transition text
+    // below is the readable surface for sighted and AT users alike.
+    expect(pitch.querySelector("[data-tactic-connector] title")).toBeNull();
+
+    // Every slot keeps its readable IP role to OOP role transition for AT.
+    expect(
+      pitch.querySelector('[data-slot-transition="left_centre_back"]'),
+    ).toHaveTextContent(
+      "IP: DCR · Centre-Back / OOP: DCL · Covering Centre-Back",
+    );
+    expect(
+      pitch.querySelector('[data-slot-transition="centre_forward"]'),
+    ).toHaveTextContent(
+      "IP: STC · Centre Forward / OOP: STC · Central Outlet Centre Forward",
+    );
+
+    // The selected slot transition is also visible: the default selection
+    // is the goalkeeper and it follows selection via click and keyboard.
+    const visibleTransition = pitch.querySelector(
+      "[data-selected-slot-transition]",
+    );
+    expect(visibleTransition).toHaveAttribute(
+      "data-selected-slot-transition",
+      "goalkeeper",
+    );
+    expect(visibleTransition).toHaveTextContent(
+      "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+    );
+    expect(visibleTransition?.classList.contains("sr-only")).toBe(false);
+    await user.click(
+      screen.getByRole("button", { name: "IP: DCR · Centre-Back" }),
+    );
+    expect(
+      pitch.querySelector("[data-selected-slot-transition]"),
+    ).toHaveAttribute("data-selected-slot-transition", "left_centre_back");
+    expect(
+      pitch.querySelector("[data-selected-slot-transition]"),
+    ).toHaveTextContent(
+      "IP: DCR · Centre-Back / OOP: DCL · Covering Centre-Back",
+    );
+    screen.getByRole("button", { name: "IP: DCL · Centre-Back" }).focus();
+    await user.keyboard("{Enter}");
+    expect(
+      pitch.querySelector("[data-selected-slot-transition]"),
+    ).toHaveAttribute("data-selected-slot-transition", "right_centre_back");
+    expect(
+      pitch.querySelector("[data-selected-slot-transition]"),
+    ).toHaveTextContent(
+      "IP: DCL · Centre-Back / OOP: DC · Covering Centre-Back",
+    );
+
+    // Single-phase modes render no connectors.
+    const viewGroup = screen.getByRole("group", {
+      name: "Tactic phase views",
+    });
+    await user.click(within(viewGroup).getByRole("button", { name: "IP" }));
+    const ipPitch = (
+      await screen.findAllByRole("group", { name: /pitch$/ })
+    )[0];
+    expect(ipPitch.querySelectorAll("[data-tactic-connector]")).toHaveLength(0);
+  });
+
+  it("syncs Tactical XI panel selection with the pitch and inspector", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes = [...tactic.lanes.slice(1), tactic.lanes[0]];
+    setPlannerTacticIpcMock(tactic);
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
+
+    await screen.findByRole("region", { name: "Tactic controls" });
+    const panel = await screen.findByRole("region", { name: "Tactical XI" });
+    expect(within(panel).queryByRole("listbox")).toBeNull();
+
+    // All 11 lanes render in lane order even though the draft array was
+    // rotated: the goalkeeper still leads with a readable transition.
+    const rows = within(panel).getAllByRole("button");
+    expect(rows).toHaveLength(11);
+    expect(rows[0]).toHaveTextContent(
+      "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+    );
+    expect(rows[10]).toHaveTextContent(
+      "IP: STC · Centre Forward / OOP: STC · Central Outlet Centre Forward",
+    );
+    for (const row of rows) {
+      expect(row).toHaveAttribute("aria-pressed");
+      expect(row).not.toHaveAttribute("aria-selected");
+      expect(row).not.toHaveAttribute("aria-current");
+    }
+
+    // The rotated draft selects the second lane, so exactly one non-leading
+    // row starts pressed.
+    const initiallyPressed = rows.filter(
+      (row) => row.getAttribute("aria-pressed") === "true",
+    );
+    expect(initiallyPressed).toHaveLength(1);
+    expect(initiallyPressed[0]).toHaveTextContent("IP: DL · Full-Back");
+
+    // Panel to pitch and inspector: activating the goalkeeper row selects
+    // it everywhere.
+    await user.click(rows[0]);
+    const afterPanelSelect = within(panel).getAllByRole("button");
+    expect(
+      afterPanelSelect.filter(
+        (row) => row.getAttribute("aria-pressed") === "true",
+      ),
+    ).toHaveLength(1);
+    expect(afterPanelSelect[0]).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("button", { name: "IP: GK · Goalkeeper" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(screen.getByRole("region", { name: "Selected Slot" })).getByText(
+        "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+      ),
+    ).toBeInTheDocument();
+
+    // Pitch to panel: selecting a marker updates the pressed panel row.
+    await user.click(
+      screen.getByRole("button", { name: "IP: DL · Full-Back" }),
+    );
+    const afterMarkerSelect = within(panel).getAllByRole("button");
+    const markerPressed = afterMarkerSelect.filter(
+      (row) => row.getAttribute("aria-pressed") === "true",
+    );
+    expect(markerPressed).toHaveLength(1);
+    expect(markerPressed[0]).toHaveTextContent("IP: DL · Full-Back");
+
+    // Ordinary-button rows stay keyboard operable: Enter on the leading
+    // row moves selection back and the inspector follows.
+    afterMarkerSelect[0].focus();
+    await user.keyboard("{Enter}");
+    expect(afterMarkerSelect[0]).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(screen.getByRole("region", { name: "Selected Slot" })).getByText(
+        "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("treats legacy ST and canonical STC as the same placement", () => {
