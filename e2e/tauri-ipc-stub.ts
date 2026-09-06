@@ -270,6 +270,20 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         reserves: "Reserves",
         youth: "Youth",
       };
+      const ordinalStringLabel = (stringOrder) => {
+        const number = stringOrder + 1;
+        const suffix =
+          number % 100 >= 11 && number % 100 <= 13
+            ? "th"
+            : number % 10 === 1
+              ? "st"
+              : number % 10 === 2
+                ? "nd"
+                : number % 10 === 3
+                  ? "rd"
+                  : "th";
+        return number + suffix + " string";
+      };
       const plannerDepth = {
         tactic: plannerTactic,
         teams: ["senior", "reserves", "youth"].map((team, index) => ({
@@ -278,6 +292,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           strings: [{
             id: index + 1,
             stringOrder: 0,
+            displayName: ordinalStringLabel(0),
             assignments: plannerPotentialScores && team === "senior" ? [{
               id: 77,
               laneId: "goalkeeper",
@@ -1717,7 +1732,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   : {
                       team,
                       displayName: input.displayName,
-                      strings: [{ id: nextStringId++, stringOrder: 0, assignments: [] }],
+                      strings: [{ id: nextStringId++, stringOrder: 0, displayName: ordinalStringLabel(0), assignments: [] }],
                     };
               });
             return plannerDepth;
@@ -1763,7 +1778,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 candidate.strings.map((plannerString) => plannerString.id),
               ),
             ) + 1;
-            team.strings.push({ id, stringOrder: team.strings.length, assignments: [] });
+            team.strings.push({ id, stringOrder: team.strings.length, displayName: ordinalStringLabel(team.strings.length), assignments: [] });
             return plannerDepth;
           }
 

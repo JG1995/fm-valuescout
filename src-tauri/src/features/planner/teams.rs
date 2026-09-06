@@ -4,7 +4,7 @@ use rusqlite::{params, Connection, Transaction};
 
 use crate::features::staff::assignment_targets;
 
-use super::depth::{preflight_depth_snapshot, PlannerTeam};
+use super::depth::{ordinal_label, preflight_depth_snapshot, PlannerTeam};
 
 pub(super) const MAX_DISPLAY_NAME_LEN: usize = 40;
 
@@ -219,9 +219,9 @@ pub(super) fn save_team_settings(
         .map_err(|error| error.to_string())?;
         if !was_available {
             tx.execute(
-                "INSERT INTO planner_strings (save_id, team, string_order)
-                 VALUES (?1, ?2, 0)",
-                params![save_id, setting.team.as_str()],
+                "INSERT INTO planner_strings (save_id, team, string_order, display_name)
+                 VALUES (?1, ?2, 0, ?3)",
+                params![save_id, setting.team.as_str(), ordinal_label(0)],
             )
             .map_err(|error| error.to_string())?;
         }

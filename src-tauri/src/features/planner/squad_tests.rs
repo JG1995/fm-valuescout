@@ -1133,7 +1133,8 @@ fn attributes_nulling(key: &str) -> String {
 
 fn assign_lane(conn: &Connection, save_id: i64, lane_id: &str, player_uid: i64) {
     conn.execute(
-        "INSERT INTO planner_strings (save_id, team, string_order) VALUES (?1, 'senior', 0)",
+        "INSERT INTO planner_strings (save_id, team, string_order, display_name)
+         VALUES (?1, 'senior', 0, '1st string')",
         [save_id],
     )
     .expect("insert planner string");
@@ -1355,9 +1356,11 @@ fn fully_developed_players_carry_no_suggestion_while_developing_control_keeps_fo
         .expect("set ca/pa");
     }
     for (order, player_uid) in [77, 78, 79].into_iter().enumerate() {
+        let display_name = ["1st string", "2nd string", "3rd string"][order];
         conn.execute(
-            "INSERT INTO planner_strings (save_id, team, string_order) VALUES (?1, 'senior', ?2)",
-            params![save_id, order as i64],
+            "INSERT INTO planner_strings (save_id, team, string_order, display_name)
+             VALUES (?1, 'senior', ?2, ?3)",
+            params![save_id, order as i64, display_name],
         )
         .expect("insert planner string");
         let string_id = conn.last_insert_rowid();

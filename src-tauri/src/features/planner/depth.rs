@@ -92,6 +92,7 @@ pub struct PlannerSlotCandidate {
 pub struct PlannerString {
     pub id: i64,
     pub string_order: i64,
+    pub display_name: String,
     pub assignments: Vec<PlannerAssignment>,
 }
 
@@ -123,6 +124,22 @@ impl AssignmentProvenance {
     }
 }
 
+pub(super) fn ordinal_label(string_order: i64) -> String {
+    let number = string_order + 1;
+    let suffix = if (11..=13).contains(&(number % 100)) {
+        "th"
+    } else if number % 10 == 1 {
+        "st"
+    } else if number % 10 == 2 {
+        "nd"
+    } else if number % 10 == 3 {
+        "rd"
+    } else {
+        "th"
+    };
+    format!("{number}{suffix} string")
+}
+
 pub fn get_depth(conn: &Connection, save_id: i64) -> Result<PlannerDepth, String> {
     let snapshot_id = current_snapshot_id(conn, save_id)?;
     load_depth(conn, save_id, snapshot_id)
@@ -146,7 +163,7 @@ pub(super) fn load_depth(
 
     let mut statement = conn
         .prepare(
-            "SELECT id, team, string_order
+            "SELECT id, team, string_order, display_name
              FROM planner_strings
              WHERE save_id = ?1
              ORDER BY CASE team
@@ -162,18 +179,20 @@ pub(super) fn load_depth(
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, i64>(2)?,
+                row.get::<_, String>(3)?,
             ))
         })
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
 
-    for (id, team, string_order) in strings {
+    for (id, team, string_order, display_name) in strings {
         let team = PlannerTeam::parse(&team)?;
         let assignments = load_assignments(conn, save_id, id, snapshot_id, &tactic)?;
         let planner_string = PlannerString {
             id,
             string_order,
+            display_name,
             assignments,
         };
         let team_depth = teams
@@ -320,9 +339,14 @@ pub fn add_string(
         )
         .map_err(|error| error.to_string())?;
     tx.execute(
-        "INSERT INTO planner_strings (save_id, team, string_order)
-         VALUES (?1, ?2, ?3)",
-        params![save_id, team.as_str(), string_order],
+        "INSERT INTO planner_strings (save_id, team, string_order, display_name)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![
+            save_id,
+            team.as_str(),
+            string_order,
+            ordinal_label(string_order)
+        ],
     )
     .map_err(|error| error.to_string())?;
     let id = tx.last_insert_rowid();
@@ -332,6 +356,7 @@ pub fn add_string(
         PlannerString {
             id,
             string_order,
+            display_name: ordinal_label(string_order),
             assignments: Vec::new(),
         },
         snapshot_id,
@@ -546,14 +571,14 @@ pub(super) fn ensure_depth(conn: &Connection, save_id: i64) -> Result<PlannerTac
         .map_err(|error| error.to_string())?;
     for setting in settings {
         tx.execute(
-            "INSERT INTO planner_strings (save_id, team, string_order)
-             SELECT ?1, ?2, 0
+            "INSERT INTO planner_strings (save_id, team, string_order, display_name)
+             SELECT ?1, ?2, 0, ?3
              WHERE NOT EXISTS (
                  SELECT 1
                  FROM planner_strings
                  WHERE save_id = ?1 AND team = ?2
              )",
-            params![save_id, setting.team.as_str()],
+            params![save_id, setting.team.as_str(), ordinal_label(0)],
         )
         .map_err(|error| error.to_string())?;
     }

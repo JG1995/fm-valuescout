@@ -362,6 +362,7 @@ impl From<PlannerSlotCandidate> for PlannerSlotCandidateDto {
 pub struct PlannerStringDto {
     pub id: i64,
     pub string_order: i64,
+    pub display_name: String,
     pub assignments: Vec<PlannerAssignmentDto>,
 }
 
@@ -370,6 +371,7 @@ impl From<PlannerString> for PlannerStringDto {
         Self {
             id: planner_string.id,
             string_order: planner_string.string_order,
+            display_name: planner_string.display_name,
             assignments: planner_string
                 .assignments
                 .into_iter()

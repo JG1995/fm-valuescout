@@ -216,6 +216,9 @@ function withSecondStringForEveryTeam(depth: PlannerDepth): PlannerDepth {
         {
           id: nextStringId++,
           stringOrder: team.strings.length,
+          displayName: `${team.strings.length + 1}${
+            team.strings.length + 1 === 2 ? "nd" : "th"
+          } string`,
           assignments: [],
         },
       ],
@@ -6315,7 +6318,12 @@ function withSecondSeniorString(depth: PlannerDepth): PlannerDepth {
             ...team,
             strings: [
               ...team.strings,
-              { id: 4, stringOrder: 1, assignments: [] },
+              {
+                id: 4,
+                stringOrder: 1,
+                displayName: "2nd string",
+                assignments: [],
+              },
             ],
           }
         : team,
@@ -6332,7 +6340,12 @@ function withSecondReserveString(depth: PlannerDepth): PlannerDepth {
             ...team,
             strings: [
               ...team.strings,
-              { id: 4, stringOrder: 1, assignments: [] },
+              {
+                id: 4,
+                stringOrder: 1,
+                displayName: "2nd string",
+                assignments: [],
+              },
             ],
           }
         : team,
@@ -6393,7 +6406,12 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                   },
                 ],
               },
-              { id: 4, stringOrder: 1, assignments: [] },
+              {
+                id: 4,
+                stringOrder: 1,
+                displayName: "2nd string",
+                assignments: [],
+              },
             ],
           }
         : team,
@@ -6445,7 +6463,12 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
           team.team === "senior"
             ? [
                 { ...team.strings[0], assignments: [assignment] },
-                { id: 4, stringOrder: 1, assignments: [] },
+                {
+                  id: 4,
+                  stringOrder: 1,
+                  displayName: "2nd string",
+                  assignments: [],
+                },
               ]
             : team.strings.map((plannerString) => ({
                 ...plannerString,

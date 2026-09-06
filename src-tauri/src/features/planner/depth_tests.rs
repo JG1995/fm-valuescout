@@ -172,6 +172,98 @@ fn creates_one_default_string_for_each_team() {
         .teams
         .iter()
         .all(|team| team.strings[0].string_order == 0));
+    assert!(depth
+        .teams
+        .iter()
+        .all(|team| team.strings[0].display_name == "1st string"));
+    let reloaded = get_depth(&conn, save_id).expect("reload planner depth");
+    assert!(reloaded
+        .teams
+        .iter()
+        .all(|team| team.strings[0].display_name == "1st string"));
+}
+
+#[test]
+fn added_strings_carry_the_next_ordinal_label() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    get_depth(&conn, save_id).expect("create planner depth");
+
+    let added = add_string(&conn, save_id, PlannerTeam::Senior).expect("add string");
+    assert_eq!(added.0.string_order, 1);
+    assert_eq!(added.0.display_name, "2nd string");
+
+    let expected = [
+        "3rd string",
+        "4th string",
+        "5th string",
+        "6th string",
+        "7th string",
+        "8th string",
+        "9th string",
+        "10th string",
+        "11th string",
+        "12th string",
+        "13th string",
+    ];
+    for label in expected {
+        let added = add_string(&conn, save_id, PlannerTeam::Senior).expect("add string");
+        assert_eq!(added.0.display_name, label);
+    }
+
+    let reloaded = get_depth(&conn, save_id).expect("reload depth");
+    let strings = team_strings(&reloaded, PlannerTeam::Senior);
+    assert_eq!(strings.len(), 13);
+    assert_eq!(strings[10].display_name, "11th string");
+    assert_eq!(strings[11].display_name, "12th string");
+    assert_eq!(strings[12].display_name, "13th string");
+}
+
+#[test]
+fn restored_team_creates_the_ordinal_labeled_string() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    get_depth(&conn, save_id).expect("initialize planner depth");
+    save_team_settings(
+        &conn,
+        save_id,
+        &[
+            PlannerTeamInput {
+                team: "senior".to_string(),
+                display_name: "Senior".to_string(),
+            },
+            PlannerTeamInput {
+                team: "reserves".to_string(),
+                display_name: "Reserves".to_string(),
+            },
+        ],
+        false,
+    )
+    .expect("remove youth team");
+    save_team_settings(
+        &conn,
+        save_id,
+        &[
+            PlannerTeamInput {
+                team: "senior".to_string(),
+                display_name: "Senior".to_string(),
+            },
+            PlannerTeamInput {
+                team: "reserves".to_string(),
+                display_name: "Reserves".to_string(),
+            },
+            PlannerTeamInput {
+                team: "youth".to_string(),
+                display_name: "Youth".to_string(),
+            },
+        ],
+        false,
+    )
+    .expect("restore youth team");
+
+    let reloaded = get_depth(&conn, save_id).expect("reload depth");
+    let strings = team_strings(&reloaded, PlannerTeam::Youth);
+    assert_eq!(strings.len(), 1);
+    assert_eq!(strings[0].string_order, 0);
+    assert_eq!(strings[0].display_name, "1st string");
 }
 
 #[test]

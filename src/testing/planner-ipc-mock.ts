@@ -317,6 +317,21 @@ let pendingPlannerTeamSave: {
   resolve: (depth: PlannerDepth) => void;
 } | null = null;
 
+function ordinalStringLabel(stringOrder: number): string {
+  const number = stringOrder + 1;
+  const suffix =
+    number % 100 >= 11 && number % 100 <= 13
+      ? "th"
+      : number % 10 === 1
+        ? "st"
+        : number % 10 === 2
+          ? "nd"
+          : number % 10 === 3
+            ? "rd"
+            : "th";
+  return `${number}${suffix} string`;
+}
+
 function cloneTactic(value: PlannerTactic): PlannerTactic {
   return {
     lanes: value.lanes.map((lane) => ({ ...lane })),
@@ -332,6 +347,7 @@ function cloneDepth(value: PlannerDepth): PlannerDepth {
       strings: team.strings.map((plannerString) => ({
         id: plannerString.id,
         stringOrder: plannerString.stringOrder,
+        displayName: plannerString.displayName,
         assignments: plannerString.assignments.map((assignment) => ({
           ...assignment,
         })),
@@ -390,7 +406,14 @@ function buildDefaultDepth(): PlannerDepth {
     teams: ["senior", "reserves", "youth"].map((team, index) => ({
       team: team as PlannerDepth["teams"][number]["team"],
       displayName: displayNames[team as keyof typeof displayNames],
-      strings: [{ id: index + 1, stringOrder: 0, assignments: [] }],
+      strings: [
+        {
+          id: index + 1,
+          stringOrder: 0,
+          displayName: ordinalStringLabel(0),
+          assignments: [],
+        },
+      ],
     })),
   };
 }
@@ -898,7 +921,12 @@ export function resolveAddPlannerStringIpcMock(args: unknown) {
         candidate.strings.map((plannerString) => plannerString.id),
       ),
     ) + 1;
-  team.strings.push({ id, stringOrder: team.strings.length, assignments: [] });
+  team.strings.push({
+    id,
+    stringOrder: team.strings.length,
+    displayName: ordinalStringLabel(team.strings.length),
+    assignments: [],
+  });
   return cloneDepth(depth);
 }
 
@@ -1140,7 +1168,14 @@ function applyPlannerTeamSave(
     return {
       team,
       displayName: input?.displayName ?? team,
-      strings: [{ id: nextStringId++, stringOrder: 0, assignments: [] }],
+      strings: [
+        {
+          id: nextStringId++,
+          stringOrder: 0,
+          displayName: ordinalStringLabel(0),
+          assignments: [],
+        },
+      ],
     };
   });
   depth.teams = nextTeams;

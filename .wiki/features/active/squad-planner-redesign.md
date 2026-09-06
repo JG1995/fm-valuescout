@@ -188,7 +188,7 @@ Land the v43 string-name persistence with ordinal backfill and ordinal defaults 
 
 #### Commit 2 — Persist named planner strings with ordinal backfill
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): persist named planner strings`
 
@@ -251,7 +251,7 @@ Land the v43 string-name persistence with ordinal backfill and ordinal defaults 
 
 #### Commit 3 — Own full squad structure in one team-settings transaction
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(planner): save squad structure transactionally`
 
@@ -498,19 +498,19 @@ Land the v43 string-name persistence with ordinal backfill and ordinal defaults 
 
 **PR:** PR 1 — Redesign Squad Planner around a configurable squad-depth board
 
-**Commit:** Persist named planner strings with ordinal backfill
+**Commit:** Own full squad structure in one team-settings transaction
 
 ### RED or removal proof
 
-Add a migration test that fails without v43 and writer proofs that fail without persisted ordinal display names, including the 11th/12th/13th boundary.
+Add structural-save tests that fail on the team-only input, covering stable IDs, scoped removal, confirmation, name rules, hostile IDs, and collision-safe reorder.
 
 ### Expected outcome
 
-Every planner string stores and returns a non-blank display name, existing rows receive their exact ordinal labels, and every current creation path uses the shared ordinal default.
+One `save_planner_teams` transaction validates and persists complete team and string structure while retaining the working legacy add/remove path.
 
 ### Explicit exclusions
 
-Structural save changes, Manage Teams editing, board rendering, command retirement, and optimizer changes.
+Manage Teams string-editing UI, board rendering, picker or optimizer behavior changes, and legacy command retirement.
 
 ## Discoveries and replanning
 
@@ -520,7 +520,8 @@ Structural save changes, Manage Teams editing, board rendering, command retireme
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 1 — Record the approved feature plan | Pending record | Recorded the accepted ledger and active TODO link on the authorized feature branch. | Ledger and delivery classifiers passed; staged whitespace check passed. | Not applicable | Clear | 0 | None. |
+| PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 1 — Record the approved feature plan | 4e53fb047353405d1758a3125f2951cda19924df | Recorded the accepted ledger and active TODO link on the authorized feature branch. | Ledger and delivery classifiers passed; staged whitespace check passed. | Not applicable | Clear | 0 | None. |
+| PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 2 — Persist named planner strings with ordinal backfill | Pending record | Added v43 string-name persistence, exact ordinal backfill, shared writer defaults, and typed DTO fixtures without changing UI behavior. | Expected migration RED; check-rust and full check passed with 801 Rust tests, 0 failed, 2 intentionally ignored; LSP and whitespace checks clean. | Pass | Clear | 0 | None. |
 
 ## Final validation
 
