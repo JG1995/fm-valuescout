@@ -830,6 +830,66 @@ describe("staff route", () => {
     ).toEqual(["age"]);
   });
 
+  it("offers grouped Columns including Recruitment on the All-jobs shortlist path", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([fixtureStaff()]);
+    usePlayerTableStore.setState({
+      layouts: {
+        ...defaultPlayerTableLayouts(),
+        "staff-shortlist": {
+          columnIds: ["age", "ca"],
+          widths: {},
+          identityWidth: 280,
+        },
+      },
+    });
+    renderStaffRoute("/staff?shortlistOnly=true");
+
+    const table = await screen.findByRole("table", {
+      name: "Staff Shortlist",
+    });
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Staff");
+    expect(headers[0].className).toContain("sticky");
+
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    const dialog = screen.getByRole("dialog", { name: "Columns" });
+    expect(within(dialog).getByText("Recruitment")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("checkbox", { name: "Name" })).toBeNull();
+    const toggle = within(dialog).getByRole("checkbox", {
+      name: "Preferred Job",
+    });
+    expect(toggle).not.toBeChecked();
+    await user.click(toggle);
+    expect(
+      usePlayerTableStore.getState().layouts["staff-shortlist"].columnIds,
+    ).toContain("preferred_job");
+    await user.keyboard("{Escape}");
+  });
+
+  it("offers no Columns toggles on a fixed shortlist presentation while keeping sticky identity", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([
+      fixtureStaff({
+        shortlist: {
+          preferredJob: "Manager",
+          clubJob: "-",
+          coachingQualifications: "National C",
+        },
+      }),
+    ]);
+    renderStaffRoute("/staff?shortlistOnly=true&preferredJob=Manager");
+
+    const table = await screen.findByRole("table", {
+      name: "Staff Shortlist",
+    });
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Staff");
+    expect(headers[0].className).toContain("sticky");
+    expect(screen.queryByRole("button", { name: "Columns" })).toBeNull();
+  });
+
   it("shows setup feedback with Upload available when filtering on with no list", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();

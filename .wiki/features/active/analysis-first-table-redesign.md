@@ -422,7 +422,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 #### Commit 5 — Add grouped column management
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tables): add grouped column management`
 
@@ -480,7 +480,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 #### Commit 6 — Present compact accessible tactic headers
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tables): present compact accessible tactic headers`
 
@@ -821,19 +821,19 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 **PR:** Redesign shared table for analysis-first views
 
-**Commit:** Add grouped column management
+**Commit:** Present compact accessible tactic headers
 
 ### RED or removal proof
 
-Add failing control tests for group membership, identity exclusion, keyboard toggling, header-run updates, context-menu parity, and both Staff Shortlist configuration paths.
+Add failing Search/header tests for compact primary labels, visible role context, complete accessible names, keyboard-focus disclosure, and the unchanged 11-lane interleaving contract.
 
 ### Expected outcome
 
-Every configurable shared table offers one keyboard-operable grouped Columns control driven by the same group input as its header, while fixed Staff Shortlist presentations offer no toggles.
+Tactic leaves use compact placement labels with role context while keyboard and screen-reader users retain visible access to each complete tactic definition.
 
 ### Explicit exclusions
 
-Store migration, identity rendering, toolbar association, tactic-label changes, cell consolidation, backend changes, and unrelated refactors.
+Group structure, identity, toolbar work, shared cell changes, defaults, scoring logic, backend changes, and unrelated refactors.
 
 ## Discoveries and replanning
 
@@ -846,7 +846,8 @@ Store migration, identity rendering, toolbar association, tactic-label changes, 
 | PR 1 — Redesign shared table for analysis-first views | Commit 1 — Record the approved feature plan | 8de6d8fc26092383c53fbd423df3568471ac0193 | Recorded the accepted schema 2 feature ledger and TODO Active entry on the authorized feature branch. | `ledger_state.py` and `delivery_state.py` runnable with the accepted fingerprint; staged diff check clean. | Not applicable | Clear | 0 | Branch authority was renamed to `feature/analysis-first-tables` and re-fingerprinted before delivery at the developer's request. |
 | PR 1 — Redesign shared table for analysis-first views | Commit 2 — Support grouped table headers | 630b89999367e0234167edb51ddb77c330235e12 | Added shared contiguous group resolution, semantic two-row headers, exact group maps for all six layouts, and 64px sticky-header focus geometry. | Component tests 21/21; affected route tests 243/243; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review required direct proofs for all six panel-owned maps and runtime virtualizer focus geometry; correction review accepted them. |
 | PR 1 — Redesign shared table for analysis-first views | Commit 3 — Establish the sticky identity shell | 98c0cf80a9d60880e00f1a7a5aca199eb143e176 | Added one optional storage-agnostic identity contract, exact shell-to-header callback handoff, strict identity-analysis-fixed ordering, sticky layering, and bounded identity resizing; migrated all callers with identity omitted. | Component tests 32/32; affected route tests 243/243; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review required a combined menu-over-sticky-identity layering proof; correction review accepted it. |
-| PR 1 — Redesign shared table for analysis-first views | Commit 4 — Activate required table identity | Pending record | Migrated layouts to version 8 with separate identity widths and conservative custom-layout retention, then activated sticky caller-owned identity across all six table modes without imagery or duplication. | Store tests 51/51; affected component and route tests 279/279; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review found nonempty layout replacement dropped identity width; correction preserved it and added persistence regression proof. |
+| PR 1 — Redesign shared table for analysis-first views | Commit 4 — Activate required table identity | 10f9a9fa815a1427b79e1b87e1b425d5952a35bd | Migrated layouts to version 8 with separate identity widths and conservative custom-layout retention, then activated sticky caller-owned identity across all six table modes without imagery or duplication. | Store tests 51/51; affected component and route tests 279/279; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review found nonempty layout replacement dropped identity width; correction preserved it and added persistence regression proof. |
+| PR 1 — Redesign shared table for analysis-first views | Commit 5 — Add grouped column management | Pending record | Added one keyboard-operable grouped Columns control driven by the header group input, with analysis-only toggles, identity exclusion, zero-analysis support, and fixed-shortlist degradation. | Component and store tests 93/93; Search 78/78; Staff 47/47; Squad 130/130; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review found missing dialog focus and tactic-only removal restoring defaults; correction fixed leaf and whole-group identity-only paths. |
 
 ## Final validation
 

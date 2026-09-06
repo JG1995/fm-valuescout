@@ -198,6 +198,7 @@ function SearchPageContent() {
     savesQuery.isError;
   const queryClient = useQueryClient();
   const addColumns = usePlayerTableStore((state) => state.addColumns);
+  const removeColumn = usePlayerTableStore((state) => state.removeColumn);
   const replaceLayout = usePlayerTableStore((state) => state.replaceLayout);
   const {
     sort,
@@ -351,7 +352,16 @@ function SearchPageContent() {
           nextPotentialActive,
         ),
       ];
-      replaceLayout(tableId, nextColumnIds);
+      // Identity-only is valid: emptying the last tactic group removes
+      // those leaves through removeColumn instead of replaceLayout([]),
+      // which restores defaults and must keep that semantic.
+      if (nextColumnIds.length === 0) {
+        for (const id of columnIds.filter((id) => isTacticColumnId(id))) {
+          removeColumn(tableId, id);
+        }
+      } else {
+        replaceLayout(tableId, nextColumnIds);
+      }
       if (isTacticColumnId(sort) && !nextColumnIds.includes(sort)) {
         const nextSort = defaultSearchSort(view);
         updateSearch({

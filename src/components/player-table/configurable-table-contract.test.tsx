@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
+  ConfigurableColumnsControl,
   type ConfigurableTableColumn,
   type ConfigurableTableFixedColumn,
   ConfigurableTableHeader,
@@ -609,5 +610,71 @@ describe("sticky identity shell", () => {
       "tr",
     ) as HTMLElement;
     expect(Array.from(row.querySelectorAll("td"))).toHaveLength(2);
+  });
+});
+
+describe("grouped columns control contract", () => {
+  const SHORTLIST_GROUPS = {
+    groups: [
+      { id: "profile", label: "Profile" },
+      { id: "recruitment", label: "Recruitment" },
+    ],
+    groupForColumn: (columnId: string) =>
+      columnId === "preferred_job" ? "recruitment" : "profile",
+  };
+  const SHORTLIST_METRICS = [
+    {
+      id: "age",
+      label: "Age",
+      align: "left" as const,
+      defaultWidth: 152,
+      sortable: true,
+    },
+    {
+      id: "preferred_job",
+      label: "Preferred Job",
+      align: "left" as const,
+      defaultWidth: 160,
+      sortable: true,
+    },
+  ];
+
+  it("offers Recruitment toggles on the configurable shortlist path", async () => {
+    const user = userEvent.setup();
+    const onAddColumn = vi.fn();
+    render(
+      <ConfigurableColumnsControl
+        groups={SHORTLIST_GROUPS}
+        metrics={SHORTLIST_METRICS}
+        visibleColumnIds={["age"]}
+        onAddColumn={onAddColumn}
+        onRemoveColumn={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    const dialog = screen.getByRole("dialog", { name: "Columns" });
+    expect(within(dialog).getByText("Recruitment")).toBeInTheDocument();
+    const toggle = within(dialog).getByRole("checkbox", {
+      name: "Preferred Job",
+    });
+    expect(toggle).not.toBeChecked();
+    await user.click(toggle);
+    expect(onAddColumn).toHaveBeenCalledWith("preferred_job");
+  });
+
+  it("offers no toggles when the shortlist presentation is fixed", () => {
+    render(
+      <ConfigurableColumnsControl
+        groups={SHORTLIST_GROUPS}
+        metrics={SHORTLIST_METRICS}
+        visibleColumnIds={["age", "preferred_job"]}
+        configurable={false}
+        onAddColumn={vi.fn()}
+        onRemoveColumn={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Columns" })).toBeNull();
   });
 });

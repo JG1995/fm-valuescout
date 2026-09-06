@@ -33,6 +33,47 @@ export const FALLBACK_TABLE_GROUP: TableGroupDef = {
   label: "Other",
 };
 
+export type TableGroupList<TMetric extends { id: string }> = {
+  group: TableGroupDef;
+  metrics: TMetric[];
+};
+
+/**
+ * Group an optional-analysis metric catalog with the same view-owned input
+ * the header consumes, so the Columns control and the header cannot
+ * diverge. Groups render in display priority; `Other` is the unmatched
+ * fallback listed last like any other group. A group with no available
+ * leaves offers nothing.
+ */
+export function resolveGroupedMetrics<TMetric extends { id: string }>(
+  metrics: readonly TMetric[],
+  input: TableGroupInput | undefined,
+): TableGroupList<TMetric>[] {
+  if (!input) {
+    return metrics.length > 0
+      ? [{ group: FALLBACK_TABLE_GROUP, metrics: [...metrics] }]
+      : [];
+  }
+  const lists: TableGroupList<TMetric>[] = [];
+  const assigned = new Set<string>();
+  for (const group of input.groups) {
+    const items = metrics.filter(
+      (metric) => (input.groupForColumn(metric.id) ?? "other") === group.id,
+    );
+    if (items.length > 0) {
+      lists.push({ group, metrics: items });
+      for (const item of items) {
+        assigned.add(item.id);
+      }
+    }
+  }
+  const rest = metrics.filter((metric) => !assigned.has(metric.id));
+  if (rest.length > 0) {
+    lists.push({ group: FALLBACK_TABLE_GROUP, metrics: rest });
+  }
+  return lists;
+}
+
 export function resolveTableGroupRuns(
   columns: readonly { id: string }[],
   input: TableGroupInput | undefined,

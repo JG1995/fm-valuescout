@@ -417,40 +417,51 @@ describe("search route", () => {
     ).toBe(false);
   });
 
-  it("restores the default layout and sort after tactic-only header removal", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    const currentIds = ORDERED_TACTIC_LANE_IDS.map(
-      (laneId) => `tactic_current.${laneId}`,
-    );
-    usePlayerTableStore.getState().replaceLayout("search", currentIds);
-    const { router } = renderSearchRoute(
-      `/search?sort=${currentIds[0]}&dir=desc`,
-    );
+  it.each([
+    {
+      tableId: "search",
+      entry: (sort: string) => `/search?sort=${sort}&dir=desc`,
+    },
+    {
+      tableId: "moneyball-search",
+      entry: (sort: string) => `/search?view=moneyball&sort=${sort}&dir=desc`,
+    },
+  ] as const)(
+    "preserves identity-only after tactic-only leaf removal ($tableId)",
+    async ({ tableId, entry }) => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      const currentIds = ORDERED_TACTIC_LANE_IDS.map(
+        (laneId) => `tactic_current.${laneId}`,
+      );
+      usePlayerTableStore.getState().replaceLayout(tableId, currentIds);
+      renderSearchRoute(entry(currentIds[0]));
 
-    const table = await screen.findByRole("table", {
-      name: "Player search results",
-    });
-    const label = "GK (Goalkeeper) / GK (Line-Holding Keeper)";
-    fireEvent.contextMenu(
-      within(table).getByRole("columnheader", { name: label }),
-    );
-    await user.click(screen.getByRole("menuitem", { name: `Remove ${label}` }));
-
-    await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        sort: "ca",
-        dir: "desc",
+      const table = await screen.findByRole("table", {
+        name: "Player search results",
       });
-    });
-    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
-      "age",
-      "nationality",
-      "ca",
-      "pa",
-      "value",
-    ]);
-  });
+      const label = "GK (Goalkeeper) / GK (Line-Holding Keeper)";
+      fireEvent.contextMenu(
+        within(table).getByRole("columnheader", { name: label }),
+      );
+      await user.click(
+        screen.getByRole("menuitem", { name: `Remove ${label}` }),
+      );
+
+      // Identity-only is valid: the emptied tactic group normalizes away
+      // without rolling back to defaults.
+      await waitFor(() => {
+        expect(
+          usePlayerTableStore.getState().layouts[tableId].columnIds,
+        ).toEqual([]);
+      });
+      expect(
+        await screen.findByRole("table", {
+          name: "Player search results",
+        }),
+      ).toBeInTheDocument();
+    },
+  );
 
   it("falls back from a tactic sort when its active group is toggled off", async () => {
     const user = userEvent.setup();
@@ -481,6 +492,48 @@ describe("search route", () => {
       "ca",
     ]);
   });
+
+  it.each([
+    {
+      tableId: "search",
+      entry: (sort: string) => `/search?sort=${sort}&dir=desc`,
+      expectedSort: "ca",
+    },
+    {
+      tableId: "moneyball-search",
+      entry: (sort: string) => `/search?view=moneyball&sort=${sort}&dir=desc`,
+      expectedSort: "moneyball.average_rating",
+    },
+  ] as const)(
+    "keeps identity-only when its tactic-only group is toggled off ($tableId)",
+    async ({ tableId, entry, expectedSort }) => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      const currentIds = ORDERED_TACTIC_LANE_IDS.map(
+        (laneId) => `tactic_current.${laneId}`,
+      );
+      usePlayerTableStore.getState().replaceLayout(tableId, currentIds);
+      const { router } = renderSearchRoute(entry(currentIds[0]));
+
+      const currentToggle = await screen.findByRole("button", {
+        name: "Add Tactic (Current)",
+      });
+      await waitFor(() => expect(currentToggle).toBeEnabled());
+      await user.click(currentToggle);
+
+      await waitFor(() => {
+        expect(
+          usePlayerTableStore.getState().layouts[tableId].columnIds,
+        ).toEqual([]);
+      });
+      await waitFor(() => {
+        expect(router.state.location.search).toMatchObject({
+          sort: expectedSort,
+          dir: "desc",
+        });
+      });
+    },
+  );
 
   it("refreshes tactic labels for a new save without replacing its table layout", async () => {
     const user = userEvent.setup();
@@ -1051,6 +1104,88 @@ describe("search route", () => {
     expect(
       screen.queryByRole("option", { name: "Suggested Training" }),
     ).toBeNull();
+    await user.keyboard("{Escape}");
+  });
+
+  it("manages Search columns from the grouped Columns control without touching identity", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Search Scout", 160)]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(
+      within(table).getByRole("columnheader", { name: "Market" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    const dialog = screen.getByRole("dialog", { name: "Columns" });
+    // Optional analysis columns grouped per the header map; identity absent.
+    expect(within(dialog).getByText("Profile")).toBeInTheDocument();
+    expect(within(dialog).getByText("Ability")).toBeInTheDocument();
+    expect(within(dialog).getByText("Market")).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: "CA" })).toBeChecked();
+    expect(within(dialog).queryByRole("checkbox", { name: "Name" })).toBeNull();
+    expect(within(dialog).queryByRole("checkbox", { name: "Club" })).toBeNull();
+    expect(
+      within(dialog).queryByRole("checkbox", { name: "Division" }),
+    ).toBeNull();
+
+    await user.click(within(dialog).getByRole("checkbox", { name: "Value" }));
+    expect(
+      usePlayerTableStore.getState().layouts.search.columnIds,
+    ).not.toContain("value");
+    // The header run follows the same mapper: once reloaded, the emptied
+    // Market group is gone along with its leaf.
+    await waitFor(() => {
+      const reloaded = screen.getByRole("table", {
+        name: "Player search results",
+      });
+      expect(
+        within(reloaded).queryByRole("columnheader", { name: "Value" }),
+      ).toBeNull();
+      expect(
+        within(reloaded).queryByRole("columnheader", { name: "Market" }),
+      ).toBeNull();
+    });
+
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Reputation" }),
+    );
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toContain(
+      "reputation",
+    );
+    expect(
+      await screen.findByRole("columnheader", { name: "Reputation" }),
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+  });
+
+  it("never offers identity in the Search Add-column picker results", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Search Scout", 160)]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Add column" }));
+    await user.click(
+      screen.getByRole("button", { name: "Column: Choose a metric" }),
+    );
+    await user.type(
+      screen.getByRole("combobox", { name: "Search columns" }),
+      "division",
+    );
+    expect(screen.queryByRole("option", { name: "Division" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "Club" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "Name" })).toBeNull();
     await user.keyboard("{Escape}");
   });
 

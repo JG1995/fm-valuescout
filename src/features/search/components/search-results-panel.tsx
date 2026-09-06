@@ -4,6 +4,7 @@ import { SearchX } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NationalityCell } from "@/components/player-table/nationality-cell";
 import {
+  ConfigurableColumnsControl,
   type PlayerTableColumn,
   PlayerTableHeader,
 } from "@/components/player-table/player-table-header";
@@ -889,7 +890,17 @@ export function SearchResultsPanel({
           potentialSurvives,
         ),
       ];
-      replaceLayout(tableId, nextColumnIds);
+      if (nextColumnIds.length === 0) {
+        // Identity-only is valid and never rolls to defaults: emptying the
+        // last tactic leaf must persist `columnIds: []`. `replaceLayout`
+        // treats an empty list as malformed and restores defaults, so remove
+        // through the existing per-column store path instead.
+        for (const id of layout.columnIds) {
+          removeStoredColumn(tableId, id);
+        }
+      } else {
+        replaceLayout(tableId, nextColumnIds);
+      }
     } else {
       removeStoredColumn(tableId, metricId);
     }
@@ -920,6 +931,19 @@ export function SearchResultsPanel({
           players · sorted by {sortLabel} ({dirLabel})
         </p>
         {shortlistSwitch}
+        <ConfigurableColumnsControl
+          groups={
+            view === "moneyball" ? MONEYBALL_TABLE_GROUPS : SEARCH_TABLE_GROUPS
+          }
+          metrics={
+            view === "moneyball"
+              ? MONEYBALL_HEADER_METRICS
+              : SEARCH_HEADER_METRICS
+          }
+          visibleColumnIds={layout.columnIds}
+          onAddColumn={(metricId) => addColumns(tableId, [metricId])}
+          onRemoveColumn={removeColumn}
+        />
       </div>
       {isReplacementPending ? (
         <p

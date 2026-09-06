@@ -8,6 +8,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
+  ConfigurableColumnsControl,
   type ConfigurableTableColumn,
   ConfigurableTableHeader,
   type ConfigurableTableIdentityHeader,
@@ -436,5 +437,185 @@ describe("player table grouped headers", () => {
       within(header).getByRole("button", { name: "Suggested Training" }),
     );
     expect(onSortChange).not.toHaveBeenCalled();
+  });
+});
+
+const CONTROL_METRICS: ConfigurableTableMetric[] = [
+  {
+    id: "age",
+    label: "Age / DOB",
+    align: "left",
+    defaultWidth: 144,
+    sortable: true,
+  },
+  {
+    id: "ca",
+    label: "CA",
+    align: "right",
+    defaultWidth: 72,
+    sortable: true,
+  },
+  {
+    id: "value",
+    label: "Value",
+    align: "right",
+    defaultWidth: 112,
+    sortable: true,
+  },
+  {
+    id: "mystery",
+    label: "Mystery",
+    align: "left",
+    defaultWidth: 120,
+    sortable: true,
+  },
+];
+
+function renderColumnsControl({
+  visibleColumnIds = ["ca"],
+  metrics = CONTROL_METRICS,
+  groups = GROUPED_GROUPS,
+  configurable = true,
+}: {
+  visibleColumnIds?: readonly string[];
+  metrics?: ConfigurableTableMetric[];
+  groups?: TableGroupInput;
+  configurable?: boolean;
+} = {}) {
+  const onAddColumn = vi.fn();
+  const onRemoveColumn = vi.fn();
+  render(
+    <ConfigurableColumnsControl
+      groups={groups}
+      metrics={metrics}
+      visibleColumnIds={visibleColumnIds}
+      configurable={configurable}
+      onAddColumn={onAddColumn}
+      onRemoveColumn={onRemoveColumn}
+    />,
+  );
+  return { onAddColumn, onRemoveColumn };
+}
+
+async function openColumnsControl() {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Columns" }));
+  const dialog = screen.getByRole("dialog", { name: "Columns" });
+  return { user, dialog };
+}
+
+describe("grouped columns control", () => {
+  it("lists optional analysis columns grouped per the same view map as the header", async () => {
+    renderColumnsControl({ visibleColumnIds: ["ca"] });
+    const { dialog } = await openColumnsControl();
+
+    // Display-priority order matches the view input, Other fallback last.
+    const sections = Array.from(dialog.querySelectorAll("fieldset")).map(
+      (fieldset) => fieldset.querySelector("legend")?.textContent,
+    );
+    expect(sections).toEqual(["Profile", "Ability", "Market", "Other"]);
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Age / DOB" }),
+    ).not.toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "CA" })).toBeChecked();
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Value" }),
+    ).not.toBeChecked();
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Mystery" }),
+    ).not.toBeChecked();
+  });
+
+  it("offers no group section for a group with no available leaves", async () => {
+    renderColumnsControl({
+      metrics: CONTROL_METRICS.filter((metric) => metric.id === "ca"),
+    });
+    const { dialog } = await openColumnsControl();
+
+    expect(
+      within(dialog).queryByRole("checkbox", { name: "Age / DOB" }),
+    ).toBeNull();
+    expect(within(dialog).getByText("Ability")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Profile")).toBeNull();
+    expect(within(dialog).queryByText("Market")).toBeNull();
+    expect(within(dialog).queryByText("Other")).toBeNull();
+  });
+
+  it("toggles optional columns through the keyboard", async () => {
+    const { onAddColumn, onRemoveColumn } = renderColumnsControl({
+      visibleColumnIds: ["ca"],
+    });
+    const { user, dialog } = await openColumnsControl();
+
+    within(dialog).getByRole("checkbox", { name: "Value" }).focus();
+    await user.keyboard(" ");
+    expect(onAddColumn).toHaveBeenCalledWith("value");
+    expect(onRemoveColumn).not.toHaveBeenCalled();
+
+    within(dialog).getByRole("checkbox", { name: "CA" }).focus();
+    await user.keyboard(" ");
+    expect(onRemoveColumn).toHaveBeenCalledWith("ca");
+  });
+
+  it("lets the last visible analysis column be removed for identity-only", async () => {
+    const { onRemoveColumn } = renderColumnsControl({
+      visibleColumnIds: ["ca"],
+    });
+    const { user, dialog } = await openColumnsControl();
+
+    const lastChecked = within(dialog).getByRole("checkbox", {
+      name: "CA",
+    });
+    expect(lastChecked).toBeChecked();
+    expect(lastChecked).toBeEnabled();
+    await user.click(lastChecked);
+    expect(onRemoveColumn).toHaveBeenCalledWith("ca");
+  });
+
+  it("offers no toggles when the layout is fixed", () => {
+    renderColumnsControl({ configurable: false });
+
+    expect(screen.queryByRole("button", { name: "Columns" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Columns" })).toBeNull();
+  });
+
+  it("closes the grouped list with Escape and returns focus", async () => {
+    renderColumnsControl({ visibleColumnIds: ["ca"] });
+    const { user, dialog } = await openColumnsControl();
+
+    within(dialog).getByRole("checkbox", { name: "CA" }).focus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Columns" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Columns" })).toHaveFocus();
+  });
+
+  it("focuses the first checkbox on keyboard open so Escape closes and restores focus", async () => {
+    renderColumnsControl({ visibleColumnIds: ["ca"] });
+    const user = userEvent.setup();
+
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Columns" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    const dialog = screen.getByRole("dialog", { name: "Columns" });
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Age / DOB" }),
+    ).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Columns" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Columns" })).toHaveFocus();
+  });
+});
+
+describe("analysis leaf removal", () => {
+  it("lets the leaf menu remove the last analysis column for identity-only", async () => {
+    const user = userEvent.setup();
+    const { onRemoveColumn } = renderHeader({ columns: [COLUMNS[0]] });
+
+    fireEvent.contextMenu(screen.getByRole("columnheader", { name: "CA" }));
+    const remove = screen.getByRole("menuitem", { name: "Remove CA" });
+    expect(remove).toBeEnabled();
+    await user.click(remove);
+    expect(onRemoveColumn).toHaveBeenCalledWith("ca");
   });
 });

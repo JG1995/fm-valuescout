@@ -6,7 +6,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   MetricPicker,
   type MetricPickerMetric,
@@ -17,7 +17,11 @@ import {
   PLAYER_TABLE_MIN_COLUMN_WIDTH,
   type PlayerMetricAlignment,
 } from "@/utils/player-metrics";
-import { resolveTableGroupRuns, type TableGroupInput } from "./table-groups";
+import {
+  resolveGroupedMetrics,
+  resolveTableGroupRuns,
+  type TableGroupInput,
+} from "./table-groups";
 
 const KEYBOARD_RESIZE_STEP = 16;
 
@@ -442,7 +446,6 @@ export function ConfigurableTableHeader({
                   <button
                     type="button"
                     role="menuitem"
-                    disabled={columns.length === 1}
                     className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-label-md text-error hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-45"
                     onClick={() => {
                       onRemoveColumn(column.id);
@@ -517,4 +520,136 @@ export function PlayerTableHeader({
   ...props
 }: PlayerTableHeaderProps) {
   return <ConfigurableTableHeader {...props} metrics={metrics} />;
+}
+
+export type ConfigurableColumnsControlProps = {
+  groups?: TableGroupInput;
+  metrics: readonly ConfigurableTableMetric[];
+  visibleColumnIds: readonly string[];
+  configurable?: boolean;
+  onAddColumn: (metricId: string) => void;
+  onRemoveColumn: (metricId: string) => void;
+};
+
+/**
+ * Grouped Columns control driven by the same `TableGroupInput` the header
+ * consumes, so header runs and control sections cannot diverge. Lists
+ * optional analysis columns only — callers supply analysis-only metrics
+ * (identity lives outside the configurable columns since Commit 4) — as
+ * keyboard-operable checkboxes; toggling flows through the existing
+ * add/remove store paths. Fixed layouts (`configurable={false}`) offer no
+ * toggles. This file imports no store and knows no table IDs.
+ */
+export function ConfigurableColumnsControl({
+  groups,
+  metrics,
+  visibleColumnIds,
+  configurable = true,
+  onAddColumn,
+  onRemoveColumn,
+}: ConfigurableColumnsControlProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const panelId = useId();
+  const visible = useMemo(() => new Set(visibleColumnIds), [visibleColumnIds]);
+  const grouped = useMemo(
+    () => resolveGroupedMetrics(metrics, groups),
+    [groups, metrics],
+  );
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    panelRef.current
+      ?.querySelector<HTMLInputElement>("input:not([disabled])")
+      ?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      const container = containerRef.current;
+      if (container && !event.composedPath().includes(container)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [open]);
+
+  if (!configurable) {
+    return null;
+  }
+
+  const closeAndRefocus = () => {
+    setOpen(false);
+    buttonRef.current?.focus();
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={() => setOpen((current) => !current)}
+        className="inline-flex items-center gap-2 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        Columns
+      </button>
+      {open ? (
+        <div
+          id={panelId}
+          ref={panelRef}
+          role="dialog"
+          aria-label="Columns"
+          className="absolute right-0 top-full z-30 mt-1 max-h-96 w-72 overflow-y-auto rounded-md border border-outline-variant bg-surface-container-highest p-3 text-left shadow-overlay"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              closeAndRefocus();
+            }
+          }}
+        >
+          {grouped.map(({ group, metrics: items }) => (
+            <fieldset key={group.id} className="m-0 min-w-0 border-0 p-0">
+              <legend className="px-1 pt-2 pb-1 text-label-md text-on-surface-variant uppercase">
+                {group.label}
+              </legend>
+              {items.map((metric) => {
+                const checked = visible.has(metric.id);
+                return (
+                  <label
+                    key={metric.id}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-1 py-1.5 text-left text-body-sm text-on-surface hover:bg-surface-container-high focus-within:outline-2 focus-within:outline-offset-[-2px] focus-within:outline-primary"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        if (checked) {
+                          onRemoveColumn(metric.id);
+                        } else {
+                          onAddColumn(metric.id);
+                        }
+                      }}
+                      className="size-4 shrink-0 accent-primary"
+                    />
+                    {metric.label}
+                  </label>
+                );
+              })}
+            </fieldset>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }

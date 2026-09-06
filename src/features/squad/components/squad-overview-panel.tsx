@@ -11,6 +11,7 @@ import {
 } from "react";
 import { NationalityCell } from "@/components/player-table/nationality-cell";
 import {
+  ConfigurableColumnsControl,
   type PlayerTableColumn,
   PlayerTableHeader,
 } from "@/components/player-table/player-table-header";
@@ -186,7 +187,7 @@ function formatDynamicCell(
   return String(value);
 }
 
-const SQUAD_CONFIGURABLE_METRICS = SQUAD_HEADER_METRICS.filter(
+export const SQUAD_CONFIGURABLE_METRICS = SQUAD_HEADER_METRICS.filter(
   (metric) => !isIdentityColumnId(metric.id),
 );
 
@@ -643,11 +644,20 @@ export function SquadOverviewPanel({
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
-      <p className="shrink-0 px-4 pb-3 text-body-md text-on-surface-variant">
-        <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
-        {page.total === 1 ? "player" : "players"} · sorted by {sortLabel} (
-        {dirLabel})
-      </p>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-4 pb-3">
+        <p className="text-body-md text-on-surface-variant">
+          <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
+          {page.total === 1 ? "player" : "players"} · sorted by {sortLabel} (
+          {dirLabel})
+        </p>
+        <ConfigurableColumnsControl
+          groups={SQUAD_TABLE_GROUPS}
+          metrics={SQUAD_CONFIGURABLE_METRICS}
+          visibleColumnIds={layout.columnIds}
+          onAddColumn={(metricId) => addColumns("squad", [metricId])}
+          onRemoveColumn={removeColumn}
+        />
+      </div>
       {isReplacementPending ? (
         <p
           className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"

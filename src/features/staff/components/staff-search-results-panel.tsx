@@ -8,6 +8,7 @@ import { DatabaseZap, SearchX, UsersRound } from "lucide-react";
 import { useMemo, useRef } from "react";
 import { NationalityCell } from "@/components/player-table/nationality-cell";
 import {
+  ConfigurableColumnsControl,
   type ConfigurableTableColumn,
   ConfigurableTableHeader,
 } from "@/components/player-table/player-table-header";
@@ -178,13 +179,12 @@ function basicCell(
   }
 }
 
-const STAFF_CONFIGURABLE_METRICS = STAFF_METRICS.filter(
+export const STAFF_CONFIGURABLE_METRICS = STAFF_METRICS.filter(
   (metric) => !isIdentityColumnId(metric.id),
 );
 
-const STAFF_SHORTLIST_CONFIGURABLE_METRICS = STAFF_SHORTLIST_METRICS.filter(
-  (metric) => !isIdentityColumnId(metric.id),
-);
+export const STAFF_SHORTLIST_CONFIGURABLE_METRICS =
+  STAFF_SHORTLIST_METRICS.filter((metric) => !isIdentityColumnId(metric.id));
 
 function StaffIdentityCell({
   name,
@@ -763,6 +763,22 @@ export function StaffSearchResultsPanel({
             onChange={onShortlistOnlyChange}
           />
         ) : null}
+        <ConfigurableColumnsControl
+          groups={
+            isShortlist ? STAFF_SHORTLIST_TABLE_GROUPS : STAFF_TABLE_GROUPS
+          }
+          metrics={
+            isShortlist
+              ? STAFF_SHORTLIST_CONFIGURABLE_METRICS
+              : STAFF_CONFIGURABLE_METRICS
+          }
+          visibleColumnIds={fixedColumnIds ?? layout.columnIds}
+          configurable={!fixedColumnIds}
+          onAddColumn={(id) => {
+            if (!fixedColumnIds) addColumns(layoutId, [id]);
+          }}
+          onRemoveColumn={removeStoredColumn}
+        />
       </div>
       <div
         ref={boostOutcomeRef}

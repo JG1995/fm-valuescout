@@ -1280,6 +1280,58 @@ describe("My Club route", () => {
     ).toBeInTheDocument();
   });
 
+  it("manages Squad columns from the grouped Columns control", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Squad Scout", 160)]);
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    const dialog = screen.getByRole("dialog", { name: "Columns" });
+    expect(within(dialog).getByText("Development")).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("checkbox", {
+        name: "Suggested Training",
+      }),
+    ).toBeChecked();
+    expect(within(dialog).queryByRole("checkbox", { name: "Name" })).toBeNull();
+
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Suggested Training" }),
+    );
+    expect(
+      usePlayerTableStore.getState().layouts.squad.columnIds,
+    ).not.toContain("suggested_training");
+    await waitFor(() => {
+      const reloaded = screen.getByRole("table", {
+        name: "Squad overview",
+      });
+      expect(
+        within(reloaded).queryByRole("columnheader", {
+          name: "Development",
+        }),
+      ).toBeNull();
+    });
+
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Suggested Training" }),
+    );
+    expect(usePlayerTableStore.getState().layouts.squad.columnIds).toContain(
+      "suggested_training",
+    );
+    expect(
+      await screen.findByRole("columnheader", {
+        name: "Suggested Training",
+      }),
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+  });
+
   it("reorders Squad columns from the menu without changing its query, virtual row, or widths", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
