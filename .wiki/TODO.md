@@ -58,7 +58,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Completed
 
-- **[Tactics Page Redesign](./features/completed/tactics-page-redesign.md)** — one phase-aware normalized tactical canvas with Tactical XI and Selected Slot controls, unique-placement swaps, a one-time v42 tactic reset that preserves assignments and unrelated save data, responsive containment, and landscape orientation at >= 1920px (Linear JAY-57; final PR ready for publication, not published).
+- **[Tactics Page Redesign](./features/completed/tactics-page-redesign.md)** — one phase-aware normalized tactical canvas with Tactical XI and Selected Slot controls, unique-placement swaps, a one-time v42 tactic reset that preserves assignments and unrelated save data, responsive containment, and landscape orientation at >= 1920px (Linear JAY-57; [PR #122](https://github.com/JG1995/fm-valuescout/pull/122)).
 - [Top Navigation](./features/completed/top-navigation.md) — replaced the persistent left rail with grouped top navigation, promoted Search, Staff, Club, and Youth destinations, and preserved route compatibility (Linear JAY-54).
 - [Integrated Shortlists](./features/completed/integrated-shortlists.md) — integrated save-owned player and staff replacement shortlists into Player Search General and Staff Search with CSV upload, URL-backed filtering, and Staff assignment controls; final PR not published.
 - [Tactic Columns for Player Tables](./features/completed/tactic-table-columns.md) — 11-lane Planner tactic groups (Current/Potential) as synthetic display columns for Search General, Moneyball, and Shortlist with interleaving, persistence, and blended adjusted scoring.

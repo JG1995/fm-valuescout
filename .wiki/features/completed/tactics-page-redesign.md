@@ -130,7 +130,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/122
 
 **Merge ref:** Not merged
 
