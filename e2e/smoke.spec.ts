@@ -2339,23 +2339,83 @@ test.describe("application smoke", () => {
         const [headingBox] = await Promise.all([plannerHeading.boundingBox()]);
         expect(headingBox).not.toBeNull();
 
-        if (width >= 1600 && view === "Both") {
-          const selectBoxes = await settings
-            .getByRole("combobox")
-            .evaluateAll((elements) =>
-              elements.map(
-                (element) =>
-                  (
-                    element as unknown as {
-                      getBoundingClientRect: () => { top: number };
-                    }
-                  ).getBoundingClientRect().top,
-              ),
-            );
-          expect(
-            Math.max(...selectBoxes) - Math.min(...selectBoxes),
-          ).toBeLessThanOrEqual(1);
+        // The beside-pitch inspector wraps its controls instead of sharing
+        // one bottom-shelf row: every combobox stays visible, inside the
+        // inspector bounds, and pairwise disjoint, with phase/weight
+        // association readable from the existing fieldset and slider labels.
+        const inspectorBox = await settings.boundingBox();
+        expect(inspectorBox).not.toBeNull();
+        if (!inspectorBox) {
+          throw new Error("Expected a visible inspector layout.");
         }
+        const inspectorControls = await settings
+          .getByRole("combobox")
+          .evaluateAll((elements) =>
+            elements.map((element) => {
+              const rect = (
+                element as unknown as {
+                  getBoundingClientRect: () => {
+                    x: number;
+                    y: number;
+                    width: number;
+                    height: number;
+                  };
+                }
+              ).getBoundingClientRect();
+              return {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height,
+              };
+            }),
+          );
+        expect(inspectorControls.length).toBeGreaterThan(0);
+        for (let index = 0; index < inspectorControls.length; index += 1) {
+          await expect(settings.getByRole("combobox").nth(index)).toBeVisible();
+          const controlBox = inspectorControls[index];
+          expect(controlBox.x).toBeGreaterThanOrEqual(inspectorBox.x - 1);
+          expect(controlBox.y).toBeGreaterThanOrEqual(inspectorBox.y - 1);
+          expect(controlBox.x + controlBox.width).toBeLessThanOrEqual(
+            inspectorBox.x + inspectorBox.width + 1,
+          );
+          expect(controlBox.y + controlBox.height).toBeLessThanOrEqual(
+            inspectorBox.y + inspectorBox.height + 1,
+          );
+        }
+        for (let left = 0; left < inspectorControls.length; left += 1) {
+          for (
+            let right = left + 1;
+            right < inspectorControls.length;
+            right += 1
+          ) {
+            const leftBox = inspectorControls[left];
+            const rightBox = inspectorControls[right];
+            const xOverlap =
+              Math.min(leftBox.x + leftBox.width, rightBox.x + rightBox.width) -
+              Math.max(leftBox.x, rightBox.x);
+            const yOverlap =
+              Math.min(
+                leftBox.y + leftBox.height,
+                rightBox.y + rightBox.height,
+              ) - Math.max(leftBox.y, rightBox.y);
+            expect(xOverlap <= 0 || yOverlap <= 0).toBe(true);
+          }
+        }
+        await expect(
+          settings.getByRole("group", { name: "In-Possession settings" }),
+        ).toBeVisible();
+        await expect(
+          settings.getByRole("group", { name: "Out-of-Possession settings" }),
+        ).toBeVisible();
+        const weightSlider = settings.getByRole("slider", {
+          name: "IP/OOP score weight",
+        });
+        await expect(weightSlider).toBeVisible();
+        await expect(weightSlider).toHaveAttribute(
+          "aria-valuetext",
+          /IP \d+%, OOP \d+/,
+        );
 
         const dimensions = await main.evaluate((element) => {
           const mainElement = element as unknown as {
@@ -2377,6 +2437,30 @@ test.describe("application smoke", () => {
         if (requireVerticalFit) {
           expect(dimensions.scrollHeight).toBeLessThanOrEqual(
             dimensions.clientHeight + 1,
+          );
+        }
+        if (width >= 1600) {
+          // The Selected Slot inspector sits beside the pitch (horizontally
+          // adjacent with vertical overlap), not on a bottom shelf below it.
+          const [pitchBox, settingsBox] = await Promise.all([
+            pitches.first().boundingBox(),
+            settings.boundingBox(),
+          ]);
+          expect(pitchBox).not.toBeNull();
+          expect(settingsBox).not.toBeNull();
+          if (!pitchBox || !settingsBox) {
+            throw new Error(
+              "Expected the pitch and inspector to have a visible layout.",
+            );
+          }
+          expect(settingsBox.x).toBeGreaterThanOrEqual(
+            pitchBox.x + pitchBox.width - 1,
+          );
+          expect(settingsBox.y).toBeLessThanOrEqual(
+            pitchBox.y + pitchBox.height - 1,
+          );
+          expect(pitchBox.y).toBeLessThanOrEqual(
+            settingsBox.y + settingsBox.height - 1,
           );
         }
       }

@@ -2835,7 +2835,7 @@ describe("My Club route", () => {
     );
   });
 
-  it("orders the tactic command bar, pitches, and one settings shelf", async () => {
+  it("orders the tactic command bar, pitch/XI area, and beside-pitch inspector", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
@@ -2876,6 +2876,20 @@ describe("My Club route", () => {
       pitches[0].compareDocumentPosition(settings) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    // The inspector sits beside the pitch/XI area in a shared responsive
+    // grid (stacking below lg), not on a full-width bottom shelf.
+    const workspaceGrid = settings.closest("div.grid");
+    expect(workspaceGrid?.className).toContain("lg:grid-cols-");
+    expect(
+      within(workspaceGrid as HTMLElement).getByRole("region", {
+        name: "Tactical XI",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(workspaceGrid as HTMLElement).getByRole("group", {
+        name: /pitch$/,
+      }),
+    ).toBe(pitches[0]);
     expect(
       within(settings).getAllByRole("slider", {
         name: "IP/OOP score weight",

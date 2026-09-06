@@ -8,9 +8,11 @@ Active
 
 ## Delivery authorization
 
-**Delivery fingerprint:** 7eddf349067b6cc8ce02abc05f0664f956203bcf31f0185e84852e38b7be58c8
+**Delivery fingerprint:** 0c2340811e03a629583391e0d6995dabddab1e8f684dbf7cfba583a2b2340b00
 
 Provisional: recorded for structural consistency only — it confers no delivery authority until a fresh complete plan review passes and the developer accepts it.
+
+The previously recorded fingerprint `7eddf349067b6cc8ce02abc05f0664f956203bcf31f0185e84852e38b7be58c8` was superseded by this bounded Commit 11 packet replan (retired inspector single-row smoke assertion plus editor-local inner pitch/XI stacking permission, replacing the bottom-shelf-era single-row contract).
 
 The previously accepted fingerprint `0404c69ef4ddf846a4a20f646fed2bf223381c4138d21c0eaee32bbc5794016d` was invalidated by this material replanning (unique-placement swap contract plus one-time tactic reset, replacing draft-overflow support). The previously recorded fingerprint `bd0767c438e788e0db1560643e56bfa8773de559f7914bd35a0a46b4db9ae84c` was invalidated by this material packet correction (Best role fit modal pitch-column widening in Commit 6, replacing the deliberately-unchanged modal contract). The fingerprint recorded here confers no delivery authority until a fresh complete plan review passes, the developer accepts it, and the developer invokes it for delivery.
 
@@ -80,7 +82,7 @@ Replace the Tactic workspace's two side-by-side IP/OOP pitch boards and bottom s
 - The old pre-swap normalized-canvas work implemented the rejected overflow contract (`OVERFLOW_SORT_GAP`, `OVERFLOW_SPACER_PCT`, overflow rows/spacers/sort offsets, duplicate-row smoke assertions). It is abandoned and lives only in the recovery stash (`Abandoned pre-replan tactic canvas; do not reapply`): it is never reapplied, and no path is restored to HEAD to discard it. The current staged work in `src/features/planner/components/planner-tactic-pitch.tsx`, `src/app/routes/my-club-squad.test.tsx`, `src/features/planner/utils/tactic-editor.ts`, and `e2e/smoke.spec.ts` is the active Commit 6 simplified-canvas packet (unique placements only, plus the unstaged smoke RED): retain and continue it. The worktree otherwise matches HEAD plus this ledger edit.
 - The existing main UI test surface for tactic behavior is `src/app/routes/my-club-squad.test.tsx` (tactic command-bar order, pitch attack-to-goalkeeper order, save flow). The existing browser contract is `e2e/smoke.spec.ts` (`planner tactic editor saves a linked phase adjustment`, `planner tactic workspace fits its supported desktop viewports`). `tactic-context-boundary.test.tsx` covers context guards that do not change.
 - `PlannerTacticInspector` already owns every required control, so the inspector move needs no control work.
-- No Rust, migration, IPC, or schema work exists in this feature. The persistence model is untouched.
+- No remaining Rust, migration, IPC, or schema work is planned: Commit 5 already landed the one-time tactic reset migration, and the persistence model is otherwise untouched.
 
 ### Assumptions
 
@@ -735,17 +737,17 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 11 — Compose the responsive tactic workspace
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tactics): compose the responsive tactic workspace`
 
-**Work:** Move the now-complete Selected Slot inspector beside the pitch AND guard normal desktop fit at 1280×800 and 1600×900 in one atomic packet: recompose the workspace grid so the pitch/XI area and the inspector aside sit side by side at wide breakpoints and stack below `lg`, with responsive stacking, min-width, and overflow ownership (vertical scrolling allowed at 1280×800, no horizontal overflow). The existing viewport contract must remain green in this commit; run full smoke. Do not include ultrawide containment or landscape orientation.
+**Work:** Move the now-complete Selected Slot inspector beside the pitch AND guard normal desktop fit at 1280×800 and 1600×900 in one atomic packet: recompose the workspace grid so the pitch/XI area and the inspector aside sit side by side at wide breakpoints and stack below `lg`, with responsive stacking, min-width, and overflow ownership (vertical scrolling allowed at 1280×800, no horizontal overflow). The editor may additionally stack the inner pitch/XI pair at narrower widths (measurement-decided; no pinned breakpoint prescribed) to recover pitch room while retaining below-`lg` overall stacking. The obsolete seven-inspector-controls-on-one-row smoke assertion is retired (it encodes the retired bottom-shelf layout) and replaced by sidebar containment/readability checks. All existing marker disjointness, target-size, and viewport fit/overflow requirements stay. The existing viewport contract otherwise remains green in this commit; run full smoke. Do not include ultrawide containment or landscape orientation.
 
 **Size assessment:** About 140 changed non-test implementation lines (editor recomposition plus responsive tightening). Within the soft target.
 
 **Out of scope:**
 
-- Ultrawide containment (Commit 12), landscape orientation (Commit 13), inspector control-presentation changes (Commit 10), pitch geometry changes, persistence, global style or token changes.
+- Ultrawide containment (Commit 12), landscape orientation (Commit 13), inspector control-presentation changes (Commit 10), pitch geometry or marker-sizing changes, inspector-control changes, new viewport widths or rows, global style or token changes, persistence, IPC, and Rust.
 
 **Implementation packet:**
 
@@ -753,24 +755,24 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **Files and responsibilities:**
 
-- `src/features/planner/components/planner-tactic-editor.tsx` — recompose the workspace grid (pitch/XI area plus inspector aside side by side at wide breakpoints, stacking below `lg`) and tighten responsive behavior (stacking, min-width guards, overflow ownership) so the fit matrix holds in portrait orientation. Keep the command bar and all inspector callbacks/`phases` wiring identical.
+- `src/features/planner/components/planner-tactic-editor.tsx` — recompose the workspace grid (pitch/XI area plus inspector aside side by side at wide breakpoints, stacking below `lg`) and tighten responsive behavior (stacking, min-width guards, overflow ownership) so the fit matrix holds in portrait orientation. The inner pitch/XI pair may stack at narrower widths where measurements require it to recover pitch room (no pinned breakpoint; the worker decides from marker-disjointness measurements), while below-`lg` overall stacking is retained. Keep the command bar and all inspector callbacks/`phases` wiring identical; no marker-sizing, inspector-control, or global-CSS change.
 - `src/app/routes/my-club-squad.test.tsx` — update the command-bar/pitches/shelf order test to the beside-pitch composition and keep the preserved save-flow assertions proving no control or callback regressed.
-- `e2e/smoke.spec.ts` — keep the existing `planner tactic workspace fits its supported desktop viewports` rows for 1280×800, 1600×900, and 1920×1080 green against the finished beside-pitch composition, plus layout-specific beside-pitch bounding-box assertions at the wide rows (1600×900 and 1920×1080, or the exact appropriate wide rows from the current fit test): the inspector bounding box sits beside the pitch/Tactical XI area (horizontally adjacent with vertical overlap), failing for a bottom-shelf inspector; no rename-locator changes here (owned by Commit 10); no new widths here.
+- `e2e/smoke.spec.ts` — keep the existing `planner tactic workspace fits its supported desktop viewports` rows for 1280×800, 1600×900, and 1920×1080 green against the finished beside-pitch composition, plus layout-specific beside-pitch bounding-box assertions at the wide rows (1600×900 and 1920×1080, or the exact appropriate wide rows from the current fit test): the inspector bounding box sits beside the pitch/Tactical XI area (horizontally adjacent with vertical overlap), failing for a bottom-shelf inspector. Explicitly retire the obsolete seven-inspector-combobox-tops-within-1px single-row assertion (it encodes the retired bottom-shelf layout; a 320px sidebar necessarily wraps controls) and replace it with sidebar containment/readability checks: every inspector combobox stays visible, contained within the inspector bounds, and non-overlapping, with readable phase/weight association in the sidebar. All existing marker disjointness, target-size, no-horizontal-overflow, and vertical-fit assertions stay; no rename-locator changes here (owned by Commit 10); no new widths here.
 
 **Behavior and data flow:**
 
-- Composition and layout only. Same selected lane, same draft updates, same validation error, same save mutation and invalidation. Only the visual placement and responsive fit change.
+- Composition and layout only. Same selected lane, same draft updates, same validation error, same save mutation and invalidation. Only the visual placement and responsive fit change. The inner pitch/XI pair may stack at narrower widths where measurements require it; overall below-`lg` stacking is retained.
 
 **Ordered implementation steps:**
 
-1. Update the layout-order assertion to the beside-pitch composition and extend the existing smoke fit rows with the beside-pitch bounding-box assertions; confirm RED where placement is bottom-shelf or fit overflows or breaks.
-2. Recompose the editor grid and add the responsive tightening until the proof turns GREEN (bounding-box beside-pitch geometry plus fit rows).
+1. Update the layout-order assertion to the beside-pitch composition, retire the obsolete single-row combobox assertion, and extend the existing smoke fit rows with the beside-pitch bounding-box assertions plus the replacement sidebar containment/readability assertions; confirm RED where placement is bottom-shelf or fit overflows or breaks.
+2. Recompose the editor grid and add the responsive tightening until the proof turns GREEN (bounding-box beside-pitch geometry, sidebar containment/readability, marker disjointness, plus fit rows, with editor-local inner pitch/XI stacking at narrower widths as measurements require).
 3. Refactor only while the focused proof stays green.
 4. Run targeted, affected, and commit-level validation in the recorded order.
 
 **Tests and proof:**
 
-- The updated layout-order route test plus the existing smoke fit rows for 1280×800 (vertical scroll allowed, no horizontal overflow), 1600×900, and 1920×1080, plus the beside-pitch bounding-box assertions comparing the inspector to the pitch/Tactical XI area at 1600×900 and 1920×1080 (or the exact appropriate wide rows from the current fit test), are the RED→GREEN proof (proved via exact `./scripts/dev smoke`): the bounding-box assertions fail on the bottom-shelf layout and pass on the beside-pitch composition, while the retained no-horizontal-overflow assertions (all rows) and vertical-fit assertions (1600×900, 1920×1080) stay green. No new specs; the rows are owned here.
+- The updated layout-order route test plus the existing smoke fit rows for 1280×800 (vertical scroll allowed, no horizontal overflow), 1600×900, and 1920×1080, plus the beside-pitch bounding-box assertions comparing the inspector to the pitch/Tactical XI area at 1600×900 and 1920×1080 (or the exact appropriate wide rows from the current fit test) and the replacement sidebar containment/readability assertions (visible, contained, non-overlapping comboboxes with readable phase/weight association), are the RED→GREEN proof (proved via exact `./scripts/dev smoke`): the bounding-box assertions fail on the bottom-shelf layout and pass on the beside-pitch composition; the retired single-row assertion is removed, not fixed; the replacement sidebar assertions fail when any inspector control is clipped, overlapping, or unreadably associated and pass on the wrapped sidebar; while the retained marker-disjointness, target-size, no-horizontal-overflow assertions (all rows) and vertical-fit assertions (1600×900, 1920×1080) stay green. Inner pitch/XI stacking at narrower widths is proved by the 1280 row (markers disjoint, no horizontal overflow). No new specs; the rows are owned here.
 
 **Patterns to verify:**
 
@@ -778,7 +780,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **Constraints and non-goals:**
 
-- Do not touch ultrawide widths, orientation switching, the global `content-max-width: none` token, `src/styles/global.css` tokens, Squad surfaces, or shell layout. Vertical scroll at 1280×800 is allowed; horizontal overflow is not.
+- Do not touch ultrawide widths, orientation switching, the global `content-max-width: none` token, `src/styles/global.css` tokens, Squad surfaces, or shell layout. Do not add viewport widths, change marker sizing, change inspector controls, or pin an unproven inner-stacking breakpoint (measurements decide). Vertical scroll at 1280×800 is allowed; horizontal overflow is not.
 
 **Dependencies and sequencing:**
 
@@ -786,13 +788,13 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **Validation:** `./scripts/dev test my-club-squad`, then `./scripts/dev smoke`, then `./scripts/dev check`.
 
-**Stop conditions:** Stop if 1920×1080 cannot fit without shrinking markers below readability (escalate density options), if the fit needs global style changes (report instead of leaking scope), or if the beside-pitch bounding-box assertions cannot fail on the bottom-shelf layout while keeping the no-horizontal-overflow and vertical-fit assertions green (report instead of weakening the proof).
+**Stop conditions:** Stop if 1920×1080 cannot fit without shrinking markers below readability (escalate density options), if the fit needs global style changes (report instead of leaking scope), if the 1280 marker overlap cannot be resolved by editor-local inner pitch/XI stacking without changing pitch geometry, marker sizing, or inspector controls (report instead of widening scope), if the replacement sidebar containment/readability assertions cannot pass without inspector-control changes (report instead of changing controls), or if the beside-pitch bounding-box assertions cannot fail on the bottom-shelf layout while keeping the no-horizontal-overflow and vertical-fit assertions green (report instead of weakening the proof).
 
-**Review mandate:** Verify the inspector moved with every control and callback untouched, the beside-pitch bounding-box assertions prove the inspector sits beside the pitch/Tactical XI area at 1600×900 and 1920×1080 (or the exact appropriate wide rows), 1280 horizontal-fit with allowed vertical scroll, clean 1600/1920 fit, stacking and min-width behavior, no rename-locator changes, no global style change, and that the diff is editor-composition plus owned tests only.
+**Review mandate:** Verify the inspector moved with every control and callback untouched, the beside-pitch bounding-box assertions prove the inspector sits beside the pitch/Tactical XI area at 1600×900 and 1920×1080 (or the exact appropriate wide rows), the retired single-row assertion is removed and the replacement sidebar assertions prove visible, contained, non-overlapping controls with readable phase/weight association, inner pitch/XI stacking is editor-local only with below-`lg` overall stacking retained and no pinned breakpoint asserted beyond measurements, 1280 horizontal-fit with allowed vertical scroll, clean 1600/1920 fit, stacking and min-width behavior, no rename-locator changes, no global style change, and that the diff is editor-composition plus owned tests only.
 
 #### Commit 12 — Contain the tactic workspace on ultrawide
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tactics): contain tactic workspace on ultrawide`
 
@@ -910,21 +912,23 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **PR:** 1
 
-**Commit:** 11
+**Commit:** 12
 
 ### RED or removal proof
 
-Prove beside-pitch inspector placement through browser bounds and route composition, preserving existing desktop fit assertions.
+Extend the existing smoke fit matrix to prove bounded, centered tactic-workspace containment at 3440×1440.
 
 ### Expected outcome
 
-The complete Selected Slot inspector sits beside the pitch and Tactical XI at wide widths, with responsive stacking and no horizontal overflow.
+Only the tactic workspace stops stretching on ultrawide displays, preserving existing desktop fit and other workspaces.
 
 ### Explicit exclusions
 
-Ultrawide containment, orientation, pitch geometry, inspector controls, global styles, persistence, IPC, and Rust.
+Orientation, pitch geometry, inspector controls, global styles, Squad and shell changes, persistence, IPC, and Rust.
 
 ## Discoveries and replanning
+
+- 2026-09-06: bounded Commit 11 packet replan on developer approval (retire the obsolete inspector single-row smoke assertion; permit editor-local inner pitch/XI stacking). Stopped-worker evidence on branch `feat/tactics-page-redesign` at HEAD `7ba2ced95e71e82da2a26a6536858bce3e730aac` (Commit 10 complete; Commit 11 active with uncommitted work in exactly `planner-tactic-editor.tsx`, the route test, and the smoke test — preserved with no restoration, stash, or cleanup): the editor now grids a 320px inspector beside the pitch/XI area at `lg` with callbacks and controls unchanged; route 132 passes and full check including 798 Rust passes; smoke 53 pass with 2 failures. The old smoke fit test requires all seven inspector combobox tops within 1px at wide widths, which encodes the retired bottom-shelf layout — a 320px sidebar (296px content) necessarily wraps controls (measured spread 195.97px) — so that assertion is retired and replaced with visible, contained, non-overlapping controls plus readable phase/weight association in the sidebar. At 1280 the ~596px pitch canvas causes a real 3px diagonal-marker overlap (needs ~614px); editor-local inner pitch/XI stacking at narrower widths (measurement-decided, no pinned breakpoint) recovers room without changing pitch geometry or inspector controls. New beside-pitch bounding-box assertions pass at 1600/1920 and failed meaningfully on the original bottom shelf. Same three implementation paths; command bar and callbacks unchanged; marker disjointness, target-size, and fit/overflow requirements kept; no new widths, ultrawide, orientation, global CSS, marker sizing, or inspector-control changes. Completed history and Commits 12/13 intent preserved. The recorded fingerprint `7eddf349067b6cc8ce02abc05f0664f956203bcf31f0185e84852e38b7be58c8` is superseded by this packet change pending fresh plan review and developer acceptance/reinvocation; it confers no renewed execution authority.
 
 - 2026-09-06: the developer accepted the reviewed modal-width replan and explicitly invoked delivery under `7eddf349067b6cc8ce02abc05f0664f956203bcf31f0185e84852e38b7be58c8`. The fresh complete Commit 6 review cleared all blockers after the one-line 330px modal pitch-column change. The unused phasePositionLayout/grid-type advisory remains open; no additional cleanup was delegated. An unrelated Squad boost progress-timing smoke flake occurred in earlier runs; the final exact smoke passed without changing that flow.
 
@@ -948,14 +952,15 @@ Ultrawide containment, orientation, pitch geometry, inspector controls, global s
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Redesign the tactic workspace | Commit 1 — Record the approved feature plan | 119b51910fa2eaea3163f9716a68be933356cc1e | Recorded accepted ledger and active TODO link. | Ledger and delivery classifiers passed; check-fast and staged whitespace check passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — Redesign the tactic workspace | Commit 2 — Add orientation-aware pitch geometry projection | 8d9e142fa4000aa2c31ebc93f4e96d9d3b70b15a | Added pure coordinate projection, supported-placement table, and visual ordering without UI wiring. | Expected missing-module RED; focused 7/7 GREEN; full check and staged whitespace passed. | Pass | Clear | 0 | Worker accidentally applied an unrelated retained stash; developer restored the exact eight affected tracked paths. Verified recovery before validation and review. |
-| PR 1 — Redesign the tactic workspace | Commit 3 — Record the approved replan | e47d709 | Recorded the reviewed unique-placement swap and one-time reset plan with the revised commit sequence and TODO summary. | Ledger and delivery classifiers passed; check-fast and staged whitespace check passed. | Not applicable | Accepted findings — independent plan review cleared blockers; recorded MEDIUM and NITPICK advisories remain open; developer accepted the reviewed plan. | 1 | Developer requested planning commit before source-discard decision; abandoned implementation preserved unstaged. |
+| PR 1 — Redesign the tactic workspace | Commit 3 — Record the approved replan | e47d709c10d6831ff32a9bde9627c192647ee7dc | Recorded the reviewed unique-placement swap and one-time reset plan with the revised commit sequence and TODO summary. | Ledger and delivery classifiers passed; check-fast and staged whitespace check passed. | Not applicable | Accepted findings — independent plan review cleared blockers; recorded MEDIUM and NITPICK advisories remain open; developer accepted the reviewed plan. | 1 | Developer requested planning commit before source-discard decision; abandoned implementation preserved unstaged. |
 | PR 1 — Redesign the tactic workspace | Commit 4 — Enforce unique-placement swaps in draft editing | edf6173f8a3817aeb0ed7354f64d116b78ed4160 | Added pure phase-placement swaps and wired the editor; preserved compatible roles, cleared incompatible roles, and replaced obsolete duplicate-rejection proof. | Unit 6/6, route 133/133, full check including 799 Rust tests passed; canonical literal-match mutation failed as expected; staged whitespace clean. | Pass | Clear | 1 | None. |
 | PR 1 — Redesign the tactic workspace | Commit 5 — Reset stored tactics to defaults once | 2b9186c4e6749d07cd576ec3550472a2418f2c44 | Registered data-only v42 tactic reset; removed legacy normalization and its two load tests. | Migration 60/60 and tactic 14/14 tests; check-rust and full check including 798 Rust tests passed; staged whitespace clean. | Pass | Clear | 0 | Older v8/v28 migration tests now prove their surviving contracts without asserting tactic preservation after the authorized reset; orphaned normalization constant removed. |
 | PR 1 — Redesign the tactic workspace | Commit 6 — Migrate the pitch to a simplified normalized canvas | e4b2f9f40a6ce773829c23f1b61fda35d2b06937 | Replaced grid rendering with the portrait coordinate canvas, pitch markings and attack description; simplified labels and exported canonical identity; widened modal pitch column to 330px. Removed five obsolete geometry tests and added two route proofs. | Route 130/130, exact smoke 55/55, full check including 798 Rust tests passed. Saved central-triple modal overlap RED now passes disjoint 44px-target and containment assertions. | Pass | Clear | 2 | Modal layout scope required reviewed replan and renewed delivery authority; prior MEDIUM unused phasePositionLayout/types remains open and undelegated. |
 | PR 1 — Redesign the tactic workspace | Commit 7 — Consolidate onto one phase-aware canvas | b52b70fecb22260c30962838691252d21f91971b | Added shared canvas and workspace wrapper with 11/11/22 phase markers; split coincident phase markers and fixed cross-lane phase tie ordering. | Route 130/130, smoke 55/55, full check passed; cross-lane ordering regression confirmed RED then GREEN. | Pass | Clear | 1 | Developer explicitly approved including the one-line Squad smoke-stub initial progress delay increase from 50ms to 200ms; assertions and production behavior unchanged, three consecutive full smoke runs passed after the repair. |
 | PR 1 — Redesign the tactic workspace | Commit 8 — Add Both-mode tactical transitions | 5325a1a8d7b05cdfafffc261f61d03f39489317e | Added canonical-identity conditional connectors, visible selected-slot transitions, and accessible per-slot descriptions; corrected split-marker endpoint attachment. | Route 131/131, exact smoke 55/55, full check including 798 Rust tests passed; browser proof covers visible transition selection and cross-lane endpoint attachment. | Pass | Clear | 1 | Full visible transition follows existing selected-lane state; landscape projection remains Commit 13. |
 | PR 1 — Redesign the tactic workspace | Commit 9 — Add persistent Tactical XI panel | b1eb3d89b3830334087619a9123f13574ebe3f31 | Added eleven ordered readable transition rows with ordinary-button pressed semantics and selection shared with the pitch and inspector. | Route 132/132 and full check passed; independent reviewer verified focused selection proof, existing 1280/1600/1920 viewport-fit smoke, and clean LSP. | Pass | Clear | 0 | Two existing route button queries scoped to the pitch to distinguish new panel rows. |
-| PR 1 — Redesign the tactic workspace | Commit 10 — Expose persistent Selected Slot controls | Pending record | Renamed the inspector and exposed both phase controls in every view, preserving callbacks and location. | Route 132/132, exact smoke 55/55, full check including 798 Rust tests passed; independent review clear. | Pass | Clear | 0 | Developer explicitly approved scoping smoke marker locators to the pitch to repair the Commit 9 Tactical XI name collision; assertions unchanged. |
+| PR 1 — Redesign the tactic workspace | Commit 10 — Expose persistent Selected Slot controls | 7ba2ced95e71e82da2a26a6536858bce3e730aac | Renamed the inspector and exposed both phase controls in every view, preserving callbacks and location. | Route 132/132, exact smoke 55/55, full check including 798 Rust tests passed; independent review clear. | Pass | Clear | 0 | Developer explicitly approved scoping smoke marker locators to the pitch to repair the Commit 9 Tactical XI name collision; assertions unchanged. |
+| PR 1 — Redesign the tactic workspace | Commit 11 — Compose the responsive tactic workspace | Pending record | Moved Selected Slot beside pitch/XI; stacked XI below the pitch below 2xl. Replaced the retired single-row inspector assertion with sidebar containment, disjointness, and phase/weight checks. | Route 132/132, exact smoke 55/55, full check including 798 Rust tests passed. Browser probe: 1280 pitch widened from 622px to 890px, overlap pairs fell from two to zero; 1600/1920 remain disjoint. Perturbations confirmed control overlap/clipping detection. | Pass | Clear | 0 | Accepted reviewed sidebar replan under delivery fingerprint 0c2340811e03a629583391e0d6995dabddab1e8f684dbf7cfba583a2b2340b00; callbacks and controls unchanged. |
 
 ## Final validation
 

@@ -311,51 +311,58 @@ export function PlannerTacticEditor({
           </Button>
         </section>
 
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <PlannerPhaseAwareTacticPitch
-              view={view}
+        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          {/* Stack the pitch/XI pair below 2xl so the 1280 pitch keeps
+              full width for disjoint markers; row returns at 2xl where
+              1600/1920 have room for the 256px XI beside the pitch. */}
+          <div className="flex min-w-0 flex-col gap-3 2xl:flex-row 2xl:items-start">
+            <div className="min-w-0 flex-1">
+              <PlannerPhaseAwareTacticPitch
+                view={view}
+                lanes={draft.lanes}
+                options={options}
+                selectedLaneId={selectedLaneId}
+                highlightedLaneId={highlightedLaneId}
+                onHighlight={setHighlightedLaneId}
+                onSelectLane={(laneId) => {
+                  setSelectedLaneId(laneId);
+                  setHighlightedLaneId(laneId);
+                }}
+              />
+            </div>
+            <PlannerTacticLaneList
               lanes={draft.lanes}
               options={options}
               selectedLaneId={selectedLaneId}
-              highlightedLaneId={highlightedLaneId}
-              onHighlight={setHighlightedLaneId}
               onSelectLane={(laneId) => {
                 setSelectedLaneId(laneId);
                 setHighlightedLaneId(laneId);
               }}
             />
           </div>
-          <PlannerTacticLaneList
-            lanes={draft.lanes}
-            options={options}
-            selectedLaneId={selectedLaneId}
-            onSelectLane={(laneId) => {
-              setSelectedLaneId(laneId);
-              setHighlightedLaneId(laneId);
-            }}
-          />
-        </div>
 
-        {selectedLane ? (
-          <PlannerTacticInspector
-            selectedLane={selectedLane}
-            lanes={draft.lanes}
-            options={options}
-            phases={["ip", "oop"]}
-            disabled={readOnly}
-            onWeightChange={updateSelectedLaneWeight}
-            onRankChange={updateSelectedLaneRank}
-            onPreferredFootChange={updateSelectedLaneFoot}
-            onFootPreferenceChange={updateSelectedLaneFootPreference}
-            onPositionChange={(phase, position) =>
-              updatePosition(selectedLane.laneId, phase, position)
-            }
-            onRoleChange={(phase, roleId) =>
-              updateRole(selectedLane.laneId, phase, roleId)
-            }
-          />
-        ) : null}
+          {selectedLane ? (
+            <div className="min-w-0">
+              <PlannerTacticInspector
+                selectedLane={selectedLane}
+                lanes={draft.lanes}
+                options={options}
+                phases={["ip", "oop"]}
+                disabled={readOnly}
+                onWeightChange={updateSelectedLaneWeight}
+                onRankChange={updateSelectedLaneRank}
+                onPreferredFootChange={updateSelectedLaneFoot}
+                onFootPreferenceChange={updateSelectedLaneFootPreference}
+                onPositionChange={(phase, position) =>
+                  updatePosition(selectedLane.laneId, phase, position)
+                }
+                onRoleChange={(phase, roleId) =>
+                  updateRole(selectedLane.laneId, phase, roleId)
+                }
+              />
+            </div>
+          ) : null}
+        </div>
       </div>
     </Panel>
   );
