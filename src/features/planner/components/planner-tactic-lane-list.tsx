@@ -26,7 +26,7 @@ export function PlannerTacticLaneList({
 
   return (
     <section
-      className="w-full shrink-0 space-y-2 rounded-lg border border-outline-variant bg-surface-container-high p-3 2xl:w-64"
+      className="w-full shrink-0 space-y-2 rounded-lg border border-outline-variant bg-surface-container-high p-3 2xl:w-84"
       aria-labelledby={headingId}
     >
       <h3 id={headingId} className="text-headline-sm text-on-surface">

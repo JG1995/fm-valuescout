@@ -315,7 +315,7 @@ export function PlannerTacticEditor({
           {/* XI left, pitch middle, inspector right. Below 2xl the XI/pitch
               pair stacks so the 1280 pitch keeps full width for disjoint
               markers; the row returns at 2xl where wider viewports have
-              room for the 256px XI beside the pitch. */}
+              room for the 336px XI beside the pitch. */}
           <div className="flex min-w-0 flex-col gap-3 2xl:flex-row 2xl:items-start">
             <PlannerTacticLaneList
               lanes={draft.lanes}
