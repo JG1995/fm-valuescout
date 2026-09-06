@@ -8,11 +8,11 @@ Active
 
 ## Delivery authorization
 
-**Delivery fingerprint:** bd0767c438e788e0db1560643e56bfa8773de559f7914bd35a0a46b4db9ae84c
+**Delivery fingerprint:** 7eddf349067b6cc8ce02abc05f0664f956203bcf31f0185e84852e38b7be58c8
 
 Provisional: recorded for structural consistency only — it confers no delivery authority until a fresh complete plan review passes and the developer accepts it.
 
-The previously accepted fingerprint `0404c69ef4ddf846a4a20f646fed2bf223381c4138d21c0eaee32bbc5794016d` was invalidated by this material replanning (unique-placement swap contract plus one-time tactic reset, replacing draft-overflow support). The fingerprint recorded here confers no delivery authority until a fresh complete plan review passes and the developer accepts it.
+The previously accepted fingerprint `0404c69ef4ddf846a4a20f646fed2bf223381c4138d21c0eaee32bbc5794016d` was invalidated by this material replanning (unique-placement swap contract plus one-time tactic reset, replacing draft-overflow support). The previously recorded fingerprint `bd0767c438e788e0db1560643e56bfa8773de559f7914bd35a0a46b4db9ae84c` was invalidated by this material packet correction (Best role fit modal pitch-column widening in Commit 6, replacing the deliberately-unchanged modal contract). The fingerprint recorded here confers no delivery authority until a fresh complete plan review passes, the developer accepts it, and the developer invokes it for delivery.
 
 ## Intent
 
@@ -57,7 +57,7 @@ Replace the Tactic workspace's two side-by-side IP/OOP pitch boards and bottom s
 - Existing behavioral assumptions: the editor renders `visiblePhases(view).map` into `lg:grid-cols-2`, then one bottom inspector. `PlannerTacticInspector` receives `phases={visiblePhases(view)}` and all update callbacks. `phasePosition`, `phaseRoleId`, `phasePositionLabel`, `roleLabel`, and `linkedPositionDescription` in `src/features/planner/utils/tactic-editor.ts` (331 lines) already describe linked slots.
 - Architectural seams: the My Club route (`src/app/routes/my-club.tsx`, tactic workspace block) mounts `PlannerTacticEditor` under `TacticContextBoundary` with `hidden`-prop workspace preservation. Planner tactic, depth, slot candidates, and role references share the Planner Query tree. Styling uses existing Tailwind v4 tokens in `src/styles/global.css`; responsive behavior currently uses Tailwind breakpoints only.
 - Project validation commands: `./scripts/dev test <pattern>`, `./scripts/dev check-app`, `./scripts/dev check`, `./scripts/dev smoke` (Chromium via `pnpm exec playwright install chromium`).
-- Primary risks: the uncommitted overflow-based canvas work (staged in `planner-tactic-pitch.tsx`, `my-club-squad.test.tsx`, `e2e/smoke.spec.ts`) is abandoned and must be restored to HEAD before implementation resumes, or the new simplified canvas will collide with it; the swap contract must clear incompatible roles without stranding lane identity or non-placement settings; the one-time reset must preserve planner assignments; landscape geometry at 1920×1080 must fit pitch, XI panel, and inspector without document scrolling; Both-mode connectors must stay readable when many slots change position.
+- Primary risks: the swap contract must clear incompatible roles without stranding lane identity or non-placement settings; the one-time reset must preserve planner assignments; landscape geometry at 1920×1080 must fit pitch, XI panel, and inspector without document scrolling; Both-mode connectors must stay readable when many slots change position.
 
 ## Feature architecture
 
@@ -76,8 +76,8 @@ Replace the Tactic workspace's two side-by-side IP/OOP pitch boards and bottom s
 
 ### Known
 
-- Current HEAD at replan time is `8d9e142fa4000aa2c31ebc93f4e96d9d3b70b15a` on `feat/tactics-page-redesign`. Commits 1 (planning, `119b51910fa2eaea3163f9716a68be933356cc1e`) and 2 (geometry, HEAD) are completed and preserved; the Commit 2 geometry helper and its unit tests are overflow-independent and stay valid.
-- The uncommitted normalized-canvas work staged in `src/features/planner/components/planner-tactic-pitch.tsx`, `src/app/routes/my-club-squad.test.tsx`, and `e2e/smoke.spec.ts` implements the rejected overflow contract (`OVERFLOW_SORT_GAP`, `OVERFLOW_SPACER_PCT`, overflow rows/spacers/sort offsets, duplicate-row smoke assertions). It is abandoned: the supervisor restores those three paths to HEAD with developer approval before implementation resumes, and the future writer starts from the HEAD file versions. The worktree otherwise matches HEAD plus this ledger edit.
+- At replan time HEAD was `8d9e142fa4000aa2c31ebc93f4e96d9d3b70b15a` on `feat/tactics-page-redesign` with Commits 1 (planning, `119b51910fa2eaea3163f9716a68be933356cc1e`) and 2 (geometry) completed and preserved; the Commit 2 geometry helper and its unit tests are overflow-independent and stay valid. Since then Commits 3–5 completed: current HEAD is `2b9186c4e6749d07cd576ec3550472a2418f2c44` (Commit 5), and the worktree carries the active Commit 6 simplified-canvas packet (four staged paths plus the unstaged smoke RED) to retain and continue — not the old abandoned pre-swap overflow work, which lives only in the recovery stash and is never reapplied.
+- The old pre-swap normalized-canvas work implemented the rejected overflow contract (`OVERFLOW_SORT_GAP`, `OVERFLOW_SPACER_PCT`, overflow rows/spacers/sort offsets, duplicate-row smoke assertions). It is abandoned and lives only in the recovery stash (`Abandoned pre-replan tactic canvas; do not reapply`): it is never reapplied, and no path is restored to HEAD to discard it. The current staged work in `src/features/planner/components/planner-tactic-pitch.tsx`, `src/app/routes/my-club-squad.test.tsx`, `src/features/planner/utils/tactic-editor.ts`, and `e2e/smoke.spec.ts` is the active Commit 6 simplified-canvas packet (unique placements only, plus the unstaged smoke RED): retain and continue it. The worktree otherwise matches HEAD plus this ledger edit.
 - The existing main UI test surface for tactic behavior is `src/app/routes/my-club-squad.test.tsx` (tactic command-bar order, pitch attack-to-goalkeeper order, save flow). The existing browser contract is `e2e/smoke.spec.ts` (`planner tactic editor saves a linked phase adjustment`, `planner tactic workspace fits its supported desktop viewports`). `tactic-context-boundary.test.tsx` covers context guards that do not change.
 - `PlannerTacticInspector` already owns every required control, so the inspector move needs no control work.
 - No Rust, migration, IPC, or schema work exists in this feature. The persistence model is untouched.
@@ -100,22 +100,23 @@ Replace the Tactic workspace's two side-by-side IP/OOP pitch boards and bottom s
 - Landscape orientation activates at viewport widths >= 1920px through one colocated `matchMedia("(min-width: 1920px)")` source inside the workspace phase-aware wrapper component (initial read, change subscription, cleanup; no dependency or shared hook) driving the generic projection, with SVG/HTML markings; landscape is a clockwise 90-degree rotation so portrait attack-up becomes landscape attack-right with an explicit accessible direction description; marker text stays upright and the DOM is never CSS-transform rotated; DOM/tab order follows the current visual pitch order in each orientation, not raw lane IDs. Approved developer intent. Consequence: portrait behavior below 1920px must remain pixel-compatible with current attack-up geometry.
 - Ultrawide containment is scoped to the Tactic workspace; the global `content-max-width: none` contract stands. Approved developer intent. Consequence: Squad and other surfaces are unaffected.
 - One PR with an ordered atomic commit sequence. Repository evidence shows no independently mergeable trunk-safe seam that needs a separate merge boundary: every commit builds on the same editor surface and no migration, dependency, or protocol change exists. Consequence: a single review and merge boundary.
+- Best role fit modal pitch column widens instead of stacking. The modal pitch grid-column minimum moves from 220px to ~330px so the saved-MC triple canvas reaches >= 293.34px with a modest gutter margin while the side-by-side table stays; `max-w-[720px]` is kept. Approved developer intent (widening over stacking, geometry changes, or target-floor exceptions). Consequence: Commit 6 gains a layout-only change to `planner-role-reference-modal.tsx`; marker geometry, selection, table logic, and the shared component API stay unchanged.
 - No ADR. The work recombines existing Planner boundaries with approved responsive breakpoints and adds no durable structural alternative. If implementation exposes a consequential durable decision, the worker stops and reports instead of improvising an ADR path.
 
 ### Unknowns
 
 - Exact landscape column widths that fit pitch, XI panel, and inspector at 1920×1080 without document scrolling. The containment commit resolves this against the smoke fit matrix; compact marker density is the bounded fallback.
-- Salvage value of the abandoned staged canvas work beyond the retained Commit 2 helper. The plan assumes none: the staged diff bakes in the rejected overflow contract, so the canvas commit starts from HEAD file versions rather than revising the staged files.
+- Salvage value of the old abandoned pre-swap canvas stash beyond the retained Commit 2 helper. The plan assumes none: the stash bakes in the rejected overflow contract, so Commit 6 continues (revises) the current staged simplified-canvas packet rather than the stash or HEAD file versions.
 
 ### Risks
 
-- Staged-file collision. The abandoned overflow work stays staged until the supervisor restores the three paths to HEAD. Mitigation: the replan-recording commit (Commit 3) makes restoration an explicit precondition; the worker verifies a clean status read-only and stops otherwise.
+- Staged-file collision. The old abandoned pre-swap overflow work is stash-only and is never reapplied, so no restoration to HEAD exists. Mitigation: the worker verifies read-only that the worktree presents exactly the active Commit 6 packet (four staged paths plus the unstaged smoke RED alongside this reviewed planning artifact) and stops on any unrelated file without discarding anything.
 - Swap-role stranding. A swap that clears an incompatible role leaves the draft unsavable until re-chosen. Mitigation: the existing validation message names the lane and phase, the inspector role picker already defaults to an empty `Choose a role` state, and the swap commit proves both the preserve and clear paths with unit tests plus a route-level swap flow.
 - Reset data-loss scope. The migration deletes every save's tactic rows. Mitigation: user-explicit authorization, table separation (`planner_assignments` untouched), and backend tests proving assignments survive and defaults reseed; no broader deletion is in scope and any wider scope stops the commit.
 - Simplified-canvas regression. Removing the grid-band renderer and the staged overflow branches changes marker geometry. Mitigation: rewritten unique-placement-only route and smoke geometry assertions fail on the old layout and pass on the canvas; modal coverage is retained unchanged.
 - Both-mode connector clutter when many slots change position. Mitigation: connectors render only where the canonical full qualified placement identity changes (DCR → DCL connects; legacy-equivalent ST → STC does not), and the XI panel carries the full transition text.
 - Smoke viewport runtime growth from added widths. Mitigation: extend the existing viewport test in place instead of adding new specs.
-- Shared pitch consumer regression (Best role fit modal). Mitigation: the canvas commit preserves the `PlannerTacticPitch` component/API with the modal file deliberately unchanged, the consolidation commit keeps the modal on the shared portrait single-phase path while only the editor moves to the wrapper, the landscape commit scopes `matchMedia` to the wrapper only, and retained route/smoke coverage guards the modal in those commits.
+- Shared pitch consumer regression (Best role fit modal). Mitigation: the canvas commit preserves the `PlannerTacticPitch` component/API and widens only the modal pitch grid-column minimum (220px to ~330px, `max-w-[720px]` and the side-by-side table kept; no geometry, selection, table-logic, or API change), the consolidation commit keeps the modal on the shared portrait single-phase path while only the editor moves to the wrapper, the landscape commit scopes `matchMedia` to the wrapper only, and retained route/smoke coverage guards the modal in those commits.
 
 ## Walking skeleton
 
@@ -441,13 +442,13 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 6 — Migrate the pitch to a simplified normalized canvas
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tactics): migrate pitch to normalized canvas`
 
-**Work:** Replace the per-phase grid-band board internals of the reusable `PlannerTacticPitch` with a simplified normalized-coordinate single-phase canvas (unique qualified placements only; no duplicate/overflow branches) while preserving its component/API and current editor behavior: IP and OOP views still render one phase board each and Both still renders two boards (`visiblePhases(view).map` into `lg:grid-cols-2` stays), and the Best role fit modal keeps consuming the same portrait single-phase component. Start from the HEAD file versions; the abandoned staged overflow work is not a base. Reuse the current phase helpers, preserve selection/highlight/accessibility and edited positions. Remove obsolete grid helpers only together with their final callers.
+**Work:** Replace the per-phase grid-band board internals of the reusable `PlannerTacticPitch` with a simplified normalized-coordinate single-phase canvas (unique qualified placements only; no duplicate/overflow branches) while preserving its component/API and current editor behavior: IP and OOP views still render one phase board each and Both still renders two boards (`visiblePhases(view).map` into `lg:grid-cols-2` stays), and the Best role fit modal keeps consuming the same portrait single-phase component. The modal pitch grid-column minimum widens from 220px to ~330px so the saved-MC triple canvas reaches >= 293.34px with a modest gutter margin while the side-by-side table stays; `max-w-[720px]` is kept. Continue (revise) the current staged Commit 6 packet; the old abandoned pre-swap overflow stash is not a base and is never reapplied. Reuse the current phase helpers, preserve selection/highlight/accessibility and edited positions. Remove obsolete grid helpers only together with their final callers.
 
-**Size assessment:** About 200 changed non-test implementation lines in `planner-tactic-pitch.tsx` — smaller than the abandoned attempt because duplicate/overflow branches are deleted rather than reimplemented. At the soft target boundary; splitting the swap would leave half-migrated geometry on trunk.
+**Size assessment:** About 200 changed non-test implementation lines in `planner-tactic-pitch.tsx` plus a one-line grid-column widening in `planner-role-reference-modal.tsx` — smaller than the abandoned attempt because duplicate/overflow branches are deleted rather than reimplemented. At the soft target boundary; splitting the swap would leave half-migrated geometry on trunk.
 
 **Out of scope:**
 
@@ -461,13 +462,13 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 - `src/features/planner/components/planner-tactic-pitch.tsx` — single-phase normalized canvas behind the retained reusable `PlannerTacticPitch` component/API. Derive each rendered marker's portrait coordinate from a direct qualified-placement table over the current `phasePosition(lane, phase)`, then project with the Commit 2 helper (portrait path used here). Reuse `LaneButton` semantics, `phaseRoleId`, `phasePositionLabel`, `roleLabel`, `phaseDescription`, and `linkedPositionDescription`. Keep the exported per-phase board API both consumers use. Remove `PITCH_ROWS`, `PitchBoard`, the shared card-width helpers, and every duplicate/overflow branch (overflow rows, spacers, sort offsets) only together with their last caller.
 - `src/features/planner/utils/tactic-editor.ts` — remove the duplicate/overflow fallback machinery: `positionPlacement` and `CENTRAL_COLUMNS` go entirely, and `phasePositionLayout` becomes a direct qualified-placement lookup (unique placements are guaranteed by Commits 4–5 plus save validation). Trim the duplicate-count and `(row N)` suffix branches in `phasePositionLabel`; all consumers considered: the pitch is rewritten here, the inspector and the Best role fit modal render unique placements through the existing qualified-placement fast path with identical labels (verified by their retained coverage), and validation/depth text flows through the unchanged `phaseDescription`/`linkedPositionDescription` vocabulary. Export the existing private `canonicalPlacement` (ST → STC) so the pitch connector rule in Commit 8 shares the exact canonical identity the validation path already uses — no duplicated helper. Remove owned helpers with their last callers; no fake compatibility retention.
-- `src/features/planner/components/planner-role-reference-modal.tsx` — deliberately unchanged. Its existing route/smoke coverage is retained as proof that the shared-component migration did not regress the modal consumer (that coverage lives in the same focused `my-club-squad` route test where applicable).
+- `src/features/planner/components/planner-role-reference-modal.tsx` — layout only: widen the pitch grid-column minimum from 220px to ~330px in `md:grid-cols-[minmax(220px,0.85fr)_minmax(0,1.15fr)]` (keeps `max-w-[720px]` and the side-by-side table; min column ~330px gives canvas ~304px, above the >= 293.34px the >= 44px non-overlapping central triples need). No geometry, selection, table-logic, or API change. Its existing route/smoke coverage is retained as proof that the shared-component migration did not regress the modal consumer (that coverage lives in the same focused `my-club-squad` route test where applicable).
 - `src/app/routes/my-club-squad.test.tsx` — explicitly remove or rewrite the five HEAD route tests that encode unsupported repeated/overflow geometry: `keeps repeated positions distinguishable without numeric labels` (HEAD:2982), `arranges repeated positions in stable central slots regardless of role` (HEAD:2995), `keeps every position button when a base position has more than three lanes` (HEAD:3180), `follows visible row order when a wide position overflows` (HEAD:3219), and `keeps a three-slot minimum when every tactic row has at most two positions` (HEAD:3267). Retain only supported unique-placement proof rewritten for the canvas (board count per view, attack-to-goalkeeper order, slot geometry, edited qualified position moving its marker). The abandoned staged duplicate/overflow assertions are not revived.
 - `e2e/smoke.spec.ts` — rewrite the owned selectors and geometry assertions in `planner tactic editor saves a linked phase adjustment` for unique placements; the abandoned staged overflow assertions are not revived.
 
 **Behavior and data flow:**
 
-- The editor passes the same `lanes`, `options`, `selectedLaneId`, highlight state, and callbacks into the same per-phase board composition. Only the board internals change: markers are positioned from normalized portrait coordinates instead of grid bands. Selection, highlight, draft, validation, and save flow are untouched.
+- The editor passes the same `lanes`, `options`, `selectedLaneId`, highlight state, and callbacks into the same per-phase board composition. Only the board internals change: markers are positioned from normalized portrait coordinates instead of grid bands. Selection, highlight, draft, validation, and save flow are untouched. The modal keeps the same component, selection, table, and API behavior; only its pitch grid-column minimum widens.
 
 **Ordered implementation steps:**
 
@@ -479,7 +480,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **Tests and proof:**
 
-- Rewritten route geometry assertions plus the rewritten smoke save test (proved via exact `./scripts/dev smoke`) are the behavior-preservation proof: they fail on the grid-band layout and pass on the canvas. They cover one board for IP/OOP views, two boards for Both, an edited qualified position moving its marker, and the preserved linked-phase save flow. `tactic-context-boundary.test.tsx` and the role-reference modal's existing route/smoke coverage are deliberately retained unchanged as proof for the second consumer.
+- Rewritten route geometry assertions plus the rewritten smoke save test (proved via exact `./scripts/dev smoke`) are the behavior-preservation proof: they fail on the grid-band layout and pass on the canvas. They cover one board for IP/OOP views, two boards for Both, an edited qualified position moving its marker, and the preserved linked-phase save flow. `tactic-context-boundary.test.tsx` and the role-reference modal's existing route/smoke coverage are deliberately retained unchanged as proof for the second consumer. The smallest meaningful modal regression seam is the existing unstaged smoke RED after the saved-MC triple: it already proves modal canvas width, disjoint >= 44px markers, and containment/dialog/page horizontal-overflow freedom, so no new pairwise modal specs are prescribed and no code or test is removed here.
 
 **Patterns to verify:**
 
@@ -487,21 +488,21 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **Constraints and non-goals:**
 
-- Portrait attack-up geometry only; no orientation switching yet. No marker-set, composition, control, persistence, or IPC change. No drag-and-drop, movement-line toggles, insight cards, or analytics. No overflow or duplicate-placement rendering under any circumstance.
+- Portrait attack-up geometry only; no orientation switching yet. No marker-set, composition, control, persistence, or IPC change. No drag-and-drop, movement-line toggles, insight cards, or analytics. No overflow or duplicate-placement rendering under any circumstance. The modal change is column sizing only: no geometry, selection, table-logic, or API change.
 
 **Dependencies and sequencing:**
 
-- Requires Commits 2 (projection helper, portrait path used), 3 (clean HEAD file versions), 4 (edit-time uniqueness), and 5 (no legacy rows). Blocks Commit 7 (one-canvas consolidation).
+- Requires Commits 2 (projection helper, portrait path used), 3 (replan recorded; active Commit 6 packet retained in the worktree), 4 (edit-time uniqueness), and 5 (no legacy rows). Blocks Commit 7 (one-canvas consolidation).
 
 **Validation:** `./scripts/dev test my-club-squad`, then exact `./scripts/dev smoke`, then `./scripts/dev check`.
 
-**Stop conditions:** Stop if any existing setting, callback, validation message, or save behavior needs a contract change to fit the canvas, if a grid or overflow helper cannot be removed with its final caller (report the leftover instead of leaving dead code), or if the worktree does not present the expected clean-HEAD-plus-planning file state (stop and report; only the supervisor restores files after developer approval — the worker never mutates Git state).
+**Stop conditions:** Stop if any existing setting, callback, validation message, or save behavior needs a contract change to fit the canvas, if a grid or overflow helper cannot be removed with its final caller (report the leftover instead of leaving dead code), if the widened modal column breaks the side-by-side table or viewport bounds (report instead of stacking or changing geometry), or if the worktree does not present exactly the active Commit 6 packet plus this reviewed planning artifact (four staged paths plus the unstaged smoke RED; stop and report on any unrelated file — the worker never discards files or mutates Git state).
 
-**Review mandate:** Verify board-count preservation per view, marker geometry equivalence with the retired grid for unique placements, absence of every duplicate/overflow branch and constant, accessible naming, removal completeness for retired helpers, untouched selection/highlight/save behavior, absence of persistence or IPC drift, and that the diff stays within the pitch surface plus its owned tests.
+**Review mandate:** Verify board-count preservation per view, marker geometry equivalence with the retired grid for unique placements, absence of every duplicate/overflow branch and constant, accessible naming, removal completeness for retired helpers, untouched selection/highlight/save behavior, absence of persistence or IPC drift, the modal diff is the grid-column minimum only with `max-w-[720px]` and the side-by-side table intact, and that the diff stays within the pitch surface, the modal layout line, plus owned tests.
 
 #### Commit 7 — Consolidate onto one phase-aware canvas
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tactics): consolidate one phase-aware canvas`
 
@@ -522,7 +523,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 - `src/features/planner/components/planner-tactic-pitch.tsx` — shared canvas logic reusable by both the single-phase component and the workspace wrapper (marker-set selection by `TacticView`: one marker per lane in IP/OOP mode, two markers per lane in Both mode). Both-mode markers stay distinguished by phase treatment and accessible name. Marker coordinates derive from the direct qualified-placement table through the Commit 2 portrait projection. No duplicate renderer logic.
 - `src/features/planner/components/planner-phase-aware-tactic-pitch.tsx` (new) — smallest workspace-only phase-aware wrapper composing the shared canvas logic for `TacticView`. Owns no geometry, scoring, persistence, or mutation logic.
 - `src/features/planner/components/planner-tactic-editor.tsx` — render the workspace wrapper instead of the `visiblePhases(view).map` board composition. Only the editor switches; selection, highlight, and callback wiring stay identical.
-- `src/features/planner/components/planner-role-reference-modal.tsx` — deliberately unchanged on the shared portrait single-phase `PlannerTacticPitch`; its existing route/smoke coverage is retained as proof (same focused `my-club-squad` route test where applicable).
+- `src/features/planner/components/planner-role-reference-modal.tsx` — unchanged in this commit: it stays on the shared portrait single-phase `PlannerTacticPitch` with the Commit 6 widened pitch column and layout/API contract; its existing route/smoke coverage is retained as proof (same focused `my-club-squad` route test where applicable).
 - `src/app/routes/my-club-squad.test.tsx` — update tactic pitch assertions owned by this behavior to the one-pitch contract (single pitch per view, per-mode marker sets, attack-to-goalkeeper order).
 - `e2e/smoke.spec.ts` — update `planner tactic editor saves a linked phase adjustment` to the one-pitch selectors.
 
@@ -868,7 +869,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 - `src/features/planner/components/planner-phase-aware-tactic-pitch.tsx` — own the single orientation source with one colocated `matchMedia("(min-width: 1920px)")` read, change subscription, and cleanup (no dependency, no shared hook); select portrait or landscape projection by that source and pass the active orientation into the shared canvas logic. The shared portrait single-phase component gains no orientation source.
 - `src/features/planner/components/planner-tactic-pitch.tsx` — draw orientation-aware SVG/HTML markings and Both-mode connectors in projected space from the wrapper-supplied orientation, keep marker labels upright with no rotated DOM, render an explicit accessible direction description (portrait attack-up, landscape attack-right via clockwise rotation), and compute DOM/tab order from the current visual pitch order in each orientation (stable left-to-right/top-to-bottom with deterministic ties), never raw lane IDs.
 - `src/features/planner/components/planner-tactic-editor.tsx` — orientation-responsive arrangement only if the wrapper cannot own it alone; prefer wrapper-local changes.
-- `src/features/planner/components/planner-role-reference-modal.tsx` — deliberately unchanged: no orientation source, portrait single-phase only; its existing route/smoke coverage is retained as proof (same focused `my-club-squad` route test where applicable).
+- `src/features/planner/components/planner-role-reference-modal.tsx` — unchanged in this commit: no orientation source, portrait single-phase only, with the Commit 6 widened pitch column and layout/API contract preserved; its existing route/smoke coverage is retained as proof (same focused `my-club-squad` route test where applicable).
 - `e2e/smoke.spec.ts` — landscape assertions in the tactic workspace test (proved via `./scripts/dev smoke`): initial 1920px load plus live crossing 1919↔1920, attack direction description (attack-up versus attack-right), projected marker geometry (width/height relationship inverts versus portrait), upright marker labels with no rotated DOM, and tab/DOM order matching the current visual pitch order in each orientation.
 
 **Behavior and data flow:**
@@ -909,22 +910,25 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **PR:** 1
 
-**Commit:** 6
+**Commit:** 7
 
 ### RED or removal proof
 
-Rewrite the smallest route geometry assertion for the unique-placement normalized canvas; remove the retired duplicate/overflow geometry contracts with their implementation. Prove the preserved save flow through the existing smoke test.
+Update the existing route and smoke board-count contracts to one workspace pitch in every view, with phase-appropriate marker sets.
 
 ### Expected outcome
 
-Reusable portrait single-phase canvas with qualified-placement coordinates, unchanged board composition and modal API, and no duplicate/overflow machinery.
+One workspace-only phase-aware wrapper reuses the shared canvas. IP/OOP show one marker per lane; Both shows distinct phase markers with shared selection and highlighting. The modal retains its portrait single-phase canvas.
 
 ### Explicit exclusions
 
-One-canvas consolidation, connectors, XI panel, inspector changes, orientation, containment, persistence, IPC, and Rust.
+Connectors, role transitions, XI panel, inspector changes, orientation, containment, persistence, IPC, and Rust.
 
 ## Discoveries and replanning
 
+- 2026-09-06: the developer accepted the reviewed modal-width replan and explicitly invoked delivery under `7eddf349067b6cc8ce02abc05f0664f956203bcf31f0185e84852e38b7be58c8`. The fresh complete Commit 6 review cleared all blockers after the one-line 330px modal pitch-column change. The unused phasePositionLayout/grid-type advisory remains open; no additional cleanup was delegated. An unrelated Squad boost progress-timing smoke flake occurred in earlier runs; the final exact smoke passed without changing that flow.
+
+- 2026-09-06: bounded material packet correction on approved developer authority (widen the Best role fit modal pitch column; side-by-side table kept). Two correction rounds cleared the H1 desktop-marker overlap (fixed `w-[12%] min-w-11` rule) and the H2 SVG/direction overlap, but real-browser evidence after the saved-MC triple disproved the remaining assumption: the modal canvas is 251.9375px while the 15% center gap needs >= 293.34px, so ~6.5px of central-triple overlap remains, and removing dialog padding/border cannot close it. Per the two-failed-corrections rule this triggers replanning, not a third correction: Commit 6 gains a layout-only modal pitch-column widening (grid minimum 220px to ~330px for canvas ~304px with a modest gutter margin, `max-w-[720px]` and the side-by-side table kept; no geometry, selection, table-logic, or API change) on the developer's explicit choice of widening over stacking, geometry changes, or target-floor exceptions. Source grounding: modal dialog `max-w-[720px]` with `p-6` plus `border` chrome, grid `md:grid-cols-[minmax(220px,0.85fr)_minmax(0,1.15fr)]` with `gap-4`, markers `w-[12%] min-w-11`. The existing unstaged smoke RED after the saved-MC triple already owns the modal regression seam (canvas width, disjoint >= 44px, containment/dialog/page horizontal-overflow freedom), so no new pairwise specs are prescribed and no code or test is removed here. The MEDIUM unused `phasePositionLayout` note stays open and undelegated, docs close-out stays deferred, and the recorded fingerprint `bd0767c4…` is invalidated pending fresh review, acceptance, and a new delivery invocation.
 - 2026-09-05: delivery resumed under fingerprint `bd0767c438e788e0db1560643e56bfa8773de559f7914bd35a0a46b4db9ae84c`. The developer explicitly approved discarding the abandoned canvas attempt. The safety tool required preserving those exact three paths in a recovery stash; they were removed from the worktree without reapplying them. Commit 4 started from clean HEAD. Its sole review finding was resolved by replacing the canonical self-selection test with a distinct-lane ST/STC occupant swap proof; literal occupancy matching makes that test fail.
 
 - 2026-09-05: the developer accepted the reviewed replan and explicitly requested its commit before deciding whether to discard the abandoned implementation. Commit 3 therefore records only the ledger and TODO; the three source files are preserved unstaged, pending separate discard approval. This changes the planning-recording order only. No new implementation, publication, or delivery authority is inferred.
@@ -946,7 +950,8 @@ One-canvas consolidation, connectors, XI panel, inspector changes, orientation, 
 | PR 1 — Redesign the tactic workspace | Commit 2 — Add orientation-aware pitch geometry projection | 8d9e142fa4000aa2c31ebc93f4e96d9d3b70b15a | Added pure coordinate projection, supported-placement table, and visual ordering without UI wiring. | Expected missing-module RED; focused 7/7 GREEN; full check and staged whitespace passed. | Pass | Clear | 0 | Worker accidentally applied an unrelated retained stash; developer restored the exact eight affected tracked paths. Verified recovery before validation and review. |
 | PR 1 — Redesign the tactic workspace | Commit 3 — Record the approved replan | e47d709 | Recorded the reviewed unique-placement swap and one-time reset plan with the revised commit sequence and TODO summary. | Ledger and delivery classifiers passed; check-fast and staged whitespace check passed. | Not applicable | Accepted findings — independent plan review cleared blockers; recorded MEDIUM and NITPICK advisories remain open; developer accepted the reviewed plan. | 1 | Developer requested planning commit before source-discard decision; abandoned implementation preserved unstaged. |
 | PR 1 — Redesign the tactic workspace | Commit 4 — Enforce unique-placement swaps in draft editing | edf6173f8a3817aeb0ed7354f64d116b78ed4160 | Added pure phase-placement swaps and wired the editor; preserved compatible roles, cleared incompatible roles, and replaced obsolete duplicate-rejection proof. | Unit 6/6, route 133/133, full check including 799 Rust tests passed; canonical literal-match mutation failed as expected; staged whitespace clean. | Pass | Clear | 1 | None. |
-| PR 1 — Redesign the tactic workspace | Commit 5 — Reset stored tactics to defaults once | Pending record | Registered data-only v42 tactic reset; removed legacy normalization and its two load tests. | Migration 60/60 and tactic 14/14 tests; check-rust and full check including 798 Rust tests passed; staged whitespace clean. | Pass | Clear | 0 | Older v8/v28 migration tests now prove their surviving contracts without asserting tactic preservation after the authorized reset; orphaned normalization constant removed. |
+| PR 1 — Redesign the tactic workspace | Commit 5 — Reset stored tactics to defaults once | 2b9186c4e6749d07cd576ec3550472a2418f2c44 | Registered data-only v42 tactic reset; removed legacy normalization and its two load tests. | Migration 60/60 and tactic 14/14 tests; check-rust and full check including 798 Rust tests passed; staged whitespace clean. | Pass | Clear | 0 | Older v8/v28 migration tests now prove their surviving contracts without asserting tactic preservation after the authorized reset; orphaned normalization constant removed. |
+| PR 1 — Redesign the tactic workspace | Commit 6 — Migrate the pitch to a simplified normalized canvas | Pending record | Replaced grid rendering with the portrait coordinate canvas, pitch markings and attack description; simplified labels and exported canonical identity; widened modal pitch column to 330px. Removed five obsolete geometry tests and added two route proofs. | Route 130/130, exact smoke 55/55, full check including 798 Rust tests passed. Saved central-triple modal overlap RED now passes disjoint 44px-target and containment assertions. | Pass | Clear | 2 | Modal layout scope required reviewed replan and renewed delivery authority; prior MEDIUM unused phasePositionLayout/types remains open and undelegated. |
 
 ## Final validation
 

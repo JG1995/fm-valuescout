@@ -1788,12 +1788,17 @@ test.describe("application smoke", () => {
       name: "IP: AMR · Winger",
     });
     const pitches = main.getByRole("group", { name: /pitch$/ });
-    const leftWingerGroup = pitches
-      .first()
-      .locator('[data-position-group="AML"]');
-    const rightWingerGroup = pitches
-      .first()
-      .locator('[data-position-group="AMR"]');
+    const ipPitch = pitches.first();
+    await expect(pitches).toHaveCount(2);
+    for (const index of [0, 1]) {
+      await expect(
+        pitches.nth(index).locator("[data-pitch-marker]"),
+      ).toHaveCount(11);
+    }
+    const rightMcMarker = ipPitch.locator(
+      '[data-pitch-marker="left_central_midfielder"]',
+    );
+    await expect(rightMcMarker).toHaveAttribute("data-placement", "MCR");
     await expect(rightMc).toBeVisible();
     await expect(leftMc).toBeVisible();
     await rightMc.click();
@@ -1803,27 +1808,32 @@ test.describe("application smoke", () => {
     await expect(
       main.getByRole("combobox", { name: "IP MC role" }),
     ).toHaveValue("central_midfielder_ip");
+    await expect(rightMcMarker).toHaveAttribute("data-placement", "MC");
     await main
       .getByRole("combobox", { name: "IP MC position" })
       .selectOption("MCR");
-    await expect(pitches).toHaveCount(2);
-    await expect(pitches.first()).toHaveAttribute("data-pitch-slot-count", "5");
-    await expect(pitches.last()).toHaveAttribute("data-pitch-slot-count", "5");
+    await expect(rightMcMarker).toHaveAttribute("data-placement", "MCR");
+    const striker = main.getByRole("button", {
+      name: "IP: STC · Centre Forward",
+    });
+    const goalkeeper = main.getByRole("button", {
+      name: "IP: GK · Goalkeeper",
+    });
     const [
       rightMcBox,
       leftMcBox,
       leftWingerBox,
       rightWingerBox,
-      leftWingerGroupBox,
-      rightWingerGroupBox,
+      strikerBox,
+      goalkeeperBox,
       bothPitchBox,
     ] = await Promise.all([
       rightMc.boundingBox(),
       leftMc.boundingBox(),
       leftWinger.boundingBox(),
       rightWinger.boundingBox(),
-      leftWingerGroup.boundingBox(),
-      rightWingerGroup.boundingBox(),
+      striker.boundingBox(),
+      goalkeeper.boundingBox(),
       pitches.first().boundingBox(),
     ]);
     if (
@@ -1831,8 +1841,8 @@ test.describe("application smoke", () => {
       !leftMcBox ||
       !leftWingerBox ||
       !rightWingerBox ||
-      !leftWingerGroupBox ||
-      !rightWingerGroupBox ||
+      !strikerBox ||
+      !goalkeeperBox ||
       !bothPitchBox
     ) {
       throw new Error("Expected visible tactic cards and pitch geometry");
@@ -1841,27 +1851,102 @@ test.describe("application smoke", () => {
     expect(rightMcBox.width).toBeCloseTo(leftMcBox.width, 1);
     expect(rightMcBox.width).toBeCloseTo(leftWingerBox.width, 1);
     expect(rightMcBox.width).toBeCloseTo(rightWingerBox.width, 1);
-    expect(rightMcBox.width).toBeGreaterThan(bothPitchBox.width * 0.15);
+    expect(rightMcBox.width).toBeLessThan(bothPitchBox.width * 0.15);
+    expect(rightMcBox.width).toBeGreaterThanOrEqual(44);
+    expect(rightMcBox.height).toBeGreaterThanOrEqual(44);
     expect(leftMcBox.x + leftMcBox.width).toBeLessThan(rightMcBox.x);
     expect(leftWingerBox.x + leftWingerBox.width).toBeLessThan(
       rightWingerBox.x,
     );
-    expect(
-      Math.abs(
-        leftWingerBox.x +
-          leftWingerBox.width / 2 -
-          (leftWingerGroupBox.x + leftWingerGroupBox.width / 2),
-      ),
-    ).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs(
-        rightWingerBox.x +
-          rightWingerBox.width / 2 -
-          (rightWingerGroupBox.x + rightWingerGroupBox.width / 2),
-      ),
-    ).toBeLessThanOrEqual(1);
-    const pairCentre = (leftMcBox.x + rightMcBox.x + rightMcBox.width) / 2;
-    expect(pairCentre).toBeCloseTo(bothPitchBox.x + bothPitchBox.width / 2, 1);
+    for (const box of [
+      rightMcBox,
+      leftMcBox,
+      leftWingerBox,
+      rightWingerBox,
+      strikerBox,
+      goalkeeperBox,
+    ]) {
+      expect(box.x).toBeGreaterThanOrEqual(bothPitchBox.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(
+        bothPitchBox.x + bothPitchBox.width + 1,
+      );
+    }
+    const strikerCentre = strikerBox.y + strikerBox.height / 2;
+    const midfieldCentre = rightMcBox.y + rightMcBox.height / 2;
+    const goalkeeperCentre = goalkeeperBox.y + goalkeeperBox.height / 2;
+    expect(strikerCentre).toBeLessThan(midfieldCentre);
+    expect(midfieldCentre).toBeLessThan(goalkeeperCentre);
+    // Form the supported unique MC triple (MCL/MC/MCR) through the edit flow.
+    await main
+      .getByRole("button", { name: "IP: DM · Defensive Midfielder" })
+      .click();
+    await main
+      .getByRole("combobox", { name: "IP DM position" })
+      .selectOption("MC");
+    await main
+      .getByRole("combobox", { name: "IP MC role" })
+      .selectOption("central_midfielder_ip");
+    const dmMarker = ipPitch.locator(
+      '[data-pitch-marker="defensive_midfielder"]',
+    );
+    await expect(dmMarker).toHaveAttribute("data-placement", "MC");
+    // Same-band and vertical-neighbour markers share no pixels at the
+    // supported desktop widths, covering the MC triple and the other
+    // central families present in the layout.
+    const pitchRectsDisjoint = (
+      left: { x: number; y: number; width: number; height: number },
+      right: { x: number; y: number; width: number; height: number },
+    ) =>
+      left.x + left.width <= right.x ||
+      right.x + right.width <= left.x ||
+      left.y + left.height <= right.y ||
+      right.y + right.height <= left.y;
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      const pitchBox = await pitches.first().boundingBox();
+      const markerBoxes = await ipPitch
+        .locator("[data-pitch-marker]")
+        .evaluateAll((elements) =>
+          elements.map((element) => {
+            const rect = (
+              element as unknown as {
+                getBoundingClientRect: () => {
+                  x: number;
+                  y: number;
+                  width: number;
+                  height: number;
+                };
+              }
+            ).getBoundingClientRect();
+            return {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+            };
+          }),
+        );
+      if (!pitchBox) {
+        throw new Error("Expected visible pitch geometry");
+      }
+      expect(markerBoxes).toHaveLength(11);
+      for (const box of markerBoxes) {
+        expect(box.width).toBeLessThan(pitchBox.width * 0.15);
+        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+      }
+      for (let left = 0; left < markerBoxes.length; left += 1) {
+        for (let right = left + 1; right < markerBoxes.length; right += 1) {
+          expect(
+            pitchRectsDisjoint(markerBoxes[left], markerBoxes[right]),
+          ).toBe(true);
+        }
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
     await main.getByRole("button", { name: "IP", exact: true }).click();
     await expect(pitches).toHaveCount(1);
     const singlePitchBox = await pitches.first().boundingBox();
@@ -1902,6 +1987,142 @@ test.describe("application smoke", () => {
     await main.getByRole("button", { name: "Save tactic" }).click();
 
     await expect(main.getByRole("status")).toHaveText("Tactic saved.");
+
+    // The saved MC triple (MCL/MC/MCR) must also render without overlap in
+    // the narrow Best role fit modal: marker buttons keep the 44px floor,
+    // stay pairwise disjoint and contained, with no horizontal overflow.
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
+    await main.getByRole("button", { name: "Best role fit" }).click();
+    const referenceDialog = page.getByRole("dialog", {
+      name: "Best role fit reference",
+    });
+    await expect(referenceDialog).toBeVisible();
+    const referencePitch = referenceDialog.getByRole("group", {
+      name: /pitch$/,
+    });
+    await expect(referencePitch.locator("[data-pitch-marker]")).toHaveCount(11);
+    await expect(referencePitch.locator('[data-placement="MC"]')).toHaveCount(
+      1,
+    );
+    const referenceCanvasBox = await referencePitch
+      .locator("div.relative")
+      .first()
+      .boundingBox();
+    if (!referenceCanvasBox) {
+      throw new Error("Expected visible modal pitch canvas");
+    }
+    // Adjacent MC-triple gaps report the exact overlap measurement.
+    const tripleBoxes = (
+      await Promise.all(
+        [
+          "IP: MCL · Central Midfielder",
+          "IP: MC · Central Midfielder",
+          "IP: MCR · Central Midfielder",
+        ].map((name) =>
+          referencePitch.getByRole("button", { name }).boundingBox(),
+        ),
+      )
+    ).sort((left, right) => (left?.x ?? 0) - (right?.x ?? 0));
+    if (tripleBoxes.some((box) => !box)) {
+      throw new Error("Expected visible saved MC triple buttons");
+    }
+    const [tripleLeft, tripleMiddle, tripleRight] = tripleBoxes as [
+      { x: number; y: number; width: number; height: number },
+      { x: number; y: number; width: number; height: number },
+      { x: number; y: number; width: number; height: number },
+    ];
+    expect(
+      tripleMiddle.x - (tripleLeft.x + tripleLeft.width),
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      tripleRight.x - (tripleMiddle.x + tripleMiddle.width),
+    ).toBeGreaterThanOrEqual(0);
+    // Central triple lanes sit 15% of the canvas apart, so the 44px marker
+    // floor needs a canvas of at least 44 / 0.15 px to stay disjoint.
+    expect(referenceCanvasBox.width).toBeGreaterThanOrEqual(44 / 0.15);
+    const referenceButtonBoxes = await referencePitch
+      .getByRole("button")
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = (
+            element as unknown as {
+              getBoundingClientRect: () => {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+              };
+            }
+          ).getBoundingClientRect();
+          return {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          };
+        }),
+      );
+    expect(referenceButtonBoxes).toHaveLength(11);
+    const referencePitchBox = await referencePitch.boundingBox();
+    if (!referencePitchBox) {
+      throw new Error("Expected visible modal pitch geometry");
+    }
+    for (const box of referenceButtonBoxes) {
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.x).toBeGreaterThanOrEqual(referencePitchBox.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(
+        referencePitchBox.x + referencePitchBox.width + 1,
+      );
+    }
+    const modalRectsDisjoint = (
+      left: { x: number; y: number; width: number; height: number },
+      right: { x: number; y: number; width: number; height: number },
+    ) =>
+      left.x + left.width <= right.x ||
+      right.x + right.width <= left.x ||
+      left.y + left.height <= right.y ||
+      right.y + right.height <= left.y;
+    for (let left = 0; left < referenceButtonBoxes.length; left += 1) {
+      for (
+        let right = left + 1;
+        right < referenceButtonBoxes.length;
+        right += 1
+      ) {
+        expect(
+          modalRectsDisjoint(
+            referenceButtonBoxes[left],
+            referenceButtonBoxes[right],
+          ),
+        ).toBe(true);
+      }
+    }
+    const referenceOverflow = await referenceDialog.evaluate((element) => {
+      const dialogElement = element as unknown as {
+        clientWidth: number;
+        scrollWidth: number;
+      };
+      return {
+        clientWidth: dialogElement.clientWidth,
+        scrollWidth: dialogElement.scrollWidth,
+      };
+    });
+    expect(referenceOverflow.scrollWidth).toBeLessThanOrEqual(
+      referenceOverflow.clientWidth + 1,
+    );
+    const plannerOverflow = await main.evaluate((element) => {
+      const mainElement = element as unknown as {
+        clientWidth: number;
+        scrollWidth: number;
+      };
+      return {
+        clientWidth: mainElement.clientWidth,
+        scrollWidth: mainElement.scrollWidth,
+      };
+    });
+    expect(plannerOverflow.scrollWidth).toBeLessThanOrEqual(
+      plannerOverflow.clientWidth + 1,
+    );
   });
 
   test("planner tactic workspace fits its supported desktop viewports", async ({
@@ -2032,6 +2253,57 @@ test.describe("application smoke", () => {
       name: "Best role fit reference",
     });
     await expect(dialog).toBeVisible();
+    const dialogPitch = dialog.getByRole("group", { name: /pitch$/ });
+    await expect(dialogPitch.locator("[data-pitch-marker]")).toHaveCount(11);
+    await expect(dialogPitch.getByText(/attack/i)).toBeVisible();
+    const dialogPitchBox = await dialogPitch.boundingBox();
+    const dialogMarkerBoxes = await dialogPitch
+      .locator("[data-pitch-marker]")
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = (
+            element as unknown as {
+              getBoundingClientRect: () => {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+              };
+            }
+          ).getBoundingClientRect();
+          return {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          };
+        }),
+      );
+    if (!dialogPitchBox) {
+      throw new Error("Expected visible modal pitch geometry");
+    }
+    for (const box of dialogMarkerBoxes) {
+      // The narrow modal pitch keeps the 44px target floor instead of the
+      // proportional width, so markers stay usable without overlapping.
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.x).toBeGreaterThanOrEqual(dialogPitchBox.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(
+        dialogPitchBox.x + dialogPitchBox.width + 1,
+      );
+    }
+    for (let left = 0; left < dialogMarkerBoxes.length; left += 1) {
+      for (let right = left + 1; right < dialogMarkerBoxes.length; right += 1) {
+        const leftBox = dialogMarkerBoxes[left];
+        const rightBox = dialogMarkerBoxes[right];
+        expect(
+          leftBox.x + leftBox.width <= rightBox.x ||
+            rightBox.x + rightBox.width <= leftBox.x ||
+            leftBox.y + leftBox.height <= rightBox.y ||
+            rightBox.y + rightBox.height <= leftBox.y,
+        ).toBe(true);
+      }
+    }
     await expect(
       dialog.getByRole("radio", { name: "In Possession" }),
     ).toBeChecked();

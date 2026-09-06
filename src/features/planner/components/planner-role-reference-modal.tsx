@@ -466,7 +466,7 @@ export function PlannerRoleReferenceModal({
           </fieldset>
         </div>
 
-        <div className="grid min-h-0 gap-4 md:grid-cols-[minmax(220px,0.85fr)_minmax(0,1.15fr)]">
+        <div className="grid min-h-0 gap-4 md:grid-cols-[minmax(330px,0.85fr)_minmax(0,1.15fr)]">
           <div className="min-w-0">
             <PlannerTacticPitch
               phase={selectedPhase.pitch}

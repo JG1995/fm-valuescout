@@ -28,10 +28,7 @@ import type {
 } from "@/features/planner/types/depth";
 import type { PlannerRoleReference } from "@/features/planner/types/role-reference";
 import type { PlannerTactic } from "@/features/planner/types/tactic";
-import {
-  phasePositionLabel,
-  validateTacticDraft,
-} from "@/features/planner/utils/tactic-editor";
+import { validateTacticDraft } from "@/features/planner/utils/tactic-editor";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
@@ -2928,6 +2925,91 @@ describe("My Club route", () => {
     }
   });
 
+  it("places unique lanes on normalized canvas coordinates", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
+
+    const pitches = await screen.findAllByRole("group", { name: /pitch$/ });
+    expect(pitches).toHaveLength(2);
+
+    for (const pitch of pitches) {
+      const markers = pitch.querySelectorAll("[data-pitch-marker]");
+      expect(markers).toHaveLength(11);
+      const markerPositions = Array.from(markers).map(
+        (marker) =>
+          `${(marker as HTMLElement).style.left}/${(marker as HTMLElement).style.top}`,
+      );
+      expect(new Set(markerPositions).size).toBe(11);
+      expect(markers[0]).toHaveAttribute("data-placement", "STC");
+      expect(markers[markers.length - 1]).toHaveAttribute(
+        "data-placement",
+        "GK",
+      );
+    }
+
+    const ipPitch = pitches[0];
+    const striker = ipPitch.querySelector(
+      '[data-pitch-marker="centre_forward"]',
+    );
+    expect(striker).toHaveAttribute("data-placement", "STC");
+    expect(striker).toHaveStyle({ left: "50%", top: "8%" });
+    const goalkeeper = ipPitch.querySelector(
+      '[data-pitch-marker="goalkeeper"]',
+    );
+    expect(goalkeeper).toHaveAttribute("data-placement", "GK");
+    expect(goalkeeper).toHaveStyle({ left: "50%", top: "93%" });
+    const rightMidfielder = ipPitch.querySelector(
+      '[data-pitch-marker="left_central_midfielder"]',
+    );
+    expect(rightMidfielder).toHaveAttribute("data-placement", "MCR");
+    expect(rightMidfielder).toHaveStyle({ left: "65%", top: "46%" });
+    const markerButton = within(rightMidfielder as HTMLElement).getByRole(
+      "button",
+      { name: "IP: MCR · Central Midfielder" },
+    );
+    expect(markerButton.className).toContain("min-h-11");
+    const attackNote = within(ipPitch as HTMLElement).getByText(/attack/i);
+    expect(attackNote).toBeVisible();
+    expect(ipPitch).toHaveAttribute("aria-describedby", attackNote.id);
+    const markings = ipPitch.querySelector('svg[aria-hidden="true"]');
+    expect(markings).not.toBeNull();
+    expect(markings?.getAttribute("class")).toContain("pointer-events-none");
+  });
+
+  it("moves a marker when its qualified position is edited", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "IP: MCR · Central Midfielder",
+      }),
+    );
+    const ipPitch = (
+      await screen.findAllByRole("group", { name: /pitch$/ })
+    )[0];
+    expect(
+      ipPitch.querySelector('[data-pitch-marker="left_central_midfielder"]'),
+    ).toHaveAttribute("data-placement", "MCR");
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "IP MCR position" }),
+      "MC",
+    );
+
+    const movedMarker = ipPitch.querySelector(
+      '[data-pitch-marker="left_central_midfielder"]',
+    );
+    expect(movedMarker).toHaveAttribute("data-placement", "MC");
+    expect(movedMarker).toHaveStyle({ left: "50%", top: "46%" });
+    expect(
+      screen.getByRole("button", { name: "IP: MC · Central Midfielder" }),
+    ).toBeInTheDocument();
+  });
+
   it("presents current linked positions without lane terminology", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -2977,332 +3059,6 @@ describe("My Club route", () => {
     });
     expect(within(matrix).getByText("IP: AMC · Winger")).toBeInTheDocument();
     expect(within(matrix).queryByText("Left winger")).not.toBeInTheDocument();
-  });
-
-  it("keeps repeated positions distinguishable without numeric labels", () => {
-    const tactic = resolvePlannerTacticIpcMock();
-    const lanes = tactic.lanes.map((lane, index) =>
-      index < 5 ? { ...lane, ipPosition: "AMC", ipRoleId: "winger_ip" } : lane,
-    );
-    const labels = lanes
-      .slice(0, 5)
-      .map((lane) => phasePositionLabel(lane, "ip", lanes));
-
-    expect(new Set(labels).size).toBe(5);
-    expect(labels.every((label) => !label.includes("additional"))).toBe(true);
-  });
-
-  it("arranges repeated positions in stable central slots regardless of role", async () => {
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const tactic = resolvePlannerTacticIpcMock();
-    tactic.lanes = tactic.lanes.map((lane, index) => {
-      if (index === 0) {
-        return {
-          ...lane,
-          ipPosition: "MC",
-          ipRoleId: "central_midfielder_ip",
-          oopPosition: "MC",
-          oopRoleId: "pressing_central_midfielder_oop",
-        };
-      }
-      if (index === 1) {
-        return {
-          ...lane,
-          ipPosition: "MC",
-          ipRoleId: "advanced_playmaker_ip",
-          oopPosition: "MC",
-          oopRoleId: "pressing_central_midfielder_oop",
-        };
-      }
-      if (index === 2) {
-        return {
-          ...lane,
-          ipPosition: "MC",
-          ipRoleId: "box_to_box_midfielder_ip",
-          oopPosition: "MC",
-          oopRoleId: "pressing_central_midfielder_oop",
-        };
-      }
-      if (index === 3) {
-        return {
-          ...lane,
-          ipPosition: "DC",
-          ipRoleId: "centre_back_ip",
-          oopPosition: "DC",
-          oopRoleId: "covering_centre_back_oop",
-        };
-      }
-      if (index === 4) {
-        return {
-          ...lane,
-          ipPosition: "DC",
-          ipRoleId: "ball_playing_centre_back_ip",
-          oopPosition: "DC",
-          oopRoleId: "stopping_centre_back_oop",
-        };
-      }
-      if (index === 6) {
-        return {
-          ...lane,
-          ipPosition: "ML",
-          ipRoleId: "wide_midfielder_ip",
-          oopPosition: "ML",
-          oopRoleId: "tracking_wide_midfielder_oop",
-        };
-      }
-      if (index === 7) {
-        return {
-          ...lane,
-          ipPosition: "MR",
-          ipRoleId: "wide_midfielder_ip",
-          oopPosition: "MR",
-          oopRoleId: "tracking_wide_midfielder_oop",
-        };
-      }
-      return lane;
-    });
-    setPlannerTacticIpcMock(tactic);
-    const depth = resolvePlannerDepthIpcMock();
-    depth.tactic = tactic;
-    setPlannerDepthIpcMock(depth);
-    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
-
-    const rightMc = await screen.findByRole("button", {
-      name: "IP: MCR · Central Midfielder",
-    });
-    const centreMc = screen.getByRole("button", {
-      name: "IP: MC · Advanced Playmaker",
-    });
-    const leftMc = screen.getByRole("button", {
-      name: "IP: MCL · Box-to-Box Midfielder",
-    });
-    const mcGroup = rightMc.closest('[data-position-group="MC"]');
-    expect(mcGroup).not.toBeNull();
-    expect(mcGroup).toContainElement(centreMc);
-    expect(mcGroup).toContainElement(leftMc);
-    expect(
-      within(mcGroup as HTMLElement)
-        .getAllByRole("button")
-        .map((button) => button.getAttribute("aria-label")),
-    ).toEqual([
-      "IP: MCL · Box-to-Box Midfielder",
-      "IP: MC · Advanced Playmaker",
-      "IP: MCR · Central Midfielder",
-    ]);
-    expect(mcGroup).toHaveAttribute("data-position-slot-count", "3");
-    for (const pitch of await screen.findAllByRole("group", {
-      name: /pitch$/,
-    })) {
-      expect(pitch).toHaveAttribute("data-pitch-slot-count", "5");
-    }
-    expect(rightMc.parentElement).toHaveStyle({
-      gridColumn: "5 / span 2",
-      gridRow: "1",
-    });
-    expect(centreMc.parentElement).toHaveStyle({
-      gridColumn: "3 / span 2",
-      gridRow: "1",
-    });
-    expect(leftMc.parentElement).toHaveStyle({
-      gridColumn: "1 / span 2",
-      gridRow: "1",
-    });
-    expect(mcGroup).toHaveStyle({ gridColumn: "3 / span 6" });
-    expect(mcGroup).toHaveClass("bg-surface-container-high");
-
-    const rightDc = screen.getByRole("button", {
-      name: "IP: DCR · Centre-Back",
-    });
-    const leftDc = screen.getByRole("button", {
-      name: "IP: DCL · Ball-Playing Centre-Back",
-    });
-    expect(rightDc.parentElement).toHaveStyle({
-      gridColumn: "3 / span 2",
-      gridRow: "1",
-    });
-    expect(leftDc.parentElement).toHaveStyle({
-      gridColumn: "1 / span 2",
-      gridRow: "1",
-    });
-    const dcGroup = rightDc.closest('[data-position-group="DC"]');
-    expect(dcGroup).not.toBeNull();
-    expect(dcGroup).toContainElement(leftDc);
-    expect(dcGroup).toHaveStyle({ gridColumn: "4 / span 4" });
-    const defensiveMidfielder = screen.getByRole("button", {
-      name: "IP: DM · Defensive Midfielder",
-    });
-    expect(defensiveMidfielder).toBeInTheDocument();
-    expect(defensiveMidfielder.parentElement).toHaveStyle({
-      gridColumn: "3 / span 2",
-      gridRow: "1",
-    });
-    expect(
-      defensiveMidfielder.closest('[data-position-group="DM"]'),
-    ).toHaveStyle({ gridColumn: "3 / span 6" });
-    const leftMidfielder = screen.getByRole("button", {
-      name: "IP: ML · Wide Midfielder",
-    });
-    const rightMidfielder = screen.getByRole("button", {
-      name: "IP: MR · Wide Midfielder",
-    });
-    expect(leftMidfielder.parentElement).toHaveStyle({
-      gridColumn: "1 / span 2",
-      gridRow: "1",
-    });
-    expect(rightMidfielder.parentElement).toHaveStyle({
-      gridColumn: "1 / span 2",
-      gridRow: "1",
-    });
-    expect(leftMidfielder.closest('[data-position-group="ML"]')).toHaveStyle({
-      gridColumn: "1 / span 2",
-    });
-    expect(rightMidfielder.closest('[data-position-group="MR"]')).toHaveStyle({
-      gridColumn: "9 / span 2",
-    });
-
-    expect(
-      screen.getByRole("button", {
-        name: "OOP: DCR · Covering Centre-Back",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "OOP: DCL · Stopping Centre-Back",
-      }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /^IP:/ })).toHaveLength(11);
-    expect(
-      screen.getByRole("button", { name: "IP: STC · Centre Forward" }),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps every position button when a base position has more than three lanes", async () => {
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const tactic = resolvePlannerTacticIpcMock();
-    tactic.lanes = tactic.lanes.map((lane, index) =>
-      index < 5 ? { ...lane, ipPosition: "AMC", ipRoleId: "winger_ip" } : lane,
-    );
-    setPlannerTacticIpcMock(tactic);
-    const depth = resolvePlannerDepthIpcMock();
-    depth.tactic = tactic;
-    setPlannerDepthIpcMock(depth);
-    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
-
-    for (const pitch of await screen.findAllByRole("group", {
-      name: /pitch$/,
-    })) {
-      expect(pitch).toHaveAttribute("data-pitch-slot-count", "5");
-    }
-    const secondRowRight = await screen.findByRole("button", {
-      name: "IP: AMCR (row 2) · Winger",
-    });
-    const secondRowLeft = screen.getByRole("button", {
-      name: "IP: AMCL (row 2) · Winger",
-    });
-    expect(secondRowRight).toBeInTheDocument();
-    expect(secondRowRight.parentElement).toHaveStyle({
-      gridColumn: "3 / span 2",
-      gridRow: "1",
-    });
-    const secondRowGroup = secondRowRight.closest(
-      '[data-position-group="AMC"]',
-    );
-    expect(secondRowGroup).not.toBeNull();
-    expect(secondRowGroup).toContainElement(secondRowLeft);
-    expect(secondRowGroup).toHaveStyle({ gridColumn: "4 / span 4" });
-    expect(secondRowGroup).toHaveAttribute("data-position-slot-count", "2");
-    expect(screen.getAllByRole("button", { name: /^IP:/ })).toHaveLength(11);
-  });
-
-  it("follows visible row order when a wide position overflows", async () => {
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const tactic = resolvePlannerTacticIpcMock();
-    tactic.lanes = tactic.lanes.map((lane, index) => {
-      if (index < 2) {
-        return { ...lane, ipPosition: "AML", ipRoleId: "winger_ip" };
-      }
-      if (index === 2) {
-        return { ...lane, ipPosition: "AMC", ipRoleId: "winger_ip" };
-      }
-      if (index === 3) {
-        return { ...lane, ipPosition: "AMR", ipRoleId: "winger_ip" };
-      }
-      if (lane.ipPosition === "AML" || lane.ipPosition === "AMR") {
-        return {
-          ...lane,
-          ipPosition: "MC",
-          ipRoleId: "central_midfielder_ip",
-        };
-      }
-      return lane;
-    });
-    setPlannerTacticIpcMock(tactic);
-    const depth = resolvePlannerDepthIpcMock();
-    depth.tactic = tactic;
-    setPlannerDepthIpcMock(depth);
-    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
-
-    const ipPitch = (
-      await screen.findAllByRole("group", { name: /pitch$/ })
-    )[0];
-    const attackMidfieldRows = ipPitch.querySelectorAll(
-      '[data-pitch-band="attack-midfield"]',
-    );
-    expect(attackMidfieldRows).toHaveLength(2);
-    expect(
-      within(attackMidfieldRows[0] as HTMLElement)
-        .getAllByRole("button")
-        .map((button) => button.getAttribute("aria-label")),
-    ).toEqual(["IP: AML · Winger", "IP: AMC · Winger", "IP: AMR · Winger"]);
-    expect(
-      within(attackMidfieldRows[1] as HTMLElement)
-        .getAllByRole("button")
-        .map((button) => button.getAttribute("aria-label")),
-    ).toEqual(["IP: AML (row 2) · Winger"]);
-  });
-
-  it("keeps a three-slot minimum when every tactic row has at most two positions", async () => {
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
-    const tactic = resolvePlannerTacticIpcMock();
-    const compactRows = [
-      ["ST", "centre_forward_ip", "central_outlet_centre_forward_oop"],
-      ["ST", "centre_forward_ip", "central_outlet_centre_forward_oop"],
-      ["AML", "winger_ip", "tracking_winger_oop"],
-      ["AMR", "winger_ip", "tracking_winger_oop"],
-      ["MC", "central_midfielder_ip", "pressing_central_midfielder_oop"],
-      ["MC", "central_midfielder_ip", "pressing_central_midfielder_oop"],
-      ["DM", "defensive_midfielder_ip", "screening_defensive_midfielder_oop"],
-      ["DM", "defensive_midfielder_ip", "screening_defensive_midfielder_oop"],
-      ["DC", "centre_back_ip", "covering_centre_back_oop"],
-      ["DC", "centre_back_ip", "covering_centre_back_oop"],
-      ["GK", "goalkeeper_ip", "line_holding_keeper_oop"],
-    ] as const;
-    tactic.lanes = tactic.lanes.map((lane, index) => {
-      const [position, ipRoleId, oopRoleId] = compactRows[index];
-      return {
-        ...lane,
-        ipPosition: position,
-        ipRoleId,
-        oopPosition: position,
-        oopRoleId,
-      };
-    });
-    setPlannerTacticIpcMock(tactic);
-    const depth = resolvePlannerDepthIpcMock();
-    depth.tactic = tactic;
-    setPlannerDepthIpcMock(depth);
-    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
-
-    for (const pitch of await screen.findAllByRole("group", {
-      name: /pitch$/,
-    })) {
-      expect(pitch).toHaveAttribute("data-pitch-slot-count", "3");
-    }
-    expect(screen.getAllByRole("button", { name: /^IP:/ })).toHaveLength(11);
   });
 
   it("retains the edited tactic draft when save fails", async () => {
