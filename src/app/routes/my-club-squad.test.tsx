@@ -6308,6 +6308,55 @@ describe("Suggested Training column", () => {
   });
 });
 
+describe("squad table toolbar", () => {
+  async function renderToolbarSquad(players: SquadPlayer[]) {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride(players);
+    renderMyClubRoute({ initialEntry: "/my-club" });
+    return screen.findByRole("table", { name: "Squad overview" });
+  }
+
+  it("associates the squad summary and grouped Columns in one table toolbar", async () => {
+    await renderToolbarSquad([squadPlayerNamed("Alex Scout", 42)]);
+
+    const toolbar = screen.getByRole("toolbar", {
+      name: "Squad results toolbar",
+    });
+    expect(
+      within(toolbar).getByText(/players? · sorted by/),
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar).getByRole("button", { name: "Columns" }),
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar).queryByRole("button", { name: "Edit filters" }),
+    ).toBeNull();
+    expect(
+      within(toolbar).queryByRole("button", { name: "Clear all" }),
+    ).toBeNull();
+    const table = screen.getByRole("table", { name: "Squad overview" });
+    expect(
+      toolbar.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps squad boosts outside the generic toolbar", async () => {
+    await renderToolbarSquad([squadPlayerNamed("Alex Scout", 42)]);
+
+    const toolbar = screen.getByRole("toolbar", {
+      name: "Squad results toolbar",
+    });
+    for (const name of ["Boost all CA", "Make all Wonderkids"]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+      expect(within(toolbar).queryByRole("button", { name })).toBeNull();
+    }
+  });
+});
+
 function slotCandidate(
   candidate: Partial<PlannerSlotCandidate> &
     Pick<PlannerSlotCandidate, "playerUid" | "name">,

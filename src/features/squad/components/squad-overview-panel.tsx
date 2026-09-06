@@ -16,6 +16,7 @@ import {
   PlayerTableHeader,
 } from "@/components/player-table/player-table-header";
 import type { TableGroupInput } from "@/components/player-table/table-groups";
+import { TableToolbar } from "@/components/player-table/table-toolbar";
 import {
   type ConfigurableTableIdentity,
   VirtualizedPlayerTable,
@@ -568,6 +569,32 @@ export function SquadOverviewPanel({
     requestedQuery.isSuccess,
   ]);
 
+  const dirLabel = committed.sortDir === "asc" ? "ascending" : "descending";
+  const sortMetric = getPlayerMetric(committed.sortBy);
+  const sortLabel = sortMetric
+    ? sortMetric.id === "age"
+      ? "Age / DOB"
+      : sortMetric.label
+    : committed.sortBy;
+  const columnsControl = (
+    <ConfigurableColumnsControl
+      groups={SQUAD_TABLE_GROUPS}
+      metrics={SQUAD_CONFIGURABLE_METRICS}
+      visibleColumnIds={layout.columnIds}
+      onAddColumn={(metricId) => addColumns("squad", [metricId])}
+      onRemoveColumn={removeColumn}
+    />
+  );
+  // Squad offers no filter surface: the shared toolbar hosts only the
+  // count/sort summary and the grouped Columns control. Boosts, uploads,
+  // and squad actions stay in the feature-owned Panel actions above.
+  const renderToolbar = (summary?: ReactNode) => (
+    <TableToolbar
+      toolbarLabel="Squad results toolbar"
+      summary={summary}
+      columnsControl={columnsControl}
+    />
+  );
   const page =
     requestMatchesCommitted || isSortReplacement
       ? committedQuery.data
@@ -576,6 +603,7 @@ export function SquadOverviewPanel({
     return (
       <Panel title="Squad overview" actions={actions} flush>
         <SquadFeedbackSlot feedback={feedback} feedbackRef={feedbackRef} />
+        {renderToolbar()}
         <EmptyState
           icon={UsersRound}
           title={
@@ -604,6 +632,12 @@ export function SquadOverviewPanel({
     return (
       <Panel title="Squad overview" actions={actions} flush>
         <SquadFeedbackSlot feedback={feedback} feedbackRef={feedbackRef} />
+        {renderToolbar(
+          <p className="text-body-md text-on-surface-variant">
+            <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
+            players · sorted by {sortLabel} ({dirLabel})
+          </p>,
+        )}
         <EmptyState icon={UsersRound} title="No players at your managed club">
           No current-snapshot players match your managed club.
         </EmptyState>
@@ -611,14 +645,7 @@ export function SquadOverviewPanel({
     );
   }
 
-  const dirLabel = committed.sortDir === "asc" ? "ascending" : "descending";
-  const sortMetric = getPlayerMetric(committed.sortBy);
-  const sortLabel = sortMetric
-    ? sortMetric.id === "age"
-      ? "Age / DOB"
-      : sortMetric.label
-    : committed.sortBy;
-  const removeColumn = (metricId: string) => {
+  function removeColumn(metricId: string) {
     const remainingColumns = columns.filter((column) => column.id !== metricId);
     if (remainingColumns.length === columns.length) {
       return;
@@ -634,7 +661,7 @@ export function SquadOverviewPanel({
       return;
     }
     onSortChange(nextColumn.id, defaultDirForSquadSortField(nextColumn.id));
-  };
+  }
 
   return (
     <Panel
@@ -644,20 +671,13 @@ export function SquadOverviewPanel({
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-4 pb-3">
+      {renderToolbar(
         <p className="text-body-md text-on-surface-variant">
           <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
           {page.total === 1 ? "player" : "players"} · sorted by {sortLabel} (
           {dirLabel})
-        </p>
-        <ConfigurableColumnsControl
-          groups={SQUAD_TABLE_GROUPS}
-          metrics={SQUAD_CONFIGURABLE_METRICS}
-          visibleColumnIds={layout.columnIds}
-          onAddColumn={(metricId) => addColumns("squad", [metricId])}
-          onRemoveColumn={removeColumn}
-        />
-      </div>
+        </p>,
+      )}
       {isReplacementPending ? (
         <p
           className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
