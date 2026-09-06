@@ -271,6 +271,55 @@ describe("search route", () => {
     ).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("shows compact tactic headers with keyboard-reachable full definitions", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    renderSearchRoute();
+
+    await screen.findByRole("button", {
+      name: "Add Tactic (Current)",
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Add Tactic (Current)" }),
+      ).toBeEnabled(),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+    );
+
+    const full = "GK (Goalkeeper) / GK (Line-Holding Keeper)";
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    // Current group only: each of the 11 lanes renders exactly once.
+    const headers = within(table).getAllByRole("columnheader", {
+      name: full,
+    });
+    expect(headers).toHaveLength(1);
+    const header = headers[0];
+    // Compact placement primary with smaller role context.
+    expect(within(header).getByText("GK")).toBeVisible();
+    expect(
+      within(header).getByText("Goalkeeper / Line-Holding Keeper"),
+    ).toBeVisible();
+    // The focusable leaf carries the complete definition; keyboard focus
+    // reveals a visible definition instead of relying on title alone.
+    const leaf = within(header).getByRole("button", { name: full });
+    expect(within(header).queryByRole("tooltip")).toBeNull();
+    leaf.focus();
+    expect(
+      await within(header).findByRole("tooltip", { name: full }),
+    ).toBeVisible();
+    // No 12th lane: exactly the 11 canonical current lanes are present.
+    const tacticIds = usePlayerTableStore
+      .getState()
+      .layouts.search.columnIds.filter((id) =>
+        id.startsWith("tactic_current."),
+      );
+    expect(tacticIds).toHaveLength(11);
+  });
+
   it("renders tactic scores and re-compacts the survivor when header removal resets sort", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();

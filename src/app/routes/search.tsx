@@ -22,6 +22,7 @@ import {
 import { searchKeys } from "@/features/search/api/search-keys";
 import { PlayerShortlistImportModal } from "@/features/search/components/player-shortlist-import-modal";
 import { SearchFilterBar } from "@/features/search/components/search-filter-bar";
+import type { TacticLaneLabel } from "@/features/search/components/search-results-panel";
 import { SearchResultsPanel } from "@/features/search/components/search-results-panel";
 import { TacticColumnToggles } from "@/features/search/components/tactic-column-toggles";
 import type {
@@ -173,15 +174,27 @@ function PanelFallback() {
 function tacticLaneLabels(
   tactic: PlannerTactic,
   options: TacticOptions,
-): Map<string, string> {
+): Map<string, TacticLaneLabel> {
   const roleNames = new Map(
     options.roles.map((role) => [role.roleId, role.displayName]),
   );
   return new Map(
-    tactic.lanes.map((lane) => [
-      lane.laneId,
-      `${lane.ipPosition} (${roleNames.get(lane.ipRoleId) ?? lane.ipRoleId}) / ${lane.oopPosition} (${roleNames.get(lane.oopRoleId) ?? lane.oopRoleId})`,
-    ]),
+    tactic.lanes.map((lane) => {
+      const ipRole = roleNames.get(lane.ipRoleId) ?? lane.ipRoleId;
+      const oopRole = roleNames.get(lane.oopRoleId) ?? lane.oopRoleId;
+      const label: TacticLaneLabel = {
+        // Compact placement primary: one token when both phases share the
+        // placement, otherwise the slash-joined pair (e.g. "AML/ML").
+        compact:
+          lane.ipPosition === lane.oopPosition
+            ? lane.ipPosition
+            : `${lane.ipPosition}/${lane.oopPosition}`,
+        // Restrained role context: full role names in smaller inline text.
+        context: ipRole === oopRole ? ipRole : `${ipRole} / ${oopRole}`,
+        full: `${lane.ipPosition} (${ipRole}) / ${lane.oopPosition} (${oopRole})`,
+      };
+      return [lane.laneId, label];
+    }),
   );
 }
 

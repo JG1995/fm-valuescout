@@ -67,6 +67,18 @@ const NUM_CELL =
 
 type TableColumn = PlayerTableColumn;
 
+/**
+ * Route-owned tactic lane label model. The compact placement identifier is
+ * the primary leaf text, the role context renders smaller beside it, and
+ * the full `IP Position (Role) / OOP Position (Role)` definition stays the
+ * complete accessible name with a focus-revealed visible disclosure.
+ */
+export type TacticLaneLabel = {
+  compact: string;
+  context: string;
+  full: string;
+};
+
 type SearchResultsPanelProps = {
   sortBy: SearchSortField;
   sortDir: SearchSortDir;
@@ -79,7 +91,7 @@ type SearchResultsPanelProps = {
   shortlistOnly: boolean;
   pageContext: SearchPlayerPageContext;
   orderedLaneIds: readonly string[];
-  laneLabels: ReadonlyMap<string, string>;
+  laneLabels: ReadonlyMap<string, TacticLaneLabel>;
 };
 
 function nextSort(
@@ -169,13 +181,16 @@ function tableColumnForMetric(
   metricId: string,
   width: number | undefined,
   view: SearchView,
-  laneLabels: ReadonlyMap<string, string>,
+  laneLabels: ReadonlyMap<string, TacticLaneLabel>,
 ): TableColumn | undefined {
   if (isValidTacticColumnId(metricId)) {
     const laneId = tacticLaneIdForId(metricId);
+    const laneLabel = laneLabels.get(laneId ?? "");
     return {
       id: metricId,
-      label: laneLabels.get(laneId ?? "") ?? laneId ?? metricId,
+      label: laneLabel?.compact ?? laneId ?? metricId,
+      secondaryLabel: laneLabel?.context,
+      accessibleLabel: laneLabel?.full ?? laneId ?? metricId,
       align: "right",
       width: width ?? TACTIC_COLUMN_DEFAULT_WIDTH,
     };
@@ -426,10 +441,11 @@ function SearchResultsVirtualTable({
         columns.map((column) => {
           if (isValidTacticColumnId(column.id)) {
             const score = player?.dynamicValues?.[column.id];
+            const roleName = column.accessibleLabel ?? column.label;
             return (
               <td key={column.id} className={NUM_CELL}>
                 {typeof score === "number" ? (
-                  <ScoreBadge score={score} roleName={column.label} />
+                  <ScoreBadge score={score} roleName={roleName} />
                 ) : (
                   <span className="text-on-surface-variant">
                     {player === undefined ? "…" : "—"}
@@ -798,12 +814,12 @@ export function SearchResultsPanel({
     committed.view === "moneyball"
       ? getMoneyballSearchMetric(committed.sortBy)
       : getPlayerMetric(committed.sortBy);
+  const sortColumn = columns.find((column) => column.id === committed.sortBy);
   const sortLabel = sortMetric
     ? sortMetric.id === "age"
       ? "Age / DOB"
       : sortMetric.label
-    : (columns.find((column) => column.id === committed.sortBy)?.label ??
-      committed.sortBy);
+    : (sortColumn?.accessibleLabel ?? sortColumn?.label ?? committed.sortBy);
   const shortlistSwitch =
     view === "general" ? (
       <button

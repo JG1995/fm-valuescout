@@ -619,3 +619,51 @@ describe("analysis leaf removal", () => {
     expect(onRemoveColumn).toHaveBeenCalledWith("ca");
   });
 });
+
+describe("compact tactic leaf headers", () => {
+  const FULL = "GK (Goalkeeper) / GK (Line-Holding Keeper)";
+  const TACTIC_COLUMNS: ConfigurableTableColumn[] = [
+    {
+      id: "tactic_current.goalkeeper",
+      label: "GK",
+      secondaryLabel: "Goalkeeper / Line-Holding Keeper",
+      accessibleLabel: FULL,
+      align: "right",
+      width: 112,
+    },
+  ];
+
+  it("shows compact primary with role context while the focusable leaf keeps the full definition", async () => {
+    const user = userEvent.setup();
+    renderHeader({ columns: TACTIC_COLUMNS });
+
+    const header = screen.getByRole("columnheader", { name: FULL });
+    expect(within(header).getByText("GK")).toBeVisible();
+    expect(
+      within(header).getByText("Goalkeeper / Line-Holding Keeper"),
+    ).toBeVisible();
+    // The focusable leaf itself carries the complete definition.
+    within(header).getByRole("button", { name: FULL });
+    // No visible definition until keyboard focus — title alone is no proof.
+    expect(within(header).queryByRole("tooltip")).toBeNull();
+
+    await user.tab();
+    expect(
+      await within(header).findByRole("tooltip", { name: FULL }),
+    ).toBeVisible();
+  });
+
+  it("hides the visible definition again after focus leaves the leaf", async () => {
+    const user = userEvent.setup();
+    renderHeader({ columns: TACTIC_COLUMNS });
+
+    const header = screen.getByRole("columnheader", { name: FULL });
+    await user.tab();
+    expect(
+      await within(header).findByRole("tooltip", { name: FULL }),
+    ).toBeVisible();
+
+    await user.tab();
+    expect(within(header).queryByRole("tooltip")).toBeNull();
+  });
+});

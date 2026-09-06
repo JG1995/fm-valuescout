@@ -58,6 +58,17 @@ export type ConfigurableTableColumn = {
   label: string;
   align: PlayerMetricAlignment;
   width: number;
+  /**
+   * Smaller role context shown inline after the compact primary label.
+   * Only tactic leaves supply this; other leaves render `label` alone.
+   */
+  secondaryLabel?: string;
+  /**
+   * Complete accessible name for the leaf (tactic full definition).
+   * Used for the header cell, sort button, menu, and resize handle so the
+   * compact primary never costs screen-reader users information.
+   */
+  accessibleLabel?: string;
 };
 
 export type ConfigurableTableFixedColumn = ConfigurableTableColumn;
@@ -206,6 +217,11 @@ export function ConfigurableTableHeader({
 }: ConfigurableTableHeaderProps) {
   const [openColumnId, setOpenColumnId] = useState<string | null>(null);
   const [pickingColumnId, setPickingColumnId] = useState<string | null>(null);
+  // Tactic full-definition disclosure: keyboard focus or hover on a compact
+  // leaf reveals the complete definition beside it. State (not pure CSS)
+  // keeps the reveal provable in the contract tests; `title` only
+  // supplements and never satisfies the requirement on its own.
+  const [revealedColumnId, setRevealedColumnId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
   // No currently supplied catalog contains `sortable: false`, so listing
@@ -326,12 +342,18 @@ export function ConfigurableTableHeader({
               : "descending"
             : "none";
           const Caret = sortDir === "asc" ? ChevronUp : ChevronDown;
+          // Tactic leaves carry the complete definition as their accessible
+          // name while showing only the compact primary + role context.
+          const accessibleName = column.accessibleLabel ?? column.label;
+          const revealed =
+            column.accessibleLabel !== undefined &&
+            revealedColumnId === column.id;
 
           return (
             <th
               key={column.id}
               scope="col"
-              aria-label={column.label}
+              aria-label={accessibleName}
               aria-sort={columnSortable ? ariaSort : undefined}
               className={`relative h-table-header-height px-2 ${
                 column.align === "right" ? "text-right" : "text-left"
@@ -343,6 +365,19 @@ export function ConfigurableTableHeader({
                       setOpenColumnId(column.id);
                       setPickingColumnId(null);
                     }
+                  : undefined
+              }
+              onMouseEnter={
+                column.accessibleLabel !== undefined
+                  ? () => setRevealedColumnId(column.id)
+                  : undefined
+              }
+              onMouseLeave={
+                column.accessibleLabel !== undefined
+                  ? () =>
+                      setRevealedColumnId((current) =>
+                        current === column.id ? null : current,
+                      )
                   : undefined
               }
             >
@@ -357,16 +392,30 @@ export function ConfigurableTableHeader({
                   }}
                   type="button"
                   aria-keyshortcuts="Shift+F10"
+                  aria-label={column.accessibleLabel}
                   title={
                     columnSortable
-                      ? `${column.label}: click to sort; right-click or press Shift+F10 for column options`
-                      : column.label
+                      ? `${accessibleName}: click to sort; right-click or press Shift+F10 for column options`
+                      : accessibleName
                   }
                   className={`inline-flex w-full min-w-0 items-center gap-1 truncate text-label-md uppercase ${
                     column.align === "right" ? "justify-end" : "justify-start"
                   } ${active ? "text-primary" : "text-on-surface-variant"}`}
                   onClick={
                     columnSortable ? () => onSortChange(column.id) : undefined
+                  }
+                  onFocus={
+                    column.accessibleLabel !== undefined
+                      ? () => setRevealedColumnId(column.id)
+                      : undefined
+                  }
+                  onBlur={
+                    column.accessibleLabel !== undefined
+                      ? () =>
+                          setRevealedColumnId((current) =>
+                            current === column.id ? null : current,
+                          )
+                      : undefined
                   }
                   onKeyDown={(event) => {
                     if (
@@ -383,7 +432,14 @@ export function ConfigurableTableHeader({
                     }
                   }}
                 >
-                  <span className="truncate">{column.label}</span>
+                  <span className="truncate">
+                    {column.label}
+                    {column.secondaryLabel ? (
+                      <span className="ml-1 text-label-sm normal-case">
+                        {column.secondaryLabel}
+                      </span>
+                    ) : null}
+                  </span>
                   {active ? (
                     <Caret
                       aria-hidden
@@ -393,12 +449,20 @@ export function ConfigurableTableHeader({
                   ) : null}
                 </button>
               </div>
+              {revealed ? (
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute top-full left-0 z-30 mt-1 w-56 rounded-md border border-outline-variant bg-surface-container-highest p-2 text-left text-body-sm normal-case text-on-surface shadow-overlay"
+                >
+                  {accessibleName}
+                </span>
+              ) : null}
 
               {configurable && open && !picking ? (
                 <div
                   ref={menuRef}
                   role="menu"
-                  aria-label={`${column.label} column actions`}
+                  aria-label={`${accessibleName} column actions`}
                   className="absolute right-1 top-full z-30 mt-1 w-44 rounded-md border border-outline-variant bg-surface-container-highest p-1 text-left shadow-overlay"
                   onKeyDown={(event) => {
                     if (event.key === "Escape") {
@@ -453,7 +517,7 @@ export function ConfigurableTableHeader({
                     }}
                   >
                     <Trash2 aria-hidden size={16} strokeWidth={1.5} />
-                    Remove {column.label}
+                    Remove {accessibleName}
                   </button>
                 </div>
               ) : null}
@@ -485,7 +549,7 @@ export function ConfigurableTableHeader({
 
               {configurable ? (
                 <ColumnResizeHandle
-                  label={column.label}
+                  label={accessibleName}
                   width={column.width}
                   onResize={(width) => onResizeColumn(column.id, width)}
                 />

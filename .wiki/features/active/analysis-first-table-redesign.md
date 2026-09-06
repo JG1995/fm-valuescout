@@ -480,7 +480,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 #### Commit 6 — Present compact accessible tactic headers
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tables): present compact accessible tactic headers`
 
@@ -537,7 +537,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 #### Commit 7 — Integrate the Search table toolbar
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tables): integrate the Search table toolbar`
 
@@ -821,19 +821,19 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 **PR:** Redesign shared table for analysis-first views
 
-**Commit:** Present compact accessible tactic headers
+**Commit:** Integrate the Search table toolbar
 
 ### RED or removal proof
 
-Add failing Search/header tests for compact primary labels, visible role context, complete accessible names, keyboard-focus disclosure, and the unchanged 11-lane interleaving contract.
+Add failing toolbar-contract and Search route tests for associated summary, chips, removal, Clear, Edit, Columns, dataset toggles, silent drafts, and page-action non-descendance.
 
 ### Expected outcome
 
-Tactic leaves use compact placement labels with role context while keyboard and screen-reader users retain visible access to each complete tactic definition.
+Search and Moneyball Search use one minimal shared table-associated toolbar while Add Tactic and Upload Shortlist remain page-header actions outside it.
 
 ### Explicit exclusions
 
-Group structure, identity, toolbar work, shared cell changes, defaults, scoring logic, backend changes, and unrelated refactors.
+Staff or Squad toolbar adoption, filter or sort semantic changes, page-action behavior changes, backend changes, and unrelated refactors.
 
 ## Discoveries and replanning
 
@@ -847,7 +847,8 @@ Group structure, identity, toolbar work, shared cell changes, defaults, scoring 
 | PR 1 — Redesign shared table for analysis-first views | Commit 2 — Support grouped table headers | 630b89999367e0234167edb51ddb77c330235e12 | Added shared contiguous group resolution, semantic two-row headers, exact group maps for all six layouts, and 64px sticky-header focus geometry. | Component tests 21/21; affected route tests 243/243; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review required direct proofs for all six panel-owned maps and runtime virtualizer focus geometry; correction review accepted them. |
 | PR 1 — Redesign shared table for analysis-first views | Commit 3 — Establish the sticky identity shell | 98c0cf80a9d60880e00f1a7a5aca199eb143e176 | Added one optional storage-agnostic identity contract, exact shell-to-header callback handoff, strict identity-analysis-fixed ordering, sticky layering, and bounded identity resizing; migrated all callers with identity omitted. | Component tests 32/32; affected route tests 243/243; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review required a combined menu-over-sticky-identity layering proof; correction review accepted it. |
 | PR 1 — Redesign shared table for analysis-first views | Commit 4 — Activate required table identity | 10f9a9fa815a1427b79e1b87e1b425d5952a35bd | Migrated layouts to version 8 with separate identity widths and conservative custom-layout retention, then activated sticky caller-owned identity across all six table modes without imagery or duplication. | Store tests 51/51; affected component and route tests 279/279; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review found nonempty layout replacement dropped identity width; correction preserved it and added persistence regression proof. |
-| PR 1 — Redesign shared table for analysis-first views | Commit 5 — Add grouped column management | Pending record | Added one keyboard-operable grouped Columns control driven by the header group input, with analysis-only toggles, identity exclusion, zero-analysis support, and fixed-shortlist degradation. | Component and store tests 93/93; Search 78/78; Staff 47/47; Squad 130/130; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review found missing dialog focus and tactic-only removal restoring defaults; correction fixed leaf and whole-group identity-only paths. |
+| PR 1 — Redesign shared table for analysis-first views | Commit 5 — Add grouped column management | 484a8bf6bb5ccf853121c1049a9e98ef1a55a78d | Added one keyboard-operable grouped Columns control driven by the header group input, with analysis-only toggles, identity exclusion, zero-analysis support, and fixed-shortlist degradation. | Component and store tests 93/93; Search 78/78; Staff 47/47; Squad 130/130; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review found missing dialog focus and tactic-only removal restoring defaults; correction fixed leaf and whole-group identity-only paths. |
+| PR 1 — Redesign shared table for analysis-first views | Commit 6 — Present compact accessible tactic headers | Pending record | Added compact tactic placement labels with restrained role context while preserving full accessible definitions through keyboard-focus and hover disclosure for all 11 lanes. | Header and Search tests 123/123; affected Staff, Squad, and store tests 228/228; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 0 | None |
 
 ## Final validation
 
