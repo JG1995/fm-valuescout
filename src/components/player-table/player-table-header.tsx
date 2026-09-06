@@ -21,6 +21,34 @@ import { resolveTableGroupRuns, type TableGroupInput } from "./table-groups";
 
 const KEYBOARD_RESIZE_STEP = 16;
 
+export const IDENTITY_COLUMN_MIN_WIDTH = 240;
+export const IDENTITY_COLUMN_DEFAULT_WIDTH = 280;
+export const IDENTITY_COLUMN_MAX_WIDTH = 360;
+
+export function clampIdentityWidth(width: number | undefined): number {
+  if (!Number.isFinite(width)) {
+    return IDENTITY_COLUMN_DEFAULT_WIDTH;
+  }
+  return Math.min(
+    IDENTITY_COLUMN_MAX_WIDTH,
+    Math.max(IDENTITY_COLUMN_MIN_WIDTH, width as number),
+  );
+}
+
+/**
+ * Storage-agnostic identity header contract. The shared shell owns the
+ * region order, stickiness, and body cells; the header alone renders the
+ * identity `<th>` from this object. The caller-owned `renderCell` lives on
+ * the shell-level `ConfigurableTableIdentity` extension; the header never
+ * touches row data, the store, or table IDs.
+ */
+export type ConfigurableTableIdentityHeader = {
+  id: string;
+  label: string;
+  width?: number;
+  onResize: (width: number) => void;
+};
+
 export type ConfigurableTableColumn = {
   id: string;
   label: string;
@@ -40,6 +68,7 @@ export type ConfigurableTableHeaderProps = {
   columns: readonly ConfigurableTableColumn[];
   fixedColumns?: readonly ConfigurableTableFixedColumn[];
   groups?: TableGroupInput;
+  identity?: ConfigurableTableIdentityHeader;
   configurable?: boolean;
   sortable?: boolean;
   metrics: readonly ConfigurableTableMetric[];
@@ -61,10 +90,14 @@ function ColumnResizeHandle({
   label,
   width,
   onResize,
+  minWidth = PLAYER_TABLE_MIN_COLUMN_WIDTH,
+  maxWidth = PLAYER_TABLE_MAX_COLUMN_WIDTH,
 }: {
   label: string;
   width: number;
   onResize: (width: number) => void;
+  minWidth?: number;
+  maxWidth?: number;
 }) {
   const handleRef = useRef<HTMLHRElement>(null);
   const activePointerRef = useRef<{
@@ -97,8 +130,8 @@ function ColumnResizeHandle({
       ref={handleRef}
       aria-label={`Resize ${label} column`}
       aria-orientation="vertical"
-      aria-valuemin={PLAYER_TABLE_MIN_COLUMN_WIDTH}
-      aria-valuemax={PLAYER_TABLE_MAX_COLUMN_WIDTH}
+      aria-valuemin={minWidth}
+      aria-valuemax={maxWidth}
       aria-valuenow={width}
       aria-valuetext={`${width} pixels`}
       tabIndex={0}
@@ -139,11 +172,11 @@ function ColumnResizeHandle({
             break;
           case "Home":
             event.preventDefault();
-            onResize(PLAYER_TABLE_MIN_COLUMN_WIDTH);
+            onResize(minWidth);
             break;
           case "End":
             event.preventDefault();
-            onResize(PLAYER_TABLE_MAX_COLUMN_WIDTH);
+            onResize(maxWidth);
             break;
         }
       }}
@@ -155,6 +188,7 @@ export function ConfigurableTableHeader({
   columns,
   fixedColumns = [],
   groups,
+  identity,
   configurable = true,
   sortable = true,
   metrics,
@@ -214,11 +248,36 @@ export function ConfigurableTableHeader({
 
   const groupRuns = resolveTableGroupRuns(columns, groups);
   const grouped = groupRuns.length > 0;
+  const identityWidth = clampIdentityWidth(identity?.width);
+  // The sole identity header cell: resize handle only, never a sort
+  // affordance, context menu, or remove path. It leads the group row with
+  // rowSpan 2 so the grouped + leaf context stays visible beside it.
+  const identityHeaderCell = identity ? (
+    <th
+      key={identity.id}
+      scope="col"
+      aria-label={identity.label}
+      rowSpan={2}
+      className="relative sticky left-0 z-20 h-table-header-height bg-surface-container-lowest px-2 text-left"
+    >
+      <span className="block truncate pr-1 text-label-md text-on-surface-variant uppercase">
+        {identity.label}
+      </span>
+      <ColumnResizeHandle
+        label={identity.label}
+        width={identityWidth}
+        minWidth={IDENTITY_COLUMN_MIN_WIDTH}
+        maxWidth={IDENTITY_COLUMN_MAX_WIDTH}
+        onResize={(width) => identity.onResize(clampIdentityWidth(width))}
+      />
+    </th>
+  ) : null;
 
   return (
     <thead className="sticky top-0 z-10">
       {grouped ? (
         <tr className="bg-surface-container-lowest">
+          {identityHeaderCell}
           {groupRuns.map((run) => (
             <th
               key={`${run.group.id}-${run.startIndex}`}
@@ -247,6 +306,7 @@ export function ConfigurableTableHeader({
         </tr>
       ) : null}
       <tr className="bg-surface-container-lowest">
+        {grouped ? null : identityHeaderCell}
         {columns.map((column) => {
           const active = column.id === sortBy;
           const open = openColumnId === column.id;

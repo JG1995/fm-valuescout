@@ -260,9 +260,10 @@ function SquadOverviewTable({
       caption="Squad overview"
       columnCount={columns.length}
       columns={columns}
-      header={
+      renderHeader={({ columns: tableColumns, fixedColumns }) => (
         <PlayerTableHeader
-          columns={columns}
+          columns={tableColumns}
+          fixedColumns={fixedColumns}
           groups={SQUAD_TABLE_GROUPS}
           metrics={SQUAD_HEADER_METRICS}
           sortBy={sortBy}
@@ -276,7 +277,7 @@ function SquadOverviewTable({
           onMoveColumn={onMoveColumn}
           onResizeColumn={onResizeColumn}
         />
-      }
+      )}
       firstPageQueryOptions={firstPageQueryOptions}
       isReplacementActive={isReplacementActive}
       pageQueryOptions={(offset, limit) =>

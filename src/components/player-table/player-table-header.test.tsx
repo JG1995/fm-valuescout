@@ -1,9 +1,16 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConfigurableTableColumn,
   ConfigurableTableHeader,
+  type ConfigurableTableIdentityHeader,
   type ConfigurableTableMetric,
 } from "./player-table-header";
 import type { TableGroupInput } from "./table-groups";
@@ -148,6 +155,37 @@ const GROUPED_GROUPS: TableGroupInput = {
   },
 };
 
+function renderIdentityHeader({
+  width,
+  label = "Player",
+}: {
+  width?: number;
+  label?: string;
+} = {}) {
+  const onResize = vi.fn();
+  const identity: ConfigurableTableIdentityHeader = {
+    id: "identity",
+    label,
+    width,
+    onResize,
+  };
+  render(
+    <ConfigurableTableHeader
+      columns={COLUMNS}
+      metrics={METRICS}
+      sortBy="ca"
+      sortDir="desc"
+      onSortChange={vi.fn()}
+      onAddColumn={vi.fn()}
+      onRemoveColumn={vi.fn()}
+      onMoveColumn={vi.fn()}
+      onResizeColumn={vi.fn()}
+      identity={identity}
+    />,
+  );
+  return { onResize };
+}
+
 describe("player table grouped headers", () => {
   it("renders a group row with colgroup scopes and run spans above the leaf row", () => {
     renderHeader({ columns: GROUPED_COLUMNS, groups: GROUPED_GROUPS });
@@ -261,6 +299,108 @@ describe("player table grouped headers", () => {
     expect(actions.closest("thead")?.querySelectorAll("tr")).toHaveLength(2);
     fireEvent.contextMenu(actions);
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("renders the sole identity header without sort, menu, or remove affordances", () => {
+    const onResize = vi.fn();
+    render(
+      <ConfigurableTableHeader
+        columns={GROUPED_COLUMNS}
+        groups={GROUPED_GROUPS}
+        metrics={METRICS}
+        sortBy="ca"
+        sortDir="desc"
+        onSortChange={vi.fn()}
+        onAddColumn={vi.fn()}
+        onRemoveColumn={vi.fn()}
+        onMoveColumn={vi.fn()}
+        onResizeColumn={vi.fn()}
+        identity={{
+          id: "identity",
+          label: "Player",
+          width: 280,
+          onResize,
+        }}
+      />,
+    );
+
+    const identity = screen.getByRole("columnheader", { name: "Player" });
+    expect(identity).toHaveAttribute("scope", "col");
+    expect(identity.getAttribute("rowspan")).toBe("2");
+    expect(within(identity).queryByRole("button")).toBeNull();
+    fireEvent.contextMenu(identity);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.queryByRole("menuitem")).toBeNull();
+    // The identity corner leads the group row ahead of every group run.
+    const thead = identity.closest("thead") as HTMLElement;
+    expect(thead.querySelector("tr")?.firstElementChild).toBe(identity);
+    expect(onResize).not.toHaveBeenCalled();
+  });
+
+  it("exposes the 240/280/360 identity resize bounds", () => {
+    renderIdentityHeader({ width: 280 });
+
+    const handle = screen.getByRole("separator", {
+      name: "Resize Player column",
+    });
+    expect(handle).toHaveAttribute("aria-valuemin", "240");
+    expect(handle).toHaveAttribute("aria-valuemax", "360");
+    expect(handle).toHaveAttribute("aria-valuenow", "280");
+  });
+
+  it("clamps identity keyboard resize at both bounds", () => {
+    const { onResize } = renderIdentityHeader({ width: 280 });
+    const handle = screen.getByRole("separator", {
+      name: "Resize Player column",
+    });
+
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    expect(onResize).toHaveBeenLastCalledWith(264);
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    expect(onResize).toHaveBeenLastCalledWith(296);
+    fireEvent.keyDown(handle, { key: "Home" });
+    expect(onResize).toHaveBeenLastCalledWith(240);
+    fireEvent.keyDown(handle, { key: "End" });
+    expect(onResize).toHaveBeenLastCalledWith(360);
+  });
+
+  it("honors the identity bounds when stepping past them", () => {
+    const below = renderIdentityHeader({ width: 240 });
+    fireEvent.keyDown(
+      screen.getByRole("separator", { name: "Resize Player column" }),
+      { key: "ArrowLeft" },
+    );
+    expect(below.onResize).toHaveBeenCalledWith(240);
+    cleanup();
+
+    const above = renderIdentityHeader({ width: 360 });
+    fireEvent.keyDown(
+      screen.getByRole("separator", { name: "Resize Player column" }),
+      { key: "ArrowRight" },
+    );
+    expect(above.onResize).toHaveBeenCalledWith(360);
+  });
+
+  it("clamps identity pointer resize at both bounds", () => {
+    const { onResize } = renderIdentityHeader({ width: 280 });
+    const handle = screen.getByRole("separator", {
+      name: "Resize Player column",
+    });
+
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 200 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: -100 });
+    expect(onResize).toHaveBeenLastCalledWith(240);
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 800 });
+    expect(onResize).toHaveBeenLastCalledWith(360);
+    fireEvent.pointerUp(handle, { pointerId: 1 });
+  });
+
+  it("defaults the identity width to 280 without a supplied width", () => {
+    renderIdentityHeader({ width: undefined });
+
+    expect(
+      screen.getByRole("separator", { name: "Resize Player column" }),
+    ).toHaveAttribute("aria-valuenow", "280");
   });
 
   it("keeps a non-sortable leaf sort-free under its group", async () => {

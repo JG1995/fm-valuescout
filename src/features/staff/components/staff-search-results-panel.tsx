@@ -276,10 +276,11 @@ function StaffSearchTable({
       getPageRows={(page) => page.staff}
       getRowKey={(staff) => staff.uid}
       onRowActivate={onRowActivate}
-      header={
+      renderHeader={({ columns: tableColumns, fixedColumns }) => (
         <ConfigurableTableHeader
-          columns={columns}
+          columns={tableColumns}
           configurable={configurable}
+          fixedColumns={fixedColumns}
           groups={shortlist ? STAFF_SHORTLIST_TABLE_GROUPS : STAFF_TABLE_GROUPS}
           sortable
           metrics={shortlist ? STAFF_SHORTLIST_METRICS : STAFF_METRICS}
@@ -294,7 +295,7 @@ function StaffSearchTable({
           onMoveColumn={onMoveColumn}
           onResizeColumn={onResizeColumn}
         />
-      }
+      )}
       pageQueryOptions={pageQueryOptions}
       pageSize={STAFF_PAGE_SIZE}
       renderCells={(staff) =>

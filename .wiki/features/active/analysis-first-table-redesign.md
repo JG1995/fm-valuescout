@@ -294,7 +294,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 #### Commit 3 — Establish the sticky identity shell
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tables): establish the sticky identity shell`
 
@@ -354,7 +354,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 #### Commit 4 — Activate required table identity
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tables): activate required table identity`
 
@@ -821,19 +821,19 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 **PR:** Redesign shared table for analysis-first views
 
-**Commit:** Establish the sticky identity shell
+**Commit:** Activate required table identity
 
 ### RED or removal proof
 
-Add failing contract tests for the optional identity region's order, sticky offsets, layering, bounded resize callbacks, actual shell-to-header handoff, and absent-identity parity before implementing the seam.
+Add failing store tests for the exact v4–v8 migration matrix and failing route/header proofs for required, non-removable identity across all six layouts before activating the caller renderers.
 
 ### Expected outcome
 
-The shared shell exposes one storage-agnostic optional identity contract and `renderHeader` callback while all current consumers remain visually and behaviorally unchanged because they omit identity.
+All six shared tables render a sticky caller-owned identity region, while store version 8 persists identity width separately and conservatively preserves customized analysis layouts without identity duplication.
 
 ### Explicit exclusions
 
-Identity activation or content, store persistence, grouped Columns, toolbar work, tactic labels, cell consolidation, backend changes, and unrelated refactors.
+Grouped Columns, toolbar work, tactic-label changes, cell consolidation, width-model changes beyond identity stickiness, backend changes, and unrelated refactors.
 
 ## Discoveries and replanning
 
@@ -844,7 +844,8 @@ Identity activation or content, store persistence, grouped Columns, toolbar work
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Redesign shared table for analysis-first views | Commit 1 — Record the approved feature plan | 8de6d8fc26092383c53fbd423df3568471ac0193 | Recorded the accepted schema 2 feature ledger and TODO Active entry on the authorized feature branch. | `ledger_state.py` and `delivery_state.py` runnable with the accepted fingerprint; staged diff check clean. | Not applicable | Clear | 0 | Branch authority was renamed to `feature/analysis-first-tables` and re-fingerprinted before delivery at the developer's request. |
-| PR 1 — Redesign shared table for analysis-first views | Commit 2 — Support grouped table headers | Pending record | Added shared contiguous group resolution, semantic two-row headers, exact group maps for all six layouts, and 64px sticky-header focus geometry. | Component tests 21/21; affected route tests 243/243; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review required direct proofs for all six panel-owned maps and runtime virtualizer focus geometry; correction review accepted them. |
+| PR 1 — Redesign shared table for analysis-first views | Commit 2 — Support grouped table headers | 630b89999367e0234167edb51ddb77c330235e12 | Added shared contiguous group resolution, semantic two-row headers, exact group maps for all six layouts, and 64px sticky-header focus geometry. | Component tests 21/21; affected route tests 243/243; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review required direct proofs for all six panel-owned maps and runtime virtualizer focus geometry; correction review accepted them. |
+| PR 1 — Redesign shared table for analysis-first views | Commit 3 — Establish the sticky identity shell | Pending record | Added one optional storage-agnostic identity contract, exact shell-to-header callback handoff, strict identity-analysis-fixed ordering, sticky layering, and bounded identity resizing; migrated all callers with identity omitted. | Component tests 32/32; affected route tests 243/243; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | Initial review required a combined menu-over-sticky-identity layering proof; correction review accepted it. |
 
 ## Final validation
 

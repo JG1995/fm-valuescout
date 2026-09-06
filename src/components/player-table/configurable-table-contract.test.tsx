@@ -1,12 +1,17 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConfigurableTableColumn,
+  type ConfigurableTableFixedColumn,
   ConfigurableTableHeader,
 } from "./player-table-header";
-import { ConfigurableVirtualizedTable } from "./virtualized-player-table";
+import {
+  type ConfigurableTableIdentity,
+  ConfigurableVirtualizedTable,
+} from "./virtualized-player-table";
 
 const { virtualizerOptionsSeen, scrollToIndexCalls } = vi.hoisted(() => ({
   virtualizerOptionsSeen: [] as Array<{ scrollPaddingStart: unknown }>,
@@ -129,13 +134,13 @@ describe("configurable table contracts", () => {
           getPageRows={(page: { rows: Array<{ uid: string; name: string }> }) =>
             page.rows
           }
-          header={
+          renderHeader={() => (
             <thead>
               <tr>
                 <th scope="col">Scout</th>
               </tr>
             </thead>
-          }
+          )}
           pageQueryOptions={() => ({
             queryKey: ["staff", "rows"],
             queryFn: async () => ({
@@ -174,7 +179,7 @@ describe("configurable table contracts", () => {
           getPageRows={(page: { rows: Array<{ uid: string; name: string }> }) =>
             page.rows
           }
-          header={
+          renderHeader={() => (
             <ConfigurableTableHeader
               columns={columns}
               fixedColumns={FIXED_COLUMNS}
@@ -187,7 +192,7 @@ describe("configurable table contracts", () => {
               onMoveColumn={vi.fn()}
               onResizeColumn={vi.fn()}
             />
-          }
+          )}
           onRowActivate={onActivate}
           pageQueryOptions={() => ({
             queryKey: ["staff", "fixed"],
@@ -251,7 +256,7 @@ describe("grouped table header contract", () => {
           columnCount={1}
           columns={[columns[0]]}
           getPageRows={(page: KeyboardPage) => page.rows}
-          header={
+          renderHeader={() => (
             <ConfigurableTableHeader
               columns={columns}
               metrics={STAFF_METRICS}
@@ -267,7 +272,7 @@ describe("grouped table header contract", () => {
                 groupForColumn: () => "role-fit",
               }}
             />
-          }
+          )}
           onRowActivate={vi.fn()}
           pageQueryOptions={(offset, limit) => ({
             queryKey: ["staff", "keyboard", offset],
@@ -363,5 +368,246 @@ describe("grouped table header contract", () => {
     expect(actions.getAttribute("rowspan")).toBe("2");
     fireEvent.contextMenu(actions);
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+});
+
+function zLayer(className: string): number {
+  const arbitrary = className.match(/z-\[(\d+)\]/);
+  if (arbitrary) {
+    return Number(arbitrary[1]);
+  }
+  const flat = className.match(/(?:^|\s)z-(\d+)(?:\s|$)/);
+  if (flat) {
+    return Number(flat[1]);
+  }
+  throw new Error(`no z-layer in: ${className}`);
+}
+
+describe("sticky identity shell", () => {
+  type IdentityRow = { uid: string; name: string };
+  type IdentityPage = { rows: IdentityRow[]; total: number };
+
+  function renderIdentityShell({
+    identity,
+    headerFactory,
+  }: {
+    identity?: ConfigurableTableIdentity<IdentityRow>;
+    headerFactory: (args: {
+      identity: ConfigurableTableIdentity<IdentityRow> | undefined;
+      columns: readonly ConfigurableTableColumn[];
+      fixedColumns: readonly ConfigurableTableFixedColumn[];
+    }) => ReactNode;
+  }) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const onRenderHeader = vi.fn(headerFactory);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ConfigurableVirtualizedTable
+          caption="Staff identity rows"
+          columnCount={columns.length}
+          columns={columns}
+          fixedColumns={FIXED_COLUMNS}
+          getPageRows={(page: IdentityPage) => page.rows}
+          identity={identity}
+          renderHeader={onRenderHeader}
+          pageQueryOptions={() => ({
+            queryKey: ["staff", "identity"],
+            queryFn: async (): Promise<IdentityPage> => ({
+              rows: [{ uid: "staff-1", name: "Coach One" }],
+              total: 1,
+            }),
+          })}
+          pageSize={50}
+          renderCells={(row) => <td>{row?.name ?? "…"}</td>}
+          renderFixedCells={() => <td>Boost CA</td>}
+          testId="staff-identity-rows-scroller"
+          getRowKey={(row: IdentityRow) => row.uid}
+          total={1}
+        />
+      </QueryClientProvider>,
+    );
+    return { onRenderHeader };
+  }
+
+  function staffHeaderFactory({
+    identity,
+    columns: tableColumns,
+  }: {
+    identity: ConfigurableTableIdentity<IdentityRow> | undefined;
+    columns: readonly ConfigurableTableColumn[];
+    fixedColumns: readonly ConfigurableTableFixedColumn[];
+  }) {
+    return (
+      <ConfigurableTableHeader
+        columns={tableColumns}
+        fixedColumns={FIXED_COLUMNS}
+        metrics={STAFF_METRICS}
+        sortBy="role.scout"
+        sortDir="desc"
+        onSortChange={vi.fn()}
+        onAddColumn={vi.fn()}
+        onRemoveColumn={vi.fn()}
+        onMoveColumn={vi.fn()}
+        onResizeColumn={vi.fn()}
+        groups={{
+          groups: [{ id: "role-fit", label: "Role Fit" }],
+          groupForColumn: () => "role-fit",
+        }}
+        identity={identity}
+      />
+    );
+  }
+
+  it("hands the identity object to renderHeader and renders identity first and sticky", async () => {
+    const identity: ConfigurableTableIdentity<IdentityRow> = {
+      id: "identity",
+      label: "Player",
+      width: 280,
+      renderCell: (row) => <span>{row ? `Identity ${row.name}` : "…"}</span>,
+      onResize: vi.fn(),
+    };
+    const { onRenderHeader } = renderIdentityShell({
+      identity,
+      headerFactory: staffHeaderFactory,
+    });
+
+    const table = await screen.findByRole("table", {
+      name: "Staff identity rows",
+    });
+
+    expect(onRenderHeader).toHaveBeenCalled();
+    const args = onRenderHeader.mock.calls[0][0];
+    expect(args.identity).toBe(identity);
+    expect(args.columns).toEqual(columns);
+    expect(args.fixedColumns).toEqual(FIXED_COLUMNS);
+
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Player");
+    expect(headers[0]).toHaveAttribute("scope", "col");
+    expect(headers[0].getAttribute("rowspan")).toBe("2");
+    expect(headers[0].className).toContain("sticky");
+    expect(headers[0].className).toContain("left-0");
+    // Grouped + leaf context stays visible beside the identity corner.
+    expect(
+      within(table).getByRole("columnheader", { name: "Role Fit" }),
+    ).toBeInTheDocument();
+
+    const row = (await within(table).findByText("Identity Coach One")).closest(
+      "tr",
+    ) as HTMLElement;
+    const cells = Array.from(row.querySelectorAll("td"));
+    expect(cells).toHaveLength(3);
+    expect(cells[0]).toHaveTextContent("Identity Coach One");
+    expect(cells[0].className).toContain("sticky");
+    expect(cells[0].className).toContain("left-0");
+    expect(cells[1]).toHaveTextContent("Coach One");
+    expect(cells[2]).toHaveTextContent("Boost CA");
+  });
+
+  it("keeps the sticky thead layered above scrolled identity cells", async () => {
+    renderIdentityShell({
+      identity: {
+        id: "identity",
+        label: "Player",
+        width: 280,
+        renderCell: (row) => <span>{row ? `Identity ${row.name}` : "…"}</span>,
+        onResize: vi.fn(),
+      },
+      headerFactory: staffHeaderFactory,
+    });
+
+    const table = await screen.findByRole("table", {
+      name: "Staff identity rows",
+    });
+    const thead = table.querySelector("thead") as HTMLElement;
+    expect(thead.className).toContain("z-10");
+    const identityHeader = within(table).getByRole("columnheader", {
+      name: "Player",
+    });
+    // The corner cell floats above both the scrolled columns and the
+    // sticky body cells.
+    expect(identityHeader.className).toContain("z-20");
+    const row = (await within(table).findByText("Identity Coach One")).closest(
+      "tr",
+    ) as HTMLElement;
+    expect(row.querySelector("td")?.className).toContain("z-[1]");
+  });
+
+  it("renders an open analysis-column menu above the sticky identity cells", async () => {
+    renderIdentityShell({
+      identity: {
+        id: "identity",
+        label: "Player",
+        width: 280,
+        renderCell: (row) => <span>{row ? `Identity ${row.name}` : "…"}</span>,
+        onResize: vi.fn(),
+      },
+      headerFactory: staffHeaderFactory,
+    });
+
+    const table = await screen.findByRole("table", {
+      name: "Staff identity rows",
+    });
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "Scout" }),
+    );
+    const menu = await within(table).findByRole("menu", {
+      name: "Scout column actions",
+    });
+    expect(menu).toBeVisible();
+    // A stacking regression that drops the menu to or below the sticky
+    // identity corner (z-20) or body cells (z-[1]) would cover its actions.
+    const identityHeader = within(table).getByRole("columnheader", {
+      name: "Player",
+    });
+    const row = (await within(table).findByText("Identity Coach One")).closest(
+      "tr",
+    ) as HTMLElement;
+    expect(zLayer(menu.className)).toBeGreaterThan(
+      zLayer(identityHeader.className),
+    );
+    expect(zLayer(menu.className)).toBeGreaterThan(
+      zLayer((row.querySelector("td") as HTMLElement).className),
+    );
+  });
+
+  it("accounts the default 280 identity width in the table minimum", async () => {
+    renderIdentityShell({
+      identity: {
+        id: "identity",
+        label: "Player",
+        renderCell: () => <span>Identity</span>,
+        onResize: vi.fn(),
+      },
+      headerFactory: staffHeaderFactory,
+    });
+
+    // 280 identity + 96 analysis + 128 fixed actions.
+    const table = await screen.findByRole("table", {
+      name: "Staff identity rows",
+    });
+    expect(table).toHaveStyle({ minWidth: "504px" });
+  });
+
+  it("renders no identity region when the object is omitted", async () => {
+    const { onRenderHeader } = renderIdentityShell({
+      identity: undefined,
+      headerFactory: staffHeaderFactory,
+    });
+
+    const table = await screen.findByRole("table", {
+      name: "Staff identity rows",
+    });
+    expect(onRenderHeader.mock.calls[0][0].identity).toBeUndefined();
+    expect(
+      within(table).queryByRole("columnheader", { name: "Player" }),
+    ).toBeNull();
+    const row = (await within(table).findByText("Coach One")).closest(
+      "tr",
+    ) as HTMLElement;
+    expect(Array.from(row.querySelectorAll("td"))).toHaveLength(2);
   });
 });

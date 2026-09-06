@@ -327,9 +327,10 @@ function SearchResultsVirtualTable({
       caption="Player search results"
       columnCount={columns.length}
       columns={columns}
-      header={
+      renderHeader={({ columns: tableColumns, fixedColumns }) => (
         <PlayerTableHeader
-          columns={columns}
+          columns={tableColumns}
+          fixedColumns={fixedColumns}
           groups={
             view === "moneyball" ? MONEYBALL_TABLE_GROUPS : SEARCH_TABLE_GROUPS
           }
@@ -345,7 +346,7 @@ function SearchResultsVirtualTable({
           onResizeColumn={onResizeColumn}
           metrics={view === "moneyball" ? MONEYBALL_SEARCH_METRICS : undefined}
         />
-      }
+      )}
       firstPageQueryOptions={firstPageQueryOptions}
       isReplacementActive={isReplacementActive}
       pageQueryOptions={(offset, limit) =>
