@@ -3546,7 +3546,10 @@ test.describe("application smoke", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await stubTauriIpc(page, { plannerSnapshot: true });
+    await stubTauriIpc(page, {
+      plannerPotentialScores: true,
+      plannerSnapshot: true,
+    });
     await page.goto("/my-club");
 
     const main = page.getByRole("main");
@@ -3610,6 +3613,42 @@ test.describe("application smoke", () => {
           ).getBoundingClientRect().width,
       );
 
+    // Measure actual card buttons, not just the fixed string headers: one
+    // assigned card and one empty Assign card share the fixed column width.
+    const assignedCard = board
+      .getByRole("button", { name: /Potential Keeper/ })
+      .first();
+    const emptyCard = board.getByRole("button", { name: /, Empty$/ }).first();
+    await expect(assignedCard).toBeVisible();
+    await expect(emptyCard).toBeVisible();
+    const assignedCardWidthAt1280 = await assignedCard.evaluate(
+      (element) =>
+        (
+          element as unknown as {
+            getBoundingClientRect: () => { width: number };
+          }
+        ).getBoundingClientRect().width,
+    );
+    const emptyCardWidthAt1280 = await emptyCard.evaluate(
+      (element) =>
+        (
+          element as unknown as {
+            getBoundingClientRect: () => { width: number };
+          }
+        ).getBoundingClientRect().width,
+    );
+    // Both cards fill the fixed column despite different content lengths, so
+    // a fit-content regression would split them apart.
+    expect(
+      Math.abs(assignedCardWidthAt1280 - emptyCardWidthAt1280),
+    ).toBeLessThanOrEqual(2);
+    expect(assignedCardWidthAt1280).toBeGreaterThanOrEqual(
+      cardWidthAt1280 - 48,
+    );
+    expect(assignedCardWidthAt1280).toBeLessThanOrEqual(cardWidthAt1280 + 1);
+    expect(emptyCardWidthAt1280).toBeGreaterThanOrEqual(cardWidthAt1280 - 48);
+    expect(emptyCardWidthAt1280).toBeLessThanOrEqual(cardWidthAt1280 + 1);
+
     // The sticky slot band stays visible after board-level horizontal scroll.
     const slotHeader = board.getByRole("rowheader").first();
     await expect(slotHeader).toBeVisible();
@@ -3668,6 +3707,36 @@ test.describe("application smoke", () => {
     // Fixed card widths do not grow with the viewport.
     expect(cardWidthAt3440).toBeGreaterThanOrEqual(cardWidthAt1280 - 1);
     expect(cardWidthAt3440).toBeLessThanOrEqual(cardWidthAt1280 + 1);
+
+    // Actual card buttons keep their bounded widths at ultrawide.
+    const assignedCardWidthAt3440 = await assignedCard.evaluate(
+      (element) =>
+        (
+          element as unknown as {
+            getBoundingClientRect: () => { width: number };
+          }
+        ).getBoundingClientRect().width,
+    );
+    const emptyCardWidthAt3440 = await emptyCard.evaluate(
+      (element) =>
+        (
+          element as unknown as {
+            getBoundingClientRect: () => { width: number };
+          }
+        ).getBoundingClientRect().width,
+    );
+    expect(assignedCardWidthAt3440).toBeGreaterThanOrEqual(
+      assignedCardWidthAt1280 - 1,
+    );
+    expect(assignedCardWidthAt3440).toBeLessThanOrEqual(
+      assignedCardWidthAt1280 + 1,
+    );
+    expect(emptyCardWidthAt3440).toBeGreaterThanOrEqual(
+      emptyCardWidthAt1280 - 1,
+    );
+    expect(emptyCardWidthAt3440).toBeLessThanOrEqual(emptyCardWidthAt1280 + 1);
+    expect(assignedCardWidthAt3440).toBeLessThanOrEqual(cardWidthAt3440 + 1);
+    expect(emptyCardWidthAt3440).toBeLessThanOrEqual(cardWidthAt3440 + 1);
 
     const visibleAt3440 = await board
       .getByRole("columnheader", { name: /string/ })

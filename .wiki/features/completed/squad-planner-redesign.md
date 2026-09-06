@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -120,7 +120,7 @@ Land the v43 string-name persistence with ordinal backfill and ordinal defaults 
 
 **Required checks:** strict status `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -511,7 +511,7 @@ None — implementation complete; feature validation and close-out remain.
 | PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 3 — Own full squad structure in one team-settings transaction | e8694a26a735fc1ff321eb6800ea0110847c67f0 | Extended the team-settings transaction and adapter to validate and persist complete ordered string structure with stable IDs, scoped removals, and retained legacy mutations. | Structural RED produced four expected failures; planner 22/22, route 133/133, check-rust 809 passed, full check passed, and focused Planner smoke 1/1 passed. | Pass | Clear | 1 | Corrected target-name assertions and the E2E impact shape. Full smoke also exposed one reproducible unrelated Squad CA-boost progress failure outside this packet; focused Planner smoke passed. |
 | PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 4 — Manage strings inside Manage Teams | 44e1aac45a6f81c547b5ab45f73f7c6fae4cd4fc | Added ordered string add, rename, reorder, and removal controls to Manage Teams with frontend validation and target-specific team, string, and mixed confirmations. | Expected five-test RED; route 139/139, smoke 56/56, full check with 809 Rust tests, LSP, and whitespace checks passed. | Pass | Clear | 1 | Corrected mixed-removal confirmation wording and added direct combined-impact proof. |
 | PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 5 — Retire legacy string path; Manage Teams owns structure | 2a64ffc9ea764a00528e3a39427610d6e7ca157e | Removed the header mutation UI and every legacy add/remove service, command, API, registration, double, stub, and exclusive test; retained the static named-string table and tab fallback. | Contract-removal search found only migration-history text; route 131/131, smoke 56/56, full check with 805 Rust tests, LSP, and whitespace checks passed. | Pass | Clear | 1 | Corrected responsive focus proof and added post-save custom stored-name rendering with assignment preservation. |
-| PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 6 — Render the squad-depth board with bounded overflow | Pending record | Replaced the static table and measured tabs with one simultaneous all-squad board using sticky tactical context, named fixed-width string columns, compact assignment cards, and explicit Assign actions. | Board RED confirmed absent semantics; route 129/129, smoke 57/57 including 1280×800 and 3440×1440 proof, full check with 805 Rust tests, LSP, and whitespace checks passed. | Pass | Clear | 1 | Corrected assignment cells to use compact card surfaces and removed primary text from data cells with direct visual-token proof. |
+| PR 1 — Redesign Squad Planner around a configurable squad-depth board | Commit 6 — Render the squad-depth board with bounded overflow | eb4cf64b59ff133f3758a92dbfb9d7650721f66b | Replaced the static table and measured tabs with one simultaneous all-squad board using sticky tactical context, named fixed-width string columns, compact assignment cards, and explicit Assign actions. | Board RED confirmed absent semantics; route 129/129, smoke 57/57 including 1280×800 and 3440×1440 proof, full check with 805 Rust tests, LSP, and whitespace checks passed. | Pass | Clear | 1 | Corrected assignment cells to use compact card surfaces and removed primary text from data cells with direct visual-token proof. |
 
 ## Final validation
 
@@ -521,6 +521,10 @@ None — implementation complete; feature validation and close-out remain.
 - `./scripts/dev smoke` — Chromium suite green including board selectors, management string flow, and viewport fits at 1280×800 and 3440×1440.
 - `git diff --check` clean on the implementation range.
 
+## Close-out evidence
+
+Full frontend validation passed with 853 tests across 76 files. Exact Chromium smoke passed 57/57, including direct assigned and empty card-width measurements at 1280×800 and 3440×1440. The full quality gate passed with 805 Rust tests, 0 failed, and 2 intentionally ignored. Independent feature review cleared the exact implementation range `51d857b82181d54dee0ca8776a8cbf9f1508ac93..eb4cf64b59ff133f3758a92dbfb9d7650721f66b` after one test-only correction round. The stale cross-route Planner tab assertion now targets the simultaneous board header.
+
 ## Documentation impact
 
-Complete during reconciliation. `ARCHITECTURE.md` and `DESIGN.md` go stale during implementation (they describe the table matrix) and reconcile at feature close-out after the board exists. No ADR. No BACKLOG change.
+Feature close-out reconciled `.wiki/ARCHITECTURE.md` and `.wiki/DESIGN.md` with migration v43, transactional named-string ownership, Manage Teams structural editing, retired legacy commands, and the simultaneous overflow board. `.wiki/TODO.md` no longer lists the completed feature. No ADR, BACKLOG change, debug report, or temporary `.work/` artifact is warranted.
