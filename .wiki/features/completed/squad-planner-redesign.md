@@ -102,7 +102,7 @@ Land the v43 string-name persistence with ordinal backfill and ordinal defaults 
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/124
 
 **Merge ref:** Not merged
 
