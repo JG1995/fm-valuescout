@@ -210,7 +210,7 @@ export function PlannerSquadBoard({
 
   return (
     <section
-      className="max-h-[min(70vh,720px)] overflow-x-auto overflow-y-auto rounded-lg border border-outline-variant"
+      className="max-h-[min(70vh,720px)] w-fit max-w-full overflow-x-auto overflow-y-auto rounded-lg border border-outline-variant"
       aria-label="Squad depth board"
       data-testid="planner-squad-board"
     >

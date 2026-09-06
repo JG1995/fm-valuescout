@@ -3573,6 +3573,33 @@ test.describe("application smoke", () => {
     );
   });
 
+  test("planner board rounds its edge after sparse fixed-width strings", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/my-club");
+
+    const main = page.getByRole("main");
+    await page.getByRole("link", { name: "Planner", exact: true }).click();
+    const board = main.getByRole("region", { name: "Squad depth board" });
+    const table = board.getByRole("table", { name: "Squad depth board" });
+    await expect(board).toBeVisible();
+
+    const [boardBox, tableBox] = await Promise.all([
+      board.boundingBox(),
+      table.boundingBox(),
+    ]);
+    expect(boardBox).not.toBeNull();
+    expect(tableBox).not.toBeNull();
+    if (!boardBox || !tableBox) {
+      throw new Error("Expected visible sparse board geometry.");
+    }
+    expect(
+      Math.abs(boardBox.x + boardBox.width - (tableBox.x + tableBox.width)),
+    ).toBeLessThanOrEqual(2);
+  });
+
   test("planner board bounds overflow with a sticky slot band from 1280 to 3440", async ({
     page,
   }) => {
