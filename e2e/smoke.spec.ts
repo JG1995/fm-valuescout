@@ -2464,12 +2464,52 @@ test.describe("application smoke", () => {
           );
         }
       }
+      if (width >= 3000) {
+        // Ultrawide containment: the tactic workspace stays bounded and
+        // centered instead of stretching pitch and side panels across the
+        // full viewport width.
+        expect(
+          await page.evaluate(
+            () => (globalThis as unknown as { innerWidth: number }).innerWidth,
+          ),
+        ).toBe(width);
+        const [ultrawidePitchBox, ultrawideSettingsBox, ultrawideMainBox] =
+          await Promise.all([
+            pitches.first().boundingBox(),
+            settings.boundingBox(),
+            main.boundingBox(),
+          ]);
+        expect(ultrawidePitchBox).not.toBeNull();
+        expect(ultrawideSettingsBox).not.toBeNull();
+        expect(ultrawideMainBox).not.toBeNull();
+        if (!ultrawidePitchBox || !ultrawideSettingsBox || !ultrawideMainBox) {
+          throw new Error(
+            "Expected the ultrawide workspace to have a visible layout.",
+          );
+        }
+        const spreadLeft = Math.min(
+          ultrawidePitchBox.x,
+          ultrawideSettingsBox.x,
+        );
+        const spreadRight = Math.max(
+          ultrawidePitchBox.x + ultrawidePitchBox.width,
+          ultrawideSettingsBox.x + ultrawideSettingsBox.width,
+        );
+        expect(spreadRight - spreadLeft).toBeLessThanOrEqual(2000);
+        const leftMargin = spreadLeft - ultrawideMainBox.x;
+        const rightMargin =
+          ultrawideMainBox.x + ultrawideMainBox.width - spreadRight;
+        expect(leftMargin).toBeGreaterThan(100);
+        expect(rightMargin).toBeGreaterThan(100);
+        expect(Math.abs(leftMargin - rightMargin)).toBeLessThanOrEqual(16);
+      }
     };
 
     for (const [width, height, requireVerticalFit] of [
       [1280, 800, false],
       [1600, 900, true],
       [1920, 1080, true],
+      [3440, 1440, true],
     ] as const) {
       await expectWorkspaceFit(width, height, requireVerticalFit);
     }

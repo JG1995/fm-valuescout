@@ -794,7 +794,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 12 — Contain the tactic workspace on ultrawide
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tactics): contain tactic workspace on ultrawide`
 
@@ -850,7 +850,7 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 #### Commit 13 — Orient the pitch landscape at wide viewports
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tactics): orient the pitch landscape at wide view`
 
@@ -912,19 +912,19 @@ Establish the edit-time contract first with the pure placement-swap helper and i
 
 **PR:** 1
 
-**Commit:** 12
+**Commit:** 13
 
 ### RED or removal proof
 
-Extend the existing smoke fit matrix to prove bounded, centered tactic-workspace containment at 3440×1440.
+Prove initial landscape rendering at 1920px and live 1919↔1920 changes through projected geometry, upright labels, attack direction, and visual keyboard order.
 
 ### Expected outcome
 
-Only the tactic workspace stops stretching on ultrawide displays, preserving existing desktop fit and other workspaces.
+One workspace-local orientation source projects markers, markings, and connectors clockwise at wide viewports; the modal remains portrait and selection/save behavior is unchanged.
 
 ### Explicit exclusions
 
-Orientation, pitch geometry, inspector controls, global styles, Squad and shell changes, persistence, IPC, and Rust.
+Inspector controls, persistence, IPC, containment, global styles, dependencies, and shared hook files.
 
 ## Discoveries and replanning
 
@@ -960,7 +960,8 @@ Orientation, pitch geometry, inspector controls, global styles, Squad and shell 
 | PR 1 — Redesign the tactic workspace | Commit 8 — Add Both-mode tactical transitions | 5325a1a8d7b05cdfafffc261f61d03f39489317e | Added canonical-identity conditional connectors, visible selected-slot transitions, and accessible per-slot descriptions; corrected split-marker endpoint attachment. | Route 131/131, exact smoke 55/55, full check including 798 Rust tests passed; browser proof covers visible transition selection and cross-lane endpoint attachment. | Pass | Clear | 1 | Full visible transition follows existing selected-lane state; landscape projection remains Commit 13. |
 | PR 1 — Redesign the tactic workspace | Commit 9 — Add persistent Tactical XI panel | b1eb3d89b3830334087619a9123f13574ebe3f31 | Added eleven ordered readable transition rows with ordinary-button pressed semantics and selection shared with the pitch and inspector. | Route 132/132 and full check passed; independent reviewer verified focused selection proof, existing 1280/1600/1920 viewport-fit smoke, and clean LSP. | Pass | Clear | 0 | Two existing route button queries scoped to the pitch to distinguish new panel rows. |
 | PR 1 — Redesign the tactic workspace | Commit 10 — Expose persistent Selected Slot controls | 7ba2ced95e71e82da2a26a6536858bce3e730aac | Renamed the inspector and exposed both phase controls in every view, preserving callbacks and location. | Route 132/132, exact smoke 55/55, full check including 798 Rust tests passed; independent review clear. | Pass | Clear | 0 | Developer explicitly approved scoping smoke marker locators to the pitch to repair the Commit 9 Tactical XI name collision; assertions unchanged. |
-| PR 1 — Redesign the tactic workspace | Commit 11 — Compose the responsive tactic workspace | Pending record | Moved Selected Slot beside pitch/XI; stacked XI below the pitch below 2xl. Replaced the retired single-row inspector assertion with sidebar containment, disjointness, and phase/weight checks. | Route 132/132, exact smoke 55/55, full check including 798 Rust tests passed. Browser probe: 1280 pitch widened from 622px to 890px, overlap pairs fell from two to zero; 1600/1920 remain disjoint. Perturbations confirmed control overlap/clipping detection. | Pass | Clear | 0 | Accepted reviewed sidebar replan under delivery fingerprint 0c2340811e03a629583391e0d6995dabddab1e8f684dbf7cfba583a2b2340b00; callbacks and controls unchanged. |
+| PR 1 — Redesign the tactic workspace | Commit 11 — Compose the responsive tactic workspace | df92e20430d1eb036cf617b499965d90a346b0f6 | Moved Selected Slot beside pitch/XI; stacked XI below the pitch below 2xl. Replaced the retired single-row inspector assertion with sidebar containment, disjointness, and phase/weight checks. | Route 132/132, exact smoke 55/55, full check including 798 Rust tests passed. Browser probe: 1280 pitch widened from 622px to 890px, overlap pairs fell from two to zero; 1600/1920 remain disjoint. Perturbations confirmed control overlap/clipping detection. | Pass | Clear | 0 | Accepted reviewed sidebar replan under delivery fingerprint 0c2340811e03a629583391e0d6995dabddab1e8f684dbf7cfba583a2b2340b00; callbacks and controls unchanged. |
+| PR 1 — Redesign the tactic workspace | Commit 12 — Contain the tactic workspace on ultrawide | Pending record | Centered and capped only the tactic workspace at 1920px, preserving other workspace containers. | Route 132/132, exact smoke 55/55, full check passed. At actual 3440px viewport, content spread is 1894px with symmetric 773px margins; unconstrained RED spread was 3382px. | Pass | Clear | 0 | Existing fit scenario extended; normal desktop fit retained. |
 
 ## Final validation
 
