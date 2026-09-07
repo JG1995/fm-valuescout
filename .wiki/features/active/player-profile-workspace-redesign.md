@@ -1244,7 +1244,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 19 — Integrate Moneyball hierarchy
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(moneyball): align the profile workspace`
 
@@ -1302,7 +1302,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 20 — Prove minimum desktop containment
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): contain the workspace at minimum desktop size`
 
@@ -1417,19 +1417,19 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 **PR:** PR 1 — Player profile workspace redesign
 
-**Commit:** Integrate Moneyball hierarchy
+**Commit:** Prove minimum desktop containment
 
 ### RED or removal proof
 
-New route tests must fail while Moneyball-specific panels lack the shared workspace hierarchy, spacing, and single scroll ownership.
+Playwright assertions at exactly 1280×800 must fail where any section overflows the document, hides identity or navigation, or compresses required analysis beyond readability.
 
 ### Expected outcome
 
-Moneyball uses the persistent rail and navigation with aligned panel hierarchy while preserving raw values, percentile semantics, comparison context, and no potential scores.
+Overview, Attributes, Role Fit, and Moneyball remain reachable and usable at 1280×800 with contained overflow and no removed content.
 
 ### Explicit exclusions
 
-Moneyball calculations, data, filters, comparison basis, and standard Role Fit presentation.
+Content or data changes, ultrawide-specific bounds, mobile support, and manual evidence as a substitute for smoke.
 
 ## Discoveries and replanning
 
@@ -1458,7 +1458,8 @@ The planning-artifact checkpoint review found stale prose that still described r
 | PR 1 — Player profile workspace redesign | Commit 15 — Mark selected positions without colour alone | 282beae8301b63e9b205b54b3899d03709421b00 | Reinforced selected Role Fit positions with a two-pixel structural border while retaining the gold treatment, `aria-pressed`, keyboard selection, and unfamiliar-position precedence. | The non-colour selection-marker proof failed before implementation; focused Player Profile route tests passed 78/78; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
 | PR 1 — Player profile workspace redesign | Commit 16 — Expose possession phase as comparison field | 521d8bc5aa2e37321063f4af66bd6d08df2935ab | Added compact readable IP/OOP phase chips with full accessible phase names beside every standard Role Fit role name while preserving columns, sorting, scores, filtering, and concealment. | The phase-chip proof failed before implementation; focused Player Profile and role-phase tests passed 80/80; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found the test accepted hard-coded phase labels; correction correlated every row to its alternating fixture phase. One advisory MEDIUM notes that the text chip uses image semantics; reconcile it in the bundled feature close-out pass. |
 | PR 1 — Player profile workspace redesign | Commit 17 — Complete Role Fit geometry | 9207b3504d9f5b289f89ae539cba20a14911fdf3 | Added dedicated Role, Phase, Current, and concealment-gated Potential columns with vertically aligned table score presentation, preserved sorting, and corrected empty-state column spans. | Role Fit geometry proofs failed before implementation; focused Player Profile route tests passed 78/78; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
-| PR 1 — Player profile workspace redesign | Commit 18 — Relocate Moneyball tactical summaries | Pending record | Moved playable best-current Moneyball IP/OOP summaries into a Moneyball-owned section component, removed the shared overview scoring branch, and retained two bounded workspace columns. | Relocation and ownership proofs failed before implementation; focused Player Profile and Moneyball panel tests passed 81/81; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found a third direct grid child could collapse and clip Role Fit; correction grouped summaries and metrics in a bounded primary column beside Role Fit with direct structural proof. |
+| PR 1 — Player profile workspace redesign | Commit 18 — Relocate Moneyball tactical summaries | a9bc15bbda923e7c46ecc939b90abdbf821895b4 | Moved playable best-current Moneyball IP/OOP summaries into a Moneyball-owned section component, removed the shared overview scoring branch, and retained two bounded workspace columns. | Relocation and ownership proofs failed before implementation; focused Player Profile and Moneyball panel tests passed 81/81; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found a third direct grid child could collapse and clip Role Fit; correction grouped summaries and metrics in a bounded primary column beside Role Fit with direct structural proof. |
+| PR 1 — Player profile workspace redesign | Commit 19 — Integrate Moneyball hierarchy | Pending record | Aligned Moneyball panels to full-width bounded flex geometry, micro-label metadata, tabular raw values, and right-aligned table score presentation while preserving percentile and comparison semantics. | The hierarchy proof failed before implementation; focused Player Profile, Moneyball profile, and Moneyball Role Fit tests passed 85/85; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
 
 ## Final validation
 

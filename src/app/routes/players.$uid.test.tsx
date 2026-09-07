@@ -287,6 +287,76 @@ describe("player profile route", () => {
     ).toHaveClass("min-h-0", "overflow-y-auto");
   });
 
+  it("aligns Moneyball panels with bounded workspace hierarchy and score language", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ positions: { MC: 20 } }));
+    setPlayerMoneyballOverride(
+      fixturePlayerMoneyball({
+        statistics: { goals: 10, goals_per_90: 0.6 },
+        percentiles: { goals: 83, goals_per_90: 75 },
+        comparisonBasis: {
+          kind: "available",
+          naturalPositions: ["MC"],
+          comparisonPlayerCount: 24,
+        },
+        roleScores: [
+          {
+            roleId: "mc-moneyball-ip",
+            displayName: "Moneyball IP Specialist",
+            phase: "in_possession",
+            positionFamily: "central_midfielder",
+            positionTags: ["MC"],
+            score: 81,
+            contributions: [],
+          },
+        ],
+      }),
+    );
+
+    renderProfileRoute("/players/42?section=moneyball");
+
+    const workspace = await screen.findByRole("tabpanel", {
+      name: "Moneyball",
+    });
+    const primaryColumn = screen.getByTestId("moneyball-primary-column");
+    const profilePanel = within(primaryColumn)
+      .getByRole("heading", { name: "Moneyball" })
+      .closest("section");
+    if (!profilePanel) throw new Error("Expected the Moneyball profile panel");
+    expect(profilePanel).toHaveClass("min-h-0", "w-full", "flex", "flex-col");
+    expect(profilePanel.querySelectorAll(".overflow-y-auto")).toHaveLength(1);
+    expect(profilePanel.querySelector(".overflow-y-auto")).toHaveClass(
+      "min-h-0",
+      "flex-1",
+    );
+    expect(within(profilePanel).getByText("10")).toBeInTheDocument();
+    expect(
+      within(profilePanel).getByRole("img", { name: "Goals: 83, Excellent" }),
+    ).toBeInTheDocument();
+    expect(
+      within(profilePanel).getByText(
+        "Natural positions: MC · 24 comparison players",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(profilePanel).queryByText(/Potential/),
+    ).not.toBeInTheDocument();
+
+    const roleFit = screen.getByRole("region", {
+      name: "Moneyball role fit for MC",
+    });
+    const roleFitPanel = roleFit.parentElement?.closest("section");
+    if (!roleFitPanel) throw new Error("Expected the Moneyball role-fit panel");
+    expect(roleFitPanel).toHaveClass("min-h-0", "w-full", "flex", "flex-col");
+    expect(roleFitPanel.querySelectorAll(".overflow-y-auto")).toHaveLength(2);
+    expect(
+      within(roleFit).getByLabelText(
+        "Moneyball IP Specialist Moneyball score: 81, Excellent",
+      ),
+    ).toHaveClass("text-right", "tabular-nums");
+    expect(within(workspace).queryByText("Potential")).not.toBeInTheDocument();
+  });
+
   it("keeps market value general-only inside the summary analysis details", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());

@@ -120,7 +120,7 @@ function MoneyballScore({ role }: { role: MoneyballRoleScore }) {
     <ScoreBadge
       score={role.score}
       roleName={`${role.displayName} Moneyball score`}
-      variant="card"
+      variant="table"
     />
   );
 }
@@ -175,7 +175,7 @@ export function MoneyballRoleFitPanel({
           Moneyball score
         </span>
       }
-      className="flex min-h-0 flex-col"
+      className="flex min-h-0 w-full flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
       <section
@@ -223,7 +223,7 @@ export function MoneyballRoleFitPanel({
                   >
                     <button
                       type="button"
-                      className="inline-flex min-h-8 w-full items-center justify-center gap-1 rounded-md px-1 text-label-sm text-primary transition-colors duration-150 ease-out"
+                      className="inline-flex min-h-8 w-full items-center justify-end gap-1 rounded-md px-1 text-label-sm text-primary transition-colors duration-150 ease-out"
                       onClick={toggleSort}
                     >
                       <span>Moneyball score</span>
@@ -258,7 +258,7 @@ export function MoneyballRoleFitPanel({
                         catalogVersion={catalogVersion}
                       />
                     </td>
-                    <td className="pt-2 text-center">
+                    <td className="pt-2 text-right tabular-nums">
                       <MoneyballScore role={role} />
                     </td>
                   </tr>
