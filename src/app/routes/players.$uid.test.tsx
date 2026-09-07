@@ -1470,16 +1470,17 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
   });
 
-  it("omits SW and de-emphasizes tier-one familiarity without lowering playable thresholds", async () => {
+  it("mutes unfamiliar positions without lowering playable thresholds", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
         positions: {
           AMR: 20,
-          MR: 17,
+          MR: 15,
           AMC: 14,
           DL: 5,
           DC: 6,
+          DR: null,
           SW: 18,
           GK: 14,
           ST: 0,
@@ -1497,27 +1498,59 @@ describe("player profile route", () => {
       screen.getByRole("button", { name: "AMR, familiarity 20" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "MR, familiarity 17" }),
+      screen.getByRole("button", { name: "MR, familiarity 15" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "AMC, familiarity 14" }),
-    ).toBeInTheDocument();
+    ).toHaveClass(
+      "border-outline-variant",
+      "bg-surface-container/85",
+      "text-on-surface-variant",
+    );
     expect(
-      screen.queryByRole("button", { name: "SW, familiarity 18" }),
-    ).toBeNull();
+      within(
+        screen.getByRole("button", { name: "AMC, familiarity 14" }),
+      ).getByText("14"),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "DL, familiarity 5" }),
     ).toHaveClass(
       "border-outline-variant",
-      "bg-surface-container/50",
-      "text-score-1",
+      "bg-surface-container/85",
+      "text-on-surface-variant",
     );
     expect(
       screen.getByRole("button", { name: "DC, familiarity 6" }),
-    ).not.toHaveClass("bg-surface-container/50");
-    const lowFamiliarityPosition = screen.getByRole("button", {
-      name: "DL, familiarity 5",
+    ).toHaveClass("bg-surface-container/85");
+    const unrecordedPosition = screen.getByRole("button", {
+      name: "DR, no recorded familiarity",
     });
+    expect(unrecordedPosition).toHaveClass(
+      "border-outline-variant",
+      "bg-surface-container/85",
+      "text-on-surface-variant",
+    );
+    expect(within(unrecordedPosition).getByText("—")).toBeInTheDocument();
+    const zeroFamiliarityPosition = screen.getByRole("button", {
+      name: "ST, no recorded familiarity",
+    });
+    expect(zeroFamiliarityPosition).toHaveClass(
+      "border-outline-variant",
+      "bg-surface-container/85",
+      "text-on-surface-variant",
+    );
+    expect(within(zeroFamiliarityPosition).getByText("—")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "MR, familiarity 15" }),
+    ).not.toHaveClass("bg-surface-container/85", "text-on-surface-variant");
+    expect(
+      screen.queryByRole("button", { name: "SW, familiarity 18" }),
+    ).toBeNull();
+
+    const lowFamiliarityPosition = screen.getByRole("button", {
+      name: "AMC, familiarity 14",
+    });
+    expect(lowFamiliarityPosition).toHaveAttribute("aria-pressed", "false");
     expect(lowFamiliarityPosition).not.toHaveClass("opacity-45");
 
     await user.click(lowFamiliarityPosition);
@@ -1530,8 +1563,8 @@ describe("player profile route", () => {
     );
     expect(lowFamiliarityPosition).not.toHaveClass(
       "border-outline-variant",
-      "bg-surface-container/50",
-      "text-score-1",
+      "bg-surface-container/85",
+      "text-on-surface-variant",
     );
   });
 

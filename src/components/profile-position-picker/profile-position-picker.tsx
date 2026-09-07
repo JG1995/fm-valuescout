@@ -1,5 +1,6 @@
 import { attributeValueTier } from "@/components/ui/attribute-value/attribute-value";
 import {
+  PLAYABLE_POSITION_FAMILIARITY,
   type PositionFamiliarityMap,
   PROFILE_POSITION_ROWS,
 } from "@/utils/profile-position-roles";
@@ -36,6 +37,9 @@ export function ProfilePositionPicker({
             const familiarity = positions[position];
             const knownFamiliarity =
               typeof familiarity === "number" && familiarity > 0;
+            const unfamiliar =
+              typeof familiarity !== "number" ||
+              familiarity < PLAYABLE_POSITION_FAMILIARITY;
             const tier = knownFamiliarity
               ? attributeValueTier(familiarity)
               : undefined;
@@ -54,11 +58,9 @@ export function ProfilePositionPicker({
                 className={`min-h-11 rounded-md border px-1 py-1 text-center transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                   selected
                     ? "border-primary bg-primary-container text-on-primary-container ring-2 ring-primary/50"
-                    : tier === 1
-                      ? "border-outline-variant bg-surface-container/50 text-score-1 hover:bg-surface-container"
-                      : knownFamiliarity
-                        ? "border-outline bg-surface-container-high hover:bg-surface-container-highest data-[tier=1]:text-score-1 data-[tier=2]:text-score-2 data-[tier=3]:text-score-3 data-[tier=4]:text-score-4"
-                        : "border-outline-variant bg-surface-container/85 text-on-surface-variant hover:bg-surface-container-high"
+                    : unfamiliar
+                      ? "border-outline-variant bg-surface-container/85 text-on-surface-variant hover:bg-surface-container-high"
+                      : "border-outline bg-surface-container-high hover:bg-surface-container-highest data-[tier=1]:text-score-1 data-[tier=2]:text-score-2 data-[tier=3]:text-score-3 data-[tier=4]:text-score-4"
                 }`}
                 onClick={() => onSelectPosition(position)}
               >
