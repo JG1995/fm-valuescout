@@ -28,6 +28,7 @@ import { PlayerAttributesPanel } from "@/features/player-profile/components/play
 import { PlayerDevelopmentActions } from "@/features/player-profile/components/player-development-boosts-panel";
 import { PlayerOverviewPanel } from "@/features/player-profile/components/player-overview-panel";
 import { PlayerRolesPanel } from "@/features/player-profile/components/player-roles-panel";
+import type { PlayerBoostResult } from "@/features/player-profile/types/player-boost";
 import type { PlayerDetail } from "@/features/player-profile/types/player-detail";
 import { isGoalkeeper } from "@/features/player-profile/utils/position-families";
 import {
@@ -300,6 +301,15 @@ function GeneralPlayerProfile({
   onViewChange,
   restoreAnalysisFocus,
   onAnalysisFocusRestored,
+  hiddenInformationPending,
+  hiddenInformationError,
+  onToggleHiddenInformation,
+  boostPending,
+  boostResult,
+  boostError,
+  onBoostCurrentAbility,
+  onBoostWonderkidMentality,
+  onOpenBoostConfirmation,
 }: {
   uid: number;
   snapshot: SnapshotSummary;
@@ -309,39 +319,16 @@ function GeneralPlayerProfile({
   onViewChange: (view: PlayerProfileView, restoreFocus?: boolean) => void;
   restoreAnalysisFocus: boolean;
   onAnalysisFocusRestored: () => void;
+  hiddenInformationPending: boolean;
+  hiddenInformationError: Error | null;
+  onToggleHiddenInformation: () => void;
+  boostPending: boolean;
+  boostResult: PlayerBoostResult | undefined;
+  boostError: Error | null;
+  onBoostCurrentAbility: () => Promise<unknown>;
+  onBoostWonderkidMentality: () => Promise<unknown>;
+  onOpenBoostConfirmation: () => void;
 }) {
-  const queryClient = useQueryClient();
-  const hiddenInformation = useMutation({
-    mutationFn: ({ revealed }: PlayerHiddenInformationMutation) =>
-      setHiddenInformationRevealed(revealed),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: playerKeys.all });
-      await queryClient.invalidateQueries({ queryKey: staffKeys.all });
-    },
-  });
-  const boost = useMutation({
-    mutationFn: ({ action, uid }: PlayerBoostMutation) =>
-      action === "currentAbility"
-        ? boostCurrentAbility(uid)
-        : boostWonderkidMentality(uid),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: snapshotKeys.all }),
-        queryClient.invalidateQueries({ queryKey: searchKeys.all }),
-        queryClient.invalidateQueries({ queryKey: playerKeys.all }),
-        queryClient.invalidateQueries({ queryKey: plannerKeys.all }),
-        queryClient.invalidateQueries({ queryKey: academyKeys.all }),
-      ]);
-    },
-  });
-  const boostContextIsCurrent =
-    boost.variables?.uid === uid &&
-    boost.variables.snapshotId === snapshot.id &&
-    (boost.data === undefined || boost.data.snapshotId === snapshot.id);
-  const hiddenInformationContextIsCurrent =
-    hiddenInformation.variables?.uid === uid &&
-    hiddenInformation.variables.saveId === snapshot.saveId;
-
   const activeTab = tab ?? defaultProfileTab(isGoalkeeper(player.positions));
 
   return (
@@ -350,42 +337,20 @@ function GeneralPlayerProfile({
         overview={
           <PlayerOverviewPanel
             player={player}
-            hiddenInformationPending={
-              hiddenInformationContextIsCurrent && hiddenInformation.isPending
-            }
-            hiddenInformationError={
-              hiddenInformationContextIsCurrent ? hiddenInformation.error : null
-            }
-            onToggleHiddenInformation={() =>
-              hiddenInformation.mutate({
-                saveId: snapshot.saveId,
-                uid,
-                revealed: !player.hiddenInformationRevealed,
-              })
-            }
+            hiddenInformationPending={hiddenInformationPending}
+            hiddenInformationError={hiddenInformationError}
+            onToggleHiddenInformation={onToggleHiddenInformation}
             actions={
               player.hiddenInformationRevealed ? (
                 <PlayerDevelopmentActions
                   key={`${snapshot.id}:${uid}`}
                   player={player}
-                  pending={boostContextIsCurrent && boost.isPending}
-                  result={boostContextIsCurrent ? boost.data : undefined}
-                  error={boostContextIsCurrent ? boost.error : null}
-                  onBoostCurrentAbility={() =>
-                    boost.mutateAsync({
-                      action: "currentAbility",
-                      uid,
-                      snapshotId: snapshot.id,
-                    })
-                  }
-                  onBoostWonderkidMentality={() =>
-                    boost.mutateAsync({
-                      action: "wonderkidMentality",
-                      uid,
-                      snapshotId: snapshot.id,
-                    })
-                  }
-                  onOpenConfirmation={boost.reset}
+                  pending={boostPending}
+                  result={boostResult}
+                  error={boostError}
+                  onBoostCurrentAbility={onBoostCurrentAbility}
+                  onBoostWonderkidMentality={onBoostWonderkidMentality}
+                  onOpenConfirmation={onOpenBoostConfirmation}
                 />
               ) : null
             }
@@ -497,6 +462,47 @@ function PlayerProfileContent({
 }) {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: player } = useSuspenseQuery(getPlayerQueryOptions(uid));
+  const queryClient = useQueryClient();
+  const hiddenInformation = useMutation({
+    mutationFn: ({ revealed }: PlayerHiddenInformationMutation) =>
+      setHiddenInformationRevealed(revealed),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: playerKeys.all });
+      await queryClient.invalidateQueries({ queryKey: staffKeys.all });
+    },
+  });
+  const boost = useMutation({
+    mutationFn: ({ action, uid }: PlayerBoostMutation) =>
+      action === "currentAbility"
+        ? boostCurrentAbility(uid)
+        : boostWonderkidMentality(uid),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: snapshotKeys.all }),
+        queryClient.invalidateQueries({ queryKey: searchKeys.all }),
+        queryClient.invalidateQueries({ queryKey: playerKeys.all }),
+        queryClient.invalidateQueries({ queryKey: plannerKeys.all }),
+        queryClient.invalidateQueries({ queryKey: academyKeys.all }),
+      ]);
+    },
+  });
+  const boostContextIsCurrent =
+    boost.variables?.uid === uid &&
+    boost.variables.snapshotId === snapshot?.id &&
+    (boost.data === undefined || boost.data.snapshotId === snapshot?.id);
+  const hiddenInformationContextIsCurrent =
+    hiddenInformation.variables?.uid === uid &&
+    hiddenInformation.variables.saveId === snapshot?.saveId;
+  const boostReset = boost.reset;
+  const hiddenInformationReset = hiddenInformation.reset;
+  // General owns no persistent panel: leaving it discards mutation feedback
+  // so a General → Moneyball → General round-trip cannot resurface it.
+  useEffect(() => {
+    if (view !== "general") {
+      boostReset();
+      hiddenInformationReset();
+    }
+  }, [view, boostReset, hiddenInformationReset]);
 
   if (!snapshot) {
     return (
@@ -532,6 +538,37 @@ function PlayerProfileContent({
       onViewChange={onViewChange}
       restoreAnalysisFocus={restoreAnalysisFocus}
       onAnalysisFocusRestored={onAnalysisFocusRestored}
+      hiddenInformationPending={
+        hiddenInformationContextIsCurrent && hiddenInformation.isPending
+      }
+      hiddenInformationError={
+        hiddenInformationContextIsCurrent ? hiddenInformation.error : null
+      }
+      onToggleHiddenInformation={() =>
+        hiddenInformation.mutate({
+          saveId: snapshot.saveId,
+          uid,
+          revealed: !player.hiddenInformationRevealed,
+        })
+      }
+      boostPending={boostContextIsCurrent && boost.isPending}
+      boostResult={boostContextIsCurrent ? boost.data : undefined}
+      boostError={boostContextIsCurrent ? boost.error : null}
+      onBoostCurrentAbility={() =>
+        boost.mutateAsync({
+          action: "currentAbility",
+          uid,
+          snapshotId: snapshot.id,
+        })
+      }
+      onBoostWonderkidMentality={() =>
+        boost.mutateAsync({
+          action: "wonderkidMentality",
+          uid,
+          snapshotId: snapshot.id,
+        })
+      }
+      onOpenBoostConfirmation={boost.reset}
     />
   );
 }

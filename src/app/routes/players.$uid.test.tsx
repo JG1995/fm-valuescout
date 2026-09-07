@@ -1550,6 +1550,41 @@ describe("player profile route", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("clears a settled boost outcome across a General Moneyball General round-trip", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({ uid: 42, name: "Alex Scout", age: 21 }),
+    );
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(await screen.findByRole("button", { name: "Boost CA" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Boost CA",
+      }),
+    );
+    expect(
+      await screen.findByText("CA boosted from 140 to 150."),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Moneyball" }));
+    expect(
+      await screen.findByRole("tab", { name: "Moneyball", selected: true }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "General" }));
+    expect(
+      await screen.findByRole("tab", { name: "General", selected: true }),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByText("CA boosted from 140 to 150."),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
   it("does not carry an in-flight boost outcome to another player", async () => {
     await resolveLoadDataIpcMock();
     setCurrentAbilityBoostIpcMockMode("pending");
