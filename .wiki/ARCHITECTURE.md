@@ -682,13 +682,16 @@ set_hidden_information_revealed IPC
   → service updates only the active saves row and returns the persisted state
   → route invalidates playerKeys.all; pending and error feedback is keyed by player UID and active save ID
 
-Overview section
-  → persistent identity rail shows identity, neutral portrait/crest placeholders, and market value across every section
-  → owns Ability plus same-role Current → Potential best-current IP/OOP summaries, using catalog-order ties after familiarity ≥ 15 filtering and phase partitioning
+Shared identity rail
+  → shows identity in vertical fact rows, a larger neutral portrait/crest stage, and market value across every section
+  → keeps the hidden-information control and Modify Player disclosure in a persistent bottom action area
   → concealed preference removes PA, projected/potential values, hidden/personality values, and development actions
   → preferredFoot title-cased for display
   → Boost CA and Wonderkid Mentality keep their closed confirmation and mutation flow;
-      snapshot previews and disabled reasons move to focusable action tooltips
+      snapshot previews and disabled reasons use focusable upward-opening action tooltips
+
+Overview section
+  → owns Ability plus same-role Current → Potential best-current IP/OOP summaries, using catalog-order ties after familiarity ≥ 15 filtering and phase partitioning
 
 Attributes section
   → four canonical subtabs: Outfield, Goalkeeping, Hidden, and Personality; outfield players use Outfield first, while players with GK familiarity ≥ 15

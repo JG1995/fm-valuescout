@@ -80,10 +80,10 @@ describe("player profile route", () => {
         name: "Alex Scout",
       }),
     ).toBeInTheDocument();
-    expect(
-      within(rail).getByText("Test FC · Premier Division"),
-    ).toBeInTheDocument();
-    expect(within(rail).getByText("21/03/2001 (25)")).toBeInTheDocument();
+    expect(within(rail).getByText("Test FC")).toBeInTheDocument();
+    expect(within(rail).getByText("Premier Division")).toBeInTheDocument();
+    expect(within(rail).getByText("21/03/2001")).toBeInTheDocument();
+    expect(within(rail).getByText("25")).toBeInTheDocument();
     expect(within(rail).getByText("182 cm")).toBeInTheDocument();
     expect(within(rail).getByText("Right")).toBeInTheDocument();
     expect(within(rail).getByRole("img", { name: "England" })).toHaveAttribute(
@@ -548,10 +548,11 @@ describe("player profile route", () => {
     expect(
       within(generalTactical).getByTestId("overview-tactical-fit-oop"),
     ).toBeInTheDocument();
-    const generalActionSlot = within(generalSummary).getByTestId(
+    const generalActionSlot = within(generalRail).getByTestId(
       "player-profile-action-slot",
     );
-    expect(generalActionSlot).toHaveClass("min-h-10", "overflow-visible");
+    expect(generalActionSlot).toHaveClass("min-h-10");
+    expect(generalActionSlot.parentElement).toHaveClass("mt-auto");
     expect(generalActionSlot).not.toHaveClass("overflow-y-auto");
     expect(
       within(generalDetails).getByTestId(
@@ -653,7 +654,10 @@ describe("player profile route", () => {
         name: "Alexandra Maximilian Scout",
       }),
     ).toBeInTheDocument();
-    expect(within(moneyballRail).getByText("Age / DOB")).toBeInTheDocument();
+    expect(within(moneyballRail).getByText("Age")).toBeInTheDocument();
+    expect(
+      within(moneyballRail).getByText("Date of birth"),
+    ).toBeInTheDocument();
     expect(within(moneyballRail).getByText("Nationality")).toBeInTheDocument();
     expect(
       within(moneyballSummary).getByRole("heading", {
@@ -1188,15 +1192,13 @@ describe("player profile route", () => {
       await screen.findByRole("button", { name: "Modify Player" }),
     );
 
-    const summary = await screen.findByRole("region", {
-      name: "Alex Scout summary",
+    const rail = await screen.findByRole("complementary", {
+      name: "Player identity",
     });
-    const displayControl = within(summary).getByTestId(
+    const displayControl = within(rail).getByTestId(
       "player-profile-display-control",
     );
-    const actionSlot = within(summary).getByTestId(
-      "player-profile-action-slot",
-    );
+    const actionSlot = within(rail).getByTestId("player-profile-action-slot");
     const hiddenInformation = within(displayControl).getByRole("button", {
       name: "Reveal hidden information",
     });
@@ -1225,12 +1227,10 @@ describe("player profile route", () => {
     setGetPlayerOverride(fixturePlayerDetail());
     renderProfileRoute("/players/42");
 
-    const summary = await screen.findByRole("region", {
-      name: "Alex Scout summary",
+    const rail = await screen.findByRole("complementary", {
+      name: "Player identity",
     });
-    const actionSlot = within(summary).getByTestId(
-      "player-profile-action-slot",
-    );
+    const actionSlot = within(rail).getByTestId("player-profile-action-slot");
 
     const disclosure = within(actionSlot).getByRole("button", {
       name: "Modify Player",
@@ -1260,12 +1260,10 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
-    const summary = await screen.findByRole("region", {
-      name: "Alex Scout summary",
+    const rail = await screen.findByRole("complementary", {
+      name: "Player identity",
     });
-    const actionSlot = within(summary).getByTestId(
-      "player-profile-action-slot",
-    );
+    const actionSlot = within(rail).getByTestId("player-profile-action-slot");
     const disclosure = within(actionSlot).getByRole("button", {
       name: "Modify Player",
     });
@@ -1298,15 +1296,13 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
-    const summary = await screen.findByRole("region", {
-      name: "Alex Scout summary",
+    const rail = await screen.findByRole("complementary", {
+      name: "Player identity",
     });
-    const displayControl = within(summary).getByTestId(
+    const displayControl = within(rail).getByTestId(
       "player-profile-display-control",
     );
-    const actionSlot = within(summary).getByTestId(
-      "player-profile-action-slot",
-    );
+    const actionSlot = within(rail).getByTestId("player-profile-action-slot");
     const disclosure = within(actionSlot).getByRole("button", {
       name: "Modify Player",
     });
@@ -1351,7 +1347,10 @@ describe("player profile route", () => {
     const summary = await screen.findByRole("region", {
       name: "Alex Scout summary",
     });
-    const toggle = within(summary).getByRole("button", {
+    const rail = screen.getByRole("complementary", {
+      name: "Player identity",
+    });
+    const toggle = within(rail).getByRole("button", {
       name: "Reveal hidden information",
     });
     expect(toggle).toHaveAttribute("aria-pressed", "true");
@@ -1359,15 +1358,17 @@ describe("player profile route", () => {
 
     await user.click(toggle);
 
-    const reveal = await within(summary).findByRole("button", {
+    const reveal = await within(rail).findByRole("button", {
       name: "Reveal hidden information",
     });
     expect(reveal).toHaveAttribute("aria-pressed", "false");
-    expect(within(summary).queryByText("PA")).not.toBeInTheDocument();
-    expect(within(summary).queryByText("160")).not.toBeInTheDocument();
-    expect(within(summary).queryByText("Boost CA")).not.toBeInTheDocument();
     expect(
-      within(summary).queryByText("Wonderkid Mentality"),
+      within(summary).queryByText("Potential Ability"),
+    ).not.toBeInTheDocument();
+    expect(within(summary).queryByText("160")).not.toBeInTheDocument();
+    expect(within(rail).queryByText("Boost CA")).not.toBeInTheDocument();
+    expect(
+      within(rail).queryByText("Wonderkid Mentality"),
     ).not.toBeInTheDocument();
     const tactical = within(summary).getByTestId("overview-tactical-fit");
     const ip = within(tactical).getByTestId("overview-tactical-fit-ip");
@@ -1418,7 +1419,7 @@ describe("player profile route", () => {
 
     await user.click(reveal);
     expect(
-      await within(summary).findByRole("button", {
+      await within(rail).findByRole("button", {
         name: "Reveal hidden information",
       }),
     ).toHaveAttribute("aria-pressed", "true");
@@ -1435,20 +1436,20 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
-    const summary = await screen.findByRole("region", {
-      name: "Alex Scout summary",
+    const rail = await screen.findByRole("complementary", {
+      name: "Player identity",
     });
     await user.click(
-      within(summary).getByRole("button", {
+      within(rail).getByRole("button", {
         name: "Reveal hidden information",
       }),
     );
 
-    expect(await within(summary).findByRole("alert")).toHaveTextContent(
+    expect(await within(rail).findByRole("alert")).toHaveTextContent(
       /^Could not update hidden information\.$/,
     );
     expect(
-      within(summary).getByRole("button", {
+      within(rail).getByRole("button", {
         name: "Reveal hidden information",
       }),
     ).toHaveAttribute("aria-pressed", "true");
@@ -1463,15 +1464,15 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     const { queryClient } = renderProfileRoute("/players/42");
 
-    const summary = await screen.findByRole("region", {
-      name: "Alex Scout summary",
+    const rail = await screen.findByRole("complementary", {
+      name: "Player identity",
     });
     await user.click(
-      within(summary).getByRole("button", {
+      within(rail).getByRole("button", {
         name: "Reveal hidden information",
       }),
     );
-    expect(await within(summary).findByRole("alert")).toBeInTheDocument();
+    expect(await within(rail).findByRole("alert")).toBeInTheDocument();
 
     const snapshot = queryClient.getQueryData<SnapshotSummary>(
       snapshotKeys.current(),
@@ -1485,10 +1486,10 @@ describe("player profile route", () => {
     });
 
     await waitFor(() =>
-      expect(within(summary).queryByRole("alert")).not.toBeInTheDocument(),
+      expect(within(rail).queryByRole("alert")).not.toBeInTheDocument(),
     );
     expect(
-      within(summary).getByRole("button", {
+      within(rail).getByRole("button", {
         name: "Reveal hidden information",
       }),
     ).toBeEnabled();
@@ -2818,7 +2819,7 @@ describe("player profile route", () => {
     expect(getWonderkidMentalityBoostIpcMockCalls()).toEqual([{ uid: 42 }]);
   });
 
-  it("keeps a completed Wonderkid outcome reachable in the fixed action band", async () => {
+  it("keeps a completed Wonderkid outcome reachable in the identity rail", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
@@ -2829,12 +2830,10 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
-    const summary = await screen.findByRole("region", {
-      name: "Alex Scout summary",
+    const rail = await screen.findByRole("complementary", {
+      name: "Player identity",
     });
-    const actionSlot = within(summary).getByTestId(
-      "player-profile-action-slot",
-    );
+    const actionSlot = within(rail).getByTestId("player-profile-action-slot");
     expect(actionSlot).toHaveClass("min-h-10");
     expect(actionSlot).not.toHaveClass("overflow-y-auto");
     expect(
@@ -3041,15 +3040,26 @@ describe("player profile route", () => {
       expect(
         within(rail).getByRole("heading", { level: 1, name: "Alex Scout" }),
       ).toBeInTheDocument();
-      expect(
-        within(rail).getByText("Test FC · Premier Division"),
-      ).toBeInTheDocument();
-      expect(within(rail).getByText("21/03/2001 (25)")).toBeInTheDocument();
+      expect(rail).toHaveClass("flex", "lg:w-80");
+      expect(within(rail).getByText("Test FC")).toBeInTheDocument();
+      expect(within(rail).getByText("Premier Division")).toBeInTheDocument();
+      expect(within(rail).getByText("Age")).toBeInTheDocument();
+      expect(within(rail).getByText("25")).toBeInTheDocument();
+      expect(within(rail).getByText("Date of birth")).toBeInTheDocument();
+      expect(within(rail).getByText("21/03/2001")).toBeInTheDocument();
       expect(within(rail).getByText("Nationality")).toBeInTheDocument();
       expect(within(rail).getByText("182 cm")).toBeInTheDocument();
+      expect(within(rail).getByText("Preferred foot")).toBeInTheDocument();
       expect(within(rail).getByText("Right")).toBeInTheDocument();
       expect(within(rail).getByText("Transfer listed")).toBeInTheDocument();
+      expect(within(rail).getByText("Market value")).toBeInTheDocument();
       expect(within(rail).getByText("€12.5M")).toBeInTheDocument();
+      expect(
+        within(rail).getByRole("button", { name: "Modify Player" }),
+      ).toBeInTheDocument();
+      expect(
+        within(rail).getByRole("button", { name: "Reveal hidden information" }),
+      ).toBeInTheDocument();
     }
   });
 
@@ -3128,14 +3138,12 @@ describe("player profile route", () => {
           name: "Alex Scout",
         }),
       ).not.toBeInTheDocument();
-      expect(
-        within(workspace).queryByText("Test FC · Premier Division"),
-      ).not.toBeInTheDocument();
+      expect(within(workspace).queryByText("Test FC")).not.toBeInTheDocument();
       expect(
         within(workspace).queryByText("21/03/2001 (25)"),
       ).not.toBeInTheDocument();
       expect(
-        within(workspace).queryByText("Age / DOB"),
+        within(workspace).queryByText("Date of birth"),
       ).not.toBeInTheDocument();
       expect(
         within(workspace).queryByText("Nationality"),
@@ -3177,7 +3185,9 @@ describe("player profile route", () => {
     expect(within(ability).getByText("€12.5M")).toBeInTheDocument();
     expect(within(ability).getByText("140")).toHaveClass("tabular-nums");
     expect(within(ability).getByText("€12.5M")).toHaveClass("tabular-nums");
-    expect(within(ability).queryByText("Age / DOB")).not.toBeInTheDocument();
+    expect(
+      within(ability).queryByText("Date of birth"),
+    ).not.toBeInTheDocument();
     expect(within(ability).queryByText("Nationality")).not.toBeInTheDocument();
     expect(within(ability).queryByText("Height")).not.toBeInTheDocument();
     expect(within(ability).queryByText("Foot")).not.toBeInTheDocument();

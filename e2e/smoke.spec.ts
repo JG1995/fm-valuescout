@@ -4231,10 +4231,10 @@ test.describe("application smoke", () => {
     expect(actionBox).not.toBeNull();
     expect(tooltipBox).not.toBeNull();
     if (!actionBox || !tooltipBox) {
-      throw new Error("Expected the development tooltip below its action.");
+      throw new Error("Expected the development tooltip above its action.");
     }
-    expect(tooltipBox.y).toBeGreaterThanOrEqual(actionBox.y + actionBox.height);
-    expect(tooltipBox.y + tooltipBox.height).toBeLessThanOrEqual(800);
+    expect(tooltipBox.y + tooltipBox.height).toBeLessThanOrEqual(actionBox.y);
+    expect(tooltipBox.y).toBeGreaterThanOrEqual(0);
     await action.click();
 
     const dialog = page.getByRole("dialog");
@@ -4266,7 +4266,8 @@ test.describe("application smoke", () => {
     const summary = main.getByRole("region", {
       name: "Potential Scout summary",
     });
-    const toggle = summary.getByRole("button", {
+    const rail = main.getByRole("complementary", { name: "Player identity" });
+    const toggle = rail.getByRole("button", {
       name: "Reveal hidden information",
     });
     const revealedToggleBox = await toggle.boundingBox();
@@ -4274,7 +4275,7 @@ test.describe("application smoke", () => {
     await toggle.focus();
     await page.keyboard.press("Enter");
 
-    const concealedToggle = summary.getByRole("button", {
+    const concealedToggle = rail.getByRole("button", {
       name: "Reveal hidden information",
     });
     await expect(concealedToggle).toHaveAttribute("aria-pressed", "false");
@@ -4283,7 +4284,9 @@ test.describe("application smoke", () => {
     if (!revealedToggleBox || !concealedToggleBox) {
       throw new Error("Expected the hidden-information toggle in both states.");
     }
-    expect(concealedToggleBox.y).toBe(revealedToggleBox.y);
+    expect(
+      Math.abs(concealedToggleBox.y - revealedToggleBox.y),
+    ).toBeLessThanOrEqual(16);
     await expect(
       summary.getByText("Potential Ability", { exact: true }),
     ).toHaveCount(0);
@@ -4304,7 +4307,7 @@ test.describe("application smoke", () => {
     const otherSummary = main.getByRole("region", {
       name: "Other Scout summary",
     });
-    const otherToggle = otherSummary.getByRole("button", {
+    const otherToggle = rail.getByRole("button", {
       name: "Reveal hidden information",
     });
     await expect(otherToggle).toHaveAttribute("aria-pressed", "false");

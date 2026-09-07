@@ -1,4 +1,4 @@
-import { Sparkles, Zap } from "lucide-react";
+import { Pencil, Sparkles, Zap } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 import { cloneElement, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
@@ -235,7 +235,7 @@ function ActionTooltip({
       <span
         id={tooltipId}
         role="tooltip"
-        className="pointer-events-none invisible absolute top-[calc(100%+0.5rem)] right-0 z-20 w-72 rounded-md border border-outline-variant bg-surface-container-highest p-3 text-left opacity-0 shadow-overlay transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+        className="pointer-events-none invisible absolute bottom-[calc(100%+0.5rem)] left-0 z-20 w-72 rounded-md border border-outline-variant bg-surface-container-highest p-3 text-left opacity-0 shadow-overlay transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
       >
         {content}
       </span>
@@ -292,9 +292,11 @@ export function PlayerDevelopmentActions({
 
   return (
     <>
-      <div>
+      <div className="w-full">
         <Button
-          variant="secondary"
+          icon={Pencil}
+          variant="ghost"
+          className="w-full justify-start px-2"
           aria-expanded={modifyOpen}
           aria-controls={modifyPanelId}
           onClick={() => setModifyOpen((open) => !open)}
@@ -305,7 +307,7 @@ export function PlayerDevelopmentActions({
           id={modifyPanelId}
           hidden={!modifyOpen}
           aria-hidden={!modifyOpen}
-          className="flex flex-wrap items-center gap-2"
+          className="mt-1 flex flex-wrap items-center gap-2 pl-2"
         >
           <ActionTooltip
             label="Boost CA"

@@ -1,6 +1,4 @@
-import { Eye, EyeOff } from "lucide-react";
 import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button/button";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { formatMissable, formatMoney } from "@/utils/format";
 import type { PlayerDetail, PlayerRoleScore } from "../types/player-detail";
@@ -106,20 +104,12 @@ function TacticalFitPair({ phase, pair, concealed }: TacticalFitPairProps) {
 
 type PlayerOverviewPanelProps = {
   player: PlayerDetail;
-  actions?: ReactNode;
-  hiddenInformationPending?: boolean;
-  hiddenInformationError?: Error | null;
-  onToggleHiddenInformation?: () => void;
   showAbilitySummary?: boolean;
   showTacticalFitSummary?: boolean;
 };
 
 export function PlayerOverviewPanel({
   player,
-  actions,
-  hiddenInformationPending,
-  hiddenInformationError,
-  onToggleHiddenInformation,
   showAbilitySummary = false,
   showTacticalFitSummary = false,
 }: PlayerOverviewPanelProps) {
@@ -134,102 +124,65 @@ export function PlayerOverviewPanel({
     player.positions,
     "out_of_possession",
   );
-  const VisibilityIcon = player.hiddenInformationRevealed ? EyeOff : Eye;
-
   return (
     <section
       aria-label={`${player.name} summary`}
       className="rounded-lg border border-outline-variant bg-surface-container px-4 py-3"
     >
-      <div className="space-y-3">
-        <div className="flex min-h-10 min-w-0 flex-wrap items-start justify-between gap-2 overflow-visible">
-          <div
-            data-testid="player-profile-display-control"
-            className="space-y-2"
-          >
-            <Button
-              icon={VisibilityIcon}
-              variant="secondary"
-              aria-label="Reveal hidden information"
-              aria-pressed={player.hiddenInformationRevealed}
-              disabled={hiddenInformationPending}
-              loading={hiddenInformationPending}
-              loadingLabel="Updating…"
-              onClick={onToggleHiddenInformation}
+      {showTacticalFitSummary || showAbility ? (
+        <div
+          data-testid="player-profile-summary-details"
+          className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[repeat(3,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))]"
+        >
+          {showAbility ? (
+            <div
+              data-testid="player-profile-summary-analysis-details"
+              className="contents"
             >
-              {player.hiddenInformationRevealed
-                ? "Hide hidden info"
-                : "Reveal hidden info"}
-            </Button>
-            {hiddenInformationError ? (
-              <p className="text-right text-body-sm text-error" role="alert">
-                Could not update hidden information.
-              </p>
-            ) : null}
-          </div>
-          <div
-            data-testid="player-profile-action-slot"
-            className="flex min-h-10 min-w-0 flex-wrap justify-end overflow-visible"
-          >
-            {actions}
-          </div>
-        </div>
-
-        {showTacticalFitSummary || showAbility ? (
-          <div
-            data-testid="player-profile-summary-details"
-            className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[repeat(3,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))]"
-          >
-            {showAbility ? (
-              <div
-                data-testid="player-profile-summary-analysis-details"
-                className="contents"
-              >
-                <section
-                  aria-label="Ability"
-                  data-testid="overview-ability"
-                  className="contents"
-                >
-                  <OverviewFactCard label="Current Ability" value={player.ca} />
-                  {player.hiddenInformationRevealed ? (
-                    <OverviewFactCard
-                      label="Potential Ability"
-                      value={formatMissable(player.pa)}
-                    />
-                  ) : null}
-                  <OverviewFactCard
-                    label="Market Value"
-                    value={
-                      player.marketValueGbp === null
-                        ? formatMissable(null)
-                        : formatMoney(player.marketValueGbp)
-                    }
-                  />
-                </section>
-              </div>
-            ) : null}
-
-            {showTacticalFitSummary ? (
               <section
-                aria-label="Tactical fit"
-                data-testid="overview-tactical-fit"
+                aria-label="Ability"
+                data-testid="overview-ability"
                 className="contents"
               >
-                <TacticalFitPair
-                  phase="in_possession"
-                  pair={ipPair}
-                  concealed={!player.hiddenInformationRevealed}
-                />
-                <TacticalFitPair
-                  phase="out_of_possession"
-                  pair={oopPair}
-                  concealed={!player.hiddenInformationRevealed}
+                <OverviewFactCard label="Current Ability" value={player.ca} />
+                {player.hiddenInformationRevealed ? (
+                  <OverviewFactCard
+                    label="Potential Ability"
+                    value={formatMissable(player.pa)}
+                  />
+                ) : null}
+                <OverviewFactCard
+                  label="Market Value"
+                  value={
+                    player.marketValueGbp === null
+                      ? formatMissable(null)
+                      : formatMoney(player.marketValueGbp)
+                  }
                 />
               </section>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+            </div>
+          ) : null}
+
+          {showTacticalFitSummary ? (
+            <section
+              aria-label="Tactical fit"
+              data-testid="overview-tactical-fit"
+              className="contents"
+            >
+              <TacticalFitPair
+                phase="in_possession"
+                pair={ipPair}
+                concealed={!player.hiddenInformationRevealed}
+              />
+              <TacticalFitPair
+                phase="out_of_possession"
+                pair={oopPair}
+                concealed={!player.hiddenInformationRevealed}
+              />
+            </section>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
