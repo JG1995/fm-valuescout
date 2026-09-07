@@ -593,6 +593,35 @@ describe("sticky identity shell", () => {
     expect(table).toHaveStyle({ minWidth: "504px" });
   });
 
+  it("bounds the table width to the column sum with fixed pixel columns", async () => {
+    renderIdentityShell({
+      identity: {
+        id: "identity",
+        label: "Player",
+        renderCell: () => <span>Identity</span>,
+        onResize: vi.fn(),
+      },
+      headerFactory: staffHeaderFactory,
+    });
+
+    // 280 identity + 96 analysis + 128 fixed actions. The bounded model
+    // fixes the table to exactly the column sum so ultrawide viewports
+    // reveal more columns instead of stretching cells without bound.
+    const table = await screen.findByRole("table", {
+      name: "Staff identity rows",
+    });
+    expect(table).toHaveStyle({
+      minWidth: "504px",
+      maxWidth: "504px",
+      width: "504px",
+    });
+    const cols = table.querySelectorAll("col");
+    expect(cols).toHaveLength(3);
+    expect(cols[0]).toHaveStyle({ width: "280px" });
+    expect(cols[1]).toHaveStyle({ width: "96px" });
+    expect(cols[2]).toHaveStyle({ width: "128px" });
+  });
+
   it("renders no identity region when the object is omitted", async () => {
     const { onRenderHeader } = renderIdentityShell({
       identity: undefined,

@@ -977,6 +977,37 @@ describe("search route", () => {
     });
   });
 
+  it("bounds a wide grouped layout to fixed column widths in the same scroller", async () => {
+    await resolveLoadDataIpcMock();
+    usePlayerTableStore.getState().addColumns("search", ["wage", "reputation"]);
+    setSearchPlayersOverride(manyPlayers(80));
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    // 280 identity + 144 age + 160 nationality + 72 CA + 72 PA + 112 value
+    // + 96 wage + 96 reputation. The bounded model fixes the table to
+    // exactly this sum so readable minimums hold and overflow stays in
+    // the same scroller instead of stretching cells.
+    expect(table).toHaveStyle({
+      minWidth: "1032px",
+      maxWidth: "1032px",
+      width: "1032px",
+    });
+    const cols = table.querySelectorAll("col");
+    expect(cols).toHaveLength(8);
+    expect(cols[0]).toHaveStyle({ width: "280px" });
+    // Sticky identity plus the complete grouped + leaf header context.
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Player");
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toBeInTheDocument();
+    const scroller = screen.getByTestId("search-results-scroller");
+    expect(scroller).toHaveClass("h-full", "min-h-0", "overflow-auto");
+  });
+
   it("renders every nationality flag in stored order", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([

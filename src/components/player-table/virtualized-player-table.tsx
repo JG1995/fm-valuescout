@@ -298,19 +298,20 @@ export function ConfigurableVirtualizedTable<
         <table
           className="table-fixed border-collapse text-left"
           style={{
-            width: "100%",
+            // Bounded containment model: the table is fixed to exactly the
+            // column-width sum with fixed pixel columns. Readable minimums
+            // hold, horizontal overflow stays in the same scroller, and
+            // ultrawide viewports reveal more columns instead of stretching
+            // cells without bound.
+            width: minimumTableWidth,
             minWidth: minimumTableWidth,
+            maxWidth: minimumTableWidth,
           }}
         >
           <caption className="sr-only">{caption}</caption>
           <colgroup>
             {allColumns.map((column) => (
-              <col
-                key={column.id}
-                style={{
-                  width: `${(column.width / minimumTableWidth) * 100}%`,
-                }}
-              />
+              <col key={column.id} style={{ width: column.width }} />
             ))}
           </colgroup>
           {thead}

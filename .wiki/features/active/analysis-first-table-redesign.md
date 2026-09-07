@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -136,7 +136,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 ### PR 1 — Redesign shared table for analysis-first views
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -762,7 +762,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 #### Commit 11 — Enforce bounded column widths
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tables): enforce bounded column widths`
 
@@ -817,24 +817,6 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 **Review mandate:** Width math (minimums, overflow owner, no document scroll); sticky visibility at both viewports; bounded ultrawide cells; virtual spacer integrity; smoke assertions measuring the right geometry; no behavior drift.
 
-## Active work
-
-**PR:** Redesign shared table for analysis-first views
-
-**Commit:** Enforce bounded column widths
-
-### RED or removal proof
-
-Add failing 1280×800 and 3440×1440 geometry proofs for container-owned overflow, bounded cell widths, additional visible columns, sticky identity and headers, and unchanged virtual spacer behavior.
-
-### Expected outcome
-
-The finished shared tables honor readable bounded widths, own horizontal and vertical overflow, and reveal more columns on ultrawide displays without stretching cells.
-
-### Explicit exclusions
-
-Behavior, defaults, scoring, data semantics, backend changes, new breakpoints below 1280px, and unrelated refactors.
-
 ## Discoveries and replanning
 
 - 2026-09-06 bounded replanning (developer feedback on atomicity): restructured the delivery sequence from one planning commit plus six implementation commits to one planning commit plus exactly ten implementation commits. Titles now describe one outcome and avoid "and". Changes: header geometry stays inside the grouped-header packet (Commit 2) as companion correctness; the reusable identity seam is established first as a backward-compatible foundation with direct contract proof and no consumer change (Commit 3); global identity activation and the stripping v7→v8 migration stay atomic (Commit 4, the only intentionally oversized packet, with the exact >200-line reason recorded); grouped column management moves out of the migration into its own packet consuming the same `TableGroupInput` (Commit 5); tactic accessibility stays with compact labels (Commit 6); the toolbar contract is introduced once through Search/Moneyball (Commit 7) and adopted per consumer by Staff (Commit 8) and Squad (Commit 9); cells (Commit 10) and bounded widths with viewport proof (Commit 11) close the sequence. Delivery fingerprint reset to `Pending plan review`. All accepted intent, decisions, exact migration rules, group maps, validation, risks, and the no-density virtualization boundary are preserved unchanged.
@@ -852,7 +834,8 @@ Behavior, defaults, scoring, data semantics, backend changes, new breakpoints be
 | PR 1 — Redesign shared table for analysis-first views | Commit 7 — Integrate the Search table toolbar | 5d0b0c0fab408d016e85aeba536442f9294074e5 | Added a minimal shared table-associated toolbar and adopted it in Search and Moneyball while keeping tactic and upload actions in the route-owned page header. | Full frontend suite 931/931; `./scripts/dev check` passed; diff check clean. | Pass | Clear | 2 | Corrected three obsolete post-v8 test assumptions from earlier packets; reviews then required same-row page-header actions, current analysis group fixtures, and removal of an invalid type-only test. |
 | PR 1 — Redesign shared table for analysis-first views | Commit 8 — Integrate the Staff table toolbar | de54e4b4b730ca9e9b78c03e4fd85c10b5581cd7 | Adopted the shared toolbar across Staff Search, My Staff, and both Staff Shortlist paths while keeping page actions and boosts outside; preserved visible committed rows and truthful dynamic-field replacement recovery. | Staff tests 53/53; full frontend suite 936/936; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | The first worker reached its 100-turn limit; a finisher completed replacement-state behavior. Initial review then required visible error and retry handling for requested dynamic fields. |
 | PR 1 — Redesign shared table for analysis-first views | Commit 9 — Integrate the Squad table toolbar | e0ac8961b143f1e2edfc4e95e26cb9c826f7542c | Adopted the shared toolbar for Squad summary and grouped Columns without adding filters or moving boosts and feature actions. | Squad tests 132/132; component tests 47/47; full frontend suite 938/938; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 0 | None |
-| PR 1 — Redesign shared table for analysis-first views | Commit 10 — Standardize shared table cells | Pending record | Consolidated proven shared player text, numeric, currency, dynamic, and score presentation while preserving caller-specific cells and exact loading, missing, zero, and accessible score semantics. | Component tests 54/54; affected route tests 268/268; full frontend suite 945/945; `./scripts/dev check` passed; diff check clean. | Pass | Clear | 2 | Initial review required shared Search/Squad basic cells and zero proof; correction review then found stale Staff score precedence, fixed by loading-first rendering and recovery proof. |
+| PR 1 — Redesign shared table for analysis-first views | Commit 10 — Standardize shared table cells | 3466681bfea840adbc3e3812b67cf6c64735b5a0 | Consolidated proven shared player text, numeric, currency, dynamic, and score presentation while preserving caller-specific cells and exact loading, missing, zero, and accessible score semantics. | Component tests 54/54; affected route tests 268/268; full frontend suite 945/945; `./scripts/dev check` passed; diff check clean. | Pass | Clear | 2 | Initial review required shared Search/Squad basic cells and zero proof; correction review then found stale Staff score precedence, fixed by loading-first rendering and recovery proof. |
+| PR 1 — Redesign shared table for analysis-first views | Commit 11 — Enforce bounded column widths | Pending record | Replaced proportional table stretching with exact bounded pixel widths and added unit, route, and real-browser proof for shared-scroll overflow, sticky context, virtualization, and ultrawide column reveal. | Full frontend suite 947/947; `./scripts/dev check` passed; focused browser cases 4/4 and full smoke suite 60/60 passed; LSP and diff checks clean. | Pass | Clear | 0 | Updated four stale smoke contracts from pre-grouped and pre-identity behavior while retaining their geometry, sorting, and activation proofs. |
 
 ## Final validation
 
