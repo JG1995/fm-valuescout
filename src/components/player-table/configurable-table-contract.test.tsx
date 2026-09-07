@@ -622,6 +622,36 @@ describe("sticky identity shell", () => {
     expect(cols[2]).toHaveStyle({ width: "128px" });
   });
 
+  it("shrink-wraps the scroll container to the fixed-width table with a rounded border", async () => {
+    renderIdentityShell({
+      identity: {
+        id: "identity",
+        label: "Player",
+        renderCell: () => <span>Identity</span>,
+        onResize: vi.fn(),
+      },
+      headerFactory: staffHeaderFactory,
+    });
+
+    await screen.findByRole("table", {
+      name: "Staff identity rows",
+    });
+    // Planner-style treatment: the single scroll surface hugs the
+    // fixed-width table up to the viewport (w-fit max-w-full) and clips
+    // to a rounded bordered edge when content is narrower.
+    const scroller = screen.getByTestId("staff-identity-rows-scroller");
+    expect(scroller).toHaveClass(
+      "w-fit",
+      "max-w-full",
+      "rounded-lg",
+      "border",
+      "border-outline-variant",
+    );
+    // The shared shell keeps overflow ownership and full-height
+    // virtualization: one horizontal+vertical scroller.
+    expect(scroller).toHaveClass("overflow-auto", "h-full");
+  });
+
   it("renders no identity region when the object is omitted", async () => {
     const { onRenderHeader } = renderIdentityShell({
       identity: undefined,
