@@ -252,6 +252,7 @@ export function PlayerDevelopmentActions({
   onBoostWonderkidMentality,
   onOpenConfirmation,
 }: PlayerDevelopmentActionsProps) {
+  const [modifyOpen, setModifyOpen] = useState(false);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [confirmationAction, setConfirmationAction] =
     useState<BoostAction>("currentAbility");
@@ -287,74 +288,86 @@ export function PlayerDevelopmentActions({
 
   const currentAbilityConfirmation = confirmationAction === "currentAbility";
 
+  const modifyPanelId = useId();
+
   return (
     <>
       <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ActionTooltip
-            label="Boost CA"
-            disabled={!currentAbilityEligible || pending}
-            content={
-              <div className="space-y-2 text-body-sm text-on-surface-variant">
-                {currentAbilityEligible ? (
-                  <p className="font-mono text-mono-sm tabular-nums">
-                    CA {player.ca} → {currentAbilityPreview.target} (+
-                    {currentAbilityPreview.increase})
-                    {currentAbilityPreview.cappedByPotential
-                      ? " · capped by PA"
-                      : ""}
-                  </p>
-                ) : (
-                  <p>{currentAbilityPreview.reason}</p>
-                )}
-                <p>
-                  FM may redistribute attributes over the following in-game
-                  days, sometimes up to one month.
-                </p>
-              </div>
-            }
-          >
-            <Button
-              icon={Zap}
+        <Button
+          variant="secondary"
+          aria-expanded={modifyOpen}
+          aria-controls={modifyPanelId}
+          onClick={() => setModifyOpen((open) => !open)}
+        >
+          Modify Player
+        </Button>
+        {modifyOpen ? (
+          <div id={modifyPanelId} className="flex flex-wrap items-center gap-2">
+            <ActionTooltip
+              label="Boost CA"
               disabled={!currentAbilityEligible || pending}
-              loading={pending && confirmationAction === "currentAbility"}
-              loadingLabel="Boosting…"
-              onClick={() => openConfirmation("currentAbility")}
+              content={
+                <div className="space-y-2 text-body-sm text-on-surface-variant">
+                  {currentAbilityEligible ? (
+                    <p className="font-mono text-mono-sm tabular-nums">
+                      CA {player.ca} → {currentAbilityPreview.target} (+
+                      {currentAbilityPreview.increase})
+                      {currentAbilityPreview.cappedByPotential
+                        ? " · capped by PA"
+                        : ""}
+                    </p>
+                  ) : (
+                    <p>{currentAbilityPreview.reason}</p>
+                  )}
+                  <p>
+                    FM may redistribute attributes over the following in-game
+                    days, sometimes up to one month.
+                  </p>
+                </div>
+              }
             >
-              Boost CA
-            </Button>
-          </ActionTooltip>
+              <Button
+                icon={Zap}
+                disabled={!currentAbilityEligible || pending}
+                loading={pending && confirmationAction === "currentAbility"}
+                loadingLabel="Boosting…"
+                onClick={() => openConfirmation("currentAbility")}
+              >
+                Boost CA
+              </Button>
+            </ActionTooltip>
 
-          <ActionTooltip
-            label="Wonderkid Mentality"
-            disabled={!mentalityEligible || pending}
-            content={
-              <div className="space-y-2 text-body-sm text-on-surface-variant">
-                <ul className="mt-1 space-y-1 text-body-sm text-on-surface-variant">
-                  {mentalityPreview.attributes.map((attribute) => (
-                    <li key={attribute.label}>
-                      {mentalityPreviewLabel(attribute)}
-                    </li>
-                  ))}
-                </ul>
-                {!mentalityEligible ? (
-                  <p>No known mentality attribute is 10 or lower.</p>
-                ) : null}
-              </div>
-            }
-          >
-            <Button
-              icon={Sparkles}
+            <ActionTooltip
+              label="Wonderkid Mentality"
               disabled={!mentalityEligible || pending}
-              loading={pending && confirmationAction === "wonderkidMentality"}
-              loadingLabel="Applying…"
-              variant="secondary"
-              onClick={() => openConfirmation("wonderkidMentality")}
+              content={
+                <div className="space-y-2 text-body-sm text-on-surface-variant">
+                  <ul className="mt-1 space-y-1 text-body-sm text-on-surface-variant">
+                    {mentalityPreview.attributes.map((attribute) => (
+                      <li key={attribute.label}>
+                        {mentalityPreviewLabel(attribute)}
+                      </li>
+                    ))}
+                  </ul>
+                  {!mentalityEligible ? (
+                    <p>No known mentality attribute is 10 or lower.</p>
+                  ) : null}
+                </div>
+              }
             >
-              Wonderkid Mentality
-            </Button>
-          </ActionTooltip>
-        </div>
+              <Button
+                icon={Sparkles}
+                disabled={!mentalityEligible || pending}
+                loading={pending && confirmationAction === "wonderkidMentality"}
+                loadingLabel="Applying…"
+                variant="secondary"
+                onClick={() => openConfirmation("wonderkidMentality")}
+              >
+                Wonderkid Mentality
+              </Button>
+            </ActionTooltip>
+          </div>
+        ) : null}
         <div
           ref={outcomeRef}
           data-testid="player-development-outcome"

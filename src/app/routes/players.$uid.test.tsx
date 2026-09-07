@@ -1050,7 +1050,12 @@ describe("player profile route", () => {
   it("keeps the hidden-information control separate from modification actions", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
+    const user = userEvent.setup();
     renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
 
     const summary = await screen.findByRole("region", {
       name: "Alex Scout summary",
@@ -1082,6 +1087,111 @@ describe("player profile route", () => {
       within(displayControl).queryByRole("button", { name: "Boost CA" }),
     ).not.toBeInTheDocument();
     expect(actionSlot.contains(hiddenInformation)).toBe(false);
+  });
+
+  it("hides modification actions behind Modify Player until opened", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    const actionSlot = within(summary).getByTestId(
+      "player-profile-action-slot",
+    );
+
+    const disclosure = within(actionSlot).getByRole("button", {
+      name: "Modify Player",
+    });
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(
+      within(actionSlot).queryByRole("button", { name: "Boost CA" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(actionSlot).queryByRole("button", {
+        name: "Wonderkid Mentality",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens and closes modification actions from the keyboard", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    const actionSlot = within(summary).getByTestId(
+      "player-profile-action-slot",
+    );
+    const disclosure = within(actionSlot).getByRole("button", {
+      name: "Modify Player",
+    });
+
+    disclosure.focus();
+    expect(disclosure).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    expect(
+      within(actionSlot).getByRole("button", { name: "Boost CA" }),
+    ).toBeInTheDocument();
+    expect(
+      within(actionSlot).getByRole("button", {
+        name: "Wonderkid Mentality",
+      }),
+    ).toBeInTheDocument();
+
+    await user.keyboard("{Enter}");
+
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(
+      within(actionSlot).queryByRole("button", { name: "Boost CA" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the hidden-information toggle outside the Modify Player disclosure", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    const displayControl = within(summary).getByTestId(
+      "player-profile-display-control",
+    );
+    const actionSlot = within(summary).getByTestId(
+      "player-profile-action-slot",
+    );
+    const disclosure = within(actionSlot).getByRole("button", {
+      name: "Modify Player",
+    });
+
+    await user.click(disclosure);
+
+    expect(
+      within(displayControl).getByRole("button", {
+        name: "Reveal hidden information",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(actionSlot).queryByRole("button", {
+        name: "Reveal hidden information",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(displayControl).queryByRole("button", { name: "Boost CA" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(displayControl).queryByRole("button", {
+        name: "Modify Player",
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it("conceals hidden information without leaving direct or indirect values in the profile", async () => {
@@ -1781,6 +1891,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     const action = await screen.findByRole("button", { name: "Boost CA" });
     expect(screen.getByText("CA 140 → 150 (+10)")).toBeInTheDocument();
 
@@ -1811,7 +1924,12 @@ describe("player profile route", () => {
   it("uses the age-28 increment while capping the preview at PA", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail({ age: 28, ca: 192, pa: 195 }));
+    const user = userEvent.setup();
     renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
 
     expect(
       await screen.findByText("CA 192 → 195 (+3) · capped by PA"),
@@ -1821,7 +1939,12 @@ describe("player profile route", () => {
   it("disables CA boost when age is unknown", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail({ age: null }));
+    const user = userEvent.setup();
     renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
 
     expect(
       await screen.findByText(
@@ -1834,7 +1957,12 @@ describe("player profile route", () => {
   it("disables CA boost at age 29 without invoking the bridge", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail({ age: 29, ca: 140, pa: 160 }));
+    const user = userEvent.setup();
     renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
 
     expect(
       await screen.findByText(
@@ -1848,7 +1976,12 @@ describe("player profile route", () => {
   it("disables CA boost when PA is unavailable", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail({ pa: null }));
+    const user = userEvent.setup();
     renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
 
     expect(
       await screen.findByText(
@@ -1861,7 +1994,12 @@ describe("player profile route", () => {
   it("disables CA boost when CA already equals PA", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail({ ca: 160, pa: 160 }));
+    const user = userEvent.setup();
     renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
 
     expect(
       await screen.findByText(
@@ -1874,7 +2012,12 @@ describe("player profile route", () => {
   it("disables CA boost at the 200 ceiling", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail({ ca: 200, pa: 200 }));
+    const user = userEvent.setup();
     renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
 
     expect(
       await screen.findByText(
@@ -1890,6 +2033,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     await user.click(await screen.findByRole("button", { name: "Boost CA" }));
     const dialog = screen.getByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
@@ -1909,6 +2055,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     const { router } = renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     await user.click(await screen.findByRole("button", { name: "Boost CA" }));
     await user.click(
       within(screen.getByRole("dialog")).getByRole("button", {
@@ -1950,6 +2099,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     await user.click(await screen.findByRole("button", { name: "Boost CA" }));
     await user.click(
       within(screen.getByRole("dialog")).getByRole("button", {
@@ -1991,6 +2143,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     const { router } = renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     await user.click(await screen.findByRole("button", { name: "Boost CA" }));
     await user.click(
       within(screen.getByRole("dialog")).getByRole("button", {
@@ -2044,6 +2199,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     await user.click(await screen.findByRole("button", { name: "Boost CA" }));
     const confirm = within(screen.getByRole("dialog")).getByRole("button", {
       name: "Boost CA",
@@ -2070,6 +2228,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     await user.click(await screen.findByRole("button", { name: "Boost CA" }));
     const dialog = screen.getByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
@@ -2087,6 +2248,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     const action = await screen.findByRole("button", { name: "Boost CA" });
     action.focus();
     await user.click(action);
@@ -2110,6 +2274,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     await user.click(await screen.findByRole("button", { name: "Boost CA" }));
     await user.click(
       within(screen.getByRole("dialog")).getByRole("button", {
@@ -2130,7 +2297,12 @@ describe("player profile route", () => {
         personality: { Ambition: 10, Professionalism: 11 },
       }),
     );
+    const user = userEvent.setup();
     renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
 
     expect(
       await screen.findByRole("button", { name: "Wonderkid Mentality" }),
@@ -2152,7 +2324,12 @@ describe("player profile route", () => {
         personality: { Ambition: 11, Professionalism: null },
       }),
     );
+    const user = userEvent.setup();
     renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
 
     expect(
       await screen.findByText("No known mentality attribute is 10 or lower."),
@@ -2173,6 +2350,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     await user.click(
       await screen.findByRole("button", { name: "Wonderkid Mentality" }),
     );
@@ -2208,6 +2388,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     await user.click(
       await screen.findByRole("button", { name: "Wonderkid Mentality" }),
     );
@@ -2256,6 +2439,9 @@ describe("player profile route", () => {
     ).toHaveClass("max-h-16", "overflow-y-auto");
 
     await user.click(
+      within(actionSlot).getByRole("button", { name: "Modify Player" }),
+    );
+    await user.click(
       within(actionSlot).getByRole("button", { name: "Wonderkid Mentality" }),
     );
     await user.click(
@@ -2283,6 +2469,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     await user.click(
       await screen.findByRole("button", { name: "Wonderkid Mentality" }),
     );
@@ -2317,6 +2506,9 @@ describe("player profile route", () => {
     renderProfileRoute("/players/42");
 
     await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
+    await user.click(
       await screen.findByRole("button", { name: "Wonderkid Mentality" }),
     );
     const dialog = screen.getByRole("dialog");
@@ -2341,6 +2533,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     await user.click(await screen.findByRole("button", { name: "Boost CA" }));
     const caDialog = screen.getByRole("dialog");
     await user.click(
@@ -2372,6 +2567,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     const action = await screen.findByRole("button", {
       name: "Wonderkid Mentality",
     });
@@ -2399,6 +2597,9 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
+    await user.click(
+      await screen.findByRole("button", { name: "Modify Player" }),
+    );
     await user.click(
       await screen.findByRole("button", { name: "Wonderkid Mentality" }),
     );
