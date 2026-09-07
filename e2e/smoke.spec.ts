@@ -4284,7 +4284,9 @@ test.describe("application smoke", () => {
       throw new Error("Expected the hidden-information toggle in both states.");
     }
     expect(concealedToggleBox.y).toBe(revealedToggleBox.y);
-    await expect(summary.getByText("PA", { exact: true })).toHaveCount(0);
+    await expect(
+      summary.getByText("Potential Ability", { exact: true }),
+    ).toHaveCount(0);
     await expect(summary.getByText("160", { exact: true })).toHaveCount(0);
     await expect(
       summary.getByText(
@@ -4309,7 +4311,9 @@ test.describe("application smoke", () => {
 
     await otherToggle.click();
     await expect(otherToggle).toHaveAttribute("aria-pressed", "true");
-    await expect(otherSummary.getByText("PA", { exact: true })).toBeVisible();
+    await expect(
+      otherSummary.getByText("Potential Ability", { exact: true }),
+    ).toBeVisible();
   });
 
   test("player profile Attributes keeps visible potential pairs within desktop widths", async ({
@@ -4517,7 +4521,9 @@ test.describe("application smoke", () => {
     await expect(
       overviewSummary.getByRole("region", { name: "Ability" }),
     ).toBeVisible();
-    await expect(overviewSummary.getByText("In possession (IP)")).toBeVisible();
+    await expect(
+      overviewSummary.getByText("Best In-Possession Role"),
+    ).toBeVisible();
     const overviewAttributes = main
       .getByRole("heading", { name: "Attributes" })
       .locator("..")
