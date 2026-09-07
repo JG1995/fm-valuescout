@@ -205,6 +205,16 @@ describe("player table grouped headers", () => {
     expect(leaf).toHaveAttribute("aria-sort", "descending");
   });
 
+  it("centers group labels over their span", () => {
+    renderHeader({ columns: GROUPED_COLUMNS, groups: GROUPED_GROUPS });
+
+    for (const name of ["Profile", "Ability", "Market"]) {
+      const group = screen.getByRole("columnheader", { name });
+      expect(group).toHaveAttribute("scope", "colgroup");
+      expect(group.className).toContain("text-center");
+    }
+  });
+
   it("repeats an interrupted group as a new run after a move", () => {
     renderHeader({
       columns: [GROUPED_COLUMNS[0], GROUPED_COLUMNS[2], GROUPED_COLUMNS[1]],
