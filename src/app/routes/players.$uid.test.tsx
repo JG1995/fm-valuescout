@@ -1999,7 +1999,7 @@ describe("player profile route", () => {
         roleScores: Array.from({ length: 79 }, (_, index) => ({
           roleId: `catalog-role-${index}`,
           displayName: `Catalog Role ${index + 1}`,
-          phase: "in_possession",
+          phase: index % 2 === 0 ? "in_possession" : "out_of_possession",
           positionTags: ["MC"],
           score: 60,
           potentialScore: 70,
@@ -2010,6 +2010,17 @@ describe("player profile route", () => {
 
     const roleFit = await screen.findByRole("region", {
       name: "Role fit for MC",
+    });
+    const roleRows = within(roleFit).getAllByRole("row").slice(1);
+    expect(roleRows).toHaveLength(79);
+    roleRows.forEach((row, index) => {
+      const roleCell = within(row).getAllByRole("cell")[0];
+      const phaseChip = within(roleCell).getByRole("img");
+      const expectedPhase = index % 2 === 0 ? "IP" : "OOP";
+      expect(phaseChip).toHaveTextContent(expectedPhase);
+      expect(phaseChip).toHaveAccessibleName(
+        expectedPhase === "IP" ? "In possession" : "Out of possession",
+      );
     });
     expect(
       within(roleFit).getByLabelText("Catalog Role 1 (Current): 60, Average"),

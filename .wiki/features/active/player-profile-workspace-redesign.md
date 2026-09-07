@@ -1071,7 +1071,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 16 — Expose possession phase as comparison field
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): expose role possession phases`
 
@@ -1128,7 +1128,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 17 — Complete Role Fit geometry
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): align role fit comparisons`
 
@@ -1417,19 +1417,19 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 **PR:** PR 1 — Player profile workspace redesign
 
-**Commit:** Expose possession phase as comparison field
+**Commit:** Complete Role Fit geometry
 
 ### RED or removal proof
 
-New route tests must fail while Role Fit rows lack a compact readable IP or OOP chip inside the role cell with a full accessible phase name.
+New route tests must fail while Role Fit lacks dedicated Role, Phase, Current, and concealment-gated Potential columns with aligned comparison values.
 
 ### Expected outcome
 
-Every Role Fit row states its possession phase with readable text and an accessible full name without changing scores, sorting, or table columns.
+The position navigator sits beside a comparison table with explicit phase and vertically aligned current and potential columns while sorting and empty states remain unchanged.
 
 ### Explicit exclusions
 
-Role-table column geometry, score or sort changes, and Role Fit width changes.
+Role scoring, role catalog, sorting behavior, extreme-viewport proof, and concealment changes.
 
 ## Discoveries and replanning
 
@@ -1455,7 +1455,8 @@ The planning-artifact checkpoint review found stale prose that still described r
 | PR 1 — Player profile workspace redesign | Commit 12 — Build Overview tactical-fit summary | 376e03f9fd9bc28c1fd96a0ffbbfcda693076050 | Added Overview-only same-role best-current tactical-fit pairs for In possession and Out of possession with readable phase labels, aligned current-to-potential values, concealment, and neutral unavailable states, removing the obsolete four standard summaries from Attributes and Role Fit. | Tactical summary RED proofs failed before implementation; focused Player Profile route tests passed 76/76; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found visual score labels duplicated the complete screen-reader description; correction hid visual pairs from assistive technology and added direct revealed, concealed, and unavailable proofs for one announcement. |
 | PR 1 — Player profile workspace redesign | Commit 13 — Expand Attributes workspace | 22db85996fd078bbc9cdb3facbbd8193e1548151 | Added Attributes-only full-width, bounded-height workspace geometry while preserving the panel's single local vertical scroll surface, local keyboard tabs, attribute groups, paired values, colouring, and concealment behavior. | The route geometry proof failed before implementation; focused Player Profile and attribute-group tests passed 86/86; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
 | PR 1 — Player profile workspace redesign | Commit 14 — Mute unfamiliar positions | 98530703c5915d0d8624490229cf9e982564560b | Muted exactly unrecorded and below-15 position choices with neutral styling while preserving familiarity values, accessible names, the playable threshold, and dominant selected styling. | The below-threshold styling proof failed before implementation; focused Player Profile route tests passed 77/77; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found numeric-zero familiarity unproved; correction added direct zero-value, visible-placeholder, accessible-name, and threshold-boundary coverage. |
-| PR 1 — Player profile workspace redesign | Commit 15 — Mark selected positions without colour alone | Pending record | Reinforced selected Role Fit positions with a two-pixel structural border while retaining the gold treatment, `aria-pressed`, keyboard selection, and unfamiliar-position precedence. | The non-colour selection-marker proof failed before implementation; focused Player Profile route tests passed 78/78; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
+| PR 1 — Player profile workspace redesign | Commit 15 — Mark selected positions without colour alone | 282beae8301b63e9b205b54b3899d03709421b00 | Reinforced selected Role Fit positions with a two-pixel structural border while retaining the gold treatment, `aria-pressed`, keyboard selection, and unfamiliar-position precedence. | The non-colour selection-marker proof failed before implementation; focused Player Profile route tests passed 78/78; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
+| PR 1 — Player profile workspace redesign | Commit 16 — Expose possession phase as comparison field | Pending record | Added compact readable IP/OOP phase chips with full accessible phase names beside every standard Role Fit role name while preserving columns, sorting, scores, filtering, and concealment. | The phase-chip proof failed before implementation; focused Player Profile and role-phase tests passed 80/80; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found the test accepted hard-coded phase labels; correction correlated every row to its alternating fixture phase. One advisory MEDIUM notes that the text chip uses image semantics; reconcile it in the bundled feature close-out pass. |
 
 ## Final validation
 

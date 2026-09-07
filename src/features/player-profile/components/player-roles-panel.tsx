@@ -196,37 +196,54 @@ export function PlayerRolesPanel({
                     </td>
                   </tr>
                 ) : null}
-                {roles.map((role) => (
-                  <tr
-                    key={role.roleId}
-                    className="h-12 border-b border-outline-variant/70"
-                  >
-                    <td className="min-w-0 pr-2">
-                      <p className="truncate text-body-md text-on-surface">
-                        {role.displayName}
-                      </p>
-                      <p className="text-[11px] text-on-surface-variant">
-                        {rolePhaseLabel(role.phase)}
-                      </p>
-                    </td>
-                    <td className="text-center">
-                      <RoleScore
-                        roleName={role.displayName}
-                        basis="Current"
-                        score={role.score}
-                      />
-                    </td>
-                    {hiddenInformationRevealed ? (
+                {roles.map((role) => {
+                  const phaseLabel = rolePhaseLabel(role.phase);
+                  const fullPhaseLabel =
+                    phaseLabel === "IP"
+                      ? "In possession"
+                      : phaseLabel === "OOP"
+                        ? "Out of possession"
+                        : phaseLabel;
+
+                  return (
+                    <tr
+                      key={role.roleId}
+                      className="h-12 border-b border-outline-variant/70"
+                    >
+                      <td className="min-w-0 pr-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <p className="min-w-0 truncate text-body-md text-on-surface">
+                            {role.displayName}
+                          </p>
+                          <span
+                            role="img"
+                            aria-label={fullPhaseLabel}
+                            title={fullPhaseLabel}
+                            className="inline-flex shrink-0 items-center rounded-full border border-outline-variant bg-surface-container-high px-1.5 py-0.5 text-label-sm text-on-surface-variant"
+                          >
+                            {phaseLabel}
+                          </span>
+                        </div>
+                      </td>
                       <td className="text-center">
                         <RoleScore
                           roleName={role.displayName}
-                          basis="Potential"
-                          score={role.potentialScore}
+                          basis="Current"
+                          score={role.score}
                         />
                       </td>
-                    ) : null}
-                  </tr>
-                ))}
+                      {hiddenInformationRevealed ? (
+                        <td className="text-center">
+                          <RoleScore
+                            roleName={role.displayName}
+                            basis="Potential"
+                            score={role.potentialScore}
+                          />
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
