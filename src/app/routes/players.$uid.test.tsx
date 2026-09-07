@@ -66,28 +66,46 @@ describe("player profile route", () => {
     setGetPlayerOverride(undefined);
   });
 
-  it("shows overview identity fields for a known player", async () => {
+  it("shows rail identity with overview analysis for a known player", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
     renderProfileRoute("/players/42");
 
+    const rail = await screen.findByRole("complementary", {
+      name: "Player identity",
+    });
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Alex Scout" }),
+      within(rail).getByRole("heading", {
+        level: 1,
+        name: "Alex Scout",
+      }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Test FC · Premier Division")).toBeInTheDocument();
-    expect(screen.getByText("21/03/2001 (25)")).toBeInTheDocument();
-    expect(screen.getByText("140")).toBeInTheDocument();
-    expect(screen.getByText("160")).toBeInTheDocument();
-    expect(screen.getByText("182 cm")).toBeInTheDocument();
-    expect(screen.getByText("Right")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "England" })).toHaveAttribute(
+    expect(
+      within(rail).getByText("Test FC · Premier Division"),
+    ).toBeInTheDocument();
+    expect(within(rail).getByText("21/03/2001 (25)")).toBeInTheDocument();
+    expect(within(rail).getByText("182 cm")).toBeInTheDocument();
+    expect(within(rail).getByText("Right")).toBeInTheDocument();
+    expect(within(rail).getByRole("img", { name: "England" })).toHaveAttribute(
       "title",
       "England",
     );
-    expect(screen.getByRole("img", { name: "Wales" })).toHaveAttribute(
+    expect(within(rail).getByRole("img", { name: "Wales" })).toHaveAttribute(
       "title",
       "Wales",
     );
+
+    const summary = screen.getByRole("region", {
+      name: "Alex Scout summary",
+    });
+    expect(
+      within(summary).queryByRole("heading", {
+        level: 1,
+        name: "Alex Scout",
+      }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("140")).toBeInTheDocument();
+    expect(screen.getByText("160")).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: "Outfield", selected: true }),
     ).toBeInTheDocument();
@@ -377,19 +395,22 @@ describe("player profile route", () => {
 
     expect(generalHeader.firstElementChild).toBe(generalSummary);
     expect(generalHeader.lastElementChild).toBe(generalTabs);
+    const generalRail = screen.getByRole("complementary", {
+      name: "Player identity",
+    });
     expect(
-      within(generalSummary).getByRole("heading", {
+      within(generalRail).getByRole("heading", {
         level: 1,
         name: "Alexandra Maximilian Scout",
       }),
     ).toHaveClass("break-words");
     expect(
-      within(generalSummary).getByRole("heading", {
+      within(generalRail).getByRole("heading", {
         level: 1,
         name: "Alexandra Maximilian Scout",
       }),
     ).not.toHaveClass("truncate");
-    expect(generalDetails).toHaveClass("lg:grid-cols-3");
+    expect(generalDetails).toHaveClass("lg:grid-cols-2");
     expect(
       within(generalDetails).getByTestId("player-profile-role-summaries"),
     ).toHaveClass("grid-rows-2");
@@ -404,12 +425,15 @@ describe("player profile route", () => {
       ),
     ).toHaveClass("min-h-9");
     expect(
-      within(generalSummary).getByRole("img", { name: "England" }),
+      within(generalRail).getByRole("img", { name: "England" }),
     ).toHaveAttribute("title", "England");
     expect(
-      within(generalSummary).getByRole("img", { name: "Wales" }),
+      within(generalRail).getByRole("img", { name: "Wales" }),
     ).toHaveAttribute("title", "Wales");
-    expect(within(generalSummary).queryByText("England, Wales")).toBeNull();
+    expect(within(generalRail).queryByText("England, Wales")).toBeNull();
+    expect(
+      within(generalSummary).queryByRole("heading", { level: 1 }),
+    ).not.toBeInTheDocument();
     expect(within(generalSummary).getByText("Current IP")).toBeInTheDocument();
     expect(
       within(generalSummary).getByText("Potential OOP"),
@@ -472,7 +496,7 @@ describe("player profile route", () => {
         name: "Player analysis view",
       }),
     );
-    expect(moneyballDetails).toHaveClass("lg:grid-cols-3");
+    expect(moneyballDetails).toHaveClass("lg:grid-cols-2");
     expect(
       within(moneyballDetails).getByTestId("player-profile-role-summaries"),
     ).toHaveClass("grid-rows-2");
@@ -486,10 +510,20 @@ describe("player profile route", () => {
         "player-profile-summary-analysis-details",
       ),
     ).toHaveClass("min-h-9");
-    expect(within(moneyballSummary).getByText("Age / DOB")).toBeInTheDocument();
+    const moneyballRail = screen.getByRole("complementary", {
+      name: "Player identity",
+    });
     expect(
-      within(moneyballSummary).getByText("Nationality"),
+      within(moneyballRail).getByRole("heading", {
+        level: 1,
+        name: "Alexandra Maximilian Scout",
+      }),
     ).toBeInTheDocument();
+    expect(within(moneyballRail).getByText("Age / DOB")).toBeInTheDocument();
+    expect(within(moneyballRail).getByText("Nationality")).toBeInTheDocument();
+    expect(
+      within(moneyballSummary).queryByRole("heading", { level: 1 }),
+    ).not.toBeInTheDocument();
     expect(
       within(moneyballSummary).getByText("Moneyball IP"),
     ).toBeInTheDocument();
@@ -700,7 +734,10 @@ describe("player profile route", () => {
         await screen.findByRole("tab", { name, selected: true }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("heading", { level: 1, name: "Alex Scout" }),
+        within(screen.getByTestId("player-identity-rail")).getByRole(
+          "heading",
+          { level: 1, name: "Alex Scout" },
+        ),
       ).toBeInTheDocument();
     }
     expect(router.state.location.search).toMatchObject({
@@ -802,7 +839,10 @@ describe("player profile route", () => {
       }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 1, name: "Alex Scout" }),
+      within(screen.getByTestId("player-identity-rail")).getByRole("heading", {
+        level: 1,
+        name: "Alex Scout",
+      }),
     ).toBeInTheDocument();
   });
 
@@ -812,8 +852,9 @@ describe("player profile route", () => {
     setPlayerMoneyballPending();
     renderProfileRoute("/players/42?section=attributes");
 
+    const rail = await screen.findByTestId("player-identity-rail");
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Alex Scout" }),
+      within(rail).getByRole("heading", { level: 1, name: "Alex Scout" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: "Attributes", selected: true }),
@@ -1873,9 +1914,14 @@ describe("player profile route", () => {
       search: { tab: "outfield" },
     });
 
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Jamie Scout" }),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId("player-identity-rail")).getByRole(
+          "heading",
+          { level: 1, name: "Jamie Scout" },
+        ),
+      ).toBeInTheDocument(),
+    );
     expect(
       screen.queryByText("CA boosted from 140 to 150."),
     ).not.toBeInTheDocument();
@@ -1946,9 +1992,14 @@ describe("player profile route", () => {
       params: { uid: "99" },
       search: { tab: "outfield" },
     });
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Jamie Scout" }),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId("player-identity-rail")).getByRole(
+          "heading",
+          { level: 1, name: "Jamie Scout" },
+        ),
+      ).toBeInTheDocument(),
+    );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     resolvePendingCurrentAbilityBoostIpcMock({
@@ -2350,5 +2401,139 @@ describe("player profile route", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     expect(outcome.parentElement).toHaveFocus();
+  });
+
+  it("shows the persistent identity rail with the same identity and value on every section", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ transferListed: true }));
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    for (const name of ["Overview", "Attributes", "Role Fit", "Moneyball"]) {
+      if (name !== "Overview") {
+        await user.click(screen.getByRole("tab", { name }));
+      }
+      expect(
+        await screen.findByRole("tab", { name, selected: true }),
+      ).toBeInTheDocument();
+      const rail = screen.getByRole("complementary", {
+        name: "Player identity",
+      });
+      expect(
+        within(rail).getByRole("heading", { level: 1, name: "Alex Scout" }),
+      ).toBeInTheDocument();
+      expect(
+        within(rail).getByText("Test FC · Premier Division"),
+      ).toBeInTheDocument();
+      expect(within(rail).getByText("21/03/2001 (25)")).toBeInTheDocument();
+      expect(within(rail).getByText("Nationality")).toBeInTheDocument();
+      expect(within(rail).getByText("182 cm")).toBeInTheDocument();
+      expect(within(rail).getByText("Right")).toBeInTheDocument();
+      expect(within(rail).getByText("Transfer listed")).toBeInTheDocument();
+      expect(within(rail).getByText("€12.5M")).toBeInTheDocument();
+    }
+  });
+
+  it("reserves neutral portrait and crest placeholders without loading images", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    renderProfileRoute("/players/42");
+
+    const rail = await screen.findByRole("complementary", {
+      name: "Player identity",
+    });
+    expect(
+      within(rail).getByRole("img", { name: "Player portrait placeholder" }),
+    ).toBeInTheDocument();
+    expect(
+      within(rail).getByRole("img", { name: "Club crest placeholder" }),
+    ).toBeInTheDocument();
+    expect(rail.querySelector("img")).toBeNull();
+  });
+
+  it("keeps the identity rail and analysis workspace distinct with no analytical values in the rail", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+    renderProfileRoute("/players/42?section=role-fit");
+
+    const rail = await screen.findByRole("complementary", {
+      name: "Player identity",
+    });
+    const workspace = screen.getByRole("region", { name: "Player analysis" });
+    expect(workspace).toBeInTheDocument();
+    expect(workspace).not.toContainElement(rail);
+    expect(rail).not.toContainElement(workspace);
+    expect(within(rail).queryByText("CA")).not.toBeInTheDocument();
+    expect(within(rail).queryByText("PA")).not.toBeInTheDocument();
+    expect(within(rail).queryByText("140")).not.toBeInTheDocument();
+    expect(within(rail).queryByText("160")).not.toBeInTheDocument();
+    expect(within(rail).queryByText("Current IP")).not.toBeInTheDocument();
+    expect(within(rail).queryByText("Potential OOP")).not.toBeInTheDocument();
+    expect(
+      within(rail).queryByText("Deep-Lying Playmaker"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("owns a single player heading with no workspace identity copies on any section", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ transferListed: true }));
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    for (const name of ["Overview", "Attributes", "Role Fit", "Moneyball"]) {
+      if (name !== "Overview") {
+        await user.click(screen.getByRole("tab", { name }));
+      }
+      expect(
+        await screen.findByRole("tab", { name, selected: true }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("heading", { level: 1, name: "Alex Scout" }),
+      ).toHaveLength(1);
+      const rail = screen.getByRole("complementary", {
+        name: "Player identity",
+      });
+      expect(
+        within(rail).getByRole("heading", {
+          level: 1,
+          name: "Alex Scout",
+        }),
+      ).toBeInTheDocument();
+      expect(within(rail).getByText("€12.5M")).toBeInTheDocument();
+      const workspace = screen.getByTestId("player-analysis-workspace");
+      expect(
+        within(workspace).queryByRole("heading", {
+          level: 1,
+          name: "Alex Scout",
+        }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(workspace).queryByText("Test FC · Premier Division"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(workspace).queryByText("21/03/2001 (25)"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(workspace).queryByText("Age / DOB"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(workspace).queryByText("Nationality"),
+      ).not.toBeInTheDocument();
+      expect(within(workspace).queryByText("Height")).not.toBeInTheDocument();
+      expect(within(workspace).queryByText("Foot")).not.toBeInTheDocument();
+      expect(within(workspace).queryByText("182 cm")).not.toBeInTheDocument();
+      expect(
+        within(workspace).queryByText("Transfer listed"),
+      ).not.toBeInTheDocument();
+      if (name === "Moneyball") {
+        expect(within(workspace).queryByText("€12.5M")).not.toBeInTheDocument();
+      } else {
+        expect(within(workspace).getByText("Value")).toBeInTheDocument();
+        expect(within(workspace).getByText("€12.5M")).toBeInTheDocument();
+      }
+    }
   });
 });

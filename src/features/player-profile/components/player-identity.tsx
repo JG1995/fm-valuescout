@@ -113,3 +113,60 @@ export function PlayerMarketValueFact({ player }: { player: PlayerDetail }) {
     />
   );
 }
+
+function playerInitials(name: string) {
+  const parts = name.split(/\s+/).filter(Boolean);
+  const first = parts[0]?.charAt(0) ?? "";
+  const last =
+    parts.length > 1 ? (parts[parts.length - 1]?.charAt(0) ?? "") : "";
+  return `${first}${last}`.toUpperCase() || "—";
+}
+
+function clubMonogram(club: string | null | undefined) {
+  if (club === null || club === undefined || club === "") return "—";
+  const monogram = club
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+  return monogram || "—";
+}
+
+export function PlayerIdentityRail({ player }: { player: PlayerDetail }) {
+  return (
+    <aside
+      aria-label="Player identity"
+      data-testid="player-identity-rail"
+      className="w-full shrink-0 rounded-lg border border-outline-variant bg-surface-container px-4 py-3 lg:w-72"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span
+          role="img"
+          aria-label="Player portrait placeholder"
+          title="Player portrait placeholder"
+          className="flex size-16 shrink-0 items-center justify-center rounded-full bg-surface-container-high font-mono text-mono-md text-on-surface-variant"
+        >
+          {playerInitials(player.name)}
+        </span>
+        <span
+          role="img"
+          aria-label="Club crest placeholder"
+          title="Club crest placeholder"
+          className="flex size-10 shrink-0 items-center justify-center rounded-md bg-surface-container-high font-mono text-mono-sm text-on-surface-variant"
+        >
+          {clubMonogram(player.club)}
+        </span>
+      </div>
+      <div className="mt-3">
+        <PlayerIdentity player={player} />
+      </div>
+      <div className="mt-3">
+        <PlayerIdentityFacts player={player} />
+      </div>
+      <div className="mt-2">
+        <PlayerMarketValueFact player={player} />
+      </div>
+    </aside>
+  );
+}

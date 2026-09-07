@@ -11,12 +11,7 @@ import {
   rolesForPhase,
   rolesForPlayablePositions,
 } from "../utils/position-families";
-import {
-  PlayerIdentity,
-  PlayerIdentityFacts,
-  PlayerMarketValueFact,
-  SummaryFact,
-} from "./player-identity";
+import { PlayerMarketValueFact, SummaryFact } from "./player-identity";
 
 type BestRoleSummaryProps = {
   label: string;
@@ -113,51 +108,42 @@ export function PlayerOverviewPanel({
       className="rounded-lg border border-outline-variant bg-surface-container px-4 py-3"
     >
       <div className="space-y-3">
-        <div className="grid gap-x-4 gap-y-2 lg:grid-cols-[minmax(260px,1.15fr)_minmax(300px,1fr)_minmax(260px,0.9fr)] lg:items-start">
-          <PlayerIdentity player={player} />
-
-          <div
-            data-testid="player-profile-action-slot"
-            className="min-h-10 min-w-0 overflow-visible lg:col-span-2 lg:flex lg:items-end lg:self-end lg:justify-end"
-          >
-            {showGeneralAnalysis ? (
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-start justify-end gap-2">
-                  {actions}
-                  <Button
-                    icon={VisibilityIcon}
-                    variant="secondary"
-                    aria-label="Reveal hidden information"
-                    aria-pressed={player.hiddenInformationRevealed}
-                    disabled={hiddenInformationPending}
-                    loading={hiddenInformationPending}
-                    loadingLabel="Updating…"
-                    onClick={onToggleHiddenInformation}
-                  >
-                    {player.hiddenInformationRevealed
-                      ? "Hide hidden info"
-                      : "Reveal hidden info"}
-                  </Button>
-                </div>
-                {hiddenInformationError ? (
-                  <p
-                    className="text-right text-body-sm text-error"
-                    role="alert"
-                  >
-                    Could not update hidden information.
-                  </p>
-                ) : null}
+        <div
+          data-testid="player-profile-action-slot"
+          className="flex min-h-10 min-w-0 flex-wrap justify-end overflow-visible"
+        >
+          {showGeneralAnalysis ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-start justify-end gap-2">
+                {actions}
+                <Button
+                  icon={VisibilityIcon}
+                  variant="secondary"
+                  aria-label="Reveal hidden information"
+                  aria-pressed={player.hiddenInformationRevealed}
+                  disabled={hiddenInformationPending}
+                  loading={hiddenInformationPending}
+                  loadingLabel="Updating…"
+                  onClick={onToggleHiddenInformation}
+                >
+                  {player.hiddenInformationRevealed
+                    ? "Hide hidden info"
+                    : "Reveal hidden info"}
+                </Button>
               </div>
-            ) : null}
-          </div>
+              {hiddenInformationError ? (
+                <p className="text-right text-body-sm text-error" role="alert">
+                  Could not update hidden information.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div
           data-testid="player-profile-summary-details"
-          className="grid gap-x-4 gap-y-2 lg:grid-cols-3"
+          className="grid gap-x-4 gap-y-2 lg:grid-cols-2"
         >
-          <PlayerIdentityFacts player={player} />
-
           <div
             data-testid="player-profile-role-summaries"
             className="grid min-w-0 grid-cols-2 grid-rows-2 gap-3 border-outline-variant lg:border-x lg:px-4"

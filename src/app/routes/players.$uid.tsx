@@ -20,6 +20,7 @@ import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { setHiddenInformationRevealed } from "@/features/player-profile/api/set-hidden-information-revealed";
 import { PlayerAttributesPanel } from "@/features/player-profile/components/player-attributes-panel";
 import { PlayerDevelopmentActions } from "@/features/player-profile/components/player-development-boosts-panel";
+import { PlayerIdentityRail } from "@/features/player-profile/components/player-identity";
 import { PlayerOverviewPanel } from "@/features/player-profile/components/player-overview-panel";
 import {
   type PlayerProfileView,
@@ -460,61 +461,68 @@ function PlayerProfileContent({
   }
   if (!player) return <PlayerNotFound />;
 
-  if (section === "moneyball") {
-    return (
-      <MoneyballPlayerProfile
-        uid={uid}
-        player={player}
-        onSectionChange={onSectionChange}
-        restoreAnalysisFocus={restoreAnalysisFocus}
-        onAnalysisFocusRestored={onAnalysisFocusRestored}
-      />
-    );
-  }
-
   return (
-    <GeneralPlayerProfile
-      uid={uid}
-      snapshot={snapshot}
-      player={player}
-      section={section}
-      tab={tab}
-      onTabChange={onTabChange}
-      onSectionChange={onSectionChange}
-      restoreAnalysisFocus={restoreAnalysisFocus}
-      onAnalysisFocusRestored={onAnalysisFocusRestored}
-      hiddenInformationPending={
-        hiddenInformationContextIsCurrent && hiddenInformation.isPending
-      }
-      hiddenInformationError={
-        hiddenInformationContextIsCurrent ? hiddenInformation.error : null
-      }
-      onToggleHiddenInformation={() =>
-        hiddenInformation.mutate({
-          saveId: snapshot.saveId,
-          uid,
-          revealed: !player.hiddenInformationRevealed,
-        })
-      }
-      boostPending={boostContextIsCurrent && boost.isPending}
-      boostResult={boostContextIsCurrent ? boost.data : undefined}
-      boostError={boostContextIsCurrent ? boost.error : null}
-      onBoostCurrentAbility={() =>
-        boost.mutateAsync({
-          action: "currentAbility",
-          uid,
-          snapshotId: snapshot.id,
-        })
-      }
-      onBoostWonderkidMentality={() =>
-        boost.mutateAsync({
-          action: "wonderkidMentality",
-          uid,
-          snapshotId: snapshot.id,
-        })
-      }
-      onOpenBoostConfirmation={boost.reset}
-    />
+    <div className="flex min-h-0 flex-col gap-gutter lg:h-full lg:flex-row lg:overflow-hidden">
+      <PlayerIdentityRail player={player} />
+      <section
+        aria-label="Player analysis"
+        data-testid="player-analysis-workspace"
+        className="flex min-h-0 min-w-0 flex-1 flex-col lg:h-full lg:overflow-hidden"
+      >
+        {section === "moneyball" ? (
+          <MoneyballPlayerProfile
+            uid={uid}
+            player={player}
+            onSectionChange={onSectionChange}
+            restoreAnalysisFocus={restoreAnalysisFocus}
+            onAnalysisFocusRestored={onAnalysisFocusRestored}
+          />
+        ) : (
+          <GeneralPlayerProfile
+            uid={uid}
+            snapshot={snapshot}
+            player={player}
+            section={section}
+            tab={tab}
+            onTabChange={onTabChange}
+            onSectionChange={onSectionChange}
+            restoreAnalysisFocus={restoreAnalysisFocus}
+            onAnalysisFocusRestored={onAnalysisFocusRestored}
+            hiddenInformationPending={
+              hiddenInformationContextIsCurrent && hiddenInformation.isPending
+            }
+            hiddenInformationError={
+              hiddenInformationContextIsCurrent ? hiddenInformation.error : null
+            }
+            onToggleHiddenInformation={() =>
+              hiddenInformation.mutate({
+                saveId: snapshot.saveId,
+                uid,
+                revealed: !player.hiddenInformationRevealed,
+              })
+            }
+            boostPending={boostContextIsCurrent && boost.isPending}
+            boostResult={boostContextIsCurrent ? boost.data : undefined}
+            boostError={boostContextIsCurrent ? boost.error : null}
+            onBoostCurrentAbility={() =>
+              boost.mutateAsync({
+                action: "currentAbility",
+                uid,
+                snapshotId: snapshot.id,
+              })
+            }
+            onBoostWonderkidMentality={() =>
+              boost.mutateAsync({
+                action: "wonderkidMentality",
+                uid,
+                snapshotId: snapshot.id,
+              })
+            }
+            onOpenBoostConfirmation={boost.reset}
+          />
+        )}
+      </section>
+    </div>
   );
 }
 
