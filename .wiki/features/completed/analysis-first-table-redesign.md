@@ -138,7 +138,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/126
 
 **Merge ref:** Not merged
 
