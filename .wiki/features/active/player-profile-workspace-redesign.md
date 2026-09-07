@@ -1016,7 +1016,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 15 — Mark selected positions without colour alone
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): reinforce selected position state`
 
@@ -1071,7 +1071,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 16 — Expose possession phase as comparison field
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): expose role possession phases`
 
@@ -1417,19 +1417,19 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 **PR:** PR 1 — Player profile workspace redesign
 
-**Commit:** Mark selected positions without colour alone
+**Commit:** Expose possession phase as comparison field
 
 ### RED or removal proof
 
-New route tests must fail while the selected Role Fit position has no visible non-colour indicator beyond its tint and `aria-pressed` state.
+New route tests must fail while Role Fit rows lack a compact readable IP or OOP chip inside the role cell with a full accessible phase name.
 
 ### Expected outcome
 
-The selected position keeps its gold treatment and gains a visible structural marker so selection remains obvious without colour.
+Every Role Fit row states its possession phase with readable text and an accessible full name without changing scores, sorting, or table columns.
 
 ### Explicit exclusions
 
-Familiarity muting changes, selection-behavior changes, new icon assets, and role-scoring changes.
+Role-table column geometry, score or sort changes, and Role Fit width changes.
 
 ## Discoveries and replanning
 
@@ -1454,7 +1454,8 @@ The planning-artifact checkpoint review found stale prose that still described r
 | PR 1 — Player profile workspace redesign | Commit 11 — Build Overview ability summary | a9e2493a52b1725f1b263fd55f249a8004e1156e | Added an Overview-only labelled Ability region after section navigation with CA, concealment-gated PA, market value, tabular figures, and missing-value handling, removing ability values from other sections. | Ability-region RED proofs and the navigation-order proof failed before their implementations; focused Player Profile route tests passed 75/75; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found the Ability region preceded section navigation; correction reversed the shared header order with direct DOM proof. One advisory MEDIUM empty summary-grid cell on non-Overview standard sections is deferred to feature close-out. |
 | PR 1 — Player profile workspace redesign | Commit 12 — Build Overview tactical-fit summary | 376e03f9fd9bc28c1fd96a0ffbbfcda693076050 | Added Overview-only same-role best-current tactical-fit pairs for In possession and Out of possession with readable phase labels, aligned current-to-potential values, concealment, and neutral unavailable states, removing the obsolete four standard summaries from Attributes and Role Fit. | Tactical summary RED proofs failed before implementation; focused Player Profile route tests passed 76/76; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found visual score labels duplicated the complete screen-reader description; correction hid visual pairs from assistive technology and added direct revealed, concealed, and unavailable proofs for one announcement. |
 | PR 1 — Player profile workspace redesign | Commit 13 — Expand Attributes workspace | 22db85996fd078bbc9cdb3facbbd8193e1548151 | Added Attributes-only full-width, bounded-height workspace geometry while preserving the panel's single local vertical scroll surface, local keyboard tabs, attribute groups, paired values, colouring, and concealment behavior. | The route geometry proof failed before implementation; focused Player Profile and attribute-group tests passed 86/86; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
-| PR 1 — Player profile workspace redesign | Commit 14 — Mute unfamiliar positions | Pending record | Muted exactly unrecorded and below-15 position choices with neutral styling while preserving familiarity values, accessible names, the playable threshold, and dominant selected styling. | The below-threshold styling proof failed before implementation; focused Player Profile route tests passed 77/77; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found numeric-zero familiarity unproved; correction added direct zero-value, visible-placeholder, accessible-name, and threshold-boundary coverage. |
+| PR 1 — Player profile workspace redesign | Commit 14 — Mute unfamiliar positions | 98530703c5915d0d8624490229cf9e982564560b | Muted exactly unrecorded and below-15 position choices with neutral styling while preserving familiarity values, accessible names, the playable threshold, and dominant selected styling. | The below-threshold styling proof failed before implementation; focused Player Profile route tests passed 77/77; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found numeric-zero familiarity unproved; correction added direct zero-value, visible-placeholder, accessible-name, and threshold-boundary coverage. |
+| PR 1 — Player profile workspace redesign | Commit 15 — Mark selected positions without colour alone | Pending record | Reinforced selected Role Fit positions with a two-pixel structural border while retaining the gold treatment, `aria-pressed`, keyboard selection, and unfamiliar-position precedence. | The non-colour selection-marker proof failed before implementation; focused Player Profile route tests passed 78/78; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
 
 ## Final validation
 

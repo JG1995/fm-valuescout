@@ -1568,6 +1568,34 @@ describe("player profile route", () => {
     );
   });
 
+  it("marks selected positions without relying on colour and keeps keyboard selection", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        positions: { MC: 20, ST: 15 },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const selectedPosition = await screen.findByRole("button", {
+      name: "MC, familiarity 20",
+      pressed: true,
+    });
+    expect(selectedPosition).toHaveClass("border-2");
+
+    const keyboardPosition = screen.getByRole("button", {
+      name: "ST, familiarity 15",
+      pressed: false,
+    });
+    keyboardPosition.focus();
+    await user.keyboard("{Enter}");
+
+    expect(keyboardPosition).toHaveAttribute("aria-pressed", "true");
+    expect(keyboardPosition).toHaveClass("border-2");
+    expect(selectedPosition).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("shows not-found empty state for an unknown uid", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(null);
