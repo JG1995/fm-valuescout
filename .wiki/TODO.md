@@ -52,6 +52,8 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
+- **Player Profile workspace redesign** — persistent identity rail with Overview, Attributes, Role Fit, and Moneyball sections, same-role current → potential summaries, legacy profile URL compatibility, and 1280×800 through 3440×1440 containment (Linear JAY-62; plan: [player-profile-workspace-redesign](./features/active/player-profile-workspace-redesign.md)).
+
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
