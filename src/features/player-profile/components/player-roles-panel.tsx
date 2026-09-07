@@ -40,7 +40,7 @@ function RoleScore({ roleName, basis, score }: RoleScoreProps) {
     <ScoreBadge
       score={score}
       roleName={`${roleName} (${basis})`}
-      variant="card"
+      variant="table"
     />
   );
 }
@@ -69,7 +69,7 @@ function RoleSortHeader({
     >
       <button
         type="button"
-        className={`inline-flex min-h-8 w-full items-center justify-center gap-1 rounded-md px-1 text-label-sm transition-colors duration-150 ease-out ${
+        className={`inline-flex min-h-8 w-full items-center justify-end gap-1 rounded-md px-1 text-label-sm transition-colors duration-150 ease-out ${
           active
             ? "text-primary"
             : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -128,7 +128,7 @@ export function PlayerRolesPanel({
     >
       <section
         aria-label={`Role fit for ${selectedPosition}`}
-        className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(180px,0.8fr)_minmax(240px,1.2fr)]"
+        className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(240px,360px)_minmax(0,1fr)]"
       >
         <div
           data-testid="player-role-position-picker-scroller"
@@ -148,6 +148,7 @@ export function PlayerRolesPanel({
               </caption>
               <colgroup>
                 <col />
+                <col className="w-[88px]" />
                 <col className="w-[72px]" />
                 {hiddenInformationRevealed ? (
                   <col className="w-[80px]" />
@@ -167,12 +168,18 @@ export function PlayerRolesPanel({
                     </p>
                     <span className="sr-only">Role</span>
                   </th>
+                  <th
+                    scope="col"
+                    className="w-[88px] pb-2 text-left text-label-sm font-normal uppercase text-on-surface-variant"
+                  >
+                    Phase
+                  </th>
                   <RoleSortHeader
                     label="Current"
                     basis="current"
                     sort={effectiveSort}
                     onSort={onSort}
-                    className="w-[72px] pb-1 text-center align-bottom"
+                    className="w-[72px] pb-1 text-right align-bottom"
                   />
                   {hiddenInformationRevealed ? (
                     <RoleSortHeader
@@ -180,7 +187,7 @@ export function PlayerRolesPanel({
                       basis="potential"
                       sort={effectiveSort}
                       onSort={onSort}
-                      className="w-[80px] pb-1 text-center align-bottom"
+                      className="w-[80px] pb-1 text-right align-bottom"
                     />
                   ) : null}
                 </tr>
@@ -189,44 +196,57 @@ export function PlayerRolesPanel({
                 {roles.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={hiddenInformationRevealed ? 3 : 2}
+                      colSpan={hiddenInformationRevealed ? 4 : 3}
                       className="h-24 text-center text-body-sm text-on-surface-variant"
                     >
                       No catalog roles use this position.
                     </td>
                   </tr>
                 ) : null}
-                {roles.map((role) => (
-                  <tr
-                    key={role.roleId}
-                    className="h-12 border-b border-outline-variant/70"
-                  >
-                    <td className="min-w-0 pr-2">
-                      <p className="truncate text-body-md text-on-surface">
-                        {role.displayName}
-                      </p>
-                      <p className="text-[11px] text-on-surface-variant">
-                        {rolePhaseLabel(role.phase)}
-                      </p>
-                    </td>
-                    <td className="text-center">
-                      <RoleScore
-                        roleName={role.displayName}
-                        basis="Current"
-                        score={role.score}
-                      />
-                    </td>
-                    {hiddenInformationRevealed ? (
-                      <td className="text-center">
+                {roles.map((role) => {
+                  const phaseLabel = rolePhaseLabel(role.phase);
+                  const fullPhaseLabel =
+                    phaseLabel === "IP"
+                      ? "In possession"
+                      : phaseLabel === "OOP"
+                        ? "Out of possession"
+                        : phaseLabel;
+
+                  return (
+                    <tr
+                      key={role.roleId}
+                      className="h-12 border-b border-outline-variant/70"
+                    >
+                      <td className="min-w-0 pr-2 align-middle">
+                        <p className="min-w-0 truncate text-body-md text-on-surface">
+                          {role.displayName}
+                        </p>
+                      </td>
+                      <td className="pr-2 align-middle">
+                        <span className="inline-flex shrink-0 items-center rounded-full border border-outline-variant bg-surface-container-high px-1.5 py-0.5 text-label-sm text-on-surface-variant">
+                          <span aria-hidden="true">{phaseLabel}</span>
+                          <span className="sr-only">{fullPhaseLabel}</span>
+                        </span>
+                      </td>
+                      <td className="align-middle text-right tabular-nums">
                         <RoleScore
                           roleName={role.displayName}
-                          basis="Potential"
-                          score={role.potentialScore}
+                          basis="Current"
+                          score={role.score}
                         />
                       </td>
-                    ) : null}
-                  </tr>
-                ))}
+                      {hiddenInformationRevealed ? (
+                        <td className="align-middle text-right tabular-nums">
+                          <RoleScore
+                            roleName={role.displayName}
+                            basis="Potential"
+                            score={role.potentialScore}
+                          />
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

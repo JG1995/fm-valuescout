@@ -52,12 +52,15 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
+None.
+
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
 
 ## Completed
 
+- **[Player Profile Workspace Redesign](./features/completed/player-profile-workspace-redesign.md)** — persistent identity rail with Overview, Attributes, Role Fit, and Moneyball sections, same-role current → potential summaries, legacy profile URL compatibility, and proven 1280×800 through 3440×1440 containment (Linear JAY-62).
 - **[Tactics Page Redesign](./features/completed/tactics-page-redesign.md)** — one phase-aware normalized tactical canvas with Tactical XI and Selected Slot controls, unique-placement swaps, a one-time v42 tactic reset that preserves assignments and unrelated save data, responsive containment, and landscape orientation at >= 1920px (Linear JAY-57; [PR #122](https://github.com/JG1995/fm-valuescout/pull/122)).
 - [Top Navigation](./features/completed/top-navigation.md) — replaced the persistent left rail with grouped top navigation, promoted Search, Staff, Club, and Youth destinations, and preserved route compatibility (Linear JAY-54).
 - [Integrated Shortlists](./features/completed/integrated-shortlists.md) — integrated save-owned player and staff replacement shortlists into Player Search General and Staff Search with CSV upload, URL-backed filtering, and Staff assignment controls; final PR not published.

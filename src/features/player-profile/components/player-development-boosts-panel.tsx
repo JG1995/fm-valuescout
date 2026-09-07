@@ -252,6 +252,7 @@ export function PlayerDevelopmentActions({
   onBoostWonderkidMentality,
   onOpenConfirmation,
 }: PlayerDevelopmentActionsProps) {
+  const [modifyOpen, setModifyOpen] = useState(false);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [confirmationAction, setConfirmationAction] =
     useState<BoostAction>("currentAbility");
@@ -287,10 +288,25 @@ export function PlayerDevelopmentActions({
 
   const currentAbilityConfirmation = confirmationAction === "currentAbility";
 
+  const modifyPanelId = useId();
+
   return (
     <>
       <div>
-        <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="secondary"
+          aria-expanded={modifyOpen}
+          aria-controls={modifyPanelId}
+          onClick={() => setModifyOpen((open) => !open)}
+        >
+          Modify Player
+        </Button>
+        <div
+          id={modifyPanelId}
+          hidden={!modifyOpen}
+          aria-hidden={!modifyOpen}
+          className="flex flex-wrap items-center gap-2"
+        >
           <ActionTooltip
             label="Boost CA"
             disabled={!currentAbilityEligible || pending}

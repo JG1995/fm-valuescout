@@ -1933,7 +1933,7 @@ test.describe("application smoke", () => {
       page.getByRole("tab", { name: "Shooting", selected: true }),
     ).toBeVisible();
     const summary = page.getByRole("region", {
-      name: "Potential Scout summary",
+      name: "Moneyball tactical summaries",
     });
     await expect(
       summary.getByRole("img", { name: "Moneyball IP: 86, Excellent" }),
@@ -4208,231 +4208,6 @@ test.describe("application smoke", () => {
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
   });
 
-  test("player profile keeps its scouting workspace inside desktop viewports", async ({
-    page,
-  }) => {
-    await stubTauriIpc(page, { playerProfile: true });
-    await page.goto("/players/42?tab=technical");
-
-    const main = page.getByRole("main");
-    const summary = main.getByRole("region", {
-      name: "Potential Scout summary",
-    });
-    const attributes = main
-      .getByRole("heading", { name: "Attributes" })
-      .locator("..")
-      .locator("..");
-    const roleFitPanel = main
-      .getByRole("heading", { name: "Role fit" })
-      .locator("..")
-      .locator("..");
-    const roleFit = main.getByRole("region", { name: "Role fit for MC" });
-    const currentIp = summary.getByRole("img", {
-      name: "Current IP: 82, Excellent",
-    });
-    const currentOop = summary.getByRole("img", {
-      name: "Current OOP: 60, Average",
-    });
-    const potentialIp = summary.getByRole("img", {
-      name: "Potential IP: 94, Excellent",
-    });
-    const potentialOop = summary.getByRole("img", {
-      name: "Potential OOP: 77, Good",
-    });
-
-    for (const [width, height] of [
-      [1280, 800],
-      [1600, 900],
-    ] as const) {
-      await page.setViewportSize({ width, height });
-      await expect(summary).toBeVisible();
-      await expect(attributes).toBeVisible();
-      await expect(roleFit).toBeVisible();
-      await expect(
-        main.getByRole("button", { name: "DL, familiarity 1" }),
-      ).toBeVisible();
-      await expect(
-        main.getByRole("button", { name: "SW, familiarity 18" }),
-      ).toHaveCount(0);
-      await expect(currentIp).toBeVisible();
-      await expect(currentOop).toBeVisible();
-      await expect(potentialIp).toBeVisible();
-      await expect(potentialOop).toBeVisible();
-
-      const [mainBox, attributesBox, roleFitBox] = await Promise.all([
-        main.boundingBox(),
-        attributes.boundingBox(),
-        roleFitPanel.boundingBox(),
-      ]);
-      expect(mainBox).not.toBeNull();
-      expect(attributesBox).not.toBeNull();
-      expect(roleFitBox).not.toBeNull();
-      if (!mainBox || !attributesBox || !roleFitBox) {
-        throw new Error(
-          "Expected the complete player workspace to be visible.",
-        );
-      }
-      expect(attributesBox.y).toBe(roleFitBox.y);
-      expect(roleFitBox.y + roleFitBox.height).toBeLessThanOrEqual(
-        mainBox.y + mainBox.height,
-      );
-
-      const summaryBadgeBoxes = await Promise.all(
-        [currentIp, currentOop, potentialIp, potentialOop].map((badge) =>
-          badge.boundingBox(),
-        ),
-      );
-      expect(summaryBadgeBoxes.every((box) => box !== null)).toBe(true);
-      const [currentIpBox, currentOopBox, potentialIpBox, potentialOopBox] =
-        summaryBadgeBoxes;
-      if (
-        !currentIpBox ||
-        !currentOopBox ||
-        !potentialIpBox ||
-        !potentialOopBox
-      ) {
-        throw new Error("Expected visible best-role summary badges.");
-      }
-      expect(currentIpBox.x + currentIpBox.width).toBeLessThanOrEqual(
-        currentOopBox.x,
-      );
-      expect(potentialIpBox.x + potentialIpBox.width).toBeLessThanOrEqual(
-        potentialOopBox.x,
-      );
-
-      const detailLabels = await Promise.all(
-        ["Age / DOB", "Nationality", "Height", "Foot"].map((label) =>
-          summary.getByText(label, { exact: true }).boundingBox(),
-        ),
-      );
-      expect(detailLabels.every((box) => box !== null)).toBe(true);
-      const detailRowY = detailLabels[0]?.y;
-      if (detailRowY === undefined) {
-        throw new Error("Expected a visible player-summary detail row.");
-      }
-      for (const labelBox of detailLabels) {
-        expect(
-          Math.abs((labelBox?.y ?? detailRowY) - detailRowY),
-        ).toBeLessThanOrEqual(1);
-      }
-      for (const label of [
-        "Current IP",
-        "Current OOP",
-        "Potential IP",
-        "Potential OOP",
-      ]) {
-        await expect(summary.getByText(label, { exact: true })).toBeVisible();
-      }
-
-      const [
-        boostBox,
-        wonderkidBox,
-        hiddenInformationBox,
-        caLabelBox,
-        abilityRowBox,
-      ] = await Promise.all([
-        summary.getByRole("button", { name: "Boost CA" }).boundingBox(),
-        summary
-          .getByRole("button", { name: "Wonderkid Mentality" })
-          .boundingBox(),
-        summary
-          .getByRole("button", { name: "Reveal hidden information" })
-          .boundingBox(),
-        summary.getByText("CA", { exact: true }).boundingBox(),
-        summary
-          .getByText("Value", { exact: true })
-          .locator("..")
-          .locator("..")
-          .boundingBox(),
-      ]);
-      expect(boostBox).not.toBeNull();
-      expect(wonderkidBox).not.toBeNull();
-      expect(hiddenInformationBox).not.toBeNull();
-      expect(caLabelBox).not.toBeNull();
-      expect(abilityRowBox).not.toBeNull();
-      if (
-        !boostBox ||
-        !wonderkidBox ||
-        !hiddenInformationBox ||
-        !caLabelBox ||
-        !abilityRowBox
-      ) {
-        throw new Error("Expected visible player-development actions.");
-      }
-      expect(Math.abs(wonderkidBox.y - boostBox.y)).toBeLessThanOrEqual(1);
-      expect(Math.abs(hiddenInformationBox.y - boostBox.y)).toBeLessThanOrEqual(
-        1,
-      );
-      expect(boostBox.y + boostBox.height).toBeLessThanOrEqual(caLabelBox.y);
-      expect(caLabelBox.y - (boostBox.y + boostBox.height)).toBeLessThanOrEqual(
-        24,
-      );
-      expect(
-        Math.abs(
-          hiddenInformationBox.x +
-            hiddenInformationBox.width -
-            (abilityRowBox.x + abilityRowBox.width),
-        ),
-      ).toBeLessThanOrEqual(1);
-
-      if (width === 1280) {
-        await page
-          .getByTestId("app-header")
-          .getByRole("button", { name: "Load Data" })
-          .click();
-        await expect(
-          page.getByText("Loaded 0 players into the database."),
-        ).toBeVisible();
-        const mainDimensions = await main.evaluate((element) => {
-          const htmlElement = element as unknown as {
-            clientHeight: number;
-            scrollHeight: number;
-          };
-          return {
-            clientHeight: htmlElement.clientHeight,
-            scrollHeight: htmlElement.scrollHeight,
-          };
-        });
-        expect(mainDimensions.scrollHeight).toBeLessThanOrEqual(
-          mainDimensions.clientHeight + 1,
-        );
-        const [bannerMainBox, bannerRoleFitBox] = await Promise.all([
-          main.boundingBox(),
-          roleFitPanel.boundingBox(),
-        ]);
-        expect(bannerMainBox).not.toBeNull();
-        expect(bannerRoleFitBox).not.toBeNull();
-        if (!bannerMainBox || !bannerRoleFitBox) {
-          throw new Error("Expected the profile workspace below the banner.");
-        }
-        expect(
-          bannerRoleFitBox.y + bannerRoleFitBox.height,
-        ).toBeLessThanOrEqual(bannerMainBox.y + bannerMainBox.height);
-      }
-    }
-
-    const currentHeader = roleFit.getByRole("columnheader", {
-      name: "Current",
-    });
-    const potentialHeader = roleFit.getByRole("columnheader", {
-      name: "Potential",
-    });
-    await potentialHeader.getByRole("button").click();
-    await expect(potentialHeader).toHaveAttribute("aria-sort", "descending");
-    await expect(
-      roleFit.getByRole("row").nth(1).getByText("Advanced Playmaker"),
-    ).toBeVisible();
-    await currentHeader.getByRole("button").click();
-    await expect(currentHeader).toHaveAttribute("aria-sort", "descending");
-
-    await main.getByRole("button", { name: "ST, familiarity 15" }).click();
-    await expect(
-      main
-        .getByRole("region", { name: "Role fit for ST" })
-        .getByText("Potential Specialist"),
-    ).toBeVisible();
-  });
-
   test("player profile confirms Wonderkid Mentality at desktop size", async ({
     page,
   }) => {
@@ -4441,6 +4216,7 @@ test.describe("application smoke", () => {
     await page.goto("/players/42");
 
     const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Modify Player" }).click();
     const action = main.getByRole("button", { name: "Wonderkid Mentality" });
     await expect(action).toBeVisible();
     await action.focus();
@@ -4511,10 +4287,14 @@ test.describe("application smoke", () => {
     await expect(summary.getByText("PA", { exact: true })).toHaveCount(0);
     await expect(summary.getByText("160", { exact: true })).toHaveCount(0);
     await expect(
-      summary.getByRole("img", { name: "Potential IP: concealed" }),
+      summary.getByText(
+        "Current Specialist, In possession: Current 82, Potential concealed",
+      ),
     ).toBeVisible();
     await expect(
-      summary.getByRole("img", { name: "Potential OOP: concealed" }),
+      summary.getByText(
+        "Pressing Forward, Out of possession: Current 60, Potential concealed",
+      ),
     ).toBeVisible();
     await expect(main.getByRole("button", { name: "Boost CA" })).toHaveCount(0);
 
@@ -4647,6 +4427,409 @@ test.describe("application smoke", () => {
         }),
       ).toBe(true);
     }
+  });
+
+  test("player profile contains every final section at the minimum desktop size", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stubTauriIpc(page, { moneyballSearch: true, playerProfile: true });
+    await page.goto("/players/42?section=overview&tab=technical");
+
+    const main = page.getByRole("main");
+    const rail = main.getByTestId("player-identity-rail");
+    const navigation = main.getByRole("tablist", {
+      name: "Player analysis view",
+    });
+
+    for (const name of ["Overview", "Attributes", "Role Fit", "Moneyball"]) {
+      await expect(navigation.getByRole("tab", { name })).toBeVisible();
+    }
+
+    const assertContained = async () => {
+      const geometry = await page.evaluate(() => {
+        const browser = globalThis as unknown as {
+          document: {
+            documentElement: { clientWidth: number; scrollWidth: number };
+            querySelector: (selector: string) => {
+              clientWidth: number;
+              scrollWidth: number;
+              getBoundingClientRect: () => {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+              };
+            } | null;
+          };
+        };
+        const documentElement = browser.document.documentElement;
+        const mainElement = browser.document.querySelector("main");
+        const railElement = browser.document.querySelector(
+          '[data-testid="player-identity-rail"]',
+        );
+        const analysisElement = browser.document.querySelector(
+          '[data-testid="player-analysis-workspace"]',
+        );
+        const analysisPanel = browser.document.querySelector(
+          '[data-testid="player-analysis-workspace"] > *',
+        );
+        return {
+          documentClientWidth: documentElement.clientWidth,
+          documentScrollWidth: documentElement.scrollWidth,
+          mainClientWidth: mainElement?.clientWidth ?? 0,
+          mainScrollWidth: mainElement?.scrollWidth ?? 0,
+          railBox: railElement?.getBoundingClientRect() ?? null,
+          analysisBox: analysisElement?.getBoundingClientRect() ?? null,
+          analysisPanelWidth: analysisPanel?.clientWidth ?? 0,
+          analysisPanelScrollWidth: analysisPanel?.scrollWidth ?? 0,
+        };
+      });
+      expect(geometry.documentScrollWidth).toBeLessThanOrEqual(
+        geometry.documentClientWidth,
+      );
+      expect(geometry.mainScrollWidth).toBeLessThanOrEqual(
+        geometry.mainClientWidth,
+      );
+      expect(geometry.railBox).not.toBeNull();
+      expect(geometry.analysisBox).not.toBeNull();
+      expect(geometry.analysisPanelScrollWidth).toBeLessThanOrEqual(
+        geometry.analysisPanelWidth,
+      );
+      if (!geometry.railBox || !geometry.analysisBox) {
+        throw new Error("Expected the player identity and analysis regions.");
+      }
+      expect(geometry.railBox.x).toBeGreaterThanOrEqual(0);
+      expect(geometry.railBox.x + geometry.railBox.width).toBeLessThanOrEqual(
+        geometry.analysisBox.x,
+      );
+      expect(
+        geometry.analysisBox.x + geometry.analysisBox.width,
+      ).toBeLessThanOrEqual(geometry.mainClientWidth + 16);
+    };
+
+    await expect(
+      rail.getByRole("heading", { level: 1, name: "Potential Scout" }),
+    ).toBeVisible();
+    const overviewSummary = main.getByRole("region", {
+      name: "Potential Scout summary",
+    });
+    await expect(
+      overviewSummary.getByRole("region", { name: "Ability" }),
+    ).toBeVisible();
+    await expect(overviewSummary.getByText("In possession (IP)")).toBeVisible();
+    const overviewAttributes = main
+      .getByRole("heading", { name: "Attributes" })
+      .locator("..")
+      .locator("..");
+    const overviewRoleFit = main
+      .getByRole("heading", { name: "Role fit" })
+      .locator("..")
+      .locator("..");
+    const [overviewAttributesBox, overviewRoleFitBox] = await Promise.all([
+      overviewAttributes.boundingBox(),
+      overviewRoleFit.boundingBox(),
+    ]);
+    expect(overviewAttributesBox).not.toBeNull();
+    expect(overviewRoleFitBox).not.toBeNull();
+    if (!overviewAttributesBox || !overviewRoleFitBox) {
+      throw new Error("Expected the Overview analysis panels.");
+    }
+    expect(overviewAttributesBox.x).toBe(overviewRoleFitBox.x);
+    await assertContained();
+
+    await navigation.getByRole("tab", { name: "Attributes" }).click();
+    await expect(
+      navigation.getByRole("tab", { name: "Attributes", selected: true }),
+    ).toBeVisible();
+    const attributes = main.getByRole("tabpanel", { name: "Attributes" });
+    await expect(
+      attributes.getByText("Passing", { exact: true }),
+    ).toBeVisible();
+    await expect(attributes.getByText("14→16")).toBeVisible();
+    await expect(
+      attributes.getByRole("tablist", { name: "Attribute groups" }),
+    ).toBeVisible();
+    await expect(
+      rail.getByRole("heading", { name: "Potential Scout" }),
+    ).toBeVisible();
+    await assertContained();
+
+    await navigation.getByRole("tab", { name: "Role Fit" }).click();
+    await expect(
+      navigation.getByRole("tab", { name: "Role Fit", selected: true }),
+    ).toBeVisible();
+    const roleFit = main.getByRole("tabpanel", { name: "Role Fit" });
+    const roleFitRegion = roleFit.getByRole("region", {
+      name: "Role fit for MC",
+    });
+    await expect(roleFitRegion).toBeVisible();
+    await expect(roleFitRegion.getByText("Current Specialist")).toBeVisible();
+    await expect(
+      roleFitRegion.getByRole("columnheader", { name: "Current" }),
+    ).toBeVisible();
+    await expect(
+      roleFitRegion.getByRole("columnheader", { name: "Potential" }),
+    ).toBeVisible();
+    const specialistRow = roleFitRegion
+      .getByRole("row")
+      .filter({ hasText: "Current Specialist" });
+    const currentSpecialistScore = specialistRow.getByRole("img", {
+      name: "Current Specialist (Current): 82, Excellent",
+    });
+    const potentialSpecialistScore = specialistRow.getByRole("img", {
+      name: "Current Specialist (Potential): 88, Excellent",
+    });
+    await expect(specialistRow).toHaveCount(1);
+    await expect(currentSpecialistScore).toBeVisible();
+    await expect(potentialSpecialistScore).toBeVisible();
+    const [roleFitScrollportBox, currentScoreBox, potentialScoreBox] =
+      await Promise.all([
+        roleFitRegion.getByRole("table").locator("xpath=..").boundingBox(),
+        currentSpecialistScore.boundingBox(),
+        potentialSpecialistScore.boundingBox(),
+      ]);
+    expect(roleFitScrollportBox).not.toBeNull();
+    expect(currentScoreBox).not.toBeNull();
+    expect(potentialScoreBox).not.toBeNull();
+    if (!roleFitScrollportBox || !currentScoreBox || !potentialScoreBox) {
+      throw new Error("Expected visible Current and Potential role scores.");
+    }
+    for (const scoreBox of [currentScoreBox, potentialScoreBox]) {
+      expect(scoreBox.width).toBeGreaterThan(0);
+      expect(scoreBox.height).toBeGreaterThan(0);
+      expect(scoreBox.x).toBeGreaterThanOrEqual(roleFitScrollportBox.x);
+      expect(scoreBox.y).toBeGreaterThanOrEqual(roleFitScrollportBox.y);
+      expect(scoreBox.x + scoreBox.width).toBeLessThanOrEqual(
+        roleFitScrollportBox.x + roleFitScrollportBox.width + 1,
+      );
+      expect(scoreBox.y + scoreBox.height).toBeLessThanOrEqual(
+        roleFitScrollportBox.y + roleFitScrollportBox.height + 1,
+      );
+    }
+    await expect(
+      rail.getByRole("heading", { name: "Potential Scout" }),
+    ).toBeVisible();
+    await assertContained();
+
+    await navigation.getByRole("tab", { name: "Moneyball" }).click();
+    await expect(
+      navigation.getByRole("tab", { name: "Moneyball", selected: true }),
+    ).toBeVisible();
+    const moneyball = main.getByRole("tabpanel", { name: "Moneyball" });
+    await expect(
+      moneyball.getByRole("heading", { name: "Moneyball", exact: true }),
+    ).toBeVisible();
+    await expect(moneyball.getByText("Starts", { exact: true })).toBeVisible();
+    await expect(
+      moneyball.getByRole("region", { name: "Moneyball role fit for MC" }),
+    ).toBeVisible();
+    await expect(
+      rail.getByRole("heading", { name: "Potential Scout" }),
+    ).toBeVisible();
+    await assertContained();
+  });
+
+  test("player profile bounds its ultrawide analysis workspace", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 3440, height: 1440 });
+    await stubTauriIpc(page, { moneyballSearch: true, playerProfile: true });
+    await page.goto("/players/42?section=overview&tab=technical");
+
+    const main = page.getByRole("main");
+    const navigation = main.getByRole("tablist", {
+      name: "Player analysis view",
+    });
+
+    const assertBaseGeometry = async () => {
+      const geometry = await page.evaluate(() => {
+        const browser = globalThis as unknown as {
+          document: {
+            documentElement: { clientWidth: number; scrollWidth: number };
+            querySelector: (selector: string) => {
+              clientWidth: number;
+              getBoundingClientRect: () => {
+                x: number;
+                width: number;
+              };
+            } | null;
+          };
+        };
+        const documentElement = browser.document.documentElement;
+        const mainElement = browser.document.querySelector("main");
+        const railElement = browser.document.querySelector(
+          '[data-testid="player-identity-rail"]',
+        );
+        const workspaceElement = browser.document.querySelector(
+          '[data-testid="player-analysis-workspace"]',
+        );
+        const railBox = railElement?.getBoundingClientRect();
+        const workspaceBox = workspaceElement?.getBoundingClientRect();
+        return {
+          documentClientWidth: documentElement.clientWidth,
+          documentScrollWidth: documentElement.scrollWidth,
+          mainClientWidth: mainElement?.clientWidth ?? 0,
+          railBox: railBox ? { x: railBox.x, width: railBox.width } : null,
+          workspaceBox: workspaceBox
+            ? { x: workspaceBox.x, width: workspaceBox.width }
+            : null,
+        };
+      });
+      expect(geometry.documentScrollWidth).toBeLessThanOrEqual(3440);
+      expect(geometry.railBox).not.toBeNull();
+      expect(geometry.workspaceBox).not.toBeNull();
+      if (!geometry.railBox || !geometry.workspaceBox) {
+        throw new Error("Expected the identity rail and analysis workspace.");
+      }
+      expect(geometry.railBox.width).toBeLessThanOrEqual(360);
+      expect(geometry.workspaceBox.width).toBeGreaterThan(
+        geometry.mainClientWidth / 2,
+      );
+      expect(geometry.workspaceBox.x).toBeGreaterThanOrEqual(
+        geometry.railBox.x + geometry.railBox.width,
+      );
+      expect(
+        geometry.workspaceBox.x + geometry.workspaceBox.width,
+      ).toBeLessThanOrEqual(3440);
+      expect(geometry.workspaceBox.width).toBeLessThanOrEqual(2800);
+    };
+
+    const assertBoundedOverview = async () => {
+      const summary = main.getByRole("region", {
+        name: "Potential Scout summary",
+      });
+      const attributes = main
+        .getByRole("heading", { name: "Attributes" })
+        .locator("..")
+        .locator("..");
+      const roleFit = main
+        .getByRole("heading", { name: "Role fit" })
+        .locator("..")
+        .locator("..");
+      const [summaryBox, attributesBox, roleFitBox, displayBox, actionsBox] =
+        await Promise.all([
+          summary.boundingBox(),
+          attributes.boundingBox(),
+          roleFit.boundingBox(),
+          main.getByTestId("player-profile-display-control").boundingBox(),
+          main.getByTestId("player-profile-action-slot").boundingBox(),
+        ]);
+      for (const box of [
+        summaryBox,
+        attributesBox,
+        roleFitBox,
+        displayBox,
+        actionsBox,
+      ]) {
+        expect(box).not.toBeNull();
+      }
+      if (
+        !summaryBox ||
+        !attributesBox ||
+        !roleFitBox ||
+        !displayBox ||
+        !actionsBox
+      ) {
+        throw new Error("Expected bounded Overview geometry.");
+      }
+      expect(summaryBox.width).toBeLessThanOrEqual(2800);
+      expect(attributesBox.width).toBeLessThanOrEqual(1500);
+      expect(roleFitBox.width).toBeLessThanOrEqual(1500);
+      expect(displayBox.width).toBeLessThanOrEqual(400);
+      expect(actionsBox.width).toBeLessThanOrEqual(400);
+    };
+
+    await assertBaseGeometry();
+    await assertBoundedOverview();
+
+    await navigation.getByRole("tab", { name: "Attributes" }).click();
+    const attributes = main.getByRole("tabpanel", { name: "Attributes" });
+    const [attributesBox, technicalBox, mentalBox, physicalBox, tabsBox] =
+      await Promise.all([
+        attributes
+          .getByRole("heading", { name: "Attributes" })
+          .locator("..")
+          .locator("..")
+          .boundingBox(),
+        attributes.getByRole("region", { name: "Technical" }).boundingBox(),
+        attributes.getByRole("region", { name: "Mental" }).boundingBox(),
+        attributes.getByRole("region", { name: "Physical" }).boundingBox(),
+        attributes
+          .getByRole("tablist", { name: "Attribute groups" })
+          .boundingBox(),
+      ]);
+    for (const box of [
+      attributesBox,
+      technicalBox,
+      mentalBox,
+      physicalBox,
+      tabsBox,
+    ]) {
+      expect(box).not.toBeNull();
+    }
+    if (
+      !attributesBox ||
+      !technicalBox ||
+      !mentalBox ||
+      !physicalBox ||
+      !tabsBox
+    ) {
+      throw new Error("Expected broad Attributes geometry.");
+    }
+    expect(attributesBox.width).toBeGreaterThanOrEqual(2200);
+    expect(attributesBox.width).toBeLessThanOrEqual(2800);
+    expect(Math.abs(technicalBox.y - mentalBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(mentalBox.y - physicalBox.y)).toBeLessThanOrEqual(1);
+    expect(technicalBox.width).toBeGreaterThanOrEqual(500);
+    expect(tabsBox.width).toBeLessThanOrEqual(800);
+    await assertBaseGeometry();
+
+    await navigation.getByRole("tab", { name: "Role Fit" }).click();
+    const roleFit = main.getByRole("tabpanel", { name: "Role Fit" });
+    const roleFitRegion = roleFit.getByRole("region", {
+      name: "Role fit for MC",
+    });
+    const [positionPickerBox, roleTableBox] = await Promise.all([
+      roleFitRegion.locator("fieldset").boundingBox(),
+      roleFitRegion.getByRole("table").locator("xpath=..").boundingBox(),
+    ]);
+    expect(positionPickerBox).not.toBeNull();
+    expect(roleTableBox).not.toBeNull();
+    if (!positionPickerBox || !roleTableBox) {
+      throw new Error("Expected the Role Fit navigator and comparison list.");
+    }
+    expect(positionPickerBox.width).toBeLessThanOrEqual(380);
+    expect(positionPickerBox.x + positionPickerBox.width).toBeLessThanOrEqual(
+      roleTableBox.x,
+    );
+    expect(roleTableBox.width).toBeGreaterThanOrEqual(1600);
+    await assertBaseGeometry();
+
+    await navigation.getByRole("tab", { name: "Moneyball" }).click();
+    const moneyball = main.getByRole("tabpanel", { name: "Moneyball" });
+    const primaryColumn = moneyball.getByTestId("moneyball-primary-column");
+    const moneyballRoleFit = moneyball
+      .getByRole("heading", { name: "Moneyball role fit" })
+      .locator("..")
+      .locator("..");
+    const [primaryBox, moneyballRoleFitBox] = await Promise.all([
+      primaryColumn.boundingBox(),
+      moneyballRoleFit.boundingBox(),
+    ]);
+    expect(primaryBox).not.toBeNull();
+    expect(moneyballRoleFitBox).not.toBeNull();
+    if (!primaryBox || !moneyballRoleFitBox) {
+      throw new Error("Expected the Moneyball analysis columns.");
+    }
+    expect(primaryBox.width).toBeGreaterThanOrEqual(900);
+    expect(moneyballRoleFitBox.width).toBeGreaterThanOrEqual(900);
+    expect(primaryBox.x + primaryBox.width).toBeLessThanOrEqual(
+      moneyballRoleFitBox.x,
+    );
+    expect(primaryBox.width).toBeLessThanOrEqual(1500);
+    expect(moneyballRoleFitBox.width).toBeLessThanOrEqual(1500);
+    await assertBaseGeometry();
   });
 
   test("top bar exposes global player search", async ({ page }) => {

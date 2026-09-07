@@ -142,29 +142,39 @@ export function MoneyballProfilePanel({
   return (
     <Panel
       title="Moneyball"
-      className="flex min-h-0 flex-col [&>div:last-child]:min-h-0 [&>div:last-child]:flex-1"
+      className="flex min-h-0 w-full flex-col [&>div:last-child]:min-h-0 [&>div:last-child]:flex-1"
     >
       <div className="flex h-full min-h-0 flex-col gap-4">
         <dl className="grid grid-cols-2 gap-x-5 gap-y-2 border-b border-outline-variant pb-4 text-body-md sm:grid-cols-4">
           <div>
-            <dt className="text-on-surface-variant">Asking price</dt>
-            <dd className="font-mono tabular-nums">{contextPrice(profile)}</dd>
+            <dt className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
+              Asking price
+            </dt>
+            <dd className="font-mono text-mono-md text-on-surface tabular-nums">
+              {contextPrice(profile)}
+            </dd>
           </div>
           <div>
-            <dt className="text-on-surface-variant">Starts</dt>
-            <dd className="font-mono tabular-nums">
+            <dt className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
+              Starts
+            </dt>
+            <dd className="font-mono text-mono-md text-on-surface tabular-nums">
               {formattedNumber(profile.starts)}
             </dd>
           </div>
           <div>
-            <dt className="text-on-surface-variant">Sub appearances</dt>
-            <dd className="font-mono tabular-nums">
+            <dt className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
+              Sub appearances
+            </dt>
+            <dd className="font-mono text-mono-md text-on-surface tabular-nums">
               {formattedNumber(profile.substituteAppearances)}
             </dd>
           </div>
           <div>
-            <dt className="text-on-surface-variant">Minutes</dt>
-            <dd className="font-mono tabular-nums">
+            <dt className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
+              Minutes
+            </dt>
+            <dd className="font-mono text-mono-md text-on-surface tabular-nums">
               {formattedNumber(profile.minutes)}
             </dd>
           </div>

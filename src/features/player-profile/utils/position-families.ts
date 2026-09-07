@@ -23,7 +23,6 @@ export {
 export type ScoredRole<T extends PositionRoleScore = PositionRoleScore> = T & {
   score: number;
 };
-export type PotentialScoredRole = PlayerRoleScore & { potentialScore: number };
 export type RolePhase = "in_possession" | "out_of_possession";
 export type RoleSort = {
   basis: "current" | "potential";
@@ -105,18 +104,17 @@ export function bestRoleScore<T extends PositionRoleScore>(
   return best;
 }
 
-/** Highest non-null potential score; ties keep the earlier catalog entry. */
-export function bestPotentialRoleScore(
+/** Best current role for a phase with that same role's own potential score. */
+export function bestCurrentRolePair(
   roleScores: readonly PlayerRoleScore[],
-): PotentialScoredRole | null {
-  let best: PotentialScoredRole | null = null;
-  for (const role of roleScores) {
-    if (role.potentialScore === null) {
-      continue;
-    }
-    if (best === null || role.potentialScore > best.potentialScore) {
-      best = { ...role, potentialScore: role.potentialScore };
-    }
+  positions: PositionFamiliarityMap,
+  phase: RolePhase,
+): (PlayerRoleScore & { score: number }) | null {
+  const best = bestRoleScore(
+    rolesForPhase(rolesForPlayablePositions(roleScores, positions), phase),
+  );
+  if (best === null) {
+    return null;
   }
   return best;
 }

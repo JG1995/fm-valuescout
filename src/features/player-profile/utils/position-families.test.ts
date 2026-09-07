@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PlayerRoleScore } from "../types/player-detail";
 import {
-  bestPotentialRoleScore,
+  bestCurrentRolePair,
   bestRoleScore,
   defaultProfilePosition,
   isGoalkeeper,
@@ -69,54 +69,111 @@ describe("bestRoleScore", () => {
   });
 });
 
-describe("bestPotentialRoleScore", () => {
-  it("picks the highest non-null potential score and keeps catalog order on ties", () => {
+describe("bestCurrentRolePair", () => {
+  it("pairs the best-current role with its own potential when another role has higher potential", () => {
     const scores = [
       role({
         roleId: "a",
         displayName: "Current specialist",
         positionTags: ["MC"],
+        phase: "in_possession",
         score: 82,
         potentialScore: 88,
       }),
       role({
         roleId: "b",
         displayName: "Potential specialist",
-        positionTags: ["ST"],
+        positionTags: ["MC"],
+        phase: "in_possession",
         score: 70,
         potentialScore: 94,
       }),
+    ];
+
+    const pair = bestCurrentRolePair(scores, { MC: 20 }, "in_possession");
+    expect(pair?.displayName).toBe("Current specialist");
+    expect(pair?.score).toBe(82);
+    expect(pair?.potentialScore).toBe(88);
+  });
+
+  it("keeps the earlier catalog item on current-score ties", () => {
+    const scores = [
       role({
-        roleId: "c",
-        displayName: "Potential tie",
-        positionTags: ["ST"],
-        score: 69,
-        potentialScore: 94,
+        roleId: "first",
+        displayName: "First",
+        positionTags: ["MC"],
+        phase: "out_of_possession",
+        score: 79,
+        potentialScore: 90,
       }),
       role({
-        roleId: "d",
-        displayName: "No potential score",
-        positionTags: ["GK"],
-        score: 40,
-        potentialScore: null,
+        roleId: "tied",
+        displayName: "Tied",
+        positionTags: ["MC"],
+        phase: "out_of_possession",
+        score: 79,
+        potentialScore: 85,
       }),
     ];
 
-    expect(bestPotentialRoleScore(scores)?.displayName).toBe(
-      "Potential specialist",
+    const pair = bestCurrentRolePair(scores, { MC: 20 }, "out_of_possession");
+    expect(pair?.displayName).toBe("First");
+    expect(pair?.potentialScore).toBe(90);
+    expect(bestCurrentRolePair([], { MC: 20 }, "out_of_possession")).toBeNull();
+  });
+
+  it("excludes roles from unplayable positions", () => {
+    const scores = [
+      role({
+        roleId: "unplayable",
+        displayName: "Unplayable Specialist",
+        positionTags: ["ST"],
+        phase: "in_possession",
+        score: 99,
+        potentialScore: 100,
+      }),
+      role({
+        roleId: "playable",
+        displayName: "Playable",
+        positionTags: ["MC"],
+        phase: "in_possession",
+        score: 70,
+        potentialScore: 75,
+      }),
+    ];
+
+    const pair = bestCurrentRolePair(
+      scores,
+      { MC: 20, ST: 14 },
+      "in_possession",
     );
-    expect(bestPotentialRoleScore([])).toBeNull();
-    expect(
-      bestPotentialRoleScore([
-        role({
-          roleId: "n",
-          displayName: "Only null",
-          positionTags: ["GK"],
-          score: 42,
-          potentialScore: null,
-        }),
-      ]),
-    ).toBeNull();
+    expect(pair?.displayName).toBe("Playable");
+    expect(pair?.potentialScore).toBe(75);
+  });
+
+  it("retains null potential instead of skipping to the next role", () => {
+    const scores = [
+      role({
+        roleId: "current-only",
+        displayName: "Current Only",
+        positionTags: ["MC"],
+        phase: "in_possession",
+        score: 82,
+        potentialScore: null,
+      }),
+      role({
+        roleId: "next",
+        displayName: "Next",
+        positionTags: ["MC"],
+        phase: "in_possession",
+        score: 70,
+        potentialScore: 94,
+      }),
+    ];
+
+    const pair = bestCurrentRolePair(scores, { MC: 20 }, "in_possession");
+    expect(pair?.displayName).toBe("Current Only");
+    expect(pair?.potentialScore).toBeNull();
   });
 });
 
