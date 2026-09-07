@@ -235,6 +235,31 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps market value general-only inside the summary analysis details", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+    const first = renderProfileRoute("/players/42");
+
+    const generalSummary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    const generalAnalysis = within(generalSummary).getByTestId(
+      "player-profile-summary-analysis-details",
+    );
+    expect(within(generalAnalysis).getByText("Value")).toBeInTheDocument();
+    first.unmount();
+
+    renderProfileRoute("/players/42?view=moneyball");
+
+    const moneyballSummary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    expect(
+      within(moneyballSummary).queryByText("Value"),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps Moneyball no-data states actionable without rendering a role panel", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());

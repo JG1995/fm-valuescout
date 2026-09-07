@@ -496,7 +496,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 6 — Extract identity presentation
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(profile): isolate player identity presentation`
 
@@ -553,7 +553,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 7 — Install persistent identity rail
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): add persistent player identity rail`
 
@@ -1417,19 +1417,19 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 **PR:** PR 1 — Player profile workspace redesign
 
-**Commit:** Extract identity presentation
+**Commit:** Install persistent identity rail
 
 ### RED or removal proof
 
-Behavior-preserving extraction: existing route tests for heading, club/division, DOB, nationality flags, height, preferred foot, value, and flags must stay green unchanged while descriptive identity markup moves into one presenter.
+New route tests must fail before one persistent identity region with market value and neutral portrait/crest placeholders is composed beside every section. The tests must also reject image elements and analytical values inside the rail.
 
 ### Expected outcome
 
-`player-identity.tsx` renders the same descriptive identity facts with existing formatters and classes, and `PlayerOverviewPanel` composes it without visual or accessible-name changes. Analytical values remain outside the presenter.
+The same bounded Player Identity rail persists across Overview, Attributes, Role Fit, and Moneyball with honest neutral placeholders and market value, while the analysis workspace remains a distinct region using the single route query owner.
 
 ### Explicit exclusions
 
-Persistent rail layout, portrait or crest slots, CA/PA or role-summary movement, analytical values, formatter duplication, and accessible-name changes.
+Image loading or fetching, bundled portrait/crest assets, CA/PA or role suitability in the rail, section-content redesign, shared placeholder primitives, and final extreme-viewport proof.
 
 ## Discoveries and replanning
 
@@ -1445,7 +1445,8 @@ The planning-artifact checkpoint review found stale prose that still described r
 | PR 1 — Player profile workspace redesign | Commit 2 — Remove duplicate profile queries | 7114fe414d2af575ed010d7240a1d8dcddae17d7 | Centralized the snapshot and player Query subscriptions in `PlayerProfileContent` and passed non-null resolved data into the existing General composition without changing rendering or prefetch behavior. | Focused Player Profile route tests passed 54/54; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
 | PR 1 — Player profile workspace redesign | Commit 3 — Centralize profile mutations | 2ceda2b304269e71ddf27716900337cc5d350d7d | Hoisted hidden-information and boost mutation ownership into `PlayerProfileContent`, passed effective state and callbacks into the presenter, and restored the prior feedback lifetime when leaving General. | The feedback round-trip proof failed before correction and passed after it; focused Player Profile route tests passed 55/55; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found route-owned mutation feedback resurfaced after a General → Moneyball → General round trip; correction resets both observers when General is left and adds direct regression proof. |
 | PR 1 — Player profile workspace redesign | Commit 4 — Extract existing analysis navigation | b915ee165ee384691d64c23c700b0b94a8c0f7e8 | Moved the existing General/Moneyball parser and keyboard-operable tablist with delayed focus restoration into the Player Profile feature module while leaving route URL wiring and rendering behavior unchanged. | Focused Player Profile route tests passed 55/55 unchanged; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
-| PR 1 — Player profile workspace redesign | Commit 5 — Introduce four-section vertical slice with legacy URL compatibility | Pending record | Added canonical four-section resolution and keyboard navigation, complete legacy/default URL mapping, exact Moneyball loader prefetch, section-specific reuse of existing panels, current-player retention, and replace-history behavior. | Resolver and route RED proofs failed before implementation; focused Player Profile and utility tests passed 96/96; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; deterministic TypeScript and diff checks were clean. | Pass | Clear | 1 | Initial review required positive loader-prefetch and user-triggered replace-history proofs; correction added both. One advisory MEDIUM to update the stale Player Profile URL description in `.wiki/ARCHITECTURE.md` is deferred to feature close-out. |
+| PR 1 — Player profile workspace redesign | Commit 5 — Introduce four-section vertical slice with legacy URL compatibility | f86a49471aba41d04cab749ef70af5a0a182feaa | Added canonical four-section resolution and keyboard navigation, complete legacy/default URL mapping, exact Moneyball loader prefetch, section-specific reuse of existing panels, current-player retention, and replace-history behavior. | Resolver and route RED proofs failed before implementation; focused Player Profile and utility tests passed 96/96; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; deterministic TypeScript and diff checks were clean. | Pass | Clear | 1 | Initial review required positive loader-prefetch and user-triggered replace-history proofs; correction added both. One advisory MEDIUM to update the stale Player Profile URL description in `.wiki/ARCHITECTURE.md` is deferred to feature close-out. |
+| PR 1 — Player profile workspace redesign | Commit 6 — Extract identity presentation | Pending record | Extracted name, club/division, flags, age/DOB, nationality, height, preferred foot, and market-value presentation into feature-local identity components while preserving their original General and Moneyball visibility and layout. | The market-value placement proof failed before correction and passed after it; focused Player Profile route tests passed 64/64; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found market value moved into Moneyball and changed General geometry; correction restored the four-fact identity grid and original General-only value position with direct regression proof. |
 
 ## Final validation
 

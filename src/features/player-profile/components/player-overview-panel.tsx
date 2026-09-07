@@ -1,14 +1,8 @@
 import { Eye, EyeOff } from "lucide-react";
 import type { ReactNode } from "react";
-import { NationalityCell } from "@/components/player-table/nationality-cell";
 import { Button } from "@/components/ui/button/button";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
-import {
-  formatMissable,
-  formatMoney,
-  formatPlayerDob,
-  formatPreferredFoot,
-} from "@/utils/format";
+import { formatMissable } from "@/utils/format";
 import type { PlayerDetail } from "../types/player-detail";
 import {
   bestPotentialRoleScore,
@@ -17,36 +11,12 @@ import {
   rolesForPhase,
   rolesForPlayablePositions,
 } from "../utils/position-families";
-
-type SummaryFactProps = {
-  label: string;
-  value: ReactNode;
-  numeric?: boolean;
-};
-
-function SummaryFact({ label, value, numeric = false }: SummaryFactProps) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
-        {label}
-      </dt>
-      <dd
-        className={
-          numeric
-            ? "font-mono text-mono-md text-on-surface tabular-nums"
-            : "truncate text-body-md text-on-surface"
-        }
-        title={typeof value === "string" ? value : undefined}
-      >
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function flagLabel(value: boolean | null | undefined, yes: string) {
-  return value === true ? yes : null;
-}
+import {
+  PlayerIdentity,
+  PlayerIdentityFacts,
+  PlayerMarketValueFact,
+  SummaryFact,
+} from "./player-identity";
 
 type BestRoleSummaryProps = {
   label: string;
@@ -110,13 +80,6 @@ export function PlayerOverviewPanel({
 }: PlayerOverviewPanelProps) {
   const showGeneralAnalysis = mode === "general";
   const showMoneyballAnalysis = mode === "moneyball";
-  const flags = [
-    flagLabel(player.transferListed, "Transfer listed"),
-    flagLabel(player.loanListed, "Loan listed"),
-    flagLabel(player.notForSale, "Not for sale"),
-    flagLabel(player.setForRelease, "Set for release"),
-    flagLabel(player.onLoan, "On loan"),
-  ].filter((label): label is string => label !== null);
   const analysisRoles = rolesForPlayablePositions(
     showMoneyballAnalysis ? (roleScores ?? []) : player.roleScores,
     player.positions,
@@ -151,23 +114,7 @@ export function PlayerOverviewPanel({
     >
       <div className="space-y-3">
         <div className="grid gap-x-4 gap-y-2 lg:grid-cols-[minmax(260px,1.15fr)_minmax(300px,1fr)_minmax(260px,0.9fr)] lg:items-start">
-          <div className="min-w-0">
-            <h1 className="break-words text-headline-lg text-on-surface">
-              {player.name}
-            </h1>
-            <p className="mt-0.5 truncate text-body-md text-on-surface-variant">
-              {formatMissable(player.club)}
-              {player.division ? ` · ${player.division}` : ""}
-            </p>
-            {flags.length > 0 ? (
-              <p
-                className="mt-2 truncate text-body-sm text-warning"
-                title={flags.join(" · ")}
-              >
-                {flags.join(" · ")}
-              </p>
-            ) : null}
-          </div>
+          <PlayerIdentity player={player} />
 
           <div
             data-testid="player-profile-action-slot"
@@ -209,29 +156,7 @@ export function PlayerOverviewPanel({
           data-testid="player-profile-summary-details"
           className="grid gap-x-4 gap-y-2 lg:grid-cols-3"
         >
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
-            <SummaryFact
-              label="Age / DOB"
-              value={formatPlayerDob(
-                player.birthYear,
-                player.birthDayOfYear,
-                player.age,
-              )}
-            />
-            <SummaryFact
-              label="Nationality"
-              value={<NationalityCell nationalities={player.nationalities} />}
-            />
-            <SummaryFact
-              label="Height"
-              value={player.heightCm === null ? "—" : `${player.heightCm} cm`}
-              numeric
-            />
-            <SummaryFact
-              label="Foot"
-              value={formatPreferredFoot(player.preferredFoot)}
-            />
-          </dl>
+          <PlayerIdentityFacts player={player} />
 
           <div
             data-testid="player-profile-role-summaries"
@@ -285,15 +210,7 @@ export function PlayerOverviewPanel({
                     numeric
                   />
                 ) : null}
-                <SummaryFact
-                  label="Value"
-                  value={
-                    player.marketValueGbp === null
-                      ? "—"
-                      : formatMoney(player.marketValueGbp)
-                  }
-                  numeric
-                />
+                <PlayerMarketValueFact player={player} />
               </dl>
             ) : null}
           </div>
