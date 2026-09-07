@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -154,7 +154,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 
 **Required checks:** check
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -835,7 +835,7 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 | PR 1 — Redesign shared table for analysis-first views | Commit 8 — Integrate the Staff table toolbar | de54e4b4b730ca9e9b78c03e4fd85c10b5581cd7 | Adopted the shared toolbar across Staff Search, My Staff, and both Staff Shortlist paths while keeping page actions and boosts outside; preserved visible committed rows and truthful dynamic-field replacement recovery. | Staff tests 53/53; full frontend suite 936/936; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 1 | The first worker reached its 100-turn limit; a finisher completed replacement-state behavior. Initial review then required visible error and retry handling for requested dynamic fields. |
 | PR 1 — Redesign shared table for analysis-first views | Commit 9 — Integrate the Squad table toolbar | e0ac8961b143f1e2edfc4e95e26cb9c826f7542c | Adopted the shared toolbar for Squad summary and grouped Columns without adding filters or moving boosts and feature actions. | Squad tests 132/132; component tests 47/47; full frontend suite 938/938; `./scripts/dev check` passed; LSP and diff checks clean. | Pass | Clear | 0 | None |
 | PR 1 — Redesign shared table for analysis-first views | Commit 10 — Standardize shared table cells | 3466681bfea840adbc3e3812b67cf6c64735b5a0 | Consolidated proven shared player text, numeric, currency, dynamic, and score presentation while preserving caller-specific cells and exact loading, missing, zero, and accessible score semantics. | Component tests 54/54; affected route tests 268/268; full frontend suite 945/945; `./scripts/dev check` passed; diff check clean. | Pass | Clear | 2 | Initial review required shared Search/Squad basic cells and zero proof; correction review then found stale Staff score precedence, fixed by loading-first rendering and recovery proof. |
-| PR 1 — Redesign shared table for analysis-first views | Commit 11 — Enforce bounded column widths | Pending record | Replaced proportional table stretching with exact bounded pixel widths and added unit, route, and real-browser proof for shared-scroll overflow, sticky context, virtualization, and ultrawide column reveal. | Full frontend suite 947/947; `./scripts/dev check` passed; focused browser cases 4/4 and full smoke suite 60/60 passed; LSP and diff checks clean. | Pass | Clear | 0 | Updated four stale smoke contracts from pre-grouped and pre-identity behavior while retaining their geometry, sorting, and activation proofs. |
+| PR 1 — Redesign shared table for analysis-first views | Commit 11 — Enforce bounded column widths | 019777e7c60ab908a25d2ae1e3b2827e249ef172 | Replaced proportional table stretching with exact bounded pixel widths and added unit, route, and real-browser proof for shared-scroll overflow, sticky context, virtualization, and ultrawide column reveal. | Full frontend suite 947/947; `./scripts/dev check` passed; focused browser cases 4/4 and full smoke suite 60/60 passed; LSP and diff checks clean. | Pass | Clear | 0 | Updated four stale smoke contracts from pre-grouped and pre-identity behavior while retaining their geometry, sorting, and activation proofs. |
 
 ## Final validation
 
@@ -845,6 +845,10 @@ The thinnest path proving the approach: Commit 2 extends `ConfigurableTableHeade
 4. Browser product suite with viewport evidence: `./scripts/dev smoke`, including explicit 1280×800 and 3440×1440 layout checks from Commit 11.
 5. Unsupported or skipped validation is reported as a gap, never as a pass. `./scripts/dev mutate` remains unsupported and is never reported as passed.
 
+## Feature review
+
+Clear. The feature-complete review found no CRITICAL or HIGH findings. It recorded one reconciled MEDIUM: `.wiki/DESIGN.md` described a single 32px header, configurable Club/Division identity fields, and compact/two-line variants, while JAY-61 implements fixed 40px analysis rows, a two-row 64px grouped header, required sticky non-removable identity, and a table-associated toolbar. This MEDIUM is reconciled by the DESIGN update below; no functional correction was required.
+
 ## Documentation impact
 
-Complete during reconciliation. Expected: DESIGN.md table-section update (two-row grouped headers, 64px sticky header geometry, sticky identity region, table-associated toolbar). No ARCHITECTURE change (this extends the established shared component and store seams) and no ADR (no durable consequential alternative meets the threshold). If implementation evidence meets the ADR threshold, record the need here and replan — this run is not authorized to write it.
+Complete. DESIGN.md changed to record the implemented shared Data Table contract. ARCHITECTURE.md: no change; the feature extends the established shared component and store seams. ADR: none; no durable consequential alternative meets the threshold.
