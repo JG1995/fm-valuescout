@@ -1047,7 +1047,7 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps the hidden-information control last in the action row", async () => {
+  it("keeps the hidden-information control separate from modification actions", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
     renderProfileRoute("/players/42");
@@ -1055,19 +1055,33 @@ describe("player profile route", () => {
     const summary = await screen.findByRole("region", {
       name: "Alex Scout summary",
     });
-    const boostCa = within(summary).getByRole("button", { name: "Boost CA" });
-    const wonderkidMentality = within(summary).getByRole("button", {
-      name: "Wonderkid Mentality",
-    });
-    const hiddenInformation = within(summary).getByRole("button", {
+    const displayControl = within(summary).getByTestId(
+      "player-profile-display-control",
+    );
+    const actionSlot = within(summary).getByTestId(
+      "player-profile-action-slot",
+    );
+    const hiddenInformation = within(displayControl).getByRole("button", {
       name: "Reveal hidden information",
     });
 
-    expect(within(summary).getAllByRole("button")).toEqual([
-      boostCa,
-      wonderkidMentality,
-      hiddenInformation,
-    ]);
+    expect(
+      within(actionSlot).getByRole("button", { name: "Boost CA" }),
+    ).toBeInTheDocument();
+    expect(
+      within(actionSlot).getByRole("button", {
+        name: "Wonderkid Mentality",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(actionSlot).queryByRole("button", {
+        name: "Reveal hidden information",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(displayControl).queryByRole("button", { name: "Boost CA" }),
+    ).not.toBeInTheDocument();
+    expect(actionSlot.contains(hiddenInformation)).toBe(false);
   });
 
   it("conceals hidden information without leaving direct or indirect values in the profile", async () => {

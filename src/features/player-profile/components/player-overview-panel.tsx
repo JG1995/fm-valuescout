@@ -108,14 +108,13 @@ export function PlayerOverviewPanel({
       className="rounded-lg border border-outline-variant bg-surface-container px-4 py-3"
     >
       <div className="space-y-3">
-        <div
-          data-testid="player-profile-action-slot"
-          className="flex min-h-10 min-w-0 flex-wrap justify-end overflow-visible"
-        >
-          {showGeneralAnalysis ? (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-start justify-end gap-2">
-                {actions}
+        <div className="flex min-h-10 min-w-0 flex-wrap items-start justify-between gap-2 overflow-visible">
+          <div
+            data-testid="player-profile-display-control"
+            className="space-y-2"
+          >
+            {showGeneralAnalysis ? (
+              <>
                 <Button
                   icon={VisibilityIcon}
                   variant="secondary"
@@ -130,14 +129,23 @@ export function PlayerOverviewPanel({
                     ? "Hide hidden info"
                     : "Reveal hidden info"}
                 </Button>
-              </div>
-              {hiddenInformationError ? (
-                <p className="text-right text-body-sm text-error" role="alert">
-                  Could not update hidden information.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
+                {hiddenInformationError ? (
+                  <p
+                    className="text-right text-body-sm text-error"
+                    role="alert"
+                  >
+                    Could not update hidden information.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+          <div
+            data-testid="player-profile-action-slot"
+            className="flex min-h-10 min-w-0 flex-wrap justify-end overflow-visible"
+          >
+            {showGeneralAnalysis ? actions : null}
+          </div>
         </div>
 
         <div

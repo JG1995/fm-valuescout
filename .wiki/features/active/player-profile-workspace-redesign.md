@@ -611,7 +611,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 8 — Separate hidden-information display control
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(profile): separate hidden information controls`
 
@@ -666,7 +666,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 9 — Group modification actions
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): group player modification actions`
 
@@ -1417,19 +1417,19 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 **PR:** PR 1 — Player profile workspace redesign
 
-**Commit:** Separate hidden-information display control
+**Commit:** Group modification actions
 
 ### RED or removal proof
 
-Existing concealment and mutation tests must stay green while the toggle moves into a display-control slot. The action-order proof must change to assert structural separation from player-modification actions without changing toggle behavior or labels.
+New route tests must fail while Boost CA and Wonderkid Mentality are visible without opening a Modify Player disclosure. They must prove keyboard reachability and that the hidden-information control remains outside.
 
 ### Expected outcome
 
-The hidden-information toggle is a distinct view/display control with the same callback, `aria-pressed`, pending and error behavior, while boost actions remain separately placed for the next packet.
+A feature-local keyboard-operable Modify Player disclosure contains both unchanged boost flows and exposes clear expanded state, while the hidden-information display control remains structurally separate.
 
 ### Explicit exclusions
 
-Boost grouping, disclosure work, behavior or label changes, mutation changes, concealment changes, and section-content redesign.
+Shared disclosure primitives, boost eligibility or mutation changes, confirmation-copy changes, hidden-control movement, and section-content redesign.
 
 ## Discoveries and replanning
 
@@ -1447,7 +1447,8 @@ The planning-artifact checkpoint review found stale prose that still described r
 | PR 1 — Player profile workspace redesign | Commit 4 — Extract existing analysis navigation | b915ee165ee384691d64c23c700b0b94a8c0f7e8 | Moved the existing General/Moneyball parser and keyboard-operable tablist with delayed focus restoration into the Player Profile feature module while leaving route URL wiring and rendering behavior unchanged. | Focused Player Profile route tests passed 55/55 unchanged; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
 | PR 1 — Player profile workspace redesign | Commit 5 — Introduce four-section vertical slice with legacy URL compatibility | f86a49471aba41d04cab749ef70af5a0a182feaa | Added canonical four-section resolution and keyboard navigation, complete legacy/default URL mapping, exact Moneyball loader prefetch, section-specific reuse of existing panels, current-player retention, and replace-history behavior. | Resolver and route RED proofs failed before implementation; focused Player Profile and utility tests passed 96/96; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; deterministic TypeScript and diff checks were clean. | Pass | Clear | 1 | Initial review required positive loader-prefetch and user-triggered replace-history proofs; correction added both. One advisory MEDIUM to update the stale Player Profile URL description in `.wiki/ARCHITECTURE.md` is deferred to feature close-out. |
 | PR 1 — Player profile workspace redesign | Commit 6 — Extract identity presentation | 6982817b87c1aa6d42621d3bcf6740de3a9467d2 | Extracted name, club/division, flags, age/DOB, nationality, height, preferred foot, and market-value presentation into feature-local identity components while preserving their original General and Moneyball visibility and layout. | The market-value placement proof failed before correction and passed after it; focused Player Profile route tests passed 64/64; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found market value moved into Moneyball and changed General geometry; correction restored the four-fact identity grid and original General-only value position with direct regression proof. |
-| PR 1 — Player profile workspace redesign | Commit 7 — Install persistent identity rail | Pending record | Added one bounded all-section identity rail with market value and neutral text placeholders, distinct analysis landmark ownership, and removal of duplicate descriptive identity and heading copies from the analysis workspace. | Rail RED proofs failed before implementation and the duplicate-heading proof failed before correction; focused Player Profile route tests passed 68/68; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found descriptive identity remained duplicated in every analysis header; correction made the rail the sole identity owner while preserving the explicit market-value exception and existing analysis behavior. |
+| PR 1 — Player profile workspace redesign | Commit 7 — Install persistent identity rail | e47173f48cf182cfb05363dbecabdd6c35114ba6 | Added one bounded all-section identity rail with market value and neutral text placeholders, distinct analysis landmark ownership, and removal of duplicate descriptive identity and heading copies from the analysis workspace. | Rail RED proofs failed before implementation and the duplicate-heading proof failed before correction; focused Player Profile route tests passed 68/68; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found descriptive identity remained duplicated in every analysis header; correction made the rail the sole identity owner while preserving the explicit market-value exception and existing analysis behavior. |
+| PR 1 — Player profile workspace redesign | Commit 8 — Separate hidden-information display control | Pending record | Moved the unchanged hidden-information toggle and error feedback into a dedicated display-control slot separate from the existing boost action slot. | The structural separation proof failed before implementation; focused Player Profile route tests passed 68/68; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
 
 ## Final validation
 
