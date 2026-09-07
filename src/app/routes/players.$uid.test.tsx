@@ -527,9 +527,7 @@ describe("player profile route", () => {
       "xl:grid-cols-3",
       "2xl:grid-cols-[repeat(3,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))]",
     );
-    expect(within(generalDetails).getByText("Current Ability")).toHaveClass(
-      "text-label-lg",
-    );
+    expect(within(generalDetails).getByText("Current Ability")).toBeVisible();
     expect(within(generalDetails).getByText("Potential Ability")).toBeVisible();
     expect(within(generalDetails).getByText("Market Value")).toBeVisible();
     expect(
@@ -575,9 +573,6 @@ describe("player profile route", () => {
     const generalRoleFit = screen.getByRole("region", {
       name: /^Role fit for /,
     });
-    expect(generalRoleFit).toHaveClass(
-      "lg:grid-cols-[minmax(240px,360px)_minmax(0,1fr)]",
-    );
     expect(
       within(generalRoleFit).getByTestId(
         "player-role-position-picker-scroller",
@@ -2194,8 +2189,8 @@ describe("player profile route", () => {
       ).toHaveClass("sr-only");
       expect(phaseChip).toHaveTextContent(expectedPhase);
       expect(phaseChip).toHaveTextContent(expectedFullPhase);
-      expect(currentCell).toHaveClass("text-right", "tabular-nums");
-      expect(potentialCell).toHaveClass("text-right", "tabular-nums");
+      expect(currentCell).toHaveClass("text-center", "tabular-nums");
+      expect(potentialCell).toHaveClass("text-center", "tabular-nums");
     });
     expect(
       within(roleFit).getByLabelText("Catalog Role 1 (Current): 60, Average"),

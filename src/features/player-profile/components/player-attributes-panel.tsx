@@ -26,7 +26,7 @@ type AttributeSectionProps = {
 
 function AttributeRows({ rows }: { rows: PlayerAttributeRow[] }) {
   return (
-    <dl className="grid min-w-0 grid-cols-1 gap-x-5">
+    <dl className="grid min-w-0 grid-cols-1 [&>div]:min-h-8 [&>div]:gap-2 [&_dt]:whitespace-normal [&_dt]:py-1">
       {rows.map((row) => (
         <AttributeRow key={row.key} label={row.label}>
           {row.potentialValue === undefined ? (
@@ -60,7 +60,7 @@ function AttributeSection({
     : undefined;
 
   return (
-    <section aria-labelledby={headingId} className="min-h-0 min-w-0 space-y-3">
+    <section aria-labelledby={headingId} className="min-h-0 min-w-0 space-y-2">
       <h3 id={headingId} className="text-label-lg text-on-surface">
         {group.title}
       </h3>
@@ -75,7 +75,7 @@ function AttributeSection({
           <section
             key={subgroup.title}
             aria-labelledby={subgroupId}
-            className="space-y-2"
+            className="space-y-1"
           >
             <h4
               id={subgroupId}
@@ -119,13 +119,13 @@ export function PlayerAttributesPanel({
     <Panel
       title="Attributes"
       actions={
-        <span className="text-label-sm text-on-surface-variant">
+        <span className="text-body-sm text-on-surface-variant">
           {currentOnly ? "Current only" : "Current → Potential"}
         </span>
       }
       className="flex min-h-0 w-full flex-col [&>div:last-child]:min-h-0 [&>div:last-child]:flex-1"
     >
-      <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="flex h-full min-h-0 flex-col gap-3">
         <div className="overflow-x-auto pb-0.5">
           <PlayerProfileTabs tab={tab} tabs={tabs} onTabChange={onTabChange} />
         </div>

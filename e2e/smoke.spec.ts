@@ -4436,6 +4436,103 @@ test.describe("application smoke", () => {
     }
   });
 
+  test("player profile Overview fits all outfield attributes and readable role scores at desktop size", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1009 });
+    await stubTauriIpc(page, {
+      playerProfile: true,
+      playerProfileLayout: true,
+    });
+    await page.goto("/players/42?section=overview");
+
+    const outfield = page.getByRole("tabpanel", {
+      name: "Outfield",
+      exact: true,
+    });
+    const scroller = outfield.locator("..");
+    await expect(outfield.locator("dd")).toHaveCount(36);
+    const summary = page.getByRole("region", {
+      name: "Potential Scout summary",
+    });
+    await expect(summary.getByText("140", { exact: true })).toHaveCSS(
+      "font-size",
+      "36px",
+    );
+    await expect(
+      outfield.getByText("Work Rate", { exact: true }),
+    ).toBeVisible();
+    expect(
+      await scroller.evaluate((element) => {
+        const node = element as unknown as {
+          scrollHeight: number;
+          clientHeight: number;
+        };
+        return node.scrollHeight <= node.clientHeight;
+      }),
+    ).toBe(true);
+    await expect(
+      outfield
+        .getByRole("region", { name: "Physical", exact: true })
+        .getByRole("region", { name: "Set Pieces" }),
+    ).toBeVisible();
+
+    const roleFit = page.getByRole("region", { name: "Role fit for MC" });
+    const position = roleFit.getByRole("button", {
+      name: "MC, familiarity 20",
+    });
+    const score = roleFit.getByRole("img", {
+      name: "Wide Covering Defensive Midfielder (Current): 82, Excellent",
+    });
+    for (const circle of [position, score]) {
+      const box = await circle.boundingBox();
+      expect(box).not.toBeNull();
+      if (!box) throw new Error("Expected a circular position or score.");
+      expect(box.width).toBe(box.height);
+      expect(box.width).toBeGreaterThanOrEqual(circle === position ? 44 : 32);
+      expect(
+        await circle.evaluate((element) => {
+          const browser = globalThis as unknown as {
+            getComputedStyle: (node: unknown) => { borderRadius: string };
+          };
+          return Number.parseFloat(
+            browser.getComputedStyle(element).borderRadius,
+          );
+        }),
+      ).toBeGreaterThanOrEqual(box.width / 2);
+    }
+    await page.setViewportSize({ width: 1600, height: 900 });
+    const roleName = roleFit.getByText("Wide Covering Defensive Midfielder", {
+      exact: true,
+    });
+    expect(
+      await roleName.evaluate((element) => {
+        const node = element as unknown as {
+          scrollWidth: number;
+          clientWidth: number;
+        };
+        return node.scrollWidth <= node.clientWidth;
+      }),
+    ).toBe(true);
+    await expect(roleName).not.toHaveCSS("text-overflow", "ellipsis");
+    const [headerBox, scoreBox, headingBox] = await Promise.all([
+      roleFit.getByRole("columnheader", { name: "Current" }).boundingBox(),
+      score.boundingBox(),
+      roleFit.getByRole("heading", { name: "MC", exact: true }).boundingBox(),
+    ]);
+    if (!headerBox || !scoreBox || !headingBox) {
+      throw new Error(
+        "Expected the position heading, score header, and score.",
+      );
+    }
+    expect(headingBox.y + headingBox.height).toBeLessThanOrEqual(headerBox.y);
+    expect(
+      Math.abs(
+        headerBox.x + headerBox.width / 2 - scoreBox.x - scoreBox.width / 2,
+      ),
+    ).toBeLessThanOrEqual(1);
+  });
+
   test("player profile contains every final section at the minimum desktop size", async ({
     page,
   }) => {

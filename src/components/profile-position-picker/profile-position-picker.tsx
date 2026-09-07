@@ -15,7 +15,7 @@ export function ProfilePositionPicker({
   onSelectPosition: (position: string) => void;
 }) {
   return (
-    <fieldset className="relative isolate overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest p-3">
+    <fieldset className="relative isolate overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-5">
       <legend className="sr-only">Select a pitch position</legend>
       <div
         aria-hidden="true"
@@ -26,7 +26,7 @@ export function ProfilePositionPicker({
         <span className="absolute top-0 left-1/2 h-10 w-1/2 -translate-x-1/2 border-x border-b border-outline/45" />
         <span className="absolute bottom-0 left-1/2 h-10 w-1/2 -translate-x-1/2 border-x border-t border-outline/45" />
       </div>
-      <div className="relative z-10 grid h-full grid-cols-3 content-between gap-1.5">
+      <div className="relative z-10 grid h-full grid-cols-3 content-between justify-items-center gap-x-1 gap-y-4">
         {PROFILE_POSITION_ROWS.flatMap((row, rowIndex) =>
           row.map((position, columnIndex) => {
             const key = `${rowIndex}:${columnIndex}`;
@@ -55,7 +55,7 @@ export function ProfilePositionPicker({
                 aria-label={accessibleName}
                 aria-pressed={selected}
                 data-tier={tier}
-                className={`min-h-11 rounded-md border px-1 py-1 text-center transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                className={`size-11 rounded-full border text-center transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                   selected
                     ? "border-2 border-primary bg-primary-container text-on-primary-container ring-2 ring-primary/50"
                     : unfamiliar

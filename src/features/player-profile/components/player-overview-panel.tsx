@@ -15,9 +15,9 @@ type OverviewFactCardProps = {
 
 function OverviewFactCard({ label, value }: OverviewFactCardProps) {
   return (
-    <div className="min-w-0 rounded-lg border border-outline-variant bg-surface-container-high p-4">
-      <h2 className="text-label-lg text-on-surface-variant">{label}</h2>
-      <p className="mt-3 font-mono text-headline-lg text-on-surface tabular-nums">
+    <div className="min-w-0 rounded-lg border border-outline-variant bg-surface-container p-4">
+      <h2 className="text-body-md text-on-surface-variant">{label}</h2>
+      <p className="mt-3 font-mono text-mono-xl text-on-surface tabular-nums">
         {value}
       </p>
     </div>
@@ -46,7 +46,7 @@ function TacticalFitPair({ phase, pair, concealed }: TacticalFitPairProps) {
   const potentialScore = concealed ? null : (pair?.potentialScore ?? null);
   const labelBase = roleName ?? fullPhase;
   const unavailableTextClass =
-    "inline-flex size-12 items-center justify-center font-mono text-mono-lg text-on-surface-variant";
+    "font-mono text-headline-lg text-on-surface-variant";
   const currentText =
     currentScore === null ? "unavailable" : formatMissable(currentScore);
   const potentialText = concealed
@@ -62,16 +62,16 @@ function TacticalFitPair({ phase, pair, concealed }: TacticalFitPairProps) {
   return (
     <div
       data-testid={testId}
-      className="min-w-0 rounded-lg border border-outline-variant bg-surface-container-high p-4 tabular-nums"
+      className="flex min-w-0 flex-col rounded-lg border border-outline-variant bg-surface-container p-4 tabular-nums"
     >
-      <p className="text-label-lg text-on-surface-variant">{summaryLabel}</p>
+      <p className="text-body-md text-on-surface-variant">{summaryLabel}</p>
       <p
-        className="mt-2 text-body-lg font-semibold text-on-surface"
+        className="mt-1 mb-2 text-body-lg font-semibold leading-snug text-on-surface"
         title={roleName ?? undefined}
       >
         {roleName ?? formatMissable(null)}
       </p>
-      <div aria-hidden="true" className="mt-1 flex items-center gap-1.5">
+      <div aria-hidden="true" className="mt-auto flex items-center gap-3">
         {currentScore === null ? (
           <span className={unavailableTextClass}>{formatMissable(null)}</span>
         ) : (
@@ -79,7 +79,7 @@ function TacticalFitPair({ phase, pair, concealed }: TacticalFitPairProps) {
             score={currentScore}
             roleName={`${labelBase} (Current)`}
             variant="hero"
-            className="text-headline-lg"
+            className="size-auto! text-headline-lg!"
           />
         )}
         <span className="text-on-surface-variant">→</span>
@@ -90,11 +90,11 @@ function TacticalFitPair({ phase, pair, concealed }: TacticalFitPairProps) {
             score={potentialScore}
             roleName={`${labelBase} (Potential)`}
             variant="hero"
-            className="text-headline-lg"
+            className="size-auto! text-headline-lg!"
           />
         )}
       </div>
-      <p className="text-label-sm text-on-surface-variant">
+      <p className="mt-1 text-body-sm text-on-surface-variant">
         {`${rolePhaseLabel(phase)} · Current → Potential`}
       </p>
       <span className="sr-only">{accessibleDescription}</span>
@@ -125,10 +125,7 @@ export function PlayerOverviewPanel({
     "out_of_possession",
   );
   return (
-    <section
-      aria-label={`${player.name} summary`}
-      className="rounded-lg border border-outline-variant bg-surface-container px-4 py-3"
-    >
+    <section aria-label={`${player.name} summary`} className="min-w-0">
       {showTacticalFitSummary || showAbility ? (
         <div
           data-testid="player-profile-summary-details"

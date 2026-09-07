@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { VISIBLE_ATTRIBUTE_KEYS } from "../src/utils/player-attributes";
 
 type SmokeStubOptions = {
   csvImportFormat?: "youthTracker" | "moneyball";
@@ -8,6 +9,7 @@ type SmokeStubOptions = {
   squadPageFailure?: boolean;
   squadOverview?: boolean;
   playerProfile?: boolean;
+  playerProfileLayout?: boolean;
   moneyballSearch?: boolean;
   shortlistSearch?: boolean;
   staffWorkspace?: boolean;
@@ -26,6 +28,11 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const squadPageFailure = options.squadPageFailure ?? false;
   const squadOverview = options.squadOverview ?? false;
   const playerProfile = options.playerProfile ?? false;
+  const profileAttributes = options.playerProfileLayout
+    ? Object.fromEntries(
+        VISIBLE_ATTRIBUTE_KEYS.map((key, index) => [key, 10 + (index % 11)]),
+      )
+    : {};
   const moneyballSearch = options.moneyballSearch ?? false;
   const shortlistSearch = options.shortlistSearch ?? false;
   const staffWorkspace = options.staffWorkspace ?? false;
@@ -47,6 +54,8 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const squadPageFailure = ${squadPageFailure ? "true" : "false"};
       const squadOverview = ${squadOverview ? "true" : "false"};
       const playerProfile = ${playerProfile ? "true" : "false"};
+      const playerProfileLayout = ${options.playerProfileLayout ? "true" : "false"};
+      const profileAttributes = ${JSON.stringify(profileAttributes)};
       const moneyballSearch = ${moneyballSearch ? "true" : "false"};
       const staffWorkspace = ${staffWorkspace ? "true" : "false"};
       const staffShortlist = ${staffShortlist ? "true" : "false"};
@@ -1214,10 +1223,11 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 WBR: null,
               },
               attributes: {
+                ...profileAttributes,
                 Passing: 14,
                 Determination: playerProfileMentalityUpdated ? 18 : 8,
               },
-              potentialAttributes: { Passing: 16 },
+              potentialAttributes: { ...profileAttributes, Passing: 16 },
               hiddenAttributes: { Consistency: 12 },
               personality: {
                 Ambition: playerProfileMentalityUpdated ? 20 : 10,
@@ -1244,7 +1254,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               roleScores: [
                 {
                   roleId: "current-specialist",
-                  displayName: "Current Specialist",
+                  displayName: playerProfileLayout ? "Wide Covering Defensive Midfielder" : "Current Specialist",
                   phase: "in_possession",
                   positionTags: ["MC"],
                   score: 82,
