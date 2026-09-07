@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -183,7 +183,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 **Required checks:** GitHub required `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -1425,7 +1425,7 @@ The independent plan review accepted the 21-commit order with no findings. The d
 
 The planning-artifact checkpoint review found stale prose that still described review acceptance as unknown. This commit corrects that record without changing scope, packet order, or delivery authority.
 
-Feature close-out bundled the three retained implementation advisories: the Modify Player disclosure now keeps its controlled target mounted and hidden while collapsed, non-Overview sections no longer retain empty summary layout, and Role Fit phase chips expose semantic text rather than image semantics. The initial feature review found no blocking implementation issues and directed the documented Player Profile contract to normal close-out reconciliation.
+Feature close-out bundled the three retained implementation advisories in `0bdf584c42dc13031666e887f447d450da82be1e`: the Modify Player disclosure now keeps its controlled target mounted and hidden while collapsed, non-Overview sections no longer retain empty summary layout, and Role Fit phase chips expose semantic text rather than image semantics. The initial feature review found no blocking implementation issues. Current-state Player Profile documentation was reconciled in `.wiki/ARCHITECTURE.md` and `.wiki/DESIGN.md`; no ADR or debug report was warranted.
 
 ## Completed work
 
@@ -1451,7 +1451,7 @@ Feature close-out bundled the three retained implementation advisories: the Modi
 | PR 1 — Player profile workspace redesign | Commit 18 — Relocate Moneyball tactical summaries | a9bc15bbda923e7c46ecc939b90abdbf821895b4 | Moved playable best-current Moneyball IP/OOP summaries into a Moneyball-owned section component, removed the shared overview scoring branch, and retained two bounded workspace columns. | Relocation and ownership proofs failed before implementation; focused Player Profile and Moneyball panel tests passed 81/81; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found a third direct grid child could collapse and clip Role Fit; correction grouped summaries and metrics in a bounded primary column beside Role Fit with direct structural proof. |
 | PR 1 — Player profile workspace redesign | Commit 19 — Integrate Moneyball hierarchy | f1a21088b8c68963990e1b3c04d4b2c3a5ca21ba | Aligned Moneyball panels to full-width bounded flex geometry, micro-label metadata, tabular raw values, and right-aligned table score presentation while preserving percentile and comparison semantics. | The hierarchy proof failed before implementation; focused Player Profile, Moneyball profile, and Moneyball Role Fit tests passed 85/85; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
 | PR 1 — Player profile workspace redesign | Commit 20 — Prove minimum desktop containment | 2c615abeb3e6bce7a117de48e779139fe9e384e5 | Reflowed dual-panel profile workspaces into bounded stacked rows below the ultrawide breakpoint and replaced obsolete smoke geometry with exact 1280×800 coverage of all four sections, identity, navigation, content, and score containment. | Focused Player Profile tests passed 79/79; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; exact `./scripts/dev smoke` passed 60/60, including the four-section 1280×800 proof; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found Role Fit score-cell readability was not directly proved; correction added exact Current/Potential badge visibility, nonzero geometry, and table-scrollport containment assertions. Native WebView inspection remains an additional gap, not a substitute for passing browser smoke. |
-| PR 1 — Player profile workspace redesign | Commit 21 — Bound ultrawide geometry | Pending record | Bounded the analysis workspace to 2800px at ultrawide sizes, capped standard and Moneyball position navigators at 360px, and kept comparison tables fluid while all four sections use the available 3440×1440 width. | Focused Player Profile tests passed 79/79; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; exact `./scripts/dev smoke` passed 61/61, including retained 1280×800 and new four-section 3440×1440 proofs; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | Native WebView inspection remains an additional gap, not a substitute for passing browser smoke. |
+| PR 1 — Player profile workspace redesign | Commit 21 — Bound ultrawide geometry | 4158fb26a91cb4dd6cc0dd23b3a2491b69fb0988 | Bounded the analysis workspace to 2800px at ultrawide sizes, capped standard and Moneyball position navigators at 360px, and kept comparison tables fluid while all four sections use the available 3440×1440 width. | Focused Player Profile tests passed 79/79; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; exact `./scripts/dev smoke` passed 61/61, including retained 1280×800 and new four-section 3440×1440 proofs; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | Native WebView inspection remains an additional gap, not a substitute for passing browser smoke. |
 
 ## Final validation
 
@@ -1461,10 +1461,13 @@ Feature close-out bundled the three retained implementation advisories: the Modi
 - Commits 20–21 additionally require `./scripts/dev smoke` with Playwright browser assertions for all four sections at the exact viewport; manual or native-WebView inspection is a recorded additional gap, never a substitute.
 - Feature completion additionally requires the full feature gate, bounded feature review, and documentation reconciliation owned by feature close-out (Not run in this PR per the delivery plan).
 
+## Feature close-out
+
+- Feature validation passed: Player Profile route tests 79/79, `./scripts/dev check` with 805 Rust tests passed and 2 ignored, and `./scripts/dev smoke` 61/61 with exact four-section 1280×800 and 3440×1440 geometry.
+- The initial feature review found no CRITICAL or HIGH issues. Test portfolio: Pass. Architecture: Conforms. No overengineering finding remained.
+- The reviewed correction commit `0bdf584c42dc13031666e887f447d450da82be1e` resolved all three retained implementation advisories without changing feature scope.
+- Native Tauri WebView inspection remains the recorded non-blocking additional-evidence gap; exact browser smoke passed.
+
 ## Documentation impact
 
-Recorded during reconciliation by feature close-out, not in implementation commits.
-
-Expected impact: `.wiki/ARCHITECTURE.md` and `.wiki/DESIGN.md` only if implementation changes a documented contract or convention; no ADR is warranted (no durable consequential choice with meaningful alternatives beyond the recorded JAY-62 direction); no debug report is expected.
-
-Reconciliation is explicitly not an implementation packet in this ledger; feature close-out owns final docs.
+Feature close-out updated `.wiki/ARCHITECTURE.md` and `.wiki/DESIGN.md` to record the canonical four-section URL, ownership, interaction, concealment, and responsive-layout contracts. `.wiki/TODO.md` moves JAY-62 from Active to Completed, and this complete ledger moves to `.wiki/features/completed/`. No ADR or debug report was warranted.

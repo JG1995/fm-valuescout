@@ -22,7 +22,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Server / async state:** TanStack Query v5 — caches **IPC command results**, not HTTP responses. Global defaults in `src/app/router.tsx` disable focus/reconnect refetch and query retry for local IPC ([ADR-0005](./decisions/0005-tanstack-query.md)).
 
-**Client UI state:** Zustand v5 (modals, layout chrome, selections not in the URL). `useMoneyballPreferences` persists one app-local General or Moneyball default. Player and staff shortlist filter flags live in URL state; shortlist membership remains save-owned and is not client UI state.
+**Client UI state:** Zustand v5 (modals, layout chrome, selections not in the URL). `useMoneyballPreferences` persists the app-local Player Search default; the saved General value maps to Profile Overview and the saved Moneyball value maps to Profile Moneyball. Player and staff shortlist filter flags live in URL state; shortlist membership remains save-owned and is not client UI state.
 
 **Styling:** Tailwind CSS v4 via `@tailwindcss/vite`; design tokens bridge to [DESIGN.md](./DESIGN.md). IBM Plex Sans/Mono self-hosted via `@fontsource`; Lucide icons via `lucide-react`. Shared primitives in `src/components/ui/` (Button, Panel, StatusChip, EmptyState, TextField, SelectField, **Modal**, **ScoreBadge**). App shell: `AppTopBar` utility bar (**GlobalPlayerSearch**, active save, snapshot freshness, optional Load Data player-cap toggle/limit, **Load Data**, and a dismissible context-bound Load Data outcome) followed by `AppNavBar` grouped top navigation; `useLoadDataPreferences` persists the Load Data cap toggle and limit. Route workspaces size from the shell main area, so an outcome banner reduces available panel height instead of creating nested page scrolling. Player search results use **@tanstack/react-virtual** for row virtualization.
 
@@ -650,11 +650,11 @@ Profile reads the **active save's current snapshot** only. The WebView never ope
 
 ```text
 User opens /players/$uid (from Search row, Enter on focused row, or GlobalPlayerSearch hit)
-  → Route loader: ensureQueryData(current snapshot + get_player); view=moneyball also prefetches get_player_moneyball
-  → validateSearch accepts canonical tabs and normalizes legacy technical | mental | physical to outfield;
-      missing or invalid values remain unset until the loaded player determines the default; view is general unless exactly moneyball
-  → Suspense fallback mirrors the summary plus two-panel workspace
-  → summary remains visible; PlayerProfileTabs selects one attribute group
+  → Route loader: ensureQueryData(current snapshot + get_player); section=moneyball also prefetches get_player_moneyball
+  → validateSearch accepts canonical sections overview | attributes | role-fit | moneyball, preserves legacy view=moneyball, and accepts the General attribute tab compatibility value;
+      saved General maps to overview and saved Moneyball maps to moneyball when section is absent
+  → Suspense fallback mirrors the persistent identity rail plus section workspace
+  → the section switch selects Overview, Attributes, Role Fit, or Moneyball; Attributes then selects one attribute group
 
 get_player IPC (features/player/commands.rs)
   → uid from route param
@@ -682,17 +682,16 @@ set_hidden_information_revealed IPC
   → service updates only the active saves row and returns the persisted state
   → route invalidates playerKeys.all; pending and error feedback is keyed by player UID and active save ID
 
-Summary
-  → identity block + fixed Current IP, Current OOP, Potential IP, and Potential OOP hero summaries;
-      each uses catalog-order ties after familiarity ≥ 15 filtering and phase partitioning
-  → concealed preference removes PA, projected/potential values, hidden/personality values, and development actions;
-      potential summary slots remain as concealed placeholders
+Overview section
+  → persistent identity rail shows identity, neutral portrait/crest placeholders, and market value across every section
+  → owns Ability plus same-role Current → Potential best-current IP/OOP summaries, using catalog-order ties after familiarity ≥ 15 filtering and phase partitioning
+  → concealed preference removes PA, projected/potential values, hidden/personality values, and development actions
   → preferredFoot title-cased for display
   → Boost CA and Wonderkid Mentality keep their closed confirmation and mutation flow;
       snapshot previews and disabled reasons move to focusable action tooltips
 
-Attributes panel
-  → four canonical tabs; outfield players use Outfield first, while players with GK familiarity ≥ 15
+Attributes section
+  → four canonical subtabs: Outfield, Goalkeeping, Hidden, and Personality; outfield players use Outfield first, while players with GK familiarity ≥ 15
       use Goalkeeping first and default to it
   → static attribute-groups.ts membership (Technical / Mental / Physical / Goalkeeping, Hidden, Personality);
       goalkeeper profiles show Goalkeeping with Mental and Physical, move First Touch, Passing,
@@ -703,18 +702,19 @@ Attributes panel
   → known 1–20 values map to four FM-style presentation bands; raw values remain unchanged
   → null → —
 
-Role fit panel
-  → pitch defaults to the strongest recorded position, then the best current role position
+Role Fit section
+  → pitch and filter default to the strongest recorded position, then the best current role position
   → selected exact positionTags filter the bounded 79-role DTO in React
   → the pitch omits unsupported SW and de-emphasizes red-tier familiarity values 1–5;
       revealed role rows expose sortable Current and Potential headers; concealed rows expose Current only;
       unavailable scores stay last and catalog order breaks ties
   → revealed rows use card ScoreBadge pairs for Current and Potential; concealed rows use Current only; rolePhaseLabel maps in_possession/out_of_possession → IP/OOP
 
-Moneyball role fit panel
+Moneyball section
+  → owns contextual metrics and current-only tactical summaries; no potential Moneyball score is invented
   → the Rust-owned version-1 catalog defines 88 position-family-specific IP/OOP roles; each profile score is the rounded weighted mean of five natural-position-cohort metric percentiles
-  → the Moneyball summary selects best playable IP and OOP scores; the position picker filters the role table, unavailable scores render `—`, and a disclosure shows metric direction, weight, percentile contribution, and catalog version. The IPC response carries the current comparison basis.
-  → All 88 Moneyball presentation definitions map to known attribute roles; General profile presentation shows real scores once version-2 compact data is materialized.
+  → the position picker filters the role table, unavailable scores render `—`, and a disclosure shows metric direction, weight, percentile contribution, and catalog version. The IPC response carries the current comparison basis.
+  → All 88 Moneyball presentation definitions map to known attribute roles.
 
 Cache invalidation: Load Data invalidates snapshot, Search, Player, Moneyball, Planner, Academy, and Staff query roots. Active-save switching updates the snapshot context and invalidates Search, Player, Moneyball, Planner, Academy, and Staff. A verified player boost replaces persisted potential data atomically, then invalidates snapshot, Search, Player, Planner, and Academy. Snapshot current promotion and save replacement use the Settings route's context callback to refresh Search, Player, Moneyball, Planner, Academy, and Staff.
 ```

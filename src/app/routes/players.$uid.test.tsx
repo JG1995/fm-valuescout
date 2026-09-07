@@ -2180,7 +2180,6 @@ describe("player profile route", () => {
           exact: true,
         }),
       ).toHaveClass("sr-only");
-      expect(phaseChip).toHaveAccessibleName(expectedFullPhase);
       expect(phaseChip).toHaveTextContent(expectedPhase);
       expect(phaseChip).toHaveTextContent(expectedFullPhase);
       expect(currentCell).toHaveClass("text-right", "tabular-nums");
