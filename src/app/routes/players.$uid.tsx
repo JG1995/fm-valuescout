@@ -12,6 +12,7 @@ import { academyKeys } from "@/features/academy/api/academy-keys";
 import { getPlayerMoneyballQueryOptions } from "@/features/moneyball/api/get-player-moneyball-query-options";
 import { MoneyballProfilePanel } from "@/features/moneyball/components/moneyball-profile-panel";
 import { MoneyballRoleFitPanel } from "@/features/moneyball/components/moneyball-role-fit-panel";
+import { MoneyballRoleSummary } from "@/features/moneyball/components/moneyball-role-summary";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { boostCurrentAbility } from "@/features/player-profile/api/boost-current-ability";
 import { boostWonderkidMentality } from "@/features/player-profile/api/boost-wonderkid-mentality";
@@ -356,17 +357,7 @@ function MoneyballPlayerProfile({
   return (
     <div className="flex min-h-0 flex-col gap-gutter lg:h-full lg:overflow-hidden">
       <PlayerProfileHeader
-        overview={
-          <PlayerOverviewPanel
-            player={player}
-            mode="moneyball"
-            roleScores={
-              readyProfile?.comparisonBasis.kind === "available"
-                ? (readyProfile.roleScores ?? [])
-                : []
-            }
-          />
-        }
+        overview={null}
         section="moneyball"
         onSectionChange={onSectionChange}
         restoreFocus={restoreAnalysisFocus}
@@ -378,7 +369,20 @@ function MoneyballPlayerProfile({
         aria-labelledby="player-analysis-tab-moneyball"
         className={profileWorkspaceClassName()}
       >
-        <MoneyballProfilePanel profile={profile} />
+        <div
+          data-testid="moneyball-primary-column"
+          className="grid min-h-0 min-w-0 gap-gutter lg:grid-rows-[auto_minmax(0,1fr)]"
+        >
+          <MoneyballRoleSummary
+            positions={player.positions}
+            roleScores={
+              readyProfile?.comparisonBasis.kind === "available"
+                ? readyProfile.roleScores
+                : null
+            }
+          />
+          <MoneyballProfilePanel profile={profile} />
+        </div>
         {readyProfile ? (
           <MoneyballRoleFitPanel
             key={player.uid}

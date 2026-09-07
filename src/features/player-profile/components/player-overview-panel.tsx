@@ -6,55 +6,10 @@ import { formatMissable } from "@/utils/format";
 import type { PlayerDetail, PlayerRoleScore } from "../types/player-detail";
 import {
   bestCurrentRolePair,
-  bestRoleScore,
-  type PositionRoleScore,
   type RolePhase,
-  rolesForPhase,
-  rolesForPlayablePositions,
 } from "../utils/position-families";
 import { rolePhaseLabel } from "../utils/role-phase";
 import { PlayerMarketValueFact, SummaryFact } from "./player-identity";
-
-type BestRoleSummaryProps = {
-  label: string;
-  roleName: string | null;
-  score: number | null;
-  concealed?: boolean;
-};
-
-function BestRoleSummary({
-  label,
-  roleName,
-  score,
-  concealed = false,
-}: BestRoleSummaryProps) {
-  return (
-    <div className="flex min-w-0 items-start gap-3">
-      {score === null ? (
-        <span
-          role="img"
-          aria-label={`${label}: ${concealed ? "concealed" : "unavailable"}`}
-          className="inline-flex size-12 items-center justify-center font-mono text-mono-lg text-on-surface-variant tabular-nums"
-        >
-          {formatMissable(null)}
-        </span>
-      ) : (
-        <ScoreBadge score={score} roleName={label} variant="hero" />
-      )}
-      <div className="min-w-0">
-        <p className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
-          {label}
-        </p>
-        <p
-          className="truncate text-body-md text-on-surface"
-          title={concealed ? undefined : (roleName ?? undefined)}
-        >
-          {concealed ? "Concealed" : (roleName ?? formatMissable(null))}
-        </p>
-      </div>
-    </div>
-  );
-}
 
 type TacticalFitPairProps = {
   phase: RolePhase;
@@ -131,8 +86,6 @@ function TacticalFitPair({ phase, pair, concealed }: TacticalFitPairProps) {
 
 type PlayerOverviewPanelProps = {
   player: PlayerDetail;
-  mode?: "general" | "moneyball";
-  roleScores?: readonly PositionRoleScore[];
   actions?: ReactNode;
   hiddenInformationPending?: boolean;
   hiddenInformationError?: Error | null;
@@ -143,8 +96,6 @@ type PlayerOverviewPanelProps = {
 
 export function PlayerOverviewPanel({
   player,
-  mode = "general",
-  roleScores,
   actions,
   hiddenInformationPending,
   hiddenInformationError,
@@ -152,20 +103,7 @@ export function PlayerOverviewPanel({
   showAbilitySummary = false,
   showTacticalFitSummary = false,
 }: PlayerOverviewPanelProps) {
-  const showGeneralAnalysis = mode === "general";
-  const showMoneyballAnalysis = mode === "moneyball";
-  const showAbility = showGeneralAnalysis && showAbilitySummary;
-  const analysisRoles = rolesForPlayablePositions(
-    showMoneyballAnalysis ? (roleScores ?? []) : player.roleScores,
-    player.positions,
-  );
-  const inPossessionRoles = rolesForPhase(analysisRoles, "in_possession");
-  const outOfPossessionRoles = rolesForPhase(
-    analysisRoles,
-    "out_of_possession",
-  );
-  const currentIpRole = bestRoleScore(inPossessionRoles);
-  const currentOopRole = bestRoleScore(outOfPossessionRoles);
+  const showAbility = showAbilitySummary;
   const ipPair = bestCurrentRolePair(
     player.roleScores,
     player.positions,
@@ -189,38 +127,31 @@ export function PlayerOverviewPanel({
             data-testid="player-profile-display-control"
             className="space-y-2"
           >
-            {showGeneralAnalysis ? (
-              <>
-                <Button
-                  icon={VisibilityIcon}
-                  variant="secondary"
-                  aria-label="Reveal hidden information"
-                  aria-pressed={player.hiddenInformationRevealed}
-                  disabled={hiddenInformationPending}
-                  loading={hiddenInformationPending}
-                  loadingLabel="Updating…"
-                  onClick={onToggleHiddenInformation}
-                >
-                  {player.hiddenInformationRevealed
-                    ? "Hide hidden info"
-                    : "Reveal hidden info"}
-                </Button>
-                {hiddenInformationError ? (
-                  <p
-                    className="text-right text-body-sm text-error"
-                    role="alert"
-                  >
-                    Could not update hidden information.
-                  </p>
-                ) : null}
-              </>
+            <Button
+              icon={VisibilityIcon}
+              variant="secondary"
+              aria-label="Reveal hidden information"
+              aria-pressed={player.hiddenInformationRevealed}
+              disabled={hiddenInformationPending}
+              loading={hiddenInformationPending}
+              loadingLabel="Updating…"
+              onClick={onToggleHiddenInformation}
+            >
+              {player.hiddenInformationRevealed
+                ? "Hide hidden info"
+                : "Reveal hidden info"}
+            </Button>
+            {hiddenInformationError ? (
+              <p className="text-right text-body-sm text-error" role="alert">
+                Could not update hidden information.
+              </p>
             ) : null}
           </div>
           <div
             data-testid="player-profile-action-slot"
             className="flex min-h-10 min-w-0 flex-wrap justify-end overflow-visible"
           >
-            {showGeneralAnalysis ? actions : null}
+            {actions}
           </div>
         </div>
 
@@ -228,25 +159,7 @@ export function PlayerOverviewPanel({
           data-testid="player-profile-summary-details"
           className="grid gap-x-4 gap-y-2 lg:grid-cols-2"
         >
-          {showMoneyballAnalysis ? (
-            <div
-              data-testid="player-profile-role-summaries"
-              className="grid min-w-0 grid-cols-2 grid-rows-2 gap-3 border-outline-variant lg:border-x lg:px-4"
-            >
-              <BestRoleSummary
-                label="Moneyball IP"
-                roleName={currentIpRole?.displayName ?? null}
-                score={currentIpRole?.score ?? null}
-              />
-              <BestRoleSummary
-                label="Moneyball OOP"
-                roleName={currentOopRole?.displayName ?? null}
-                score={currentOopRole?.score ?? null}
-              />
-              <div aria-hidden="true" className="min-h-12" />
-              <div aria-hidden="true" className="min-h-12" />
-            </div>
-          ) : showTacticalFitSummary ? (
+          {showTacticalFitSummary ? (
             <section
               aria-label="Tactical fit"
               data-testid="overview-tactical-fit"

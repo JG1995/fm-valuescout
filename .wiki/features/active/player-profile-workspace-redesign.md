@@ -1185,7 +1185,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 18 — Relocate Moneyball tactical summaries
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(moneyball): relocate profile role summaries`
 
@@ -1244,7 +1244,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 19 — Integrate Moneyball hierarchy
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(moneyball): align the profile workspace`
 
@@ -1417,19 +1417,19 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 **PR:** PR 1 — Player profile workspace redesign
 
-**Commit:** Relocate Moneyball tactical summaries
+**Commit:** Integrate Moneyball hierarchy
 
 ### RED or removal proof
 
-New route tests must fail while Moneyball IP/OOP summaries still depend on the shared overview header rather than a Moneyball-section owner.
+New route tests must fail while Moneyball-specific panels lack the shared workspace hierarchy, spacing, and single scroll ownership.
 
 ### Expected outcome
 
-Moneyball tactical summaries render only inside the Moneyball section with distinct labels, unchanged scores, and no invented potential values.
+Moneyball uses the persistent rail and navigation with aligned panel hierarchy while preserving raw values, percentile semantics, comparison context, and no potential scores.
 
 ### Explicit exclusions
 
-Moneyball calculations, comparison basis, metric details, and standard Overview summaries.
+Moneyball calculations, data, filters, comparison basis, and standard Role Fit presentation.
 
 ## Discoveries and replanning
 
@@ -1457,7 +1457,8 @@ The planning-artifact checkpoint review found stale prose that still described r
 | PR 1 — Player profile workspace redesign | Commit 14 — Mute unfamiliar positions | 98530703c5915d0d8624490229cf9e982564560b | Muted exactly unrecorded and below-15 position choices with neutral styling while preserving familiarity values, accessible names, the playable threshold, and dominant selected styling. | The below-threshold styling proof failed before implementation; focused Player Profile route tests passed 77/77; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found numeric-zero familiarity unproved; correction added direct zero-value, visible-placeholder, accessible-name, and threshold-boundary coverage. |
 | PR 1 — Player profile workspace redesign | Commit 15 — Mark selected positions without colour alone | 282beae8301b63e9b205b54b3899d03709421b00 | Reinforced selected Role Fit positions with a two-pixel structural border while retaining the gold treatment, `aria-pressed`, keyboard selection, and unfamiliar-position precedence. | The non-colour selection-marker proof failed before implementation; focused Player Profile route tests passed 78/78; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
 | PR 1 — Player profile workspace redesign | Commit 16 — Expose possession phase as comparison field | 521d8bc5aa2e37321063f4af66bd6d08df2935ab | Added compact readable IP/OOP phase chips with full accessible phase names beside every standard Role Fit role name while preserving columns, sorting, scores, filtering, and concealment. | The phase-chip proof failed before implementation; focused Player Profile and role-phase tests passed 80/80; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found the test accepted hard-coded phase labels; correction correlated every row to its alternating fixture phase. One advisory MEDIUM notes that the text chip uses image semantics; reconcile it in the bundled feature close-out pass. |
-| PR 1 — Player profile workspace redesign | Commit 17 — Complete Role Fit geometry | Pending record | Added dedicated Role, Phase, Current, and concealment-gated Potential columns with vertically aligned table score presentation, preserved sorting, and corrected empty-state column spans. | Role Fit geometry proofs failed before implementation; focused Player Profile route tests passed 78/78; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
+| PR 1 — Player profile workspace redesign | Commit 17 — Complete Role Fit geometry | 9207b3504d9f5b289f89ae539cba20a14911fdf3 | Added dedicated Role, Phase, Current, and concealment-gated Potential columns with vertically aligned table score presentation, preserved sorting, and corrected empty-state column spans. | Role Fit geometry proofs failed before implementation; focused Player Profile route tests passed 78/78; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
+| PR 1 — Player profile workspace redesign | Commit 18 — Relocate Moneyball tactical summaries | Pending record | Moved playable best-current Moneyball IP/OOP summaries into a Moneyball-owned section component, removed the shared overview scoring branch, and retained two bounded workspace columns. | Relocation and ownership proofs failed before implementation; focused Player Profile and Moneyball panel tests passed 81/81; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found a third direct grid child could collapse and clip Role Fit; correction grouped summaries and metrics in a bounded primary column beside Role Fit with direct structural proof. |
 
 ## Final validation
 

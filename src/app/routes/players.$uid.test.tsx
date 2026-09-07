@@ -178,7 +178,7 @@ describe("player profile route", () => {
     });
   });
 
-  it("shows Moneyball summaries and the ready two-panel role workspace", async () => {
+  it("shows Moneyball summaries and the ready role workspace", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
@@ -222,21 +222,27 @@ describe("player profile route", () => {
 
     renderProfileRoute("/players/42?view=moneyball");
 
-    const summary = await screen.findByRole("region", {
-      name: "Alex Scout summary",
+    expect(
+      screen.queryByRole("region", { name: "Alex Scout summary" }),
+    ).not.toBeInTheDocument();
+
+    const tacticalSummary = await screen.findByRole("region", {
+      name: "Moneyball tactical summaries",
     });
     expect(
-      within(summary).getByLabelText("Moneyball IP: 81, Excellent"),
+      within(tacticalSummary).getByLabelText("Moneyball IP: 81, Excellent"),
     ).toBeInTheDocument();
     expect(
-      within(summary).getByLabelText("Moneyball OOP: 74, Good"),
+      within(tacticalSummary).getByLabelText("Moneyball OOP: 74, Good"),
     ).toBeInTheDocument();
     expect(
-      within(summary).getByText("Moneyball IP Specialist"),
+      within(tacticalSummary).getByText("Moneyball IP Specialist"),
     ).toBeInTheDocument();
-    expect(within(summary).queryByText("Current IP")).not.toBeInTheDocument();
     expect(
-      within(summary).queryByText("Attribute Best Role"),
+      within(tacticalSummary).queryByText("Current IP"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(tacticalSummary).queryByText("Attribute Best Role"),
     ).not.toBeInTheDocument();
 
     expect(screen.getByText("Starts")).toBeInTheDocument();
@@ -251,6 +257,34 @@ describe("player profile route", () => {
     expect(
       within(roleFit).getByRole("columnheader", { name: "Moneyball score" }),
     ).toBeInTheDocument();
+
+    const workspace = screen.getByRole("tabpanel", { name: "Moneyball" });
+    const primaryColumn = screen.getByTestId("moneyball-primary-column");
+    expect(workspace.children).toHaveLength(2);
+    expect(workspace.firstElementChild).toBe(primaryColumn);
+    expect(workspace.lastElementChild).toContainElement(roleFit);
+    expect(primaryColumn.children).toHaveLength(2);
+    expect(primaryColumn.firstElementChild).toBe(tacticalSummary);
+    expect(primaryColumn.lastElementChild).toContainElement(
+      screen.getByText("Starts"),
+    );
+    expect(primaryColumn.lastElementChild).toHaveClass(
+      "min-h-0",
+      "overflow-hidden",
+    );
+    expect(primaryColumn).toHaveClass(
+      "min-h-0",
+      "min-w-0",
+      "lg:grid-rows-[auto_minmax(0,1fr)]",
+    );
+    expect(workspace.lastElementChild).toHaveClass(
+      "min-h-0",
+      "overflow-hidden",
+    );
+    expect(roleFit).toHaveClass("min-h-0");
+    expect(
+      within(roleFit).getByTestId("moneyball-role-position-picker-scroller"),
+    ).toHaveClass("min-h-0", "overflow-y-auto");
   });
 
   it("keeps market value general-only inside the summary analysis details", async () => {
@@ -270,11 +304,11 @@ describe("player profile route", () => {
 
     renderProfileRoute("/players/42?view=moneyball");
 
-    const moneyballSummary = await screen.findByRole("region", {
-      name: "Alex Scout summary",
+    const tacticalSummary = await screen.findByRole("region", {
+      name: "Moneyball tactical summaries",
     });
     expect(
-      within(moneyballSummary).queryByText("Value"),
+      within(tacticalSummary).queryByText("Value"),
     ).not.toBeInTheDocument();
   });
 
@@ -287,8 +321,11 @@ describe("player profile route", () => {
     expect(
       await screen.findByText(/not included in the current Moneyball import/i),
     ).toBeInTheDocument();
+    const noDataSummary = screen.getByRole("region", {
+      name: "Moneyball tactical summaries",
+    });
     expect(
-      screen.getByLabelText("Moneyball IP: unavailable"),
+      within(noDataSummary).getByLabelText("Moneyball IP: unavailable"),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("region", { name: "Moneyball role fit for MC" }),
@@ -301,8 +338,11 @@ describe("player profile route", () => {
     expect(
       await screen.findByText(/before percentile scores were available/i),
     ).toBeInTheDocument();
+    const needsReimportSummary = screen.getByRole("region", {
+      name: "Moneyball tactical summaries",
+    });
     expect(
-      screen.getByLabelText("Moneyball OOP: unavailable"),
+      within(needsReimportSummary).getByLabelText("Moneyball OOP: unavailable"),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("region", { name: "Moneyball role fit for MC" }),
@@ -334,14 +374,14 @@ describe("player profile route", () => {
     renderProfileRoute("/players/42?view=moneyball");
 
     expect(await screen.findByText("10")).toBeInTheDocument();
-    const summary = screen.getByRole("region", {
-      name: "Alex Scout summary",
+    const tacticalSummary = screen.getByRole("region", {
+      name: "Moneyball tactical summaries",
     });
     expect(
-      within(summary).getByLabelText("Moneyball IP: unavailable"),
+      within(tacticalSummary).getByLabelText("Moneyball IP: unavailable"),
     ).toBeInTheDocument();
     expect(
-      within(summary).queryByLabelText("Moneyball IP: 50, Average"),
+      within(tacticalSummary).queryByLabelText("Moneyball IP: 50, Average"),
     ).not.toBeInTheDocument();
     expect(
       screen.getByText(
@@ -361,7 +401,7 @@ describe("player profile route", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps a shared two-band header and toggle order across analysis views", async () => {
+  it("keeps the standard header and relocates Moneyball summaries to its section", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
@@ -492,33 +532,26 @@ describe("player profile route", () => {
     await waitFor(() => expect(moneyball).toHaveFocus());
 
     const moneyballHeader = screen.getByTestId("player-profile-header");
-    const moneyballSummary = within(moneyballHeader).getByRole("region", {
-      name: "Alexandra Maximilian Scout summary",
+    const moneyballTabs = within(moneyballHeader).getByRole("tablist", {
+      name: "Player analysis view",
     });
-    const moneyballDetails = within(moneyballSummary).getByTestId(
-      "player-profile-summary-details",
-    );
 
-    expect(moneyballHeader.firstElementChild).toBe(
-      within(moneyballHeader).getByRole("tablist", {
-        name: "Player analysis view",
+    expect(moneyballHeader.firstElementChild).toBe(moneyballTabs);
+    expect(moneyballHeader.lastElementChild).toBe(moneyballTabs);
+    expect(
+      within(moneyballHeader).queryByRole("region", {
+        name: "Alexandra Maximilian Scout summary",
       }),
-    );
-    expect(moneyballHeader.lastElementChild).toBe(moneyballSummary);
-    expect(moneyballDetails).toHaveClass("lg:grid-cols-2");
+    ).not.toBeInTheDocument();
+    const moneyballSummary = screen.getByRole("region", {
+      name: "Moneyball tactical summaries",
+    });
     expect(
-      within(moneyballDetails).getByTestId("player-profile-role-summaries"),
-    ).toHaveClass("grid-rows-2");
-    const moneyballActionSlot = within(moneyballSummary).getByTestId(
-      "player-profile-action-slot",
-    );
-    expect(moneyballActionSlot).toHaveClass("min-h-10", "overflow-visible");
-    expect(moneyballActionSlot).not.toHaveClass("overflow-y-auto");
+      within(moneyballSummary).getByText("Moneyball IP"),
+    ).toBeInTheDocument();
     expect(
-      within(moneyballDetails).getByTestId(
-        "player-profile-summary-analysis-details",
-      ),
-    ).toHaveClass("min-h-9");
+      within(moneyballSummary).getByText("Moneyball OOP"),
+    ).toBeInTheDocument();
     const moneyballRail = screen.getByRole("complementary", {
       name: "Player identity",
     });
@@ -531,13 +564,10 @@ describe("player profile route", () => {
     expect(within(moneyballRail).getByText("Age / DOB")).toBeInTheDocument();
     expect(within(moneyballRail).getByText("Nationality")).toBeInTheDocument();
     expect(
-      within(moneyballSummary).queryByRole("heading", { level: 1 }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(moneyballSummary).getByText("Moneyball IP"),
-    ).toBeInTheDocument();
-    expect(
-      within(moneyballSummary).getByText("Moneyball OOP"),
+      within(moneyballSummary).getByRole("heading", {
+        level: 2,
+        name: "Moneyball tactical summaries",
+      }),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -1864,9 +1894,10 @@ describe("player profile route", () => {
     expect(within(summary).getByTestId("overview-ability")).toBeInTheDocument();
   });
 
-  it("keeps paired tactical-fit summaries off the Attributes and Role Fit sections", async () => {
+  it("keeps Moneyball role summaries out of standard profile sections", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
@@ -1876,6 +1907,9 @@ describe("player profile route", () => {
     expect(
       within(summary).getByTestId("overview-tactical-fit"),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Moneyball tactical summaries" }),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Attributes" }));
     expect(
@@ -1890,6 +1924,9 @@ describe("player profile route", () => {
     expect(
       within(summary).queryByTestId("overview-tactical-fit-oop"),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Moneyball tactical summaries" }),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Role Fit" }));
     expect(
@@ -1903,6 +1940,9 @@ describe("player profile route", () => {
     ).not.toBeInTheDocument();
     expect(
       within(summary).queryByTestId("overview-tactical-fit-oop"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Moneyball tactical summaries" }),
     ).not.toBeInTheDocument();
   });
 
