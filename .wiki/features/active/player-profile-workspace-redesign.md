@@ -195,7 +195,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 1 — Record the approved feature plan
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(profile): record workspace redesign plan`
 
@@ -256,7 +256,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 2 — Remove duplicate profile queries
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `refactor(profile): centralize profile query ownership`
 
@@ -314,7 +314,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 3 — Centralize profile mutations
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `refactor(profile): centralize profile mutation ownership`
 
@@ -1417,21 +1417,19 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 **PR:** PR 1 — Player profile workspace redesign
 
-**Commit:** Record the approved feature plan
+**Commit:** Centralize profile mutations
 
 ### RED or removal proof
 
-Not applicable — independently reviewed planning documents only.
-
-The ledger classifier (`python3 /home/jonas/projects/PI_SETUP/scripts/ledger_state.py .wiki/features/active/player-profile-workspace-redesign.md`) and `git diff --check` prove structural consistency; checkpoint review of the staged diff additionally requires `git diff --cached --check`.
+Behavior-preserving refactor: the existing boost preview, confirmation, error, cross-player outcome, visibility toggle, failure, and save-change tests must stay green unchanged while mutation ownership moves to the route-level query owner.
 
 ### Expected outcome
 
-The feature branch holds the reviewed ledger, the JAY-62 TODO entry, and the unmodified mockup binary, with no implementation changes.
+One route-level owner holds both profile mutations and passes callbacks plus pending, error, and result state into the existing presentation without changing mutation functions, invalidation keys, context guards, or visual placement.
 
 ### Explicit exclusions
 
-Implementation, tests, executable configuration, BACKLOG, ADRs, and Git state changes beyond the recorded planning commit.
+Visual regrouping, mutation-function changes, invalidation changes, confirmation changes, tooltip changes, and control reordering.
 
 ## Discoveries and replanning
 
@@ -1441,9 +1439,10 @@ The planning-artifact checkpoint review found stale prose that still described r
 
 ## Completed work
 
-No commits are completed yet.
-
-The planning artifact above is the only Active commit.
+| PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — Player profile workspace redesign | Commit 1 — Record the approved feature plan | 74e6797d2ea9a7592464881f8a05f3ef7d4c7266 | Recorded the reviewed schema 2 ledger, JAY-62 TODO activation, and approved directional mockup on the authorized feature branch. | `ledger_state.py` and `delivery_state.py` reported runnable; `git diff --check` and `git diff --cached --check` passed; the mockup SHA-256 matched the approved artifact; the pre-commit gate passed. | Not applicable | Clear | 1 | Checkpoint review corrected stale review-status prose; a fresh plan review and developer acceptance authorized replacement fingerprint `c1c4f5ba874753a4a5ffa0c28b59be58601aba5ec11740ec8ef4d1701d8eea0a`. |
+| PR 1 — Player profile workspace redesign | Commit 2 — Remove duplicate profile queries | Pending record | Centralized the snapshot and player Query subscriptions in `PlayerProfileContent` and passed non-null resolved data into the existing General composition without changing rendering or prefetch behavior. | Focused Player Profile route tests passed 54/54; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
 
 ## Final validation
 

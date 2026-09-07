@@ -38,6 +38,7 @@ import {
 import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { staffKeys } from "@/features/staff/api/staff-keys";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { cn } from "@/utils/cn";
@@ -292,6 +293,8 @@ function PlayerProfileHeader({
 
 function GeneralPlayerProfile({
   uid,
+  snapshot,
+  player,
   tab,
   onTabChange,
   onViewChange,
@@ -299,6 +302,8 @@ function GeneralPlayerProfile({
   onAnalysisFocusRestored,
 }: {
   uid: number;
+  snapshot: SnapshotSummary;
+  player: PlayerDetail;
   tab?: ProfileTab;
   onTabChange: (tab: ProfileTab) => void;
   onViewChange: (view: PlayerProfileView, restoreFocus?: boolean) => void;
@@ -306,8 +311,6 @@ function GeneralPlayerProfile({
   onAnalysisFocusRestored: () => void;
 }) {
   const queryClient = useQueryClient();
-  const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
-  const { data: player } = useSuspenseQuery(getPlayerQueryOptions(uid));
   const hiddenInformation = useMutation({
     mutationFn: ({ revealed }: PlayerHiddenInformationMutation) =>
       setHiddenInformationRevealed(revealed),
@@ -333,13 +336,11 @@ function GeneralPlayerProfile({
   });
   const boostContextIsCurrent =
     boost.variables?.uid === uid &&
-    boost.variables.snapshotId === snapshot?.id &&
-    (boost.data === undefined || boost.data.snapshotId === snapshot?.id);
+    boost.variables.snapshotId === snapshot.id &&
+    (boost.data === undefined || boost.data.snapshotId === snapshot.id);
   const hiddenInformationContextIsCurrent =
     hiddenInformation.variables?.uid === uid &&
-    hiddenInformation.variables.saveId === snapshot?.saveId;
-
-  if (!snapshot || !player) return null;
+    hiddenInformation.variables.saveId === snapshot.saveId;
 
   const activeTab = tab ?? defaultProfileTab(isGoalkeeper(player.positions));
 
@@ -524,6 +525,8 @@ function PlayerProfileContent({
   return (
     <GeneralPlayerProfile
       uid={uid}
+      snapshot={snapshot}
+      player={player}
       tab={tab}
       onTabChange={onTabChange}
       onViewChange={onViewChange}
