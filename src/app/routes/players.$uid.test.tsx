@@ -8,6 +8,8 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
+import { Route } from "@/app/routes/players.$uid";
+import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
@@ -104,7 +106,7 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps an explicit General profile above the saved Moneyball default", async () => {
+  it("maps legacy General with an attribute tab to Attributes above the saved Moneyball default", async () => {
     await resolveLoadDataIpcMock();
     useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
     setGetPlayerOverride(fixturePlayerDetail());
@@ -112,7 +114,7 @@ describe("player profile route", () => {
     renderProfileRoute("/players/42?view=general&tab=hidden");
 
     expect(
-      await screen.findByRole("tab", { name: "General", selected: true }),
+      await screen.findByRole("tab", { name: "Attributes", selected: true }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: "Hidden", selected: true }),
@@ -144,16 +146,16 @@ describe("player profile route", () => {
       screen.queryByRole("button", { name: "Boost CA" }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "General" }));
+    await user.click(screen.getByRole("tab", { name: "Overview" }));
 
     expect(
-      await screen.findByRole("tab", { name: "General", selected: true }),
+      await screen.findByRole("tab", { name: "Overview", selected: true }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: "Hidden", selected: true }),
     ).toBeInTheDocument();
     expect(router.state.location.search).toMatchObject({
-      view: "general",
+      section: "overview",
       tab: "hidden",
     });
   });
@@ -402,11 +404,27 @@ describe("player profile route", () => {
       ),
     ).toHaveClass("min-h-0", "overflow-y-auto");
 
-    const general = within(generalTabs).getByRole("tab", {
-      name: "General",
+    const overview = within(generalTabs).getByRole("tab", {
+      name: "Overview",
       selected: true,
     });
-    general.focus();
+    overview.focus();
+    await user.keyboard("{ArrowRight}");
+
+    expect(
+      await screen.findByRole("tab", {
+        name: "Attributes",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
+    await user.keyboard("{ArrowRight}");
+
+    expect(
+      await screen.findByRole("tab", {
+        name: "Role Fit",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
     await user.keyboard("{ArrowRight}");
 
     const moneyball = await screen.findByRole("tab", {
@@ -471,25 +489,60 @@ describe("player profile route", () => {
     ).toHaveClass("min-h-0", "overflow-y-auto");
   });
 
-  it("moves between analysis views with arrow keys", async () => {
+  it("moves between profile sections with arrow keys", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
     setPlayerMoneyballOverride(fixturePlayerMoneyball());
     const user = userEvent.setup();
-    renderProfileRoute("/players/42");
+    const { router } = renderProfileRoute("/players/42");
 
-    const general = await screen.findByRole("tab", {
-      name: "General",
+    const overview = await screen.findByRole("tab", {
+      name: "Overview",
       selected: true,
     });
-    general.focus();
+    overview.focus();
     await user.keyboard("{ArrowRight}");
 
+    expect(
+      await screen.findByRole("tab", {
+        name: "Attributes",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
+    expect(router.state.location.search).toMatchObject({
+      section: "attributes",
+    });
+
+    await user.keyboard("{ArrowRight}");
+    expect(
+      await screen.findByRole("tab", {
+        name: "Role Fit",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
+
+    await user.keyboard("{ArrowLeft}");
+    expect(
+      await screen.findByRole("tab", {
+        name: "Attributes",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
+
+    await user.keyboard("{End}");
     const moneyball = await screen.findByRole("tab", {
       name: "Moneyball",
       selected: true,
     });
     await waitFor(() => expect(moneyball).toHaveFocus());
+
+    await user.keyboard("{Home}");
+    expect(
+      await screen.findByRole("tab", {
+        name: "Overview",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("restores focus after directly clicking Moneyball", async () => {
@@ -515,13 +568,13 @@ describe("player profile route", () => {
     setGetPlayerOverride(fixturePlayerDetail());
     setPlayerMoneyballPending();
     const user = userEvent.setup();
-    renderProfileRoute("/players/42");
+    renderProfileRoute("/players/42?section=role-fit");
 
-    const general = await screen.findByRole("tab", {
-      name: "General",
+    const roleFit = await screen.findByRole("tab", {
+      name: "Role Fit",
       selected: true,
     });
-    general.focus();
+    roleFit.focus();
     await user.keyboard("{ArrowRight}");
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => resolve()),
@@ -536,16 +589,269 @@ describe("player profile route", () => {
     await waitFor(() => expect(moneyball).toHaveFocus());
   });
 
-  it("normalizes unknown profile views to General", async () => {
+  it("exposes four sections with roving selection", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
-    renderProfileRoute("/players/42?view=not-a-view");
+    renderProfileRoute("/players/42");
+
+    const tablist = await screen.findByRole("tablist", {
+      name: "Player analysis view",
+    });
+    const tabs = within(tablist).getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      "Overview",
+      "Attributes",
+      "Role Fit",
+      "Moneyball",
+    ]);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(tabs.slice(1)).toSatisfy((rest: Element[]) =>
+      rest.every((tab) => tab.getAttribute("aria-selected") === "false"),
+    );
+    expect(tabs.map((tab) => tab.getAttribute("tabindex"))).toEqual([
+      "0",
+      "-1",
+      "-1",
+      "-1",
+    ]);
+  });
+
+  it("lets a canonical section win over a conflicting legacy view", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    renderProfileRoute("/players/42?section=role-fit&view=moneyball");
 
     expect(
-      await screen.findByRole("tab", { name: "General", selected: true }),
+      await screen.findByRole("tab", { name: "Role Fit", selected: true }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Role fit for MC" }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders canonical section URLs with the matching panel", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+    const first = renderProfileRoute("/players/42?section=attributes");
+
+    expect(
+      await screen.findByRole("tab", {
+        name: "Attributes",
+        selected: true,
+      }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: "Outfield", selected: true }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Role fit for MC" }),
+    ).not.toBeInTheDocument();
+    first.unmount();
+
+    renderProfileRoute("/players/42?section=moneyball");
+    expect(
+      await screen.findByRole("tab", {
+        name: "Moneyball",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Starts")).toBeInTheDocument();
+  });
+
+  it("retains the player across section switches", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+    const user = userEvent.setup();
+    const { router } = renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByRole("tab", { name: "Overview", selected: true }),
+    ).toBeInTheDocument();
+    for (const name of ["Attributes", "Role Fit", "Moneyball", "Overview"]) {
+      await user.click(screen.getByRole("tab", { name }));
+      expect(
+        await screen.findByRole("tab", { name, selected: true }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Alex Scout" }),
+      ).toBeInTheDocument();
+    }
+    expect(router.state.location.search).toMatchObject({
+      section: "overview",
+    });
+  });
+
+  it("keeps section URLs direct-linkable across Back and Forward", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    const { router } = renderProfileRoute("/players/42?section=attributes");
+
+    expect(
+      await screen.findByRole("tab", {
+        name: "Attributes",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
+
+    await router.navigate({
+      to: "/players/$uid",
+      params: { uid: "42" },
+      search: { section: "role-fit" },
+    });
+    expect(
+      await screen.findByRole("tab", {
+        name: "Role Fit",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
+
+    router.history.back();
+    expect(
+      await screen.findByRole("tab", {
+        name: "Attributes",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
+
+    router.history.forward();
+    expect(
+      await screen.findByRole("tab", {
+        name: "Role Fit",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps tab section switches on one history entry behind Search Back/Forward", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: 60_000 },
+      },
+    });
+    const router = createRouter({
+      routeTree,
+      context: { queryClient } satisfies RouterContext,
+      defaultPreloadStaleTime: 0,
+      history: createMemoryHistory({
+        initialEntries: ["/search", "/players/42?view=general"],
+        initialIndex: 1,
+      }),
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+
+    expect(
+      await screen.findByRole("tab", { name: "Overview", selected: true }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Attributes" }));
+    expect(
+      await screen.findByRole("tab", {
+        name: "Attributes",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
+    expect(router.state.location.search).toMatchObject({
+      section: "attributes",
+    });
+
+    router.history.back();
+    expect(
+      await screen.findByRole("heading", { name: "Player Search" }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/search");
+
+    router.history.forward();
+    expect(
+      await screen.findByRole("tab", {
+        name: "Attributes",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Alex Scout" }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders standard sections without waiting for Moneyball data", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    setPlayerMoneyballPending();
+    renderProfileRoute("/players/42?section=attributes");
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Alex Scout" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "Attributes", selected: true }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "Outfield", selected: true }),
+    ).toBeInTheDocument();
+
+    resolvePendingPlayerMoneyball(fixturePlayerMoneyball());
+  });
+
+  it("prefetches Moneyball data in the loader for resolved Moneyball sections", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+    const loaderOption = Route.options.loader;
+    expect(loaderOption).toBeDefined();
+    const loader =
+      typeof loaderOption === "function" ? loaderOption : loaderOption?.handler;
+    expect(loader).toBeDefined();
+    if (!loader) throw new Error("Expected the profile route loader");
+
+    const moneyballClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    await loader({
+      context: { queryClient: moneyballClient },
+      params: { uid: "42" },
+      deps: { section: "moneyball" },
+    } as never);
+    expect(moneyballClient.getQueryData(moneyballKeys.profile(42))).toEqual(
+      expect.objectContaining({ state: "ready" }),
+    );
+
+    const standardClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    await loader({
+      context: { queryClient: standardClient },
+      params: { uid: "42" },
+      deps: { section: "attributes" },
+    } as never);
+    expect(
+      standardClient.getQueryData(moneyballKeys.profile(42)),
+    ).toBeUndefined();
+  });
+
+  it("falls through an unknown profile view to the saved default", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    const first = renderProfileRoute("/players/42?view=not-a-view");
+
+    expect(
+      await screen.findByRole("tab", { name: "Overview", selected: true }),
+    ).toBeInTheDocument();
+    first.unmount();
+
+    useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+    renderProfileRoute("/players/42?view=not-a-view");
+
+    expect(
+      await screen.findByRole("tab", { name: "Moneyball", selected: true }),
     ).toBeInTheDocument();
   });
 
@@ -1550,7 +1856,7 @@ describe("player profile route", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("clears a settled boost outcome across a General Moneyball General round-trip", async () => {
+  it("keeps a settled boost outcome across standard sections but clears it on a Moneyball round-trip", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({ uid: 42, name: "Alex Scout", age: 21 }),
@@ -1569,14 +1875,20 @@ describe("player profile route", () => {
       await screen.findByText("CA boosted from 140 to 150."),
     ).toBeInTheDocument();
 
+    await user.click(screen.getByRole("tab", { name: "Attributes" }));
+    expect(
+      await screen.findByRole("tab", { name: "Attributes", selected: true }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("CA boosted from 140 to 150.")).toBeInTheDocument();
+
     await user.click(screen.getByRole("tab", { name: "Moneyball" }));
     expect(
       await screen.findByRole("tab", { name: "Moneyball", selected: true }),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "General" }));
+    await user.click(screen.getByRole("tab", { name: "Overview" }));
     expect(
-      await screen.findByRole("tab", { name: "General", selected: true }),
+      await screen.findByRole("tab", { name: "Overview", selected: true }),
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(

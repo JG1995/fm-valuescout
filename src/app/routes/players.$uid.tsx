@@ -22,14 +22,20 @@ import { PlayerAttributesPanel } from "@/features/player-profile/components/play
 import { PlayerDevelopmentActions } from "@/features/player-profile/components/player-development-boosts-panel";
 import { PlayerOverviewPanel } from "@/features/player-profile/components/player-overview-panel";
 import {
-  PlayerAnalysisTabs,
   type PlayerProfileView,
+  PlayerSectionTabs,
   parsePlayerProfileView,
 } from "@/features/player-profile/components/player-profile-navigation";
 import { PlayerRolesPanel } from "@/features/player-profile/components/player-roles-panel";
 import type { PlayerBoostResult } from "@/features/player-profile/types/player-boost";
 import type { PlayerDetail } from "@/features/player-profile/types/player-detail";
 import { isGoalkeeper } from "@/features/player-profile/utils/position-families";
+import {
+  isStandardProfileSection,
+  type ProfileSection,
+  parseProfileSection,
+  resolveProfileSection,
+} from "@/features/player-profile/utils/profile-section";
 import {
   defaultProfileTab,
   type ProfileTab,
@@ -46,6 +52,7 @@ import { cn } from "@/utils/cn";
 export type PlayerProfileSearch = {
   tab?: ProfileTab;
   view?: PlayerProfileView;
+  section?: ProfileSection;
 };
 
 type PlayerBoostAction = "currentAbility" | "wonderkidMentality";
@@ -71,11 +78,18 @@ export const Route = createFileRoute("/players/$uid")({
   validateSearch: (search: Record<string, unknown>): PlayerProfileSearch => ({
     tab: parseProfileTab(search.tab),
     view: parsePlayerProfileView(search.view),
+    section: parseProfileSection(search.section),
   }),
   loaderDeps: ({ search }) => ({
-    view: search.view ?? useMoneyballPreferences.getState().defaultAnalysisView,
+    section: resolveProfileSection({
+      section: search.section,
+      view: search.view,
+      tab: search.tab,
+      defaultAnalysisView:
+        useMoneyballPreferences.getState().defaultAnalysisView,
+    }),
   }),
-  loader: ({ context: { queryClient }, params, deps: { view } }) => {
+  loader: ({ context: { queryClient }, params, deps: { section } }) => {
     const uid = parseUid(params.uid);
     if (uid === null) {
       return queryClient.ensureQueryData(currentSnapshotQueryOptions);
@@ -84,7 +98,7 @@ export const Route = createFileRoute("/players/$uid")({
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(getPlayerQueryOptions(uid)),
     ];
-    if (view === "moneyball") {
+    if (section === "moneyball") {
       queries.push(
         queryClient.ensureQueryData(getPlayerMoneyballQueryOptions(uid)),
       );
@@ -184,14 +198,14 @@ function PlayerNotFound() {
 
 function PlayerProfileHeader({
   overview,
-  view,
-  onViewChange,
+  section,
+  onSectionChange,
   restoreFocus,
   onFocusRestored,
 }: {
   overview: ReactNode;
-  view: PlayerProfileView;
-  onViewChange: (view: PlayerProfileView, restoreFocus?: boolean) => void;
+  section: ProfileSection;
+  onSectionChange: (section: ProfileSection, restoreFocus?: boolean) => void;
   restoreFocus: boolean;
   onFocusRestored: () => void;
 }) {
@@ -201,9 +215,9 @@ function PlayerProfileHeader({
       className="flex flex-col gap-gutter"
     >
       {overview}
-      <PlayerAnalysisTabs
-        view={view}
-        onViewChange={onViewChange}
+      <PlayerSectionTabs
+        section={section}
+        onSectionChange={onSectionChange}
         restoreFocus={restoreFocus}
         onFocusRestored={onFocusRestored}
       />
@@ -215,9 +229,10 @@ function GeneralPlayerProfile({
   uid,
   snapshot,
   player,
+  section,
   tab,
   onTabChange,
-  onViewChange,
+  onSectionChange,
   restoreAnalysisFocus,
   onAnalysisFocusRestored,
   hiddenInformationPending,
@@ -233,9 +248,10 @@ function GeneralPlayerProfile({
   uid: number;
   snapshot: SnapshotSummary;
   player: PlayerDetail;
+  section: Exclude<ProfileSection, "moneyball">;
   tab?: ProfileTab;
   onTabChange: (tab: ProfileTab) => void;
-  onViewChange: (view: PlayerProfileView, restoreFocus?: boolean) => void;
+  onSectionChange: (section: ProfileSection, restoreFocus?: boolean) => void;
   restoreAnalysisFocus: boolean;
   onAnalysisFocusRestored: () => void;
   hiddenInformationPending: boolean;
@@ -249,6 +265,8 @@ function GeneralPlayerProfile({
   onOpenBoostConfirmation: () => void;
 }) {
   const activeTab = tab ?? defaultProfileTab(isGoalkeeper(player.positions));
+  const showAttributes = section !== "role-fit";
+  const showRoles = section !== "attributes";
 
   return (
     <div className="flex min-h-0 flex-col gap-gutter lg:h-full lg:overflow-hidden">
@@ -275,28 +293,34 @@ function GeneralPlayerProfile({
             }
           />
         }
-        view="general"
-        onViewChange={onViewChange}
+        section={section}
+        onSectionChange={onSectionChange}
         restoreFocus={restoreAnalysisFocus}
         onFocusRestored={onAnalysisFocusRestored}
       />
       <div
         id="player-analysis-panel"
         role="tabpanel"
-        aria-labelledby="player-analysis-tab-general"
-        className={profileWorkspaceClassName()}
+        aria-labelledby={`player-analysis-tab-${section}`}
+        className={
+          showAttributes && showRoles ? profileWorkspaceClassName() : undefined
+        }
       >
-        <PlayerAttributesPanel
-          player={player}
-          tab={activeTab}
-          onTabChange={onTabChange}
-          hiddenInformationRevealed={player.hiddenInformationRevealed}
-        />
-        <PlayerRolesPanel
-          key={player.uid}
-          player={player}
-          hiddenInformationRevealed={player.hiddenInformationRevealed}
-        />
+        {showAttributes ? (
+          <PlayerAttributesPanel
+            player={player}
+            tab={activeTab}
+            onTabChange={onTabChange}
+            hiddenInformationRevealed={player.hiddenInformationRevealed}
+          />
+        ) : null}
+        {showRoles ? (
+          <PlayerRolesPanel
+            key={player.uid}
+            player={player}
+            hiddenInformationRevealed={player.hiddenInformationRevealed}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -305,13 +329,13 @@ function GeneralPlayerProfile({
 function MoneyballPlayerProfile({
   uid,
   player,
-  onViewChange,
+  onSectionChange,
   restoreAnalysisFocus,
   onAnalysisFocusRestored,
 }: {
   uid: number;
   player: PlayerDetail;
-  onViewChange: (view: PlayerProfileView, restoreFocus?: boolean) => void;
+  onSectionChange: (section: ProfileSection, restoreFocus?: boolean) => void;
   restoreAnalysisFocus: boolean;
   onAnalysisFocusRestored: () => void;
 }) {
@@ -336,8 +360,8 @@ function MoneyballPlayerProfile({
             }
           />
         }
-        view="moneyball"
-        onViewChange={onViewChange}
+        section="moneyball"
+        onSectionChange={onSectionChange}
         restoreFocus={restoreAnalysisFocus}
         onFocusRestored={onAnalysisFocusRestored}
       />
@@ -364,18 +388,18 @@ function MoneyballPlayerProfile({
 
 function PlayerProfileContent({
   uid,
-  view,
+  section,
   tab,
   onTabChange,
-  onViewChange,
+  onSectionChange,
   restoreAnalysisFocus,
   onAnalysisFocusRestored,
 }: {
   uid: number;
-  view: PlayerProfileView;
+  section: ProfileSection;
   tab?: ProfileTab;
   onTabChange: (tab: ProfileTab) => void;
-  onViewChange: (view: PlayerProfileView, restoreFocus?: boolean) => void;
+  onSectionChange: (section: ProfileSection, restoreFocus?: boolean) => void;
   restoreAnalysisFocus: boolean;
   onAnalysisFocusRestored: () => void;
 }) {
@@ -414,14 +438,15 @@ function PlayerProfileContent({
     hiddenInformation.variables.saveId === snapshot?.saveId;
   const boostReset = boost.reset;
   const hiddenInformationReset = hiddenInformation.reset;
-  // General owns no persistent panel: leaving it discards mutation feedback
-  // so a General → Moneyball → General round-trip cannot resurface it.
+  // Standard sections share one mutation owner: leaving the
+  // Overview/Attributes/Role Fit family discards mutation feedback so a
+  // standard → Moneyball → standard round-trip cannot resurface it.
   useEffect(() => {
-    if (view !== "general") {
+    if (!isStandardProfileSection(section)) {
       boostReset();
       hiddenInformationReset();
     }
-  }, [view, boostReset, hiddenInformationReset]);
+  }, [section, boostReset, hiddenInformationReset]);
 
   if (!snapshot) {
     return (
@@ -435,12 +460,12 @@ function PlayerProfileContent({
   }
   if (!player) return <PlayerNotFound />;
 
-  if (view === "moneyball") {
+  if (section === "moneyball") {
     return (
       <MoneyballPlayerProfile
         uid={uid}
         player={player}
-        onViewChange={onViewChange}
+        onSectionChange={onSectionChange}
         restoreAnalysisFocus={restoreAnalysisFocus}
         onAnalysisFocusRestored={onAnalysisFocusRestored}
       />
@@ -452,9 +477,10 @@ function PlayerProfileContent({
       uid={uid}
       snapshot={snapshot}
       player={player}
+      section={section}
       tab={tab}
       onTabChange={onTabChange}
-      onViewChange={onViewChange}
+      onSectionChange={onSectionChange}
       restoreAnalysisFocus={restoreAnalysisFocus}
       onAnalysisFocusRestored={onAnalysisFocusRestored}
       hiddenInformationPending={
@@ -494,14 +520,20 @@ function PlayerProfileContent({
 
 function PlayerProfileRoute() {
   const { uid: uidParam } = Route.useParams();
-  const { tab, view } = Route.useSearch();
+  const { tab, view, section: sectionParam } = Route.useSearch();
   const defaultAnalysisView = useMoneyballPreferences(
     (state) => state.defaultAnalysisView,
   );
   const navigate = Route.useNavigate();
   const uid = parseUid(uidParam);
-  const [analysisFocusView, setAnalysisFocusView] =
-    useState<PlayerProfileView | null>(null);
+  const section = resolveProfileSection({
+    section: sectionParam,
+    view,
+    tab,
+    defaultAnalysisView,
+  });
+  const [analysisFocusSection, setAnalysisFocusSection] =
+    useState<ProfileSection | null>(null);
 
   const onTabChange = (next: ProfileTab) => {
     void navigate({
@@ -509,10 +541,10 @@ function PlayerProfileRoute() {
       replace: true,
     });
   };
-  const onViewChange = (next: PlayerProfileView, restoreFocus = false) => {
-    setAnalysisFocusView(restoreFocus ? next : null);
+  const onSectionChange = (next: ProfileSection, restoreFocus = false) => {
+    setAnalysisFocusSection(restoreFocus ? next : null);
     void navigate({
-      search: (previous) => ({ ...previous, view: next }),
+      search: (previous) => ({ ...previous, section: next }),
       replace: true,
     });
   };
@@ -525,14 +557,12 @@ function PlayerProfileRoute() {
     <Suspense fallback={<ProfileFallback />}>
       <PlayerProfileContent
         uid={uid}
-        view={view ?? defaultAnalysisView}
+        section={section}
         tab={tab}
         onTabChange={onTabChange}
-        onViewChange={onViewChange}
-        restoreAnalysisFocus={
-          analysisFocusView === (view ?? defaultAnalysisView)
-        }
-        onAnalysisFocusRestored={() => setAnalysisFocusView(null)}
+        onSectionChange={onSectionChange}
+        restoreAnalysisFocus={analysisFocusSection === section}
+        onAnalysisFocusRestored={() => setAnalysisFocusSection(null)}
       />
     </Suspense>
   );
