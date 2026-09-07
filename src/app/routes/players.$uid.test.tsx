@@ -525,9 +525,11 @@ describe("player profile route", () => {
     expect(generalDetails).toHaveClass(
       "lg:grid-cols-2",
       "xl:grid-cols-3",
-      "2xl:grid-cols-5",
+      "2xl:grid-cols-[repeat(3,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))]",
     );
-    expect(within(generalDetails).getByText("Current Ability")).toBeVisible();
+    expect(within(generalDetails).getByText("Current Ability")).toHaveClass(
+      "text-label-lg",
+    );
     expect(within(generalDetails).getByText("Potential Ability")).toBeVisible();
     expect(within(generalDetails).getByText("Market Value")).toBeVisible();
     expect(

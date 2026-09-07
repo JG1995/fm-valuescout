@@ -18,7 +18,7 @@ type OverviewFactCardProps = {
 function OverviewFactCard({ label, value }: OverviewFactCardProps) {
   return (
     <div className="min-w-0 rounded-lg border border-outline-variant bg-surface-container-high p-4">
-      <h2 className="text-label-md text-on-surface-variant">{label}</h2>
+      <h2 className="text-label-lg text-on-surface-variant">{label}</h2>
       <p className="mt-3 font-mono text-headline-lg text-on-surface tabular-nums">
         {value}
       </p>
@@ -66,9 +66,9 @@ function TacticalFitPair({ phase, pair, concealed }: TacticalFitPairProps) {
       data-testid={testId}
       className="min-w-0 rounded-lg border border-outline-variant bg-surface-container-high p-4 tabular-nums"
     >
-      <p className="text-label-md text-on-surface-variant">{summaryLabel}</p>
+      <p className="text-label-lg text-on-surface-variant">{summaryLabel}</p>
       <p
-        className="mt-2 min-h-10 text-body-lg font-semibold text-on-surface"
+        className="mt-2 text-body-lg font-semibold text-on-surface"
         title={roleName ?? undefined}
       >
         {roleName ?? formatMissable(null)}
@@ -81,6 +81,7 @@ function TacticalFitPair({ phase, pair, concealed }: TacticalFitPairProps) {
             score={currentScore}
             roleName={`${labelBase} (Current)`}
             variant="hero"
+            className="text-headline-lg"
           />
         )}
         <span className="text-on-surface-variant">→</span>
@@ -91,6 +92,7 @@ function TacticalFitPair({ phase, pair, concealed }: TacticalFitPairProps) {
             score={potentialScore}
             roleName={`${labelBase} (Potential)`}
             variant="hero"
+            className="text-headline-lg"
           />
         )}
       </div>
@@ -176,7 +178,7 @@ export function PlayerOverviewPanel({
         {showTacticalFitSummary || showAbility ? (
           <div
             data-testid="player-profile-summary-details"
-            className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5"
+            className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[repeat(3,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))]"
           >
             {showAbility ? (
               <div
