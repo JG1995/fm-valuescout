@@ -845,7 +845,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 12 — Build Overview tactical-fit summary
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): add overview tactical fit summaries`
 
@@ -901,7 +901,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 13 — Expand Attributes workspace
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): expand the attributes workspace`
 
@@ -1417,19 +1417,19 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 **PR:** PR 1 — Player profile workspace redesign
 
-**Commit:** Build Overview tactical-fit summary
+**Commit:** Expand Attributes workspace
 
 ### RED or removal proof
 
-New route tests must fail before Overview presents best IP and OOP as two related same-role `current → potential` summaries with readable phases, concealed potentials, and unavailable `—` states.
+New route tests must fail while Attributes still exposes attributes through the legacy narrow tab panel rather than the requested dense outfield and goalkeeping workspace with unchanged hidden/personality access.
 
 ### Expected outcome
 
-Overview alone presents two clear tactical-fit summaries where role, phase, current score, and that role's potential score read as one accessible pair below the section navigation and identity hierarchy.
+Attributes provides dense, scan-friendly technical, mental, physical, and goalkeeping evidence with existing current/potential and concealment behavior, while Hidden and Personality remain directly reachable inside the section.
 
 ### Explicit exclusions
 
-Separate best-potential selection, Moneyball summaries, attribute summary, verbose repeated labels, scoring changes, and colour-only meaning.
+Position familiarity styling, possession-phase exposure, scoring changes, new attributes, and removal of legacy `tab` compatibility.
 
 ## Discoveries and replanning
 
@@ -1451,7 +1451,8 @@ The planning-artifact checkpoint review found stale prose that still described r
 | PR 1 — Player profile workspace redesign | Commit 8 — Separate hidden-information display control | f0e94f78378388209c9d191bc3d216d63ed0ed83 | Moved the unchanged hidden-information toggle and error feedback into a dedicated display-control slot separate from the existing boost action slot. | The structural separation proof failed before implementation; focused Player Profile route tests passed 68/68; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
 | PR 1 — Player profile workspace redesign | Commit 9 — Group modification actions | 0052dc1a20b419952f60335826818bb79871c86c | Grouped Boost CA and Wonderkid Mentality under a feature-local keyboard-operable Modify Player disclosure while preserving outcomes, confirmation flows, and the separate hidden-information display control. | Disclosure RED proofs failed before implementation; focused Player Profile route tests passed 71/71; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | Reviewer retained one advisory MEDIUM: the collapsed trigger's `aria-controls` target is unmounted; reconcile this accessibility relation in the bundled feature-close-out pass. |
 | PR 1 — Player profile workspace redesign | Commit 10 — Define best-current tactical-fit selection | 3807a29c6876d1e9ba0c04547b30b4583d9019d1 | Added a selector that chooses the best playable current role per possession phase and retains that same role's potential score, then removed the unused independent best-potential path from standard summaries. | Selector RED tests failed before implementation; focused selector and Player Profile route tests passed 84/84; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
-| PR 1 — Player profile workspace redesign | Commit 11 — Build Overview ability summary | Pending record | Added an Overview-only labelled Ability region after section navigation with CA, concealment-gated PA, market value, tabular figures, and missing-value handling, removing ability values from other sections. | Ability-region RED proofs and the navigation-order proof failed before their implementations; focused Player Profile route tests passed 75/75; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found the Ability region preceded section navigation; correction reversed the shared header order with direct DOM proof. One advisory MEDIUM empty summary-grid cell on non-Overview standard sections is deferred to feature close-out. |
+| PR 1 — Player profile workspace redesign | Commit 11 — Build Overview ability summary | a9e2493a52b1725f1b263fd55f249a8004e1156e | Added an Overview-only labelled Ability region after section navigation with CA, concealment-gated PA, market value, tabular figures, and missing-value handling, removing ability values from other sections. | Ability-region RED proofs and the navigation-order proof failed before their implementations; focused Player Profile route tests passed 75/75; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found the Ability region preceded section navigation; correction reversed the shared header order with direct DOM proof. One advisory MEDIUM empty summary-grid cell on non-Overview standard sections is deferred to feature close-out. |
+| PR 1 — Player profile workspace redesign | Commit 12 — Build Overview tactical-fit summary | Pending record | Added Overview-only same-role best-current tactical-fit pairs for In possession and Out of possession with readable phase labels, aligned current-to-potential values, concealment, and neutral unavailable states, removing the obsolete four standard summaries from Attributes and Role Fit. | Tactical summary RED proofs failed before implementation; focused Player Profile route tests passed 76/76; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found visual score labels duplicated the complete screen-reader description; correction hid visual pairs from assistive technology and added direct revealed, concealed, and unavailable proofs for one announcement. |
 
 ## Final validation
 

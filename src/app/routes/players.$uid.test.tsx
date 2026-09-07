@@ -411,9 +411,16 @@ describe("player profile route", () => {
       }),
     ).not.toHaveClass("truncate");
     expect(generalDetails).toHaveClass("lg:grid-cols-2");
+    const generalTactical = within(generalDetails).getByTestId(
+      "overview-tactical-fit",
+    );
+    expect(generalTactical).toHaveClass("grid-cols-2");
     expect(
-      within(generalDetails).getByTestId("player-profile-role-summaries"),
-    ).toHaveClass("grid-rows-2");
+      within(generalTactical).getByTestId("overview-tactical-fit-ip"),
+    ).toBeInTheDocument();
+    expect(
+      within(generalTactical).getByTestId("overview-tactical-fit-oop"),
+    ).toBeInTheDocument();
     const generalActionSlot = within(generalSummary).getByTestId(
       "player-profile-action-slot",
     );
@@ -434,9 +441,11 @@ describe("player profile route", () => {
     expect(
       within(generalSummary).queryByRole("heading", { level: 1 }),
     ).not.toBeInTheDocument();
-    expect(within(generalSummary).getByText("Current IP")).toBeInTheDocument();
     expect(
-      within(generalSummary).getByText("Potential OOP"),
+      within(generalSummary).getByText("In possession (IP)"),
+    ).toBeInTheDocument();
+    expect(
+      within(generalSummary).getByText("Out of possession (OOP)"),
     ).toBeInTheDocument();
     expect(within(generalSummary).getByText("CA")).toBeInTheDocument();
     expect(within(generalSummary).getByText("PA")).toBeInTheDocument();
@@ -1230,15 +1239,28 @@ describe("player profile route", () => {
     expect(
       within(summary).queryByText("Wonderkid Mentality"),
     ).not.toBeInTheDocument();
-    const concealedPotentialIp = within(summary).getByRole("img", {
-      name: "Potential IP: concealed",
-    });
-    const concealedPotentialOop = within(summary).getByRole("img", {
-      name: "Potential OOP: concealed",
-    });
-    expect(concealedPotentialIp).toHaveTextContent("—");
-    expect(concealedPotentialOop).toHaveTextContent("—");
-    expect(within(summary).getAllByText("Concealed")).toHaveLength(2);
+    const tactical = within(summary).getByTestId("overview-tactical-fit");
+    const ip = within(tactical).getByTestId("overview-tactical-fit-ip");
+    const oop = within(tactical).getByTestId("overview-tactical-fit-oop");
+    expect(within(ip).queryByRole("img")).not.toBeInTheDocument();
+    expect(within(oop).queryByRole("img")).not.toBeInTheDocument();
+    const concealedIpDash = within(ip).getByText("—");
+    expect(concealedIpDash).not.toHaveAttribute("title");
+    expect(within(oop).getAllByText("—")).toHaveLength(3);
+    expect(
+      within(ip).getByText(
+        "Deep-Lying Playmaker, In possession: Current 82, Potential concealed",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(tactical).getByText("Deep-Lying Playmaker"),
+    ).toBeInTheDocument();
+    expect(
+      within(oop).getByText(
+        "Out of possession: Current unavailable, Potential concealed",
+      ),
+    ).toBeInTheDocument();
+    expect(within(tactical).queryByText("Concealed")).not.toBeInTheDocument();
 
     const technical = screen.getByRole("region", { name: "Technical" });
     expect(
@@ -1595,7 +1617,7 @@ describe("player profile route", () => {
     ).toHaveTextContent(/^Loyalty—$/);
   });
 
-  it("shows phase-specific current and potential best-role summaries", async () => {
+  it("shows paired same-role tactical-fit summaries only on Overview", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
@@ -1657,44 +1679,99 @@ describe("player profile route", () => {
     const summary = await screen.findByRole("region", {
       name: "Alex Scout summary",
     });
+    const tactical = within(summary).getByRole("region", {
+      name: "Tactical fit",
+    });
+    expect(tactical).toHaveAttribute("data-testid", "overview-tactical-fit");
+    const ip = within(tactical).getByTestId("overview-tactical-fit-ip");
+    const oop = within(tactical).getByTestId("overview-tactical-fit-oop");
 
+    expect(within(ip).getByText("In possession (IP)")).toBeInTheDocument();
     expect(
-      within(summary).getByLabelText("Current IP: 82, Excellent"),
+      within(oop).getByText("Out of possession (OOP)"),
+    ).toBeInTheDocument();
+    expect(ip).toHaveClass("tabular-nums");
+    expect(oop).toHaveClass("tabular-nums");
+    expect(within(ip).queryByRole("img")).not.toBeInTheDocument();
+    expect(within(oop).queryByRole("img")).not.toBeInTheDocument();
+    expect(
+      within(ip).getByText(
+        "Current IP Specialist, In possession: Current 82, Potential 88",
+      ),
     ).toBeInTheDocument();
     expect(
-      within(summary).getByLabelText("Current OOP: 79, Good"),
+      within(oop).getByText(
+        "Current OOP Specialist, Out of possession: Current 79, Potential 90",
+      ),
     ).toBeInTheDocument();
+    expect(within(ip).getByText("Current IP Specialist")).toBeInTheDocument();
+    expect(within(oop).getByText("Current OOP Specialist")).toBeInTheDocument();
     expect(
-      within(summary).getByLabelText("Potential IP: 88, Excellent"),
-    ).toBeInTheDocument();
-    expect(
-      within(summary).getByLabelText("Potential OOP: 90, Excellent"),
-    ).toBeInTheDocument();
-    expect(within(summary).getByText("Current IP")).toBeInTheDocument();
-    expect(within(summary).getByText("Current OOP")).toBeInTheDocument();
-    expect(within(summary).getByText("Potential IP")).toBeInTheDocument();
-    expect(within(summary).getByText("Potential OOP")).toBeInTheDocument();
-    expect(within(summary).getAllByText("Current IP Specialist")).toHaveLength(
-      2,
-    );
-    expect(within(summary).getAllByText("Current OOP Specialist")).toHaveLength(
-      2,
-    );
-    expect(
-      within(summary).queryByText("Potential IP Specialist"),
+      within(tactical).queryByText("Potential IP Specialist"),
     ).not.toBeInTheDocument();
     expect(
-      within(summary).queryByText("Potential OOP Specialist"),
+      within(tactical).queryByText("Potential OOP Specialist"),
     ).not.toBeInTheDocument();
     expect(
-      within(summary).queryByText("Current IP Tie"),
+      within(tactical).queryByText("Current IP Tie"),
     ).not.toBeInTheDocument();
     expect(
-      within(summary).queryByText("Unplayable Specialist"),
+      within(tactical).queryByText("Unplayable Specialist"),
+    ).not.toBeInTheDocument();
+    expect(within(tactical).queryByText("Current IP")).not.toBeInTheDocument();
+    expect(
+      within(tactical).queryByText("Potential IP"),
+    ).not.toBeInTheDocument();
+    expect(within(tactical).queryByText("Current OOP")).not.toBeInTheDocument();
+    expect(
+      within(tactical).queryByText("Potential OOP"),
+    ).not.toBeInTheDocument();
+    expect(within(summary).getByTestId("overview-ability")).toBeInTheDocument();
+  });
+
+  it("keeps paired tactical-fit summaries off the Attributes and Role Fit sections", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    expect(
+      within(summary).getByTestId("overview-tactical-fit"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Attributes" }));
+    expect(
+      await screen.findByRole("tab", { name: "Attributes", selected: true }),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).queryByTestId("overview-tactical-fit"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(summary).queryByTestId("overview-tactical-fit-ip"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(summary).queryByTestId("overview-tactical-fit-oop"),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Role Fit" }));
+    expect(
+      await screen.findByRole("tab", { name: "Role Fit", selected: true }),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).queryByTestId("overview-tactical-fit"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(summary).queryByTestId("overview-tactical-fit-ip"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(summary).queryByTestId("overview-tactical-fit-oop"),
     ).not.toBeInTheDocument();
   });
 
-  it("renders unavailable potential summary values without a score badge", async () => {
+  it("renders unavailable paired potentials as a neutral dash without a badge", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
@@ -1712,16 +1789,25 @@ describe("player profile route", () => {
     );
     renderProfileRoute("/players/42");
 
-    const potentialIp = await screen.findByRole("img", {
-      name: "Potential IP: unavailable",
-    });
-    const potentialOop = screen.getByRole("img", {
-      name: "Potential OOP: unavailable",
-    });
-    expect(potentialIp).toHaveTextContent("—");
-    expect(potentialOop).toHaveTextContent("—");
+    const tactical = await screen.findByTestId("overview-tactical-fit");
+    const ip = within(tactical).getByTestId("overview-tactical-fit-ip");
+    expect(within(ip).queryByRole("img")).not.toBeInTheDocument();
+    const potentialIp = within(ip).getByText("—");
     expect(potentialIp).not.toHaveAttribute("title");
-    expect(potentialOop).not.toHaveAttribute("title");
+    expect(
+      within(ip).getByText(
+        "Current Only, In possession: Current 82, Potential unavailable",
+      ),
+    ).toBeInTheDocument();
+
+    const oop = within(tactical).getByTestId("overview-tactical-fit-oop");
+    expect(within(oop).queryByRole("img")).not.toBeInTheDocument();
+    expect(within(oop).getAllByText("—")).toHaveLength(3);
+    expect(
+      within(oop).getByText(
+        "Out of possession: Current unavailable, Potential unavailable",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("filters roles by pitch position with labelled current and potential badges", async () => {
@@ -1793,20 +1879,23 @@ describe("player profile route", () => {
     );
     renderProfileRoute("/players/42?tab=technical");
 
+    const roleFit = await screen.findByRole("region", {
+      name: "Role fit for MC",
+    });
     expect(
-      await screen.findByLabelText("Catalog Role 1 (Current): 60, Average"),
+      within(roleFit).getByLabelText("Catalog Role 1 (Current): 60, Average"),
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Catalog Role 79 (Current): 60, Average"),
+      within(roleFit).getByLabelText("Catalog Role 79 (Current): 60, Average"),
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Catalog Role 79 (Potential): 70, Good"),
+      within(roleFit).getByLabelText("Catalog Role 79 (Potential): 70, Good"),
     ).toBeInTheDocument();
     expect(
-      screen.getAllByLabelText(/Catalog Role \d+ \(Current\):/),
+      within(roleFit).getAllByLabelText(/Catalog Role \d+ \(Current\):/),
     ).toHaveLength(79);
     expect(
-      screen.getAllByLabelText(/Catalog Role \d+ \(Potential\):/),
+      within(roleFit).getAllByLabelText(/Catalog Role \d+ \(Potential\):/),
     ).toHaveLength(79);
   });
 

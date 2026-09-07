@@ -279,6 +279,7 @@ function GeneralPlayerProfile({
             hiddenInformationError={hiddenInformationError}
             onToggleHiddenInformation={onToggleHiddenInformation}
             showAbilitySummary={section === "overview"}
+            showTacticalFitSummary={section === "overview"}
             actions={
               player.hiddenInformationRevealed ? (
                 <PlayerDevelopmentActions
