@@ -295,6 +295,14 @@ const PLAYER_METRIC_DEFINITIONS: readonly PlayerMetricDefinition[] = [
     operators: STRING_OPERATORS,
   },
   {
+    id: "height",
+    label: "Height",
+    category: "identity",
+    kind: "integer",
+    defaultWidth: 88,
+    operators: INTEGER_OPERATORS,
+  },
+  {
     id: "age",
     label: "Age",
     category: "identity",
@@ -344,13 +352,6 @@ const PLAYER_METRIC_DEFINITIONS: readonly PlayerMetricDefinition[] = [
     category: "club-contract",
     kind: "string",
     operators: STRING_OPERATORS,
-  },
-  {
-    id: "height",
-    label: "Height",
-    category: "club-contract",
-    kind: "integer",
-    operators: INTEGER_OPERATORS,
   },
   {
     id: "wage",

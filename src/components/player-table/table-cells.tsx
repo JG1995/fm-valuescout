@@ -1,5 +1,5 @@
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
-import { formatMissable, formatMoney, formatPlayerDob } from "@/utils/format";
+import { formatMissable, formatMoney } from "@/utils/format";
 
 export const TABLE_TEXT_CELL_CLASS =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
@@ -22,6 +22,9 @@ export function formatTableDynamicCell(
   if (value === undefined || value === null) {
     return "—";
   }
+  if (fieldId === "height" && typeof value === "number") {
+    return `${value} cm`;
+  }
   return String(value);
 }
 
@@ -39,8 +42,6 @@ export type PlayerBasicCellKey =
 export type PlayerBasicRow = {
   name: string;
   age: number | null;
-  birthYear: number;
-  birthDayOfYear: number;
   nationalities: string[];
   club: string | null;
   division: string | null;
@@ -61,12 +62,12 @@ export function formatPlayerBasicCell(
     case "name":
       return { text: player.name, title: player.name, numeric: false };
     case "age": {
-      const dob = formatPlayerDob(
-        player.birthYear,
-        player.birthDayOfYear,
-        player.age,
-      );
-      return { text: dob, title: dob, numeric: false };
+      const age = String(formatMissable(player.age));
+      return {
+        text: age,
+        title: age !== "—" ? age : undefined,
+        numeric: false,
+      };
     }
     case "nationality": {
       const nationalities = String(

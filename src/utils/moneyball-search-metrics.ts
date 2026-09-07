@@ -58,12 +58,12 @@ const basic = (id: string, label: string, kind: "string" | "integer") => ({
   id,
   label,
   category:
-    id === "name" || id === "age" || id === "nationality"
+    id === "name" || id === "age" || id === "nationality" || id === "height"
       ? "Identity"
       : "Club and value",
   kind,
   align: kind === "integer" ? ("right" as const) : ("left" as const),
-  defaultWidth: kind === "integer" ? 96 : 144,
+  defaultWidth: id === "height" ? 88 : kind === "integer" ? 96 : 144,
   sortable: true as const,
   operators: kind === "integer" ? NUMBER_OPERATORS : TEXT_OPERATORS,
 });
@@ -95,8 +95,9 @@ const roleMetric = (role: (typeof MONEYBALL_ROLE_CATALOG)[number]) => ({
 
 export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
   basic("name", "Name", "string"),
-  basic("age", "Age / DOB", "integer"),
+  basic("age", "Age", "integer"),
   basic("nationality", "Nationality", "string"),
+  basic("height", "Height", "integer"),
   basic("club", "Club", "string"),
   basic("division", "Division", "string"),
   basic("parent_club", "Parent club", "string"),

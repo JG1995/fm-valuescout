@@ -473,6 +473,7 @@ pub fn is_moneyball_search_field(field: &str) -> bool {
         "name"
             | "age"
             | "nationality"
+            | "height"
             | "club"
             | "division"
             | "parent_club"
@@ -758,7 +759,7 @@ mod tests {
 
     #[test]
     fn accepts_recruitment_fields_in_moneyball_mode() {
-        for field in ["parent_club", "preferred_foot"] {
+        for field in ["parent_club", "preferred_foot", "height"] {
             assert!(MetricField::parse_for_moneyball(field, true).is_ok());
         }
     }

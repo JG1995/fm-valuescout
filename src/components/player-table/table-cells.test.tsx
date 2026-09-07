@@ -35,12 +35,21 @@ describe("shared table cells", () => {
     );
   });
 
+  it("formats height with its centimeter unit while keeping loading and missing", () => {
+    expect(
+      formatTableDynamicCell({ dynamicValues: { height: 188 } }, "height"),
+    ).toBe("188 cm");
+    expect(formatTableDynamicCell(undefined, "height")).toBe("…");
+    expect(formatTableDynamicCell({ dynamicValues: {} }, "height")).toBe("—");
+    expect(
+      formatTableDynamicCell({ dynamicValues: { height: null } }, "height"),
+    ).toBe("—");
+  });
+
   describe("player basic cells", () => {
     const row = {
       name: "Ada Example",
       age: 25,
-      birthYear: 2000,
-      birthDayOfYear: 1,
       nationalities: ["England"],
       club: "Example FC",
       division: "Premier Division",
@@ -56,8 +65,8 @@ describe("shared table cells", () => {
         numeric: false,
       });
       expect(formatPlayerBasicCell(row, "age")).toEqual({
-        text: "01/01/2000 (25)",
-        title: "01/01/2000 (25)",
+        text: "25",
+        title: "25",
         numeric: false,
       });
       expect(formatPlayerBasicCell(row, "ca")).toEqual({
@@ -77,6 +86,14 @@ describe("shared table cells", () => {
       });
       expect(formatPlayerBasicCell(undefined, "name")).toEqual({
         text: "…",
+        numeric: false,
+      });
+      expect(formatPlayerBasicCell(undefined, "age")).toEqual({
+        text: "…",
+        numeric: false,
+      });
+      expect(formatPlayerBasicCell({ ...row, age: null }, "age")).toEqual({
+        text: "—",
         numeric: false,
       });
       expect(

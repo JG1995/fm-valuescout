@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MONEYBALL_ROLE_CATALOG } from "./moneyball-role-catalog";
 import {
   DEFAULT_MONEYBALL_TABLE_COLUMN_IDS,
+  getMoneyballSearchMetric,
   MONEYBALL_SEARCH_METRICS,
 } from "./moneyball-search-metrics";
 
@@ -17,6 +18,7 @@ describe("Moneyball Search metrics", () => {
       "name",
       "age",
       "nationality",
+      "height",
       "club",
       "division",
       "parent_club",
@@ -24,6 +26,7 @@ describe("Moneyball Search metrics", () => {
       "value",
       "position",
     ]);
+    expect(getMoneyballSearchMetric("height")?.defaultWidth).toBe(88);
     expect(DEFAULT_MONEYBALL_TABLE_COLUMN_IDS).toEqual([
       "name",
       "age",
@@ -37,6 +40,10 @@ describe("Moneyball Search metrics", () => {
       "moneyball.xg_per_90",
       "moneyball.xa_per_90",
     ]);
+  });
+
+  it("labels the Age metric as age-only", () => {
+    expect(getMoneyballSearchMetric("age")?.label).toBe("Age");
   });
 
   it("registers every backend role as a grouped numeric field", () => {

@@ -293,7 +293,7 @@ export function ConfigurableVirtualizedTable<
       <div
         ref={parentRef}
         data-testid={testId}
-        className="h-full min-h-0 overflow-auto"
+        className="h-full max-w-full w-fit min-h-0 overflow-auto rounded-lg border border-outline-variant"
       >
         <table
           className="table-fixed border-collapse text-left"

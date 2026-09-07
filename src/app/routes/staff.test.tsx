@@ -240,14 +240,14 @@ describe("staff route", () => {
     ).toHaveAttribute("aria-sort", "ascending");
   });
 
-  it("does not truncate a staff member's Age / DOB cell", async () => {
+  it("does not truncate a staff member's Age cell", async () => {
     await resolveLoadDataIpcMock();
     renderStaffRoute();
 
     const table = await screen.findByRole("table", {
       name: "Staff search results",
     });
-    const cell = within(table).getAllByTitle(/\(44\)$/)[0];
+    const cell = within(table).getAllByTitle("44")[0];
     expect(cell).toHaveClass("whitespace-nowrap");
     expect(cell).not.toHaveClass("truncate");
   });
@@ -1529,6 +1529,28 @@ describe("staff route", () => {
       expect(
         within(toolbar).queryByRole("button", { name: "Boost all CA" }),
       ).toBeNull();
+    });
+
+    it("labels a hidden nationality sort with the full Nationality name on My Staff", async () => {
+      await resolveLoadDataIpcMock();
+      usePlayerTableStore.setState({
+        layouts: {
+          ...defaultPlayerTableLayouts(),
+          "my-staff": { columnIds: ["ca"], widths: {}, identityWidth: 280 },
+        },
+      });
+      renderStaffRoute(
+        "/staff?view=my-staff&myStaffSort=nationality&myStaffDir=asc",
+      );
+
+      await screen.findByRole("table", { name: "Staff overview" });
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Staff results toolbar",
+      });
+      expect(
+        within(toolbar).getByText(/sorted by Nationality/),
+      ).toBeInTheDocument();
+      expect(toolbar.textContent).not.toMatch("sorted by Nation (");
     });
 
     it("recovers a failed dynamic-column replacement without false missing values", async () => {

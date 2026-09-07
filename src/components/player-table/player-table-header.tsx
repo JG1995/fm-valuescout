@@ -303,7 +303,7 @@ export function ConfigurableTableHeader({
               key={`${run.group.id}-${run.startIndex}`}
               scope="colgroup"
               colSpan={run.span}
-              className="h-table-header-height px-2 text-left text-label-md text-on-surface-variant uppercase"
+              className="h-table-header-height px-2 text-center text-label-md text-on-surface-variant uppercase"
             >
               <span className="block truncate">{run.group.label}</span>
             </th>

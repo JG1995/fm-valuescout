@@ -33,7 +33,10 @@ describe("staff metrics", () => {
     );
   });
 
-  it("aligns the formatted Age / DOB display as text", () => {
-    expect(getStaffMetric("age")?.align).toBe("left");
+  it("labels the Age metric as age-only and aligns it as text", () => {
+    expect(getStaffMetric("age")).toMatchObject({
+      label: "Age",
+      align: "left",
+    });
   });
 });
