@@ -1106,6 +1106,7 @@ describe("My Club route", () => {
       "Player",
       "Age",
       "Nationality",
+      "Height",
       "CA",
       "PA",
       "Value",
@@ -1236,7 +1237,7 @@ describe("My Club route", () => {
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(getLastSquadPlayersArgs()).toMatchObject({
-        requestedFields: ["attr.Acceleration"],
+        requestedFields: ["attr.Acceleration", "height"],
       });
     });
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toContain(
@@ -1357,7 +1358,7 @@ describe("My Club route", () => {
     await waitFor(() => {
       expect(getLastSquadPlayersArgs()).toMatchObject({
         offset: 50,
-        requestedFields: ["attr.Acceleration", "attr.Agility"],
+        requestedFields: ["attr.Acceleration", "attr.Agility", "height"],
       });
     });
     const focusedRow = await waitFor(() => {
@@ -1981,7 +1982,7 @@ describe("My Club route", () => {
         limit: 50,
         sortBy: "value",
         sortDir: "desc",
-        requestedFields: [],
+        requestedFields: ["height"],
       });
     });
     expect(
@@ -6186,14 +6187,19 @@ describe("Suggested Training column", () => {
 
   it("shows Suggested Training as the default far-right Squad column", async () => {
     const table = await renderConfiguredSquad([
-      squadPlayerNamed("Alex Scout", 42),
+      {
+        ...squadPlayerNamed("Alex Scout", 42),
+        dynamicValues: { height: 188 },
+      },
     ]);
 
     const headerLabels = within(table)
       .getAllByRole("columnheader")
       .map((header) => header.getAttribute("aria-label"));
+    expect(headerLabels).toContain("Height");
     expect(headerLabels).toContain("Suggested Training");
     expect(headerLabels[headerLabels.length - 1]).toBe("Suggested Training");
+    expect(within(table).getByText("188 cm")).toBeInTheDocument();
   });
 
   it("renders the focus name, and a dash with an accessible name for null", async () => {
@@ -6224,12 +6230,14 @@ describe("Suggested Training column", () => {
     if (!unassignedRow) {
       throw new Error("Expected the unassigned player row.");
     }
-    const dashCell = within(unassignedRow).getByText("—").closest("td");
+    const dashCell = within(unassignedRow).getByRole("cell", {
+      name: "No suggested training",
+    });
     expect(dashCell).toHaveAccessibleName("No suggested training");
 
     await waitFor(() => {
       expect(getLastSquadPlayersArgs()).toMatchObject({
-        requestedFields: ["attr.Acceleration"],
+        requestedFields: ["attr.Acceleration", "height"],
       });
     });
     expect(

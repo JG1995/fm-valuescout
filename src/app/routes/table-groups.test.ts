@@ -44,12 +44,13 @@ const CASES: LayoutCase[] = [
     columns: [
       { id: "age" },
       { id: "nationality" },
+      { id: "height" },
       { id: "ca" },
       { id: "value" },
       { id: "tactic_current.goalkeeper" },
     ],
     expected: [
-      { label: "Profile", span: 2 },
+      { label: "Profile", span: 3 },
       { label: "Ability", span: 1 },
       { label: "Market", span: 1 },
       { label: "Tactic Fit", span: 1 },
@@ -60,13 +61,14 @@ const CASES: LayoutCase[] = [
     input: MONEYBALL_TABLE_GROUPS,
     columns: [
       { id: "age" },
+      { id: "height" },
       { id: "value" },
       { id: "moneyball.starts" },
       { id: "moneyball.average_rating" },
       { id: "moneyball_role.amc_attacking_midfielder_ip" },
     ],
     expected: [
-      { label: "Profile", span: 1 },
+      { label: "Profile", span: 2 },
       { label: "Market", span: 1 },
       { label: "Playing Time", span: 1 },
       { label: "Performance", span: 1 },
@@ -78,13 +80,14 @@ const CASES: LayoutCase[] = [
     input: SQUAD_TABLE_GROUPS,
     columns: [
       { id: "age" },
+      { id: "height" },
       { id: "ca" },
       { id: "value" },
       { id: "suggested_training" },
       { id: "role.striker_attack" },
     ],
     expected: [
-      { label: "Profile", span: 1 },
+      { label: "Profile", span: 2 },
       { label: "Ability", span: 1 },
       { label: "Market", span: 1 },
       { label: "Development", span: 1 },

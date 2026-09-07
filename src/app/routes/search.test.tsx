@@ -232,7 +232,7 @@ describe("search route", () => {
       ).toBeEnabled(),
     );
     const orderedLaneIds = ORDERED_TACTIC_LANE_IDS;
-    const nonTacticIds = ["age", "nationality", "ca", "pa", "value"];
+    const nonTacticIds = ["age", "nationality", "height", "ca", "pa", "value"];
 
     await user.click(
       screen.getByRole("button", { name: "Add Tactic (Current)" }),
@@ -946,7 +946,9 @@ describe("search route", () => {
 
   it("renders a virtualized page of basic columns via search_players", async () => {
     await resolveLoadDataIpcMock();
-    setSearchPlayersOverride(manyPlayers(80));
+    const players = manyPlayers(80);
+    players[0] = { ...players[0], dynamicValues: { height: 188 } };
+    setSearchPlayersOverride(players);
     renderSearchRoute();
 
     expect(
@@ -962,7 +964,11 @@ describe("search route", () => {
     expect(
       within(table).getByRole("columnheader", { name: "CA" }),
     ).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: "Height" }),
+    ).toBeInTheDocument();
     expect(await within(table).findByText("Player 001")).toBeInTheDocument();
+    expect(within(table).getByText("188 cm")).toBeInTheDocument();
 
     const bodyRows = within(table)
       .getAllByRole("row")
@@ -973,7 +979,7 @@ describe("search route", () => {
     expect(scroller).toHaveClass("h-full", "min-h-0", "overflow-auto");
     expect(scroller.parentElement).toHaveClass("relative", "min-h-0", "flex-1");
     expect(getLastSearchPlayersArgs()).toMatchObject({
-      requestedFields: [],
+      requestedFields: ["height"],
     });
   });
 
@@ -986,17 +992,17 @@ describe("search route", () => {
     const table = await screen.findByRole("table", {
       name: "Player search results",
     });
-    // 280 identity + 144 age + 160 nationality + 72 CA + 72 PA + 112 value
+    // 280 identity + 144 age + 160 nationality + 88 height + 72 CA + 72 PA + 112 value
     // + 96 wage + 96 reputation. The bounded model fixes the table to
     // exactly this sum so readable minimums hold and overflow stays in
     // the same scroller instead of stretching cells.
     expect(table).toHaveStyle({
-      minWidth: "1032px",
-      maxWidth: "1032px",
-      width: "1032px",
+      minWidth: "1120px",
+      maxWidth: "1120px",
+      width: "1120px",
     });
     const cols = table.querySelectorAll("col");
-    expect(cols).toHaveLength(8);
+    expect(cols).toHaveLength(9);
     expect(cols[0]).toHaveStyle({ width: "280px" });
     // Sticky identity plus the complete grouped + leaf header context.
     const headers = within(table).getAllByRole("columnheader");
@@ -1093,7 +1099,9 @@ describe("search route", () => {
       throw new Error("Expected the missing-score player row.");
     }
     expect(within(missingRow).queryAllByRole("img")).toHaveLength(0);
-    expect(within(missingRow).getAllByText("—")).toHaveLength(3);
+    // Height is a default column now, so the missing-score row also renders
+    // its Height dash alongside the three score dashes.
+    expect(within(missingRow).getAllByText("—")).toHaveLength(4);
     expect(within(missingRow).getByText("16")).not.toHaveAttribute(
       "role",
       "img",
@@ -1146,7 +1154,7 @@ describe("search route", () => {
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
-        requestedFields: ["attr.Acceleration"],
+        requestedFields: ["attr.Acceleration", "height"],
       });
     });
     expect(router.state.location.search).toMatchObject({
@@ -1292,7 +1300,7 @@ describe("search route", () => {
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         offset: 50,
-        requestedFields: ["attr.Acceleration", "attr.Agility"],
+        requestedFields: ["attr.Acceleration", "attr.Agility", "height"],
       });
     });
     const focusedRow = await waitFor(() => {
@@ -1356,8 +1364,9 @@ describe("search route", () => {
     expect(screen.getByRole("button", { name: "CA" })).toHaveFocus();
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
       "age",
-      "ca",
       "nationality",
+      "ca",
+      "height",
       "pa",
       "value",
     ]);
@@ -2406,7 +2415,7 @@ describe("search route", () => {
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
-        requestedFields: ["potential_role.goalkeeper_ip"],
+        requestedFields: ["height", "potential_role.goalkeeper_ip"],
       });
     });
   });
@@ -2770,7 +2779,7 @@ describe("search route", () => {
       within(table).queryByRole("columnheader", { name: /Acceleration/i }),
     ).toBeNull();
     expect(getLastSearchPlayersArgs()).toMatchObject({
-      requestedFields: [],
+      requestedFields: ["height"],
       filters: [
         { field: "role.deep_lying_playmaker_ip", op: "gt", value: 70 },
         { field: "attr.Acceleration", op: "gt", value: 12 },

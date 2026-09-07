@@ -22,6 +22,9 @@ export function formatTableDynamicCell(
   if (value === undefined || value === null) {
     return "—";
   }
+  if (fieldId === "height" && typeof value === "number") {
+    return `${value} cm`;
+  }
   return String(value);
 }
 

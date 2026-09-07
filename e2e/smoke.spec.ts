@@ -1194,8 +1194,8 @@ test.describe("application smoke", () => {
       await expect(main.getByRole("button", { name: "Columns" })).toBeVisible();
       const tableBox = await table.boundingBox();
       expect(tableBox).not.toBeNull();
-      // Bounded containment: the default 840px column sum (280 identity +
-      // 144 + 160 + 72 + 72 + 112) never stretches to the viewport width.
+      // Bounded containment: the default 928px column sum (280 identity +
+      // 144 + 160 + 88 + 72 + 72 + 112) never stretches to the viewport width.
       const tableGeometry = await table.evaluate((element) => {
         const browser = globalThis as unknown as {
           getComputedStyle: (node: unknown) => {
@@ -1388,11 +1388,11 @@ test.describe("application smoke", () => {
     const narrow = await leafGeometry();
     expect(narrow.scrollerBox).not.toBeNull();
     expect(narrow.tableBox).not.toBeNull();
-    // The 2080px wide layout overflows the 1280 viewport in the scroller.
+    // The 2072px wide layout overflows the 1280 viewport in the scroller.
     expect(narrow.dimensions.scrollWidth).toBeGreaterThan(
       narrow.dimensions.clientWidth,
     );
-    expect(Math.abs((narrow.tableBox?.width ?? 0) - 2080)).toBeLessThanOrEqual(
+    expect(Math.abs((narrow.tableBox?.width ?? 0) - 2072)).toBeLessThanOrEqual(
       1,
     );
 
@@ -1402,9 +1402,9 @@ test.describe("application smoke", () => {
     expect(wide.tableBox).not.toBeNull();
     expect(wide.theadBox).not.toBeNull();
     // Ultrawide reveals more columns instead of stretching cells: the
-    // table keeps its bounded 2080px width inside the wider scroller.
+    // table keeps its bounded 2072px width inside the wider scroller.
     expect(wide.visibleLeafColumns).toBeGreaterThan(narrow.visibleLeafColumns);
-    expect(Math.abs((wide.tableBox?.width ?? 0) - 2080)).toBeLessThanOrEqual(1);
+    expect(Math.abs((wide.tableBox?.width ?? 0) - 2072)).toBeLessThanOrEqual(1);
     expect(wide.tableBox?.width).toBeLessThanOrEqual(
       wide.dimensions.clientWidth + 1,
     );
@@ -1417,7 +1417,15 @@ test.describe("application smoke", () => {
     await expect(
       wide.table.getByRole("columnheader", { name: "Player" }),
     ).toBeVisible();
-    await expect(wide.table.getByText("Profile")).toBeVisible();
+    // Height now lives in Profile and this persisted layout places Height
+    // after Market fields, so the interrupted Profile run renders two
+    // colgroup headers.
+    await expect(
+      wide.table.getByRole("columnheader", { name: "Profile" }),
+    ).toHaveCount(2);
+    await expect(
+      wide.table.getByRole("columnheader", { name: "Profile" }).first(),
+    ).toBeVisible();
     await expect(
       wide.table.getByRole("columnheader", { name: "CA" }),
     ).toBeVisible();
@@ -1670,6 +1678,7 @@ test.describe("application smoke", () => {
       .toEqual([
         "Age",
         "Nationality",
+        "Height",
         "CA",
         "PA",
         "Value",
@@ -1698,6 +1707,7 @@ test.describe("application smoke", () => {
       .toEqual([
         "Age",
         "Nationality",
+        "Height",
         "CA",
         "PA",
         "Value",

@@ -185,6 +185,45 @@ function defaultColumnIds(table: PlayerTableId): string[] {
     return [
       "age",
       "nationality",
+      "height",
+      "moneyball.minutes",
+      "moneyball.average_rating",
+      "moneyball.goals_per_90",
+      "moneyball.assists_per_90",
+      "moneyball.xg_per_90",
+      "moneyball.xa_per_90",
+    ];
+  }
+  if (table === "squad") {
+    return [
+      "age",
+      "nationality",
+      "height",
+      "ca",
+      "pa",
+      "value",
+      SUGGESTED_TRAINING_COLUMN_ID,
+    ];
+  }
+  if (table === "search") {
+    return ["age", "nationality", "height", "ca", "pa", "value"];
+  }
+  if (table === "staff-shortlist") {
+    return withoutIdentityColumnIds(DEFAULT_STAFF_SHORTLIST_COLUMN_IDS);
+  }
+  return withoutIdentityColumnIds(DEFAULT_STAFF_TABLE_COLUMN_IDS);
+}
+
+/**
+ * Immutable historic v8 migration outputs (without Height). Pre-v8
+ * default-like and malformed fallbacks must keep returning these exact
+ * arrays; fresh defaults and explicit resets use `defaultColumnIds`.
+ */
+function historicalV8DefaultColumnIds(table: PlayerTableId): string[] {
+  if (table === "moneyball-search") {
+    return [
+      "age",
+      "nationality",
       "moneyball.minutes",
       "moneyball.average_rating",
       "moneyball.goals_per_90",
@@ -206,10 +245,7 @@ function defaultColumnIds(table: PlayerTableId): string[] {
   if (table === "search") {
     return ["age", "nationality", "ca", "pa", "value"];
   }
-  if (table === "staff-shortlist") {
-    return withoutIdentityColumnIds(DEFAULT_STAFF_SHORTLIST_COLUMN_IDS);
-  }
-  return withoutIdentityColumnIds(DEFAULT_STAFF_TABLE_COLUMN_IDS);
+  return defaultColumnIds(table);
 }
 
 /** Resulting v7 defaults per table, used only for default-like detection. */
@@ -384,11 +420,11 @@ function migrateTableToV8(
     typeof nameWidth === "number" ? nameWidth : undefined,
   );
   // (7) Missing/non-array/empty raw `columnIds` is malformed and falls back
-  // to the exact v8 defaults with `identityWidth` 280.
+  // to the exact historic v8 defaults with `identityWidth` 280.
   const rawIds = record.columnIds;
   if (!Array.isArray(rawIds) || rawIds.length === 0) {
     return {
-      columnIds: defaultColumnIds(table),
+      columnIds: historicalV8DefaultColumnIds(table),
       widths: {},
       identityWidth: IDENTITY_COLUMN_DEFAULT_WIDTH,
     };
@@ -436,7 +472,7 @@ function migrateTableToV8(
     Object.keys(v7.widths).length === 0;
   if (isDefaultLike) {
     return {
-      columnIds: defaultColumnIds(table),
+      columnIds: historicalV8DefaultColumnIds(table),
       widths: {},
       identityWidth,
     };

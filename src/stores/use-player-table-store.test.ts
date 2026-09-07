@@ -16,6 +16,7 @@ import {
 const DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS = [
   "age",
   "nationality",
+  "height",
   "ca",
   "pa",
   "value",
@@ -27,27 +28,96 @@ describe("usePlayerTableStore", () => {
     usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });
   });
 
-  it("starts player layouts without duplicate Club and Division columns", () => {
-    expect(defaultPlayerTableLayouts()).toMatchObject({
-      search: { columnIds: DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS },
-      "moneyball-search": {
-        columnIds: [
-          "age",
-          "nationality",
-          "moneyball.minutes",
-          "moneyball.average_rating",
-          "moneyball.goals_per_90",
-          "moneyball.assists_per_90",
-          "moneyball.xg_per_90",
-          "moneyball.xa_per_90",
-        ],
-      },
-      squad: {
-        columnIds: [
-          ...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS,
-          "suggested_training",
-        ],
-      },
+  it("starts player tables with Height immediately after Nationality", () => {
+    const layouts = defaultPlayerTableLayouts();
+    expect(layouts.search.columnIds).toEqual([
+      "age",
+      "nationality",
+      "height",
+      "ca",
+      "pa",
+      "value",
+    ]);
+    expect(layouts["moneyball-search"].columnIds).toEqual([
+      "age",
+      "nationality",
+      "height",
+      "moneyball.minutes",
+      "moneyball.average_rating",
+      "moneyball.goals_per_90",
+      "moneyball.assists_per_90",
+      "moneyball.xg_per_90",
+      "moneyball.xa_per_90",
+    ]);
+    expect(layouts.squad.columnIds).toEqual([
+      "age",
+      "nationality",
+      "height",
+      "ca",
+      "pa",
+      "value",
+      "suggested_training",
+    ]);
+  });
+
+  it("keeps persisted v8 layouts without Height exactly as stored", async () => {
+    localStorage.setItem(
+      PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          layouts: {
+            search: {
+              columnIds: ["age", "nationality", "ca", "pa", "value"],
+              widths: { ca: 104 },
+              identityWidth: 320,
+            },
+            "moneyball-search": {
+              columnIds: ["age", "nationality", "moneyball.minutes"],
+              widths: {},
+              identityWidth: 280,
+            },
+            squad: {
+              columnIds: [
+                "age",
+                "nationality",
+                "ca",
+                "pa",
+                "value",
+                "suggested_training",
+              ],
+              widths: {},
+              identityWidth: 280,
+            },
+          },
+        },
+        version: 8,
+      }),
+    );
+
+    await usePlayerTableStore.persist.rehydrate();
+
+    const layouts = usePlayerTableStore.getState().layouts;
+    expect(layouts.search).toEqual({
+      columnIds: ["age", "nationality", "ca", "pa", "value"],
+      widths: { ca: 104 },
+      identityWidth: 320,
+    });
+    expect(layouts["moneyball-search"]).toEqual({
+      columnIds: ["age", "nationality", "moneyball.minutes"],
+      widths: {},
+      identityWidth: 280,
+    });
+    expect(layouts.squad).toEqual({
+      columnIds: [
+        "age",
+        "nationality",
+        "ca",
+        "pa",
+        "value",
+        "suggested_training",
+      ],
+      widths: {},
+      identityWidth: 280,
     });
   });
 
@@ -113,7 +183,7 @@ describe("usePlayerTableStore", () => {
 
     expect(usePlayerTableStore.getState().layouts).toMatchObject({
       search: {
-        columnIds: DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS,
+        columnIds: ["age", "nationality", "ca", "pa", "value"],
         widths: { ca: 104 },
         identityWidth: 240,
       },
@@ -123,7 +193,7 @@ describe("usePlayerTableStore", () => {
         identityWidth: 240,
       },
       squad: {
-        columnIds: DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS,
+        columnIds: ["age", "nationality", "ca", "pa", "value"],
         widths: { ca: 104 },
         identityWidth: 240,
       },
@@ -343,7 +413,11 @@ describe("usePlayerTableStore", () => {
     });
     expect(usePlayerTableStore.getState().layouts.squad).toEqual({
       columnIds: [
-        ...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS,
+        "age",
+        "nationality",
+        "ca",
+        "pa",
+        "value",
         "suggested_training",
       ],
       widths: {},
@@ -391,6 +465,7 @@ describe("usePlayerTableStore", () => {
       columnIds: [
         "age",
         "nationality",
+        "height",
         "ca",
         "pa",
         "value",
@@ -491,14 +566,30 @@ describe("usePlayerTableStore", () => {
 
     store.moveColumn("search", "reputation", 0);
     expect(usePlayerTableStore.getState().layouts.search).toEqual({
-      columnIds: ["reputation", "age", "nationality", "ca", "pa", "value"],
+      columnIds: [
+        "reputation",
+        "age",
+        "nationality",
+        "height",
+        "ca",
+        "pa",
+        "value",
+      ],
       widths: { reputation: 248 },
       identityWidth: 280,
     });
 
-    store.moveColumn("search", "reputation", 5);
+    store.moveColumn("search", "reputation", 6);
     expect(usePlayerTableStore.getState().layouts.search).toEqual({
-      columnIds: ["age", "nationality", "ca", "pa", "value", "reputation"],
+      columnIds: [
+        "age",
+        "nationality",
+        "height",
+        "ca",
+        "pa",
+        "value",
+        "reputation",
+      ],
       widths: { reputation: 248 },
       identityWidth: 280,
     });
@@ -526,7 +617,7 @@ describe("usePlayerTableStore", () => {
     expect(usePlayerTableStore.getState().layouts.search).toEqual(before);
     store.moveColumn("search", "ca", 2.5);
     expect(usePlayerTableStore.getState().layouts.search).toEqual(before);
-    store.moveColumn("search", "ca", 2);
+    store.moveColumn("search", "ca", 3);
 
     expect(usePlayerTableStore.getState().layouts.search).toEqual(before);
   });
@@ -1114,6 +1205,38 @@ describe("v8 identity migration (Commit 4)", () => {
   };
 
   const V8_DEFAULTS: Record<string, string[]> = {
+    search: ["age", "nationality", "height", "ca", "pa", "value"],
+    "moneyball-search": [
+      "age",
+      "nationality",
+      "height",
+      "moneyball.minutes",
+      "moneyball.average_rating",
+      "moneyball.goals_per_90",
+      "moneyball.assists_per_90",
+      "moneyball.xg_per_90",
+      "moneyball.xa_per_90",
+    ],
+    squad: [
+      "age",
+      "nationality",
+      "height",
+      "ca",
+      "pa",
+      "value",
+      "suggested_training",
+    ],
+    "staff-search": withoutIdentityColumnIds([
+      ...DEFAULT_STAFF_TABLE_COLUMN_IDS,
+    ]),
+    "my-staff": withoutIdentityColumnIds([...DEFAULT_STAFF_TABLE_COLUMN_IDS]),
+    "staff-shortlist": withoutIdentityColumnIds(V7_STAFF_SHORTLIST_DEFAULT),
+  };
+
+  // Immutable historic v8 migration outputs (without Height). Pre-v8
+  // default-like and malformed fallbacks must keep returning these exact
+  // arrays; fresh defaults use V8_DEFAULTS above.
+  const V8_HISTORIC_DEFAULTS: Record<string, string[]> = {
     search: ["age", "nationality", "ca", "pa", "value"],
     "moneyball-search": [
       "age",
@@ -1126,11 +1249,6 @@ describe("v8 identity migration (Commit 4)", () => {
       "moneyball.xa_per_90",
     ],
     squad: ["age", "nationality", "ca", "pa", "value", "suggested_training"],
-    "staff-search": withoutIdentityColumnIds([
-      ...DEFAULT_STAFF_TABLE_COLUMN_IDS,
-    ]),
-    "my-staff": withoutIdentityColumnIds([...DEFAULT_STAFF_TABLE_COLUMN_IDS]),
-    "staff-shortlist": withoutIdentityColumnIds(V7_STAFF_SHORTLIST_DEFAULT),
   };
 
   async function rehydrateVersion(
@@ -1159,14 +1277,14 @@ describe("v8 identity migration (Commit 4)", () => {
   });
 
   it.each(Object.keys(V7_DEFAULTS))(
-    "rolls a v7 default-like %s layout to the exact v8 defaults",
+    "rolls a v7 default-like %s layout to the exact historic v8 defaults",
     async (table) => {
       const layouts = await rehydrateVersion(
         { [table]: { columnIds: V7_DEFAULTS[table], widths: {} } },
         7,
       );
       expect(layouts[table as keyof typeof layouts].columnIds).toEqual(
-        V8_DEFAULTS[table],
+        V8_HISTORIC_DEFAULTS[table] ?? V8_DEFAULTS[table],
       );
       expect(layouts[table as keyof typeof layouts].widths).toEqual({});
     },
@@ -1235,18 +1353,24 @@ describe("v8 identity migration (Commit 4)", () => {
     expect(layouts.squad.columnIds).toEqual(["ca"]);
   });
 
-  it("falls back to v8 defaults with identityWidth 280 for malformed layouts", async () => {
+  it("falls back to historic v8 defaults with identityWidth 280 for malformed layouts", async () => {
     const layouts = await rehydrateVersion(
       {
         search: { widths: { ca: 200 } },
+        "moneyball-search": { widths: { "moneyball.minutes": 200 } },
         squad: { columnIds: [], widths: {} },
       },
       7,
     );
-    expect(layouts.search.columnIds).toEqual(V8_DEFAULTS.search);
+    expect(layouts.search.columnIds).toEqual(V8_HISTORIC_DEFAULTS.search);
     expect(layouts.search.widths).toEqual({});
     expect(layouts.search.identityWidth).toBe(280);
-    expect(layouts.squad.columnIds).toEqual(V8_DEFAULTS.squad);
+    expect(layouts["moneyball-search"]).toEqual({
+      columnIds: V8_HISTORIC_DEFAULTS["moneyball-search"],
+      widths: {},
+      identityWidth: 280,
+    });
+    expect(layouts.squad.columnIds).toEqual(V8_HISTORIC_DEFAULTS.squad);
   });
 
   it("drops tactic IDs outside Search/Moneyball and Suggested Training outside Squad", async () => {

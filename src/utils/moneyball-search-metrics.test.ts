@@ -18,6 +18,7 @@ describe("Moneyball Search metrics", () => {
       "name",
       "age",
       "nationality",
+      "height",
       "club",
       "division",
       "parent_club",
@@ -25,6 +26,7 @@ describe("Moneyball Search metrics", () => {
       "value",
       "position",
     ]);
+    expect(getMoneyballSearchMetric("height")?.defaultWidth).toBe(88);
     expect(DEFAULT_MONEYBALL_TABLE_COLUMN_IDS).toEqual([
       "name",
       "age",
