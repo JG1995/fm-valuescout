@@ -8,6 +8,12 @@ import {
   type ConfigurableTableColumn,
   ConfigurableTableHeader,
 } from "@/components/player-table/player-table-header";
+import {
+  formatTableDynamicCell as dynamicCell,
+  TABLE_NUMERIC_CELL_CLASS as NUM_CELL,
+  TableScoreContent,
+  TABLE_TEXT_CELL_CLASS as TEXT_CELL,
+} from "@/components/player-table/table-cells";
 import type { TableGroupInput } from "@/components/player-table/table-groups";
 import { TableToolbar } from "@/components/player-table/table-toolbar";
 import {
@@ -16,7 +22,6 @@ import {
 } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
-import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import {
   isIdentityColumnId,
   usePlayerTableStore,
@@ -51,12 +56,8 @@ import { staffShortlistPresentation } from "../utils/staff-shortlist-presentatio
 import { MyStaffBoostOutcome, MyStaffCaBoost } from "./my-staff-ca-boost";
 import { StaffFilterBar } from "./staff-filter-bar";
 
-const TEXT_CELL =
-  "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
 const AGE_CELL =
   "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-body-sm";
-const NUM_CELL =
-  "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
 
 export type StaffWorkspaceScope = "search" | "my-staff";
 type StaffLayoutId = "staff-search" | "my-staff" | "staff-shortlist";
@@ -97,14 +98,6 @@ function nextSort(
     sortBy: clicked,
     sortDir: defaultDirForStaffSortField(clicked),
   } as const;
-}
-
-function dynamicCell(staff: StaffSummary | undefined, fieldId: string) {
-  if (!staff) {
-    return "…";
-  }
-  const value = staff.dynamicValues?.[fieldId];
-  return value === null || value === undefined ? "—" : String(value);
 }
 
 function basicCell(
@@ -433,19 +426,11 @@ function StaffSearchTable({
               const score = staff?.dynamicValues?.[column.id];
               return (
                 <td key={column.id} className={NUM_CELL}>
-                  {staff === undefined ||
-                  unresolvedDynamic ||
-                  score === null ||
-                  score === undefined ? (
-                    <span className="text-on-surface-variant">
-                      {staff === undefined || unresolvedDynamic ? "…" : "—"}
-                    </span>
-                  ) : (
-                    <ScoreBadge
-                      score={score}
-                      roleName={`${column.label} role score`}
-                    />
-                  )}
+                  <TableScoreContent
+                    score={score}
+                    roleName={`${column.label} role score`}
+                    isLoading={staff === undefined || unresolvedDynamic}
+                  />
                 </td>
               );
             }

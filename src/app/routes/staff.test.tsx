@@ -1547,16 +1547,44 @@ describe("staff route", () => {
       const baselineMissing = within(table).queryAllByText("—");
       expect(baselineMissing).not.toHaveLength(0);
 
+      // Drop one committed role column so the failed replacement below also
+      // covers an unresolved role field with a retained numeric score (72).
+      await user.click(screen.getByRole("button", { name: "Columns" }));
+      const dropDialog = screen.getByRole("dialog", { name: "Columns" });
+      await user.click(
+        within(dropDialog).getByRole("checkbox", {
+          name: "Coach — Goalkeeping",
+        }),
+      );
+      await user.keyboard("{Escape}");
+      await waitFor(() => {
+        expect(
+          within(table).queryByRole("columnheader", {
+            name: "Coach — Goalkeeping",
+          }),
+        ).toBeNull();
+      });
+
       setStaffSearchIpcMockMode("error");
       await user.click(screen.getByRole("button", { name: "Columns" }));
       const dialog = screen.getByRole("dialog", { name: "Columns" });
       await user.click(
         within(dialog).getByRole("checkbox", { name: "Authority" }),
       );
+      await user.click(
+        within(dialog).getByRole("checkbox", {
+          name: "Coach — Goalkeeping",
+        }),
+      );
       await user.keyboard("{Escape}");
 
       expect(
         within(table).getByRole("columnheader", { name: "Authority" }),
+      ).toBeInTheDocument();
+      expect(
+        within(table).getByRole("columnheader", {
+          name: "Coach — Goalkeeping",
+        }),
       ).toBeInTheDocument();
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent("Could not load staff columns.");
@@ -1565,11 +1593,18 @@ describe("staff route", () => {
       ).toBeInTheDocument();
       // Committed rows stay mounted with loading placeholders, never new
       // truthful-missing markers for values the failed query never fetched.
-      expect(within(table).getAllByText("…")).toHaveLength(2);
+      expect(within(table).getAllByText("…")).toHaveLength(4);
       expect(within(table).queryAllByText("—")).toHaveLength(
         baselineMissing.length,
       );
       expect(within(table).getByText("Alex Coach")).toBeInTheDocument();
+      // The unresolved role field hides its retained numeric score instead
+      // of showing a stale ScoreBadge while the replacement is unresolved.
+      expect(
+        within(table).queryAllByRole("img", {
+          name: "Coach — Goalkeeping role score: 72, Good",
+        }),
+      ).toHaveLength(0);
 
       setStaffSearchIpcMockMode("success");
       await user.click(within(alert).getByRole("button", { name: "Retry" }));
@@ -1577,6 +1612,11 @@ describe("staff route", () => {
         expect(screen.queryByRole("alert")).toBeNull();
       });
       expect(within(table).getAllByText("15")).not.toHaveLength(0);
+      expect(
+        within(table).getAllByRole("img", {
+          name: "Coach — Goalkeeping role score: 72, Good",
+        }),
+      ).toHaveLength(2);
     });
   });
 });

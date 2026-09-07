@@ -8,6 +8,13 @@ import {
   type PlayerTableColumn,
   PlayerTableHeader,
 } from "@/components/player-table/player-table-header";
+import {
+  formatTableDynamicCell as formatDynamicCell,
+  formatPlayerBasicCell,
+  TABLE_NUMERIC_CELL_CLASS as NUM_CELL,
+  TableScoreContent,
+  TABLE_TEXT_CELL_CLASS as TEXT_CELL,
+} from "@/components/player-table/table-cells";
 import type { TableGroupInput } from "@/components/player-table/table-groups";
 import {
   type ConfigurableTableIdentity,
@@ -20,12 +27,7 @@ import {
   isIdentityColumnId,
   usePlayerTableStore,
 } from "@/stores/use-player-table-store";
-import {
-  formatCount,
-  formatMissable,
-  formatMoney,
-  formatPlayerDob,
-} from "@/utils/format";
+import { formatCount } from "@/utils/format";
 import {
   formatMoneyballMetric,
   getMoneyballSearchMetric,
@@ -60,11 +62,6 @@ import { defaultSearchSort } from "../types/search-view";
 import { completeFilterRules } from "../utils/filter-registry";
 import { buildTacticColumnOrder } from "../utils/tactic-columns";
 import { SearchFilterBar } from "./search-filter-bar";
-
-const TEXT_CELL =
-  "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
-const NUM_CELL =
-  "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
 
 type TableColumn = PlayerTableColumn;
 
@@ -109,75 +106,6 @@ function nextSort(
     };
   }
   return { sortBy: clicked, sortDir: defaultDirForSortField(clicked) };
-}
-
-function formatDynamicCell(
-  player: PlayerSummary | undefined,
-  fieldId: string,
-): string {
-  if (!player) {
-    return "…";
-  }
-  const value = player.dynamicValues?.[fieldId];
-  if (value === undefined || value === null) {
-    return "—";
-  }
-  return String(value);
-}
-
-function basicCell(
-  player: PlayerSummary | undefined,
-  key: (typeof BASIC_SEARCH_SORT_FIELDS)[number],
-): { text: string; title?: string; numeric: boolean } {
-  if (!player) {
-    return { text: "…", numeric: key !== "name" && key !== "age" };
-  }
-  switch (key) {
-    case "name":
-      return { text: player.name, title: player.name, numeric: false };
-    case "age": {
-      const dob = formatPlayerDob(
-        player.birthYear,
-        player.birthDayOfYear,
-        player.age,
-      );
-      return { text: dob, title: dob, numeric: false };
-    }
-    case "nationality": {
-      const nationalities = String(
-        formatMissable(player.nationalities.join(", ")),
-      );
-      return { text: nationalities, title: nationalities, numeric: false };
-    }
-    case "club": {
-      const club = String(formatMissable(player.club));
-      return {
-        text: club,
-        title: club !== "—" ? club : undefined,
-        numeric: false,
-      };
-    }
-    case "division": {
-      const division = String(formatMissable(player.division));
-      return {
-        text: division,
-        title: division !== "—" ? division : undefined,
-        numeric: false,
-      };
-    }
-    case "ca":
-      return { text: String(player.ca), numeric: true };
-    case "pa":
-      return { text: String(player.pa), numeric: true };
-    case "value":
-      return {
-        text:
-          player.marketValueGbp === null
-            ? "—"
-            : formatMoney(player.marketValueGbp),
-        numeric: true,
-      };
-  }
 }
 
 function tableColumnForMetric(
@@ -447,13 +375,11 @@ function SearchResultsVirtualTable({
             const roleName = column.accessibleLabel ?? column.label;
             return (
               <td key={column.id} className={NUM_CELL}>
-                {typeof score === "number" ? (
-                  <ScoreBadge score={score} roleName={roleName} />
-                ) : (
-                  <span className="text-on-surface-variant">
-                    {player === undefined ? "…" : "—"}
-                  </span>
-                )}
+                <TableScoreContent
+                  score={score}
+                  roleName={roleName}
+                  isLoading={player === undefined}
+                />
               </td>
             );
           }
@@ -497,16 +423,11 @@ function SearchResultsVirtualTable({
             const score = player?.dynamicValues?.[column.id];
             return (
               <td key={column.id} className={NUM_CELL}>
-                {typeof score === "number" ? (
-                  <ScoreBadge
-                    score={score}
-                    roleName={`Moneyball role · ${column.label}`}
-                  />
-                ) : (
-                  <span className="text-on-surface-variant">
-                    {player === undefined ? "…" : "—"}
-                  </span>
-                )}
+                <TableScoreContent
+                  score={score}
+                  roleName={`Moneyball role · ${column.label}`}
+                  isLoading={player === undefined}
+                />
               </td>
             );
           }
@@ -519,13 +440,11 @@ function SearchResultsVirtualTable({
               const score = player?.dynamicValues?.[column.id];
               return (
                 <td key={column.id} className={NUM_CELL}>
-                  {typeof score === "number" ? (
-                    <ScoreBadge score={score} roleName={column.label} />
-                  ) : (
-                    <span className="text-on-surface-variant">
-                      {player === undefined ? "…" : "—"}
-                    </span>
-                  )}
+                  <TableScoreContent
+                    score={score}
+                    roleName={column.label}
+                    isLoading={player === undefined}
+                  />
                 </td>
               );
             }
@@ -554,7 +473,7 @@ function SearchResultsVirtualTable({
               </td>
             );
           }
-          const cell = basicCell(
+          const cell = formatPlayerBasicCell(
             player,
             column.id as (typeof BASIC_SEARCH_SORT_FIELDS)[number],
           );

@@ -15,6 +15,13 @@ import {
   type PlayerTableColumn,
   PlayerTableHeader,
 } from "@/components/player-table/player-table-header";
+import {
+  formatTableDynamicCell as formatDynamicCell,
+  formatPlayerBasicCell,
+  TABLE_NUMERIC_CELL_CLASS as NUM_CELL,
+  TableScoreContent,
+  TABLE_TEXT_CELL_CLASS as TEXT_CELL,
+} from "@/components/player-table/table-cells";
 import type { TableGroupInput } from "@/components/player-table/table-groups";
 import { TableToolbar } from "@/components/player-table/table-toolbar";
 import {
@@ -23,17 +30,11 @@ import {
 } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
-import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import {
   isIdentityColumnId,
   usePlayerTableStore,
 } from "@/stores/use-player-table-store";
-import {
-  formatCount,
-  formatMissable,
-  formatMoney,
-  formatPlayerDob,
-} from "@/utils/format";
+import { formatCount } from "@/utils/format";
 import { getPlayerMetric } from "@/utils/player-metrics";
 import { SUGGESTED_TRAINING_COLUMN_ID } from "@/utils/suggested-training";
 import type { SquadPlayerPageContext } from "../api/squad-keys";
@@ -51,11 +52,6 @@ import {
   getSquadTableMetric,
   SQUAD_HEADER_METRICS,
 } from "../utils/squad-columns";
-
-const TEXT_CELL =
-  "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
-const NUM_CELL =
-  "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
 
 type BasicSquadSortField = (typeof SQUAD_SORT_FIELDS)[number];
 type TableColumn = PlayerTableColumn;
@@ -103,61 +99,6 @@ function nextSort(
   };
 }
 
-function basicCell(
-  player: SquadPlayer | undefined,
-  key: BasicSquadSortField,
-): { text: string; title?: string; numeric: boolean } {
-  if (!player) {
-    return { text: "…", numeric: key !== "name" && key !== "age" };
-  }
-  switch (key) {
-    case "name":
-      return { text: player.name, title: player.name, numeric: false };
-    case "age": {
-      const dob = formatPlayerDob(
-        player.birthYear,
-        player.birthDayOfYear,
-        player.age,
-      );
-      return { text: dob, title: dob, numeric: false };
-    }
-    case "nationality": {
-      const nationalities = String(
-        formatMissable(player.nationalities.join(", ")),
-      );
-      return { text: nationalities, title: nationalities, numeric: false };
-    }
-    case "club": {
-      const club = String(formatMissable(player.club));
-      return {
-        text: club,
-        title: club !== "—" ? club : undefined,
-        numeric: false,
-      };
-    }
-    case "division": {
-      const division = String(formatMissable(player.division));
-      return {
-        text: division,
-        title: division !== "—" ? division : undefined,
-        numeric: false,
-      };
-    }
-    case "ca":
-      return { text: String(player.ca), numeric: true };
-    case "pa":
-      return { text: String(player.pa), numeric: true };
-    case "value":
-      return {
-        text:
-          player.marketValueGbp === null
-            ? "—"
-            : formatMoney(player.marketValueGbp),
-        numeric: true,
-      };
-  }
-}
-
 function tableColumnForMetric(
   metricId: string,
   width: number | undefined,
@@ -172,20 +113,6 @@ function tableColumnForMetric(
     align: metric.align,
     width: width ?? metric.defaultWidth,
   };
-}
-
-function formatDynamicCell(
-  player: SquadPlayer | undefined,
-  fieldId: string,
-): string {
-  if (!player) {
-    return "…";
-  }
-  const value = player.dynamicValues?.[fieldId];
-  if (value === undefined || value === null) {
-    return "—";
-  }
-  return String(value);
 }
 
 export const SQUAD_CONFIGURABLE_METRICS = SQUAD_HEADER_METRICS.filter(
@@ -372,13 +299,11 @@ function SquadOverviewTable({
               const score = player?.dynamicValues?.[column.id];
               return (
                 <td key={column.id} className={NUM_CELL}>
-                  {typeof score === "number" ? (
-                    <ScoreBadge score={score} roleName={column.label} />
-                  ) : (
-                    <span className="text-on-surface-variant">
-                      {player === undefined ? "…" : "—"}
-                    </span>
-                  )}
+                  <TableScoreContent
+                    score={score}
+                    roleName={column.label}
+                    isLoading={player === undefined}
+                  />
                 </td>
               );
             }
@@ -407,7 +332,10 @@ function SquadOverviewTable({
               </td>
             );
           }
-          const cell = basicCell(player, column.id as BasicSquadSortField);
+          const cell = formatPlayerBasicCell(
+            player,
+            column.id as BasicSquadSortField,
+          );
           return (
             <td
               key={column.id}
