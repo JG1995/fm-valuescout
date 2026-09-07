@@ -27,12 +27,7 @@ import {
   usePlayerTableStore,
   withoutIdentityColumnIds,
 } from "@/stores/use-player-table-store";
-import {
-  formatCount,
-  formatMissable,
-  formatMoney,
-  formatPlayerDob,
-} from "@/utils/format";
+import { formatCount, formatMissable, formatMoney } from "@/utils/format";
 import { boostMyStaffCurrentAbility } from "../api/boost-my-staff-current-ability";
 import { staffKeys } from "../api/staff-keys";
 import {
@@ -116,10 +111,7 @@ function basicCell(
       return { text, title: text !== "—" ? text : undefined, numeric: false };
     }
     case "age": {
-      const text =
-        staff.birthYear !== null && staff.birthDayOfYear !== null
-          ? formatPlayerDob(staff.birthYear, staff.birthDayOfYear, staff.age)
-          : String(formatMissable(staff.age));
+      const text = String(formatMissable(staff.age));
       return { text, title: text !== "—" ? text : undefined, numeric: false };
     }
     case "birth_year":

@@ -148,12 +148,7 @@ export function tableColumnForMetric(
   }
   return {
     id: metric.id,
-    label:
-      metric.id === "age"
-        ? "Age / DOB"
-        : metric.id === "nationality"
-          ? "Nat."
-          : metric.label,
+    label: metric.id === "nationality" ? "Nat." : metric.label,
     accessibleLabel: metric.id === "nationality" ? "Nationality" : undefined,
     align: metric.align,
     width: width ?? metric.defaultWidth,
@@ -777,9 +772,7 @@ export function SearchResultsPanel({
       : getPlayerMetric(committed.sortBy);
   const sortColumn = columns.find((column) => column.id === committed.sortBy);
   const sortLabel = sortMetric
-    ? sortMetric.id === "age"
-      ? "Age / DOB"
-      : sortMetric.label
+    ? sortMetric.label
     : (sortColumn?.accessibleLabel ?? sortColumn?.label ?? committed.sortBy);
   if (page.total === 0) {
     const appliedFilters = completeFilterRules(filters, view);

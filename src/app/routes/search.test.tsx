@@ -1367,7 +1367,7 @@ describe("search route", () => {
     });
 
     fireEvent.contextMenu(
-      within(table).getByRole("columnheader", { name: "Age / DOB" }),
+      within(table).getByRole("columnheader", { name: "Age" }),
     );
     expect(screen.getByRole("menuitem", { name: "Move left" })).toBeDisabled();
     fireEvent.contextMenu(

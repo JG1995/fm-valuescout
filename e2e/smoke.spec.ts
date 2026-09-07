@@ -1668,7 +1668,7 @@ test.describe("application smoke", () => {
           ),
       )
       .toEqual([
-        "Age / DOB",
+        "Age",
         "Nationality",
         "CA",
         "PA",
@@ -1696,7 +1696,7 @@ test.describe("application smoke", () => {
           ),
       )
       .toEqual([
-        "Age / DOB",
+        "Age",
         "Nationality",
         "CA",
         "PA",

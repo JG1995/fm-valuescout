@@ -95,7 +95,7 @@ const roleMetric = (role: (typeof MONEYBALL_ROLE_CATALOG)[number]) => ({
 
 export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
   basic("name", "Name", "string"),
-  basic("age", "Age / DOB", "integer"),
+  basic("age", "Age", "integer"),
   basic("nationality", "Nationality", "string"),
   basic("club", "Club", "string"),
   basic("division", "Division", "string"),

@@ -1104,7 +1104,7 @@ describe("My Club route", () => {
     });
     for (const column of [
       "Player",
-      "Age / DOB",
+      "Age",
       "Nationality",
       "CA",
       "PA",

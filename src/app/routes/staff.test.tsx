@@ -240,14 +240,14 @@ describe("staff route", () => {
     ).toHaveAttribute("aria-sort", "ascending");
   });
 
-  it("does not truncate a staff member's Age / DOB cell", async () => {
+  it("does not truncate a staff member's Age cell", async () => {
     await resolveLoadDataIpcMock();
     renderStaffRoute();
 
     const table = await screen.findByRole("table", {
       name: "Staff search results",
     });
-    const cell = within(table).getAllByTitle(/\(44\)$/)[0];
+    const cell = within(table).getAllByTitle("44")[0];
     expect(cell).toHaveClass("whitespace-nowrap");
     expect(cell).not.toHaveClass("truncate");
   });
