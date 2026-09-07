@@ -16,7 +16,14 @@ export {
   VISIBLE_ATTRIBUTE_GROUPS,
 };
 
-export const OUTFIELD_ATTRIBUTE_GROUPS = VISIBLE_ATTRIBUTE_GROUPS.slice(0, 3);
+export const OUTFIELD_ATTRIBUTE_GROUPS = VISIBLE_ATTRIBUTE_GROUPS.slice(
+  0,
+  3,
+).map((group) => ({
+  ...group,
+  subgroups:
+    group.id === "physical" ? VISIBLE_ATTRIBUTE_GROUPS[0].subgroups : undefined,
+}));
 export const GOALKEEPING_ATTRIBUTE_GROUP = VISIBLE_ATTRIBUTE_GROUPS[3];
 
 const GOALKEEPER_BALL_PLAYING_ATTRIBUTE_KEYS: readonly string[] = [
@@ -26,7 +33,7 @@ const GOALKEEPER_BALL_PLAYING_ATTRIBUTE_KEYS: readonly string[] = [
 ] as const;
 
 export const GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS =
-  OUTFIELD_ATTRIBUTE_GROUPS.slice(0, 1).map((group) => ({
+  VISIBLE_ATTRIBUTE_GROUPS.slice(0, 1).map((group) => ({
     ...group,
     keys: group.keys.filter(
       (key) => !GOALKEEPER_BALL_PLAYING_ATTRIBUTE_KEYS.includes(key),
@@ -55,8 +62,8 @@ const GOALKEEPER_PRIMARY_ATTRIBUTE_GROUP: AttributeGroup = {
 
 export const GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS = [
   GOALKEEPER_PRIMARY_ATTRIBUTE_GROUP,
-  OUTFIELD_ATTRIBUTE_GROUPS[1],
-  OUTFIELD_ATTRIBUTE_GROUPS[2],
+  VISIBLE_ATTRIBUTE_GROUPS[1],
+  VISIBLE_ATTRIBUTE_GROUPS[2],
 ] as const;
 
 export type AttributeRow = {

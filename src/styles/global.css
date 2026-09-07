@@ -123,6 +123,9 @@
   --text-label-sm--line-height: 1.2;
   --text-label-sm--font-weight: 600;
   --text-label-sm--letter-spacing: 0.08em;
+  --text-mono-xl: 36px;
+  --text-mono-xl--line-height: 1.2;
+  --text-mono-xl--font-weight: 600;
   --text-mono-lg: 24px;
   --text-mono-lg--line-height: 1.2;
   --text-mono-lg--font-weight: 600;
