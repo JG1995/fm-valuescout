@@ -183,7 +183,8 @@ function ProfileFallback() {
 function profileWorkspaceClassName() {
   return cn(
     "grid min-h-0 gap-gutter [&>*]:min-h-0 lg:h-0 lg:flex-1",
-    "grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]",
+    "grid-rows-[repeat(2,minmax(0,1fr))] 2xl:grid-rows-[minmax(0,1fr)]",
+    "2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]",
   );
 }
 
