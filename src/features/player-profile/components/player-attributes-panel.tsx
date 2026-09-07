@@ -123,7 +123,7 @@ export function PlayerAttributesPanel({
           {currentOnly ? "Current only" : "Current → Potential"}
         </span>
       }
-      className="flex min-h-0 flex-col [&>div:last-child]:min-h-0 [&>div:last-child]:flex-1"
+      className="flex min-h-0 w-full flex-col [&>div:last-child]:min-h-0 [&>div:last-child]:flex-1"
     >
       <div className="flex h-full min-h-0 flex-col gap-4">
         <div className="overflow-x-auto pb-0.5">

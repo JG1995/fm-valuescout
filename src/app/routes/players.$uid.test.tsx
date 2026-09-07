@@ -1402,6 +1402,74 @@ describe("player profile route", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("gives Attributes full-width geometry and one local scroll surface", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    const user = userEvent.setup();
+    const { router } = renderProfileRoute("/players/42?section=attributes");
+
+    const analysisPanel = await screen.findByRole("tabpanel", {
+      name: "Attributes",
+    });
+    expect(analysisPanel).toHaveClass(
+      "min-h-0",
+      "min-w-0",
+      "w-full",
+      "flex-1",
+      "lg:h-0",
+    );
+
+    const attributesHeading = within(analysisPanel).getByRole("heading", {
+      name: "Attributes",
+    });
+    const attributes = attributesHeading.closest("section");
+    if (!attributes) {
+      throw new Error("Expected the Attributes panel section");
+    }
+    expect(attributes).toHaveClass("w-full");
+    expect(
+      within(analysisPanel).queryByRole("heading", { name: "Role fit" }),
+    ).not.toBeInTheDocument();
+
+    const scrollContainers = attributes.querySelectorAll(".overflow-y-auto");
+    expect(scrollContainers).toHaveLength(1);
+    expect(scrollContainers[0]).toHaveClass(
+      "min-h-0",
+      "flex-1",
+      "overflow-y-auto",
+    );
+
+    const localTabs = within(attributes).getByRole("tablist", {
+      name: "Attribute groups",
+    });
+    expect(
+      within(analysisPanel).queryByRole("tablist", {
+        name: "Player analysis view",
+      }),
+    ).not.toBeInTheDocument();
+
+    const outfield = within(localTabs).getByRole("tab", {
+      name: "Outfield",
+      selected: true,
+    });
+    outfield.focus();
+    await user.keyboard("{ArrowRight}");
+
+    expect(
+      within(localTabs).getByRole("tab", {
+        name: "Goalkeeping",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
+    expect(router.state.location.search).toMatchObject({
+      section: "attributes",
+      tab: "goalkeeping",
+    });
+    expect(
+      screen.getByRole("tab", { name: "Attributes", selected: true }),
+    ).toBeInTheDocument();
+  });
+
   it("omits SW and de-emphasizes tier-one familiarity without lowering playable thresholds", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(

@@ -306,7 +306,11 @@ function GeneralPlayerProfile({
         role="tabpanel"
         aria-labelledby={`player-analysis-tab-${section}`}
         className={
-          showAttributes && showRoles ? profileWorkspaceClassName() : undefined
+          showAttributes && showRoles
+            ? profileWorkspaceClassName()
+            : section === "attributes"
+              ? "grid min-h-0 min-w-0 w-full flex-1 grid-rows-[minmax(0,1fr)] lg:h-0 lg:grid-cols-1"
+              : undefined
         }
       >
         {showAttributes ? (
