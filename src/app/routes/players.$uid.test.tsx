@@ -1665,27 +1665,27 @@ describe("player profile route", () => {
       within(summary).getByLabelText("Current OOP: 79, Good"),
     ).toBeInTheDocument();
     expect(
-      within(summary).getByLabelText("Potential IP: 94, Excellent"),
+      within(summary).getByLabelText("Potential IP: 88, Excellent"),
     ).toBeInTheDocument();
     expect(
-      within(summary).getByLabelText("Potential OOP: 93, Excellent"),
+      within(summary).getByLabelText("Potential OOP: 90, Excellent"),
     ).toBeInTheDocument();
     expect(within(summary).getByText("Current IP")).toBeInTheDocument();
     expect(within(summary).getByText("Current OOP")).toBeInTheDocument();
     expect(within(summary).getByText("Potential IP")).toBeInTheDocument();
     expect(within(summary).getByText("Potential OOP")).toBeInTheDocument();
+    expect(within(summary).getAllByText("Current IP Specialist")).toHaveLength(
+      2,
+    );
+    expect(within(summary).getAllByText("Current OOP Specialist")).toHaveLength(
+      2,
+    );
     expect(
-      within(summary).getByText("Current IP Specialist"),
-    ).toBeInTheDocument();
+      within(summary).queryByText("Potential IP Specialist"),
+    ).not.toBeInTheDocument();
     expect(
-      within(summary).getByText("Current OOP Specialist"),
-    ).toBeInTheDocument();
-    expect(
-      within(summary).getByText("Potential IP Specialist"),
-    ).toBeInTheDocument();
-    expect(
-      within(summary).getByText("Potential OOP Specialist"),
-    ).toBeInTheDocument();
+      within(summary).queryByText("Potential OOP Specialist"),
+    ).not.toBeInTheDocument();
     expect(
       within(summary).queryByText("Current IP Tie"),
     ).not.toBeInTheDocument();

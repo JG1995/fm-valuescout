@@ -5,7 +5,7 @@ import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { formatMissable } from "@/utils/format";
 import type { PlayerDetail } from "../types/player-detail";
 import {
-  bestPotentialRoleScore,
+  bestCurrentRolePair,
   bestRoleScore,
   type PositionRoleScore,
   rolesForPhase,
@@ -79,9 +79,6 @@ export function PlayerOverviewPanel({
     showMoneyballAnalysis ? (roleScores ?? []) : player.roleScores,
     player.positions,
   );
-  const generalRoles = showGeneralAnalysis
-    ? rolesForPlayablePositions(player.roleScores, player.positions)
-    : [];
   const inPossessionRoles = rolesForPhase(analysisRoles, "in_possession");
   const outOfPossessionRoles = rolesForPhase(
     analysisRoles,
@@ -89,16 +86,15 @@ export function PlayerOverviewPanel({
   );
   const currentIpRole = bestRoleScore(inPossessionRoles);
   const currentOopRole = bestRoleScore(outOfPossessionRoles);
-  const generalInPossessionRoles = rolesForPhase(generalRoles, "in_possession");
-  const generalOutOfPossessionRoles = rolesForPhase(
-    generalRoles,
-    "out_of_possession",
-  );
   const potentialIpRole = player.hiddenInformationRevealed
-    ? bestPotentialRoleScore(generalInPossessionRoles)
+    ? bestCurrentRolePair(player.roleScores, player.positions, "in_possession")
     : null;
   const potentialOopRole = player.hiddenInformationRevealed
-    ? bestPotentialRoleScore(generalOutOfPossessionRoles)
+    ? bestCurrentRolePair(
+        player.roleScores,
+        player.positions,
+        "out_of_possession",
+      )
     : null;
   const VisibilityIcon = player.hiddenInformationRevealed ? EyeOff : Eye;
 
