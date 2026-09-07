@@ -167,7 +167,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/130
 
 **Merge ref:** Not merged
 
