@@ -373,7 +373,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 4 — Extract existing analysis navigation
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(profile): isolate analysis navigation state`
 
@@ -428,7 +428,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 5 — Introduce four-section vertical slice with legacy URL compatibility
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): add profile workspace sections`
 
@@ -1417,19 +1417,19 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 **PR:** PR 1 — Player profile workspace redesign
 
-**Commit:** Extract existing analysis navigation
+**Commit:** Introduce four-section vertical slice with legacy URL compatibility
 
 ### RED or removal proof
 
-Behavior-preserving refactor: existing General/Moneyball click, arrow-key, delayed focus-restoration, explicit-view precedence, and unknown-view normalization tests must stay green unchanged while navigation state and UI move into one feature owner.
+New resolver tests must fail before `section=overview|attributes|role-fit|moneyball` parsing and canonical/legacy/default precedence exist. Route tests must fail to find the four-section tablist and required section rendering before the navigation and composition change.
 
 ### Expected outcome
 
-`player-profile-navigation.tsx` owns the existing two-tab General/Moneyball UI, keyboard handling, and focus restoration with identical IDs, roles, labels, `replace` navigation, and tab preservation; the route only parses, wires, and composes it.
+One canonical section resolver, one keyboard-operable four-section navigation owner, and route composition preserve legacy `view`/`tab` URLs, saved defaults, current-player retention, Back/Forward behavior, and exact Moneyball prefetching while reusing existing panels unchanged.
 
 ### Explicit exclusions
 
-The four-section model, visible labels or IDs, ARIA changes, navigation-history changes, and visual changes.
+Panel redesign, identity-rail work, scoring changes, concealment changes, mutation changes, Search route changes, navigation-mode changes, and new query parameters.
 
 ## Discoveries and replanning
 
@@ -1443,7 +1443,8 @@ The planning-artifact checkpoint review found stale prose that still described r
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Player profile workspace redesign | Commit 1 — Record the approved feature plan | 74e6797d2ea9a7592464881f8a05f3ef7d4c7266 | Recorded the reviewed schema 2 ledger, JAY-62 TODO activation, and approved directional mockup on the authorized feature branch. | `ledger_state.py` and `delivery_state.py` reported runnable; `git diff --check` and `git diff --cached --check` passed; the mockup SHA-256 matched the approved artifact; the pre-commit gate passed. | Not applicable | Clear | 1 | Checkpoint review corrected stale review-status prose; a fresh plan review and developer acceptance authorized replacement fingerprint `c1c4f5ba874753a4a5ffa0c28b59be58601aba5ec11740ec8ef4d1701d8eea0a`. |
 | PR 1 — Player profile workspace redesign | Commit 2 — Remove duplicate profile queries | 7114fe414d2af575ed010d7240a1d8dcddae17d7 | Centralized the snapshot and player Query subscriptions in `PlayerProfileContent` and passed non-null resolved data into the existing General composition without changing rendering or prefetch behavior. | Focused Player Profile route tests passed 54/54; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
-| PR 1 — Player profile workspace redesign | Commit 3 — Centralize profile mutations | Pending record | Hoisted hidden-information and boost mutation ownership into `PlayerProfileContent`, passed effective state and callbacks into the presenter, and restored the prior feedback lifetime when leaving General. | The feedback round-trip proof failed before correction and passed after it; focused Player Profile route tests passed 55/55; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found route-owned mutation feedback resurfaced after a General → Moneyball → General round trip; correction resets both observers when General is left and adds direct regression proof. |
+| PR 1 — Player profile workspace redesign | Commit 3 — Centralize profile mutations | 2ceda2b304269e71ddf27716900337cc5d350d7d | Hoisted hidden-information and boost mutation ownership into `PlayerProfileContent`, passed effective state and callbacks into the presenter, and restored the prior feedback lifetime when leaving General. | The feedback round-trip proof failed before correction and passed after it; focused Player Profile route tests passed 55/55; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found route-owned mutation feedback resurfaced after a General → Moneyball → General round trip; correction resets both observers when General is left and adds direct regression proof. |
+| PR 1 — Player profile workspace redesign | Commit 4 — Extract existing analysis navigation | Pending record | Moved the existing General/Moneyball parser and keyboard-operable tablist with delayed focus restoration into the Player Profile feature module while leaving route URL wiring and rendering behavior unchanged. | Focused Player Profile route tests passed 55/55 unchanged; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
 
 ## Final validation
 

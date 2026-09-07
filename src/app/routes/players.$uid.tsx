@@ -5,13 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DatabaseZap, UserX } from "lucide-react";
-import {
-  type KeyboardEvent,
-  type ReactNode,
-  Suspense,
-  useEffect,
-  useState,
-} from "react";
+import { type ReactNode, Suspense, useEffect, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { academyKeys } from "@/features/academy/api/academy-keys";
@@ -27,6 +21,11 @@ import { setHiddenInformationRevealed } from "@/features/player-profile/api/set-
 import { PlayerAttributesPanel } from "@/features/player-profile/components/player-attributes-panel";
 import { PlayerDevelopmentActions } from "@/features/player-profile/components/player-development-boosts-panel";
 import { PlayerOverviewPanel } from "@/features/player-profile/components/player-overview-panel";
+import {
+  PlayerAnalysisTabs,
+  type PlayerProfileView,
+  parsePlayerProfileView,
+} from "@/features/player-profile/components/player-profile-navigation";
 import { PlayerRolesPanel } from "@/features/player-profile/components/player-roles-panel";
 import type { PlayerBoostResult } from "@/features/player-profile/types/player-boost";
 import type { PlayerDetail } from "@/features/player-profile/types/player-detail";
@@ -49,10 +48,6 @@ export type PlayerProfileSearch = {
   view?: PlayerProfileView;
 };
 
-type PlayerProfileView = "general" | "moneyball";
-
-const PLAYER_PROFILE_VIEWS = ["general", "moneyball"] as const;
-
 type PlayerBoostAction = "currentAbility" | "wonderkidMentality";
 
 type PlayerBoostMutation = {
@@ -70,11 +65,6 @@ type PlayerHiddenInformationMutation = {
 function parseUid(raw: string): number | null {
   const uid = Number(raw);
   return Number.isInteger(uid) ? uid : null;
-}
-
-function parsePlayerProfileView(value: unknown): PlayerProfileView | undefined {
-  if (value === "moneyball" || value === "general") return value;
-  return undefined;
 }
 
 export const Route = createFileRoute("/players/$uid")({
@@ -189,77 +179,6 @@ function PlayerNotFound() {
         Search or load a fresher snapshot.
       </EmptyState>
     </Panel>
-  );
-}
-
-function PlayerAnalysisTabs({
-  view,
-  onViewChange,
-  restoreFocus,
-  onFocusRestored,
-}: {
-  view: PlayerProfileView;
-  onViewChange: (view: PlayerProfileView, restoreFocus?: boolean) => void;
-  restoreFocus: boolean;
-  onFocusRestored: () => void;
-}) {
-  useEffect(() => {
-    if (!restoreFocus) return;
-    document.getElementById(`player-analysis-tab-${view}`)?.focus();
-    onFocusRestored();
-  }, [onFocusRestored, restoreFocus, view]);
-
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const index = PLAYER_PROFILE_VIEWS.indexOf(view);
-    let nextIndex = index;
-    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-      nextIndex = (index + 1) % PLAYER_PROFILE_VIEWS.length;
-    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-      nextIndex =
-        (index - 1 + PLAYER_PROFILE_VIEWS.length) % PLAYER_PROFILE_VIEWS.length;
-    } else if (event.key === "Home") {
-      nextIndex = 0;
-    } else if (event.key === "End") {
-      nextIndex = PLAYER_PROFILE_VIEWS.length - 1;
-    } else {
-      return;
-    }
-
-    event.preventDefault();
-    const next = PLAYER_PROFILE_VIEWS[nextIndex];
-    onViewChange(next, true);
-  };
-
-  return (
-    <div
-      role="tablist"
-      aria-label="Player analysis view"
-      className="inline-flex rounded-full bg-surface-container-high p-0.5"
-      onKeyDown={onKeyDown}
-    >
-      {PLAYER_PROFILE_VIEWS.map((candidate) => {
-        const selected = candidate === view;
-        return (
-          <button
-            key={candidate}
-            id={`player-analysis-tab-${candidate}`}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            aria-controls="player-analysis-panel"
-            tabIndex={selected ? 0 : -1}
-            className={
-              selected
-                ? "cursor-pointer rounded-full bg-primary px-3 py-1.5 text-label-md text-on-primary"
-                : "cursor-pointer rounded-full px-3 py-1.5 text-label-md text-on-surface-variant hover:text-on-surface"
-            }
-            onClick={() => onViewChange(candidate, true)}
-          >
-            {candidate === "general" ? "General" : "Moneyball"}
-          </button>
-        );
-      })}
-    </div>
   );
 }
 
