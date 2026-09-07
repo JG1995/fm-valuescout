@@ -223,13 +223,9 @@ export function PlayerRolesPanel({
                         </p>
                       </td>
                       <td className="pr-2 align-middle">
-                        <span
-                          role="img"
-                          aria-label={fullPhaseLabel}
-                          title={fullPhaseLabel}
-                          className="inline-flex shrink-0 items-center rounded-full border border-outline-variant bg-surface-container-high px-1.5 py-0.5 text-label-sm text-on-surface-variant"
-                        >
-                          {phaseLabel}
+                        <span className="inline-flex shrink-0 items-center rounded-full border border-outline-variant bg-surface-container-high px-1.5 py-0.5 text-label-sm text-on-surface-variant">
+                          <span aria-hidden="true">{phaseLabel}</span>
+                          <span className="sr-only">{fullPhaseLabel}</span>
                         </span>
                       </td>
                       <td className="align-middle text-right tabular-nums">

@@ -585,6 +585,14 @@ describe("player profile route", () => {
         selected: true,
       }),
     ).toBeInTheDocument();
+    expect(
+      within(generalSummary).queryByTestId("player-profile-summary-details"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(generalSummary).queryByTestId(
+        "player-profile-summary-analysis-details",
+      ),
+    ).not.toBeInTheDocument();
     await user.keyboard("{ArrowRight}");
 
     expect(
@@ -593,6 +601,9 @@ describe("player profile route", () => {
         selected: true,
       }),
     ).toBeInTheDocument();
+    expect(
+      within(generalSummary).queryByTestId("player-profile-summary-details"),
+    ).not.toBeInTheDocument();
     await user.keyboard("{ArrowRight}");
 
     const moneyball = await screen.findByRole("tab", {
@@ -1214,6 +1225,14 @@ describe("player profile route", () => {
       name: "Modify Player",
     });
     expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    const controlledPanelId = disclosure.getAttribute("aria-controls");
+    expect(controlledPanelId).toBeTruthy();
+    const controlledPanel = document.getElementById(controlledPanelId ?? "");
+    expect(controlledPanel).toBeInTheDocument();
+    expect(controlledPanel).toHaveAttribute("hidden");
+    expect(controlledPanel).toHaveAttribute("aria-hidden", "true");
+    expect(controlledPanel).not.toBeVisible();
+    expect(controlledPanel?.querySelector("button")).toBeInTheDocument();
     expect(
       within(actionSlot).queryByRole("button", { name: "Boost CA" }),
     ).not.toBeInTheDocument();
@@ -2146,12 +2165,24 @@ describe("player profile route", () => {
       const [roleCell, phaseCell, currentCell, potentialCell] =
         within(row).getAllByRole("cell");
       const expectedPhase = index % 2 === 0 ? "IP" : "OOP";
-      const phaseChip = within(phaseCell).getByRole("img");
+      const expectedFullPhase =
+        expectedPhase === "IP" ? "In possession" : "Out of possession";
+      const phaseAbbreviation = within(phaseCell).getByText(expectedPhase, {
+        exact: true,
+      });
+      const phaseChip = phaseAbbreviation.parentElement;
       expect(within(roleCell).queryByRole("img")).not.toBeInTheDocument();
+      expect(phaseChip).toBeInTheDocument();
+      expect(phaseChip).not.toHaveAttribute("role");
+      expect(phaseAbbreviation).toHaveAttribute("aria-hidden", "true");
+      expect(
+        within(phaseChip as HTMLElement).getByText(expectedFullPhase, {
+          exact: true,
+        }),
+      ).toHaveClass("sr-only");
+      expect(phaseChip).toHaveAccessibleName(expectedFullPhase);
       expect(phaseChip).toHaveTextContent(expectedPhase);
-      expect(phaseChip).toHaveAccessibleName(
-        expectedPhase === "IP" ? "In possession" : "Out of possession",
-      );
+      expect(phaseChip).toHaveTextContent(expectedFullPhase);
       expect(currentCell).toHaveClass("text-right", "tabular-nums");
       expect(potentialCell).toHaveClass("text-right", "tabular-nums");
     });

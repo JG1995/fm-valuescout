@@ -1425,6 +1425,8 @@ The independent plan review accepted the 21-commit order with no findings. The d
 
 The planning-artifact checkpoint review found stale prose that still described review acceptance as unknown. This commit corrects that record without changing scope, packet order, or delivery authority.
 
+Feature close-out bundled the three retained implementation advisories: the Modify Player disclosure now keeps its controlled target mounted and hidden while collapsed, non-Overview sections no longer retain empty summary layout, and Role Fit phase chips expose semantic text rather than image semantics. The initial feature review found no blocking implementation issues and directed the documented Player Profile contract to normal close-out reconciliation.
+
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |

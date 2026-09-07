@@ -155,60 +155,59 @@ export function PlayerOverviewPanel({
           </div>
         </div>
 
-        <div
-          data-testid="player-profile-summary-details"
-          className="grid gap-x-4 gap-y-2 lg:grid-cols-2"
-        >
-          {showTacticalFitSummary ? (
-            <section
-              aria-label="Tactical fit"
-              data-testid="overview-tactical-fit"
-              className="grid min-w-0 grid-cols-2 gap-3 border-outline-variant lg:border-x lg:px-4"
-            >
-              <TacticalFitPair
-                phase="in_possession"
-                pair={ipPair}
-                concealed={!player.hiddenInformationRevealed}
-              />
-              <TacticalFitPair
-                phase="out_of_possession"
-                pair={oopPair}
-                concealed={!player.hiddenInformationRevealed}
-              />
-            </section>
-          ) : (
-            <div aria-hidden="true" className="min-h-12" />
-          )}
-
+        {showTacticalFitSummary || showAbility ? (
           <div
-            aria-hidden={!showAbility}
-            data-testid="player-profile-summary-analysis-details"
-            className="min-h-9"
+            data-testid="player-profile-summary-details"
+            className="grid gap-x-4 gap-y-2 lg:grid-cols-2"
           >
-            {showAbility ? (
+            {showTacticalFitSummary ? (
               <section
-                aria-label="Ability"
-                data-testid="overview-ability"
-                className="min-w-0"
+                aria-label="Tactical fit"
+                data-testid="overview-tactical-fit"
+                className="grid min-w-0 grid-cols-2 gap-3 border-outline-variant lg:border-x lg:px-4"
               >
-                <h2 className="text-label-md text-on-surface-variant uppercase tracking-[0.08em]">
-                  Ability
-                </h2>
-                <dl className="mt-2 grid min-w-0 grid-cols-3 gap-3">
-                  <SummaryFact label="CA" value={player.ca} numeric />
-                  {player.hiddenInformationRevealed ? (
-                    <SummaryFact
-                      label="PA"
-                      value={formatMissable(player.pa)}
-                      numeric
-                    />
-                  ) : null}
-                  <PlayerMarketValueFact player={player} />
-                </dl>
+                <TacticalFitPair
+                  phase="in_possession"
+                  pair={ipPair}
+                  concealed={!player.hiddenInformationRevealed}
+                />
+                <TacticalFitPair
+                  phase="out_of_possession"
+                  pair={oopPair}
+                  concealed={!player.hiddenInformationRevealed}
+                />
               </section>
             ) : null}
+
+            {showAbility ? (
+              <div
+                data-testid="player-profile-summary-analysis-details"
+                className="min-h-9"
+              >
+                <section
+                  aria-label="Ability"
+                  data-testid="overview-ability"
+                  className="min-w-0"
+                >
+                  <h2 className="text-label-md text-on-surface-variant uppercase tracking-[0.08em]">
+                    Ability
+                  </h2>
+                  <dl className="mt-2 grid min-w-0 grid-cols-3 gap-3">
+                    <SummaryFact label="CA" value={player.ca} numeric />
+                    {player.hiddenInformationRevealed ? (
+                      <SummaryFact
+                        label="PA"
+                        value={formatMissable(player.pa)}
+                        numeric
+                      />
+                    ) : null}
+                    <PlayerMarketValueFact player={player} />
+                  </dl>
+                </section>
+              </div>
+            ) : null}
           </div>
-        </div>
+        ) : null}
       </div>
     </section>
   );
