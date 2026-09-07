@@ -78,14 +78,15 @@ describe("search route retains interaction during delayed Load Data", () => {
         0,
     ).toBe(false);
 
-    // Exercise existing sort while Load Data is pending
-    const nameHeader = within(table).getByRole("button", { name: "Name" });
-    await user.click(nameHeader);
+    // Exercise existing sort while Load Data is pending (identity is
+    // required and unsortable, so sort through a sortable analysis leaf)
+    const valueHeader = within(table).getByRole("button", { name: "Value" });
+    await user.click(valueHeader);
 
     await waitFor(() =>
       expect(router.state.location.search).toMatchObject({
-        sort: "name",
-        dir: "asc",
+        sort: "value",
+        dir: "desc",
       }),
     );
     expect(within(table).getByText("Alice Scout")).toBeInTheDocument();

@@ -375,7 +375,15 @@ test.describe("application smoke", () => {
     ).toHaveAttribute("aria-current", "page");
     const table = main.getByRole("table", { name: "Staff search results" });
     await expect(table).toBeVisible();
-    await expect(table.getByRole("columnheader")).toHaveCount(26);
+    // Grouped header: group row + leaf row with the sticky identity corner
+    // first. Scoped roles replace the pre-grouping raw header count.
+    await expect(table.locator("thead tr")).toHaveCount(2);
+    await expect(
+      table.getByRole("columnheader", { name: "Staff" }),
+    ).toBeVisible();
+    await expect(
+      table.locator('thead th[scope="colgroup"]').first(),
+    ).toBeVisible();
     await expect(
       table.getByRole("columnheader", { name: "Coach — Goalkeeping" }),
     ).toBeVisible();
@@ -465,7 +473,14 @@ test.describe("application smoke", () => {
     await expect(managerRows.nth(0).getByRole("cell").last()).toHaveText("90");
     await expect(managerRows.nth(1)).toContainText("Manager Taylor");
     await expect(managerRows.nth(1).getByRole("cell").last()).toHaveText("80");
-    await expect(table.getByRole("columnheader")).toHaveCount(8);
+    // Fixed presentations keep the grouped header with sticky identity first.
+    await expect(table.locator("thead tr")).toHaveCount(2);
+    await expect(
+      table.getByRole("columnheader", { name: "Staff" }),
+    ).toBeVisible();
+    await expect(
+      table.locator('thead th[scope="colgroup"]').first(),
+    ).toBeVisible();
 
     await preferredJob.selectOption("");
     await expect(
@@ -958,16 +973,18 @@ test.describe("application smoke", () => {
     const table = main.getByRole("table", { name: "Squad overview" });
     await expect(table).toBeVisible();
     await expect(main.getByTestId("squad-overview-scroller")).toBeVisible();
-    await expect(
-      table.getByRole("link", { name: "Alex Scout" }),
-    ).toHaveAttribute("href", "/players/42");
+    // Identity renders as sticky text with no link; activation is whole-row.
+    await expect(table.getByText("Alex Scout")).toBeVisible();
+    await expect(table.getByRole("link", { name: "Alex Scout" })).toHaveCount(
+      0,
+    );
     await expect(
       table.getByRole("columnheader", { name: "Suggested Training" }),
     ).toBeVisible();
-    await table.getByRole("button", { name: "Name", exact: true }).click();
+    await table.getByRole("button", { name: "Value" }).click();
     await expect(
-      table.getByRole("columnheader", { name: "Name" }),
-    ).toHaveAttribute("aria-sort", "ascending");
+      table.getByRole("columnheader", { name: "Value" }),
+    ).toHaveAttribute("aria-sort", "descending");
     await expect(main.getByRole("button", { name: "Next page" })).toHaveCount(
       0,
     );
@@ -1163,16 +1180,304 @@ test.describe("application smoke", () => {
       expect(dimensions.scrollHeight).toBeGreaterThanOrEqual(
         dimensions.clientHeight + 1,
       );
+      // Grouped headers, sticky identity, and the table-associated toolbar.
+      await expect(
+        table.getByRole("columnheader", { name: "Player" }),
+      ).toBeVisible();
+      await expect(table.getByText("Profile")).toBeVisible();
+      await expect(
+        table.getByRole("columnheader", { name: "CA" }),
+      ).toBeVisible();
+      await expect(
+        main.getByRole("button", { name: "Edit filters" }),
+      ).toBeVisible();
+      await expect(main.getByRole("button", { name: "Columns" })).toBeVisible();
       const tableBox = await table.boundingBox();
       expect(tableBox).not.toBeNull();
-      expect(tableBox?.width).toBeGreaterThanOrEqual(
-        dimensions.clientWidth - 1,
-      );
+      // Bounded containment: the default 840px column sum (280 identity +
+      // 144 + 160 + 72 + 72 + 112) never stretches to the viewport width.
+      const tableGeometry = await table.evaluate((element) => {
+        const browser = globalThis as unknown as {
+          getComputedStyle: (node: unknown) => {
+            maxWidth: string;
+            minWidth: string;
+            width: string;
+          };
+        };
+        const style = browser.getComputedStyle(element);
+        return { maxWidth: style.maxWidth, minWidth: style.minWidth };
+      });
+      expect(tableGeometry.maxWidth).toBe(tableGeometry.minWidth);
+      expect(parseFloat(tableGeometry.minWidth)).toBeGreaterThan(0);
+      expect(
+        Math.abs((tableBox?.width ?? 0) - parseFloat(tableGeometry.minWidth)),
+      ).toBeLessThanOrEqual(1);
       expect(tableBox?.width).toBeLessThanOrEqual(dimensions.clientWidth + 1);
+      // Every rendered cell stays within its fixed column width.
+      const cellGeometry = await scroller
+        .locator("tbody tr[data-index]")
+        .first()
+        .evaluate((row) => {
+          const browser = globalThis as unknown as {
+            getComputedStyle: (node: unknown) => { width: string };
+          };
+          const rowElement = row as unknown as {
+            querySelectorAll: (selector: string) => ArrayLike<unknown>;
+            closest: (selector: string) => {
+              querySelectorAll: (selector: string) => ArrayLike<unknown>;
+            } | null;
+          };
+          const cells = Array.from(rowElement.querySelectorAll("td")).map(
+            (cell) => (cell as unknown as { offsetWidth: number }).offsetWidth,
+          );
+          const cols = Array.from(
+            rowElement.closest("table")?.querySelectorAll("col") ?? [],
+          ).map((col) => parseFloat(browser.getComputedStyle(col).width));
+          return { cells, cols };
+        });
+      expect(cellGeometry.cells.length).toBe(cellGeometry.cols.length);
+      for (let index = 0; index < cellGeometry.cells.length; index += 1) {
+        expect(cellGeometry.cells[index]).toBeLessThanOrEqual(
+          cellGeometry.cols[index] + 1,
+        );
+      }
+      // The document never grows vertically; the scroller owns scrolling.
+      const documentGeometry = await page.evaluate(() => {
+        const browser = globalThis as unknown as {
+          document: {
+            documentElement: { clientHeight: number; scrollHeight: number };
+          };
+        };
+        return {
+          scrollHeight: browser.document.documentElement.scrollHeight,
+          clientHeight: browser.document.documentElement.clientHeight,
+        };
+      });
+      expect(documentGeometry.scrollHeight).toBeLessThanOrEqual(
+        documentGeometry.clientHeight + 1,
+      );
       expect(
         await scroller.locator("tbody tr[data-index]").count(),
       ).toBeLessThan(101);
     }
+  });
+
+  test("Search reveals more bounded columns at 3440x1440 without stretching", async ({
+    page,
+  }) => {
+    const searchColumnIds = [
+      "age",
+      "nationality",
+      "birth_year",
+      "preferred_foot",
+      "parent_club",
+      "height",
+      "wage",
+      "contract_year",
+      "transfer_listed",
+      "loan_listed",
+      "ca",
+      "pa",
+      "value",
+      "club_dna",
+      "position",
+      "reputation",
+    ];
+    await page.addInitScript(
+      ({ searchColumnIds: storedColumnIds }) => {
+        const browser = globalThis as unknown as {
+          localStorage: {
+            setItem: (key: string, value: string) => void;
+          };
+        };
+        browser.localStorage.setItem(
+          "fm-valuescout-player-table-layouts",
+          JSON.stringify({
+            state: {
+              layouts: {
+                search: {
+                  columnIds: storedColumnIds,
+                  widths: {},
+                  identityWidth: 280,
+                },
+              },
+            },
+            version: 8,
+          }),
+        );
+      },
+      { searchColumnIds },
+    );
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      playerTableRowCount: 101,
+      squadOverview: true,
+    });
+
+    const leafGeometry = async () => {
+      const main = page.getByRole("main");
+      const scroller = main.getByTestId("search-results-scroller");
+      const table = scroller.getByRole("table", {
+        name: "Player search results",
+      });
+      await expect(scroller).toBeVisible();
+      const scrollerBox = await scroller.boundingBox();
+      const tableBox = await table.boundingBox();
+      const theadBox = await table.locator("thead").boundingBox();
+      const dimensions = await scroller.evaluate((element) => {
+        const scrollerElement = element as unknown as {
+          clientHeight: number;
+          clientWidth: number;
+          scrollHeight: number;
+          scrollWidth: number;
+        };
+        return {
+          clientHeight: scrollerElement.clientHeight,
+          clientWidth: scrollerElement.clientWidth,
+          scrollHeight: scrollerElement.scrollHeight,
+          scrollWidth: scrollerElement.scrollWidth,
+        };
+      });
+      const visibleLeafColumns = await table
+        .locator("thead tr")
+        .nth(1)
+        .locator("th")
+        .evaluateAll((headers) => {
+          const browser = globalThis as unknown as {
+            document: {
+              querySelector: (selector: string) => {
+                getBoundingClientRect: () => {
+                  left: number;
+                  right: number;
+                };
+              } | null;
+            };
+          };
+          const viewport = browser.document
+            .querySelector('[data-testid="search-results-scroller"]')
+            ?.getBoundingClientRect();
+          if (!viewport) {
+            return 0;
+          }
+          return headers.filter((header) => {
+            const bounds = (
+              header as unknown as {
+                getBoundingClientRect: () => { left: number; right: number };
+              }
+            ).getBoundingClientRect();
+            return (
+              bounds.left >= viewport.left - 1 &&
+              bounds.right <= viewport.right + 1
+            );
+          }).length;
+        });
+      return {
+        main,
+        scroller,
+        table,
+        scrollerBox,
+        tableBox,
+        theadBox,
+        dimensions,
+        visibleLeafColumns,
+      };
+    };
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/search");
+    const narrow = await leafGeometry();
+    expect(narrow.scrollerBox).not.toBeNull();
+    expect(narrow.tableBox).not.toBeNull();
+    // The 2080px wide layout overflows the 1280 viewport in the scroller.
+    expect(narrow.dimensions.scrollWidth).toBeGreaterThan(
+      narrow.dimensions.clientWidth,
+    );
+    expect(Math.abs((narrow.tableBox?.width ?? 0) - 2080)).toBeLessThanOrEqual(
+      1,
+    );
+
+    await page.setViewportSize({ width: 3440, height: 1440 });
+    const wide = await leafGeometry();
+    expect(wide.scrollerBox).not.toBeNull();
+    expect(wide.tableBox).not.toBeNull();
+    expect(wide.theadBox).not.toBeNull();
+    // Ultrawide reveals more columns instead of stretching cells: the
+    // table keeps its bounded 2080px width inside the wider scroller.
+    expect(wide.visibleLeafColumns).toBeGreaterThan(narrow.visibleLeafColumns);
+    expect(Math.abs((wide.tableBox?.width ?? 0) - 2080)).toBeLessThanOrEqual(1);
+    expect(wide.tableBox?.width).toBeLessThanOrEqual(
+      wide.dimensions.clientWidth + 1,
+    );
+    expect(wide.dimensions.scrollWidth).toBeLessThanOrEqual(
+      wide.dimensions.clientWidth + 1,
+    );
+    // Both header rows stay visible with the grouped + leaf context.
+    expect(wide.theadBox?.height).toBeGreaterThanOrEqual(63);
+    expect(wide.theadBox?.height).toBeLessThanOrEqual(65);
+    await expect(
+      wide.table.getByRole("columnheader", { name: "Player" }),
+    ).toBeVisible();
+    await expect(wide.table.getByText("Profile")).toBeVisible();
+    await expect(
+      wide.table.getByRole("columnheader", { name: "CA" }),
+    ).toBeVisible();
+    // Sticky identity stays pinned while scrolled fully right at 1280.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const scrolled = await leafGeometry();
+    await scrolled.scroller.evaluate((element) => {
+      const scrollable = element as unknown as {
+        scrollLeft: number;
+        scrollWidth: number;
+      };
+      scrollable.scrollLeft = scrollable.scrollWidth;
+    });
+    const [pinnedScrollerBox, identityBox] = await Promise.all([
+      scrolled.scroller.boundingBox(),
+      scrolled.scroller
+        .locator("tbody tr[data-index]")
+        .first()
+        .locator("td")
+        .first()
+        .boundingBox(),
+    ]);
+    expect(pinnedScrollerBox).not.toBeNull();
+    expect(identityBox).not.toBeNull();
+    expect(
+      (identityBox?.x ?? 0) + (identityBox?.width ?? 0),
+    ).toBeLessThanOrEqual(
+      (pinnedScrollerBox?.x ?? 0) + (pinnedScrollerBox?.width ?? 0) / 2,
+    );
+    // The virtual spacer stays intact and the document never grows.
+    expect(
+      await scrolled.scroller.locator("tbody tr[data-index]").count(),
+    ).toBeLessThan(101);
+    const scrolledMain = await scrolled.main.evaluate((element) => {
+      const mainElement = element as unknown as {
+        clientHeight: number;
+        scrollHeight: number;
+      };
+      return {
+        clientHeight: mainElement.clientHeight,
+        scrollHeight: mainElement.scrollHeight,
+      };
+    });
+    expect(scrolledMain.scrollHeight).toBeLessThanOrEqual(
+      scrolledMain.clientHeight + 1,
+    );
+    const scrolledDocument = await page.evaluate(() => {
+      const browser = globalThis as unknown as {
+        document: {
+          documentElement: { clientHeight: number; scrollHeight: number };
+        };
+      };
+      return {
+        scrollHeight: browser.document.documentElement.scrollHeight,
+        clientHeight: browser.document.documentElement.clientHeight,
+      };
+    });
+    expect(scrolledDocument.scrollHeight).toBeLessThanOrEqual(
+      scrolledDocument.clientHeight + 1,
+    );
   });
 
   test("Search filter options remain fully interactive outside the modal scrollport", async ({
@@ -1350,18 +1655,19 @@ test.describe("application smoke", () => {
     await page.getByRole("menuitem", { name: "Move right" }).click();
     await expect
       .poll(async () =>
-        searchTable.locator("thead th").evaluateAll((headers) =>
-          headers.map((header) =>
-            (
-              header as unknown as {
-                getAttribute: (name: string) => string | null;
-              }
-            ).getAttribute("aria-label"),
+        searchTable
+          .locator('thead th[scope="col"]:not([rowspan])')
+          .evaluateAll((headers) =>
+            headers.map((header) =>
+              (
+                header as unknown as {
+                  getAttribute: (name: string) => string | null;
+                }
+              ).getAttribute("aria-label"),
+            ),
           ),
-        ),
       )
       .toEqual([
-        "Name",
         "Age / DOB",
         "Nationality",
         "CA",
@@ -1377,18 +1683,19 @@ test.describe("application smoke", () => {
     ).toBeVisible();
     await expect
       .poll(async () =>
-        searchTable.locator("thead th").evaluateAll((headers) =>
-          headers.map((header) =>
-            (
-              header as unknown as {
-                getAttribute: (name: string) => string | null;
-              }
-            ).getAttribute("aria-label"),
+        searchTable
+          .locator('thead th[scope="col"]:not([rowspan])')
+          .evaluateAll((headers) =>
+            headers.map((header) =>
+              (
+                header as unknown as {
+                  getAttribute: (name: string) => string | null;
+                }
+              ).getAttribute("aria-label"),
+            ),
           ),
-        ),
       )
       .toEqual([
-        "Name",
         "Age / DOB",
         "Nationality",
         "CA",

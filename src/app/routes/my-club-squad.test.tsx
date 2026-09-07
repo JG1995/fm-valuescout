@@ -324,8 +324,8 @@ describe("My Club route", () => {
     });
     expect(squadTable).toBeVisible();
     expect(
-      within(squadTable).getByRole("columnheader", { name: "Name" }),
-    ).toHaveAttribute("aria-sort", "ascending");
+      within(squadTable).getByRole("columnheader", { name: "Player" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", {
         name: "Squad depth",
@@ -386,8 +386,8 @@ describe("My Club route", () => {
     expect(workspaceLink("Tactic")).not.toHaveAttribute("aria-current");
     expect(history.canGoBack()).toBe(true);
     expect(
-      within(squadTable).getByRole("columnheader", { name: "Name" }),
-    ).toHaveAttribute("aria-sort", "ascending");
+      within(squadTable).getByRole("columnheader", { name: "Player" }),
+    ).toBeInTheDocument();
   });
 
   it.each([
@@ -1103,7 +1103,7 @@ describe("My Club route", () => {
       name: "Squad overview",
     });
     for (const column of [
-      "Name",
+      "Player",
       "Age / DOB",
       "Nationality",
       "CA",
@@ -1117,9 +1117,7 @@ describe("My Club route", () => {
     expect(
       within(table).getByRole("columnheader", { name: "CA" }),
     ).toHaveAttribute("aria-sort", "descending");
-    expect(
-      within(table).getByRole("link", { name: /Alex Scout/ }),
-    ).toHaveAttribute("href", "/players/42");
+    expect(within(table).getByText("Alex Scout")).toBeInTheDocument();
     expect(
       screen.getByText(
         (_, element) =>
@@ -1282,6 +1280,58 @@ describe("My Club route", () => {
     ).toBeInTheDocument();
   });
 
+  it("manages Squad columns from the grouped Columns control", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Squad Scout", 160)]);
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    const dialog = screen.getByRole("dialog", { name: "Columns" });
+    expect(within(dialog).getByText("Development")).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("checkbox", {
+        name: "Suggested Training",
+      }),
+    ).toBeChecked();
+    expect(within(dialog).queryByRole("checkbox", { name: "Name" })).toBeNull();
+
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Suggested Training" }),
+    );
+    expect(
+      usePlayerTableStore.getState().layouts.squad.columnIds,
+    ).not.toContain("suggested_training");
+    await waitFor(() => {
+      const reloaded = screen.getByRole("table", {
+        name: "Squad overview",
+      });
+      expect(
+        within(reloaded).queryByRole("columnheader", {
+          name: "Development",
+        }),
+      ).toBeNull();
+    });
+
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Suggested Training" }),
+    );
+    expect(usePlayerTableStore.getState().layouts.squad.columnIds).toContain(
+      "suggested_training",
+    );
+    expect(
+      await screen.findByRole("columnheader", {
+        name: "Suggested Training",
+      }),
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+  });
+
   it("reorders Squad columns from the menu without changing its query, virtual row, or widths", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -1328,6 +1378,7 @@ describe("My Club route", () => {
     await waitFor(() => {
       const headerLabels = within(table)
         .getAllByRole("columnheader")
+        .filter((header) => header.getAttribute("scope") === "col")
         .map((header) => header.getAttribute("aria-label"));
       expect(headerLabels.indexOf("Agility")).toBeLessThan(
         headerLabels.indexOf("Acceleration"),
@@ -1335,6 +1386,7 @@ describe("My Club route", () => {
     });
     const headerLabels = within(table)
       .getAllByRole("columnheader")
+      .filter((header) => header.getAttribute("scope") === "col")
       .map((header) => header.getAttribute("aria-label"));
     const cellTexts = within(focusedRow)
       .getAllByRole("cell")
@@ -1917,27 +1969,27 @@ describe("My Club route", () => {
     const table = await screen.findByRole("table", {
       name: "Squad overview",
     });
-    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await user.click(within(table).getByRole("button", { name: "Value" }));
 
     await waitFor(() => {
       expect(router.state.location.search).toEqual({
-        squadSort: "name",
-        squadDir: "asc",
+        squadSort: "value",
+        squadDir: "desc",
       });
       expect(getLastSquadPlayersArgs()).toMatchObject({
         offset: 0,
         limit: 50,
-        sortBy: "name",
-        sortDir: "asc",
+        sortBy: "value",
+        sortDir: "desc",
         requestedFields: [],
       });
     });
     expect(
       within(screen.getByRole("table", { name: "Squad overview" })).getByRole(
         "columnheader",
-        { name: "Name" },
+        { name: "Value" },
       ),
-    ).toHaveAttribute("aria-sort", "ascending");
+    ).toHaveAttribute("aria-sort", "descending");
     expect(screen.getByText("Alex Scout")).toBeInTheDocument();
   });
 
@@ -1959,11 +2011,11 @@ describe("My Club route", () => {
     const table = await screen.findByRole("table", {
       name: "Squad overview",
     });
-    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await user.click(within(table).getByRole("button", { name: "Value" }));
     await waitFor(() =>
       expect(
-        within(table).getByRole("columnheader", { name: "Name" }),
-      ).toHaveAttribute("aria-sort", "ascending"),
+        within(table).getByRole("columnheader", { name: "Value" }),
+      ).toHaveAttribute("aria-sort", "descending"),
     );
     await user.click(within(table).getByRole("button", { name: "CA" }));
     await waitFor(() =>
@@ -1971,7 +2023,7 @@ describe("My Club route", () => {
         within(table).getByRole("columnheader", { name: "CA" }),
       ).toHaveAttribute("aria-sort", "descending"),
     );
-    const cachedNameSort = queryClient
+    const cachedValueSort = queryClient
       .getQueryCache()
       .findAll({ queryKey: squadKeys.playerPages() })
       .find((query) => {
@@ -1979,15 +2031,15 @@ describe("My Club route", () => {
         return (
           typeof descriptor === "object" &&
           descriptor !== null &&
-          (descriptor as { sortBy?: unknown }).sortBy === "name"
+          (descriptor as { sortBy?: unknown }).sortBy === "value"
         );
       });
-    if (!cachedNameSort) {
-      throw new Error("expected a cached Squad name sort");
+    if (!cachedValueSort) {
+      throw new Error("expected a cached Squad value sort");
     }
-    await queryClient.invalidateQueries({ queryKey: cachedNameSort.queryKey });
+    await queryClient.invalidateQueries({ queryKey: cachedValueSort.queryKey });
     setSquadPlayersPageIpcMockMode("pendingReplacement");
-    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await user.click(within(table).getByRole("button", { name: "Value" }));
 
     await screen.findByRole("status");
     expect(within(table).getByText("Zara")).toBeInTheDocument();
@@ -2023,8 +2075,8 @@ describe("My Club route", () => {
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() =>
       expect(
-        within(table).getByRole("columnheader", { name: "Name" }),
-      ).toHaveAttribute("aria-sort", "ascending"),
+        within(table).getByRole("columnheader", { name: "Value" }),
+      ).toHaveAttribute("aria-sort", "descending"),
     );
   });
 
@@ -2046,7 +2098,7 @@ describe("My Club route", () => {
     });
     const callsBeforeSort = getSquadPlayersCallCount();
     setSquadPlayersPageIpcMockMode("pendingReplacement");
-    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await user.click(within(table).getByRole("button", { name: "Value" }));
 
     await waitFor(() =>
       expect(getSquadPlayersCallCount()).toBe(callsBeforeSort + 1),
@@ -2155,7 +2207,7 @@ describe("My Club route", () => {
       name: "Squad overview",
     });
     setSquadPlayersPageIpcMockMode("rejectReplacementOnce");
-    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await user.click(within(table).getByRole("button", { name: "Value" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Could not sort squad.",
@@ -2168,9 +2220,6 @@ describe("My Club route", () => {
       throw new Error("expected a retained Squad row after a failed sort");
     }
     expect(retainedRow).not.toHaveAttribute("tabindex");
-    expect(
-      within(retainedRow).queryByRole("link", { name: "Zara" }),
-    ).toBeNull();
     fireEvent.click(retainedRow);
     retainedRow.focus();
     await user.keyboard("{Enter}");
@@ -2179,8 +2228,8 @@ describe("My Club route", () => {
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() =>
       expect(
-        within(table).getByRole("columnheader", { name: "Name" }),
-      ).toHaveAttribute("aria-sort", "ascending"),
+        within(table).getByRole("columnheader", { name: "Value" }),
+      ).toHaveAttribute("aria-sort", "descending"),
     );
   });
 
@@ -2447,6 +2496,12 @@ describe("My Club route", () => {
     expect(
       within(table).queryByRole("columnheader", { name: "Division" }),
     ).toBeNull();
+    const squadIdentityHeader = within(table).getAllByRole("columnheader")[0];
+    expect(squadIdentityHeader).toHaveTextContent("Player");
+    expect(squadIdentityHeader).toHaveAttribute("rowspan", "2");
+    expect(squadIdentityHeader.className).toContain("sticky");
+    expect(squadIdentityHeader.className).toContain("left-0");
+    expect(table.querySelector("img")).toBeNull();
     const rows = within(table)
       .getAllByRole("row")
       .filter((row) => row.hasAttribute("data-index"));
@@ -2473,6 +2528,9 @@ describe("My Club route", () => {
     }
     expect(identityRow).toHaveStyle({ height: "40px" });
     expect(identityRow).toHaveTextContent("Metro FC · Premier Division");
+    expect(within(identityRow).getAllByRole("cell")[0].className).toContain(
+      "sticky",
+    );
     const missingIdentityCell =
       within(missingContextRow).getAllByRole("cell")[0];
     expect(missingIdentityCell).toHaveTextContent("No context");
@@ -2532,18 +2590,18 @@ describe("My Club route", () => {
       sources: [],
     });
     setSquadPlayersOverride([
-      squadPlayerNamed("Zara Scout", 42),
-      squadPlayerNamed("Alex Scout", 43),
+      squadPlayerNamed("Zara Scout", 42, 160),
+      squadPlayerNamed("Alex Scout", 43, 150),
     ]);
     const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", {
       name: "Squad overview",
     });
-    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await user.click(within(table).getByRole("button", { name: "CA" }));
     await waitFor(() => {
       expect(router.state.location.search).toEqual({
-        squadSort: "name",
+        squadSort: "ca",
         squadDir: "asc",
       });
     });
@@ -2572,16 +2630,20 @@ describe("My Club route", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/my-club");
       expect(router.state.location.search).toEqual({
-        squadSort: "name",
+        squadSort: "ca",
         squadDir: "asc",
       });
     });
-    const restoredTable = await screen.findByRole("table", {
+    await screen.findByRole("table", {
       name: "Squad overview",
     });
     expect(
-      within(restoredTable).getByRole("columnheader", { name: "Name" }),
-    ).toHaveAttribute("aria-sort", "ascending");
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          element.textContent === "2 players · sorted by CA (ascending)",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("switches Club workspaces from navigation with history support", async () => {
@@ -6243,6 +6305,55 @@ describe("Suggested Training column", () => {
     expect(usePlayerTableStore.getState().layouts.squad.columnIds).toContain(
       "suggested_training",
     );
+  });
+});
+
+describe("squad table toolbar", () => {
+  async function renderToolbarSquad(players: SquadPlayer[]) {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride(players);
+    renderMyClubRoute({ initialEntry: "/my-club" });
+    return screen.findByRole("table", { name: "Squad overview" });
+  }
+
+  it("associates the squad summary and grouped Columns in one table toolbar", async () => {
+    await renderToolbarSquad([squadPlayerNamed("Alex Scout", 42)]);
+
+    const toolbar = screen.getByRole("toolbar", {
+      name: "Squad results toolbar",
+    });
+    expect(
+      within(toolbar).getByText(/players? · sorted by/),
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar).getByRole("button", { name: "Columns" }),
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar).queryByRole("button", { name: "Edit filters" }),
+    ).toBeNull();
+    expect(
+      within(toolbar).queryByRole("button", { name: "Clear all" }),
+    ).toBeNull();
+    const table = screen.getByRole("table", { name: "Squad overview" });
+    expect(
+      toolbar.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps squad boosts outside the generic toolbar", async () => {
+    await renderToolbarSquad([squadPlayerNamed("Alex Scout", 42)]);
+
+    const toolbar = screen.getByRole("toolbar", {
+      name: "Squad results toolbar",
+    });
+    for (const name of ["Boost all CA", "Make all Wonderkids"]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+      expect(within(toolbar).queryByRole("button", { name })).toBeNull();
+    }
   });
 });
 

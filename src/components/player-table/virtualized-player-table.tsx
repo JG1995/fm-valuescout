@@ -6,16 +6,43 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import type { ConfigurableTableFixedColumn } from "./player-table-header";
+import {
+  type ConfigurableTableColumn,
+  type ConfigurableTableFixedColumn,
+  type ConfigurableTableIdentityHeader,
+  clampIdentityWidth,
+} from "./player-table-header";
 
 /** Must match `--spacing-table-row-height-two-line` / `h-table-row-height-two-line`. */
 const ROW_HEIGHT = 40;
-/** Must match `--spacing-table-header-height` / sticky `<thead>` height. */
-const HEADER_HEIGHT = 32;
+/**
+ * Must match two `--spacing-table-header-height` rows: the grouped group
+ * row plus the leaf row. The virtualizer `scrollPaddingStart` below keeps
+ * keyboard-focused rows fully under the two-row sticky `<thead>`.
+ */
+export const HEADER_HEIGHT = 64;
 
 type TablePage = {
   total: number;
 };
+
+/**
+ * Optional storage-agnostic identity region. The caller supplies one object;
+ * the shell owns the identity `<col>`, body-cell order and rendering
+ * (`renderCell` first, identity → analysis → fixed actions), spacer
+ * `colSpan`, and minimum-width accounting, and applies the supplied width
+ * without persisting it. This file imports no store and knows no table IDs.
+ */
+export type ConfigurableTableIdentity<TRow> =
+  ConfigurableTableIdentityHeader & {
+    renderCell: (row: TRow | undefined) => ReactNode;
+  };
+
+export type ConfigurableTableRenderHeader<TRow> = (args: {
+  identity: ConfigurableTableIdentity<TRow> | undefined;
+  columns: readonly ConfigurableTableColumn[];
+  fixedColumns: readonly ConfigurableTableFixedColumn[];
+}) => ReactNode;
 
 export type ConfigurableVirtualizedTableProps<
   TPage extends TablePage,
@@ -24,10 +51,11 @@ export type ConfigurableVirtualizedTableProps<
 > = {
   caption: string;
   columnCount: number;
-  columns: ReadonlyArray<{ id: string; width: number }>;
+  columns: readonly ConfigurableTableColumn[];
   fixedColumns?: readonly ConfigurableTableFixedColumn[];
   getPageRows: (page: TPage) => readonly TRow[];
-  header: ReactNode;
+  identity?: ConfigurableTableIdentity<TRow>;
+  renderHeader: ConfigurableTableRenderHeader<TRow>;
   firstPageQueryOptions?: UseQueryOptions<TPage, Error, TPage, TQueryKey>;
   isReplacementActive?: boolean;
   pageQueryOptions: (
@@ -102,7 +130,8 @@ export function ConfigurableVirtualizedTable<
   columns,
   fixedColumns = [],
   getPageRows,
-  header,
+  identity,
+  renderHeader,
   firstPageQueryOptions,
   isReplacementActive = false,
   onRowActivate,
@@ -245,11 +274,19 @@ export function ConfigurableVirtualizedTable<
       ? virtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end
       : 0;
   const failedPageQuery = pageQueries.find((query) => query.isError);
-  const allColumns = [...columns, ...fixedColumns];
+  // Strict region order identity → analysis → fixed actions. The identity
+  // width is applied as supplied (defaulting to 280) without persistence.
+  const identityWidth = identity ? clampIdentityWidth(identity.width) : 0;
+  const allColumns = [
+    ...(identity ? [{ id: identity.id, width: identityWidth }] : []),
+    ...columns,
+    ...fixedColumns,
+  ];
   const minimumTableWidth = allColumns.reduce(
     (sum, column) => sum + column.width,
     0,
   );
+  const thead = renderHeader({ identity, columns, fixedColumns });
 
   return (
     <div className="relative min-h-0 flex-1">
@@ -261,27 +298,30 @@ export function ConfigurableVirtualizedTable<
         <table
           className="table-fixed border-collapse text-left"
           style={{
-            width: "100%",
+            // Bounded containment model: the table is fixed to exactly the
+            // column-width sum with fixed pixel columns. Readable minimums
+            // hold, horizontal overflow stays in the same scroller, and
+            // ultrawide viewports reveal more columns instead of stretching
+            // cells without bound.
+            width: minimumTableWidth,
             minWidth: minimumTableWidth,
+            maxWidth: minimumTableWidth,
           }}
         >
           <caption className="sr-only">{caption}</caption>
           <colgroup>
             {allColumns.map((column) => (
-              <col
-                key={column.id}
-                style={{
-                  width: `${(column.width / minimumTableWidth) * 100}%`,
-                }}
-              />
+              <col key={column.id} style={{ width: column.width }} />
             ))}
           </colgroup>
-          {header}
+          {thead}
           <tbody>
             {paddingTop > 0 ? (
               <tr>
                 <td
-                  colSpan={columnCount + fixedColumns.length}
+                  colSpan={
+                    columnCount + fixedColumns.length + (identity ? 1 : 0)
+                  }
                   style={{ height: paddingTop }}
                 />
               </tr>
@@ -352,6 +392,14 @@ export function ConfigurableVirtualizedTable<
                       : undefined
                   }
                 >
+                  {identity ? (
+                    <td
+                      key={identity.id}
+                      className="sticky left-0 z-[1] bg-surface-container"
+                    >
+                      {identity.renderCell(row)}
+                    </td>
+                  ) : null}
                   {renderCells(row)}
                   {renderFixedCells?.(row)}
                 </tr>
@@ -360,7 +408,9 @@ export function ConfigurableVirtualizedTable<
             {paddingBottom > 0 ? (
               <tr>
                 <td
-                  colSpan={columnCount + fixedColumns.length}
+                  colSpan={
+                    columnCount + fixedColumns.length + (identity ? 1 : 0)
+                  }
                   style={{ height: paddingBottom }}
                 />
               </tr>

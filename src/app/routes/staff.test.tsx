@@ -102,7 +102,11 @@ describe("staff route", () => {
     const table = await screen.findByRole("table", {
       name: "Staff search results",
     });
-    expect(within(table).getAllByRole("columnheader")).toHaveLength(26);
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .filter((header) => header.getAttribute("scope") === "col"),
+    ).toHaveLength(26);
     expect(
       within(table).getByRole("columnheader", { name: "Coach — Goalkeeping" }),
     ).toBeInTheDocument();
@@ -175,12 +179,10 @@ describe("staff route", () => {
     const allJobsTable = await screen.findByRole("table", {
       name: "Staff Shortlist",
     });
-    await user.click(
-      within(allJobsTable).getByRole("button", { name: "Name" }),
-    );
+    await user.click(within(allJobsTable).getByRole("button", { name: "CA" }));
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        shortlistSort: "name",
+        shortlistSort: "ca",
         shortlistDir: "asc",
       });
     });
@@ -191,7 +193,7 @@ describe("staff route", () => {
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
         preferredJob: "Technical Director",
-        shortlistSort: "name",
+        shortlistSort: "ca",
         shortlistDir: "asc",
         shortlistContextSort: "role.technical_director",
         shortlistContextDir: "desc",
@@ -209,7 +211,7 @@ describe("staff route", () => {
     );
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        shortlistSort: "name",
+        shortlistSort: "ca",
         shortlistDir: "asc",
         shortlistContextSort: "coaching_qualifications",
         shortlistContextDir: "asc",
@@ -221,7 +223,7 @@ describe("staff route", () => {
     );
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        shortlistSort: "name",
+        shortlistSort: "ca",
         shortlistDir: "asc",
       });
       expect(router.state.location.search).not.toHaveProperty(
@@ -234,7 +236,7 @@ describe("staff route", () => {
     expect(
       within(
         await screen.findByRole("table", { name: "Staff Shortlist" }),
-      ).getByRole("columnheader", { name: "Name" }),
+      ).getByRole("columnheader", { name: "CA" }),
     ).toHaveAttribute("aria-sort", "ascending");
   });
 
@@ -271,12 +273,12 @@ describe("staff route", () => {
       name: "Staff search results",
     });
 
-    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await user.click(within(table).getByRole("button", { name: "CA" }));
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        sort: "name",
+        sort: "ca",
         dir: "asc",
-        searchSort: "name",
+        searchSort: "ca",
         searchDir: "asc",
       });
     });
@@ -284,7 +286,7 @@ describe("staff route", () => {
       name: "Staff search results",
     });
     expect(
-      within(sortedTable).getByRole("columnheader", { name: "Name" }),
+      within(sortedTable).getByRole("columnheader", { name: "CA" }),
     ).toHaveAttribute("aria-sort", "ascending");
   });
 
@@ -460,7 +462,7 @@ describe("staff route", () => {
       name: "Staff search results",
     });
     fireEvent.contextMenu(
-      within(updatedTable).getByRole("columnheader", { name: "Name" }),
+      within(updatedTable).getByRole("columnheader", { name: "CA" }),
     );
     await user.click(screen.getByRole("menuitem", { name: "Add column" }));
     await user.click(
@@ -485,7 +487,7 @@ describe("staff route", () => {
     usePlayerTableStore.setState({
       layouts: {
         ...defaultPlayerTableLayouts(),
-        "staff-search": { columnIds: ["name", "ca"], widths: {} },
+        "staff-search": { columnIds: ["ca"], widths: {}, identityWidth: 280 },
       },
     });
     renderStaffRoute();
@@ -801,8 +803,12 @@ describe("staff route", () => {
     usePlayerTableStore.setState({
       layouts: {
         ...defaultPlayerTableLayouts(),
-        "staff-search": { columnIds: ["name"], widths: {} },
-        "staff-shortlist": { columnIds: ["name"], widths: {} },
+        "staff-search": { columnIds: ["age"], widths: {}, identityWidth: 280 },
+        "staff-shortlist": {
+          columnIds: ["age"],
+          widths: {},
+          identityWidth: 280,
+        },
       },
     });
     const filters = encodeURIComponent(
@@ -821,7 +827,67 @@ describe("staff route", () => {
     });
     expect(
       usePlayerTableStore.getState().layouts["staff-search"].columnIds,
-    ).toEqual(["name"]);
+    ).toEqual(["age"]);
+  });
+
+  it("offers grouped Columns including Recruitment on the All-jobs shortlist path", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([fixtureStaff()]);
+    usePlayerTableStore.setState({
+      layouts: {
+        ...defaultPlayerTableLayouts(),
+        "staff-shortlist": {
+          columnIds: ["age", "ca"],
+          widths: {},
+          identityWidth: 280,
+        },
+      },
+    });
+    renderStaffRoute("/staff?shortlistOnly=true");
+
+    const table = await screen.findByRole("table", {
+      name: "Staff Shortlist",
+    });
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Staff");
+    expect(headers[0].className).toContain("sticky");
+
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    const dialog = screen.getByRole("dialog", { name: "Columns" });
+    expect(within(dialog).getByText("Recruitment")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("checkbox", { name: "Name" })).toBeNull();
+    const toggle = within(dialog).getByRole("checkbox", {
+      name: "Preferred Job",
+    });
+    expect(toggle).not.toBeChecked();
+    await user.click(toggle);
+    expect(
+      usePlayerTableStore.getState().layouts["staff-shortlist"].columnIds,
+    ).toContain("preferred_job");
+    await user.keyboard("{Escape}");
+  });
+
+  it("offers no Columns toggles on a fixed shortlist presentation while keeping sticky identity", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([
+      fixtureStaff({
+        shortlist: {
+          preferredJob: "Manager",
+          clubJob: "-",
+          coachingQualifications: "National C",
+        },
+      }),
+    ]);
+    renderStaffRoute("/staff?shortlistOnly=true&preferredJob=Manager");
+
+    const table = await screen.findByRole("table", {
+      name: "Staff Shortlist",
+    });
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Staff");
+    expect(headers[0].className).toContain("sticky");
+    expect(screen.queryByRole("button", { name: "Columns" })).toBeNull();
   });
 
   it("shows setup feedback with Upload available when filtering on with no list", async () => {
@@ -1106,8 +1172,9 @@ describe("staff route", () => {
       layouts: {
         ...defaultPlayerTableLayouts(),
         "staff-search": {
-          columnIds: ["name", "wage", "job_id"],
+          columnIds: ["wage", "job_id"],
           widths: {},
+          identityWidth: 280,
         },
       },
     });
@@ -1172,6 +1239,384 @@ describe("staff route", () => {
         sortBy: "name",
         sortDir: "asc",
       });
+    });
+  });
+
+  it("renders required sticky staff identity without duplicate columns", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setStaffOverride([
+      {
+        ...fixtureStaff(),
+        uid: 201,
+        name: "Identity Coach",
+        club: "Test FC",
+        division: "Premier Division",
+      },
+      {
+        ...fixtureStaff(),
+        uid: 202,
+        name: "No context",
+        club: null,
+        division: null,
+      },
+    ]);
+    const { router } = renderStaffRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Staff search results",
+    });
+    expect(
+      within(table).queryByRole("columnheader", { name: "Club" }),
+    ).toBeNull();
+    expect(
+      within(table).queryByRole("columnheader", { name: "Division" }),
+    ).toBeNull();
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Staff");
+    expect(headers[0]).toHaveAttribute("rowspan", "2");
+    expect(headers[0].className).toContain("sticky");
+    expect(headers[0].className).toContain("left-0");
+    expect(table.querySelector("img")).toBeNull();
+
+    const row = within(table).getByText("Identity Coach").closest("tr");
+    const noContextRow = within(table).getByText("No context").closest("tr");
+    if (!row || !noContextRow) {
+      throw new Error("Expected staff identity rows.");
+    }
+    expect(row).toHaveStyle({ height: "40px" });
+    const cells = within(row).getAllByRole("cell");
+    expect(cells[0].className).toContain("sticky");
+    expect(cells[0]).toHaveTextContent("Test FC · Premier Division");
+    const noContextCell = within(noContextRow).getAllByRole("cell")[0];
+    expect(noContextCell).toHaveTextContent("No context");
+    expect(noContextCell).not.toHaveTextContent(" · ");
+
+    await user.click(within(row).getByText("Test FC · Premier Division"));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/staff/201");
+    });
+  });
+
+  it("renders sticky staff identity first in the managed-club overview", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffOverride([fixtureStaff()]);
+    renderStaffRoute("/staff?view=my-staff");
+
+    const table = await screen.findByRole("table", {
+      name: "Staff overview",
+    });
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Staff");
+    expect(headers[0].className).toContain("sticky");
+    expect(table.querySelector("img")).toBeNull();
+    const row = within(table).getByText("Alex Coach").closest("tr");
+    if (!row) {
+      throw new Error("Expected a managed-club staff identity row.");
+    }
+    expect(within(row).getAllByRole("cell")[0].className).toContain("sticky");
+  });
+
+  it("renders sticky staff identity first on the All-jobs shortlist path", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([fixtureStaff()]);
+    renderStaffRoute("/staff?shortlistOnly=true");
+
+    const table = await screen.findByRole("table", {
+      name: "Staff Shortlist",
+    });
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Staff");
+    expect(headers[0].className).toContain("sticky");
+    expect(table.querySelector("img")).toBeNull();
+    expect(
+      within(table).getByRole("columnheader", { name: "Preferred Job" }),
+    ).toBeInTheDocument();
+    expect(within(table).getByText("Alex Coach")).toBeInTheDocument();
+  });
+
+  it("renders sticky staff identity first on a fixed shortlist presentation", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([
+      fixtureStaff({
+        shortlist: {
+          preferredJob: "Coach",
+          clubJob: "Coach",
+          coachingQualifications: "Continental A",
+        },
+      }),
+    ]);
+    renderStaffRoute("/staff?shortlistOnly=true&preferredJob=Coach");
+
+    const table = await screen.findByRole("table", {
+      name: "Staff Shortlist",
+    });
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Staff");
+    expect(headers[0]).toHaveAttribute("rowspan", "2");
+    expect(headers[0].className).toContain("sticky");
+    expect(table.querySelector("img")).toBeNull();
+    expect(
+      within(table).queryByRole("columnheader", { name: "Name" }),
+    ).toBeNull();
+    const row = within(table).getByText("Alex Coach").closest("tr");
+    if (!row) {
+      throw new Error("Expected a fixed-presentation identity row.");
+    }
+    expect(within(row).getAllByRole("cell")[0].className).toContain("sticky");
+    fireEvent.contextMenu(headers[1]);
+    expect(screen.queryByRole("menuitem", { name: "Add column" })).toBeNull();
+  });
+
+  describe("staff table toolbar", () => {
+    it("associates summary, chips, edit, columns, and dataset toggles in one table toolbar", async () => {
+      await resolveLoadDataIpcMock();
+      renderStaffRoute();
+
+      await screen.findByRole("table", { name: "Staff search results" });
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Staff results toolbar",
+      });
+      expect(
+        within(toolbar).getByText(/staff · sorted by/),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Edit filters" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Columns" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("switch", { name: "Shortlist: Off" }),
+      ).toBeInTheDocument();
+      const table = screen.getByRole("table", {
+        name: "Staff search results",
+      });
+      expect(
+        toolbar.compareDocumentPosition(table) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it("keeps Upload, Configure, and Optimize outside the generic toolbar", async () => {
+      await resolveLoadDataIpcMock();
+      renderStaffRoute();
+
+      await screen.findByRole("table", { name: "Staff search results" });
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Staff results toolbar",
+      });
+      const header = screen.getByTestId("staff-page-header");
+      expect(
+        within(header).getByRole("heading", {
+          level: 1,
+          name: "Staff Search",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        within(header).getByTestId("staff-page-actions"),
+      ).toBeInTheDocument();
+      for (const name of [
+        "Upload CSV",
+        "Configure Club Staff",
+        "Optimize assignments",
+      ]) {
+        expect(screen.getByRole("button", { name })).toBeInTheDocument();
+        expect(
+          within(header).getByRole("button", { name }),
+        ).toBeInTheDocument();
+        expect(within(toolbar).queryByRole("button", { name })).toBeNull();
+      }
+    });
+
+    it("removes chips and clears all through the toolbar", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      const { router } = renderStaffRoute(
+        `/staff?combine=and&filters=${encodeURIComponent(
+          JSON.stringify([
+            { field: "ca", op: "gt", value: 100 },
+            { field: "pa", op: "gt", value: 100 },
+          ]),
+        )}`,
+      );
+
+      await screen.findByRole("table", { name: "Staff search results" });
+      const getToolbar = () =>
+        screen.getByRole("toolbar", {
+          name: "Staff results toolbar",
+        });
+      expect(
+        within(getToolbar()).getAllByRole("button", {
+          name: /Remove .* filter/i,
+        }),
+      ).toHaveLength(2);
+      expect(
+        within(getToolbar()).getByRole("button", { name: "Clear all" }),
+      ).toBeInTheDocument();
+
+      await user.click(
+        within(getToolbar()).getByRole("button", {
+          name: /Remove CA filter/i,
+        }),
+      );
+      await waitFor(() => {
+        expect(router.state.location.search.filters).toHaveLength(1);
+      });
+      await waitFor(() => {
+        expect(
+          within(getToolbar()).queryByRole("button", {
+            name: /Remove CA filter/i,
+          }),
+        ).toBeNull();
+      });
+
+      await user.click(
+        within(getToolbar()).getByRole("button", { name: "Clear all" }),
+      );
+      await waitFor(() => {
+        expect(router.state.location.search.filters).toEqual([]);
+      });
+      await waitFor(() => {
+        expect(
+          within(getToolbar()).queryByRole("button", {
+            name: /Remove .* filter/i,
+          }),
+        ).toBeNull();
+      });
+    });
+
+    it("hosts shortlist metadata toggles in the toolbar dataset slot", async () => {
+      await resolveLoadDataIpcMock();
+      setStaffShortlistOverride([fixtureStaff()]);
+      renderStaffRoute("/staff?shortlistOnly=true");
+
+      await screen.findByRole("table", { name: "Staff Shortlist" });
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Staff results toolbar",
+      });
+      expect(
+        within(toolbar).getByRole("switch", { name: "Shortlist: On" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("combobox", { name: "Preferred Job" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("checkbox", { name: "Only unemployed" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Columns" }),
+      ).toBeInTheDocument();
+    });
+
+    it("keeps the My Staff boost outside the table toolbar", async () => {
+      await resolveLoadDataIpcMock();
+      renderStaffRoute("/staff?view=my-staff");
+
+      await screen.findByRole("table", { name: "Staff overview" });
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Staff results toolbar",
+      });
+      expect(
+        within(toolbar).getByText(/staff · sorted by/),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Columns" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Boost all CA" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).queryByRole("button", { name: "Boost all CA" }),
+      ).toBeNull();
+    });
+
+    it("recovers a failed dynamic-column replacement without false missing values", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      renderStaffRoute();
+
+      const table = await screen.findByRole("table", {
+        name: "Staff search results",
+      });
+      expect(
+        within(table).getByRole("columnheader", { name: "CA" }),
+      ).toHaveAttribute("aria-sort", "descending");
+      // Baseline truthful-missing markers (the fixture never scores
+      // role.manager, which the backend returns as null when requested).
+      const baselineMissing = within(table).queryAllByText("—");
+      expect(baselineMissing).not.toHaveLength(0);
+
+      // Drop one committed role column so the failed replacement below also
+      // covers an unresolved role field with a retained numeric score (72).
+      await user.click(screen.getByRole("button", { name: "Columns" }));
+      const dropDialog = screen.getByRole("dialog", { name: "Columns" });
+      await user.click(
+        within(dropDialog).getByRole("checkbox", {
+          name: "Coach — Goalkeeping",
+        }),
+      );
+      await user.keyboard("{Escape}");
+      await waitFor(() => {
+        expect(
+          within(table).queryByRole("columnheader", {
+            name: "Coach — Goalkeeping",
+          }),
+        ).toBeNull();
+      });
+
+      setStaffSearchIpcMockMode("error");
+      await user.click(screen.getByRole("button", { name: "Columns" }));
+      const dialog = screen.getByRole("dialog", { name: "Columns" });
+      await user.click(
+        within(dialog).getByRole("checkbox", { name: "Authority" }),
+      );
+      await user.click(
+        within(dialog).getByRole("checkbox", {
+          name: "Coach — Goalkeeping",
+        }),
+      );
+      await user.keyboard("{Escape}");
+
+      expect(
+        within(table).getByRole("columnheader", { name: "Authority" }),
+      ).toBeInTheDocument();
+      expect(
+        within(table).getByRole("columnheader", {
+          name: "Coach — Goalkeeping",
+        }),
+      ).toBeInTheDocument();
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Could not load staff columns.");
+      expect(
+        within(alert).getByRole("button", { name: "Retry" }),
+      ).toBeInTheDocument();
+      // Committed rows stay mounted with loading placeholders, never new
+      // truthful-missing markers for values the failed query never fetched.
+      expect(within(table).getAllByText("…")).toHaveLength(4);
+      expect(within(table).queryAllByText("—")).toHaveLength(
+        baselineMissing.length,
+      );
+      expect(within(table).getByText("Alex Coach")).toBeInTheDocument();
+      // The unresolved role field hides its retained numeric score instead
+      // of showing a stale ScoreBadge while the replacement is unresolved.
+      expect(
+        within(table).queryAllByRole("img", {
+          name: "Coach — Goalkeeping role score: 72, Good",
+        }),
+      ).toHaveLength(0);
+
+      setStaffSearchIpcMockMode("success");
+      await user.click(within(alert).getByRole("button", { name: "Retry" }));
+      await waitFor(() => {
+        expect(screen.queryByRole("alert")).toBeNull();
+      });
+      expect(within(table).getAllByText("15")).not.toHaveLength(0);
+      expect(
+        within(table).getAllByRole("img", {
+          name: "Coach — Goalkeeping role score: 72, Good",
+        }),
+      ).toHaveLength(2);
     });
   });
 });

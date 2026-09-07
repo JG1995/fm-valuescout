@@ -232,7 +232,7 @@ describe("search route", () => {
       ).toBeEnabled(),
     );
     const orderedLaneIds = ORDERED_TACTIC_LANE_IDS;
-    const nonTacticIds = ["name", "age", "nationality", "ca", "pa", "value"];
+    const nonTacticIds = ["age", "nationality", "ca", "pa", "value"];
 
     await user.click(
       screen.getByRole("button", { name: "Add Tactic (Current)" }),
@@ -271,6 +271,55 @@ describe("search route", () => {
     ).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("shows compact tactic headers with keyboard-reachable full definitions", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    renderSearchRoute();
+
+    await screen.findByRole("button", {
+      name: "Add Tactic (Current)",
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Add Tactic (Current)" }),
+      ).toBeEnabled(),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+    );
+
+    const full = "GK (Goalkeeper) / GK (Line-Holding Keeper)";
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    // Current group only: each of the 11 lanes renders exactly once.
+    const headers = within(table).getAllByRole("columnheader", {
+      name: full,
+    });
+    expect(headers).toHaveLength(1);
+    const header = headers[0];
+    // Compact placement primary with smaller role context.
+    expect(within(header).getByText("GK")).toBeVisible();
+    expect(
+      within(header).getByText("Goalkeeper / Line-Holding Keeper"),
+    ).toBeVisible();
+    // The focusable leaf carries the complete definition; keyboard focus
+    // reveals a visible definition instead of relying on title alone.
+    const leaf = within(header).getByRole("button", { name: full });
+    expect(within(header).queryByRole("tooltip")).toBeNull();
+    leaf.focus();
+    expect(
+      await within(header).findByRole("tooltip", { name: full }),
+    ).toBeVisible();
+    // No 12th lane: exactly the 11 canonical current lanes are present.
+    const tacticIds = usePlayerTableStore
+      .getState()
+      .layouts.search.columnIds.filter((id) =>
+        id.startsWith("tactic_current."),
+      );
+    expect(tacticIds).toHaveLength(11);
+  });
+
   it("renders tactic scores and re-compacts the survivor when header removal resets sort", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -286,7 +335,7 @@ describe("search route", () => {
       `tactic_potential.${laneId}`,
     ]);
     const store = usePlayerTableStore.getState();
-    store.replaceLayout("search", ["name", "ca", ...interleavedIds]);
+    store.replaceLayout("search", ["ca", ...interleavedIds]);
     store.setColumnWidth("search", currentIds[0], 176);
     store.setColumnWidth("search", potentialIds[0], 184);
     setSearchPlayersOverride([
@@ -342,7 +391,6 @@ describe("search route", () => {
 
     await waitFor(() => {
       expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
-        "name",
         "ca",
         ...potentialIds,
       ]);
@@ -374,14 +422,13 @@ describe("search route", () => {
     usePlayerTableStore
       .getState()
       .replaceLayout("search", [
-        "name",
         "ca",
         ...ORDERED_TACTIC_LANE_IDS.flatMap((laneId) => [
           `tactic_current.${laneId}`,
           `tactic_potential.${laneId}`,
         ]),
       ]);
-    usePlayerTableStore.getState().moveColumn("search", potentialIds[0], 23);
+    usePlayerTableStore.getState().moveColumn("search", potentialIds[0], 22);
     renderSearchRoute("/search", (queryClient) => {
       void queryClient.fetchQuery({
         queryKey: plannerKeys.tactic({
@@ -406,7 +453,6 @@ describe("search route", () => {
     );
 
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
-      "name",
       "ca",
       ...potentialIds.slice(1),
       potentialIds[0],
@@ -420,41 +466,51 @@ describe("search route", () => {
     ).toBe(false);
   });
 
-  it("restores the default layout and sort after tactic-only header removal", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    const currentIds = ORDERED_TACTIC_LANE_IDS.map(
-      (laneId) => `tactic_current.${laneId}`,
-    );
-    usePlayerTableStore.getState().replaceLayout("search", currentIds);
-    const { router } = renderSearchRoute(
-      `/search?sort=${currentIds[0]}&dir=desc`,
-    );
+  it.each([
+    {
+      tableId: "search",
+      entry: (sort: string) => `/search?sort=${sort}&dir=desc`,
+    },
+    {
+      tableId: "moneyball-search",
+      entry: (sort: string) => `/search?view=moneyball&sort=${sort}&dir=desc`,
+    },
+  ] as const)(
+    "preserves identity-only after tactic-only leaf removal ($tableId)",
+    async ({ tableId, entry }) => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      const currentIds = ORDERED_TACTIC_LANE_IDS.map(
+        (laneId) => `tactic_current.${laneId}`,
+      );
+      usePlayerTableStore.getState().replaceLayout(tableId, currentIds);
+      renderSearchRoute(entry(currentIds[0]));
 
-    const table = await screen.findByRole("table", {
-      name: "Player search results",
-    });
-    const label = "GK (Goalkeeper) / GK (Line-Holding Keeper)";
-    fireEvent.contextMenu(
-      within(table).getByRole("columnheader", { name: label }),
-    );
-    await user.click(screen.getByRole("menuitem", { name: `Remove ${label}` }));
-
-    await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        sort: "ca",
-        dir: "desc",
+      const table = await screen.findByRole("table", {
+        name: "Player search results",
       });
-    });
-    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
-      "name",
-      "age",
-      "nationality",
-      "ca",
-      "pa",
-      "value",
-    ]);
-  });
+      const label = "GK (Goalkeeper) / GK (Line-Holding Keeper)";
+      fireEvent.contextMenu(
+        within(table).getByRole("columnheader", { name: label }),
+      );
+      await user.click(
+        screen.getByRole("menuitem", { name: `Remove ${label}` }),
+      );
+
+      // Identity-only is valid: the emptied tactic group normalizes away
+      // without rolling back to defaults.
+      await waitFor(() => {
+        expect(
+          usePlayerTableStore.getState().layouts[tableId].columnIds,
+        ).toEqual([]);
+      });
+      expect(
+        await screen.findByRole("table", {
+          name: "Player search results",
+        }),
+      ).toBeInTheDocument();
+    },
+  );
 
   it("falls back from a tactic sort when its active group is toggled off", async () => {
     const user = userEvent.setup();
@@ -464,7 +520,7 @@ describe("search route", () => {
     );
     usePlayerTableStore
       .getState()
-      .replaceLayout("search", ["name", "ca", ...currentIds]);
+      .replaceLayout("search", ["ca", ...currentIds]);
     const { router } = renderSearchRoute(
       `/search?sort=${currentIds[0]}&dir=desc`,
     );
@@ -482,10 +538,51 @@ describe("search route", () => {
       });
     });
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
-      "name",
       "ca",
     ]);
   });
+
+  it.each([
+    {
+      tableId: "search",
+      entry: (sort: string) => `/search?sort=${sort}&dir=desc`,
+      expectedSort: "ca",
+    },
+    {
+      tableId: "moneyball-search",
+      entry: (sort: string) => `/search?view=moneyball&sort=${sort}&dir=desc`,
+      expectedSort: "moneyball.average_rating",
+    },
+  ] as const)(
+    "keeps identity-only when its tactic-only group is toggled off ($tableId)",
+    async ({ tableId, entry, expectedSort }) => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      const currentIds = ORDERED_TACTIC_LANE_IDS.map(
+        (laneId) => `tactic_current.${laneId}`,
+      );
+      usePlayerTableStore.getState().replaceLayout(tableId, currentIds);
+      const { router } = renderSearchRoute(entry(currentIds[0]));
+
+      const currentToggle = await screen.findByRole("button", {
+        name: "Add Tactic (Current)",
+      });
+      await waitFor(() => expect(currentToggle).toBeEnabled());
+      await user.click(currentToggle);
+
+      await waitFor(() => {
+        expect(
+          usePlayerTableStore.getState().layouts[tableId].columnIds,
+        ).toEqual([]);
+      });
+      await waitFor(() => {
+        expect(router.state.location.search).toMatchObject({
+          sort: expectedSort,
+          dir: "desc",
+        });
+      });
+    },
+  );
 
   it("refreshes tactic labels for a new save without replacing its table layout", async () => {
     const user = userEvent.setup();
@@ -494,7 +591,7 @@ describe("search route", () => {
       (laneId) => `tactic_current.${laneId}`,
     );
     const store = usePlayerTableStore.getState();
-    store.replaceLayout("search", ["name", "ca", ...currentIds]);
+    store.replaceLayout("search", ["ca", ...currentIds]);
     store.setColumnWidth("search", currentIds[0], 176);
     const { queryClient } = renderSearchRoute();
 
@@ -516,7 +613,6 @@ describe("search route", () => {
     await user.selectOptions(saveSelect, String(second.id));
 
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
-      "name",
       "ca",
       ...currentIds,
     ]);
@@ -534,7 +630,6 @@ describe("search route", () => {
       screen.queryByRole("columnheader", { name: originalLabel }),
     ).toBeNull();
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
-      "name",
       "ca",
       ...currentIds,
     ]);
@@ -564,9 +659,7 @@ describe("search route", () => {
 
   it("restores a persisted tactic sort only for the current view layout", async () => {
     const tacticSort = "tactic_current.goalkeeper";
-    usePlayerTableStore
-      .getState()
-      .replaceLayout("search", ["name", tacticSort]);
+    usePlayerTableStore.getState().replaceLayout("search", [tacticSort]);
 
     const { router } = renderSearchRoute(`/search?sort=${tacticSort}&dir=asc`);
 
@@ -581,7 +674,7 @@ describe("search route", () => {
     const tacticSort = "tactic_potential.goalkeeper";
     usePlayerTableStore
       .getState()
-      .replaceLayout("moneyball-search", ["name", tacticSort]);
+      .replaceLayout("moneyball-search", [tacticSort]);
 
     const { router } = renderSearchRoute(`/search?sort=${tacticSort}`);
 
@@ -864,7 +957,7 @@ describe("search route", () => {
       name: "Player search results",
     });
     expect(
-      within(table).getByRole("columnheader", { name: "Name" }),
+      within(table).getByRole("columnheader", { name: "Player" }),
     ).toBeInTheDocument();
     expect(
       within(table).getByRole("columnheader", { name: "CA" }),
@@ -882,6 +975,37 @@ describe("search route", () => {
     expect(getLastSearchPlayersArgs()).toMatchObject({
       requestedFields: [],
     });
+  });
+
+  it("bounds a wide grouped layout to fixed column widths in the same scroller", async () => {
+    await resolveLoadDataIpcMock();
+    usePlayerTableStore.getState().addColumns("search", ["wage", "reputation"]);
+    setSearchPlayersOverride(manyPlayers(80));
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    // 280 identity + 144 age + 160 nationality + 72 CA + 72 PA + 112 value
+    // + 96 wage + 96 reputation. The bounded model fixes the table to
+    // exactly this sum so readable minimums hold and overflow stays in
+    // the same scroller instead of stretching cells.
+    expect(table).toHaveStyle({
+      minWidth: "1032px",
+      maxWidth: "1032px",
+      width: "1032px",
+    });
+    const cols = table.querySelectorAll("col");
+    expect(cols).toHaveLength(8);
+    expect(cols[0]).toHaveStyle({ width: "280px" });
+    // Sticky identity plus the complete grouped + leaf header context.
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers[0]).toHaveTextContent("Player");
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toBeInTheDocument();
+    const scroller = screen.getByTestId("search-results-scroller");
+    expect(scroller).toHaveClass("h-full", "min-h-0", "overflow-auto");
   });
 
   it("renders every nationality flag in stored order", async () => {
@@ -1063,6 +1187,88 @@ describe("search route", () => {
     await user.keyboard("{Escape}");
   });
 
+  it("manages Search columns from the grouped Columns control without touching identity", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Search Scout", 160)]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(
+      within(table).getByRole("columnheader", { name: "Market" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    const dialog = screen.getByRole("dialog", { name: "Columns" });
+    // Optional analysis columns grouped per the header map; identity absent.
+    expect(within(dialog).getByText("Profile")).toBeInTheDocument();
+    expect(within(dialog).getByText("Ability")).toBeInTheDocument();
+    expect(within(dialog).getByText("Market")).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: "CA" })).toBeChecked();
+    expect(within(dialog).queryByRole("checkbox", { name: "Name" })).toBeNull();
+    expect(within(dialog).queryByRole("checkbox", { name: "Club" })).toBeNull();
+    expect(
+      within(dialog).queryByRole("checkbox", { name: "Division" }),
+    ).toBeNull();
+
+    await user.click(within(dialog).getByRole("checkbox", { name: "Value" }));
+    expect(
+      usePlayerTableStore.getState().layouts.search.columnIds,
+    ).not.toContain("value");
+    // The header run follows the same mapper: once reloaded, the emptied
+    // Market group is gone along with its leaf.
+    await waitFor(() => {
+      const reloaded = screen.getByRole("table", {
+        name: "Player search results",
+      });
+      expect(
+        within(reloaded).queryByRole("columnheader", { name: "Value" }),
+      ).toBeNull();
+      expect(
+        within(reloaded).queryByRole("columnheader", { name: "Market" }),
+      ).toBeNull();
+    });
+
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Reputation" }),
+    );
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toContain(
+      "reputation",
+    );
+    expect(
+      await screen.findByRole("columnheader", { name: "Reputation" }),
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+  });
+
+  it("never offers identity in the Search Add-column picker results", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Search Scout", 160)]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Add column" }));
+    await user.click(
+      screen.getByRole("button", { name: "Column: Choose a metric" }),
+    );
+    await user.type(
+      screen.getByRole("combobox", { name: "Search columns" }),
+      "division",
+    );
+    expect(screen.queryByRole("option", { name: "Division" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "Club" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "Name" })).toBeNull();
+    await user.keyboard("{Escape}");
+  });
+
   it("reorders Search columns from the menu without changing its query, virtual row, or widths", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -1107,6 +1313,7 @@ describe("search route", () => {
     await waitFor(() => {
       const headerLabels = within(table)
         .getAllByRole("columnheader")
+        .filter((header) => header.getAttribute("scope") === "col")
         .map((header) => header.getAttribute("aria-label"));
       expect(headerLabels.indexOf("Agility")).toBeLessThan(
         headerLabels.indexOf("Acceleration"),
@@ -1114,6 +1321,7 @@ describe("search route", () => {
     });
     const headerLabels = within(table)
       .getAllByRole("columnheader")
+      .filter((header) => header.getAttribute("scope") === "col")
       .map((header) => header.getAttribute("aria-label"));
     const cellTexts = within(focusedRow)
       .getAllByRole("cell")
@@ -1147,7 +1355,6 @@ describe("search route", () => {
 
     expect(screen.getByRole("button", { name: "CA" })).toHaveFocus();
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
-      "name",
       "age",
       "ca",
       "nationality",
@@ -1160,7 +1367,7 @@ describe("search route", () => {
     });
 
     fireEvent.contextMenu(
-      within(table).getByRole("columnheader", { name: "Name" }),
+      within(table).getByRole("columnheader", { name: "Age / DOB" }),
     );
     expect(screen.getByRole("menuitem", { name: "Move left" })).toBeDisabled();
     fireEvent.contextMenu(
@@ -1251,11 +1458,11 @@ describe("search route", () => {
     fireEvent.keyDown(resizeCa, { key: "ArrowRight" });
     expect(resizeCa).toHaveAttribute("aria-valuenow", "88");
 
-    fireEvent.click(within(table).getByRole("button", { name: "Name" }));
+    fireEvent.click(within(table).getByRole("button", { name: "CA" }));
 
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        sort: "name",
+        sort: "ca",
         dir: "asc",
       });
     });
@@ -1268,22 +1475,22 @@ describe("search route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("Sort reset", 160)]);
-    const { router } = renderSearchRoute("/search?sort=name&dir=asc");
+    const { router } = renderSearchRoute("/search?sort=value&dir=desc");
 
     const table = await screen.findByRole("table", {
       name: "Player search results",
     });
     fireEvent.contextMenu(
-      within(table).getByRole("columnheader", { name: "Name" }),
+      within(table).getByRole("columnheader", { name: "Value" }),
     );
-    await user.click(screen.getByRole("menuitem", { name: "Remove Name" }));
+    await user.click(screen.getByRole("menuitem", { name: "Remove Value" }));
 
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
         sort: "ca",
         dir: "desc",
       });
-      expect(screen.queryByRole("columnheader", { name: "Name" })).toBeNull();
+      expect(screen.queryByRole("columnheader", { name: "Value" })).toBeNull();
     });
   });
 
@@ -1333,6 +1540,12 @@ describe("search route", () => {
       expect(
         within(table).queryByRole("columnheader", { name: "Division" }),
       ).toBeNull();
+      const identityHeader = within(table).getAllByRole("columnheader")[0];
+      expect(identityHeader).toHaveTextContent("Player");
+      expect(identityHeader).toHaveAttribute("rowspan", "2");
+      expect(identityHeader.className).toContain("sticky");
+      expect(identityHeader.className).toContain("left-0");
+      expect(table.querySelector("img")).toBeNull();
       const rows = within(table)
         .getAllByRole("row")
         .filter((row) => row.hasAttribute("data-index"));
@@ -1363,6 +1576,7 @@ describe("search route", () => {
       const clubOnlyCell = within(clubOnlyRow).getAllByRole("cell")[0];
       const divisionOnlyCell = within(divisionOnlyRow).getAllByRole("cell")[0];
       expect(identityRow).toHaveStyle({ height: "40px" });
+      expect(identityCell.className).toContain("sticky");
       expect(identityCell).toHaveTextContent("Test FC · Premier Division");
       expect(missingContextCell).toHaveTextContent("No context");
       expect(missingContextCell).not.toHaveTextContent("—");
@@ -1430,18 +1644,10 @@ describe("search route", () => {
       playerNamed("Zara Scout", 160),
       playerNamed("Alex Scout", 145),
     ]);
-    const { router } = renderSearchRoute();
+    const { router } = renderSearchRoute("/search?sort=name&dir=asc");
 
     const table = await screen.findByRole("table", {
       name: "Player search results",
-    });
-    await user.click(within(table).getByRole("button", { name: "Name" }));
-
-    await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        sort: "name",
-        dir: "asc",
-      });
     });
     const sortedRow = within(table)
       .getAllByRole("row")
@@ -1465,12 +1671,16 @@ describe("search route", () => {
         dir: "asc",
       });
     });
-    const restoredTable = await screen.findByRole("table", {
+    await screen.findByRole("table", {
       name: "Player search results",
     });
     expect(
-      within(restoredTable).getByRole("columnheader", { name: "Name" }),
-    ).toHaveAttribute("aria-sort", "ascending");
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          element.textContent === "2 players · sorted by Name (ascending)",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("moves keyboard focus to the next results row on ArrowDown", async () => {
@@ -1532,12 +1742,12 @@ describe("search route", () => {
     boundaryRow.focus();
     await user.keyboard("{ArrowDown}");
 
-    const nameHeader = within(table).getByRole("button", { name: "Name" });
-    await user.click(nameHeader);
-    expect(nameHeader).toHaveFocus();
+    const caHeader = within(table).getByRole("button", { name: "CA" });
+    await user.click(caHeader);
+    expect(caHeader).toHaveFocus();
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        sort: "name",
+        sort: "ca",
         dir: "asc",
       });
     });
@@ -1545,7 +1755,7 @@ describe("search route", () => {
     resolvePendingSearchPlayersPageIpcMock();
 
     expect(await screen.findByText("Player 051")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Name" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "CA" })).toHaveFocus();
   });
 
   it("moves keyboard focus to the previous results row on ArrowUp", async () => {
@@ -1697,7 +1907,7 @@ describe("search route", () => {
   it("writes sort into URL search params when a header is clicked", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    // CA desc → Zara first; name asc → Alice first (orders must diverge).
+    // CA desc → Zara first; CA asc → Alice first (orders must diverge).
     setSearchPlayersOverride([
       playerNamed("Zara", 200),
       playerNamed("Alice", 100),
@@ -1719,17 +1929,17 @@ describe("search route", () => {
     }
     expect(within(firstBefore).getByText("Zara")).toBeInTheDocument();
 
-    await user.click(within(table).getByRole("button", { name: /^Name$/i }));
+    await user.click(within(table).getByRole("button", { name: "CA" }));
 
     expect(router.state.location.search).toMatchObject({
-      sort: "name",
+      sort: "ca",
       dir: "asc",
     });
-    const nameHeader = within(table).getByRole("columnheader", {
-      name: /Name/i,
+    const caHeader = within(table).getByRole("columnheader", {
+      name: "CA",
     });
     await waitFor(() =>
-      expect(nameHeader).toHaveAttribute("aria-sort", "ascending"),
+      expect(caHeader).toHaveAttribute("aria-sort", "ascending"),
     );
 
     const bodyRowsAfter = within(table)
@@ -1787,11 +1997,11 @@ describe("search route", () => {
     const table = await screen.findByRole("table", {
       name: "Player search results",
     });
-    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await user.click(within(table).getByRole("button", { name: "Value" }));
     await waitFor(() =>
       expect(
-        within(table).getByRole("columnheader", { name: "Name" }),
-      ).toHaveAttribute("aria-sort", "ascending"),
+        within(table).getByRole("columnheader", { name: "Value" }),
+      ).toHaveAttribute("aria-sort", "descending"),
     );
     await user.click(within(table).getByRole("button", { name: "CA" }));
     await waitFor(() =>
@@ -1799,7 +2009,7 @@ describe("search route", () => {
         within(table).getByRole("columnheader", { name: "CA" }),
       ).toHaveAttribute("aria-sort", "descending"),
     );
-    const cachedNameSort = queryClient
+    const cachedValueSort = queryClient
       .getQueryCache()
       .findAll({ queryKey: searchKeys.playerPages() })
       .find((query) => {
@@ -1807,15 +2017,15 @@ describe("search route", () => {
         return (
           typeof descriptor === "object" &&
           descriptor !== null &&
-          (descriptor as { sortBy?: unknown }).sortBy === "name"
+          (descriptor as { sortBy?: unknown }).sortBy === "value"
         );
       });
-    if (!cachedNameSort) {
-      throw new Error("expected a cached Search name sort");
+    if (!cachedValueSort) {
+      throw new Error("expected a cached Search value sort");
     }
-    await queryClient.invalidateQueries({ queryKey: cachedNameSort.queryKey });
+    await queryClient.invalidateQueries({ queryKey: cachedValueSort.queryKey });
     setSearchPlayersPageIpcMockMode("pendingReplacement");
-    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await user.click(within(table).getByRole("button", { name: "Value" }));
 
     await screen.findByRole("status");
     expect(within(table).getByText("Zara")).toBeInTheDocument();
@@ -1851,8 +2061,8 @@ describe("search route", () => {
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() =>
       expect(
-        within(table).getByRole("columnheader", { name: "Name" }),
-      ).toHaveAttribute("aria-sort", "ascending"),
+        within(table).getByRole("columnheader", { name: "Value" }),
+      ).toHaveAttribute("aria-sort", "descending"),
     );
   });
 
@@ -1870,7 +2080,7 @@ describe("search route", () => {
     });
     const callsBeforeSort = getSearchPlayersCallCount();
     setSearchPlayersPageIpcMockMode("pendingReplacement");
-    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await user.click(within(table).getByRole("button", { name: "Value" }));
 
     await waitFor(() =>
       expect(getSearchPlayersCallCount()).toBe(callsBeforeSort + 1),
@@ -1896,8 +2106,8 @@ describe("search route", () => {
     resolvePendingSearchPlayersPageIpcMock();
     await waitFor(() =>
       expect(
-        within(table).getByRole("columnheader", { name: "Name" }),
-      ).toHaveAttribute("aria-sort", "ascending"),
+        within(table).getByRole("columnheader", { name: "Value" }),
+      ).toHaveAttribute("aria-sort", "descending"),
     );
     expect(within(table).getByText("Alice")).toBeInTheDocument();
   });
@@ -1967,7 +2177,7 @@ describe("search route", () => {
       name: "Player search results",
     });
     setSearchPlayersPageIpcMockMode("rejectReplacementOnce");
-    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await user.click(within(table).getByRole("button", { name: "Value" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Could not sort players.",
@@ -1991,8 +2201,8 @@ describe("search route", () => {
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() =>
       expect(
-        within(table).getByRole("columnheader", { name: "Name" }),
-      ).toHaveAttribute("aria-sort", "ascending"),
+        within(table).getByRole("columnheader", { name: "Value" }),
+      ).toHaveAttribute("aria-sort", "descending"),
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -2010,7 +2220,7 @@ describe("search route", () => {
       name: "Player search results",
     });
     setSearchPlayersPageIpcMockMode("pendingReplacement");
-    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await user.click(within(table).getByRole("button", { name: "Value" }));
     await screen.findByRole("status");
     await user.click(within(table).getByRole("button", { name: "CA" }));
 
@@ -2044,8 +2254,12 @@ describe("search route", () => {
       name: "Player search results",
     });
     expect(
-      within(table).getByRole("columnheader", { name: /Name/i }),
-    ).toHaveAttribute("aria-sort", "ascending");
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          element.textContent === "2 players · sorted by Name (ascending)",
+      ),
+    ).toBeInTheDocument();
 
     const bodyRows = within(table)
       .getAllByRole("row")
@@ -2240,7 +2454,7 @@ describe("search route", () => {
       screen.queryByText("No players in this Moneyball import"),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText(/Adjust or clear filters in the strip above/),
+      screen.getByText(/Adjust or clear filters in the toolbar above/),
     ).toBeInTheDocument();
   });
 
@@ -2504,12 +2718,16 @@ describe("search route", () => {
         dir: "asc",
       });
     });
-    const table = await screen.findByRole("table", {
+    await screen.findByRole("table", {
       name: "Player search results",
     });
     expect(
-      within(table).getByRole("columnheader", { name: "Name" }),
-    ).toHaveAttribute("aria-sort", "ascending");
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          element.textContent === "1 players · sorted by Name (ascending)",
+      ),
+    ).toBeInTheDocument();
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         sortBy: "name",
@@ -2896,5 +3114,185 @@ describe("search route", () => {
     expect(
       screen.queryByText("Last import: 3 players, 2 stored, 1 skipped."),
     ).toBeNull();
+  });
+
+  describe("search table toolbar", () => {
+    it("associates summary, chips, edit, columns, and dataset toggles in one table toolbar", async () => {
+      await resolveLoadDataIpcMock();
+      setSearchPlayersOverride([playerNamed("High CA", 180)]);
+      renderSearchRoute();
+
+      await screen.findByText("High CA");
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Player results toolbar",
+      });
+      expect(
+        within(toolbar).getByText(/players · sorted by/),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Edit filters" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Columns" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("switch", { name: "Shortlist: Off" }),
+      ).toBeInTheDocument();
+      const table = screen.getByRole("table", {
+        name: "Player search results",
+      });
+      expect(
+        toolbar.compareDocumentPosition(table) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it("keeps Add Tactic and Upload Shortlist outside the generic toolbar", async () => {
+      await resolveLoadDataIpcMock();
+      setSearchPlayersOverride([playerNamed("High CA", 180)]);
+      renderSearchRoute("/search?view=general");
+
+      await screen.findByText("High CA");
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Player results toolbar",
+      });
+      const header = screen.getByTestId("search-page-header");
+      expect(
+        within(header).getByRole("heading", {
+          level: 1,
+          name: "Player Search",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        within(header).getByTestId("search-page-actions"),
+      ).toBeInTheDocument();
+      for (const name of [
+        "Add Tactic (Current)",
+        "Add Tactic (Potential)",
+        "Upload Shortlist",
+      ]) {
+        expect(screen.getByRole("button", { name })).toBeInTheDocument();
+        expect(
+          within(header).getByRole("button", { name }),
+        ).toBeInTheDocument();
+        expect(within(toolbar).queryByRole("button", { name })).toBeNull();
+      }
+    });
+
+    it("removes chips and clears all through the toolbar", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      setSearchPlayersOverride([
+        playerNamed("High CA", 180),
+        playerNamed("Low CA", 100),
+      ]);
+      const { router } = renderSearchRoute(
+        `/search?sort=ca&dir=desc&combine=and&filters=${encodeURIComponent(
+          JSON.stringify([
+            { field: "ca", op: "gt", value: 150 },
+            { field: "pa", op: "gt", value: 150 },
+          ]),
+        )}`,
+      );
+
+      await screen.findByText("High CA");
+      const getToolbar = () =>
+        screen.getByRole("toolbar", {
+          name: "Player results toolbar",
+        });
+      const toolbar = getToolbar();
+      expect(
+        within(toolbar).getAllByRole("button", { name: /Remove filter/i }),
+      ).toHaveLength(2);
+      expect(
+        within(toolbar).getByRole("button", { name: "Clear all" }),
+      ).toBeInTheDocument();
+
+      await user.click(
+        within(getToolbar()).getByRole("button", {
+          name: /Remove filter CA > 150/i,
+        }),
+      );
+      await waitFor(() => {
+        expect(router.state.location.search.filters).toHaveLength(1);
+      });
+      await waitFor(() => {
+        expect(
+          within(getToolbar()).queryByRole("button", {
+            name: /Remove filter CA > 150/i,
+          }),
+        ).toBeNull();
+      });
+
+      await user.click(
+        within(getToolbar()).getByRole("button", { name: "Clear all" }),
+      );
+      await waitFor(() => {
+        expect(router.state.location.search.filters).toEqual([]);
+      });
+      await waitFor(() => {
+        expect(
+          within(getToolbar()).queryByRole("button", {
+            name: /Remove filter/i,
+          }),
+        ).toBeNull();
+      });
+      expect(await screen.findByText("Low CA")).toBeInTheDocument();
+    });
+
+    it("hosts the comparison-pool toggle in the toolbar dataset slot", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
+      renderSearchRoute("/search?view=moneyball");
+
+      await screen.findByText("Moneyball Scout");
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Player results toolbar",
+      });
+      expect(
+        within(toolbar).getByRole("button", { name: "Filtered cohort" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Full CSV" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Edit filters" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Upload Moneyball CSV" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).queryByRole("button", {
+          name: "Upload Moneyball CSV",
+        }),
+      ).toBeNull();
+      const header = screen.getByTestId("search-page-header");
+      expect(
+        within(header).getByRole("heading", {
+          level: 1,
+          name: "Player Search",
+        }),
+      ).toBeInTheDocument();
+      for (const name of [
+        "Add Tactic (Current)",
+        "Add Tactic (Potential)",
+        "Upload Moneyball CSV",
+      ]) {
+        expect(
+          within(header).getByRole("button", { name }),
+        ).toBeInTheDocument();
+        expect(within(toolbar).queryByRole("button", { name })).toBeNull();
+      }
+
+      await user.click(
+        within(toolbar).getByRole("button", { name: "Full CSV" }),
+      );
+      await waitFor(() => {
+        expect(getLastSearchPlayersArgs()).toMatchObject({
+          comparisonPool: "fullCsv",
+        });
+      });
+    });
   });
 });

@@ -1,11 +1,11 @@
-import { SlidersHorizontal, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
+import { TableToolbar } from "@/components/player-table/table-toolbar";
 import { Button } from "@/components/ui/button/button";
 import { SelectField } from "@/components/ui/field/select-field";
 import { TextField } from "@/components/ui/field/text-field";
 import { Modal } from "@/components/ui/modal/modal";
-import { Panel } from "@/components/ui/panel/panel";
 import { MetricPicker } from "@/components/ui/player-metric-picker";
 import type {
   StaffFilterRule,
@@ -28,13 +28,9 @@ type StaffFilterBarProps = {
   combine: "and" | "or";
   onRulesChange: (rules: StaffFilterRule[]) => void;
   onApply: (rules: StaffFilterRule[], combine: "and" | "or") => void;
-  headerActions?: ReactNode;
-  shortlistOnly?: boolean;
-  preferredJob?: string;
-  preferredJobOptions?: string[];
-  unemployedOnly?: boolean;
-  onPreferredJobChange?: (preferredJob: string) => void;
-  onUnemployedOnlyChange?: (unemployedOnly: boolean) => void;
+  summary?: ReactNode;
+  columnsControl?: ReactNode;
+  datasetToggles?: ReactNode;
 };
 
 function formatValue(rule: StaffFilterRule): string {
@@ -45,116 +41,49 @@ function StaffFilterStrip({
   rules,
   combine,
   onRulesChange,
-  onEdit,
-  headerActions,
-  shortlistOnly,
-  preferredJob,
-  preferredJobOptions,
-  unemployedOnly,
-  onPreferredJobChange,
-  onUnemployedOnlyChange,
-}: Pick<
-  StaffFilterBarProps,
-  | "rules"
-  | "combine"
-  | "onRulesChange"
-  | "headerActions"
-  | "shortlistOnly"
-  | "preferredJob"
-  | "preferredJobOptions"
-  | "unemployedOnly"
-  | "onPreferredJobChange"
-  | "onUnemployedOnlyChange"
-> & {
-  onEdit: () => void;
-}) {
+}: Pick<StaffFilterBarProps, "rules" | "combine" | "onRulesChange">) {
   const appliedRules = completeStaffFilterRules(rules);
+  if (appliedRules.length === 0) {
+    return (
+      <p className="text-body-md text-on-surface-variant">
+        No filters applied. Use Edit filters to narrow the staff list.
+        {combine === "or" ? " Rules combine with OR." : null}
+      </p>
+    );
+  }
   return (
-    <Panel
-      title="Filters"
-      actions={
-        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
-          {appliedRules.length > 0 ? (
-            <Button variant="ghost" onClick={() => onRulesChange([])}>
-              Clear all
-            </Button>
-          ) : null}
-          <Button variant="secondary" icon={SlidersHorizontal} onClick={onEdit}>
-            Edit filters
-          </Button>
-          {headerActions}
-        </div>
-      }
-    >
-      {shortlistOnly ? (
-        <div className="flex flex-wrap items-center gap-4 pt-2">
-          <label className="flex items-center gap-2 text-body-md text-on-surface">
-            Preferred Job
-            <select
-              className="rounded-md border border-outline bg-surface px-2 py-1 text-on-surface"
-              value={preferredJob ?? ""}
-              onChange={(event) => onPreferredJobChange?.(event.target.value)}
+    <div className="space-y-2">
+      <p className="text-label-md text-on-surface-variant uppercase">
+        Combined with {combine}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        {appliedRules.map((rule) => {
+          const field = getStaffFilterField(rule.field);
+          const operator = field?.operators.find(
+            (candidate) => candidate.id === rule.op,
+          );
+          return (
+            <span
+              key={rule.id}
+              className="inline-flex items-center gap-1 rounded-full border border-outline-variant bg-surface-container-high px-2 py-1 text-label-md text-on-surface"
             >
-              <option value="">All jobs</option>
-              {(preferredJobOptions ?? []).map((job) => (
-                <option key={job} value={job}>
-                  {job}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-2 text-body-md text-on-surface">
-            <input
-              type="checkbox"
-              checked={unemployedOnly === true}
-              onChange={(event) =>
-                onUnemployedOnlyChange?.(event.target.checked)
-              }
-            />
-            Only unemployed
-          </label>
-        </div>
-      ) : null}
-      {appliedRules.length === 0 ? (
-        <p className="text-body-md text-on-surface-variant">
-          No filters applied. Use Edit filters to narrow the staff list.
-          {combine === "or" ? " Rules combine with OR." : null}
-        </p>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-label-md text-on-surface-variant uppercase">
-            Combined with {combine}
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            {appliedRules.map((rule) => {
-              const field = getStaffFilterField(rule.field);
-              const operator = field?.operators.find(
-                (candidate) => candidate.id === rule.op,
-              );
-              return (
-                <span
-                  key={rule.id}
-                  className="inline-flex items-center gap-1 rounded-full border border-outline-variant bg-surface-container-high px-2 py-1 text-label-md text-on-surface"
-                >
-                  {field?.label ?? rule.field} {operator?.label ?? rule.op}{" "}
-                  {formatValue(rule)}
-                  <button
-                    type="button"
-                    aria-label={`Remove ${field?.label ?? rule.field} filter`}
-                    className="rounded-full p-0.5 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface focus-visible:outline-2 focus-visible:outline-primary"
-                    onClick={() =>
-                      onRulesChange(rules.filter((item) => item.id !== rule.id))
-                    }
-                  >
-                    <span aria-hidden="true">×</span>
-                  </button>
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </Panel>
+              {field?.label ?? rule.field} {operator?.label ?? rule.op}{" "}
+              {formatValue(rule)}
+              <button
+                type="button"
+                aria-label={`Remove ${field?.label ?? rule.field} filter`}
+                className="rounded-full p-0.5 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface focus-visible:outline-2 focus-visible:outline-primary"
+                onClick={() =>
+                  onRulesChange(rules.filter((item) => item.id !== rule.id))
+                }
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </span>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -367,30 +296,34 @@ export function StaffFilterBar({
   combine,
   onRulesChange,
   onApply,
-  headerActions,
-  shortlistOnly,
-  preferredJob,
-  preferredJobOptions,
-  unemployedOnly,
-  onPreferredJobChange,
-  onUnemployedOnlyChange,
+  summary,
+  columnsControl,
+  datasetToggles,
 }: StaffFilterBarProps) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
+  const openEditor = useCallback(() => {
+    setOpen(true);
+  }, []);
+  const appliedRules = completeStaffFilterRules(rules);
   return (
     <>
-      <StaffFilterStrip
-        rules={rules}
-        combine={combine}
-        onRulesChange={onRulesChange}
-        onEdit={() => setOpen(true)}
-        headerActions={headerActions}
-        shortlistOnly={shortlistOnly}
-        preferredJob={preferredJob}
-        preferredJobOptions={preferredJobOptions}
-        unemployedOnly={unemployedOnly}
-        onPreferredJobChange={onPreferredJobChange}
-        onUnemployedOnlyChange={onUnemployedOnlyChange}
+      <TableToolbar
+        toolbarLabel="Staff results toolbar"
+        summary={summary}
+        filterChips={
+          <StaffFilterStrip
+            rules={rules}
+            combine={combine}
+            onRulesChange={onRulesChange}
+          />
+        }
+        onClearAll={
+          appliedRules.length > 0 ? () => onRulesChange([]) : undefined
+        }
+        onEditFilters={openEditor}
+        columnsControl={columnsControl}
+        datasetToggles={datasetToggles}
       />
       <StaffFilterEditorModal
         open={open}

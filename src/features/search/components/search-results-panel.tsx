@@ -1,29 +1,39 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { SearchX } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { NationalityCell } from "@/components/player-table/nationality-cell";
 import {
+  ConfigurableColumnsControl,
   type PlayerTableColumn,
   PlayerTableHeader,
 } from "@/components/player-table/player-table-header";
-import { VirtualizedPlayerTable } from "@/components/player-table/virtualized-player-table";
+import {
+  formatTableDynamicCell as formatDynamicCell,
+  formatPlayerBasicCell,
+  TABLE_NUMERIC_CELL_CLASS as NUM_CELL,
+  TableScoreContent,
+  TABLE_TEXT_CELL_CLASS as TEXT_CELL,
+} from "@/components/player-table/table-cells";
+import type { TableGroupInput } from "@/components/player-table/table-groups";
+import {
+  type ConfigurableTableIdentity,
+  VirtualizedPlayerTable,
+} from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
-import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import {
-  formatCount,
-  formatMissable,
-  formatMoney,
-  formatPlayerDob,
-} from "@/utils/format";
+  isIdentityColumnId,
+  usePlayerTableStore,
+} from "@/stores/use-player-table-store";
+import { formatCount } from "@/utils/format";
 import {
   formatMoneyballMetric,
   getMoneyballSearchMetric,
   MONEYBALL_SEARCH_METRICS,
 } from "@/utils/moneyball-search-metrics";
-import { getPlayerMetric } from "@/utils/player-metrics";
+import { getPlayerMetric, PLAYER_METRICS } from "@/utils/player-metrics";
 import {
   isFullTacticGroup,
   isTacticColumnId,
@@ -51,13 +61,21 @@ import type { ComparisonPool, SearchView } from "../types/search-view";
 import { defaultSearchSort } from "../types/search-view";
 import { completeFilterRules } from "../utils/filter-registry";
 import { buildTacticColumnOrder } from "../utils/tactic-columns";
-
-const TEXT_CELL =
-  "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
-const NUM_CELL =
-  "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
+import { SearchFilterBar } from "./search-filter-bar";
 
 type TableColumn = PlayerTableColumn;
+
+/**
+ * Route-owned tactic lane label model. The compact placement identifier is
+ * the primary leaf text, the role context renders smaller beside it, and
+ * the full `IP Position (Role) / OOP Position (Role)` definition stays the
+ * complete accessible name with a focus-revealed visible disclosure.
+ */
+export type TacticLaneLabel = {
+  compact: string;
+  context: string;
+  full: string;
+};
 
 type SearchResultsPanelProps = {
   sortBy: SearchSortField;
@@ -65,13 +83,15 @@ type SearchResultsPanelProps = {
   filters: FilterRule[];
   filterCombine: FilterCombineMode;
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
-  onShortlistOnlyChange: (shortlistOnly: boolean) => void;
+  onRulesChange: (rules: FilterRule[]) => void;
+  onApplyFilters: (rules: FilterRule[], combine: FilterCombineMode) => void;
+  datasetToggles?: ReactNode;
   view: SearchView;
   comparisonPool: ComparisonPool;
   shortlistOnly: boolean;
   pageContext: SearchPlayerPageContext;
   orderedLaneIds: readonly string[];
-  laneLabels: ReadonlyMap<string, string>;
+  laneLabels: ReadonlyMap<string, TacticLaneLabel>;
 };
 
 function nextSort(
@@ -88,86 +108,20 @@ function nextSort(
   return { sortBy: clicked, sortDir: defaultDirForSortField(clicked) };
 }
 
-function formatDynamicCell(
-  player: PlayerSummary | undefined,
-  fieldId: string,
-): string {
-  if (!player) {
-    return "…";
-  }
-  const value = player.dynamicValues?.[fieldId];
-  if (value === undefined || value === null) {
-    return "—";
-  }
-  return String(value);
-}
-
-function basicCell(
-  player: PlayerSummary | undefined,
-  key: (typeof BASIC_SEARCH_SORT_FIELDS)[number],
-): { text: string; title?: string; numeric: boolean } {
-  if (!player) {
-    return { text: "…", numeric: key !== "name" && key !== "age" };
-  }
-  switch (key) {
-    case "name":
-      return { text: player.name, title: player.name, numeric: false };
-    case "age": {
-      const dob = formatPlayerDob(
-        player.birthYear,
-        player.birthDayOfYear,
-        player.age,
-      );
-      return { text: dob, title: dob, numeric: false };
-    }
-    case "nationality": {
-      const nationalities = String(
-        formatMissable(player.nationalities.join(", ")),
-      );
-      return { text: nationalities, title: nationalities, numeric: false };
-    }
-    case "club": {
-      const club = String(formatMissable(player.club));
-      return {
-        text: club,
-        title: club !== "—" ? club : undefined,
-        numeric: false,
-      };
-    }
-    case "division": {
-      const division = String(formatMissable(player.division));
-      return {
-        text: division,
-        title: division !== "—" ? division : undefined,
-        numeric: false,
-      };
-    }
-    case "ca":
-      return { text: String(player.ca), numeric: true };
-    case "pa":
-      return { text: String(player.pa), numeric: true };
-    case "value":
-      return {
-        text:
-          player.marketValueGbp === null
-            ? "—"
-            : formatMoney(player.marketValueGbp),
-        numeric: true,
-      };
-  }
-}
-
 function tableColumnForMetric(
   metricId: string,
   width: number | undefined,
   view: SearchView,
-  laneLabels: ReadonlyMap<string, string>,
+  laneLabels: ReadonlyMap<string, TacticLaneLabel>,
 ): TableColumn | undefined {
   if (isValidTacticColumnId(metricId)) {
     const laneId = tacticLaneIdForId(metricId);
+    const laneLabel = laneLabels.get(laneId ?? "");
     return {
       id: metricId,
-      label: laneLabels.get(laneId ?? "") ?? laneId ?? metricId,
+      label: laneLabel?.compact ?? laneId ?? metricId,
+      secondaryLabel: laneLabel?.context,
+      accessibleLabel: laneLabel?.full ?? laneId ?? metricId,
       align: "right",
       width: width ?? TACTIC_COLUMN_DEFAULT_WIDTH,
     };
@@ -195,6 +149,133 @@ function tableColumnForMetric(
   };
 }
 
+const SEARCH_HEADER_METRICS = PLAYER_METRICS.filter(
+  (metric) => !isIdentityColumnId(metric.id),
+);
+
+const MONEYBALL_HEADER_METRICS = MONEYBALL_SEARCH_METRICS.filter(
+  (metric) => !isIdentityColumnId(metric.id),
+);
+
+function PlayerIdentityCell({
+  name,
+  club,
+  division,
+}: {
+  name: string | undefined;
+  club: string | null | undefined;
+  division: string | null | undefined;
+}) {
+  const context =
+    name === undefined
+      ? null
+      : [club, division]
+          .filter((value): value is string => value !== null && value !== "")
+          .join(" · ");
+  return (
+    <div className="flex h-table-row-height-two-line items-center gap-2 px-2">
+      <span
+        aria-hidden="true"
+        className="h-7 w-7 shrink-0 rounded-sm bg-surface-container-high"
+      />
+      <span className="min-w-0 flex-1">
+        <span
+          className="block truncate text-body-sm text-on-surface"
+          title={name}
+        >
+          {name ?? "…"}
+        </span>
+        {context ? (
+          <span className="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-on-surface-variant">
+            <span
+              aria-hidden="true"
+              className="h-3 w-3 shrink-0 rounded-[2px] bg-surface-container-high"
+            />
+            <span className="block truncate">{context}</span>
+          </span>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+export const SEARCH_TABLE_GROUPS: TableGroupInput = {
+  groups: [
+    { id: "profile", label: "Profile" },
+    { id: "ability", label: "Ability" },
+    { id: "market", label: "Market" },
+    { id: "tactic-fit", label: "Tactic Fit" },
+  ],
+  groupForColumn: (columnId) => {
+    if (
+      isValidTacticColumnId(columnId) ||
+      columnId.startsWith("role.") ||
+      columnId.startsWith("potential_role.") ||
+      columnId === "club_dna"
+    ) {
+      return "tactic-fit";
+    }
+    switch (getPlayerMetric(columnId)?.category) {
+      case "identity":
+        return "profile";
+      case "ability-reputation":
+      case "visible-attributes":
+      case "hidden-attributes":
+      case "personality":
+        return "ability";
+      case "club-contract":
+        return "market";
+      case "position-suitability":
+      case "current-role-scores":
+      case "potential-role-scores":
+        return "tactic-fit";
+      default:
+        return "other";
+    }
+  },
+};
+
+export const MONEYBALL_TABLE_GROUPS: TableGroupInput = {
+  groups: [
+    { id: "profile", label: "Profile" },
+    { id: "market", label: "Market" },
+    { id: "playing-time", label: "Playing Time" },
+    { id: "performance", label: "Performance" },
+    { id: "role-fit", label: "Role Fit" },
+  ],
+  groupForColumn: (columnId) => {
+    if (columnId === "position") {
+      return "profile";
+    }
+    if (columnId.startsWith("moneyball_role.")) {
+      return "role-fit";
+    }
+    const metric = getMoneyballSearchMetric(columnId);
+    if (!metric) {
+      return "other";
+    }
+    if (metric.context) {
+      return "playing-time";
+    }
+    if (metric.metric) {
+      return "performance";
+    }
+    if (metric.role) {
+      return "role-fit";
+    }
+    switch (metric.category) {
+      case "Identity":
+        return "profile";
+      case "Club and value":
+        return "market";
+      case "Context":
+        return "playing-time";
+      default:
+        return "other";
+    }
+  },
+};
+
 function SearchResultsVirtualTable({
   total,
   sortBy,
@@ -202,6 +283,7 @@ function SearchResultsVirtualTable({
   filters,
   filterCombine,
   columns,
+  identity,
   requestedFields,
   onSortChange,
   onAddColumn,
@@ -221,6 +303,7 @@ function SearchResultsVirtualTable({
   filters: FilterRule[];
   filterCombine: FilterCombineMode;
   columns: TableColumn[];
+  identity: ConfigurableTableIdentity<PlayerSummary>;
   requestedFields: string[];
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
   onAddColumn: (metricId: string) => void;
@@ -241,9 +324,15 @@ function SearchResultsVirtualTable({
       caption="Player search results"
       columnCount={columns.length}
       columns={columns}
-      header={
+      identity={identity}
+      renderHeader={({ identity, columns: tableColumns, fixedColumns }) => (
         <PlayerTableHeader
-          columns={columns}
+          columns={tableColumns}
+          fixedColumns={fixedColumns}
+          groups={
+            view === "moneyball" ? MONEYBALL_TABLE_GROUPS : SEARCH_TABLE_GROUPS
+          }
+          identity={identity}
           sortBy={sortBy}
           sortDir={sortDir}
           onSortChange={(metricId) => {
@@ -254,9 +343,13 @@ function SearchResultsVirtualTable({
           onRemoveColumn={onRemoveColumn}
           onMoveColumn={onMoveColumn}
           onResizeColumn={onResizeColumn}
-          metrics={view === "moneyball" ? MONEYBALL_SEARCH_METRICS : undefined}
+          metrics={
+            view === "moneyball"
+              ? MONEYBALL_HEADER_METRICS
+              : SEARCH_HEADER_METRICS
+          }
         />
-      }
+      )}
       firstPageQueryOptions={firstPageQueryOptions}
       isReplacementActive={isReplacementActive}
       pageQueryOptions={(offset, limit) =>
@@ -279,15 +372,14 @@ function SearchResultsVirtualTable({
         columns.map((column) => {
           if (isValidTacticColumnId(column.id)) {
             const score = player?.dynamicValues?.[column.id];
+            const roleName = column.accessibleLabel ?? column.label;
             return (
               <td key={column.id} className={NUM_CELL}>
-                {typeof score === "number" ? (
-                  <ScoreBadge score={score} roleName={column.label} />
-                ) : (
-                  <span className="text-on-surface-variant">
-                    {player === undefined ? "…" : "—"}
-                  </span>
-                )}
+                <TableScoreContent
+                  score={score}
+                  roleName={roleName}
+                  isLoading={player === undefined}
+                />
               </td>
             );
           }
@@ -331,16 +423,11 @@ function SearchResultsVirtualTable({
             const score = player?.dynamicValues?.[column.id];
             return (
               <td key={column.id} className={NUM_CELL}>
-                {typeof score === "number" ? (
-                  <ScoreBadge
-                    score={score}
-                    roleName={`Moneyball role · ${column.label}`}
-                  />
-                ) : (
-                  <span className="text-on-surface-variant">
-                    {player === undefined ? "…" : "—"}
-                  </span>
-                )}
+                <TableScoreContent
+                  score={score}
+                  roleName={`Moneyball role · ${column.label}`}
+                  isLoading={player === undefined}
+                />
               </td>
             );
           }
@@ -353,13 +440,11 @@ function SearchResultsVirtualTable({
               const score = player?.dynamicValues?.[column.id];
               return (
                 <td key={column.id} className={NUM_CELL}>
-                  {typeof score === "number" ? (
-                    <ScoreBadge score={score} roleName={column.label} />
-                  ) : (
-                    <span className="text-on-surface-variant">
-                      {player === undefined ? "…" : "—"}
-                    </span>
-                  )}
+                  <TableScoreContent
+                    score={score}
+                    roleName={column.label}
+                    isLoading={player === undefined}
+                  />
                 </td>
               );
             }
@@ -388,28 +473,7 @@ function SearchResultsVirtualTable({
               </td>
             );
           }
-          if (column.id === "name" && player) {
-            const identityContext = [player.club, player.division]
-              .filter(
-                (value): value is string => value !== null && value !== "",
-              )
-              .join(" · ");
-            return (
-              <td
-                key={column.id}
-                className={`${TEXT_CELL} text-on-surface`}
-                title={player.name}
-              >
-                <span className="block truncate">{player.name}</span>
-                {identityContext ? (
-                  <span className="block truncate text-[11px] leading-4 text-on-surface-variant">
-                    {identityContext}
-                  </span>
-                ) : null}
-              </td>
-            );
-          }
-          const cell = basicCell(
+          const cell = formatPlayerBasicCell(
             player,
             column.id as (typeof BASIC_SEARCH_SORT_FIELDS)[number],
           );
@@ -448,7 +512,9 @@ export function SearchResultsPanel({
   filters,
   filterCombine,
   onSortChange,
-  onShortlistOnlyChange,
+  onRulesChange,
+  onApplyFilters,
+  datasetToggles,
   view,
   comparisonPool,
   shortlistOnly,
@@ -463,6 +529,28 @@ export function SearchResultsPanel({
   const replaceLayout = usePlayerTableStore((state) => state.replaceLayout);
   const moveColumn = usePlayerTableStore((state) => state.moveColumn);
   const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
+  const identityWidth = usePlayerTableStore(
+    (state) => state.layouts[tableId].identityWidth,
+  );
+  const setIdentityWidth = usePlayerTableStore(
+    (state) => state.setIdentityWidth,
+  );
+  const identity = useMemo<ConfigurableTableIdentity<PlayerSummary>>(
+    () => ({
+      id: "identity",
+      label: "Player",
+      width: identityWidth,
+      onResize: (width) => setIdentityWidth(tableId, width),
+      renderCell: (player) => (
+        <PlayerIdentityCell
+          name={player?.name}
+          club={player?.club}
+          division={player?.division}
+        />
+      ),
+    }),
+    [identityWidth, setIdentityWidth, tableId],
+  );
   const columns = useMemo<TableColumn[]>(
     () =>
       layout.columnIds.flatMap((metricId) => {
@@ -617,9 +705,35 @@ export function SearchResultsPanel({
     requestMatchesCommitted || isSortReplacement
       ? committedQuery.data
       : undefined;
+  const columnsControl = (
+    <ConfigurableColumnsControl
+      groups={
+        view === "moneyball" ? MONEYBALL_TABLE_GROUPS : SEARCH_TABLE_GROUPS
+      }
+      metrics={
+        view === "moneyball" ? MONEYBALL_HEADER_METRICS : SEARCH_HEADER_METRICS
+      }
+      visibleColumnIds={layout.columnIds}
+      onAddColumn={(metricId) => addColumns(tableId, [metricId])}
+      onRemoveColumn={removeColumn}
+    />
+  );
+  const renderToolbar = (summary?: ReactNode) => (
+    <SearchFilterBar
+      rules={filters}
+      combine={filterCombine}
+      onRulesChange={onRulesChange}
+      onApply={onApplyFilters}
+      view={view}
+      summary={summary}
+      columnsControl={columnsControl}
+      datasetToggles={datasetToggles}
+    />
+  );
   if (!page) {
     return (
       <Panel title="Results" flush>
+        {renderToolbar()}
         <EmptyState
           icon={SearchX}
           title={
@@ -650,24 +764,12 @@ export function SearchResultsPanel({
     committed.view === "moneyball"
       ? getMoneyballSearchMetric(committed.sortBy)
       : getPlayerMetric(committed.sortBy);
+  const sortColumn = columns.find((column) => column.id === committed.sortBy);
   const sortLabel = sortMetric
     ? sortMetric.id === "age"
       ? "Age / DOB"
       : sortMetric.label
-    : (columns.find((column) => column.id === committed.sortBy)?.label ??
-      committed.sortBy);
-  const shortlistSwitch =
-    view === "general" ? (
-      <button
-        type="button"
-        role="switch"
-        aria-checked={shortlistOnly}
-        onClick={() => onShortlistOnlyChange(!shortlistOnly)}
-        className="inline-flex items-center gap-2 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      >
-        Shortlist: {shortlistOnly ? "On" : "Off"}
-      </button>
-    ) : null;
+    : (sortColumn?.accessibleLabel ?? sortColumn?.label ?? committed.sortBy);
   if (page.total === 0) {
     const appliedFilters = completeFilterRules(filters, view);
     const shortlistEmpty = view === "general" && shortlistOnly;
@@ -682,10 +784,10 @@ export function SearchResultsPanel({
           : "No players in snapshot";
     const emptyBody = shortlistEmpty
       ? appliedFilters.length > 0
-        ? "Adjust or clear filters in the strip above, or turn Shortlist off to widen the result set."
+        ? "Adjust or clear filters in the toolbar above, or turn Shortlist off to widen the result set."
         : "Upload a shortlist CSV for this save, or turn Shortlist off to browse every snapshot player."
       : appliedFilters.length > 0
-        ? "Adjust or clear filters in the strip above to widen the result set."
+        ? "Adjust or clear filters in the toolbar above to widen the result set."
         : view === "moneyball"
           ? "Upload a Moneyball CSV for the current snapshot to analyse its matched players."
           : "The snapshot exists but holds no player rows. Run Load Data again with Football Manager in an active save.";
@@ -697,13 +799,12 @@ export function SearchResultsPanel({
         className="flex min-h-0 flex-1 flex-col"
         contentClassName="flex min-h-0 flex-1 flex-col"
       >
-        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-4 pb-3">
+        {renderToolbar(
           <p className="text-body-md text-on-surface-variant">
             <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
             players · sorted by {sortLabel} ({dirLabel})
-          </p>
-          {shortlistSwitch}
-        </div>
+          </p>,
+        )}
         <EmptyState icon={SearchX} title={emptyTitle}>
           {emptyBody}
         </EmptyState>
@@ -711,7 +812,7 @@ export function SearchResultsPanel({
     );
   }
 
-  const removeColumn = (metricId: string) => {
+  function removeColumn(metricId: string) {
     let nextColumnIds = layout.columnIds.filter((id) => id !== metricId);
     if (nextColumnIds.length === layout.columnIds.length) {
       return;
@@ -742,7 +843,17 @@ export function SearchResultsPanel({
           potentialSurvives,
         ),
       ];
-      replaceLayout(tableId, nextColumnIds);
+      if (nextColumnIds.length === 0) {
+        // Identity-only is valid and never rolls to defaults: emptying the
+        // last tactic leaf must persist `columnIds: []`. `replaceLayout`
+        // treats an empty list as malformed and restores defaults, so remove
+        // through the existing per-column store path instead.
+        for (const id of layout.columnIds) {
+          removeStoredColumn(tableId, id);
+        }
+      } else {
+        replaceLayout(tableId, nextColumnIds);
+      }
     } else {
       removeStoredColumn(tableId, metricId);
     }
@@ -758,7 +869,7 @@ export function SearchResultsPanel({
       return;
     }
     onSortChange(nextSort, defaultDirForSortField(nextSort));
-  };
+  }
 
   return (
     <Panel
@@ -767,13 +878,12 @@ export function SearchResultsPanel({
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-4 pb-3">
+      {renderToolbar(
         <p className="text-body-md text-on-surface-variant">
           <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
           players · sorted by {sortLabel} ({dirLabel})
-        </p>
-        {shortlistSwitch}
-      </div>
+        </p>,
+      )}
       {isReplacementPending ? (
         <p
           className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
@@ -805,6 +915,7 @@ export function SearchResultsPanel({
         filters={committed.filters}
         filterCombine={committed.filterCombine}
         columns={columns}
+        identity={identity}
         requestedFields={committed.requestedFields}
         view={committed.view}
         comparisonPool={committed.comparisonPool}
