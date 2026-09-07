@@ -1273,6 +1273,12 @@ describe("player profile route", () => {
     expect(
       within(roleFit).queryByRole("columnheader", { name: "Potential" }),
     ).not.toBeInTheDocument();
+    expect(
+      within(roleFit)
+        .getAllByRole("row")
+        .slice(1)
+        .every((row) => within(row).getAllByRole("cell").length === 3),
+    ).toBe(true);
     expect(getSetPlayerHiddenInformationRevealedIpcMockCalls()).toEqual([
       { revealed: false },
     ]);
@@ -1992,7 +1998,7 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows labelled current and potential values for every supplied role", async () => {
+  it("aligns Role Fit role, phase, current, and potential columns", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
@@ -2011,16 +2017,33 @@ describe("player profile route", () => {
     const roleFit = await screen.findByRole("region", {
       name: "Role fit for MC",
     });
+    expect(
+      within(roleFit).getByRole("columnheader", { name: /Role/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(roleFit).getByRole("columnheader", { name: "Phase" }),
+    ).toBeInTheDocument();
+    expect(
+      within(roleFit).getByRole("columnheader", { name: "Current" }),
+    ).toBeInTheDocument();
+    expect(
+      within(roleFit).getByRole("columnheader", { name: "Potential" }),
+    ).toBeInTheDocument();
+
     const roleRows = within(roleFit).getAllByRole("row").slice(1);
     expect(roleRows).toHaveLength(79);
     roleRows.forEach((row, index) => {
-      const roleCell = within(row).getAllByRole("cell")[0];
-      const phaseChip = within(roleCell).getByRole("img");
+      const [roleCell, phaseCell, currentCell, potentialCell] =
+        within(row).getAllByRole("cell");
       const expectedPhase = index % 2 === 0 ? "IP" : "OOP";
+      const phaseChip = within(phaseCell).getByRole("img");
+      expect(within(roleCell).queryByRole("img")).not.toBeInTheDocument();
       expect(phaseChip).toHaveTextContent(expectedPhase);
       expect(phaseChip).toHaveAccessibleName(
         expectedPhase === "IP" ? "In possession" : "Out of possession",
       );
+      expect(currentCell).toHaveClass("text-right", "tabular-nums");
+      expect(potentialCell).toHaveClass("text-right", "tabular-nums");
     });
     expect(
       within(roleFit).getByLabelText("Catalog Role 1 (Current): 60, Average"),
@@ -2089,7 +2112,7 @@ describe("player profile route", () => {
         .getAllByRole("row")
         .slice(1)
         .map((row) => within(row).getAllByRole("cell")[0].textContent),
-    ).toEqual(["Potential LeaderOOP", "Current LeaderIP"]);
+    ).toEqual(["Potential Leader", "Current Leader"]);
 
     await user.click(
       within(potentialHeader).getByRole("button", { name: "Potential" }),
@@ -2100,7 +2123,7 @@ describe("player profile route", () => {
         .getAllByRole("row")
         .slice(1)
         .map((row) => within(row).getAllByRole("cell")[0].textContent),
-    ).toEqual(["Potential LeaderOOP", "Current LeaderIP"]);
+    ).toEqual(["Potential Leader", "Current Leader"]);
 
     await user.click(
       within(potentialHeader).getByRole("button", { name: "Potential" }),
@@ -2111,7 +2134,7 @@ describe("player profile route", () => {
         .getAllByRole("row")
         .slice(1)
         .map((row) => within(row).getAllByRole("cell")[0].textContent),
-    ).toEqual(["Current LeaderIP", "Potential LeaderOOP"]);
+    ).toEqual(["Current Leader", "Potential Leader"]);
   });
 
   it("previews and confirms the age-21 CA boost from the current snapshot", async () => {
