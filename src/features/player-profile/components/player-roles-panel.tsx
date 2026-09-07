@@ -128,7 +128,7 @@ export function PlayerRolesPanel({
     >
       <section
         aria-label={`Role fit for ${selectedPosition}`}
-        className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(180px,0.8fr)_minmax(240px,1.2fr)]"
+        className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(240px,360px)_minmax(0,1fr)]"
       >
         <div
           data-testid="player-role-position-picker-scroller"

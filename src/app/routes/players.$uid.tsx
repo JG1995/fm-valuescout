@@ -478,7 +478,7 @@ function PlayerProfileContent({
       <section
         aria-label="Player analysis"
         data-testid="player-analysis-workspace"
-        className="flex min-h-0 min-w-0 flex-1 flex-col lg:h-full lg:overflow-hidden"
+        className="flex min-h-0 min-w-0 flex-1 flex-col lg:h-full lg:overflow-hidden min-[2400px]:max-w-[2800px]"
       >
         {section === "moneyball" ? (
           <MoneyballPlayerProfile

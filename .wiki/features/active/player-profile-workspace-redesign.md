@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -165,7 +165,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 ### PR 1 — Player profile workspace redesign
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -1360,7 +1360,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 #### Commit 21 — Bound ultrawide geometry
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): bound the ultrawide workspace`
 
@@ -1417,19 +1417,7 @@ None. The independent plan review accepted the packet order and confirmed that P
 
 **PR:** PR 1 — Player profile workspace redesign
 
-**Commit:** Bound ultrawide geometry
-
-### RED or removal proof
-
-Playwright assertions at exactly 3440×1440 must fail while the identity rail or bounded chrome stretches indefinitely or analysis width is wasted.
-
-### Expected outcome
-
-All four sections retain a bounded identity rail and controls while Attributes and Role Fit use the available ultrawide analysis space effectively without breaking 1280×800 containment.
-
-### Explicit exclusions
-
-Content or data changes, mobile support, calculation changes, and manual evidence as a substitute for smoke.
+None — implementation complete; feature validation and close-out remain.
 
 ## Discoveries and replanning
 
@@ -1460,7 +1448,8 @@ The planning-artifact checkpoint review found stale prose that still described r
 | PR 1 — Player profile workspace redesign | Commit 17 — Complete Role Fit geometry | 9207b3504d9f5b289f89ae539cba20a14911fdf3 | Added dedicated Role, Phase, Current, and concealment-gated Potential columns with vertically aligned table score presentation, preserved sorting, and corrected empty-state column spans. | Role Fit geometry proofs failed before implementation; focused Player Profile route tests passed 78/78; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
 | PR 1 — Player profile workspace redesign | Commit 18 — Relocate Moneyball tactical summaries | a9bc15bbda923e7c46ecc939b90abdbf821895b4 | Moved playable best-current Moneyball IP/OOP summaries into a Moneyball-owned section component, removed the shared overview scoring branch, and retained two bounded workspace columns. | Relocation and ownership proofs failed before implementation; focused Player Profile and Moneyball panel tests passed 81/81; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found a third direct grid child could collapse and clip Role Fit; correction grouped summaries and metrics in a bounded primary column beside Role Fit with direct structural proof. |
 | PR 1 — Player profile workspace redesign | Commit 19 — Integrate Moneyball hierarchy | f1a21088b8c68963990e1b3c04d4b2c3a5ca21ba | Aligned Moneyball panels to full-width bounded flex geometry, micro-label metadata, tabular raw values, and right-aligned table score presentation while preserving percentile and comparison semantics. | The hierarchy proof failed before implementation; focused Player Profile, Moneyball profile, and Moneyball Role Fit tests passed 85/85; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | None |
-| PR 1 — Player profile workspace redesign | Commit 20 — Prove minimum desktop containment | Pending record | Reflowed dual-panel profile workspaces into bounded stacked rows below the ultrawide breakpoint and replaced obsolete smoke geometry with exact 1280×800 coverage of all four sections, identity, navigation, content, and score containment. | Focused Player Profile tests passed 79/79; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; exact `./scripts/dev smoke` passed 60/60, including the four-section 1280×800 proof; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found Role Fit score-cell readability was not directly proved; correction added exact Current/Potential badge visibility, nonzero geometry, and table-scrollport containment assertions. Native WebView inspection remains an additional gap, not a substitute for passing browser smoke. |
+| PR 1 — Player profile workspace redesign | Commit 20 — Prove minimum desktop containment | 2c615abeb3e6bce7a117de48e779139fe9e384e5 | Reflowed dual-panel profile workspaces into bounded stacked rows below the ultrawide breakpoint and replaced obsolete smoke geometry with exact 1280×800 coverage of all four sections, identity, navigation, content, and score containment. | Focused Player Profile tests passed 79/79; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; exact `./scripts/dev smoke` passed 60/60, including the four-section 1280×800 proof; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 1 | Initial review found Role Fit score-cell readability was not directly proved; correction added exact Current/Potential badge visibility, nonzero geometry, and table-scrollport containment assertions. Native WebView inspection remains an additional gap, not a substitute for passing browser smoke. |
+| PR 1 — Player profile workspace redesign | Commit 21 — Bound ultrawide geometry | Pending record | Bounded the analysis workspace to 2800px at ultrawide sizes, capped standard and Moneyball position navigators at 360px, and kept comparison tables fluid while all four sections use the available 3440×1440 width. | Focused Player Profile tests passed 79/79; `./scripts/dev check` passed with 805 Rust tests and 2 ignored; exact `./scripts/dev smoke` passed 61/61, including retained 1280×800 and new four-section 3440×1440 proofs; TypeScript diagnostics and diff checks were clean. | Pass | Clear | 0 | Native WebView inspection remains an additional gap, not a substitute for passing browser smoke. |
 
 ## Final validation
 

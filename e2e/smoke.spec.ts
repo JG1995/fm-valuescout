@@ -4630,6 +4630,208 @@ test.describe("application smoke", () => {
     await assertContained();
   });
 
+  test("player profile bounds its ultrawide analysis workspace", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 3440, height: 1440 });
+    await stubTauriIpc(page, { moneyballSearch: true, playerProfile: true });
+    await page.goto("/players/42?section=overview&tab=technical");
+
+    const main = page.getByRole("main");
+    const navigation = main.getByRole("tablist", {
+      name: "Player analysis view",
+    });
+
+    const assertBaseGeometry = async () => {
+      const geometry = await page.evaluate(() => {
+        const browser = globalThis as unknown as {
+          document: {
+            documentElement: { clientWidth: number; scrollWidth: number };
+            querySelector: (selector: string) => {
+              clientWidth: number;
+              getBoundingClientRect: () => {
+                x: number;
+                width: number;
+              };
+            } | null;
+          };
+        };
+        const documentElement = browser.document.documentElement;
+        const mainElement = browser.document.querySelector("main");
+        const railElement = browser.document.querySelector(
+          '[data-testid="player-identity-rail"]',
+        );
+        const workspaceElement = browser.document.querySelector(
+          '[data-testid="player-analysis-workspace"]',
+        );
+        const railBox = railElement?.getBoundingClientRect();
+        const workspaceBox = workspaceElement?.getBoundingClientRect();
+        return {
+          documentClientWidth: documentElement.clientWidth,
+          documentScrollWidth: documentElement.scrollWidth,
+          mainClientWidth: mainElement?.clientWidth ?? 0,
+          railBox: railBox ? { x: railBox.x, width: railBox.width } : null,
+          workspaceBox: workspaceBox
+            ? { x: workspaceBox.x, width: workspaceBox.width }
+            : null,
+        };
+      });
+      expect(geometry.documentScrollWidth).toBeLessThanOrEqual(3440);
+      expect(geometry.railBox).not.toBeNull();
+      expect(geometry.workspaceBox).not.toBeNull();
+      if (!geometry.railBox || !geometry.workspaceBox) {
+        throw new Error("Expected the identity rail and analysis workspace.");
+      }
+      expect(geometry.railBox.width).toBeLessThanOrEqual(360);
+      expect(geometry.workspaceBox.width).toBeGreaterThan(
+        geometry.mainClientWidth / 2,
+      );
+      expect(geometry.workspaceBox.x).toBeGreaterThanOrEqual(
+        geometry.railBox.x + geometry.railBox.width,
+      );
+      expect(
+        geometry.workspaceBox.x + geometry.workspaceBox.width,
+      ).toBeLessThanOrEqual(3440);
+      expect(geometry.workspaceBox.width).toBeLessThanOrEqual(2800);
+    };
+
+    const assertBoundedOverview = async () => {
+      const summary = main.getByRole("region", {
+        name: "Potential Scout summary",
+      });
+      const attributes = main
+        .getByRole("heading", { name: "Attributes" })
+        .locator("..")
+        .locator("..");
+      const roleFit = main
+        .getByRole("heading", { name: "Role fit" })
+        .locator("..")
+        .locator("..");
+      const [summaryBox, attributesBox, roleFitBox, displayBox, actionsBox] =
+        await Promise.all([
+          summary.boundingBox(),
+          attributes.boundingBox(),
+          roleFit.boundingBox(),
+          main.getByTestId("player-profile-display-control").boundingBox(),
+          main.getByTestId("player-profile-action-slot").boundingBox(),
+        ]);
+      for (const box of [
+        summaryBox,
+        attributesBox,
+        roleFitBox,
+        displayBox,
+        actionsBox,
+      ]) {
+        expect(box).not.toBeNull();
+      }
+      if (
+        !summaryBox ||
+        !attributesBox ||
+        !roleFitBox ||
+        !displayBox ||
+        !actionsBox
+      ) {
+        throw new Error("Expected bounded Overview geometry.");
+      }
+      expect(summaryBox.width).toBeLessThanOrEqual(2800);
+      expect(attributesBox.width).toBeLessThanOrEqual(1500);
+      expect(roleFitBox.width).toBeLessThanOrEqual(1500);
+      expect(displayBox.width).toBeLessThanOrEqual(400);
+      expect(actionsBox.width).toBeLessThanOrEqual(400);
+    };
+
+    await assertBaseGeometry();
+    await assertBoundedOverview();
+
+    await navigation.getByRole("tab", { name: "Attributes" }).click();
+    const attributes = main.getByRole("tabpanel", { name: "Attributes" });
+    const [attributesBox, technicalBox, mentalBox, physicalBox, tabsBox] =
+      await Promise.all([
+        attributes
+          .getByRole("heading", { name: "Attributes" })
+          .locator("..")
+          .locator("..")
+          .boundingBox(),
+        attributes.getByRole("region", { name: "Technical" }).boundingBox(),
+        attributes.getByRole("region", { name: "Mental" }).boundingBox(),
+        attributes.getByRole("region", { name: "Physical" }).boundingBox(),
+        attributes
+          .getByRole("tablist", { name: "Attribute groups" })
+          .boundingBox(),
+      ]);
+    for (const box of [
+      attributesBox,
+      technicalBox,
+      mentalBox,
+      physicalBox,
+      tabsBox,
+    ]) {
+      expect(box).not.toBeNull();
+    }
+    if (
+      !attributesBox ||
+      !technicalBox ||
+      !mentalBox ||
+      !physicalBox ||
+      !tabsBox
+    ) {
+      throw new Error("Expected broad Attributes geometry.");
+    }
+    expect(attributesBox.width).toBeGreaterThanOrEqual(2200);
+    expect(attributesBox.width).toBeLessThanOrEqual(2800);
+    expect(Math.abs(technicalBox.y - mentalBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(mentalBox.y - physicalBox.y)).toBeLessThanOrEqual(1);
+    expect(technicalBox.width).toBeGreaterThanOrEqual(500);
+    expect(tabsBox.width).toBeLessThanOrEqual(800);
+    await assertBaseGeometry();
+
+    await navigation.getByRole("tab", { name: "Role Fit" }).click();
+    const roleFit = main.getByRole("tabpanel", { name: "Role Fit" });
+    const roleFitRegion = roleFit.getByRole("region", {
+      name: "Role fit for MC",
+    });
+    const [positionPickerBox, roleTableBox] = await Promise.all([
+      roleFitRegion.locator("fieldset").boundingBox(),
+      roleFitRegion.getByRole("table").locator("xpath=..").boundingBox(),
+    ]);
+    expect(positionPickerBox).not.toBeNull();
+    expect(roleTableBox).not.toBeNull();
+    if (!positionPickerBox || !roleTableBox) {
+      throw new Error("Expected the Role Fit navigator and comparison list.");
+    }
+    expect(positionPickerBox.width).toBeLessThanOrEqual(380);
+    expect(positionPickerBox.x + positionPickerBox.width).toBeLessThanOrEqual(
+      roleTableBox.x,
+    );
+    expect(roleTableBox.width).toBeGreaterThanOrEqual(1600);
+    await assertBaseGeometry();
+
+    await navigation.getByRole("tab", { name: "Moneyball" }).click();
+    const moneyball = main.getByRole("tabpanel", { name: "Moneyball" });
+    const primaryColumn = moneyball.getByTestId("moneyball-primary-column");
+    const moneyballRoleFit = moneyball
+      .getByRole("heading", { name: "Moneyball role fit" })
+      .locator("..")
+      .locator("..");
+    const [primaryBox, moneyballRoleFitBox] = await Promise.all([
+      primaryColumn.boundingBox(),
+      moneyballRoleFit.boundingBox(),
+    ]);
+    expect(primaryBox).not.toBeNull();
+    expect(moneyballRoleFitBox).not.toBeNull();
+    if (!primaryBox || !moneyballRoleFitBox) {
+      throw new Error("Expected the Moneyball analysis columns.");
+    }
+    expect(primaryBox.width).toBeGreaterThanOrEqual(900);
+    expect(moneyballRoleFitBox.width).toBeGreaterThanOrEqual(900);
+    expect(primaryBox.x + primaryBox.width).toBeLessThanOrEqual(
+      moneyballRoleFitBox.x,
+    );
+    expect(primaryBox.width).toBeLessThanOrEqual(1500);
+    expect(moneyballRoleFitBox.width).toBeLessThanOrEqual(1500);
+    await assertBaseGeometry();
+  });
+
   test("top bar exposes global player search", async ({ page }) => {
     await page.goto("/");
 

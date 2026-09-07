@@ -564,7 +564,7 @@ describe("player profile route", () => {
       name: /^Role fit for /,
     });
     expect(generalRoleFit).toHaveClass(
-      "lg:grid-cols-[minmax(180px,0.8fr)_minmax(240px,1.2fr)]",
+      "lg:grid-cols-[minmax(240px,360px)_minmax(0,1fr)]",
     );
     expect(
       within(generalRoleFit).getByTestId(
@@ -648,7 +648,7 @@ describe("player profile route", () => {
       name: /^Moneyball role fit for /,
     });
     expect(moneyballRoleFit).toHaveClass(
-      "lg:grid-cols-[minmax(180px,0.8fr)_minmax(240px,1.2fr)]",
+      "lg:grid-cols-[minmax(240px,360px)_minmax(0,1fr)]",
     );
     expect(
       within(moneyballRoleFit).getByTestId(
