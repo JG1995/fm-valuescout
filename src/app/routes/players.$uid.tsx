@@ -215,13 +215,13 @@ function PlayerProfileHeader({
       data-testid="player-profile-header"
       className="flex flex-col gap-gutter"
     >
-      {overview}
       <PlayerSectionTabs
         section={section}
         onSectionChange={onSectionChange}
         restoreFocus={restoreFocus}
         onFocusRestored={onFocusRestored}
       />
+      {overview}
     </header>
   );
 }
@@ -278,6 +278,7 @@ function GeneralPlayerProfile({
             hiddenInformationPending={hiddenInformationPending}
             hiddenInformationError={hiddenInformationError}
             onToggleHiddenInformation={onToggleHiddenInformation}
+            showAbilitySummary={section === "overview"}
             actions={
               player.hiddenInformationRevealed ? (
                 <PlayerDevelopmentActions

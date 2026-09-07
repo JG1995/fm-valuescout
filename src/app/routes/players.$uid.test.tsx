@@ -393,8 +393,8 @@ describe("player profile route", () => {
       "player-profile-summary-details",
     );
 
-    expect(generalHeader.firstElementChild).toBe(generalSummary);
-    expect(generalHeader.lastElementChild).toBe(generalTabs);
+    expect(generalHeader.firstElementChild).toBe(generalTabs);
+    expect(generalHeader.lastElementChild).toBe(generalSummary);
     const generalRail = screen.getByRole("complementary", {
       name: "Player identity",
     });
@@ -490,12 +490,12 @@ describe("player profile route", () => {
       "player-profile-summary-details",
     );
 
-    expect(moneyballHeader.firstElementChild).toBe(moneyballSummary);
-    expect(moneyballHeader.lastElementChild).toBe(
+    expect(moneyballHeader.firstElementChild).toBe(
       within(moneyballHeader).getByRole("tablist", {
         name: "Player analysis view",
       }),
     );
+    expect(moneyballHeader.lastElementChild).toBe(moneyballSummary);
     expect(moneyballDetails).toHaveClass("lg:grid-cols-2");
     expect(
       within(moneyballDetails).getByTestId("player-profile-role-summaries"),
@@ -2743,12 +2743,118 @@ describe("player profile route", () => {
       expect(
         within(workspace).queryByText("Transfer listed"),
       ).not.toBeInTheDocument();
-      if (name === "Moneyball") {
-        expect(within(workspace).queryByText("€12.5M")).not.toBeInTheDocument();
-      } else {
+      if (name === "Overview") {
         expect(within(workspace).getByText("Value")).toBeInTheDocument();
         expect(within(workspace).getByText("€12.5M")).toBeInTheDocument();
+      } else {
+        expect(within(workspace).queryByText("Value")).not.toBeInTheDocument();
+        expect(within(workspace).queryByText("€12.5M")).not.toBeInTheDocument();
       }
     }
+  });
+
+  it("exposes a distinct Overview ability region with CA, PA, and market value only on Overview", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    const ability = within(summary).getByTestId("overview-ability");
+    expect(
+      within(ability).getByRole("heading", { level: 2, name: "Ability" }),
+    ).toBeInTheDocument();
+    expect(within(ability).getByText("CA")).toBeInTheDocument();
+    expect(within(ability).getByText("140")).toBeInTheDocument();
+    expect(within(ability).getByText("PA")).toBeInTheDocument();
+    expect(within(ability).getByText("160")).toBeInTheDocument();
+    expect(within(ability).getByText("Value")).toBeInTheDocument();
+    expect(within(ability).getByText("€12.5M")).toBeInTheDocument();
+    expect(within(ability).getByText("140")).toHaveClass("tabular-nums");
+    expect(within(ability).getByText("€12.5M")).toHaveClass("tabular-nums");
+    expect(within(ability).queryByText("Age / DOB")).not.toBeInTheDocument();
+    expect(within(ability).queryByText("Nationality")).not.toBeInTheDocument();
+    expect(within(ability).queryByText("Height")).not.toBeInTheDocument();
+    expect(within(ability).queryByText("Foot")).not.toBeInTheDocument();
+    const rail = screen.getByRole("complementary", {
+      name: "Player identity",
+    });
+    expect(within(rail).getByText("€12.5M")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Attributes" }));
+    expect(
+      await screen.findByRole("tab", {
+        name: "Attributes",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("overview-ability")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("player-analysis-workspace")).queryByText("CA"),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Role Fit" }));
+    expect(
+      await screen.findByRole("tab", { name: "Role Fit", selected: true }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("overview-ability")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("player-analysis-workspace")).queryByText("CA"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides PA in the Overview ability region when hidden information is concealed", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({ hiddenInformationRevealed: false }),
+    );
+    renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    const ability = within(summary).getByTestId("overview-ability");
+    expect(within(ability).getByText("CA")).toBeInTheDocument();
+    expect(within(ability).getByText("140")).toBeInTheDocument();
+    expect(within(ability).queryByText("PA")).not.toBeInTheDocument();
+    expect(within(ability).queryByText("160")).not.toBeInTheDocument();
+    expect(within(ability).getByText("Value")).toBeInTheDocument();
+    expect(within(ability).getByText("€12.5M")).toBeInTheDocument();
+  });
+
+  it("renders missing market value as an em dash in the rail and the Overview ability region", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ marketValueGbp: null }));
+    renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    const ability = within(summary).getByTestId("overview-ability");
+    expect(within(ability).getByText("Value")).toBeInTheDocument();
+    expect(within(ability).getByText("—")).toBeInTheDocument();
+    const rail = screen.getByRole("complementary", {
+      name: "Player identity",
+    });
+    expect(within(rail).getByText("—")).toBeInTheDocument();
+  });
+
+  it("renders section navigation before the Overview ability content", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    renderProfileRoute("/players/42");
+
+    const header = await screen.findByTestId("player-profile-header");
+    const tabs = within(header).getByRole("tablist", {
+      name: "Player analysis view",
+    });
+    const ability = within(header).getByTestId("overview-ability");
+    expect(
+      tabs.compareDocumentPosition(ability) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(header.firstElementChild).toBe(tabs);
   });
 });

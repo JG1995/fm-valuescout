@@ -62,6 +62,7 @@ type PlayerOverviewPanelProps = {
   hiddenInformationPending?: boolean;
   hiddenInformationError?: Error | null;
   onToggleHiddenInformation?: () => void;
+  showAbilitySummary?: boolean;
 };
 
 export function PlayerOverviewPanel({
@@ -72,9 +73,11 @@ export function PlayerOverviewPanel({
   hiddenInformationPending,
   hiddenInformationError,
   onToggleHiddenInformation,
+  showAbilitySummary = false,
 }: PlayerOverviewPanelProps) {
   const showGeneralAnalysis = mode === "general";
   const showMoneyballAnalysis = mode === "moneyball";
+  const showAbility = showGeneralAnalysis && showAbilitySummary;
   const analysisRoles = rolesForPlayablePositions(
     showMoneyballAnalysis ? (roleScores ?? []) : player.roleScores,
     player.positions,
@@ -186,22 +189,31 @@ export function PlayerOverviewPanel({
           </div>
 
           <div
-            aria-hidden={!showGeneralAnalysis}
+            aria-hidden={!showAbility}
             data-testid="player-profile-summary-analysis-details"
             className="min-h-9"
           >
-            {showGeneralAnalysis ? (
-              <dl className="grid min-w-0 grid-cols-3 gap-3">
-                <SummaryFact label="CA" value={player.ca} numeric />
-                {player.hiddenInformationRevealed ? (
-                  <SummaryFact
-                    label="PA"
-                    value={formatMissable(player.pa)}
-                    numeric
-                  />
-                ) : null}
-                <PlayerMarketValueFact player={player} />
-              </dl>
+            {showAbility ? (
+              <section
+                aria-label="Ability"
+                data-testid="overview-ability"
+                className="min-w-0"
+              >
+                <h2 className="text-label-md text-on-surface-variant uppercase tracking-[0.08em]">
+                  Ability
+                </h2>
+                <dl className="mt-2 grid min-w-0 grid-cols-3 gap-3">
+                  <SummaryFact label="CA" value={player.ca} numeric />
+                  {player.hiddenInformationRevealed ? (
+                    <SummaryFact
+                      label="PA"
+                      value={formatMissable(player.pa)}
+                      numeric
+                    />
+                  ) : null}
+                  <PlayerMarketValueFact player={player} />
+                </dl>
+              </section>
             ) : null}
           </div>
         </div>
