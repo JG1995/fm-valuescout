@@ -99,7 +99,7 @@ function nextSort(
   };
 }
 
-function tableColumnForMetric(
+export function tableColumnForMetric(
   metricId: string,
   width: number | undefined,
 ): TableColumn | undefined {
@@ -107,9 +107,18 @@ function tableColumnForMetric(
   if (!metric) {
     return undefined;
   }
+  // Compact leaf header: visible `Nat.` keeps the full `Nationality` as
+  // the accessible name (sort, menu, disclosure). Catalog labels stay
+  // untouched so filters and pickers keep their full names.
   return {
     id: metric.id,
-    label: metric.id === "age" ? "Age / DOB" : metric.label,
+    label:
+      metric.id === "age"
+        ? "Age / DOB"
+        : metric.id === "nationality"
+          ? "Nat."
+          : metric.label,
+    accessibleLabel: metric.id === "nationality" ? "Nationality" : undefined,
     align: metric.align,
     width: width ?? metric.defaultWidth,
   };

@@ -1531,6 +1531,28 @@ describe("staff route", () => {
       ).toBeNull();
     });
 
+    it("labels a hidden nationality sort with the full Nationality name on My Staff", async () => {
+      await resolveLoadDataIpcMock();
+      usePlayerTableStore.setState({
+        layouts: {
+          ...defaultPlayerTableLayouts(),
+          "my-staff": { columnIds: ["ca"], widths: {}, identityWidth: 280 },
+        },
+      });
+      renderStaffRoute(
+        "/staff?view=my-staff&myStaffSort=nationality&myStaffDir=asc",
+      );
+
+      await screen.findByRole("table", { name: "Staff overview" });
+      const toolbar = screen.getByRole("toolbar", {
+        name: "Staff results toolbar",
+      });
+      expect(
+        within(toolbar).getByText(/sorted by Nationality/),
+      ).toBeInTheDocument();
+      expect(toolbar.textContent).not.toMatch("sorted by Nation (");
+    });
+
     it("recovers a failed dynamic-column replacement without false missing values", async () => {
       const user = userEvent.setup();
       await resolveLoadDataIpcMock();

@@ -677,3 +677,50 @@ describe("compact tactic leaf headers", () => {
     expect(within(header).queryByRole("tooltip")).toBeNull();
   });
 });
+
+describe("compact nationality leaf header", () => {
+  const NATIONALITY_COLUMNS: ConfigurableTableColumn[] = [
+    {
+      id: "nationality",
+      label: "Nat.",
+      accessibleLabel: "Nationality",
+      align: "left",
+      width: 128,
+    },
+  ];
+
+  it("shows Nat. while keeping Nationality for the accessible name, disclosure, sort, and menu", async () => {
+    const user = userEvent.setup();
+    renderHeader({ columns: NATIONALITY_COLUMNS, sortBy: "nationality" });
+
+    const header = screen.getByRole("columnheader", {
+      name: "Nationality",
+    });
+    expect(within(header).getByText("Nat.")).toBeVisible();
+    const button = within(header).getByRole("button", {
+      name: "Nationality",
+    });
+    expect(button.getAttribute("title")).toContain("Nationality");
+    expect(within(header).queryByRole("tooltip")).toBeNull();
+
+    await user.hover(header);
+    expect(
+      await within(header).findByRole("tooltip", { name: "Nationality" }),
+    ).toBeVisible();
+    await user.unhover(header);
+    expect(within(header).queryByRole("tooltip")).toBeNull();
+
+    await user.tab();
+    expect(button).toHaveFocus();
+    expect(
+      await within(header).findByRole("tooltip", { name: "Nationality" }),
+    ).toBeVisible();
+    await user.tab();
+    expect(within(header).queryByRole("tooltip")).toBeNull();
+
+    fireEvent.contextMenu(header);
+    expect(
+      screen.getByRole("menuitem", { name: "Remove Nationality" }),
+    ).toBeInTheDocument();
+  });
+});
