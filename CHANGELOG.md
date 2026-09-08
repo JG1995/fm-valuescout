@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-09-08
+
+### Added
+
+- Maintainers can now capture populated application routes through deterministic browser fixtures for UI inspection.
+
+### Fixed
+
+- Player shortlist imports now accept FM26's `Unique ID` column, so valid Football Manager exports no longer fail format validation.
+
 ## [0.18.0] - 2026-09-08
 
 ### Added
