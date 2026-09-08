@@ -119,7 +119,7 @@ export function PlayerShortlistImportModal({
         Uploading a CSV replaces the saved player shortlist for this save.
       </p>
       <p className="mt-2 text-body-sm text-on-surface-variant">
-        The export must include a Player UID column. All other columns are
+        The export must include a Unique ID column. All other columns are
         ignored.
       </p>
       {error ? (
