@@ -7,7 +7,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|mutate|bridge-install|package-windows|release-metadata|dependency-automerge-policy} [args...]
+Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|inspect-ui|mutate|bridge-install|package-windows|release-metadata|dependency-automerge-policy} [args...]
 
 Commands:
   test [args...]    Run vitest run (full suite or forwarded file patterns and flags).
@@ -20,6 +20,9 @@ Commands:
                     Optional paths forward to Biome only; cargo fmt always runs.
   secrets [--staged] Scan for secrets with secretlint (full tree or staged files only).
   smoke             Run Playwright smoke tests (e2e/smoke.spec.ts).
+  inspect-ui [route|all] [width] [height]
+                    Capture populated browser screenshots under .work/ui-inspection/.
+                    Defaults: all canonical pages at 1600x900.
   mutate <target...>  Run configured mutation checks (not configured yet).
   bridge-install    Build bridge/ with dotnet and copy FmDataBridge.dll into FM BepInEx/plugins.
                     Path: FM_BRIDGE_PLUGINS, or FM_STEAM_ROOT/BepInEx/plugins, or the default
@@ -226,7 +229,42 @@ run_smoke() {
   require_node_deps
   (
     cd "$repo_root"
-    pnpm exec playwright test
+    pnpm exec playwright test e2e/smoke.spec.ts
+  )
+}
+
+run_inspect_ui() {
+  if [[ "$#" -gt 3 ]]; then
+    printf 'inspect-ui accepts optional route, width, and height arguments.\n' >&2
+    usage
+    exit 2
+  fi
+
+  local route="${1:-all}"
+  local width="${2:-1600}"
+  local height="${3:-900}"
+
+  if [[ "$route" != "all" && ( "$route" != /* || "$route" == //* ) ]]; then
+    printf 'inspect-ui route must be all or a local path beginning with one slash.\n' >&2
+    exit 2
+  fi
+  if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
+    printf 'inspect-ui width and height must be integers.\n' >&2
+    exit 2
+  fi
+  if (( width < 1280 || height < 720 )); then
+    printf 'inspect-ui viewport must be at least 1280x720.\n' >&2
+    exit 2
+  fi
+
+  DEV_COMMAND_LABEL=inspect-ui
+  require_node_deps
+  (
+    cd "$repo_root"
+    UI_INSPECTION_ROUTE="$route" \
+      UI_INSPECTION_WIDTH="$width" \
+      UI_INSPECTION_HEIGHT="$height" \
+      pnpm exec playwright test e2e/ui-inspection.spec.ts --workers=1
   )
 }
 
@@ -467,6 +505,9 @@ case "$command" in
     ;;
   smoke)
     run_smoke "$@"
+    ;;
+  inspect-ui)
+    run_inspect_ui "$@"
     ;;
   mutate)
     if [[ "$#" -eq 0 ]]; then

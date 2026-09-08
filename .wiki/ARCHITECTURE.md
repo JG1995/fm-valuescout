@@ -74,7 +74,7 @@ React `features/planner` owns query, picker, confirmation, focus, and presentati
 
 **Distribution:** One unsigned Windows x64 NSIS installer and checksum. An explicit release-preparation PR changes `release-preparation.json`; after it merges, the Release workflow waits for that exact `main` Check, then builds, verifies, and publishes the exact-SHA release. Ordinary and version-tag pushes are not publication triggers. See the repository-local [`create-release` skill](../.pi/skills/create-release/SKILL.md).
 
-**Testing:** Vitest + jsdom + React Testing Library with `mockIPC` (`./scripts/dev test`); Playwright smoke with IPC stub (`./scripts/dev smoke`, `e2e/smoke.spec.ts`); Rust unit tests (`cargo test` inside `./scripts/dev check`); C# bridge unit tests (`./scripts/dev bridge-test` in Windows CI)
+**Testing:** Vitest + jsdom + React Testing Library with `mockIPC` (`./scripts/dev test`); Playwright smoke with IPC stub (`./scripts/dev smoke`, `e2e/smoke.spec.ts`); populated Playwright UI inspection (`./scripts/dev inspect-ui`, `e2e/ui-inspection.spec.ts`); Rust unit tests (`cargo test` inside `./scripts/dev check`); C# bridge unit tests (`./scripts/dev bridge-test` in Windows CI)
 
 **Client env validation:** not shipped in the template default — forks can add `src/config/env.ts` with Zod for `VITE_*` when needed (follow the Vite reference in the installed `coding-standards` skill; `.env.example` documents optional variables)
 
@@ -137,7 +137,7 @@ your-repo/
 ├── .wiki/             # Durable docs (this file, ADRs, TODO)
 ├── .husky/            # Git hooks (pre-commit → check-fast + conditional check-rust)
 ├── scripts/
-│   └── dev            # test | check | bridge-test | format | smoke | mutate | bridge-install
+│   └── dev            # stable validation, inspection, packaging, and release commands
 ├── bridge/            # C# BepInEx FM26 plugin (see bridge/README.md, DUMP_SCHEMA.md)
 ├── src/               # WebView frontend (see below)
 ├── src-tauri/         # Rust backend + Tauri config (see below)
@@ -283,6 +283,7 @@ The template ships IPC commands as the frontend/backend contract. Forked project
 | `./scripts/dev check-rust` | `cargo fmt --check`, clippy, and test in `src-tauri/` |
 | `./scripts/dev bridge-test` | C# bridge unit tests; requires the .NET 6 SDK |
 | `./scripts/dev smoke` | Playwright (`e2e/smoke.spec.ts`); starts Vite via `playwright.config.ts` when needed |
+| `./scripts/dev inspect-ui [route\|all] [width] [height]` | Capture populated Chromium screenshots under ignored `.work/ui-inspection/`; defaults to all canonical pages at 1600×900 |
 | `./scripts/dev bridge-install` | Build `bridge/` and copy `FmDataBridge.dll` into Steam `BepInEx/plugins` (Windows path via `FM_BRIDGE_PLUGINS` / `FM_STEAM_ROOT` / WSL default) |
 | `./scripts/dev package-windows` | Windows-only non-publishing release validation: build the locked bridge from source, bundle one unsigned x64 NSIS installer, and write its SHA-256 sidecar under `.release/windows/<version>/` |
 
@@ -339,7 +340,7 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 | `src-tauri/Cargo.toml` | Rust crate dependencies and features |
 | `.github/workflows/check.yml` | CI — selects frontend, browser, Rust, bridge, and CI checks from changed paths; required `check` aggregates applicable results |
 | `.github/workflows/release.yml` | Explicit Windows release publication after a `release-preparation.json` change reaches `main` and its exact `Check` succeeds |
-| `scripts/dev` | Stable `test` / `check` / `check-app` / `bridge-test` / `format` / `secrets` / `smoke` / `mutate` surface |
+| `scripts/dev` | Stable test, check, populated UI inspection, bridge, packaging, and release command surface |
 | `.pi/settings.json` | Project Pi settings; machine package and preference settings remain global |
 | `.pi/skills/create-pr/SKILL.md` | Repository ordinary pull-request preparation procedure |
 | `.pi/skills/create-release/SKILL.md` | Explicit release preparation and verification procedure |
@@ -756,7 +757,7 @@ Non-Windows hosts return `unsupportedPlatform` for bridge install commands. Full
 - **Component and hook tests** — colocated `*.test.tsx` or `*.test.ts` beside source; Vitest + jsdom.
 - **Integration tests** — feature flows under `features/<feature>/` or `app/routes/`; preferred over shallow unit tests for confidence.
 - **IPC mocks** — `mockIPC` in `src/testing/setup.ts`; prefer over ad-hoc invoke stubs.
-- **E2E / smoke** — Playwright in `e2e/` with `tauri-ipc-stub.ts`; `./scripts/dev smoke` runs application smoke checks. Vitest excludes `e2e/**`.
+- **E2E / smoke** — Playwright in `e2e/` with `tauri-ipc-stub.ts`; `./scripts/dev smoke` runs application smoke checks. `./scripts/dev inspect-ui` runs the separate populated inspection spec and writes disposable screenshots under `.work/`. Vitest excludes `e2e/**`.
 - **Rust unit tests** — `#[cfg(test)]` modules in `src-tauri/src/`; run via `cargo test` in the gate. CSV parser and import tests use checked-in Youth Tracker and Moneyball fixtures plus temporary files and SQLite databases; they cover dialect/header detection, null and malformed values, UID validation, file limits, stale context, and unchanged database state.
 - **Bridge unit tests** — `bridge/Tests/` run through `./scripts/dev bridge-test` in Windows CI.
 
@@ -774,7 +775,7 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 
 ### 6.4 Playwright smoke scope
 
-`./scripts/dev smoke` runs Playwright against the **Vite dev server** in Chromium, not `pnpm tauri dev`. `e2e/tauri-ipc-stub.ts` injects `window.__TAURI_INTERNALS__` before the app loads so IPC calls never reach Rust.
+`./scripts/dev smoke` and `./scripts/dev inspect-ui` run Playwright against the **Vite dev server** in Chromium, not `pnpm tauri dev`. `e2e/tauri-ipc-stub.ts` injects `window.__TAURI_INTERNALS__` before the app loads so IPC calls never reach Rust. The inspection command captures one requested local route or the canonical populated page set at a requested desktop viewport; it is visual evidence for agents, not a validation gate.
 
 | Playwright smoke covers | Playwright smoke does not cover |
 | --- | --- |

@@ -1,7 +1,8 @@
 import type { Page } from "@playwright/test";
 import { VISIBLE_ATTRIBUTE_KEYS } from "../src/utils/player-attributes";
 
-type SmokeStubOptions = {
+export type SmokeStubOptions = {
+  academyWorkspace?: boolean;
   csvImportFormat?: "youthTracker" | "moneyball";
   plannerSnapshot?: boolean;
   plannerPotentialScores?: boolean;
@@ -21,6 +22,7 @@ type SmokeStubOptions = {
 };
 
 export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
+  const academyWorkspace = options.academyWorkspace ?? false;
   const csvImportFormat = options.csvImportFormat ?? null;
   const plannerSnapshot = options.plannerSnapshot ?? false;
   const plannerPotentialScores = options.plannerPotentialScores ?? false;
@@ -43,6 +45,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const snapshotHistory = options.snapshotHistory ?? false;
   await page.addInitScript({
     content: `
+      const academyWorkspace = ${academyWorkspace ? "true" : "false"};
       let playerProfileMentalityUpdated = false;
       let playerProfileHiddenInformationRevealed =
         window.localStorage.getItem("player-profile-hidden-information") !==
@@ -98,6 +101,57 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           isCurrent: true,
         },
       ] : [];
+      const academyClasses = academyWorkspace
+        ? [{ id: 7, classYear: 2026, isAutomatic: false, memberCount: 2 }]
+        : [];
+      const academyMembers = academyWorkspace
+        ? [
+            {
+              playerUid: 42,
+              lastKnownName: "Alex Scout",
+              currentName: "Alex Scout",
+              state: "resolved",
+              age: 18,
+              nationalities: ["ENG"],
+              positions: { ST: 20 },
+              currentClub: "Barcelona U19",
+              parentClub: null,
+              teamLevel: "youth",
+              pa: 170,
+              determination: 16,
+              heightCm: 183,
+              preferredFoot: "right",
+              reportedCareerAppearances: 8,
+              goals: 3,
+              assists: 2,
+              internationalCaps: 1,
+              outcome: null,
+              isGraduate: true,
+            },
+            {
+              playerUid: 99,
+              lastKnownName: "Jamie Prospect",
+              currentName: "Jamie Prospect",
+              state: "resolved",
+              age: 17,
+              nationalities: ["ESP"],
+              positions: { MC: 18 },
+              currentClub: "Barcelona U19",
+              parentClub: null,
+              teamLevel: "youth",
+              pa: 155,
+              determination: 14,
+              heightCm: 177,
+              preferredFoot: "left",
+              reportedCareerAppearances: 0,
+              goals: 0,
+              assists: 0,
+              internationalCaps: 0,
+              outcome: null,
+              isGraduate: false,
+            },
+          ]
+        : [];
       let staffAssignmentSnapshotToken = "snapshot-token-1";
       const staffAssignmentSnapshot = () => ({
         id: 1,
@@ -798,6 +852,33 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   loadedAtUtc: "2026-07-28T15:05:00.000Z",
                 }
               : null;
+          }
+
+          if (cmd === "list_academy_classes") {
+            return academyClasses.map((academyClass) => ({ ...academyClass }));
+          }
+
+          if (cmd === "get_academy_class") {
+            const academyClass = academyClasses.find(
+              (candidate) => candidate.id === args?.classId,
+            );
+            if (!academyClass) throw "Academy class " + args?.classId + " not found";
+            return {
+              ...academyClass,
+              members: academyMembers.map((member) => ({ ...member })),
+            };
+          }
+
+          if (cmd === "list_academy_candidates") {
+            return academyWorkspace
+              ? [{
+                  playerUid: 100,
+                  name: "Morgan Prospect",
+                  age: 16,
+                  positions: { AML: 17 },
+                  currentClub: "Barcelona U19",
+                }]
+              : [];
           }
 
           if (cmd === "import_csv") {
