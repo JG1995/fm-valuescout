@@ -95,6 +95,7 @@ Use the stable `./scripts/dev` surface instead of stack-native commands:
 ./scripts/dev format [paths...]
 ./scripts/dev secrets [--staged]
 ./scripts/dev smoke
+./scripts/dev inspect-ui [route|all] [width] [height]
 ./scripts/dev mutate <target...>
 ./scripts/dev bridge-install
 ./scripts/dev package-windows
@@ -102,6 +103,8 @@ Use the stable `./scripts/dev` surface instead of stack-native commands:
 ```
 
 `check` is the full commit gate: Biome, TypeScript, secretlint, Rust format, Clippy, and Rust tests. `check-fast` is the pre-commit frontend and staged-secret path; it does not replace `check`. `check-app` runs the frontend CI gate. `check-rust` runs the Rust gate. `bridge-test` requires the .NET 6 SDK. Install Chromium once with `pnpm exec playwright install chromium`, then use `smoke` for the Playwright product suite.
+
+For material UI work, read the project-local `ui-inspection` skill, capture the affected route, and inspect the reported image. Use its complete page set only for cross-page changes. Treat every capture as disposable Chromium-stub evidence, not native application proof.
 
 `format` applies Biome fixes and `cargo fmt` before staging. `mutate` is unsupported until mutation tooling is configured and must never be reported as passed. `bridge-install` builds and installs `FmDataBridge.dll` using `FM_BRIDGE_PLUGINS`, `FM_STEAM_ROOT`, or the WSL Steam default. `package-windows` runs only on Windows, creates one unsigned x64 NSIS validation artifact plus checksum under `.release/windows/<version>/`, and does not publish.
 
