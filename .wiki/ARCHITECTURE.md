@@ -344,6 +344,7 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 | `.pi/settings.json` | Project Pi settings; machine package and preference settings remain global |
 | `.pi/skills/create-pr/SKILL.md` | Repository ordinary pull-request preparation procedure |
 | `.pi/skills/create-release/SKILL.md` | Explicit release preparation and verification procedure |
+| `.pi/skills/ui-inspection/SKILL.md` | Agent procedure for populated Chromium captures and visual iteration |
 | `.vscode/extensions.json` | Recommended Biome, rust-analyzer, Even Better TOML, and Repowise extensions |
 | `.vscode/settings.json` | Format on save (Biome / rust-analyzer); rust-analyzer linked to `src-tauri` |
 | `.gitignore` | Build, test, and tool artifacts; generated or local Pi state; `.tanstack/` and `.repowise/` caches; `.env.*` except `.env.example`; `src-tauri/target/`; editor noise (`.idea/`, vim swap) |
