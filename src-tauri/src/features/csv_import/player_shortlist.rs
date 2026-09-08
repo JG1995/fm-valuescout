@@ -203,12 +203,12 @@ fn required_player_uid_column(headers: &StringRecord) -> Result<usize, CsvImport
     let matches = headers
         .iter()
         .enumerate()
-        .filter_map(|(index, header)| (header.trim() == "Player UID").then_some(index))
+        .filter_map(|(index, header)| (header.trim() == "Unique ID").then_some(index))
         .collect::<Vec<_>>();
     match matches.as_slice() {
-        [] => Err(CsvImportError::MissingRequiredHeader("Player UID")),
+        [] => Err(CsvImportError::MissingRequiredHeader("Unique ID")),
         [index] => Ok(*index),
-        _ => Err(CsvImportError::DuplicateHeader("Player UID")),
+        _ => Err(CsvImportError::DuplicateHeader("Unique ID")),
     }
 }
 
@@ -233,10 +233,9 @@ mod tests {
 
     #[test]
     fn parses_bom_either_delimiter_and_any_header_order_while_ignoring_other_columns() {
-        let parsed = parse_player_shortlist(
-            "\u{feff}Name,Player UID,Club\nAlice,77,Club A\nBob,88,Club B\n",
-        )
-        .expect("parse comma-delimited shortlist with BOM");
+        let parsed =
+            parse_player_shortlist("\u{feff}Name,Unique ID,Club\nAlice,77,Club A\nBob,88,Club B\n")
+                .expect("parse comma-delimited shortlist with BOM");
 
         assert_eq!(MAX_PLAYER_SHORTLIST_ROWS, 10_000);
         assert_eq!(parsed.total_rows, 2);
@@ -244,7 +243,7 @@ mod tests {
         assert_eq!(parsed.skipped_invalid, 0);
         assert_eq!(parsed.skipped_duplicates, 0);
 
-        let parsed = parse_player_shortlist("Player UID;Name\n77;Alice\n")
+        let parsed = parse_player_shortlist("Unique ID;Name\n77;Alice\n")
             .expect("parse semicolon-delimited shortlist");
         assert_eq!(parsed.player_uids, vec![77]);
     }
@@ -252,19 +251,19 @@ mod tests {
     #[test]
     fn rejects_missing_header_and_malformed_csv() {
         assert_eq!(
-            parse_player_shortlist("Unique ID\n77\n"),
-            Err(CsvImportError::MissingRequiredHeader("Player UID"))
+            parse_player_shortlist("Player UID\n77\n"),
+            Err(CsvImportError::MissingRequiredHeader("Unique ID"))
         );
         assert_eq!(
-            parse_player_shortlist("Player UID,Player UID\n77,77\n"),
-            Err(CsvImportError::DuplicateHeader("Player UID"))
+            parse_player_shortlist("Unique ID,Unique ID\n77,77\n"),
+            Err(CsvImportError::DuplicateHeader("Unique ID"))
         );
         assert_eq!(
-            parse_player_shortlist("Player UID,Name\n77\n"),
+            parse_player_shortlist("Unique ID,Name\n77\n"),
             Err(CsvImportError::MalformedCsv { row: 2 })
         );
         assert_eq!(
-            parse_player_shortlist("Player UID\n77\n"),
+            parse_player_shortlist("Unique ID\n77\n"),
             Ok(ParsedPlayerShortlist {
                 total_rows: 1,
                 player_uids: vec![77],
@@ -273,14 +272,14 @@ mod tests {
             })
         );
         assert_eq!(
-            parse_player_shortlist("Player UID\tName\n77\tAlice\n"),
-            Err(CsvImportError::MissingRequiredHeader("Player UID"))
+            parse_player_shortlist("Unique ID\tName\n77\tAlice\n"),
+            Err(CsvImportError::MissingRequiredHeader("Unique ID"))
         );
     }
 
     #[test]
     fn counts_every_data_row_against_the_limit_before_validity_or_deduplication() {
-        let mut input = "Player UID\n".to_string();
+        let mut input = "Unique ID\n".to_string();
         for _ in 0..MAX_PLAYER_SHORTLIST_ROWS {
             input.push_str("not-a-number\n");
         }
@@ -328,7 +327,7 @@ mod tests {
         let (save_id, _) = seed_current_player_snapshot(&mut conn, &[77]);
         seed_shortlist(&conn, save_id, &[9]);
         let context = capture_player_shortlist_import_context(&conn).expect("capture context");
-        let parsed = parse_player_shortlist("Player UID\n77\n77\n   \n0\n4294967296\n88\n")
+        let parsed = parse_player_shortlist("Unique ID\n77\n77\n   \n0\n4294967296\n88\n")
             .expect("parse rows with duplicates, blanks, and unmatched UIDs");
 
         assert_eq!(parsed.total_rows, 6);

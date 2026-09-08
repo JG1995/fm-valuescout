@@ -212,7 +212,7 @@ mod tests {
             ingest_dump_file(&mut conn, &dump_path).expect("ingest fixture snapshot");
         }
         let csv_path = temp_dir.path().join("players.csv");
-        std::fs::write(&csv_path, "Player UID\n77\n88\n").expect("write player CSV");
+        std::fs::write(&csv_path, "Unique ID\n77\n88\n").expect("write player CSV");
 
         let summary =
             import_player_shortlist_csv_for_path(&csv_path, &db).expect("import player shortlist");
