@@ -6,6 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-08
+
+### Added
+
+- Tactic now provides one phase-aware canvas with persistent Tactical XI and Selected Slot controls, phase-specific occupied-position swaps, responsive portrait and landscape layouts, and clearer IP/OOP markers.
+- Planner now shows every enabled squad in one squad-depth board and lets each squad configure, rename, and reorder its strings through Manage Teams.
+- Player, Staff, and Squad analysis tables now group related columns, keep identity visible while scrolling, provide grouped column controls, and include Height in fresh player table layouts.
+- Player Profiles now provide Overview, Attributes, Role Fit, and Moneyball sections beside a persistent identity rail, with clearer ability and tactical summaries.
+
+### Changed
+
+- Existing custom tactics reset once to the normal defaults for the new tactic layout. Planner assignments and unrelated save data remain intact.
+- Existing Planner strings receive ordinal names during upgrade.
+- Updated desktop runtime dependencies to their latest compatible patch releases.
+
+### Fixed
+
+- Tactic, Planner, analysis table, and Player Profile layouts now use space more effectively and remain readable across supported desktop widths.
+
 ## [0.17.0] - 2026-09-05
 
 ### Added
