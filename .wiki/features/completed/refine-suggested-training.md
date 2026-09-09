@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -123,7 +123,7 @@ Refine the read-time Suggested Training recommendation so its focus matches a de
 
 **Required checks:** strict required GitHub Actions status `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -310,17 +310,17 @@ Refine the read-time Suggested Training recommendation so its focus matches a de
 
 **PR:** PR 1 — Refine Suggested Training
 
-**Active work:** None — feature validation
+**Active work:** None — documentation close-out
 
-**Commit:** None — feature validation
+**Commit:** None — documentation close-out
 
 ### RED or removal proof
 
-Not applicable — all three planned packets completed deterministic validation and independent checkpoint review. Feature-level validation, feature review, and documentation reconciliation remain pending.
+Not applicable — all three planned packets completed deterministic validation and independent checkpoint review. Full feature validation, feature review, and documentation reconciliation are complete. The reviewed close-out is ready for final PR publication.
 
 ### Expected outcome
 
-Run the complete feature validation portfolio, review the exact recorded implementation set, reconcile the deferred early-fallback architecture wording, archive the completed ledger, and prepare the final PR for publication.
+The reviewed close-out is ready for final PR publication.
 
 ### Explicit exclusions
 
@@ -328,7 +328,9 @@ Release preparation and unrelated implementation or documentation.
 
 ## Discoveries and replanning
 
-- Planning confirmed that the fallback added by `9c77ca2` loads inputs only for unassigned `CA < PA` rows. Commit 3 must add the approved nullable-age and under-29 eligibility condition to that existing selection, not redesign fallback behavior.
+- Planning confirmed that the fallback added by `9c77ca2` loads inputs only for unassigned `CA < PA` rows. Commit 3 added the approved nullable-age and under-29 eligibility condition to that existing selection, not a redesign of fallback behavior.
+- Feature validation on implementation HEAD `4b0cab2c56b0fba33222d3b11990700a85824b6c` passed `./scripts/dev check-rust` and `./scripts/dev check`; 809 tests passed and 2 were ignored. Rust primary LSP was clean, and `git diff --check main...HEAD` passed.
+- Fresh feature review found no CRITICAL or HIGH findings. The Test portfolio passed and implementation and project ownership conformed. The deferred MEDIUM documentation finding is resolved: only CA/PA- and age-eligible unassigned rows enter the one batched fallback-input load; ineligible rows bypass fallback-input loading and parsing.
 - No source evidence invalidated the approved two-implementation-commit split.
 
 ## Completed work
@@ -337,7 +339,7 @@ Release preparation and unrelated implementation or documentation.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Refine Suggested Training | Commit 1 — Record the approved feature plan | 06e5266409112bad31560b44fa2514d0cab5afbf | Recorded the reviewed schema 2 ledger and TODO activation without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed; pre-commit `check-fast`: passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — Refine Suggested Training | Commit 2 — Classify suggested training focuses | 4346ca4e6ccae3fdcb1f5b5fce1bdd972be6a882 | Replaced tuple-only inventories with one typed, categorized focus catalog while preserving unrestricted ranking behavior. | RED failed on absent category metadata; 10 focused tests passed; `./scripts/dev check-rust`: 805 passed, 2 ignored; Rust LSP and `git diff --check`: passed. | Pass | Clear | 1 | Review correction added complete-length catalog proof, removed a redundant category test, and narrowed catalog visibility. |
-| PR 1 — Refine Suggested Training | Commit 3 — Tailor suggestions to player age | Pending record | Applied exact age-category ranking and early CA/PA and age gates while preserving eligible assigned and fallback lane behavior and the string-or-null read contract. | Initial `check-rust` failed while age-aware call sites were incomplete; `./scripts/dev check-rust` and `./scripts/dev check`: 809 passed, 2 ignored; Rust LSP and `git diff --check`: passed. | Pass | Clear | 0 | MEDIUM deferred to feature close-out: document that ineligible unassigned rows are excluded before fallback-input loading. The reported RED was a compile failure rather than behavioral proof; final focused and full-suite tests prove the shipped contract. |
+| PR 1 — Refine Suggested Training | Commit 3 — Tailor suggestions to player age | 4b0cab2c56b0fba33222d3b11990700a85824b6c | Applied exact age-category ranking and early CA/PA and age gates while preserving eligible assigned and fallback lane behavior and the string-or-null read contract. | Initial `check-rust` failed while age-aware call sites were incomplete; `./scripts/dev check-rust` and `./scripts/dev check`: 809 passed, 2 ignored; Rust LSP and `git diff --check`: passed. | Pass | Clear | 0 | MEDIUM deferred to feature close-out and resolved in the architecture reconciliation: ineligible unassigned rows are excluded before fallback-input loading and parsing. The reported RED was a compile failure rather than behavioral proof; final focused and full-suite tests prove the shipped contract. |
 
 ## Final validation
 
@@ -347,4 +349,4 @@ Release preparation and unrelated implementation or documentation.
 
 ## Documentation impact
 
-Commit 3 updates `.wiki/ARCHITECTURE.md` as intrinsic documentation for the implemented read-path rule. Feature reconciliation must confirm that no further durable documentation is required before archiving this ledger.
+Documentation reconciliation is complete. `.wiki/ARCHITECTURE.md` records that only CA/PA- and age-eligible unassigned rows enter the one batched fallback-input load and that ineligible rows bypass fallback-input loading and parsing. `.wiki/TODO.md` marks JAY-59 complete and links the completed record. No other documentation, ADR, or debug report is required. The orchestrator owns the archive move: after inspection, move this complete ledger to `.wiki/features/completed/refine-suggested-training.md`.
