@@ -41,7 +41,6 @@ public sealed class CapADumpPipeline
         string bridgeVersion,
         ModuleBounds gameAssembly,
         ModuleBounds? gamePlugin = null,
-        int? maxAccepted = null,
         PlayerDatabaseScope playerDatabaseScope = PlayerDatabaseScope.Men,
         CancellationToken cancellationToken = default)
     {
@@ -82,7 +81,7 @@ public sealed class CapADumpPipeline
             gamePlugin,
             regions,
             diagnostics,
-            maxAccepted,
+            maxAccepted: null,
             playerDatabaseScope,
             cancellationToken);
         diagnostics.CandidateDiscoveryMs = phaseSw.ElapsedMilliseconds;
@@ -173,7 +172,7 @@ public sealed class CapADumpPipeline
                 gamePlugin,
                 regions,
                 diagnostics,
-                maxAccepted,
+                maxAccepted: null,
                 playerDatabaseScope,
                 cancellationToken);
             diagnostics.CandidateDiscoveryMs = phaseSw.ElapsedMilliseconds;

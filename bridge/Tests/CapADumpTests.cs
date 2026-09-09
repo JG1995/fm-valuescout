@@ -482,97 +482,14 @@ public sealed class CapADumpTests
     }
 
     [Fact]
-    public void Person_scanner_stops_when_max_accepted_reached()
-    {
-        var layout = Fm263Layout.Instance;
-        var reader = new FakeMemoryReader();
-        PlacePlayerFixture(reader, layout, PersonAddress, uid: 101, ca: 100, pa: 110);
-        PlacePlayerFixture(
-            reader,
-            layout,
-            PersonAddress + 0x100,
-            uid: 102,
-            ca: 120,
-            pa: 130,
-            playerBlockBase: PlayerBlockBase + 0x100);
-        PlacePlayerFixture(
-            reader,
-            layout,
-            PersonAddress + 0x200,
-            uid: 103,
-            ca: 140,
-            pa: 150,
-            playerBlockBase: PlayerBlockBase + 0x200);
-
-        var diagnostics = new ScanDiagnostics();
-        var scan = PersonScanner.Scan(
-            reader,
-            layout,
-            new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
-            gamePlugin: null,
-            RegionEnumerator.GetCandidateRegions(reader),
-            diagnostics,
-            maxAccepted: 2);
-        var candidates = scan.Players;
-
-        Assert.Equal(2, candidates.Count);
-        Assert.True(diagnostics.StoppedEarly);
-        Assert.True(diagnostics.ClubDiscoveryIncomplete);
-        Assert.True(scan.StoppedEarly);
-        Assert.Equal(2, diagnostics.MaxAccepted);
-        Assert.Equal(2, diagnostics.CandidatesAccepted);
-    }
-
-    [Fact]
-    public void Person_scanner_exact_cap_without_extra_players_not_truncated()
-    {
-        var layout = Fm263Layout.Instance;
-        var reader = new FakeMemoryReader();
-        PlacePlayerFixture(reader, layout, PersonAddress, uid: 101, ca: 100, pa: 110);
-        PlacePlayerFixture(
-            reader,
-            layout,
-            PersonAddress + 0x100,
-            uid: 102,
-            ca: 120,
-            pa: 130,
-            playerBlockBase: PlayerBlockBase + 0x100);
-
-        var diagnostics = new ScanDiagnostics();
-        var scan = PersonScanner.Scan(
-            reader,
-            layout,
-            new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
-            gamePlugin: null,
-            RegionEnumerator.GetCandidateRegions(reader),
-            diagnostics,
-            maxAccepted: 2);
-        var candidates = scan.Players;
-
-        Assert.Equal(2, candidates.Count);
-        Assert.False(diagnostics.StoppedEarly);
-        Assert.False(diagnostics.ClubDiscoveryIncomplete);
-        Assert.False(scan.StoppedEarly);
-    }
-
-    [Fact]
-    public void Pipeline_writes_scan_truncated_when_max_accepted_reached()
+    public void Pipeline_scans_all_candidates_without_a_request_cap()
     {
         var bridgeDir = CreateTempBridgeDir();
         try
         {
             var layout = Fm263Layout.Instance;
             var reader = new FakeMemoryReader();
-            PlacePlayerFixture(
-                reader,
-                layout,
-                PersonAddress,
-                uid: 201,
-                ca: 150,
-                pa: 170,
-                name: "Player One",
-                birthYear: 2000,
-                birthDoy: 100);
+            PlacePlayerFixture(reader, layout, PersonAddress, uid: 201, ca: 150, pa: 170, name: "Player One");
             PlacePlayerFixture(
                 reader,
                 layout,
@@ -581,9 +498,7 @@ public sealed class CapADumpTests
                 ca: 140,
                 pa: 160,
                 playerBlockBase: PlayerBlockBase + 0x100,
-                name: "Player Two",
-                birthYear: 2001,
-                birthDoy: 101);
+                name: "Player Two");
             PlacePlayerFixture(
                 reader,
                 layout,
@@ -592,31 +507,105 @@ public sealed class CapADumpTests
                 ca: 130,
                 pa: 150,
                 playerBlockBase: PlayerBlockBase + 0x200,
-                name: "Player Three",
-                birthYear: 2002,
-                birthDoy: 102);
+                name: "Player Three");
 
-            var pipeline = new CapADumpPipeline();
-            var result = pipeline.Run(
+            var result = new CapADumpPipeline().Run(
                 reader,
                 bridgeDir,
                 gameVersion: "26.3.1",
                 bridgeVersion: "0.1.0",
-                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
-                maxAccepted: 2);
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
             Assert.True(result.Success);
-            Assert.True(result.ScanTruncated);
-            Assert.Equal(2, result.MaxAccepted);
-            Assert.Equal(2, result.PlayerCount);
+            Assert.Equal(3, result.PlayerCount);
+            Assert.False(result.ScanTruncated);
+            Assert.Null(result.MaxAccepted);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
-            Assert.True(doc.RootElement.GetProperty("scanTruncated").GetBoolean());
-            Assert.Equal(2, doc.RootElement.GetProperty("maxAccepted").GetInt32());
-            Assert.Equal(2, doc.RootElement.GetProperty("playerCount").GetInt32());
+            Assert.Equal(3, doc.RootElement.GetProperty("playerCount").GetInt32());
+            Assert.False(doc.RootElement.GetProperty("scanTruncated").GetBoolean());
+            Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("maxAccepted").ValueKind);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
 
-            var diagnostics = File.ReadAllText(BridgePaths.GetDiagnosticsPath(bridgeDir));
-            Assert.Contains("scanMateriallyIncomplete=False", diagnostics, StringComparison.Ordinal);
+    [Fact]
+    public void Old_app_cap_request_is_accepted_and_scans_all_candidates()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var now = DateTimeOffset.Parse("2026-07-28T18:30:00Z");
+            File.WriteAllText(
+                BridgePaths.GetRequestPath(bridgeDir),
+                "{\n"
+                + "  \"protocolVersion\": 1,\n"
+                + "  \"requestId\": \"old-app-cap\",\n"
+                + $"  \"createdAtUtc\": \"{now:O}\",\n"
+                + "  \"operation\": \"full-dump\",\n"
+                + "  \"maxAccepted\": 2\n"
+                + "}\n");
+
+            Assert.True(
+                RequestAcceptance.TryAccept(
+                    BridgePaths.GetRequestPath(bridgeDir),
+                    now,
+                    TimeSpan.FromSeconds(30),
+                    out var request,
+                    out _,
+                    out _));
+            Assert.Equal("old-app-cap", request.RequestId);
+
+            var layout = Fm263Layout.Instance;
+            var reader = new FakeMemoryReader();
+            PlacePlayerFixture(reader, layout, PersonAddress, uid: 301, ca: 150, pa: 170, name: "Player One");
+            PlacePlayerFixture(
+                reader,
+                layout,
+                PersonAddress + 0x100,
+                uid: 302,
+                ca: 140,
+                pa: 160,
+                playerBlockBase: PlayerBlockBase + 0x100,
+                name: "Player Two");
+            PlacePlayerFixture(
+                reader,
+                layout,
+                PersonAddress + 0x200,
+                uid: 303,
+                ca: 130,
+                pa: 150,
+                playerBlockBase: PlayerBlockBase + 0x200,
+                name: "Player Three");
+
+            CapADumpResult? result = null;
+            BridgeRequestDispatcher.DispatchFullDump(
+                request,
+                bridgeDir,
+                PlayerDatabaseScope.Men,
+                CancellationToken.None,
+                (directory, requestId, scope, cancellationToken) =>
+                {
+                    Assert.Equal("old-app-cap", requestId);
+                    result = new CapADumpPipeline().Run(
+                        reader,
+                        directory,
+                        gameVersion: "26.3.1",
+                        bridgeVersion: "0.1.0",
+                        gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+                        playerDatabaseScope: scope,
+                        cancellationToken: cancellationToken);
+                });
+
+            Assert.NotNull(result);
+            var acceptedResult = result.GetValueOrDefault();
+            Assert.True(acceptedResult.Success);
+            Assert.Equal(3, acceptedResult.PlayerCount);
+            Assert.False(acceptedResult.ScanTruncated);
+            Assert.Null(acceptedResult.MaxAccepted);
         }
         finally
         {
@@ -1237,38 +1226,6 @@ public sealed class CapADumpTests
             Assert.False(doc.RootElement.GetProperty("scanTruncated").GetBoolean());
             Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("maxAccepted").ValueKind);
             Assert.True(File.Exists(BridgePaths.GetDiagnosticsPath(bridgeDir)));
-        }
-        finally
-        {
-            Directory.Delete(bridgeDir, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void Pipeline_null_max_accepted_is_unlimited_not_default_cap()
-    {
-        var bridgeDir = CreateTempBridgeDir();
-        try
-        {
-            var layout = Fm263Layout.Instance;
-            var reader = BuildReaderWithTwoIdenticalPlayers(layout);
-            var pipeline = new CapADumpPipeline();
-
-            var result = pipeline.Run(
-                reader,
-                bridgeDir,
-                gameVersion: "26.3.1",
-                bridgeVersion: "0.1.0",
-                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
-                maxAccepted: null);
-
-            Assert.True(result.Success);
-            Assert.False(result.ScanTruncated);
-            Assert.Null(result.MaxAccepted);
-
-            using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
-            Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("maxAccepted").ValueKind);
-            Assert.False(doc.RootElement.GetProperty("scanTruncated").GetBoolean());
         }
         finally
         {

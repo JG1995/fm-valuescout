@@ -331,7 +331,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 #### Commit 4 — Omit cap from dump requests
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(memory-read): omit cap from dump requests`
 
@@ -391,7 +391,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 #### Commit 5 — Stop accepting capped dump requests
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `refactor(bridge): stop accepting capped dump requests`
 
@@ -652,19 +652,19 @@ The planning commit establishes the ledger. The first implementation change corr
 
 **PR:** PR 1 — refactor(load-data): retire obsolete control support
 
-**Commit:** Commit 4 — Omit cap from dump requests
+**Commit:** Commit 5 — Stop accepting capped dump requests
 
 ### RED or removal proof
 
-Identify the Rust request DTO field, optional-limit helper, scan closure parameter, and cap-only serialization and validation tests. Preserve request locking, atomic replacement, terminal matching, dump capture, progress, context, and rollback proofs.
+Use one old-shaped request with an extra positive `maxAccepted` property and a full-scan fixture that exceeds the former test cap. Preserve protocol, freshness, operation, scope, boost validation, force-scan, work-gate, and failure proofs.
 
 ### Expected outcome
 
-Rust writes a valid protocol-v1 full-dump request without `maxAccepted` and uses one unconditional request path through scan and ingest.
+The new bridge ignores an old app's extra cap property, accepts the full-dump request, and routes it through an unparameterized scan that returns every candidate.
 
 ### Explicit exclusions
 
-C# bridge acceptance and scanner behavior, transient status/result fields, persisted dump and snapshot metadata, schema changes, and bridge documentation.
+Scanner cap mechanics, transient status/result reporting, persisted dump fields, snapshot persistence, schema changes, generated DLLs, and release work.
 
 ## Discoveries and replanning
 
@@ -680,6 +680,7 @@ C# bridge acceptance and scanner behavior, transient status/result fields, persi
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 1 — Record the approved cleanup plan | 1d648730ff4132b5fbe95801a88a2f33acdb8905 | Recorded the reviewed schema 2 ledger and TODO Active entry without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable with the accepted fingerprint; `git diff --cached --check` and pre-commit `check-fast`: passed. | Not applicable | Clear | 0 | The unrelated completed-ledger formatting edit remained unstaged. |
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 2 — Reconcile retired freshness documentation | 0bdbfe8794ea619d167de040809ae7e03fdc8d7c | Removed stale snapshot-freshness chip claims while retaining load-timestamp persistence, presentation, and equal-game-date ordering documentation. | `ledger_state.py`: runnable; `delivery_state.py`: runnable with the accepted fingerprint; `git diff --check` and pre-commit `check-fast`: passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 3 — Remove cap from app IPC | dd0d445fa5b258076bf051405b5776f95ecd57df | Removed the cap argument from AppTopBar, the React Load Data API and mutation, and the public Tauri command while preserving context-bound progress and the temporary unlimited Rust scan seam. | Focused frontend tests passed 44 tests; `./scripts/dev check-rust` passed 809 tests with 2 ignored; `./scripts/dev check`, `git diff --check`, and primary LSP diagnostics passed. | Pass | Clear | 0 | The first commit attempt timed out during a passing pre-commit Rust run; the unchanged staged diff passed the rerun and committed normally. |
+| PR 1 — refactor(load-data): retire obsolete control support | Commit 4 — Omit cap from dump requests | 3ecc586597d9d92337e3e8bae59d1fe7141d80e9 | Removed the cap field and limit helper from Rust request serialization and collapsed Load Data orchestration to one parameterless full-dump path. | `./scripts/dev bridge-test` passed 224 tests with 3 skipped; `./scripts/dev check-rust` passed 806 tests with 2 ignored; `./scripts/dev check`, `git diff --check`, and primary LSP diagnostics passed. | Pass | Clear | 0 | None. |
 
 ## Final validation
 

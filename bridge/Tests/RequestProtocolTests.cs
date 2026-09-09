@@ -159,135 +159,6 @@ public sealed class RequestProtocolTests
         Assert.True(RequestAcceptance.IsFresh(now.AddSeconds(-Ttl.TotalSeconds), now, Ttl));
     }
 
-    [Fact]
-    public void Accept_rejects_non_positive_max_accepted()
-    {
-        var dir = CreateTempDir();
-        try
-        {
-            var path = BridgePaths.GetRequestPath(dir);
-            var now = DateTimeOffset.Parse("2026-07-28T18:30:00Z");
-            WriteRequest(
-                path,
-                protocolVersion: 1,
-                requestId: "req-bad-cap",
-                createdAtUtc: now,
-                operation: BridgeProtocol.OperationFullDump,
-                maxAcceptedJson: "0");
-
-            Assert.False(
-                RequestAcceptance.TryAccept(
-                    path,
-                    now,
-                    Ttl,
-                    out _,
-                    out var rejectReason,
-                    out var observedRequestId));
-            Assert.Contains("maxAccepted", rejectReason, StringComparison.OrdinalIgnoreCase);
-            Assert.Equal("req-bad-cap", observedRequestId);
-            Assert.False(File.Exists(path));
-        }
-        finally
-        {
-            Directory.Delete(dir, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void Accept_preserves_positive_max_accepted()
-    {
-        var dir = CreateTempDir();
-        try
-        {
-            var path = BridgePaths.GetRequestPath(dir);
-            var now = DateTimeOffset.Parse("2026-07-28T18:30:00Z");
-            WriteRequest(
-                path,
-                protocolVersion: 1,
-                requestId: "req-cap",
-                createdAtUtc: now,
-                operation: BridgeProtocol.OperationFullDump,
-                maxAcceptedJson: "500");
-
-            Assert.True(
-                RequestAcceptance.TryAccept(
-                    path,
-                    now,
-                    Ttl,
-                    out var request,
-                    out _,
-                    out _));
-            Assert.Equal(500, request.MaxAccepted);
-        }
-        finally
-        {
-            Directory.Delete(dir, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void Accept_preserves_null_max_accepted_as_unlimited()
-    {
-        var dir = CreateTempDir();
-        try
-        {
-            var path = BridgePaths.GetRequestPath(dir);
-            var now = DateTimeOffset.Parse("2026-07-28T18:30:00Z");
-            WriteRequest(
-                path,
-                protocolVersion: 1,
-                requestId: "req-unlimited",
-                createdAtUtc: now,
-                operation: BridgeProtocol.OperationFullDump,
-                maxAcceptedJson: "null");
-
-            Assert.True(
-                RequestAcceptance.TryAccept(
-                    path,
-                    now,
-                    Ttl,
-                    out var request,
-                    out _,
-                    out _));
-            Assert.Null(request.MaxAccepted);
-        }
-        finally
-        {
-            Directory.Delete(dir, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void Accept_omitted_max_accepted_is_unlimited()
-    {
-        var dir = CreateTempDir();
-        try
-        {
-            var path = BridgePaths.GetRequestPath(dir);
-            var now = DateTimeOffset.Parse("2026-07-28T18:30:00Z");
-            WriteRequest(
-                path,
-                protocolVersion: 1,
-                requestId: "req-omit",
-                createdAtUtc: now,
-                operation: BridgeProtocol.OperationFullDump);
-
-            Assert.True(
-                RequestAcceptance.TryAccept(
-                    path,
-                    now,
-                    Ttl,
-                    out var request,
-                    out _,
-                    out _));
-            Assert.Null(request.MaxAccepted);
-        }
-        finally
-        {
-            Directory.Delete(dir, recursive: true);
-        }
-    }
-
     [Theory]
     [InlineData("men")]
     [InlineData("women")]
@@ -350,47 +221,6 @@ public sealed class RequestProtocolTests
             Assert.Contains("playerDatabaseScope", rejectReason, StringComparison.Ordinal);
             Assert.Equal("req-invalid-scope", observedRequestId);
             Assert.False(File.Exists(path));
-        }
-        finally
-        {
-            Directory.Delete(dir, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void Refresh_created_at_preserves_max_accepted()
-    {
-        var dir = CreateTempDir();
-        try
-        {
-            var path = BridgePaths.GetRequestPath(dir);
-            var refreshedAt = DateTimeOffset.Parse("2026-07-28T18:30:00Z");
-            var original = refreshedAt.AddSeconds(-5);
-            WriteRequest(
-                path,
-                protocolVersion: 1,
-                requestId: "req-wait-cap",
-                createdAtUtc: original,
-                operation: BridgeProtocol.OperationFullDump,
-                maxAcceptedJson: "250",
-                playerDatabaseScopeJson: "\"women\"");
-
-            Assert.True(RequestAcceptance.TryRefreshCreatedAtUtc(path, refreshedAt));
-
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
-            Assert.Equal(250, doc.RootElement.GetProperty("maxAccepted").GetInt32());
-            Assert.Equal("women", doc.RootElement.GetProperty("playerDatabaseScope").GetString());
-
-            Assert.True(
-                RequestAcceptance.TryAccept(
-                    path,
-                    refreshedAt,
-                    Ttl,
-                    out var request,
-                    out _,
-                    out _));
-            Assert.Equal(250, request.MaxAccepted);
-            Assert.Equal(PlayerDatabaseScopes.Women, request.PlayerDatabaseScope);
         }
         finally
         {
@@ -810,13 +640,11 @@ public sealed class RequestProtocolTests
         string requestId,
         DateTimeOffset createdAtUtc,
         string operation,
-        string? maxAcceptedJson = null,
         string? playerDatabaseScopeJson = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var optionalProperties = new[]
             {
-                maxAcceptedJson is null ? null : $"\"maxAccepted\": {maxAcceptedJson}",
                 playerDatabaseScopeJson is null
                     ? null
                     : $"\"playerDatabaseScope\": {playerDatabaseScopeJson}",
