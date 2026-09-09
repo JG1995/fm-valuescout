@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-None.
+- **[Retire obsolete Load Data controls](./features/active/retire-obsolete-load-data-controls.md)** — remove accepted-player cap support from the active Load Data app, Rust, and bridge path while retaining historical snapshot metadata; reconcile already-retired snapshot freshness documentation (Linear JAY-55, JAY-56).
 
 ## Next
 
