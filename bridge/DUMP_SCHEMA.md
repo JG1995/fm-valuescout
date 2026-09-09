@@ -108,7 +108,7 @@ When present, `manager` contains `uid`, non-empty `name`, nullable `club`, and n
 | File | Writer | Purpose |
 | --- | --- | --- |
 | `request.json` | Tauri | Full-dump request or one closed player/staff boost |
-| `status.json` | Bridge | Idle, scanning, ready, or failed; optional cap and boost result signals |
+| `status.json` | Bridge | Idle, scanning, ready, or failed; boost result signals (no transient cap or truncation signals) |
 | `dump.json` | Bridge | This schema |
 | `diagnostics.txt` | Bridge | Scan diagnostics, never ingested |
 

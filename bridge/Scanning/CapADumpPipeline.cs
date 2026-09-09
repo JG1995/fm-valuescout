@@ -710,8 +710,6 @@ public readonly record struct CapADumpResult(
     string? Error,
     int PlayerCount,
     bool DumpReplaced,
-    bool ScanTruncated,
-    int? MaxAccepted,
     IReadOnlyList<StaffRecord> Staff,
     HumanManager? Manager)
 {
@@ -732,11 +730,9 @@ public readonly record struct CapADumpResult(
             null,
             playerCount,
             DumpReplaced: true,
-            ScanTruncated: false,
-            MaxAccepted: null,
             staff ?? Array.Empty<StaffRecord>(),
             manager);
 
     public static CapADumpResult Failed(string error, bool dumpReplaced) =>
-        new(false, error, 0, dumpReplaced, false, null, Array.Empty<StaffRecord>(), null);
+        new(false, error, 0, dumpReplaced, Array.Empty<StaffRecord>(), null);
 }

@@ -515,8 +515,6 @@ public sealed class CapADumpTests
 
             Assert.True(result.Success);
             Assert.Equal(501, result.PlayerCount);
-            Assert.False(result.ScanTruncated);
-            Assert.Null(result.MaxAccepted);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
             Assert.Equal(501, doc.RootElement.GetProperty("playerCount").GetInt32());
@@ -601,8 +599,6 @@ public sealed class CapADumpTests
             var acceptedResult = result.GetValueOrDefault();
             Assert.True(acceptedResult.Success);
             Assert.Equal(3, acceptedResult.PlayerCount);
-            Assert.False(acceptedResult.ScanTruncated);
-            Assert.Null(acceptedResult.MaxAccepted);
         }
         finally
         {
@@ -1214,8 +1210,6 @@ public sealed class CapADumpTests
             Assert.True(result.Success);
             Assert.True(result.DumpReplaced);
             Assert.Equal(1, result.PlayerCount);
-            Assert.False(result.ScanTruncated);
-            Assert.Null(result.MaxAccepted);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
             Assert.Equal(1, doc.RootElement.GetProperty("playerCount").GetInt32());

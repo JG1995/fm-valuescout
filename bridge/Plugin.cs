@@ -332,13 +332,9 @@ public class Plugin : BasePlugin
                     requestId: requestId,
                     playersFound: result.PlayerCount,
                     error: null,
-                    scanTruncated: result.ScanTruncated,
-                    maxAccepted: result.MaxAccepted,
                     playerBoostsSupported: playerBoostsSupported,
                     staffBoostsSupported: staffBoostsSupported);
-                Log.LogInfo(
-                    $"Dump request {requestId} wrote {result.PlayerCount} players"
-                    + (result.ScanTruncated ? " (scan truncated)" : ""));
+                Log.LogInfo($"Dump request {requestId} wrote {result.PlayerCount} players");
             }
             else
             {
@@ -669,8 +665,6 @@ public class Plugin : BasePlugin
             requestId: current.RequestId,
             playersFound: current.PlayersFound,
             error: current.Error,
-            scanTruncated: current.ScanTruncated,
-            maxAccepted: current.MaxAccepted,
             playerBoostsSupported: current.PlayerBoostsSupported,
             staffBoostsSupported: current.StaffBoostsSupported,
             playerBoost: current.PlayerBoost,
@@ -711,8 +705,6 @@ public class Plugin : BasePlugin
         string? requestId,
         int? playersFound,
         string? error,
-        bool? scanTruncated = null,
-        int? maxAccepted = null,
         bool? playerBoostsSupported = null,
         bool? staffBoostsSupported = null,
         PlayerBoostResult? playerBoost = null,
@@ -729,8 +721,6 @@ public class Plugin : BasePlugin
             RequestId = requestId,
             PlayersFound = playersFound,
             Error = error,
-            ScanTruncated = scanTruncated,
-            MaxAccepted = maxAccepted,
             PlayerBoostsSupported = playerBoostsSupported,
             StaffBoostsSupported = staffBoostsSupported,
             PlayerBoost = playerBoost,

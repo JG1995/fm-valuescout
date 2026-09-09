@@ -23,12 +23,6 @@ public sealed class BridgeStatus
     /// <summary>Human-readable failure when <see cref="State"/> is failed.</summary>
     public string? Error { get; init; }
 
-    /// <summary>True when the last ready dump stopped at <see cref="MaxAccepted"/>.</summary>
-    public bool? ScanTruncated { get; init; }
-
-    /// <summary>Accepted-player cap used for the last ready dump; null when unlimited.</summary>
-    public int? MaxAccepted { get; init; }
-
     /// <summary>Whether this loaded exact FM build has a live candidate index for the two boost actions.</summary>
     public bool? PlayerBoostsSupported { get; init; }
 
