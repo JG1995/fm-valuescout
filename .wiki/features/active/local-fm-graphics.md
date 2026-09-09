@@ -96,7 +96,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 ### PR 1 — Persist FM club identity
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -218,7 +218,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 #### Commit 3 — Bind managed-club selections to club UIDs
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(managed-club): bind selections to FM UIDs`
 
@@ -603,22 +603,22 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 ## Active work
 
-**PR:** PR 1 — Persist FM club identity
+**PR:** PR 1 — Persist FM club identity — ready for publication
 
-**Commit:** Bind managed-club selections to club UIDs
+**Commit:** None — all PR 1 commits completed
 
 ### RED or removal proof
 
-Add migration v45 and service tests first. Confirm that a submitted name/UID mismatch is currently accepted or cannot be represented and that legacy settings have no nullable UID column.
+Not applicable at the PR boundary. All three PR 1 packets have completed validation and independent review.
 
 ### Expected outcome
 
-Managed-club options and status carry nullable exact club UIDs. New selections persist only a name/UID pair found in the effective current snapshot. Legacy name-only rows remain readable with a null UID, and cohort membership remains name based.
+PR 1 publishes the v9 nullable club-identity foundation and exact managed-club UID binding before PR 2 begins.
 
 ### Explicit exclusions
 
-- Legacy UID recovery by name or any cohort membership query change.
-- Logo rendering, graphics runtime, and player or staff DTO changes.
+- PR 2 implementation before PR 1 merges and `main` synchronizes.
+- Release preparation or publication.
 - `.wiki/features/completed/refine-suggested-training.md` and `.wiki/features/completed/retire-obsolete-load-data-controls.md`.
 
 ## Discoveries and replanning
@@ -633,6 +633,7 @@ Managed-club options and status carry nullable exact club UIDs. New selections p
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Persist FM club identity | Commit 1 — Record the approved feature plan | 810a242b788986750edad38c776748e6b1b03b60 | Recorded the reviewed schema-2 JAY-63 ledger and its one Active TODO link without changing executable behavior. | `ledger_state.py` and `delivery_state.py` reported runnable with the accepted fingerprint; exact cached stat and diff were inspected; `git diff --cached --check` passed. | Not applicable | Clear | 0 | None |
 | PR 1 — Persist FM club identity | Commit 2 — Upgrade dumps to schema v9 and persist nullable club UIDs | bf923ac4d599695fedf9d99d453932888927b79d | Advanced the bridge and Rust dump contract to v9, extracted exact nullable club-object UIDs, added migration v44, and retained the IDs through prepared atomic snapshot persistence while legacy rows remain null. | `./scripts/dev bridge-test` passed 219 tests with 3 skipped; `./scripts/dev check-rust` and `./scripts/dev check` passed 809 Rust tests with 2 ignored; focused manager tests, v8-reference audit, LSP diagnostics, and `git diff --cached --check` passed. | Pass | Clear | 2 | Review corrections bound manager UID to the selected graph-or-contract source, completed exact fake-memory/migration/persistence proofs, and reconciled current v9 bridge and Architecture documentation. |
+| PR 1 — Persist FM club identity | Commit 3 — Bind managed-club selections to club UIDs | ade7c9f2763fb225f57572abf578aa0955e6df46 | Added migration v45 and exact effective-current managed-club name/UID options, validation, persistence, status, and typed picker flow while retaining name-based cohorts and legacy null identity. | `./scripts/dev test` passed 1,000 tests; `./scripts/dev check` passed 811 Rust tests with 2 ignored; `./scripts/dev smoke` passed 62 tests; exact mock/stub pair proofs, LSP diagnostics, and `git diff --cached --check` passed. | Pass | Accepted findings — direct populated v44-to-v45 managed-club upgrade proof remains a MEDIUM advisory for feature close-out. | 3 | Review corrections removed all name/index-derived UID behavior from Vitest and Playwright doubles, required exact option pairs, and aligned browser smoke with the IPC contract. |
 
 ## Final validation
 
