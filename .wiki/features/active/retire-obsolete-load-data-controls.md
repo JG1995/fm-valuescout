@@ -391,7 +391,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 #### Commit 5 — Stop accepting capped dump requests
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(bridge): stop accepting capped dump requests`
 
@@ -455,7 +455,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 #### Commit 6 — Delete scanner cap mechanics
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `refactor(bridge): delete scanner cap mechanics`
 
@@ -652,19 +652,19 @@ The planning commit establishes the ledger. The first implementation change corr
 
 **PR:** PR 1 — refactor(load-data): retire obsolete control support
 
-**Commit:** Commit 5 — Stop accepting capped dump requests
+**Commit:** Commit 6 — Delete scanner cap mechanics
 
 ### RED or removal proof
 
-Use one old-shaped request with an extra positive `maxAccepted` property and a full-scan fixture that exceeds the former test cap. Preserve protocol, freshness, operation, scope, boost validation, force-scan, work-gate, and failure proofs.
+Identify cap constants, scanner parameters, early-stop state, serial-cap selection, diagnostics fields and text, and cap-only tests. Add the bounded 501-candidate full-scan proof before deleting the retired mechanics.
 
 ### Expected outcome
 
-The new bridge ignores an old app's extra cap property, accepts the full-dump request, and routes it through an unparameterized scan that returns every candidate.
+The scanner processes all 501 valid candidates through its normal parallel policy. Every new dump serializes `scanTruncated: false` and `maxAccepted: null`, while the temporary compiled `CapADumpResult` fields return the same fixed values.
 
 ### Explicit exclusions
 
-Scanner cap mechanics, transient status/result reporting, persisted dump fields, snapshot persistence, schema changes, generated DLLs, and release work.
+Plugin transient consumers, status/result DTO removal, Rust/React consumers, persisted schema fields, migrations, scanner optimization, live FM tests, generated DLLs, and release work.
 
 ## Discoveries and replanning
 
@@ -681,6 +681,7 @@ Scanner cap mechanics, transient status/result reporting, persisted dump fields,
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 2 — Reconcile retired freshness documentation | 0bdbfe8794ea619d167de040809ae7e03fdc8d7c | Removed stale snapshot-freshness chip claims while retaining load-timestamp persistence, presentation, and equal-game-date ordering documentation. | `ledger_state.py`: runnable; `delivery_state.py`: runnable with the accepted fingerprint; `git diff --check` and pre-commit `check-fast`: passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 3 — Remove cap from app IPC | dd0d445fa5b258076bf051405b5776f95ecd57df | Removed the cap argument from AppTopBar, the React Load Data API and mutation, and the public Tauri command while preserving context-bound progress and the temporary unlimited Rust scan seam. | Focused frontend tests passed 44 tests; `./scripts/dev check-rust` passed 809 tests with 2 ignored; `./scripts/dev check`, `git diff --check`, and primary LSP diagnostics passed. | Pass | Clear | 0 | The first commit attempt timed out during a passing pre-commit Rust run; the unchanged staged diff passed the rerun and committed normally. |
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 4 — Omit cap from dump requests | 3ecc586597d9d92337e3e8bae59d1fe7141d80e9 | Removed the cap field and limit helper from Rust request serialization and collapsed Load Data orchestration to one parameterless full-dump path. | `./scripts/dev bridge-test` passed 224 tests with 3 skipped; `./scripts/dev check-rust` passed 806 tests with 2 ignored; `./scripts/dev check`, `git diff --check`, and primary LSP diagnostics passed. | Pass | Clear | 0 | None. |
+| PR 1 — refactor(load-data): retire obsolete control support | Commit 5 — Stop accepting capped dump requests | d5018ddbc88604498bdfb6006ab24ff6151d1022 | Removed the modeled bridge request cap and forwarding, made full-dump dispatch and pipeline entry unparameterized, and documented unconditional scans with old-property tolerance. | `./scripts/dev bridge-test` passed 217 tests with 3 skipped; `./scripts/dev check` passed with 806 Rust tests and 2 ignored; `git diff --check` and C# diagnostics passed. | Pass | Clear | 1 | Initial review found that the old-property proof did not bind acceptance to dispatch; correction added the narrow production dispatcher seam and proved all candidates through it. |
 
 ## Final validation
 

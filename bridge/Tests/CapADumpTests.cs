@@ -187,7 +187,7 @@ public sealed class CapADumpTests
             GameDateBasis = "next-fixture-consensus",
             PlayerDatabaseScope = "both",
             ScanTruncated = false,
-            MaxAccepted = PersonScanner.DefaultMaxAccepted,
+            MaxAccepted = 500,
             PlayerCount = 1,
             Players = new[]
             {
@@ -270,7 +270,7 @@ public sealed class CapADumpTests
         Assert.Equal("both", root.GetProperty("playerDatabaseScope").GetString());
         Assert.False(root.GetProperty("scanTruncated").GetBoolean());
         Assert.Equal(
-            PersonScanner.DefaultMaxAccepted,
+            500,
             root.GetProperty("maxAccepted").GetInt32());
         Assert.Equal("Example FC", root.GetProperty("players")[0].GetProperty("currentClub").GetString());
         Assert.Equal(25, root.GetProperty("players")[0].GetProperty("age").GetInt32());
@@ -482,32 +482,29 @@ public sealed class CapADumpTests
     }
 
     [Fact]
-    public void Pipeline_scans_all_candidates_without_a_request_cap()
+    public void Pipeline_scans_501_candidates_and_writes_fixed_metadata()
     {
         var bridgeDir = CreateTempBridgeDir();
         try
         {
             var layout = Fm263Layout.Instance;
             var reader = new FakeMemoryReader();
-            PlacePlayerFixture(reader, layout, PersonAddress, uid: 201, ca: 150, pa: 170, name: "Player One");
-            PlacePlayerFixture(
-                reader,
-                layout,
-                PersonAddress + 0x100,
-                uid: 202,
-                ca: 140,
-                pa: 160,
-                playerBlockBase: PlayerBlockBase + 0x100,
-                name: "Player Two");
-            PlacePlayerFixture(
-                reader,
-                layout,
-                PersonAddress + 0x200,
-                uid: 203,
-                ca: 130,
-                pa: 150,
-                playerBlockBase: PlayerBlockBase + 0x200,
-                name: "Player Three");
+            const int candidateCount = 501;
+            const ulong candidateSpacing = 0x20000;
+            AddCandidateRegion(reader, PlayerBlockBase, candidateSpacing * candidateCount + 0x1000);
+            for (var index = 0; index < candidateCount; index++)
+            {
+                var blockBase = PlayerBlockBase + candidateSpacing * (ulong)index;
+                PlacePlayerBytes(
+                    reader,
+                    layout,
+                    blockBase + (ulong)PlayerClassOffset,
+                    uid: (uint)(201 + index),
+                    ca: 150,
+                    pa: 170,
+                    playerBlockBase: blockBase,
+                    name: $"Player {index + 1}");
+            }
 
             var result = new CapADumpPipeline().Run(
                 reader,
@@ -517,12 +514,12 @@ public sealed class CapADumpTests
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
             Assert.True(result.Success);
-            Assert.Equal(3, result.PlayerCount);
+            Assert.Equal(501, result.PlayerCount);
             Assert.False(result.ScanTruncated);
             Assert.Null(result.MaxAccepted);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
-            Assert.Equal(3, doc.RootElement.GetProperty("playerCount").GetInt32());
+            Assert.Equal(501, doc.RootElement.GetProperty("playerCount").GetInt32());
             Assert.False(doc.RootElement.GetProperty("scanTruncated").GetBoolean());
             Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("maxAccepted").ValueKind);
         }
@@ -637,7 +634,6 @@ public sealed class CapADumpTests
         Assert.True(diagnostics.Cancelled);
         Assert.True(diagnostics.ClubDiscoveryIncomplete);
         Assert.True(scan.Cancelled);
-        Assert.False(diagnostics.StoppedEarly);
         Assert.Equal(0, scan.ReadQuality.RequestedBytes);
         Assert.Equal(0, scan.ReadQuality.UnreadBytes);
         Assert.Empty(candidates);
@@ -658,7 +654,7 @@ public sealed class CapADumpTests
                 BridgeVersion = "0.1.0",
                 ProtocolVersion = 1,
                 ScanTruncated = false,
-                MaxAccepted = PersonScanner.DefaultMaxAccepted,
+                MaxAccepted = 500,
                 PlayerCount = 1,
                 Players = new[]
                 {

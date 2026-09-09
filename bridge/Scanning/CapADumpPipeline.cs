@@ -81,7 +81,6 @@ public sealed class CapADumpPipeline
             gamePlugin,
             regions,
             diagnostics,
-            maxAccepted: null,
             playerDatabaseScope,
             cancellationToken);
         diagnostics.CandidateDiscoveryMs = phaseSw.ElapsedMilliseconds;
@@ -172,7 +171,6 @@ public sealed class CapADumpPipeline
                 gamePlugin,
                 regions,
                 diagnostics,
-                maxAccepted: null,
                 playerDatabaseScope,
                 cancellationToken);
             diagnostics.CandidateDiscoveryMs = phaseSw.ElapsedMilliseconds;
@@ -549,8 +547,8 @@ public sealed class CapADumpPipeline
             GameDateSource = gameDate.Source,
             GameDateBasis = gameDate.Basis,
             PlayerDatabaseScope = PlayerDatabaseScopes.ToWireValue(playerDatabaseScope),
-            ScanTruncated = diagnostics.StoppedEarly,
-            MaxAccepted = diagnostics.MaxAccepted,
+            ScanTruncated = false,
+            MaxAccepted = null,
             PlayerCount = players.Count,
             Players = players,
             StaffCount = dumpStaff.Count,
@@ -588,8 +586,6 @@ public sealed class CapADumpPipeline
 
         var result = CapADumpResult.Succeeded(
                 players.Count,
-                scanTruncated: diagnostics.StoppedEarly,
-                maxAccepted: diagnostics.MaxAccepted,
                 staff: staff,
                 manager: manager);
         return string.Equals(reader.ReadSource, "live", StringComparison.Ordinal)
@@ -729,8 +725,6 @@ public readonly record struct CapADumpResult(
 
     public static CapADumpResult Succeeded(
         int playerCount,
-        bool scanTruncated = false,
-        int? maxAccepted = null,
         IReadOnlyList<StaffRecord>? staff = null,
         HumanManager? manager = null) =>
         new(
@@ -738,8 +732,8 @@ public readonly record struct CapADumpResult(
             null,
             playerCount,
             DumpReplaced: true,
-            scanTruncated,
-            maxAccepted,
+            ScanTruncated: false,
+            MaxAccepted: null,
             staff ?? Array.Empty<StaffRecord>(),
             manager);
 

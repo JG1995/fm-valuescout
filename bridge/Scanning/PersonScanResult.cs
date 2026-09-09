@@ -24,7 +24,6 @@ public sealed record PersonScanResult(
     IReadOnlyList<PersonCandidate> HumanManagers,
     IReadOnlyList<ClubCandidate> Clubs,
     IReadOnlyList<uint> PlayerStaffOverlapUids,
-    bool StoppedEarly,
     bool Cancelled,
     ScanReadQuality ReadQuality)
 {
