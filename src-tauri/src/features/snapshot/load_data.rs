@@ -5,10 +5,8 @@ use rusqlite::Connection;
 use serde::Serialize;
 use tempfile::TempPath;
 
-#[cfg(test)]
-use crate::features::memory_read::service::request_player_dump;
 use crate::features::memory_read::service::{
-    dump_path, read_bridge_status, request_player_dump_with_limit, resolve_bridge_directory,
+    dump_path, read_bridge_status, request_player_dump, resolve_bridge_directory,
     BridgeStatusError, DumpRequestError, DumpRequestResult, DumpWaitConfig,
 };
 
@@ -64,19 +62,17 @@ impl std::error::Error for LoadDataError {}
 
 pub fn scan_dump_from_local_app_data(
     wait: DumpWaitConfig,
-    max_accepted: Option<i32>,
 ) -> Result<(TempPath, DumpRequestResult), LoadDataError> {
     let bridge_directory = resolve_bridge_directory().map_err(map_bridge_status_error)?;
-    scan_dump_from_bridge(&bridge_directory, wait, max_accepted)
+    scan_dump_from_bridge(&bridge_directory, wait)
 }
 
 pub fn scan_dump_from_bridge(
     bridge_directory: &Path,
     wait: DumpWaitConfig,
-    max_accepted: Option<i32>,
 ) -> Result<(TempPath, DumpRequestResult), LoadDataError> {
-    let dump_result = request_player_dump_with_limit(bridge_directory, wait, max_accepted)
-        .map_err(map_dump_request_error)?;
+    let dump_result =
+        request_player_dump(bridge_directory, wait).map_err(map_dump_request_error)?;
     let captured_dump_path = capture_completed_dump(bridge_directory, &dump_result)?;
     Ok((captured_dump_path, dump_result))
 }
@@ -405,8 +401,8 @@ mod tests {
                             Some(&request.request_id),
                             Some(42),
                             None,
-                            Some(request.max_accepted.is_some()),
-                            request.max_accepted,
+                            Some(false),
+                            None,
                         );
                     }
                     ScanSimulation::Failed { ref message } => {
@@ -482,26 +478,6 @@ mod tests {
             current_snapshot_id(&conn, active_save.id),
             Some(result.effective_snapshot.id)
         );
-    }
-
-    #[test]
-    fn scan_dump_from_bridge_forwards_positive_max_accepted() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let bridge_dir = temp_dir.path().join("bridge");
-        fs::create_dir_all(&bridge_dir).expect("bridge dir");
-
-        spawn_scan_responder(
-            &bridge_dir,
-            ScanSimulation::Ready {
-                dump_json: GOLDEN_FIXTURE.to_string(),
-            },
-        );
-
-        let (_captured_dump, result) =
-            scan_dump_from_bridge(&bridge_dir, short_wait(), Some(250)).expect("scan");
-
-        assert_eq!(result.max_accepted, Some(250));
-        assert_eq!(result.scan_truncated, Some(true));
     }
 
     #[test]
@@ -825,7 +801,7 @@ mod tests {
             },
         );
         let (captured_dump_path, dump_result) =
-            scan_dump_from_bridge(&bridge_dir, short_wait(), None).expect("scan");
+            scan_dump_from_bridge(&bridge_dir, short_wait()).expect("scan");
 
         fs::write(dump_path(&bridge_dir), dump_with_player_ca(180)).expect("replace shared dump");
         write_status_fixture(

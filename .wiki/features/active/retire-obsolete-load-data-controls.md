@@ -267,7 +267,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 #### Commit 3 — Remove cap from app IPC
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(load-data): remove cap from app IPC`
 
@@ -331,7 +331,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 #### Commit 4 — Omit cap from dump requests
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `refactor(memory-read): omit cap from dump requests`
 
@@ -652,19 +652,19 @@ The planning commit establishes the ledger. The first implementation change corr
 
 **PR:** PR 1 — refactor(load-data): retire obsolete control support
 
-**Commit:** Commit 3 — Remove cap from app IPC
+**Commit:** Commit 4 — Omit cap from dump requests
 
 ### RED or removal proof
 
-Identify the cap argument assertions in the app API, hook, top-bar, and Rust command tests. Preserve the positive full-load, progress, captured-context, invalidation, and rollback proofs.
+Identify the Rust request DTO field, optional-limit helper, scan closure parameter, and cap-only serialization and validation tests. Preserve request locking, atomic replacement, terminal matching, dump capture, progress, context, and rollback proofs.
 
 ### Expected outcome
 
-Clicking Load Data sends `saveId`, `contextToken`, and `onProgress` without `maxAccepted`. The public Tauri command accepts no cap argument and invokes the existing internal unlimited path.
+Rust writes a valid protocol-v1 full-dump request without `maxAccepted` and uses one unconditional request path through scan and ingest.
 
 ### Explicit exclusions
 
-Rust request serialization, C# bridge behavior, scanner mechanics, transient result fields, persisted snapshot metadata, and unrelated UI changes.
+C# bridge acceptance and scanner behavior, transient status/result fields, persisted dump and snapshot metadata, schema changes, and bridge documentation.
 
 ## Discoveries and replanning
 
@@ -679,6 +679,7 @@ Rust request serialization, C# bridge behavior, scanner mechanics, transient res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 1 — Record the approved cleanup plan | 1d648730ff4132b5fbe95801a88a2f33acdb8905 | Recorded the reviewed schema 2 ledger and TODO Active entry without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable with the accepted fingerprint; `git diff --cached --check` and pre-commit `check-fast`: passed. | Not applicable | Clear | 0 | The unrelated completed-ledger formatting edit remained unstaged. |
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 2 — Reconcile retired freshness documentation | 0bdbfe8794ea619d167de040809ae7e03fdc8d7c | Removed stale snapshot-freshness chip claims while retaining load-timestamp persistence, presentation, and equal-game-date ordering documentation. | `ledger_state.py`: runnable; `delivery_state.py`: runnable with the accepted fingerprint; `git diff --check` and pre-commit `check-fast`: passed. | Not applicable | Clear | 0 | None. |
+| PR 1 — refactor(load-data): retire obsolete control support | Commit 3 — Remove cap from app IPC | dd0d445fa5b258076bf051405b5776f95ecd57df | Removed the cap argument from AppTopBar, the React Load Data API and mutation, and the public Tauri command while preserving context-bound progress and the temporary unlimited Rust scan seam. | Focused frontend tests passed 44 tests; `./scripts/dev check-rust` passed 809 tests with 2 ignored; `./scripts/dev check`, `git diff --check`, and primary LSP diagnostics passed. | Pass | Clear | 0 | The first commit attempt timed out during a passing pre-commit Rust run; the unchanged staged diff passed the rerun and committed normally. |
 
 ## Final validation
 

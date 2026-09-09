@@ -426,7 +426,6 @@ fn ch_send_best_effort(
 pub(crate) fn execute_load_data_with<S, R, Sc, P, Pr>(
     db: &Db,
     requested: service::SaveContext,
-    max_accepted: Option<i32>,
     scan: S,
     prepare_raw: R,
     score: Sc,
@@ -435,7 +434,7 @@ pub(crate) fn execute_load_data_with<S, R, Sc, P, Pr>(
     mut on_progress: Pr,
 ) -> Result<LoadDataResultDto, LoadDataError>
 where
-    S: FnOnce(Option<i32>) -> Result<(TempPath, DumpRequestResult), LoadDataError>,
+    S: FnOnce() -> Result<(TempPath, DumpRequestResult), LoadDataError>,
     R: FnOnce(&Path) -> Result<ingest::RawPreparedSnapshot, LoadDataError>,
     Sc: FnOnce(ingest::RawPreparedSnapshot) -> Result<ingest::PreparedSnapshot, LoadDataError>,
     P: FnOnce(
@@ -484,7 +483,7 @@ where
         LoadDataPhase::Scan,
     ));
     let scan_started = now_ms();
-    let scan_result = scan(max_accepted);
+    let scan_result = scan();
     let scan_ms = now_ms().saturating_sub(scan_started);
     let (captured_dump_path, dump_result) = scan_result?;
     // Preparing start indeterminate (total unknown)
@@ -619,8 +618,7 @@ pub async fn load_data(
     execute_load_data_with(
         db.inner(),
         requested,
-        None,
-        |limit| load_data::scan_dump_from_local_app_data(DumpWaitConfig::default(), limit),
+        || load_data::scan_dump_from_local_app_data(DumpWaitConfig::default()),
         load_data::prepare_raw_for_publish,
         load_data::score_raw_for_publish,
         |conn, save_context, prepared, dump_result, now_ms, boundary| {
@@ -683,8 +681,7 @@ mod tests {
         let error = execute_load_data_with(
             db,
             requested,
-            None,
-            |_| -> Result<(TempPath, DumpRequestResult), LoadDataError> {
+            || -> Result<(TempPath, DumpRequestResult), LoadDataError> {
                 scan_called.set(true);
                 unreachable!("stale context must fail before scan")
             },
@@ -809,7 +806,7 @@ mod tests {
                     .expect("clock tick exhausted - missing expected timing call")
             }
         };
-        let scan = |_: Option<i32>| {
+        let scan = || {
             let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
             tmp.write_all(GOLDEN_FIXTURE.as_bytes()).expect("write");
             tmp.flush().expect("flush");
@@ -852,7 +849,6 @@ mod tests {
         let result = execute_load_data_with(
             &db,
             requested,
-            None,
             scan,
             prepare_raw,
             score,
@@ -956,7 +952,7 @@ mod tests {
             crate::features::snapshot::service::list_saves(&guard).expect("seed");
         }
         let mut now_ms = || 0u64;
-        let scan = |_: Option<i32>| {
+        let scan = || {
             let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
             tmp.write_all(GOLDEN_FIXTURE.as_bytes()).expect("write");
             tmp.flush().expect("flush");
@@ -1011,7 +1007,6 @@ mod tests {
         let result = execute_load_data_with(
             &db,
             requested,
-            None,
             scan,
             prepare_raw,
             score,
@@ -1035,7 +1030,7 @@ mod tests {
             crate::features::snapshot::service::list_saves(&guard).expect("seed");
         }
         let mut now_ms = || 0u64;
-        let scan = |_: Option<i32>| {
+        let scan = || {
             let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
             tmp.write_all(GOLDEN_FIXTURE.as_bytes()).expect("write");
             tmp.flush().expect("flush");
@@ -1072,7 +1067,6 @@ mod tests {
         let result = execute_load_data_with(
             &db,
             requested,
-            None,
             scan,
             prepare_raw,
             score,
@@ -1101,7 +1095,7 @@ mod tests {
             crate::features::snapshot::service::list_saves(&guard).expect("seed");
         }
         let mut now_ms = || 0u64;
-        let scan = |_: Option<i32>| -> Result<(TempPath, DumpRequestResult), LoadDataError> {
+        let scan = || -> Result<(TempPath, DumpRequestResult), LoadDataError> {
             Err(LoadDataError::Scan {
                 kind: "timeout".to_string(),
                 message: "scan failed".to_string(),
@@ -1121,7 +1115,6 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
-            None,
             scan,
             prepare_raw,
             score,
@@ -1150,7 +1143,7 @@ mod tests {
             crate::features::snapshot::service::list_saves(&guard).expect("seed");
         }
         let mut now_ms = || 0u64;
-        let scan = |_: Option<i32>| {
+        let scan = || {
             let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
             tmp.write_all(b"{\"schemaVersion\": 8}").expect("write");
             tmp.flush().expect("flush");
@@ -1180,7 +1173,6 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
-            None,
             scan,
             prepare_raw,
             score,
@@ -1213,7 +1205,7 @@ mod tests {
             crate::features::snapshot::service::list_saves(&guard).expect("seed");
         }
         let mut now_ms = || 0u64;
-        let scan = |_: Option<i32>| {
+        let scan = || {
             let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
             tmp.write_all(GOLDEN_FIXTURE.as_bytes()).expect("write");
             tmp.flush().expect("flush");
@@ -1247,7 +1239,6 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
-            None,
             scan,
             prepare_raw,
             score,
@@ -1278,7 +1269,7 @@ mod tests {
             crate::features::snapshot::service::list_saves(&guard).expect("seed");
         }
         let mut now_ms = || 0u64;
-        let scan = |_: Option<i32>| {
+        let scan = || {
             let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
             tmp.write_all(GOLDEN_FIXTURE.as_bytes()).expect("write");
             tmp.flush().expect("flush");
@@ -1312,7 +1303,6 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
-            None,
             scan,
             prepare_raw,
             score,
@@ -1357,7 +1347,7 @@ mod tests {
             guard.execute_batch("CREATE TRIGGER fail_compact BEFORE INSERT ON player_role_metrics BEGIN SELECT RAISE(ABORT, 'finalize fail'); END;").expect("trigger");
         }
         let mut now_ms = || 0u64;
-        let scan = |_: Option<i32>| {
+        let scan = || {
             let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
             tmp.write_all(GOLDEN_FIXTURE.as_bytes()).expect("write");
             tmp.flush().expect("flush");
@@ -1396,7 +1386,6 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
-            None,
             scan,
             prepare_raw,
             score,
@@ -1441,7 +1430,7 @@ mod tests {
                 .expect("trigger");
         }
         let mut now_ms = || 0u64;
-        let scan = |_: Option<i32>| {
+        let scan = || {
             let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
             tmp.write_all(GOLDEN_FIXTURE.as_bytes()).expect("write");
             tmp.flush().expect("flush");
@@ -1480,7 +1469,6 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
-            None,
             scan,
             prepare_raw,
             score,
@@ -1640,7 +1628,7 @@ mod tests {
         };
         let mut now_ms = || 0u64;
         let scan_called = std::cell::Cell::new(false);
-        let scan = |_: Option<i32>| {
+        let scan = || {
             scan_called.set(true);
             let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
             std::io::Write::write_all(&mut tmp, GOLDEN_FIXTURE.as_bytes()).expect("write");
@@ -1678,7 +1666,6 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             stale_requested,
-            None,
             scan,
             prepare_raw,
             score,
@@ -1762,7 +1749,7 @@ mod tests {
         let publish_called = Rc::new(Cell::new(false));
         let publish_called_clone = Rc::clone(&publish_called);
         let second_id = second_save.id;
-        let scan = |_: Option<i32>| {
+        let scan = || {
             let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
             std::io::Write::write_all(&mut tmp, GOLDEN_FIXTURE.as_bytes()).expect("write");
             tmp.flush().expect("flush");
@@ -1819,7 +1806,6 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
-            None,
             scan,
             prepare_raw,
             score,
