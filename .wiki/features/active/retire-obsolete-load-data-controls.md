@@ -156,7 +156,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 #### Commit 1 — Record the approved cleanup plan
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(load-data): record approved cleanup plan`
 
@@ -213,7 +213,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 #### Commit 2 — Reconcile retired freshness documentation
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `docs(snapshot): reconcile retired freshness metadata`
 
@@ -652,30 +652,32 @@ The planning commit establishes the ledger. The first implementation change corr
 
 **PR:** PR 1 — refactor(load-data): retire obsolete control support
 
-**Commit:** Commit 1 — Record the approved cleanup plan
+**Commit:** Commit 2 — Reconcile retired freshness documentation
 
 ### RED or removal proof
 
-Not applicable — independently reviewed planning documents only. Run the ledger classifier and inspect the exact two-path planning diff.
+Compare the stale freshness claims in `.wiki/ARCHITECTURE.md` with the current top bar, snapshot DTOs, `SNAPSHOT_ORDER_BY`, and Snapshot Overview and History timestamp presentation.
 
 ### Expected outcome
 
-One approved schema 2 ledger and one TODO Active entry exist. BACKLOG, planned specs, ADRs, implementation, tests, configuration, and the pre-existing completed-ledger formatting edit remain outside the planning commit.
+Architecture documentation no longer claims that the product has a snapshot-freshness chip. It continues to document timestamp persistence, presentation, and equal-game-date ordering.
 
 ### Explicit exclusions
 
-Implementation, tests, executable configuration, BACKLOG, ADRs, completed records, generated DLLs, release work, and any Git mutation.
+Player-cap documentation, executable code, tests, schemas, generated artifacts, and new freshness behavior.
 
 ## Discoveries and replanning
 
 - Planning discovery: JAY-56 has no remaining production freshness evaluator. PR #120 removed the chip in `d50ff0c`; this plan retains `loadedAtUtc` because current source uses it for Snapshot Overview, History, and equal-date ordering.
 - Planning correction round 2: current cap metadata divides into removable bridge producers, removable host consumers, and retained dump/snapshot compatibility fields. Commit 7 removes only optional C# producers; Commit 8 removes compatible Rust/React consumers and unreachable capped-new-load UI. `LoadDataSnapshotSummary` remains a memory-read-local projection with nested persisted cap fields.
 - Planning discovery: C# `BridgeRequest` can drop its cap member without a protocol bump because the current serializer default ignores an old app's unknown JSON property. Commit 5 requires a positive compatibility proof.
-- No implementation has started. Record future material deviations, blockers, and changed assumptions here before continuing delivery.
+- The reviewed planning artifacts were committed as `1d648730ff4132b5fbe95801a88a2f33acdb8905`. Record future material deviations, blockers, and changed assumptions here before continuing delivery.
 
 ## Completed work
 
-None — planning has not begun.
+| PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — refactor(load-data): retire obsolete control support | Commit 1 — Record the approved cleanup plan | 1d648730ff4132b5fbe95801a88a2f33acdb8905 | Recorded the reviewed schema 2 ledger and TODO Active entry without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable with the accepted fingerprint; `git diff --cached --check` and pre-commit `check-fast`: passed. | Not applicable | Clear | 0 | The unrelated completed-ledger formatting edit remained unstaged. |
 
 ## Final validation
 
