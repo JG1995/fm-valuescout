@@ -648,6 +648,14 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         }));
       }
       let squadPageFailureTriggered = false;
+      const managedClubOptions = [
+        { clubName: "Barcelona", clubUid: 100 },
+        { clubName: "Barca Athletic", clubUid: 101 },
+        { clubName: "Barcelona U19", clubUid: 102 },
+      ];
+      let managedClub = squadOverview
+        ? { clubName: "Barcelona", clubUid: 100 }
+        : null;
 
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
@@ -1642,14 +1650,15 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "get_managed_club") {
-            return squadOverview
+            return managedClub
               ? {
-                  clubName: "Barcelona",
+                  ...managedClub,
                   status: "available",
                   unclassifiedPlayerCount: 0,
                 }
               : {
                   clubName: null,
+                  clubUid: null,
                   status: "unconfigured",
                   unclassifiedPlayerCount: 0,
                 };
@@ -1696,14 +1705,21 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "list_managed_club_options") {
-            return plannerSnapshot
-              ? ["Barcelona", "Barca Athletic", "Barcelona U19"]
-              : [];
+            return plannerSnapshot ? managedClubOptions : [];
           }
 
           if (cmd === "set_managed_club") {
+            const selectedClub = managedClubOptions.find(
+              (option) =>
+                option.clubName === args?.clubName &&
+                option.clubUid === args?.clubUid,
+            );
+            if (!selectedClub) {
+              throw new Error("Managed club selection is not an available pair");
+            }
+            managedClub = { ...selectedClub };
             return {
-              clubName: args?.clubName ?? null,
+              ...managedClub,
               status: "available",
               unclassifiedPlayerCount: 0,
             };

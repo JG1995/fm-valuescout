@@ -1521,7 +1521,9 @@ mod tests {
             "marketValueGbp": 1_000_000,
             "reputation": { "current": 50, "world": 40 },
             "currentClub": "Test FC",
+            "currentClubUid": null,
             "parentClub": null,
+            "parentClubUid": null,
             "onLoan": false,
             "division": "League One",
             "teamLevel": "senior",
@@ -1540,11 +1542,14 @@ mod tests {
         game_date: &str,
     ) {
         let mut root: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v8.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v9.json"))
                 .expect("parse golden fixture");
         let mut players = players;
         for player in &mut players {
             complete_position_map(player);
+            let object = player.as_object_mut().expect("player object");
+            object.entry("currentClubUid").or_insert(Value::Null);
+            object.entry("parentClubUid").or_insert(Value::Null);
         }
         root["players"] = Value::Array(players);
         root["playerCount"] = json!(root["players"].as_array().unwrap().len());

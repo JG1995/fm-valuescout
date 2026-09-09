@@ -1,4 +1,7 @@
-import type { ManagedClubStatus } from "@/features/managed-club/types/managed-club";
+import type {
+  ManagedClubOption,
+  ManagedClubStatus,
+} from "@/features/managed-club/types/managed-club";
 import type {
   PlannerDepth,
   PlannerSlotCandidate,
@@ -19,6 +22,7 @@ import { resolveListSavesIpcMock } from "@/testing/snapshot-ipc-mock";
 
 const DEFAULT_MANAGED_CLUB: ManagedClubStatus = {
   clubName: null,
+  clubUid: null,
   status: "unconfigured",
   unclassifiedPlayerCount: 0,
 };
@@ -262,9 +266,11 @@ function tacticRole(
 }
 
 let managedClub: ManagedClubStatus = { ...DEFAULT_MANAGED_CLUB };
-let availableClubs: string[] = [];
+let availableClubs: ManagedClubOption[] = [];
 let managedClubOptionsError: Error | null = null;
 let managedClubSaveCalls = 0;
+let lastManagedClubSaveArgs: { clubName: unknown; clubUid: unknown } | null =
+  null;
 let onManagedClubSaveCall: (() => void) | undefined;
 let managedClubSavePending = false;
 let pendingManagedClubSave: {
@@ -452,10 +458,10 @@ function ensurePlannerSaveContext(saveId: number, contextToken: string) {
     (candidate) => candidate.id === saveId,
   );
   if (!save) {
-    throw `Save ${saveId} not found`;
+    throw new Error(`Save ${saveId} not found`);
   }
   if (save.contextToken !== contextToken) {
-    throw "Save changed or no longer exists";
+    throw new Error("Save changed or no longer exists");
   }
 }
 
@@ -464,6 +470,7 @@ export function resetPlannerIpcMock() {
   availableClubs = [];
   managedClubOptionsError = null;
   managedClubSaveCalls = 0;
+  lastManagedClubSaveArgs = null;
   onManagedClubSaveCall = undefined;
   managedClubSavePending = false;
   pendingManagedClubSave = null;
@@ -499,8 +506,8 @@ export function resetPlannerIpcMock() {
   teamSaveCalls = [];
 }
 
-export function setPlannerAvailableClubs(clubs: string[]) {
-  availableClubs = [...clubs];
+export function setPlannerAvailableClubs(clubs: ManagedClubOption[]) {
+  availableClubs = clubs.map((club) => ({ ...club }));
 }
 
 export function setManagedClubOptionsError(message: string | null) {
@@ -532,6 +539,10 @@ export function getManagedClubSaveCalls() {
   return managedClubSaveCalls;
 }
 
+export function getLastManagedClubSaveArgs() {
+  return lastManagedClubSaveArgs;
+}
+
 export function observeManagedClubSaveCall(observer: (() => void) | undefined) {
   onManagedClubSaveCall = observer;
 }
@@ -540,7 +551,7 @@ export function resolveManagedClubOptionsIpcMock() {
   if (managedClubOptionsError) {
     throw managedClubOptionsError;
   }
-  return [...availableClubs];
+  return availableClubs.map((club) => ({ ...club }));
 }
 
 export function resolvePlannerTacticIpcMock(args?: unknown) {
@@ -1224,14 +1235,29 @@ export function resolveSetManagedClubIpcMock(
 ): ManagedClubStatus | Promise<ManagedClubStatus> {
   managedClubSaveCalls += 1;
   onManagedClubSaveCall?.();
-  const clubName = (args as { clubName?: unknown }).clubName;
+  const record = args as { clubName?: unknown; clubUid?: unknown };
+  lastManagedClubSaveArgs = {
+    clubName: record.clubName,
+    clubUid: record.clubUid,
+  };
+  const clubName = record.clubName;
   if (typeof clubName !== "string" || !clubName.trim()) {
     throw new Error("Managed club must not be empty");
   }
   const normalized = clubName.trim();
+  const option = availableClubs.find(
+    (club) => club.clubName === normalized && club.clubUid === record.clubUid,
+  );
+  const isLegacyMissingSelection =
+    record.clubUid === null &&
+    !availableClubs.some((club) => club.clubName === normalized);
+  if (!option && !isLegacyMissingSelection) {
+    throw new Error("Managed club identity does not match an available option");
+  }
   const result: ManagedClubStatus = {
     clubName: normalized,
-    status: availableClubs.includes(normalized) ? "available" : "missing",
+    clubUid: option ? option.clubUid : null,
+    status: option ? "available" : "missing",
     unclassifiedPlayerCount: 0,
   };
   if (managedClubSavePending) {
@@ -1247,6 +1273,15 @@ export function resolveSetManagedClubIpcMock(
 // attached-source input is intentionally ignored because membership is now
 // derived from the latest snapshot.
 export function resolveSavePlannerClubFamilyIpcMock(args: unknown) {
-  const primaryClub = (args as { primaryClub?: unknown }).primaryClub;
-  return resolveSetManagedClubIpcMock({ clubName: primaryClub });
+  const primaryClub = (args as { primaryClub?: ManagedClubOption }).primaryClub;
+  if (!primaryClub) {
+    throw new Error("Managed club option is required");
+  }
+  managedClub = {
+    clubName: primaryClub.clubName,
+    clubUid: primaryClub.clubUid,
+    status: "available",
+    unclassifiedPlayerCount: 0,
+  };
+  return resolveManagedClubIpcMock();
 }

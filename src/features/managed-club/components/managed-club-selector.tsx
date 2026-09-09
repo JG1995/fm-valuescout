@@ -24,13 +24,14 @@ import {
   managedClubQueryOptions,
 } from "../api/managed-club-query-options";
 import { setManagedClub } from "../api/set-managed-club";
+import type { ManagedClubOption } from "../types/managed-club";
 
 const CLUB_SUGGEST_LIMIT = 10;
 
 type ManagedClubPickerProps = {
-  clubs: string[];
+  clubs: ManagedClubOption[];
   value: string;
-  onSelect: (club: string) => void;
+  onSelect: (club: ManagedClubOption) => void;
   onSearchChange: (query: string) => void;
 };
 
@@ -59,7 +60,7 @@ function ManagedClubPicker({
       return [];
     }
     return clubs
-      .filter((club) => club.toLowerCase().includes(normalizedQuery))
+      .filter((club) => club.clubName.toLowerCase().includes(normalizedQuery))
       .slice(0, CLUB_SUGGEST_LIMIT);
   }, [clubs, query]);
   const activeClub = matches[activeIndex];
@@ -74,9 +75,9 @@ function ManagedClubPicker({
     activeOptionRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [activeClub]);
 
-  const selectClub = (club: string) => {
+  const selectClub = (club: ManagedClubOption) => {
     onSelect(club);
-    setQuery(club);
+    setQuery(club.clubName);
     setOpen(false);
     setActiveIndex(0);
   };
@@ -162,7 +163,7 @@ function ManagedClubPicker({
                   : "flex w-full cursor-pointer px-3 py-2 text-left text-body-sm text-on-surface hover:bg-surface-container-high"
               }
               id={`${optionIdPrefix}-${index}`}
-              key={club}
+              key={`${club.clubName}-${club.clubUid ?? "unknown"}`}
               ref={club === activeClub ? activeOptionRef : undefined}
               role="option"
               type="button"
@@ -170,7 +171,7 @@ function ManagedClubPicker({
               onMouseEnter={() => setActiveIndex(index)}
               onClick={() => selectClub(club)}
             >
-              {club}
+              {club.clubName}
             </button>
           ))}
         </div>
@@ -193,29 +194,43 @@ export function ManagedClubSelector({
   const { data: availableClubs } = useSuspenseQuery(
     managedClubOptionsQueryOptions,
   );
-  const [clubName, setClubName] = useState(managedClub.clubName ?? "");
+  const [selectedOption, setSelectedOption] = useState<ManagedClubOption>({
+    clubName: managedClub.clubName ?? "",
+    clubUid: managedClub.clubUid ?? null,
+  });
   const [searchPending, setSearchPending] = useState(false);
 
   useEffect(() => {
-    setClubName(managedClub.clubName ?? "");
+    setSelectedOption({
+      clubName: managedClub.clubName ?? "",
+      clubUid: managedClub.clubUid ?? null,
+    });
     setSearchPending(false);
-  }, [managedClub.clubName]);
+  }, [managedClub.clubName, managedClub.clubUid]);
 
   const clubOptions = useMemo(
     () =>
-      Array.from(
-        new Set([
-          ...(managedClub.clubName ? [managedClub.clubName] : []),
-          ...availableClubs,
-        ]),
-      ),
-    [availableClubs, managedClub.clubName],
+      managedClub.clubName &&
+      !availableClubs.some(
+        (option) =>
+          option.clubName === managedClub.clubName &&
+          option.clubUid === (managedClub.clubUid ?? null),
+      )
+        ? [
+            {
+              clubName: managedClub.clubName,
+              clubUid: managedClub.clubUid ?? null,
+            },
+            ...availableClubs,
+          ]
+        : availableClubs,
+    [availableClubs, managedClub.clubName, managedClub.clubUid],
   );
   const save = useMutation({
     mutationKey: playerResultContextMutationKey,
     mutationFn: async () => {
       await onBeforeContextChange();
-      return setManagedClub(clubName);
+      return setManagedClub(selectedOption.clubName, selectedOption.clubUid);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: managedClubKeys.all });
@@ -236,10 +251,12 @@ export function ManagedClubSelector({
         <div className="min-w-64 flex-1">
           <ManagedClubPicker
             clubs={clubOptions}
-            value={clubName}
-            onSearchChange={(query) => setSearchPending(query !== clubName)}
+            value={selectedOption.clubName}
+            onSearchChange={(query) =>
+              setSearchPending(query !== selectedOption.clubName)
+            }
             onSelect={(club) => {
-              setClubName(club);
+              setSelectedOption(club);
               setSearchPending(false);
             }}
           />
@@ -247,7 +264,10 @@ export function ManagedClubSelector({
         <Button
           className="shrink-0"
           disabled={
-            !clubName || searchPending || clubName === managedClub.clubName
+            !selectedOption.clubName ||
+            searchPending ||
+            (selectedOption.clubName === managedClub.clubName &&
+              selectedOption.clubUid === (managedClub.clubUid ?? null))
           }
           loading={save.isPending}
           type="submit"

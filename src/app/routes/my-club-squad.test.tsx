@@ -54,6 +54,7 @@ import {
   setCsvImportIpcMockResult,
 } from "@/testing/csv-import-ipc-mock";
 import {
+  getLastManagedClubSaveArgs,
   getPlannerClearAllIpcMockCalls,
   getPlannerDepthIpcMockCalls,
   getPlannerOptimizeIpcMockBases,
@@ -292,7 +293,7 @@ describe("My Club route", () => {
   it("selects each Club workspace from navigation with no local tabs", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -452,7 +453,7 @@ describe("My Club route", () => {
   it("selects one managed club and invalidates membership consumers", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 42 }]);
     const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
     queryClient.setQueryData(staffKeys.all, []);
     const searchPage = searchKeys.players(0, 50);
@@ -481,6 +482,10 @@ describe("My Club route", () => {
         true,
       );
       expect(mutationWasVisible).toBe(true);
+      expect(getLastManagedClubSaveArgs()).toEqual({
+        clubName: "Barcelona",
+        clubUid: 42,
+      });
     });
   });
 
@@ -497,6 +502,7 @@ describe("My Club route", () => {
     await resolveLoadDataIpcMock();
     setManagedClubIpcMock({
       clubName: "Barcelona",
+      clubUid: 1,
       status: "available",
       unclassifiedPlayerCount: 0,
     });
@@ -529,6 +535,7 @@ describe("My Club route", () => {
     await resolveLoadDataIpcMock();
     setManagedClubIpcMock({
       clubName: "Barcelona",
+      clubUid: 1,
       status: "available",
       unclassifiedPlayerCount: 0,
     });
@@ -557,6 +564,7 @@ describe("My Club route", () => {
     await resolveLoadDataIpcMock();
     setManagedClubIpcMock({
       clubName: "Barcelona",
+      clubUid: 1,
       status: "available",
       unclassifiedPlayerCount: 0,
     });
@@ -575,10 +583,11 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     setManagedClubIpcMock({
       clubName: "Barcelona",
+      clubUid: 1,
       status: "available",
       unclassifiedPlayerCount: 0,
     });
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const { queryClient, router } = renderMyClubRoute({
       initialEntry: "/my-club?squadSort=club_dna&squadDir=asc",
     });
@@ -748,6 +757,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     setManagedClubIpcMock({
       clubName: "Barcelona",
+      clubUid: 1,
       status: "available",
       unclassifiedPlayerCount: 0,
     });
@@ -767,6 +777,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     setManagedClubIpcMock({
       clubName: "Barcelona",
+      clubUid: 1,
       status: "available",
       unclassifiedPlayerCount: 0,
     });
@@ -833,6 +844,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     setManagedClubIpcMock({
       clubName: "Barcelona",
+      clubUid: 1,
       status: "available",
       unclassifiedPlayerCount: 0,
     });
@@ -893,10 +905,14 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     setManagedClubIpcMock({
       clubName: "Legacy FC",
+      clubUid: null,
       status: "missing",
       unclassifiedPlayerCount: 0,
     });
-    setPlannerAvailableClubs(["Legacy FC", "Barcelona"]);
+    setPlannerAvailableClubs([
+      { clubName: "Legacy FC", clubUid: 1 },
+      { clubName: "Barcelona", clubUid: 2 },
+    ]);
     setManagedClubSavePending(true);
     renderMyClubRoute({ initialEntry: "/my-club" });
 
@@ -942,6 +958,7 @@ describe("My Club route", () => {
     await resolveLoadDataIpcMock();
     setManagedClubIpcMock({
       clubName: "Legacy FC",
+      clubUid: null,
       status: "missing",
       unclassifiedPlayerCount: 2,
     });
@@ -987,7 +1004,7 @@ describe("My Club route", () => {
   it("does not restore a late managed-club result after context invalidation", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setManagedClubSavePending(true);
     const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
     const picker = await screen.findByRole("combobox", {
@@ -1003,10 +1020,14 @@ describe("My Club route", () => {
     try {
       setManagedClubIpcMock({
         clubName: "Second FC",
+        clubUid: 2,
         status: "available",
         unclassifiedPlayerCount: 0,
       });
-      setPlannerAvailableClubs(["Second FC"]);
+      setPlannerAvailableClubs([
+        { clubName: "Second FC", clubUid: 1 },
+        { clubName: "Barcelona", clubUid: 1 },
+      ]);
       await act(async () => {
         const invalidation = queryClient.invalidateQueries({
           queryKey: managedClubKeys.all,
@@ -1028,6 +1049,7 @@ describe("My Club route", () => {
       expect(picker).toHaveValue("Second FC");
       expect(queryClient.getQueryData(managedClubKeys.status())).toEqual({
         clubName: "Second FC",
+        clubUid: 2,
         status: "available",
         unclassifiedPlayerCount: 0,
       });
@@ -1093,7 +1115,7 @@ describe("My Club route", () => {
   it("shows a sortable overview for a configured squad", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -1132,7 +1154,7 @@ describe("My Club route", () => {
   it("blocks the Squad controller through a managed-club owner refresh", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -1160,7 +1182,7 @@ describe("My Club route", () => {
   it("describes an empty configured Squad as one managed club", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([]);
@@ -1176,7 +1198,7 @@ describe("My Club route", () => {
   it("renders every nationality flag in the squad overview", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([
@@ -1201,7 +1223,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     usePlayerTableStore.getState().addColumns("search", ["attr.Acceleration"]);
@@ -1248,7 +1270,7 @@ describe("My Club route", () => {
   it("renders nullable Club DNA scores through ScoreBadge", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     usePlayerTableStore.getState().addColumns("squad", ["club_dna"]);
@@ -1285,7 +1307,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Squad Scout", 160)]);
@@ -1337,7 +1359,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     const store = usePlayerTableStore.getState();
@@ -1416,7 +1438,7 @@ describe("My Club route", () => {
     });
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -1467,7 +1489,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -1546,7 +1568,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -1579,7 +1601,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -1627,7 +1649,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -1659,7 +1681,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -1694,7 +1716,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -1734,7 +1756,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -1769,7 +1791,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -1802,7 +1824,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -1848,7 +1870,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -1886,7 +1908,7 @@ describe("My Club route", () => {
   it("deduplicates the initial Squad page-zero IPC request", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Only once", 1)]);
@@ -1904,7 +1926,7 @@ describe("My Club route", () => {
   it("shows an initial Squad failure and retries page zero", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Recovered Squad", 1)]);
@@ -1927,7 +1949,7 @@ describe("My Club route", () => {
   it("clears Squad rows while a visible-field projection loads", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Projected Squad", 1)]);
@@ -1958,7 +1980,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([
@@ -1998,7 +2020,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([
@@ -2085,7 +2107,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([
@@ -2139,7 +2161,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     usePlayerTableStore.getState().addColumns("squad", ["attr.Acceleration"]);
@@ -2195,7 +2217,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([
@@ -2238,7 +2260,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([
@@ -2264,7 +2286,7 @@ describe("My Club route", () => {
   it("loads bounded virtual Squad pages without pagination controls", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride(manySquadPlayers(101));
@@ -2312,7 +2334,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride(manySquadPlayers(101));
@@ -2351,7 +2373,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride(manySquadPlayers(101));
@@ -2390,7 +2412,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride(manySquadPlayers(101));
@@ -2416,7 +2438,7 @@ describe("My Club route", () => {
   it("clamps the virtual Squad range after its data shrinks", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride(manySquadPlayers(101));
@@ -2460,7 +2482,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([
@@ -2566,7 +2588,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -2587,7 +2609,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([
@@ -2650,9 +2672,9 @@ describe("My Club route", () => {
   it("switches Club workspaces from navigation with history support", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Barcelona",
+      primaryClub: { clubName: "Barcelona", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
@@ -2687,7 +2709,7 @@ describe("My Club route", () => {
   it("lets an explicit Planner workspace override the default", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Barcelona",
+      primaryClub: { clubName: "Barcelona", clubUid: 1 },
       sources: [],
     });
     renderMyClubRoute({ initialEntry: "/my-club?view=planner" });
@@ -2726,7 +2748,7 @@ describe("My Club route", () => {
 
   it("uses the Squad default for the retired Club Setup workspace", async () => {
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute({ initialEntry: "/my-club?view=clubs" });
 
     const navigation = await screen.findByRole("navigation", {
@@ -2749,7 +2771,7 @@ describe("My Club route", () => {
   it("edits linked IP and OOP lanes with filtered roles and weight control", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const tactic = resolvePlannerTacticIpcMock();
     tactic.lanes[1] = {
       ...tactic.lanes[1],
@@ -2889,7 +2911,7 @@ describe("My Club route", () => {
 
   it("orders the tactic command bar, pitch/XI area, and beside-pitch inspector", async () => {
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     const commandBar = await screen.findByRole("region", {
@@ -2967,7 +2989,7 @@ describe("My Club route", () => {
   it("renders every tactic pitch from attack to goalkeeper", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
@@ -2996,7 +3018,7 @@ describe("My Club route", () => {
 
   it("places unique lanes on normalized canvas coordinates", async () => {
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     const pitches = await screen.findAllByRole("group", { name: /pitch$/ });
@@ -3085,7 +3107,7 @@ describe("My Club route", () => {
   it("moves a marker when its qualified position is edited", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await user.click(
@@ -3124,7 +3146,7 @@ describe("My Club route", () => {
   it("presents current linked positions without lane terminology", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const tactic = resolvePlannerTacticIpcMock();
     tactic.lanes[8] = {
       ...tactic.lanes[8],
@@ -3176,7 +3198,7 @@ describe("My Club route", () => {
   it("retains the edited tactic draft when save fails", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerTacticSaveError("Tactic save failed");
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
@@ -3200,7 +3222,7 @@ describe("My Club route", () => {
   it("exposes both phase controls in the Selected Slot inspector for each tactic view", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
@@ -3237,7 +3259,7 @@ describe("My Club route", () => {
   it("saves only the selected lane score weight", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
@@ -3258,7 +3280,7 @@ describe("My Club route", () => {
   it("saves an explicit midfield side without clearing its compatible role", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await user.click(
@@ -3287,7 +3309,7 @@ describe("My Club route", () => {
   it("swaps two lanes when picking an occupied placement", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await user.click(
@@ -3338,7 +3360,7 @@ describe("My Club route", () => {
   it("connects Both-mode markers only when canonical placement changes", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const tactic = resolvePlannerTacticIpcMock();
     tactic.lanes[2] = {
       ...tactic.lanes[2],
@@ -3466,7 +3488,7 @@ describe("My Club route", () => {
   it("syncs Tactical XI panel selection with the pitch and inspector", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const tactic = resolvePlannerTacticIpcMock();
     tactic.lanes = [...tactic.lanes.slice(1), tactic.lanes[0]];
     setPlannerTacticIpcMock(tactic);
@@ -3560,7 +3582,7 @@ describe("My Club route", () => {
   it("saves and reloads the selected lane importance rank", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
@@ -3581,7 +3603,7 @@ describe("My Club route", () => {
   it("saves the selected lane foot rule and disables its mode for Either", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
@@ -3607,7 +3629,7 @@ describe("My Club route", () => {
   it("retains an edited foot rule after a failed save", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerTacticSaveError("Tactic save failed");
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
@@ -3628,7 +3650,7 @@ describe("My Club route", () => {
   it("shows duplicate importance ranks inline and retains them after a failed save", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerTacticSaveError("Tactic save failed");
     renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
@@ -3663,7 +3685,7 @@ describe("My Club route", () => {
   it("refreshes 60-second cached candidates after saving a tactic", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerSlotCandidates([
       slotCandidate({
         playerUid: 77,
@@ -3716,7 +3738,7 @@ describe("My Club route", () => {
   it("refreshes the role reference after saving a tactic", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerRoleReference({
       lanes: [
         {
@@ -3794,7 +3816,7 @@ describe("My Club route", () => {
   it("resets a dirty tactic draft when the active save changes", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const { queryClient } = renderMyClubRoute({
       initialEntry: "/my-club?view=tactic",
     });
@@ -3830,7 +3852,7 @@ describe("My Club route", () => {
   it("blocks tactic saves while active-save data refreshes", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const { queryClient } = renderMyClubRoute({
       initialEntry: "/my-club?view=tactic",
     });
@@ -3875,7 +3897,7 @@ describe("My Club route", () => {
     async (_failedCommand, failedQueryKey) => {
       const user = userEvent.setup();
       await resolveLoadDataIpcMock();
-      setPlannerAvailableClubs(["Barcelona"]);
+      setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
       const queryClient = new QueryClient({
         defaultOptions: {
           queries: {
@@ -3934,7 +3956,7 @@ describe("My Club route", () => {
   it("keeps cached tactic data read-only until a successful retry", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const { queryClient } = renderMyClubRoute({
       initialEntry: "/my-club?view=tactic",
     });
@@ -3979,7 +4001,7 @@ describe("My Club route", () => {
   it("renders every squad simultaneously with slot context, named strings, and truthful cards", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const depth = resolvePlannerDepthIpcMock();
     setPlannerDepthIpcMock(withDepthAssignments(depth));
     renderMyClubRoute();
@@ -4068,7 +4090,7 @@ describe("My Club route", () => {
 
   it("groups squad actions above a bounded compact matrix", async () => {
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(withDepthAssignments(resolvePlannerDepthIpcMock()));
     renderMyClubRoute();
 
@@ -4098,7 +4120,7 @@ describe("My Club route", () => {
   it("opens the best role fit reference from the Planner toolbar", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute();
 
     await user.click(
@@ -4161,7 +4183,7 @@ describe("My Club route", () => {
       ],
     };
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerRoleReference(reference);
     renderMyClubRoute();
 
@@ -4212,7 +4234,7 @@ describe("My Club route", () => {
   it("selects a tactic lane and sorts its current and potential scores", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerRoleReference({
       lanes: [
         {
@@ -4305,7 +4327,7 @@ describe("My Club route", () => {
   it("keeps an empty selected role explicit inside the reference Modal", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerRoleReference({
       lanes: [
         { laneId: "goalkeeper", players: [] },
@@ -4342,7 +4364,7 @@ describe("My Club route", () => {
   it("distinguishes an empty managed-club cohort from an empty role", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerRoleReference({
       lanes: resolvePlannerTacticIpcMock().lanes.map((lane) => ({
         laneId: lane.laneId,
@@ -4371,7 +4393,7 @@ describe("My Club route", () => {
   it("shows a role reference error and restores focus after Escape", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerRoleReferenceError("Role reference failed");
     renderMyClubRoute();
 
@@ -4396,7 +4418,7 @@ describe("My Club route", () => {
   it("renders every enabled squad at once with no width-dependent fallback", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(
       withSecondStringForEveryTeam(resolvePlannerDepthIpcMock()),
     );
@@ -4454,7 +4476,7 @@ describe("My Club route", () => {
 
   it("keeps string columns at bounded fixed widths that never stretch", async () => {
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(
       withSecondStringForEveryTeam(resolvePlannerDepthIpcMock()),
     );
@@ -4482,7 +4504,7 @@ describe("My Club route", () => {
 
   it("renders board cards on the container-high surface without primary text", async () => {
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(withDepthAssignments(resolvePlannerDepthIpcMock()));
     renderMyClubRoute();
 
@@ -4506,7 +4528,7 @@ describe("My Club route", () => {
   it("announces only the latest successful squad action", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerOptimizeDepth(
       withReserveGoalkeeper(resolvePlannerDepthIpcMock()),
     );
@@ -4538,7 +4560,7 @@ describe("My Club route", () => {
   it("opens a slot-fit picker from an empty matrix cell", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute();
 
     const cell = await screen.findByRole("button", {
@@ -4569,7 +4591,7 @@ describe("My Club route", () => {
         advanceTimers: vi.advanceTimersByTime,
       });
       await resolveLoadDataIpcMock();
-      setPlannerAvailableClubs(["Barcelona"]);
+      setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
       setPlannerSlotCandidates([
         slotCandidate({
           playerUid: 77,
@@ -4641,7 +4663,7 @@ describe("My Club route", () => {
   it("refreshes 60-second cached candidates after assigning a player", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(
       withSecondSeniorString(resolvePlannerDepthIpcMock()),
     );
@@ -4690,7 +4712,7 @@ describe("My Club route", () => {
   it("requires confirmation before clearing an occupied slot", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(
       withSecondReserveString(
         withReserveGoalkeeper(resolvePlannerDepthIpcMock()),
@@ -4766,7 +4788,7 @@ describe("My Club route", () => {
   it("confirms moves for assigned players before reconciling the depth matrix", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const depth = withReserveGoalkeeper(resolvePlannerDepthIpcMock());
     setPlannerDepthIpcMock(depth);
     setPlannerSlotCandidates([
@@ -4828,7 +4850,7 @@ describe("My Club route", () => {
   it("cancels and fails without changing assignments, then restores the origin focus", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(withReserveGoalkeeper(resolvePlannerDepthIpcMock()));
     setPlannerSlotCandidates([
       slotCandidate({
@@ -4878,7 +4900,7 @@ describe("My Club route", () => {
   it("confirms clearing every squad and reconciles all candidates", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const depth = withAllTeamDepthAssignments(resolvePlannerDepthIpcMock());
     setPlannerDepthIpcMock(depth);
     setPlannerSlotCandidates([
@@ -4971,7 +4993,7 @@ describe("My Club route", () => {
   it("renders only configured teams with their persisted display names", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const configuredDepth = resolvePlannerDepthIpcMock();
     configuredDepth.teams = configuredDepth.teams
       .filter((team) => team.team !== "reserves")
@@ -5015,7 +5037,7 @@ describe("My Club route", () => {
   it("opens squad team management with the current configuration", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute();
 
     await user.click(
@@ -5050,7 +5072,7 @@ describe("My Club route", () => {
   it("renames teams and confirms populated team removal", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const depth = withReserveGoalkeeper(resolvePlannerDepthIpcMock());
     setPlannerDepthIpcMock({
       ...depth,
@@ -5171,7 +5193,7 @@ describe("My Club route", () => {
   it("restores a removed team with a custom name and an empty string", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const depth = resolvePlannerDepthIpcMock();
     depth.teams = depth.teams
       .filter((team) => team.team !== "reserves")
@@ -5242,7 +5264,7 @@ describe("My Club route", () => {
   it("restores both missing teams with distinct string ids", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const depth = resolvePlannerDepthIpcMock();
     depth.teams = depth.teams.filter((team) => team.team === "senior");
     setPlannerDepthIpcMock(depth);
@@ -5282,7 +5304,7 @@ describe("My Club route", () => {
   it("submits retained string ids, names, and orders unchanged", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const depth = resolvePlannerDepthIpcMock();
     setPlannerDepthIpcMock({
       ...depth,
@@ -5353,7 +5375,7 @@ describe("My Club route", () => {
   it("renames a planner string while keeping its assignments", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(withDepthAssignments(resolvePlannerDepthIpcMock()));
     renderMyClubRoute();
 
@@ -5400,7 +5422,7 @@ describe("My Club route", () => {
   it("reorders planner strings while keeping stable ids", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(
       withSecondSeniorString(resolvePlannerDepthIpcMock()),
     );
@@ -5442,7 +5464,7 @@ describe("My Club route", () => {
   it("confirms populated string removal by name and deletes only that string", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(withDepthAssignments(resolvePlannerDepthIpcMock()));
     renderMyClubRoute();
 
@@ -5498,7 +5520,7 @@ describe("My Club route", () => {
   it("confirms mixed team and string removal with combined wording", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const depth = withSecondSeniorString(
       withReserveGoalkeeper(resolvePlannerDepthIpcMock()),
     );
@@ -5594,7 +5616,7 @@ describe("My Club route", () => {
   it("prefills the next ordinal default for a new planner string", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(
       withSecondSeniorString(resolvePlannerDepthIpcMock()),
     );
@@ -5634,7 +5656,7 @@ describe("My Club route", () => {
   it("blocks invalid planner string names with field errors", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(
       withSecondSeniorString(resolvePlannerDepthIpcMock()),
     );
@@ -5674,7 +5696,7 @@ describe("My Club route", () => {
   it("keeps team-management drafts on validation and backend failure", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerTeamSaveError("Team settings failed");
     renderMyClubRoute();
 
@@ -5740,7 +5762,7 @@ describe("My Club route", () => {
   it("prevents removing the final team and duplicate management saves", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const depth = resolvePlannerDepthIpcMock();
     depth.teams = depth.teams.filter((team) => team.team === "senior");
     setPlannerDepthIpcMock(depth);
@@ -5781,7 +5803,7 @@ describe("My Club route", () => {
   it("cancels a pending removal preview when the active save changes", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerTeamRemovalImpacts([]);
     setPlannerTeamRemovalImpactPending(true);
     const { queryClient } = renderMyClubRoute();
@@ -5822,7 +5844,7 @@ describe("My Club route", () => {
   it("discards an open management draft when the active save changes", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const { queryClient } = renderMyClubRoute();
 
     await user.click(
@@ -5864,7 +5886,7 @@ describe("My Club route", () => {
   it("refetches picker candidates after team settings change", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerSlotCandidates([
       slotCandidate({ playerUid: 77, name: "Alex Keeper" }),
     ]);
@@ -5915,7 +5937,7 @@ describe("My Club route", () => {
   it("moves focus to management after removing a squad", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute();
 
     await screen.findByRole("columnheader", { name: "Reserves" });
@@ -5947,7 +5969,7 @@ describe("My Club route", () => {
   it("resets board state when the active save changes", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const previousDepth = resolvePlannerDepthIpcMock();
     previousDepth.teams = previousDepth.teams
       .filter((team) => team.team !== "reserves")
@@ -5992,7 +6014,7 @@ describe("My Club route", () => {
   it("uses configured display names for picker assignment locations", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const configuredDepth = withDepthAssignments(resolvePlannerDepthIpcMock());
     configuredDepth.teams = configuredDepth.teams
       .filter((team) => team.team !== "reserves")
@@ -6027,7 +6049,7 @@ describe("My Club route", () => {
   it("prevents duplicate clear-all requests while confirmation is pending", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerClearAllPending(true);
     renderMyClubRoute();
 
@@ -6046,7 +6068,7 @@ describe("My Club route", () => {
   it("optimizes every squad and reconciles depth and candidates", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const optimizedDepth = withReserveGoalkeeper(resolvePlannerDepthIpcMock());
     setPlannerOptimizeDepth(optimizedDepth);
     setPlannerSlotCandidates([
@@ -6100,7 +6122,7 @@ describe("My Club route", () => {
   it("keeps the depth unchanged and reports optimizer errors", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerOptimizeError("Optimize failed");
     renderMyClubRoute();
 
@@ -6129,7 +6151,7 @@ describe("My Club route", () => {
   it("prevents duplicate optimizer runs while pending", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerOptimizePending(true);
     renderMyClubRoute();
 
@@ -6154,7 +6176,7 @@ describe("My Club route", () => {
   it("identifies a pending potential optimization", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerOptimizePending(true);
     renderMyClubRoute();
 
@@ -6177,7 +6199,7 @@ describe("Suggested Training column", () => {
   async function renderConfiguredSquad(players: SquadPlayer[]) {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride(players);
@@ -6320,7 +6342,7 @@ describe("squad table toolbar", () => {
   async function renderToolbarSquad(players: SquadPlayer[]) {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setSquadPlayersOverride(players);

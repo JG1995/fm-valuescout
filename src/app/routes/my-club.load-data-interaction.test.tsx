@@ -34,7 +34,7 @@ describe("my club squad retains interaction during delayed Load Data", () => {
     setLoadDataIpcMockMode("success");
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
   });

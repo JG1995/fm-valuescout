@@ -11,5 +11,7 @@ public sealed record HumanManager
 
     public string? Club { get; init; }
 
+    public uint? ClubUid { get; init; }
+
     public int? ClubReputation { get; init; }
 }

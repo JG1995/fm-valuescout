@@ -579,7 +579,7 @@ mod tests {
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service as snapshot_service;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v8.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v9.json");
     fn seeded_db() -> (tempfile::TempDir, Db) {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("player-boost-command.db");
@@ -676,7 +676,7 @@ mod tests {
         )
         .expect("bind source request");
         let save_id = snapshot_service::active_save_id(&conn).expect("active save");
-        managed_club_service::set_managed_club(&conn, save_id, "Loan FC")
+        managed_club_service::set_managed_club(&conn, save_id, "Loan FC", Some(1000))
             .expect("configure managed club");
 
         (temp_dir, Db(Mutex::new(conn)))

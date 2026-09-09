@@ -75,6 +75,7 @@ public sealed class StaffExtractionTests
             teamType: 0,
             teamReputation: 6200,
             managerAddress: 0);
+        reader.AddBytes(club + (ulong)layout.ObjectUidOffset, BitConverter.GetBytes(4321u));
         PlaceContract(reader, layout, person, contract, team, weeklyWage: 75_000, expiryYear: 2029, expiryDay: 100, jobId: 16);
 
         var record = StaffReader.Read(reader, person, staffBlock, uid: 77, ca: 110, pa: 150, layout, out var clubLink);
@@ -103,7 +104,9 @@ public sealed class StaffExtractionTests
         Assert.Equal("Staff FC", record.Club);
         Assert.Equal("Premier League", record.Division);
         Assert.NotNull(clubLink);
-        Assert.Equal(6200, clubLink!.TeamReputation);
+        Assert.Equal(4321u, clubLink!.ClubUid);
+        Assert.Equal(4321u, record.ClubUid);
+        Assert.Equal(6200, clubLink.TeamReputation);
 
         var unread = StaffReader.Read(
             new FakeMemoryReader(),
@@ -163,6 +166,74 @@ public sealed class StaffExtractionTests
     }
 
     [Fact]
+    public void Squad_index_reads_positive_and_null_club_object_uids()
+    {
+        var layout = Fm263Layout.Instance;
+        const ulong person = 0x5000;
+        const ulong club = 0x6000;
+        const ulong team = 0x7000;
+        const ulong teams = 0x8000;
+        const ulong squad = 0x9000;
+        var reader = new FakeMemoryReader();
+        var nameBytes = Encoding.UTF8.GetBytes("Squad FC\0");
+        reader.AddBytes(club + (ulong)layout.ClubNameOffset, BitConverter.GetBytes(club + 0x100));
+        reader.AddBytes(club + 0x100, new byte[sizeof(uint)].Concat(nameBytes).ToArray());
+        reader.AddBytes(club + (ulong)layout.ClubTeamsBeginOffset, BitConverter.GetBytes(teams));
+        reader.AddBytes(club + (ulong)layout.ClubTeamsEndOffset, BitConverter.GetBytes(teams + 8));
+        reader.AddBytes(teams, BitConverter.GetBytes(team));
+        reader.AddBytes(team + (ulong)layout.TeamSquadBeginOffset, BitConverter.GetBytes(squad));
+        reader.AddBytes(team + (ulong)layout.TeamSquadEndOffset, BitConverter.GetBytes(squad + 8));
+        reader.AddBytes(squad, BitConverter.GetBytes(person));
+        reader.AddBytes(club + (ulong)layout.ObjectUidOffset, BitConverter.GetBytes(1234u));
+        var people = new Dictionary<ulong, uint> { [person] = 77 };
+
+        var index = SquadClubIndex.Build(reader, layout, people,
+            new Dictionary<uint, string?>(), new[] { new ClubCandidate(club, "Squad FC") }, Array.Empty<ulong>());
+        Assert.Equal(1234u, index.TryGet(77, out var assignment) ? assignment.ClubUid : null);
+
+        var unreadReader = new FakeMemoryReader();
+        unreadReader.AddBytes(club + (ulong)layout.ClubNameOffset, BitConverter.GetBytes(club + 0x100));
+        unreadReader.AddBytes(club + 0x100, new byte[sizeof(uint)].Concat(nameBytes).ToArray());
+        unreadReader.AddBytes(club + (ulong)layout.ClubTeamsBeginOffset, BitConverter.GetBytes(teams));
+        unreadReader.AddBytes(club + (ulong)layout.ClubTeamsEndOffset, BitConverter.GetBytes(teams + 8));
+        unreadReader.AddBytes(teams, BitConverter.GetBytes(team));
+        unreadReader.AddBytes(team + (ulong)layout.TeamSquadBeginOffset, BitConverter.GetBytes(squad));
+        unreadReader.AddBytes(team + (ulong)layout.TeamSquadEndOffset, BitConverter.GetBytes(squad + 8));
+        unreadReader.AddBytes(squad, BitConverter.GetBytes(person));
+        index = SquadClubIndex.Build(unreadReader, layout, people,
+            new Dictionary<uint, string?>(), new[] { new ClubCandidate(club, "Squad FC") }, Array.Empty<ulong>());
+        Assert.Null(index.TryGet(77, out assignment) ? assignment.ClubUid : null);
+    }
+
+    [Fact]
+    public void Human_manager_selector_binds_uid_to_graph_club_even_when_unread()
+    {
+        var layout = Fm263Layout.Instance;
+        const ulong person = 0x5000;
+        const ulong club = 0x6000;
+        const ulong team = 0x7000;
+        const ulong teams = 0x8000;
+        var reader = new FakeMemoryReader();
+        var nameBytes = Encoding.UTF8.GetBytes("Graph FC\0");
+        reader.AddBytes(club + (ulong)layout.ClubNameOffset, BitConverter.GetBytes(club + 0x100));
+        reader.AddBytes(club + 0x100, new byte[sizeof(uint)].Concat(nameBytes).ToArray());
+        reader.AddBytes(club + (ulong)layout.ClubTeamsBeginOffset, BitConverter.GetBytes(teams));
+        reader.AddBytes(club + (ulong)layout.ClubTeamsEndOffset, BitConverter.GetBytes(teams + 8));
+        reader.AddBytes(teams, BitConverter.GetBytes(team));
+        reader.AddBytes(team + (ulong)layout.TeamManagerPtrOffset, BitConverter.GetBytes(person));
+        reader.AddBytes(team + (ulong)layout.TeamTypeOffset, new byte[] { 0 });
+        var graph = SquadClubIndex.Build(reader, layout, new Dictionary<ulong, uint>(),
+            new Dictionary<uint, string?>(), new[] { new ClubCandidate(club, "Graph FC") }, Array.Empty<ulong>(), new[] { person });
+        var candidate = new PersonCandidate(person, 0, 77, 100, 140, 0, PersonFacet.HumanManager);
+        var selected = HumanManagerSelector.Select(new[] { candidate },
+            new Dictionary<uint, StaffRecord> { [77] = new StaffRecord { Uid = 77, Name = "Manager" } },
+            new Dictionary<uint, ContractClubLink?> { [77] = new ContractClubLink { ClubName = "Contract FC", ClubUid = 999 } }, graph);
+
+        Assert.Equal("Graph FC", selected!.Club);
+        Assert.Null(selected.ClubUid);
+    }
+
+    [Fact]
     public void Pipeline_keeps_non_player_staff_and_selects_the_first_team_human_manager()
     {
         var bridgeDirectory = Path.Combine(Path.GetTempPath(), "fm-valuescout-tests", Guid.NewGuid().ToString("N"));
@@ -193,6 +264,7 @@ public sealed class StaffExtractionTests
             Assert.Equal(300u, result.Manager!.Uid);
             Assert.Equal("First Manager", result.Manager.Name);
             Assert.Equal("First FC", result.Manager.Club);
+            Assert.Equal(9876u, result.Manager.ClubUid);
             Assert.Equal(7100, result.Manager.ClubReputation);
             Assert.Equal("First Manager", result.Staff.Single(record => record.Uid == 300).Name);
             Assert.Equal("First FC", result.Staff.Single(record => record.Uid == 300).Club);
@@ -236,6 +308,7 @@ public sealed class StaffExtractionTests
         var contract = new ContractClubLink
         {
             ClubName = "Fallback FC",
+            ClubUid = 999,
             TeamReputation = 6000,
         };
         var staff = new Dictionary<uint, StaffRecord>
@@ -253,6 +326,7 @@ public sealed class StaffExtractionTests
         Assert.NotNull(selected);
         Assert.Equal("Fallback Manager", selected!.Name);
         Assert.Equal("Fallback FC", selected.Club);
+        Assert.Equal(999u, selected.ClubUid);
         Assert.Equal(6000, selected.ClubReputation);
 
         staff[77] = new StaffRecord { Uid = 77, Name = null };
@@ -307,6 +381,7 @@ public sealed class StaffExtractionTests
             teamType: 0,
             teamReputation: 7100,
             managerAddress: 0x210000UL + HumanManagerClassOffset);
+        reader.AddBytes(firstClub + (ulong)layout.ObjectUidOffset, BitConverter.GetBytes(9876u));
         PlaceContract(
             reader,
             layout,

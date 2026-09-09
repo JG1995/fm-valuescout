@@ -1,8 +1,8 @@
-# Dump schema v8 (frozen)
+# Dump schema v9 (frozen)
 
 Contract between the FM26 BepInEx bridge (`dump.json`) and Rust snapshot ingest. File protocol details: [README.md](./README.md). Architecture: [ADR-0016](../.wiki/decisions/0016-csharp-bepinex-fm26-bridge.md).
 
-**Schema version:** `8` (`BridgeProtocol.DumpSchemaVersion` / Rust `DUMP_SCHEMA_VERSION`). Schema v7 and older dumps are rejected with an instruction to update the bridge plugin and rescan.
+**Schema version:** `9` (`BridgeProtocol.DumpSchemaVersion` / Rust `DUMP_SCHEMA_VERSION`). Schema v8 and older dumps are rejected with an instruction to update the bridge plugin and rescan.
 
 ## Document shape
 
@@ -10,7 +10,7 @@ The bridge streams one compact, camelCase JSON object. Whitespace is not signifi
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `schemaVersion` | number | yes | Must be `8` |
+| `schemaVersion` | number | yes | Must be `9` |
 | `generatedAtUtc` | string | yes | ISO-8601 UTC timestamp |
 | `gameVersion`, `supportedGameVersion`, `bridgeVersion` | string | yes | Running build, layout key, and plugin version |
 | `protocolVersion` | number | yes | File-protocol version `1` |
@@ -29,13 +29,13 @@ New scans always write `scanTruncated: false` and `maxAccepted: null`. Historica
 
 ## Ingestibility rules
 
-Rust accepts only a schema-v8, protocol-v1 object with valid count, enum, and field types. Player UIDs and staff UIDs must each be unique and cannot overlap. A non-null manager must identify one emitted staff record. An empty result requires `emptySave: true`, zero players, zero staff, and `manager: null`.
+Rust accepts only a schema-v9, protocol-v1 object with valid count, enum, and field types. Player UIDs and staff UIDs must each be unique and cannot overlap. A non-null manager must identify one emitted staff record. An empty result requires `emptySave: true`, zero players, zero staff, and `manager: null`.
 
 The bridge never replaces a prior good dump with an empty player result. `emptySave` supports explicit tests and future handling only.
 
 ## File-protocol boosts
 
-Dump schema v8 remains unchanged by the shared protocol-v1 request file, which also permits three optional closed operations after a successful live full dump:
+Dump schema v9 remains unchanged by the shared protocol-v1 request file, which also permits three optional closed operations after a successful live full dump:
 
 | Operation | Required action fields | Bridge rule |
 | --- | --- | --- |
@@ -51,7 +51,7 @@ For Wonderkid Mentality, a `null` expected field means the source snapshot did n
 
 ## Player object
 
-All v5 player fields remain unchanged. Schema v8 carries the schema-v7 player fields and the complete raw position-familiarity map:
+All v5 player fields remain unchanged. Schema v9 carries the schema-v7 player fields and the complete raw position-familiarity map:
 
 | Field | Type | Null when |
 | --- | --- | --- |
@@ -59,17 +59,19 @@ All v5 player fields remain unchanged. Schema v8 carries the schema-v7 player fi
 | `gender` | string | Never; `unknown` \| `male` \| `female` |
 | `clubReputation` | number \| null | Selected-team club unread |
 | `teamType` | number \| null | Selected team unread |
+| `currentClubUid` | positive number \| null | Selected club object unread |
+| `parentClubUid` | positive number \| null | Contract club object unread |
 
 ### Position familiarity
 
-Every schema-v8 player contains exactly these keys, in layout order:
+Every schema-v9 player contains exactly these keys, in layout order:
 
 `GK`, `SW`, `DL`, `DC`, `DR`, `DM`, `ML`, `MC`, `MR`, `AML`, `AMC`, `AMR`, `ST`, `WBL`, `WBR`.
 
 Each value is an integer from `0` through `20`, or JSON `null`:
 
 - An integer is the byte read successfully from FM memory, including a successful zero.
-- `null` means the byte was unreadable or outside the trusted FM range. The bridge never omits a key in schema v8.
+- `null` means the byte was unreadable or outside the trusted FM range. The bridge never omits a key in schema v9.
 
 Rust rejects missing or extra keys, booleans, strings, fractional values, and integers outside `0..=20` before snapshot mutation. Consumers apply their own explicit recorded (`>0`) or playable (`>=15`) rules; the dump itself does not filter positions.
 
@@ -92,6 +94,7 @@ Each staff record is snapshot-owned and has this shape:
 | `jobId`, `weeklyWageGbp` | number \| null | Unread or absent |
 | `contractExpiryYear`, `contractExpiryDayOfYear` | number \| null | Unread or absent |
 | `club`, `division` | string \| null | Unresolved or unread |
+| `clubUid` | positive number \| null | Contract club object unread |
 
 The fixed keys are `Attacking`, `Defending`, `Fitness`, `Possession`, `Technical`, `Tactical`, `SetPieces`, `Determination`, `ManManagement`, `Motivating`, `JudgingPlayerAbility`, `JudgingPlayerPotential`, `JudgingStaffAbility`, `Negotiating`, `TacticalKnowledge`, `Physiotherapy`, `SportsScience`, `Authority`, `Adaptability`, `DataAnalysis`, `WorkingWithYoungsters`, `GoalkeepingDistribution`, `GoalkeepingHandling`, and `GoalkeepingReflexes`.
 
@@ -101,7 +104,7 @@ The dump contract defines no query, UI, per-attribute SQL-column, or search-inde
 
 ## Manager object
 
-When present, `manager` contains `uid`, non-empty `name`, nullable `club`, and nullable `clubReputation`. Its UID must match an emitted staff record. The object contains no raw address or process detail.
+When present, `manager` contains `uid`, non-empty `name`, nullable `club`, nullable positive `clubUid`, and nullable `clubReputation`. Its UID must match an emitted staff record. The object contains no raw address or process detail.
 
 ## Related files
 
@@ -112,4 +115,4 @@ When present, `manager` contains `uid`, non-empty `name`, nullable `club`, and n
 | `dump.json` | Bridge | This schema |
 | `diagnostics.txt` | Bridge | Scan diagnostics, never ingested |
 
-Golden v8 fixture: `src-tauri/src/features/memory_read/fixtures/golden_dump_v8.json`. The v7, v6, and v5 fixtures remain only to prove stale-dump rejection. Existing snapshots remain readable, but a new schema-v8 scan is required for complete staff scoring attributes.
+Golden v9 fixture: `src-tauri/src/features/memory_read/fixtures/golden_dump_v9.json`. The v8 fixture remains only to prove stale-dump rejection. Existing snapshots remain readable, but a new schema-v9 scan is required for complete staff scoring attributes.

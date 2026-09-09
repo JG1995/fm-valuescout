@@ -403,7 +403,9 @@ public sealed class CapADumpPipeline
             }
 
             var parentName = draft.ParentLink?.ClubName;
+            var parentClubUid = draft.ParentLink?.ClubUid;
             string? currentName = null;
+            uint? currentClubUid = null;
             string? division = draft.ParentLink?.Division;
             string? teamLevel = null;
             int? teamType = null;
@@ -412,6 +414,7 @@ public sealed class CapADumpPipeline
             if (squadIndex.TryGet(draft.Candidate.Uid, out var squad))
             {
                 currentName = squad.ClubName;
+                currentClubUid = squad.ClubUid;
                 division = squad.Division ?? division;
                 teamType = squad.TeamType;
                 clubReputation = squad.TeamReputation;
@@ -471,7 +474,9 @@ public sealed class CapADumpPipeline
                     MarketValueGbp = draft.Contract.MarketValueGbp,
                     Reputation = draft.Contract.Reputation,
                     CurrentClub = currentName,
+                    CurrentClubUid = currentClubUid,
                     ParentClub = parentName,
+                    ParentClubUid = parentClubUid,
                     OnLoan = onLoan,
                     Division = division,
                     TeamLevel = teamLevel,
@@ -522,6 +527,7 @@ public sealed class CapADumpPipeline
             ContractExpiryYear = record.ContractExpiryYear,
             ContractExpiryDayOfYear = record.ContractExpiryDayOfYear,
             Club = record.Club,
+            ClubUid = record.ClubUid,
             Division = record.Division,
         }).ToList();
 
@@ -532,6 +538,7 @@ public sealed class CapADumpPipeline
                 Uid = manager.Uid,
                 Name = manager.Name,
                 Club = manager.Club,
+                ClubUid = manager.ClubUid,
                 ClubReputation = manager.ClubReputation,
             };
 

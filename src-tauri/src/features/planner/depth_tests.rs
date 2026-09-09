@@ -402,12 +402,12 @@ fn clearing_all_requires_confirmation_and_preserves_other_saves_and_settings() {
     let second_dump_path = temp_dir.path().join("second-save.json");
     std::fs::write(
         &second_dump_path,
-        include_str!("../memory_read/fixtures/golden_dump_v8.json"),
+        include_str!("../memory_read/fixtures/golden_dump_v9.json"),
     )
     .expect("write second save dump");
     snapshot::ingest::ingest_dump_file_for_save(&mut conn, second_save_id, &second_dump_path)
         .expect("ingest second save");
-    managed_club_service::set_managed_club(&conn, second_save_id, "Loan FC")
+    managed_club_service::set_managed_club(&conn, second_save_id, "Loan FC", Some(1000))
         .expect("configure second save");
     let second_depth = get_depth(&conn, second_save_id).expect("create second depth");
     let second_string_id = team_strings(&second_depth, PlannerTeam::Senior)[0].id;
@@ -497,7 +497,7 @@ fn preserves_assignment_as_unresolved_when_snapshot_replaces_player() {
     assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
 
     let replacement_path = temp_dir.path().join("replacement.json");
-    let replacement = include_str!("../memory_read/fixtures/golden_dump_v8.json")
+    let replacement = include_str!("../memory_read/fixtures/golden_dump_v9.json")
         .replace("\"uid\": 77", "\"uid\": 78")
         .replace("\"name\": \"Loan Player\"", "\"name\": \"Replacement\"");
     std::fs::write(&replacement_path, replacement).expect("write replacement dump");
@@ -796,7 +796,7 @@ fn managed_club_and_tactic_updates_preserve_assignments_and_save_isolation() {
         [],
     )
     .expect("move player to another available club");
-    managed_club_service::set_managed_club(&conn, save_id, "Other FC")
+    managed_club_service::set_managed_club(&conn, save_id, "Other FC", Some(1000))
         .expect("replace managed club");
     let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
     tactic.lanes[0].ip_role_id = "ball_playing_goalkeeper_ip".to_string();
@@ -820,12 +820,12 @@ fn managed_club_and_tactic_updates_preserve_assignments_and_save_isolation() {
     let second_dump_path = temp_dir.path().join("second-save.json");
     std::fs::write(
         &second_dump_path,
-        include_str!("../memory_read/fixtures/golden_dump_v8.json"),
+        include_str!("../memory_read/fixtures/golden_dump_v9.json"),
     )
     .expect("write second save dump");
     snapshot::ingest::ingest_dump_file_for_save(&mut conn, second_save_id, &second_dump_path)
         .expect("ingest second save");
-    managed_club_service::set_managed_club(&conn, second_save_id, "Loan FC")
+    managed_club_service::set_managed_club(&conn, second_save_id, "Loan FC", Some(1000))
         .expect("configure second save");
     let second_depth = get_depth(&conn, second_save_id).expect("create isolated depth");
     let second_string_id = team_strings(&second_depth, PlannerTeam::Senior)[0].id;

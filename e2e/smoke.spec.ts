@@ -958,6 +958,18 @@ test.describe("application smoke", () => {
       .getByRole("button", { name: "Save managed club" })
       .click();
     await expect(managedClub).toHaveValue("Barcelona");
+    await expect(
+      page.evaluate(async () => {
+        const invoke = (
+          globalThis as unknown as {
+            __TAURI_INTERNALS__: {
+              invoke: (command: string) => Promise<unknown>;
+            };
+          }
+        ).__TAURI_INTERNALS__.invoke;
+        return invoke("get_managed_club");
+      }),
+    ).resolves.toMatchObject({ clubName: "Barcelona", clubUid: 100 });
   });
 
   test("configured Squad shows its sortable player overview", async ({

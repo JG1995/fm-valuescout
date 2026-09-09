@@ -72,8 +72,14 @@ public sealed class DumpPlayer
     /// <summary>Club where the player currently appears in a squad; null = unresolved / free agent.</summary>
     public string? CurrentClub { get; init; }
 
+    /// <summary>UID from the selected current club object; null when unresolved.</summary>
+    public uint? CurrentClubUid { get; init; }
+
     /// <summary>Parent / owning club from the full-contract chain; null = unresolved / free agent.</summary>
     public string? ParentClub { get; init; }
+
+    /// <summary>UID from the parent contract club object; null when unresolved.</summary>
+    public uint? ParentClubUid { get; init; }
 
     /// <summary>True when current and parent clubs both resolve and differ (loan).</summary>
     public bool? OnLoan { get; init; }
@@ -136,6 +142,9 @@ public sealed class DumpStaff
 
     public string? Club { get; init; }
 
+    /// <summary>UID from the staff contract club object; null when unresolved.</summary>
+    public uint? ClubUid { get; init; }
+
     public string? Division { get; init; }
 }
 
@@ -146,6 +155,9 @@ public sealed class DumpManager
     public string Name { get; init; } = "";
 
     public string? Club { get; init; }
+
+    /// <summary>UID from the selected manager club object; null when unresolved.</summary>
+    public uint? ClubUid { get; init; }
 
     public int? ClubReputation { get; init; }
 }

@@ -41,6 +41,28 @@ public sealed class ContractExtractionTests
     }
 
     [Fact]
+    public void Contract_reader_reads_positive_and_null_club_object_uids()
+    {
+        var layout = Fm263Layout.Instance;
+        var reader = new FakeMemoryReader();
+        const ulong contract = 0x4100;
+        const ulong team = 0x4200;
+        const ulong club = 0x4300;
+        reader.AddBytes(PersonAddress + (ulong)layout.FullContractPtrOffset, BitConverter.GetBytes(contract));
+        reader.AddBytes(contract + (ulong)layout.ContractTeamPtrOffset, BitConverter.GetBytes(team));
+        reader.AddBytes(team + (ulong)layout.TeamClubPtrOffset, BitConverter.GetBytes(club));
+        reader.AddBytes(club + (ulong)layout.ObjectUidOffset, BitConverter.GetBytes(1234u));
+
+        Assert.Equal(1234u, ContractClubReader.TryRead(reader, PersonAddress, layout)!.ClubUid);
+
+        var unreadReader = new FakeMemoryReader();
+        unreadReader.AddBytes(PersonAddress + (ulong)layout.FullContractPtrOffset, BitConverter.GetBytes(contract));
+        unreadReader.AddBytes(contract + (ulong)layout.ContractTeamPtrOffset, BitConverter.GetBytes(team));
+        unreadReader.AddBytes(team + (ulong)layout.TeamClubPtrOffset, BitConverter.GetBytes(club));
+        Assert.Null(ContractClubReader.TryRead(unreadReader, PersonAddress, layout)!.ClubUid);
+    }
+
+    [Fact]
     public void Contract_reader_decodes_wage_expiry_flags_value_and_reputation()
     {
         var layout = Fm263Layout.Instance;

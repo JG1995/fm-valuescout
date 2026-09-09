@@ -235,7 +235,9 @@ function AcademyPageContent() {
           <AcademyClassWorkspace
             academyClass={selectedClass}
             academyClasses={classes}
-            clubOptions={clubOptions.data ?? []}
+            clubOptions={
+              clubOptions.data?.map((option) => option.clubName) ?? []
+            }
             onSelectClass={onOpenClass}
             onDelete={() => setDeleteTarget(selectedClass)}
           />

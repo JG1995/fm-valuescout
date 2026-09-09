@@ -48,6 +48,7 @@ pub struct PreparedSnapshot {
     pub(crate) manager_name: Option<String>,
     pub(crate) manager_club: Option<String>,
     pub(crate) manager_club_reputation: Option<i64>,
+    pub(crate) manager_club_uid: Option<i64>,
     pub(crate) players: Vec<PreparedPlayer>,
     pub(crate) staff: Vec<PreparedStaff>,
 }
@@ -79,7 +80,9 @@ pub struct PreparedPlayer {
     pub(crate) reputation_current: Option<i64>,
     pub(crate) reputation_world: Option<i64>,
     pub(crate) current_club: Option<String>,
+    pub(crate) current_club_uid: Option<i64>,
     pub(crate) parent_club: Option<String>,
+    pub(crate) parent_club_uid: Option<i64>,
     pub(crate) on_loan: Option<i32>,
     pub(crate) division: Option<String>,
     pub(crate) team_level: Option<String>,
@@ -110,6 +113,7 @@ pub struct PreparedStaff {
     pub(crate) contract_expiry_year: Option<i64>,
     pub(crate) contract_expiry_day_of_year: Option<i64>,
     pub(crate) club: Option<String>,
+    pub(crate) club_uid: Option<i64>,
     pub(crate) division: Option<String>,
     pub(crate) compact_scores: Vec<Option<i64>>,
 }
@@ -135,6 +139,7 @@ pub(crate) struct RawPreparedSnapshot {
     pub(crate) manager_name: Option<String>,
     pub(crate) manager_club: Option<String>,
     pub(crate) manager_club_reputation: Option<i64>,
+    pub(crate) manager_club_uid: Option<i64>,
     pub(crate) players: Vec<RawPreparedPlayer>,
     pub(crate) staff: Vec<RawPreparedStaff>,
 }
@@ -166,7 +171,9 @@ pub(crate) struct RawPreparedPlayer {
     pub(crate) reputation_current: Option<i64>,
     pub(crate) reputation_world: Option<i64>,
     pub(crate) current_club: Option<String>,
+    pub(crate) current_club_uid: Option<i64>,
     pub(crate) parent_club: Option<String>,
+    pub(crate) parent_club_uid: Option<i64>,
     pub(crate) on_loan: Option<i32>,
     pub(crate) division: Option<String>,
     pub(crate) team_level: Option<String>,
@@ -194,6 +201,7 @@ pub(crate) struct RawPreparedStaff {
     pub(crate) contract_expiry_year: Option<i64>,
     pub(crate) contract_expiry_day_of_year: Option<i64>,
     pub(crate) club: Option<String>,
+    pub(crate) club_uid: Option<i64>,
     pub(crate) division: Option<String>,
     pub(crate) attributes_map: std::collections::HashMap<String, Option<u8>>,
 }
@@ -329,6 +337,7 @@ pub(crate) fn prepare_dump_json_raw(json: &str) -> Result<RawPreparedSnapshot, S
     let manager_name = optional_string(manager_field(object, "name")?)?;
     let manager_club = optional_string(manager_field(object, "club")?)?;
     let manager_club_reputation = optional_i64(manager_field(object, "clubReputation")?)?;
+    let manager_club_uid = optional_positive_i64(manager_field(object, "clubUid")?)?;
     let players_value = object
         .get("players")
         .and_then(Value::as_array)
@@ -367,7 +376,9 @@ pub(crate) fn prepare_dump_json_raw(json: &str) -> Result<RawPreparedSnapshot, S
         let reputation_current = reputation_field(player, "current")?;
         let reputation_world = reputation_field(player, "world")?;
         let current_club = optional_string(player.get("currentClub"))?;
+        let current_club_uid = optional_positive_i64(player.get("currentClubUid"))?;
         let parent_club = optional_string(player.get("parentClub"))?;
+        let parent_club_uid = optional_positive_i64(player.get("parentClubUid"))?;
         let on_loan = optional_bool(player.get("onLoan"))?;
         let division = optional_string(player.get("division"))?;
         let team_level = optional_string(player.get("teamLevel"))?;
@@ -401,7 +412,9 @@ pub(crate) fn prepare_dump_json_raw(json: &str) -> Result<RawPreparedSnapshot, S
             reputation_current,
             reputation_world,
             current_club,
+            current_club_uid,
             parent_club,
+            parent_club_uid,
             on_loan,
             division,
             team_level,
@@ -435,6 +448,7 @@ pub(crate) fn prepare_dump_json_raw(json: &str) -> Result<RawPreparedSnapshot, S
         let contract_expiry_day_of_year =
             optional_i64(staff_record.get("contractExpiryDayOfYear"))?;
         let club = optional_string(staff_record.get("club"))?;
+        let club_uid = optional_positive_i64(staff_record.get("clubUid"))?;
         let division = optional_string(staff_record.get("division"))?;
         staff.push(RawPreparedStaff {
             uid,
@@ -453,6 +467,7 @@ pub(crate) fn prepare_dump_json_raw(json: &str) -> Result<RawPreparedSnapshot, S
             contract_expiry_year,
             contract_expiry_day_of_year,
             club,
+            club_uid,
             division,
             attributes_map,
         });
@@ -476,6 +491,7 @@ pub(crate) fn prepare_dump_json_raw(json: &str) -> Result<RawPreparedSnapshot, S
         manager_name,
         manager_club,
         manager_club_reputation,
+        manager_club_uid,
         players,
         staff,
     })
@@ -521,7 +537,9 @@ pub(crate) fn score_raw_snapshot(raw: RawPreparedSnapshot) -> Result<PreparedSna
             reputation_current: p.reputation_current,
             reputation_world: p.reputation_world,
             current_club: p.current_club,
+            current_club_uid: p.current_club_uid,
             parent_club: p.parent_club,
+            parent_club_uid: p.parent_club_uid,
             on_loan: p.on_loan,
             division: p.division,
             team_level: p.team_level,
@@ -554,6 +572,7 @@ pub(crate) fn score_raw_snapshot(raw: RawPreparedSnapshot) -> Result<PreparedSna
             contract_expiry_year: s.contract_expiry_year,
             contract_expiry_day_of_year: s.contract_expiry_day_of_year,
             club: s.club,
+            club_uid: s.club_uid,
             division: s.division,
             compact_scores,
         });
@@ -577,6 +596,7 @@ pub(crate) fn score_raw_snapshot(raw: RawPreparedSnapshot) -> Result<PreparedSna
         manager_name: raw.manager_name,
         manager_club: raw.manager_club,
         manager_club_reputation: raw.manager_club_reputation,
+        manager_club_uid: raw.manager_club_uid,
         players,
         staff,
     })
@@ -766,10 +786,11 @@ fn insert_prepared_snapshot(
             manager_name,
             manager_club,
             manager_club_reputation,
+            manager_club_uid,
             bridge_source_request_id
         ) VALUES (
             ?1, 0, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-            ?16, ?17, ?18, ?19, ?20
+            ?16, ?17, ?18, ?19, ?20, ?21
         )",
         params![
             save_id,
@@ -791,6 +812,7 @@ fn insert_prepared_snapshot(
             prepared.manager_name,
             prepared.manager_club,
             prepared.manager_club_reputation,
+            prepared.manager_club_uid,
             bridge_source_request_id,
         ],
     )
@@ -832,7 +854,9 @@ fn insert_prepared_players_raw(
                 reputation_current,
                 reputation_world,
                 current_club,
+                current_club_uid,
                 parent_club,
+                parent_club_uid,
                 on_loan,
                 division,
                 team_level,
@@ -843,7 +867,7 @@ fn insert_prepared_players_raw(
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
                 ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
-                ?31, ?32, ?33, ?34
+                ?31, ?32, ?33, ?34, ?35, ?36
             )",
         )
         .map_err(|error| error.to_string())?;
@@ -875,7 +899,9 @@ fn insert_prepared_players_raw(
             p.reputation_current,
             p.reputation_world,
             p.current_club,
+            p.current_club_uid,
             p.parent_club,
+            p.parent_club_uid,
             p.on_loan,
             p.division,
             p.team_level,
@@ -914,10 +940,11 @@ fn insert_prepared_staff_raw(
                 contract_expiry_year,
                 contract_expiry_day_of_year,
                 club,
+                club_uid,
                 division
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
-                ?17, ?18
+                ?17, ?18, ?19
             )",
         )
         .map_err(|error| error.to_string())?;
@@ -940,6 +967,7 @@ fn insert_prepared_staff_raw(
             s.contract_expiry_year,
             s.contract_expiry_day_of_year,
             s.club,
+            s.club_uid,
             s.division,
         ])
         .map_err(|error| error.to_string())?;
@@ -1076,6 +1104,18 @@ fn optional_string(value: Option<&Value>) -> Result<Option<String>, String> {
     }
 }
 
+fn optional_positive_i64(value: Option<&Value>) -> Result<Option<i64>, String> {
+    match value {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(number)) => number
+            .as_i64()
+            .filter(|value| *value > 0)
+            .map(Some)
+            .ok_or_else(|| "expected positive integer or null".to_string()),
+        Some(_) => Err("expected positive integer or null".to_string()),
+    }
+}
+
 fn optional_i64(value: Option<&Value>) -> Result<Option<i64>, String> {
     match value {
         None | Some(Value::Null) => Ok(None),
@@ -1136,7 +1176,7 @@ mod tests {
     use rusqlite::OptionalExtension;
     use std::path::Path;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v8.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v9.json");
 
     fn open_migrated(db_path: &Path) -> Connection {
         let conn = Connection::open(db_path).expect("open test db");
@@ -1823,7 +1863,7 @@ mod tests {
         let prior_count = role_score_count_for_snapshot(&conn, first.id);
         assert!(prior_count > 0);
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 8", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 9", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let _ = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -1845,11 +1885,11 @@ mod tests {
             .expect("active save");
 
         let json_with_null_attribute = GOLDEN_FIXTURE.replace(
-            "\"attributes\": { \"Acceleration\": 14, \"Pace\": 15 }",
-            "\"attributes\": { \"Acceleration\": 14, \"Pace\": 15, \"Dribbling\": null }",
+            "\"Pace\": 15\n      },",
+            "\"Pace\": 15,\n        \"Dribbling\": null\n      },",
         );
         let expected_positions = serde_json::from_str::<Value>(&json_with_null_attribute)
-            .expect("parse v8 fixture")
+            .expect("parse v9 fixture")
             .get("players")
             .and_then(Value::as_array)
             .and_then(|players| players.first())
@@ -1860,7 +1900,7 @@ mod tests {
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
 
         assert_eq!(snapshot.save_id, active_save.id);
-        assert_eq!(snapshot.schema_version, 8);
+        assert_eq!(snapshot.schema_version, 9);
         assert_eq!(snapshot.generated_at_utc, "2026-08-08T10:00:00.000Z");
         assert_eq!(snapshot.game_version, "26.3.2.2329565");
         assert_eq!(snapshot.supported_game_version, "26.3");
@@ -1890,6 +1930,7 @@ mod tests {
             manager_name: Option<String>,
             manager_club: Option<String>,
             manager_club_reputation: Option<i64>,
+            manager_club_uid: Option<i64>,
         }
 
         let snapshot_parity = conn
@@ -1901,7 +1942,8 @@ mod tests {
                     manager_uid,
                     manager_name,
                     manager_club,
-                    manager_club_reputation
+                    manager_club_reputation,
+                    manager_club_uid
                  FROM snapshots WHERE id = ?1",
                 params![snapshot.id],
                 |row| {
@@ -1913,6 +1955,7 @@ mod tests {
                         manager_name: row.get(4)?,
                         manager_club: row.get(5)?,
                         manager_club_reputation: row.get(6)?,
+                        manager_club_uid: row.get(7)?,
                     })
                 },
             )
@@ -1927,6 +1970,7 @@ mod tests {
         );
         assert_eq!(snapshot_parity.manager_club.as_deref(), Some("Golden FC"));
         assert_eq!(snapshot_parity.manager_club_reputation, Some(6400));
+        assert_eq!(snapshot_parity.manager_club_uid, Some(3000));
 
         struct PlayerParity {
             ca: i64,
@@ -1937,6 +1981,8 @@ mod tests {
             gender: String,
             club_reputation: Option<i64>,
             team_type: Option<i64>,
+            current_club_uid: Option<i64>,
+            parent_club_uid: Option<i64>,
         }
 
         let player_parity = conn
@@ -1949,7 +1995,9 @@ mod tests {
                     nation_uid,
                     gender,
                     club_reputation,
-                    team_type
+                    team_type,
+                    current_club_uid,
+                    parent_club_uid
                  FROM players WHERE snapshot_id = ?1",
                 params![snapshot.id],
                 |row| {
@@ -1962,6 +2010,8 @@ mod tests {
                         gender: row.get(5)?,
                         club_reputation: row.get(6)?,
                         team_type: row.get(7)?,
+                        current_club_uid: row.get(8)?,
+                        parent_club_uid: row.get(9)?,
                     })
                 },
             )
@@ -1972,6 +2022,8 @@ mod tests {
         assert_eq!(player_parity.gender, "male");
         assert_eq!(player_parity.club_reputation, Some(6200));
         assert_eq!(player_parity.team_type, Some(0));
+        assert_eq!(player_parity.current_club_uid, Some(1000));
+        assert_eq!(player_parity.parent_club_uid, Some(2000));
 
         let positions: Value =
             serde_json::from_str(&player_parity.positions_json).expect("parse positions_json");
@@ -1987,22 +2039,32 @@ mod tests {
             "null attribute must be stored as JSON null, not omitted"
         );
 
-        let (staff_uid, staff_name, staff_gender, staff_attributes_json): (
+        let (staff_uid, staff_name, staff_gender, staff_attributes_json, staff_club_uid): (
             i64,
             Option<String>,
             String,
             String,
+            Option<i64>,
         ) = conn
             .query_row(
-                "SELECT uid, name, gender, staff_attributes_json
+                "SELECT uid, name, gender, staff_attributes_json, club_uid
                  FROM staff WHERE snapshot_id = ?1",
                 params![snapshot.id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .expect("staff row");
         assert_eq!(staff_uid, 88);
         assert_eq!(staff_name.as_deref(), Some("Golden Fixture Staff"));
         assert_eq!(staff_gender, "female");
+        assert_eq!(staff_club_uid, Some(3000));
         let staff_attributes: Value =
             serde_json::from_str(&staff_attributes_json).expect("parse staff_attributes_json");
         assert_eq!(
@@ -2454,7 +2516,7 @@ mod tests {
         let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
         let first = ingest_dump_file(&mut conn, &good_path).expect("first ingest");
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 8", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 9", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let error = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -2580,7 +2642,7 @@ mod tests {
         write!(
             file,
             concat!(
-                r#"{{"schemaVersion":8,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
+                r#"{{"schemaVersion":9,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
                 r#""gameVersion":"26.3.2","supportedGameVersion":"26.3","bridgeVersion":"0.1.0","#,
                 r#""protocolVersion":1,"gameDate":null,"gameDateSource":"unknown","gameDateBasis":"unknown","#,
                 r#""playerDatabaseScope":"men","#,
@@ -2603,7 +2665,7 @@ mod tests {
                     r#""weeklyWageGbp":null,"contractExpiryYear":null,"contractExpiryDayOfYear":null,"#,
                     r#""transferListed":null,"loanListed":null,"notForSale":null,"setForRelease":null,"#,
                     r#""marketValueGbp":null,"reputation":{{"current":null,"world":null}},"#,
-                    r#""currentClub":null,"parentClub":null,"onLoan":null,"division":null,"teamLevel":null,"clubReputation":null,"teamType":null}}"#
+                    r#""currentClub":null,"currentClubUid":null,"parentClub":null,"parentClubUid":null,"onLoan":null,"division":null,"teamLevel":null,"clubReputation":null,"teamType":null}}"#
                 ),
                 uid = uid
             )
@@ -2887,7 +2949,7 @@ mod tests {
         assert_eq!(compact_row_count(&conn, earlier.stored_snapshot.id), 0);
         assert_eq!(compact_row_count(&conn, later.stored_snapshot.id), 1);
         // Prepare errors must not have written.
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 8", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 9", "\"schemaVersion\": 4");
         assert!(prepare_dump_json(&bad_json).is_err());
         assert_eq!(snapshot_count(&conn, save_context.id), 2);
     }
