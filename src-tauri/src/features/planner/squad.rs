@@ -344,21 +344,29 @@ pub fn list_squad_players(
     let fallback_uids = rows
         .iter()
         .filter(|(player, _)| {
-            tactic.is_some() && !assignments.contains_key(&player.uid) && player.ca < player.pa
+            tactic.is_some()
+                && !assignments.contains_key(&player.uid)
+                && player.ca < player.pa
+                && suggested_training::category_for_age(player.age).is_some()
         })
         .map(|(player, _)| player.uid)
         .collect::<Vec<_>>();
     let fallback_inputs = load_fallback_inputs(conn, snapshot_id, tactic.as_ref(), &fallback_uids)?;
     for (mut player, attributes) in rows {
-        player.suggested_training = suggestion_for_player(
-            tactic.as_ref(),
-            &assignments,
-            player.uid,
-            player.ca,
-            player.pa,
-            &attributes,
-            fallback_inputs.get(&player.uid),
-        )?;
+        player.suggested_training = match (
+            player.ca < player.pa,
+            suggested_training::category_for_age(player.age),
+        ) {
+            (true, Some(category)) => suggestion_for_player(
+                tactic.as_ref(),
+                &assignments,
+                player.uid,
+                category,
+                &attributes,
+                fallback_inputs.get(&player.uid),
+            )?,
+            _ => None,
+        };
         players.push(player);
     }
 
@@ -376,8 +384,7 @@ fn suggestion_for_player(
     tactic: Option<&tactic::PlannerTactic>,
     assignments: &HashMap<i64, String>,
     player_uid: i64,
-    ca: i64,
-    pa: i64,
+    category: suggested_training::FocusCategory,
     attributes: &HashMap<String, Option<u8>>,
     fallback: Option<&FallbackInput>,
 ) -> Result<Option<String>, String> {
@@ -390,13 +397,9 @@ fn suggestion_for_player(
             .iter()
             .find(|lane| lane.lane_id == *lane_id)
             .ok_or_else(|| format!("Unknown tactic lane `{lane_id}`"))?;
-        if ca >= pa {
-            return Ok(None);
-        }
-        return Ok(suggested_training::suggest_for_lane(attributes, lane).map(str::to_string));
-    }
-    if ca >= pa {
-        return Ok(None);
+        return Ok(
+            suggested_training::suggest_for_lane(attributes, lane, category).map(str::to_string),
+        );
     }
     let Some(input) = fallback else {
         return Ok(None);
@@ -404,7 +407,7 @@ fn suggestion_for_player(
     let Some(lane) = best_fallback_lane(tactic, input) else {
         return Ok(None);
     };
-    Ok(suggested_training::suggest_for_lane(attributes, lane).map(str::to_string))
+    Ok(suggested_training::suggest_for_lane(attributes, lane, category).map(str::to_string))
 }
 
 struct FallbackInput {
