@@ -171,7 +171,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 #### Commit 2 — Upgrade dumps to schema v9 and persist nullable club UIDs
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-read): persist nullable club UIDs`
 
@@ -218,7 +218,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 #### Commit 3 — Bind managed-club selections to club UIDs
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(managed-club): bind selections to FM UIDs`
 
@@ -605,21 +605,20 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 **PR:** PR 1 — Persist FM club identity
 
-**Commit:** Upgrade dumps to schema v9 and persist nullable club UIDs
+**Commit:** Bind managed-club selections to club UIDs
 
 ### RED or removal proof
 
-Add fake-memory and canonical v9 fixture tests first. Confirm that they fail because club UIDs, schema v9 validation, migration v44, and raw persistence do not exist.
+Add migration v45 and service tests first. Confirm that a submitted name/UID mismatch is currently accepted or cannot be represented and that legacy settings have no nullable UID column.
 
 ### Expected outcome
 
-New v9 dumps carry nullable player, staff, and manager club-object UIDs from `club + ObjectUidOffset`; Rust rejects v8 as stale and stores valid nullable IDs atomically through migration v44. Existing database rows remain readable with null IDs.
+Managed-club options and status carry nullable exact club UIDs. New selections persist only a name/UID pair found in the effective current snapshot. Legacy name-only rows remain readable with a null UID, and cohort membership remains name based.
 
 ### Explicit exclusions
 
-- Downstream read DTOs, frontend types, mocks, and UI.
-- Managed-club UID binding and graphics runtime or presentation.
-- Staff-facing imagery and name or team UID inference.
+- Legacy UID recovery by name or any cohort membership query change.
+- Logo rendering, graphics runtime, and player or staff DTO changes.
 - `.wiki/features/completed/refine-suggested-training.md` and `.wiki/features/completed/retire-obsolete-load-data-controls.md`.
 
 ## Discoveries and replanning
@@ -633,6 +632,7 @@ New v9 dumps carry nullable player, staff, and manager club-object UIDs from `cl
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Persist FM club identity | Commit 1 — Record the approved feature plan | 810a242b788986750edad38c776748e6b1b03b60 | Recorded the reviewed schema-2 JAY-63 ledger and its one Active TODO link without changing executable behavior. | `ledger_state.py` and `delivery_state.py` reported runnable with the accepted fingerprint; exact cached stat and diff were inspected; `git diff --cached --check` passed. | Not applicable | Clear | 0 | None |
+| PR 1 — Persist FM club identity | Commit 2 — Upgrade dumps to schema v9 and persist nullable club UIDs | bf923ac4d599695fedf9d99d453932888927b79d | Advanced the bridge and Rust dump contract to v9, extracted exact nullable club-object UIDs, added migration v44, and retained the IDs through prepared atomic snapshot persistence while legacy rows remain null. | `./scripts/dev bridge-test` passed 219 tests with 3 skipped; `./scripts/dev check-rust` and `./scripts/dev check` passed 809 Rust tests with 2 ignored; focused manager tests, v8-reference audit, LSP diagnostics, and `git diff --cached --check` passed. | Pass | Clear | 2 | Review corrections bound manager UID to the selected graph-or-contract source, completed exact fake-memory/migration/persistence proofs, and reconciled current v9 bridge and Architecture documentation. |
 
 ## Final validation
 

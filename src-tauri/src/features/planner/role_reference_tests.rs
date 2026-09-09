@@ -465,7 +465,7 @@ fn missing_snapshot_or_managed_club_is_reported_without_querying_players() {
     .expect_err("missing club should fail");
     assert_eq!(missing_club, "No managed club configured for this save");
 
-    crate::features::managed_club::service::set_managed_club(&conn, save_id, "Loan FC")
+    crate::features::managed_club::service::set_managed_club(&conn, save_id, "Loan FC", Some(1000))
         .expect("restore managed club");
     conn.execute(
         "UPDATE snapshots SET is_current = 0 WHERE save_id = ?1",

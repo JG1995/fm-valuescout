@@ -977,7 +977,7 @@ mod tests {
     }
 
     fn configure_managed_club(conn: &Connection, save_id: i64) {
-        managed_club_service::set_managed_club(conn, save_id, "Loan FC")
+        managed_club_service::set_managed_club(conn, save_id, "Loan FC", Some(1000))
             .expect("configure managed club");
     }
 

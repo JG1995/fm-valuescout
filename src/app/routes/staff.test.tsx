@@ -117,6 +117,7 @@ describe("staff route", () => {
     await resolveLoadDataIpcMock();
     setManagedClubIpcMock({
       clubName: "Metro FC",
+      clubUid: 1,
       status: "available",
       unclassifiedPlayerCount: 0,
     });

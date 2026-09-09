@@ -12,15 +12,23 @@ pub enum ManagedClubAvailability {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManagedClubStatus {
     pub club_name: Option<String>,
+    pub club_uid: Option<i64>,
     pub availability: ManagedClubAvailability,
     pub unclassified_player_count: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedClubOption {
+    pub club_name: String,
+    pub club_uid: Option<i64>,
+}
+
 pub fn get_managed_club(conn: &Connection, save_id: i64) -> Result<ManagedClubStatus, String> {
-    let club_name = selected_club(conn, save_id)?;
-    let Some(club_name) = club_name else {
+    let selected = selected_club_identity(conn, save_id)?;
+    let Some((club_name, club_uid)) = selected else {
         return Ok(ManagedClubStatus {
             club_name: None,
+            club_uid: None,
             availability: ManagedClubAvailability::Unconfigured,
             unclassified_player_count: 0,
         });
@@ -53,6 +61,7 @@ pub fn get_managed_club(conn: &Connection, save_id: i64) -> Result<ManagedClubSt
 
     Ok(ManagedClubStatus {
         club_name: Some(club_name),
+        club_uid,
         availability: if available {
             ManagedClubAvailability::Available
         } else {
@@ -62,21 +71,29 @@ pub fn get_managed_club(conn: &Connection, save_id: i64) -> Result<ManagedClubSt
     })
 }
 
-pub fn list_managed_club_options(conn: &Connection, save_id: i64) -> Result<Vec<String>, String> {
+pub fn list_managed_club_options(
+    conn: &Connection,
+    save_id: i64,
+) -> Result<Vec<ManagedClubOption>, String> {
     let mut statement = conn
         .prepare(
-            "SELECT DISTINCT p.current_club
+            "SELECT DISTINCT p.current_club, p.current_club_uid
              FROM players p
              INNER JOIN snapshots s ON s.id = p.snapshot_id
              WHERE s.save_id = ?1
                AND s.is_current = 1
                AND p.current_club IS NOT NULL
                AND trim(p.current_club) <> ''
-             ORDER BY p.current_club COLLATE NOCASE",
+             ORDER BY p.current_club COLLATE NOCASE, p.current_club_uid",
         )
         .map_err(|error| error.to_string())?;
     let options = statement
-        .query_map([save_id], |row| row.get(0))
+        .query_map([save_id], |row| {
+            Ok(ManagedClubOption {
+                club_name: row.get(0)?,
+                club_uid: row.get(1)?,
+            })
+        })
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
@@ -87,8 +104,12 @@ pub fn set_managed_club(
     conn: &Connection,
     save_id: i64,
     club_name: &str,
+    club_uid: Option<i64>,
 ) -> Result<ManagedClubStatus, String> {
     let club_name = validate_club_name(club_name)?;
+    if club_uid.is_some_and(|uid| uid <= 0) {
+        return Err("Managed club UID must be positive".to_string());
+    }
     let save_exists: bool = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM saves WHERE id = ?1)",
@@ -100,14 +121,14 @@ pub fn set_managed_club(
         return Err(format!("Save {save_id} not found"));
     }
 
-    let existing = selected_club(conn, save_id)?;
-    if existing.as_deref() == Some(club_name.as_str()) {
+    let existing = selected_club_identity(conn, save_id)?;
+    if existing == Some((club_name.clone(), club_uid)) {
         return get_managed_club(conn, save_id);
     }
 
     if !list_managed_club_options(conn, save_id)?
         .iter()
-        .any(|option| option == &club_name)
+        .any(|option| option.club_name == club_name && option.club_uid == club_uid)
     {
         return Err(format!(
             "Managed club `{club_name}` is not in the current snapshot"
@@ -115,10 +136,12 @@ pub fn set_managed_club(
     }
 
     conn.execute(
-        "INSERT INTO managed_club_settings (save_id, club_name)
-         VALUES (?1, ?2)
-         ON CONFLICT(save_id) DO UPDATE SET club_name = excluded.club_name",
-        params![save_id, club_name],
+        "INSERT INTO managed_club_settings (save_id, club_name, club_uid)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(save_id) DO UPDATE SET
+             club_name = excluded.club_name,
+             club_uid = excluded.club_uid",
+        params![save_id, club_name, club_uid],
     )
     .map_err(|error| error.to_string())?;
 
@@ -126,10 +149,17 @@ pub fn set_managed_club(
 }
 
 pub fn selected_club(conn: &Connection, save_id: i64) -> Result<Option<String>, String> {
+    Ok(selected_club_identity(conn, save_id)?.map(|(name, _)| name))
+}
+
+fn selected_club_identity(
+    conn: &Connection,
+    save_id: i64,
+) -> Result<Option<(String, Option<i64>)>, String> {
     conn.query_row(
-        "SELECT club_name FROM managed_club_settings WHERE save_id = ?1",
+        "SELECT club_name, club_uid FROM managed_club_settings WHERE save_id = ?1",
         [save_id],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )
     .optional()
     .map_err(|error| error.to_string())
@@ -220,9 +250,18 @@ mod tests {
 
         assert_eq!(
             list_managed_club_options(&conn, save_id).expect("list options"),
-            ["Managed FC", "Other FC"]
+            [
+                ManagedClubOption {
+                    club_name: "Managed FC".to_string(),
+                    club_uid: None,
+                },
+                ManagedClubOption {
+                    club_name: "Other FC".to_string(),
+                    club_uid: None,
+                },
+            ]
         );
-        let status = set_managed_club(&conn, save_id, "Managed FC").expect("set club");
+        let status = set_managed_club(&conn, save_id, "Managed FC", None).expect("set club");
         assert_eq!(status.availability, ManagedClubAvailability::Available);
         assert_eq!(status.unclassified_player_count, 2);
     }
@@ -237,8 +276,8 @@ mod tests {
         insert_player(&conn, first_snapshot, 1, "First FC", Some("senior"));
         insert_player(&conn, second_snapshot, 2, "Second FC", Some("senior"));
 
-        set_managed_club(&conn, first_save, "First FC").expect("set first club");
-        set_managed_club(&conn, second_save, "Second FC").expect("set second club");
+        set_managed_club(&conn, first_save, "First FC", None).expect("set first club");
+        set_managed_club(&conn, second_save, "Second FC", None).expect("set second club");
         conn.execute(
             "UPDATE snapshots SET is_current = 0 WHERE id = ?1",
             [first_snapshot],
@@ -249,10 +288,10 @@ mod tests {
         assert_eq!(missing.club_name.as_deref(), Some("First FC"));
         assert_eq!(missing.availability, ManagedClubAvailability::Missing);
         assert_eq!(
-            set_managed_club(&conn, first_save, "First FC").expect("keep missing club"),
+            set_managed_club(&conn, first_save, "First FC", None).expect("keep missing club"),
             missing
         );
-        assert!(set_managed_club(&conn, first_save, "Second FC").is_err());
+        assert!(set_managed_club(&conn, first_save, "Second FC", None).is_err());
         assert_eq!(
             get_managed_club(&conn, second_save)
                 .expect("get second club")
@@ -263,12 +302,72 @@ mod tests {
     }
 
     #[test]
+    fn exact_uid_pair_persists_and_mismatch_does_not_mutate_selection() {
+        let conn = connection();
+        let save_id = insert_save(&conn, "Save");
+        let snapshot_id = insert_snapshot(&conn, save_id, true);
+        insert_player(&conn, snapshot_id, 1, "Same FC", Some("senior"));
+        insert_player(&conn, snapshot_id, 2, "Other FC", Some("reserve"));
+        conn.execute(
+            "UPDATE players SET current_club_uid = CASE uid WHEN 1 THEN 101 ELSE 202 END
+             WHERE snapshot_id = ?1",
+            [snapshot_id],
+        )
+        .expect("assign club UIDs");
+
+        assert_eq!(
+            list_managed_club_options(&conn, save_id).expect("list options"),
+            [
+                ManagedClubOption {
+                    club_name: "Other FC".into(),
+                    club_uid: Some(202),
+                },
+                ManagedClubOption {
+                    club_name: "Same FC".into(),
+                    club_uid: Some(101),
+                },
+            ]
+        );
+        set_managed_club(&conn, save_id, "Same FC", Some(101)).expect("save exact pair");
+        assert_eq!(
+            get_managed_club(&conn, save_id)
+                .expect("read selection")
+                .club_uid,
+            Some(101)
+        );
+        assert!(set_managed_club(&conn, save_id, "Same FC", Some(202)).is_err());
+        assert_eq!(
+            get_managed_club(&conn, save_id)
+                .expect("read unchanged selection")
+                .club_uid,
+            Some(101)
+        );
+    }
+
+    #[test]
+    fn legacy_name_only_selection_keeps_a_null_uid() {
+        let conn = connection();
+        let save_id = insert_save(&conn, "Save");
+        let snapshot_id = insert_snapshot(&conn, save_id, true);
+        insert_player(&conn, snapshot_id, 1, "Legacy FC", Some("senior"));
+        conn.execute(
+            "INSERT INTO managed_club_settings (save_id, club_name) VALUES (?1, 'Legacy FC')",
+            [save_id],
+        )
+        .expect("insert legacy selection");
+
+        let status = get_managed_club(&conn, save_id).expect("read legacy selection");
+        assert_eq!(status.club_name.as_deref(), Some("Legacy FC"));
+        assert_eq!(status.club_uid, None);
+    }
+
+    #[test]
     fn managed_club_cascades_with_its_save() {
         let conn = connection();
         let save_id = insert_save(&conn, "Save");
         let snapshot_id = insert_snapshot(&conn, save_id, true);
         insert_player(&conn, snapshot_id, 1, "Managed FC", Some("senior"));
-        set_managed_club(&conn, save_id, "Managed FC").expect("set club");
+        set_managed_club(&conn, save_id, "Managed FC", None).expect("set club");
 
         conn.execute("DELETE FROM saves WHERE id = ?1", [save_id])
             .expect("delete save");

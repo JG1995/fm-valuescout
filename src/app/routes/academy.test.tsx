@@ -57,7 +57,7 @@ describe("academy route", () => {
   async function loadConfiguredSave() {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
-      primaryClub: "Metro FC",
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
   }
@@ -859,7 +859,10 @@ describe("academy route", () => {
   it("records manual outcomes in labelled roster groups", async () => {
     const user = userEvent.setup();
     await loadConfiguredSave();
-    setPlannerAvailableClubs(["Metro FC", "Rovers FC"]);
+    setPlannerAvailableClubs([
+      { clubName: "Metro FC", clubUid: 1 },
+      { clubName: "Rovers FC", clubUid: 2 },
+    ]);
     setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 1 }]);
     setAcademyClassMembers(7, [
       academyMember({ playerUid: 77, lastKnownName: "Club prospect" }),

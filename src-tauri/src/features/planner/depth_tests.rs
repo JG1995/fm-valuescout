@@ -407,7 +407,7 @@ fn clearing_all_requires_confirmation_and_preserves_other_saves_and_settings() {
     .expect("write second save dump");
     snapshot::ingest::ingest_dump_file_for_save(&mut conn, second_save_id, &second_dump_path)
         .expect("ingest second save");
-    managed_club_service::set_managed_club(&conn, second_save_id, "Loan FC")
+    managed_club_service::set_managed_club(&conn, second_save_id, "Loan FC", Some(1000))
         .expect("configure second save");
     let second_depth = get_depth(&conn, second_save_id).expect("create second depth");
     let second_string_id = team_strings(&second_depth, PlannerTeam::Senior)[0].id;
@@ -796,7 +796,7 @@ fn managed_club_and_tactic_updates_preserve_assignments_and_save_isolation() {
         [],
     )
     .expect("move player to another available club");
-    managed_club_service::set_managed_club(&conn, save_id, "Other FC")
+    managed_club_service::set_managed_club(&conn, save_id, "Other FC", Some(1000))
         .expect("replace managed club");
     let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
     tactic.lanes[0].ip_role_id = "ball_playing_goalkeeper_ip".to_string();
@@ -825,7 +825,7 @@ fn managed_club_and_tactic_updates_preserve_assignments_and_save_isolation() {
     .expect("write second save dump");
     snapshot::ingest::ingest_dump_file_for_save(&mut conn, second_save_id, &second_dump_path)
         .expect("ingest second save");
-    managed_club_service::set_managed_club(&conn, second_save_id, "Loan FC")
+    managed_club_service::set_managed_club(&conn, second_save_id, "Loan FC", Some(1000))
         .expect("configure second save");
     let second_depth = get_depth(&conn, second_save_id).expect("create isolated depth");
     let second_string_id = team_strings(&second_depth, PlannerTeam::Senior)[0].id;

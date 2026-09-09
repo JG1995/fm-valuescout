@@ -676,7 +676,7 @@ mod tests {
         )
         .expect("bind source request");
         let save_id = snapshot_service::active_save_id(&conn).expect("active save");
-        managed_club_service::set_managed_club(&conn, save_id, "Loan FC")
+        managed_club_service::set_managed_club(&conn, save_id, "Loan FC", Some(1000))
             .expect("configure managed club");
 
         (temp_dir, Db(Mutex::new(conn)))

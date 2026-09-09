@@ -25,7 +25,7 @@ pub(super) fn open_with_snapshot() -> (tempfile::TempDir, Connection, i64) {
     )
     .expect("write dump");
     snapshot::ingest::ingest_dump_file(&mut conn, &dump_path).expect("ingest dump");
-    managed_club_service::set_managed_club(&conn, save.id, "Loan FC")
+    managed_club_service::set_managed_club(&conn, save.id, "Loan FC", Some(1000))
         .expect("configure managed club");
     (temp_dir, conn, save.id)
 }
@@ -367,6 +367,6 @@ pub(super) fn add_picker_candidates(
     .expect("write picker candidates");
     snapshot::ingest::ingest_dump_file_for_save(conn, save_id, &dump_path)
         .expect("ingest picker candidates");
-    managed_club_service::set_managed_club(conn, save_id, "Loan FC")
+    managed_club_service::set_managed_club(conn, save_id, "Loan FC", Some(1000))
         .expect("configure managed club");
 }

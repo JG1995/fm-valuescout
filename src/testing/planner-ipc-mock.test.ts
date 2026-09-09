@@ -3,6 +3,8 @@ import {
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
   resolveSavePlannerTacticIpcMock,
+  resolveSetManagedClubIpcMock,
+  setPlannerAvailableClubs,
 } from "@/testing/planner-ipc-mock";
 import {
   resolveCreateSaveIpcMock,
@@ -18,6 +20,45 @@ function expectPlannerError(operation: () => unknown, message: string) {
   }
   expect(error instanceof Error ? error.message : error).toBe(message);
 }
+
+describe("Managed club IPC mock identity", () => {
+  it.each([
+    ["omitted", undefined],
+    ["null", null],
+    ["mismatched", 99],
+  ])("rejects an %s UID for a known option", (_description, clubUid) => {
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 42 }]);
+    expectPlannerError(
+      () => resolveSetManagedClubIpcMock({ clubName: "Barcelona", clubUid }),
+      "Managed club identity does not match an available option",
+    );
+  });
+
+  it("matches duplicate names by their exact UID", () => {
+    setPlannerAvailableClubs([
+      { clubName: "United FC", clubUid: 11 },
+      { clubName: "United FC", clubUid: 22 },
+    ]);
+
+    expect(
+      resolveSetManagedClubIpcMock({ clubName: "United FC", clubUid: 22 }),
+    ).toMatchObject({
+      clubName: "United FC",
+      clubUid: 22,
+      status: "available",
+    });
+  });
+
+  it("preserves an explicit null UID for a legacy missing selection", () => {
+    expect(
+      resolveSetManagedClubIpcMock({ clubName: "Legacy FC", clubUid: null }),
+    ).toMatchObject({
+      clubName: "Legacy FC",
+      clubUid: null,
+      status: "missing",
+    });
+  });
+});
 
 describe("Planner IPC mock save lifecycle", () => {
   it("accepts a created save context only after the save exists", () => {
