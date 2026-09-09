@@ -135,7 +135,7 @@ Refine the read-time Suggested Training recommendation so its focus matches a de
 
 #### Commit 1 — Record the approved feature plan
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(training): record approved feature plan`
 
@@ -191,7 +191,7 @@ Refine the read-time Suggested Training recommendation so its focus matches a de
 
 #### Commit 2 — Classify suggested training focuses
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `refactor(training): classify suggested training focuses`
 
@@ -245,7 +245,7 @@ Refine the read-time Suggested Training recommendation so its focus matches a de
 
 #### Commit 3 — Tailor suggestions to player age
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(training): tailor suggestions to player age`
 
@@ -310,19 +310,19 @@ Refine the read-time Suggested Training recommendation so its focus matches a de
 
 **PR:** Refine Suggested Training
 
-**Commit:** Record the approved feature plan
+**Commit:** Tailor suggestions to player age
 
 ### RED or removal proof
 
-Not applicable — independently reviewed planning documents only. The ledger classifier verifies the active ledger structure.
+Add pure-engine boundary and strict selected-category evaluability tests plus isolated page-level poisoned fixtures. Current code must fail because it has no age-category decision, resolves assignments before eligibility gates, and loads fallback inputs for every unassigned developing row regardless of age.
 
 ### Expected outcome
 
-The reviewed ledger and TODO entry exist as the only planning artifacts. No implementation state changes.
+Developing players receive suggestions only from the exact category for their age. `CA >= PA`, null age, and age 29 or older return no suggestion before assignment or fallback work, while eligible assigned and unassigned behavior retains the established ranking and fallback rules.
 
 ### Explicit exclusions
 
-No code, tests, configuration, architecture, BACKLOG, ADR, branch, commit, or publication mutation belongs to this draft.
+No frontend, DTO, schema, migration, persistence, IPC, sorting, layout, training-action, tactic, assignment, or fallback-ranking changes belong to this commit.
 
 ## Discoveries and replanning
 
@@ -333,6 +333,8 @@ No code, tests, configuration, architecture, BACKLOG, ADR, branch, commit, or pu
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — Refine Suggested Training | Commit 1 — Record the approved feature plan | 06e5266409112bad31560b44fa2514d0cab5afbf | Recorded the reviewed schema 2 ledger and TODO activation without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed; pre-commit `check-fast`: passed. | Not applicable | Clear | 0 | None. |
+| PR 1 — Refine Suggested Training | Commit 2 — Classify suggested training focuses | Pending record | Replaced tuple-only inventories with one typed, categorized focus catalog while preserving unrestricted ranking behavior. | RED failed on absent category metadata; 10 focused tests passed; `./scripts/dev check-rust`: 805 passed, 2 ignored; Rust LSP and `git diff --check`: passed. | Pass | Clear | 1 | Review correction added complete-length catalog proof, removed a redundant category test, and narrowed catalog visibility. |
 
 ## Final validation
 

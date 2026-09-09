@@ -9,58 +9,177 @@ use crate::features::scoring::score::score_role_unrounded;
 
 use super::tactic::TacticLane;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FocusCategory {
+    Physical,
+    Technical,
+    Mental,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TrainingFocus {
+    name: &'static str,
+    attributes: &'static [&'static str],
+    category: FocusCategory,
+}
+
 /// Outfield focus inventory in exact Linear JAY-46 order (order is the tie-break).
-/// Each entry maps a focus name to its simulated dump-key attributes.
-pub const OUTFIELD_FOCUSES: &[(&str, &[&str])] = &[
-    ("Free Kick Taking", &["Technique", "FreeKicks"]),
-    ("Corner Taking", &["Technique", "Corners"]),
-    ("Penalty Taking", &["Technique", "PenaltyTaking"]),
-    ("Long Throws", &["LongThrows"]),
-    ("Quickness", &["Acceleration", "Pace"]),
-    ("Agility and Balance", &["Agility", "Balance"]),
-    ("Strength", &["JumpingReach", "Strength"]),
-    ("Endurance", &["WorkRate", "Stamina"]),
-    (
-        "Defensive Positioning",
-        &["Marking", "Decisions", "Positioning"],
-    ),
-    (
-        "Attacking Movement",
-        &["Anticipation", "Decisions", "OffTheBall"],
-    ),
-    ("Shooting", &["Finishing", "LongShots", "Technique"]),
-    ("Passing", &["Passing", "Technique", "Vision"]),
-    ("Final Third", &["Composure", "Decisions"]),
-    ("Crossing", &["Crossing", "Technique"]),
-    ("Ball Control", &["Dribbling", "FirstTouch", "Technique"]),
-    ("Aerial", &["Heading", "Bravery"]),
+/// Each entry maps a focus name to its simulated dump-key attributes and category.
+const OUTFIELD_FOCUSES: &[TrainingFocus] = &[
+    TrainingFocus {
+        name: "Free Kick Taking",
+        attributes: &["Technique", "FreeKicks"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Corner Taking",
+        attributes: &["Technique", "Corners"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Penalty Taking",
+        attributes: &["Technique", "PenaltyTaking"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Long Throws",
+        attributes: &["LongThrows"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Quickness",
+        attributes: &["Acceleration", "Pace"],
+        category: FocusCategory::Physical,
+    },
+    TrainingFocus {
+        name: "Agility and Balance",
+        attributes: &["Agility", "Balance"],
+        category: FocusCategory::Physical,
+    },
+    TrainingFocus {
+        name: "Strength",
+        attributes: &["JumpingReach", "Strength"],
+        category: FocusCategory::Physical,
+    },
+    TrainingFocus {
+        name: "Endurance",
+        attributes: &["WorkRate", "Stamina"],
+        category: FocusCategory::Physical,
+    },
+    TrainingFocus {
+        name: "Defensive Positioning",
+        attributes: &["Marking", "Decisions", "Positioning"],
+        category: FocusCategory::Mental,
+    },
+    TrainingFocus {
+        name: "Attacking Movement",
+        attributes: &["Anticipation", "Decisions", "OffTheBall"],
+        category: FocusCategory::Mental,
+    },
+    TrainingFocus {
+        name: "Shooting",
+        attributes: &["Finishing", "LongShots", "Technique"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Passing",
+        attributes: &["Passing", "Technique", "Vision"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Final Third",
+        attributes: &["Composure", "Decisions"],
+        category: FocusCategory::Mental,
+    },
+    TrainingFocus {
+        name: "Crossing",
+        attributes: &["Crossing", "Technique"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Ball Control",
+        attributes: &["Dribbling", "FirstTouch", "Technique"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Aerial",
+        attributes: &["Heading", "Bravery"],
+        category: FocusCategory::Technical,
+    },
 ];
 
 /// Goalkeeper focus inventory in exact Linear JAY-46 order (order is the tie-break).
-pub const GOALKEEPER_FOCUSES: &[(&str, &[&str])] = &[
-    ("Free Kick Taking", &["Technique", "FreeKicks"]),
-    ("Corner Taking", &["Technique", "Corners"]),
-    ("Penalty Taking", &["Technique", "PenaltyTaking"]),
-    ("Long Throws", &["LongThrows"]),
-    ("Quickness", &["Acceleration", "Pace"]),
-    ("Agility and Balance", &["Agility", "Balance"]),
-    ("Strength", &["JumpingReach", "Strength"]),
-    ("Endurance", &["WorkRate", "Stamina"]),
-    (
-        "GK Reactions",
-        &["Reflexes", "Anticipation", "Concentration"],
-    ),
-    (
-        "GK Tactical",
-        &["Communication", "Decisions", "Positioning"],
-    ),
-    ("GK Technique", &["Handling", "Composure", "Technique"]),
-    ("GK Sweeping", &["CommandOfArea", "OneOnOnes", "RushingOut"]),
-    ("GK Distribution (Long)", &["Kicking", "Throwing"]),
-    (
-        "GK Distribution (Short)",
-        &["FirstTouch", "Passing", "Vision"],
-    ),
+const GOALKEEPER_FOCUSES: &[TrainingFocus] = &[
+    TrainingFocus {
+        name: "Free Kick Taking",
+        attributes: &["Technique", "FreeKicks"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Corner Taking",
+        attributes: &["Technique", "Corners"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Penalty Taking",
+        attributes: &["Technique", "PenaltyTaking"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Long Throws",
+        attributes: &["LongThrows"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Quickness",
+        attributes: &["Acceleration", "Pace"],
+        category: FocusCategory::Physical,
+    },
+    TrainingFocus {
+        name: "Agility and Balance",
+        attributes: &["Agility", "Balance"],
+        category: FocusCategory::Physical,
+    },
+    TrainingFocus {
+        name: "Strength",
+        attributes: &["JumpingReach", "Strength"],
+        category: FocusCategory::Physical,
+    },
+    TrainingFocus {
+        name: "Endurance",
+        attributes: &["WorkRate", "Stamina"],
+        category: FocusCategory::Physical,
+    },
+    TrainingFocus {
+        name: "GK Reactions",
+        attributes: &["Reflexes", "Anticipation", "Concentration"],
+        category: FocusCategory::Mental,
+    },
+    TrainingFocus {
+        name: "GK Tactical",
+        attributes: &["Communication", "Decisions", "Positioning"],
+        category: FocusCategory::Mental,
+    },
+    TrainingFocus {
+        name: "GK Technique",
+        attributes: &["Handling", "Composure", "Technique"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "GK Sweeping",
+        attributes: &["CommandOfArea", "OneOnOnes", "RushingOut"],
+        category: FocusCategory::Mental,
+    },
+    TrainingFocus {
+        name: "GK Distribution (Long)",
+        attributes: &["Kicking", "Throwing"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "GK Distribution (Short)",
+        attributes: &["FirstTouch", "Passing", "Vision"],
+        category: FocusCategory::Technical,
+    },
 ];
 
 /// The goalkeeper focus inventory applies only to the GK Planner lane.
@@ -87,8 +206,8 @@ pub fn suggest_for_lane(
         OUTFIELD_FOCUSES
     };
 
-    for (_, keys) in focuses.iter() {
-        for key in keys.iter() {
+    for focus in focuses.iter() {
+        for key in focus.attributes.iter() {
             attributes.get(*key).copied().flatten()?;
         }
     }
@@ -99,9 +218,9 @@ pub fn suggest_for_lane(
     let baseline = blended_score(attributes, ip_role, oop_role, lane.ip_weight)?;
 
     let mut best: Option<(&'static str, f64)> = None;
-    for &(focus, keys) in focuses.iter() {
+    for focus in focuses.iter() {
         let mut simulated = attributes.clone();
-        for key in keys.iter() {
+        for key in focus.attributes.iter() {
             if let Some(value) = simulated.get(*key).copied().flatten() {
                 if value < 20 {
                     simulated.insert((*key).to_string(), Some(value + 1));
@@ -115,7 +234,7 @@ pub fn suggest_for_lane(
             Some((_, current_gain)) => gain > *current_gain,
         };
         if improves {
-            best = Some((focus, gain));
+            best = Some((focus.name, gain));
         }
     }
     best.map(|(focus, _)| focus)
@@ -138,7 +257,9 @@ mod tests {
 
     use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
 
-    use super::{is_goalkeeper_lane, suggest_for_lane, GOALKEEPER_FOCUSES, OUTFIELD_FOCUSES};
+    use super::{
+        is_goalkeeper_lane, suggest_for_lane, FocusCategory, GOALKEEPER_FOCUSES, OUTFIELD_FOCUSES,
+    };
     use crate::features::planner::tactic::TacticLane;
 
     fn lane(lane_id: &str, ip_role_id: &str, oop_role_id: &str, ip_weight: f64) -> TacticLane {
@@ -186,67 +307,176 @@ mod tests {
 
     #[test]
     fn outfield_and_goalkeeper_inventories_match_linear_order_exactly() {
-        let expected_outfield: &[(&str, &[&str])] = &[
-            ("Free Kick Taking", &["Technique", "FreeKicks"]),
-            ("Corner Taking", &["Technique", "Corners"]),
-            ("Penalty Taking", &["Technique", "PenaltyTaking"]),
-            ("Long Throws", &["LongThrows"]),
-            ("Quickness", &["Acceleration", "Pace"]),
-            ("Agility and Balance", &["Agility", "Balance"]),
-            ("Strength", &["JumpingReach", "Strength"]),
-            ("Endurance", &["WorkRate", "Stamina"]),
+        let expected_outfield = [
+            (
+                "Free Kick Taking",
+                &["Technique", "FreeKicks"] as &[&str],
+                FocusCategory::Technical,
+            ),
+            (
+                "Corner Taking",
+                &["Technique", "Corners"],
+                FocusCategory::Technical,
+            ),
+            (
+                "Penalty Taking",
+                &["Technique", "PenaltyTaking"],
+                FocusCategory::Technical,
+            ),
+            ("Long Throws", &["LongThrows"], FocusCategory::Technical),
+            (
+                "Quickness",
+                &["Acceleration", "Pace"],
+                FocusCategory::Physical,
+            ),
+            (
+                "Agility and Balance",
+                &["Agility", "Balance"],
+                FocusCategory::Physical,
+            ),
+            (
+                "Strength",
+                &["JumpingReach", "Strength"],
+                FocusCategory::Physical,
+            ),
+            (
+                "Endurance",
+                &["WorkRate", "Stamina"],
+                FocusCategory::Physical,
+            ),
             (
                 "Defensive Positioning",
                 &["Marking", "Decisions", "Positioning"],
+                FocusCategory::Mental,
             ),
             (
                 "Attacking Movement",
                 &["Anticipation", "Decisions", "OffTheBall"],
+                FocusCategory::Mental,
             ),
-            ("Shooting", &["Finishing", "LongShots", "Technique"]),
-            ("Passing", &["Passing", "Technique", "Vision"]),
-            ("Final Third", &["Composure", "Decisions"]),
-            ("Crossing", &["Crossing", "Technique"]),
-            ("Ball Control", &["Dribbling", "FirstTouch", "Technique"]),
-            ("Aerial", &["Heading", "Bravery"]),
+            (
+                "Shooting",
+                &["Finishing", "LongShots", "Technique"],
+                FocusCategory::Technical,
+            ),
+            (
+                "Passing",
+                &["Passing", "Technique", "Vision"],
+                FocusCategory::Technical,
+            ),
+            (
+                "Final Third",
+                &["Composure", "Decisions"],
+                FocusCategory::Mental,
+            ),
+            (
+                "Crossing",
+                &["Crossing", "Technique"],
+                FocusCategory::Technical,
+            ),
+            (
+                "Ball Control",
+                &["Dribbling", "FirstTouch", "Technique"],
+                FocusCategory::Technical,
+            ),
+            ("Aerial", &["Heading", "Bravery"], FocusCategory::Technical),
         ];
-        assert_eq!(OUTFIELD_FOCUSES, expected_outfield);
+        assert_eq!(OUTFIELD_FOCUSES.len(), expected_outfield.len());
+        for (focus, (name, attributes, category)) in OUTFIELD_FOCUSES.iter().zip(expected_outfield)
+        {
+            assert_eq!(
+                (focus.name, focus.attributes, focus.category),
+                (name, attributes, category)
+            );
+        }
 
-        let expected_goalkeeper: &[(&str, &[&str])] = &[
-            ("Free Kick Taking", &["Technique", "FreeKicks"]),
-            ("Corner Taking", &["Technique", "Corners"]),
-            ("Penalty Taking", &["Technique", "PenaltyTaking"]),
-            ("Long Throws", &["LongThrows"]),
-            ("Quickness", &["Acceleration", "Pace"]),
-            ("Agility and Balance", &["Agility", "Balance"]),
-            ("Strength", &["JumpingReach", "Strength"]),
-            ("Endurance", &["WorkRate", "Stamina"]),
+        let expected_goalkeeper = [
+            (
+                "Free Kick Taking",
+                &["Technique", "FreeKicks"] as &[&str],
+                FocusCategory::Technical,
+            ),
+            (
+                "Corner Taking",
+                &["Technique", "Corners"],
+                FocusCategory::Technical,
+            ),
+            (
+                "Penalty Taking",
+                &["Technique", "PenaltyTaking"],
+                FocusCategory::Technical,
+            ),
+            ("Long Throws", &["LongThrows"], FocusCategory::Technical),
+            (
+                "Quickness",
+                &["Acceleration", "Pace"],
+                FocusCategory::Physical,
+            ),
+            (
+                "Agility and Balance",
+                &["Agility", "Balance"],
+                FocusCategory::Physical,
+            ),
+            (
+                "Strength",
+                &["JumpingReach", "Strength"],
+                FocusCategory::Physical,
+            ),
+            (
+                "Endurance",
+                &["WorkRate", "Stamina"],
+                FocusCategory::Physical,
+            ),
             (
                 "GK Reactions",
                 &["Reflexes", "Anticipation", "Concentration"],
+                FocusCategory::Mental,
             ),
             (
                 "GK Tactical",
                 &["Communication", "Decisions", "Positioning"],
+                FocusCategory::Mental,
             ),
-            ("GK Technique", &["Handling", "Composure", "Technique"]),
-            ("GK Sweeping", &["CommandOfArea", "OneOnOnes", "RushingOut"]),
-            ("GK Distribution (Long)", &["Kicking", "Throwing"]),
+            (
+                "GK Technique",
+                &["Handling", "Composure", "Technique"],
+                FocusCategory::Technical,
+            ),
+            (
+                "GK Sweeping",
+                &["CommandOfArea", "OneOnOnes", "RushingOut"],
+                FocusCategory::Mental,
+            ),
+            (
+                "GK Distribution (Long)",
+                &["Kicking", "Throwing"],
+                FocusCategory::Technical,
+            ),
             (
                 "GK Distribution (Short)",
                 &["FirstTouch", "Passing", "Vision"],
+                FocusCategory::Technical,
             ),
         ];
-        assert_eq!(GOALKEEPER_FOCUSES, expected_goalkeeper);
+        assert_eq!(GOALKEEPER_FOCUSES.len(), expected_goalkeeper.len());
+        for (focus, (name, attributes, category)) in
+            GOALKEEPER_FOCUSES.iter().zip(expected_goalkeeper)
+        {
+            assert_eq!(
+                (focus.name, focus.attributes, focus.category),
+                (name, attributes, category)
+            );
+        }
     }
 
     #[test]
     fn every_mapped_key_is_a_known_dump_key() {
-        for (focus, keys) in OUTFIELD_FOCUSES.iter().chain(GOALKEEPER_FOCUSES.iter()) {
-            for key in *keys {
+        for focus in OUTFIELD_FOCUSES.iter().chain(GOALKEEPER_FOCUSES.iter()) {
+            for key in focus.attributes {
                 assert!(
                     DUMP_ATTRIBUTE_KEYS.contains(key),
-                    "focus `{focus}` maps unknown attribute `{key}`"
+                    "focus `{}` maps unknown attribute `{key}`",
+                    focus.name
                 );
             }
         }
