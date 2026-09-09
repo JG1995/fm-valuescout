@@ -372,7 +372,7 @@ mod tests {
 
     use super::{PreparedStaffBoost, StaffBoostError};
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v8.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v9.json");
     const STAFF_UID: i64 = 88;
 
     fn seeded_staff(ca: i64, pa: i64) -> (tempfile::TempDir, Connection) {

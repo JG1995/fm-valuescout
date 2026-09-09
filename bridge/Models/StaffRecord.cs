@@ -39,5 +39,7 @@ public sealed record StaffRecord
 
     public string? Club { get; init; }
 
+    public uint? ClubUid { get; init; }
+
     public string? Division { get; init; }
 }

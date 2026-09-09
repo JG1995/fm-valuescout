@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-pub const DUMP_SCHEMA_VERSION: i64 = 8;
+pub const DUMP_SCHEMA_VERSION: i64 = 9;
 pub const DUMP_PROTOCOL_VERSION: i64 = 1;
 
 const POSITION_KEYS: &[&str] = &[
@@ -61,7 +61,9 @@ const REQUIRED_PLAYER_NULLABLE_KEYS: &[&str] = &[
     "setForRelease",
     "marketValueGbp",
     "currentClub",
+    "currentClubUid",
     "parentClub",
+    "parentClubUid",
     "onLoan",
     "division",
     "teamLevel",
@@ -82,6 +84,7 @@ const REQUIRED_STAFF_NULLABLE_KEYS: &[&str] = &[
     "contractExpiryYear",
     "contractExpiryDayOfYear",
     "club",
+    "clubUid",
     "division",
 ];
 
@@ -512,6 +515,16 @@ fn validate_player_object(player: &Value, index: usize) -> Result<u64, DumpValid
         &format!("players[{index}].parentClub"),
         "parentClub",
     )?;
+    require_nullable_positive_u64_at(
+        object,
+        &format!("players[{index}].currentClubUid"),
+        "currentClubUid",
+    )?;
+    require_nullable_positive_u64_at(
+        object,
+        &format!("players[{index}].parentClubUid"),
+        "parentClubUid",
+    )?;
     require_nullable_bool_at(object, &format!("players[{index}].onLoan"), "onLoan")?;
     require_nullable_string_at(object, &format!("players[{index}].division"), "division")?;
     require_nullable_string_at(object, &format!("players[{index}].teamLevel"), "teamLevel")?;
@@ -603,6 +616,7 @@ fn validate_staff_object(staff: &Value, index: usize) -> Result<u64, DumpValidat
         "contractExpiryDayOfYear",
     )?;
     require_nullable_string_at(object, &format!("staff[{index}].club"), "club")?;
+    require_nullable_positive_u64_at(object, &format!("staff[{index}].clubUid"), "clubUid")?;
     require_nullable_string_at(object, &format!("staff[{index}].division"), "division")?;
 
     Ok(uid)
@@ -627,6 +641,7 @@ fn validate_manager(
     let uid = require_u64(object, "manager.uid", "uid")?;
     require_non_empty_string_at(object, "manager.name", "name")?;
     require_nullable_string_at(object, "manager.club", "club")?;
+    require_nullable_positive_u64_at(object, "manager.clubUid", "clubUid")?;
     require_nullable_i64_at(object, "manager.clubReputation", "clubReputation")?;
     if !staff_uids.contains(&uid) {
         return Err(DumpValidationError::ManagerNotInStaff { uid });
@@ -897,6 +912,22 @@ fn require_nullable_i64_at(
     }
 }
 
+fn require_nullable_positive_u64_at(
+    object: &serde_json::Map<String, Value>,
+    display_field: &str,
+    key: &str,
+) -> Result<(), DumpValidationError> {
+    match object.get(key) {
+        Some(Value::Null) => Ok(()),
+        Some(Value::Number(number)) if number.as_u64().is_some_and(|value| value > 0) => Ok(()),
+        Some(_) => Err(DumpValidationError::WrongType {
+            field: display_field.to_string(),
+            detail: "expected positive integer or null".to_string(),
+        }),
+        None => Err(DumpValidationError::MissingField(display_field.to_string())),
+    }
+}
+
 fn require_nullable_u64_at(
     object: &serde_json::Map<String, Value>,
     display_field: &str,
@@ -1121,20 +1152,58 @@ fn require_object_at(
 mod tests {
     use super::*;
 
-    const GOLDEN_FIXTURE: &str = include_str!("fixtures/golden_dump_v8.json");
+    const GOLDEN_FIXTURE: &str = include_str!("fixtures/golden_dump_v9.json");
+    const STALE_V8_FIXTURE: &str = include_str!("fixtures/golden_dump_v8.json");
     const STALE_V7_FIXTURE: &str = include_str!("fixtures/golden_dump_v7.json");
     const STALE_V6_FIXTURE: &str = include_str!("fixtures/golden_dump_v6.json");
     const STALE_V5_FIXTURE: &str = include_str!("fixtures/golden_dump_v5.json");
 
     fn fixture_with_positions(positions: Value) -> String {
-        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v8 fixture");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
         root["players"][0]["positions"] = positions;
         root.to_string()
     }
 
     #[test]
     fn golden_fixture_passes_ingestibility_validation() {
-        validate_dump_json(GOLDEN_FIXTURE).expect("golden dump v8 should be ingestible");
+        validate_dump_json(GOLDEN_FIXTURE).expect("golden dump v9 should be ingestible");
+    }
+
+    #[test]
+    fn accepts_nullable_club_uids_and_rejects_non_positive_values() {
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
+        root["players"][0]["currentClubUid"] = Value::Null;
+        root["players"][0]["parentClubUid"] = Value::Null;
+        root["staff"][0]["clubUid"] = Value::Null;
+        root["manager"]["clubUid"] = Value::Null;
+        validate_dump_value(&root).expect("null club UIDs should validate");
+
+        for (path, value) in [
+            ("currentClubUid", Value::from(0)),
+            ("parentClubUid", Value::from(-1)),
+        ] {
+            let mut invalid = root.clone();
+            invalid["players"][0][path] = value;
+            let error = validate_dump_value(&invalid).expect_err("non-positive club UID");
+            assert!(
+                matches!(error, DumpValidationError::WrongType { field, .. } if field == format!("players[0].{path}"))
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_stale_schema_v8_with_plugin_update_and_rescan_instruction() {
+        let error = validate_dump_json(STALE_V8_FIXTURE).expect_err("stale schema v8");
+        assert!(error
+            .to_string()
+            .contains("update the FM bridge plugin and rescan"));
+        assert!(matches!(
+            error,
+            DumpValidationError::UnsupportedSchemaVersion {
+                found: 8,
+                expected: 9
+            }
+        ));
     }
 
     #[test]
@@ -1148,7 +1217,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 7,
-                expected: 8
+                expected: 9
             }
         ));
     }
@@ -1164,7 +1233,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 6,
-                expected: 8
+                expected: 9
             }
         ));
     }
@@ -1180,14 +1249,14 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 5,
-                expected: 8
+                expected: 9
             }
         ));
     }
 
     #[test]
     fn rejects_unsupported_schema_version() {
-        let json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 8", "\"schemaVersion\": 4");
+        let json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 9", "\"schemaVersion\": 4");
 
         let error = validate_dump_json(&json).expect_err("schema v4");
 
@@ -1195,7 +1264,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 4,
-                expected: 8
+                expected: 9
             }
         ));
     }
@@ -1295,7 +1364,7 @@ mod tests {
     #[test]
     fn rejects_empty_players_without_empty_save_marker() {
         let json = r#"{
-  "schemaVersion": 8,
+  "schemaVersion": 9,
   "generatedAtUtc": "2026-07-29T10:00:00.000Z",
   "gameVersion": "26.3.2",
   "supportedGameVersion": "26.3",
@@ -1321,7 +1390,7 @@ mod tests {
     #[test]
     fn accepts_explicit_empty_save_marker() {
         let json = r#"{
-  "schemaVersion": 8,
+  "schemaVersion": 9,
   "generatedAtUtc": "2026-07-29T10:00:00.000Z",
   "gameVersion": "26.3.2",
   "supportedGameVersion": "26.3",
@@ -1372,8 +1441,12 @@ mod tests {
 
     #[test]
     fn rejects_player_missing_reputation_object() {
-        let json =
-            GOLDEN_FIXTURE.replace("\"reputation\": { \"current\": 120, \"world\": 110 },", "");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
+        root["players"][0]
+            .as_object_mut()
+            .expect("player object")
+            .remove("reputation");
+        let json = root.to_string();
 
         let error = validate_dump_json(&json).expect_err("missing reputation");
 

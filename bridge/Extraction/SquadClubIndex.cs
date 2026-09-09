@@ -8,6 +8,8 @@ public sealed class SquadAssignment
 {
     public string ClubName { get; init; } = "";
 
+    public uint? ClubUid { get; init; }
+
     public int TeamType { get; init; }
 
     /// <summary>Raw reputation of the selected squad team; null when unread or invalid.</summary>
@@ -20,6 +22,8 @@ public sealed class SquadAssignment
 public sealed class HumanManagerClubAssignment
 {
     public string ClubName { get; init; } = "";
+
+    public uint? ClubUid { get; init; }
 
     public int? TeamType { get; init; }
 
@@ -135,6 +139,7 @@ public sealed class SquadClubIndex
             assignment = new HumanManagerClubAssignment
             {
                 ClubName = hit.ClubName,
+                ClubUid = hit.ClubUid,
                 TeamType = hit.TeamType,
                 TeamReputation = hit.TeamReputation,
             };
@@ -203,6 +208,7 @@ public sealed class SquadClubIndex
                     managerAddress,
                     new HumanManagerHit(
                         clubName,
+                        TryReadPositiveUid(reader, club, layout.ObjectUidOffset),
                         discoveredTeamType,
                         teamReputation,
                         team));
@@ -218,6 +224,7 @@ public sealed class SquadClubIndex
                 teamType,
                 teamReputation,
                 division,
+                TryReadPositiveUid(reader, club, layout.ObjectUidOffset),
                 personToUid,
                 parentClubByUid,
                 index);
@@ -232,6 +239,7 @@ public sealed class SquadClubIndex
         int teamType,
         int? teamReputation,
         string? division,
+        uint? clubUid,
         IReadOnlyDictionary<ulong, uint> personToUid,
         IReadOnlyDictionary<uint, string?> parentClubByUid,
         SquadClubIndex index)
@@ -266,7 +274,7 @@ public sealed class SquadClubIndex
             }
 
             parentClubByUid.TryGetValue(uid, out var parent);
-            var candidate = new SquadHit(clubName, teamType, division, teamReputation);
+            var candidate = new SquadHit(clubName, teamType, division, teamReputation, clubUid);
             if (!index._assignments.TryGetValue(uid, out var cur))
             {
                 index._assignments[uid] = ToAssignment(candidate);
@@ -277,7 +285,8 @@ public sealed class SquadClubIndex
                 cur.ClubName,
                 cur.TeamType,
                 cur.Division,
-                cur.TeamReputation);
+                cur.TeamReputation,
+                cur.ClubUid);
             var chosen = SquadPick.Choose(currentHit, candidate, parent);
             if (currentHit.ClubName != candidate.ClubName
                 && index.MultiClubUids.Add(uid)
@@ -297,6 +306,7 @@ public sealed class SquadClubIndex
         new()
         {
             ClubName = hit.ClubName,
+            ClubUid = hit.ClubUid,
             TeamType = hit.TeamType,
             TeamReputation = hit.TeamReputation,
             Division = hit.Division,
@@ -372,6 +382,15 @@ public sealed class SquadClubIndex
             votes[norm] = n + 1;
             return;
         }
+    }
+
+    private static uint? TryReadPositiveUid(IMemoryReader reader, ulong address, int offset)
+    {
+        return TryAdd(address, offset, out var fieldAddress)
+            && reader.TryReadUInt32(fieldAddress, out var uid)
+            && uid > 0
+            ? uid
+            : null;
     }
 
     private static bool TryReadPointerAt(
@@ -462,6 +481,7 @@ public sealed class SquadClubIndex
 
     private readonly record struct HumanManagerHit(
         string ClubName,
+        uint? ClubUid,
         int? TeamType,
         int? TeamReputation,
         ulong TeamAddress);

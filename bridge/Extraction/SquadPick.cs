@@ -5,7 +5,8 @@ public readonly record struct SquadHit(
     string ClubName,
     int TeamType,
     string? Division,
-    int? TeamReputation = null);
+    int? TeamReputation = null,
+    uint? ClubUid = null);
 
 /// <summary>
 /// Deterministic multi-squad conflict rules (SuperScout PickSquad).

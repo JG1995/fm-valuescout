@@ -40,6 +40,7 @@ public static class StaffReader
             ContractExpiryYear = contract.ContractExpiryYear,
             ContractExpiryDayOfYear = contract.ContractExpiryDayOfYear,
             Club = clubLink?.ClubName,
+            ClubUid = clubLink?.ClubUid,
             Division = clubLink?.Division,
         };
     }

@@ -869,7 +869,7 @@ mod tests {
     use crate::features::player::service::prepare_current_ability_boost_for_test;
     use crate::features::snapshot::ingest::ingest_dump_file;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v8.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v9.json");
 
     fn seeded_db(ca: i64, pa: i64) -> (tempfile::TempDir, Db) {
         let temp_dir = tempfile::tempdir().expect("temp dir");

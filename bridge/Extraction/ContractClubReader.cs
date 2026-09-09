@@ -9,6 +9,8 @@ public sealed class ContractClubLink
 
     public ulong TeamAddress { get; init; }
 
+    public uint? ClubUid { get; init; }
+
     public string? ClubName { get; init; }
 
     public string? Division { get; init; }
@@ -62,6 +64,7 @@ public static class ContractClubReader
         {
             ClubAddress = club,
             TeamAddress = team,
+            ClubUid = TryReadPositiveUid(reader, club, layout.ObjectUidOffset),
             ClubName = ClubNameReader.TryRead(reader, club, layout),
             Division = CompetitionNameReader.TryRead(reader, team, layout),
             TeamReputation = rep,
@@ -77,6 +80,15 @@ public static class ContractClubReader
         value = 0;
         return TryAdd(address, offset, out var fieldAddress)
             && reader.TryReadUInt64(fieldAddress, out value);
+    }
+
+    private static uint? TryReadPositiveUid(IMemoryReader reader, ulong address, int offset)
+    {
+        return TryAdd(address, offset, out var fieldAddress)
+            && reader.TryReadUInt32(fieldAddress, out var uid)
+            && uid > 0
+            ? uid
+            : null;
     }
 
     private static bool TryReadUInt16At(

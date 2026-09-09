@@ -126,7 +126,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 #### Commit 1 — Record the approved feature plan
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(graphics): record local FM graphics plan`
 
@@ -171,7 +171,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 #### Commit 2 — Upgrade dumps to schema v9 and persist nullable club UIDs
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(memory-read): persist nullable club UIDs`
 
@@ -605,21 +605,22 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 **PR:** PR 1 — Persist FM club identity
 
-**Commit:** Record the approved feature plan
+**Commit:** Upgrade dumps to schema v9 and persist nullable club UIDs
 
 ### RED or removal proof
 
-Not applicable — independently reviewed planning documents only. Run the ledger classifier and inspect the planning diff.
+Add fake-memory and canonical v9 fixture tests first. Confirm that they fail because club UIDs, schema v9 validation, migration v44, and raw persistence do not exist.
 
 ### Expected outcome
 
-A reviewed schema-2 JAY-63 ledger records two short-lived PRs and ten maximally atomic commits. TODO has one matching Active link. No implementation or Git state changes occur in planning.
+New v9 dumps carry nullable player, staff, and manager club-object UIDs from `club + ObjectUidOffset`; Rust rejects v8 as stale and stores valid nullable IDs atomically through migration v44. Existing database rows remain readable with null IDs.
 
 ### Explicit exclusions
 
-- `.wiki/features/completed/refine-suggested-training.md`
-- `.wiki/features/completed/retire-obsolete-load-data-controls.md`
-- All implementation, test, executable, staging, commit, branch, publication, merge, synchronization, release, ADR, and BACKLOG changes.
+- Downstream read DTOs, frontend types, mocks, and UI.
+- Managed-club UID binding and graphics runtime or presentation.
+- Staff-facing imagery and name or team UID inference.
+- `.wiki/features/completed/refine-suggested-training.md` and `.wiki/features/completed/retire-obsolete-load-data-controls.md`.
 
 ## Discoveries and replanning
 
@@ -631,6 +632,7 @@ A reviewed schema-2 JAY-63 ledger records two short-lived PRs and ten maximally 
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — Persist FM club identity | Commit 1 — Record the approved feature plan | 810a242b788986750edad38c776748e6b1b03b60 | Recorded the reviewed schema-2 JAY-63 ledger and its one Active TODO link without changing executable behavior. | `ledger_state.py` and `delivery_state.py` reported runnable with the accepted fingerprint; exact cached stat and diff were inspected; `git diff --cached --check` passed. | Not applicable | Clear | 0 | None |
 
 ## Final validation
 

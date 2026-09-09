@@ -398,7 +398,7 @@ mod tests {
 
     fn ingest_current_player(conn: &mut Connection) -> i64 {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/features/memory_read/fixtures/golden_dump_v8.json");
+            .join("src/features/memory_read/fixtures/golden_dump_v9.json");
         ingest_dump_file(conn, &path).expect("ingest fixture").id
     }
 

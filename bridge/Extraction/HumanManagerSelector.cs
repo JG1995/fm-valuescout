@@ -41,12 +41,14 @@ public static class HumanManagerSelector
             return null;
         }
 
+        var club = selected.GraphClub;
         return new HumanManager
         {
             Uid = selected.Candidate.Uid,
             Name = selected.Staff.Name!,
-            Club = selected.GraphClub?.ClubName ?? selected.ContractClub?.ClubName,
-            ClubReputation = selected.GraphClub?.TeamReputation ?? selected.ContractClub?.TeamReputation,
+            Club = club is not null ? club.ClubName : selected.ContractClub?.ClubName,
+            ClubUid = club is not null ? club.ClubUid : selected.ContractClub?.ClubUid,
+            ClubReputation = club is not null ? club.TeamReputation : selected.ContractClub?.TeamReputation,
         };
     }
 
