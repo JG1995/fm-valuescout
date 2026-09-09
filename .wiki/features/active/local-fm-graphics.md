@@ -98,7 +98,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** <https://github.com/JG1995/fm-valuescout/pull/140>
 
 **Merge ref:** Not merged
 
