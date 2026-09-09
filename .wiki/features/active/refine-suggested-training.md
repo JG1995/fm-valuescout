@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -105,7 +105,7 @@ Refine the read-time Suggested Training recommendation so its focus matches a de
 
 ### PR 1 — Refine Suggested Training
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -245,7 +245,7 @@ Refine the read-time Suggested Training recommendation so its focus matches a de
 
 #### Commit 3 — Tailor suggestions to player age
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(training): tailor suggestions to player age`
 
@@ -308,21 +308,23 @@ Refine the read-time Suggested Training recommendation so its focus matches a de
 
 ## Active work
 
-**PR:** Refine Suggested Training
+**PR:** PR 1 — Refine Suggested Training
 
-**Commit:** Tailor suggestions to player age
+**Active work:** None — feature validation
+
+**Commit:** None — feature validation
 
 ### RED or removal proof
 
-Add pure-engine boundary and strict selected-category evaluability tests plus isolated page-level poisoned fixtures. Current code must fail because it has no age-category decision, resolves assignments before eligibility gates, and loads fallback inputs for every unassigned developing row regardless of age.
+Not applicable — all three planned packets completed deterministic validation and independent checkpoint review. Feature-level validation, feature review, and documentation reconciliation remain pending.
 
 ### Expected outcome
 
-Developing players receive suggestions only from the exact category for their age. `CA >= PA`, null age, and age 29 or older return no suggestion before assignment or fallback work, while eligible assigned and unassigned behavior retains the established ranking and fallback rules.
+Run the complete feature validation portfolio, review the exact recorded implementation set, reconcile the deferred early-fallback architecture wording, archive the completed ledger, and prepare the final PR for publication.
 
 ### Explicit exclusions
 
-No frontend, DTO, schema, migration, persistence, IPC, sorting, layout, training-action, tactic, assignment, or fallback-ranking changes belong to this commit.
+Release preparation and unrelated implementation or documentation.
 
 ## Discoveries and replanning
 
@@ -334,7 +336,8 @@ No frontend, DTO, schema, migration, persistence, IPC, sorting, layout, training
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Refine Suggested Training | Commit 1 — Record the approved feature plan | 06e5266409112bad31560b44fa2514d0cab5afbf | Recorded the reviewed schema 2 ledger and TODO activation without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed; pre-commit `check-fast`: passed. | Not applicable | Clear | 0 | None. |
-| PR 1 — Refine Suggested Training | Commit 2 — Classify suggested training focuses | Pending record | Replaced tuple-only inventories with one typed, categorized focus catalog while preserving unrestricted ranking behavior. | RED failed on absent category metadata; 10 focused tests passed; `./scripts/dev check-rust`: 805 passed, 2 ignored; Rust LSP and `git diff --check`: passed. | Pass | Clear | 1 | Review correction added complete-length catalog proof, removed a redundant category test, and narrowed catalog visibility. |
+| PR 1 — Refine Suggested Training | Commit 2 — Classify suggested training focuses | 4346ca4e6ccae3fdcb1f5b5fce1bdd972be6a882 | Replaced tuple-only inventories with one typed, categorized focus catalog while preserving unrestricted ranking behavior. | RED failed on absent category metadata; 10 focused tests passed; `./scripts/dev check-rust`: 805 passed, 2 ignored; Rust LSP and `git diff --check`: passed. | Pass | Clear | 1 | Review correction added complete-length catalog proof, removed a redundant category test, and narrowed catalog visibility. |
+| PR 1 — Refine Suggested Training | Commit 3 — Tailor suggestions to player age | Pending record | Applied exact age-category ranking and early CA/PA and age gates while preserving eligible assigned and fallback lane behavior and the string-or-null read contract. | Initial `check-rust` failed while age-aware call sites were incomplete; `./scripts/dev check-rust` and `./scripts/dev check`: 809 passed, 2 ignored; Rust LSP and `git diff --check`: passed. | Pass | Clear | 0 | MEDIUM deferred to feature close-out: document that ineligible unassigned rows are excluded before fallback-input loading. The reported RED was a compile failure rather than behavioral proof; final focused and full-suite tests prove the shipped contract. |
 
 ## Final validation
 

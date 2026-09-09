@@ -16,6 +16,15 @@ pub(crate) enum FocusCategory {
     Mental,
 }
 
+pub(crate) fn category_for_age(age: Option<i64>) -> Option<FocusCategory> {
+    match age {
+        Some(age) if age < 21 => Some(FocusCategory::Physical),
+        Some(21..=24) => Some(FocusCategory::Technical),
+        Some(25..=28) => Some(FocusCategory::Mental),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TrainingFocus {
     name: &'static str,
@@ -192,13 +201,14 @@ pub fn is_goalkeeper_lane(lane: &TacticLane) -> bool {
 ///
 /// The best unrounded combined-score gain stays local to the ranking loop: it
 /// is never displayed or exported. Returns `None` when any attribute required
-/// by any focus in the applicable inventory is missing/null (no fallback
-/// focus), when a lane role is unknown, or when a lane-role required attribute
-/// is missing/null. All-zero gains still return the first inventory focus;
-/// ties keep inventory order via a strict `>` comparison.
+/// by a focus in the selected category is missing/null (no fallback focus),
+/// when a lane role is unknown, or when a lane-role required attribute is
+/// missing/null. All-zero gains still return the first category focus; ties
+/// keep inventory order via a strict `>` comparison.
 pub fn suggest_for_lane(
     attributes: &HashMap<String, Option<u8>>,
     lane: &TacticLane,
+    category: FocusCategory,
 ) -> Option<&'static str> {
     let focuses = if is_goalkeeper_lane(lane) {
         GOALKEEPER_FOCUSES
@@ -206,7 +216,14 @@ pub fn suggest_for_lane(
         OUTFIELD_FOCUSES
     };
 
-    for focus in focuses.iter() {
+    let focuses = focuses
+        .iter()
+        .filter(|focus| focus.category == category)
+        .collect::<Vec<_>>();
+    if focuses.is_empty() {
+        return None;
+    }
+    for focus in &focuses {
         for key in focus.attributes.iter() {
             attributes.get(*key).copied().flatten()?;
         }
@@ -218,7 +235,7 @@ pub fn suggest_for_lane(
     let baseline = blended_score(attributes, ip_role, oop_role, lane.ip_weight)?;
 
     let mut best: Option<(&'static str, f64)> = None;
-    for focus in focuses.iter() {
+    for focus in &focuses {
         let mut simulated = attributes.clone();
         for key in focus.attributes.iter() {
             if let Some(value) = simulated.get(*key).copied().flatten() {
@@ -258,7 +275,8 @@ mod tests {
     use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
 
     use super::{
-        is_goalkeeper_lane, suggest_for_lane, FocusCategory, GOALKEEPER_FOCUSES, OUTFIELD_FOCUSES,
+        category_for_age, is_goalkeeper_lane, suggest_for_lane, FocusCategory, GOALKEEPER_FOCUSES,
+        OUTFIELD_FOCUSES,
     };
     use crate::features::planner::tactic::TacticLane;
 
@@ -484,8 +502,12 @@ mod tests {
 
     #[test]
     fn ranking_picks_the_largest_unrounded_gain() {
-        let suggestion =
-            suggest_for_lane(&full_attributes(10), &centre_forward_lane()).expect("suggestion");
+        let suggestion = suggest_for_lane(
+            &full_attributes(10),
+            &centre_forward_lane(),
+            FocusCategory::Mental,
+        )
+        .expect("suggestion");
 
         assert_eq!(suggestion, "Attacking Movement");
     }
@@ -507,11 +529,11 @@ mod tests {
         );
 
         assert_eq!(
-            suggest_for_lane(&attributes, &oop_only),
+            suggest_for_lane(&attributes, &oop_only, FocusCategory::Mental),
             Some("Attacking Movement")
         );
         assert_eq!(
-            suggest_for_lane(&attributes, &ip_only),
+            suggest_for_lane(&attributes, &ip_only, FocusCategory::Technical),
             Some("Ball Control")
         );
     }
@@ -520,11 +542,12 @@ mod tests {
     fn goalkeeper_lane_uses_the_goalkeeper_inventory() {
         let attributes = full_attributes(10);
 
-        let gk = suggest_for_lane(&attributes, &goalkeeper_lane()).expect("gk suggestion");
+        let gk = suggest_for_lane(&attributes, &goalkeeper_lane(), FocusCategory::Mental)
+            .expect("gk suggestion");
         assert_eq!(gk, "GK Reactions");
 
-        let outfield =
-            suggest_for_lane(&attributes, &centre_forward_lane()).expect("outfield suggestion");
+        let outfield = suggest_for_lane(&attributes, &centre_forward_lane(), FocusCategory::Mental)
+            .expect("outfield suggestion");
         assert_eq!(outfield, "Attacking Movement");
 
         assert!(is_goalkeeper_lane(&goalkeeper_lane()));
@@ -542,29 +565,47 @@ mod tests {
             0.5,
         );
 
-        assert_eq!(suggest_for_lane(&attributes, &lane), None);
+        assert_eq!(
+            suggest_for_lane(&attributes, &lane, FocusCategory::Mental),
+            None
+        );
     }
 
     #[test]
-    fn missing_any_inventory_attribute_blanks_the_whole_suggestion() {
+    fn missing_selected_category_attribute_blanks_the_suggestion() {
         let mut attributes = full_attributes(10);
         attributes.insert("Corners".to_string(), None);
 
-        assert_eq!(suggest_for_lane(&attributes, &centre_forward_lane()), None);
+        assert_eq!(
+            suggest_for_lane(
+                &attributes,
+                &centre_forward_lane(),
+                FocusCategory::Technical
+            ),
+            None
+        );
     }
 
     #[test]
     fn all_maxed_attributes_return_the_first_focus() {
-        let suggestion =
-            suggest_for_lane(&full_attributes(20), &centre_forward_lane()).expect("suggestion");
+        let suggestion = suggest_for_lane(
+            &full_attributes(20),
+            &centre_forward_lane(),
+            FocusCategory::Technical,
+        )
+        .expect("suggestion");
 
         assert_eq!(suggestion, "Free Kick Taking");
     }
 
     #[test]
     fn ranking_adapts_when_the_best_focus_attributes_are_maxed() {
-        let suggestion =
-            suggest_for_lane(&full_attributes(10), &centre_forward_lane()).expect("suggestion");
+        let suggestion = suggest_for_lane(
+            &full_attributes(10),
+            &centre_forward_lane(),
+            FocusCategory::Mental,
+        )
+        .expect("suggestion");
         assert_eq!(suggestion, "Attacking Movement");
 
         let mut attributes = full_attributes(10);
@@ -577,14 +618,44 @@ mod tests {
         ] {
             attributes.insert(key.to_string(), Some(20));
         }
-        let suggestion = suggest_for_lane(&attributes, &centre_forward_lane()).expect("suggestion");
+        let suggestion = suggest_for_lane(
+            &attributes,
+            &centre_forward_lane(),
+            FocusCategory::Technical,
+        )
+        .expect("suggestion");
         assert_eq!(suggestion, "Shooting");
+    }
+
+    #[test]
+    fn age_categories_have_strict_boundaries() {
+        assert_eq!(category_for_age(Some(20)), Some(FocusCategory::Physical));
+        assert_eq!(category_for_age(Some(21)), Some(FocusCategory::Technical));
+        assert_eq!(category_for_age(Some(24)), Some(FocusCategory::Technical));
+        assert_eq!(category_for_age(Some(25)), Some(FocusCategory::Mental));
+        assert_eq!(category_for_age(Some(28)), Some(FocusCategory::Mental));
+        assert_eq!(category_for_age(Some(29)), None);
+        assert_eq!(category_for_age(None), None);
+    }
+
+    #[test]
+    fn missing_selected_category_attribute_returns_none() {
+        let mut attributes = full_attributes(10);
+        attributes.insert("Acceleration".to_string(), None);
+
+        assert_eq!(
+            suggest_for_lane(&attributes, &centre_forward_lane(), FocusCategory::Physical),
+            None
+        );
     }
 
     #[test]
     fn unknown_lane_roles_return_none() {
         let lane = lane("centre_forward", "not_a_role_ip", "not_a_role_oop", 0.5);
 
-        assert_eq!(suggest_for_lane(&full_attributes(10), &lane), None);
+        assert_eq!(
+            suggest_for_lane(&full_attributes(10), &lane, FocusCategory::Mental),
+            None
+        );
     }
 }

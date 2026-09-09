@@ -4,7 +4,7 @@ use serde_json::json;
 use super::squad::{list_squad_players, SquadSortDir, SquadSortField, DEFAULT_SQUAD_PAGE_LIMIT};
 use super::test_support::{
     add_picker_candidates, clear_current_scores_except, current_snapshot_id, open_with_snapshot,
-    set_player_attributes, set_player_positions, set_role_score,
+    set_player_age, set_player_attributes, set_player_positions, set_role_score,
 };
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION, potential_scores::PROJECTION_MODEL_VERSION,
@@ -1248,6 +1248,7 @@ fn unassigned_player_falls_back_to_the_best_current_lane() {
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
         .expect("seed tactic");
+    set_player_age(&conn, save_id, 77, Some(25));
     seed_two_lane_fallback(&conn, save_id, 77);
     deny_suggestion_writes(&conn);
 
@@ -1270,6 +1271,8 @@ fn explicit_assignment_wins_over_a_better_fallback_lane() {
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
         .expect("seed tactic");
+    set_player_age(&conn, save_id, 77, Some(25));
+    set_player_age(&conn, save_id, 78, Some(25));
     seed_two_lane_fallback(&conn, save_id, 77);
     seed_two_lane_fallback(&conn, save_id, 78);
     assign_lane(&conn, save_id, "goalkeeper", 77);
@@ -1300,6 +1303,7 @@ fn attaches_ranked_suggestion_for_the_assigned_lane_only() {
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
         .expect("seed tactic");
+    set_player_age(&conn, save_id, 77, Some(25));
     set_player_attributes(&conn, save_id, 77, &full_attributes_json(10));
     conn.execute(
         "UPDATE players SET ca = 160, pa = 170
@@ -1398,6 +1402,61 @@ fn fully_developed_players_carry_no_suggestion_while_developing_control_keeps_fo
 }
 
 #[test]
+fn eligibility_gates_precede_unknown_assigned_lane_lookup() {
+    for (ca, pa, age) in [(150, 150, Some(25)), (120, 150, None), (120, 150, Some(29))] {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
+            .expect("seed tactic");
+        set_player_age(&conn, save_id, 77, age);
+        set_player_attributes(&conn, save_id, 77, &full_attributes_json(10));
+        conn.execute(
+            "UPDATE players SET ca = ?1, pa = ?2 WHERE snapshot_id = ?3 AND uid = 77",
+            params![ca, pa, current_snapshot_id(&conn, save_id)],
+        )
+        .expect("set eligibility values");
+        assign_lane(&conn, save_id, "not_a_tactic_lane", 77);
+        deny_suggestion_writes(&conn);
+
+        let page = squad_page(&conn, save_id);
+        assert_eq!(
+            page.players
+                .iter()
+                .find(|player| player.uid == 77)
+                .expect("gated player")
+                .suggested_training,
+            None
+        );
+    }
+}
+
+#[test]
+fn age_ineligible_unassigned_player_skips_corrupt_fallback_input() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
+        .expect("seed tactic");
+    set_player_age(&conn, save_id, 77, Some(29));
+    conn.execute(
+        "UPDATE players SET ca = 120, pa = 150, positions_json = 'not json'
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![current_snapshot_id(&conn, save_id)],
+    )
+    .expect("set age-ineligible player");
+    deny_suggestion_writes(&conn);
+
+    let page = squad_page(&conn, save_id);
+    assert_eq!(
+        page.players
+            .iter()
+            .find(|player| player.uid == 77)
+            .expect("gated player")
+            .suggested_training,
+        None
+    );
+}
+
+#[test]
 fn tactic_less_save_yields_all_unassigned_without_seeding() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
@@ -1452,6 +1511,7 @@ fn missing_lane_role_attribute_yields_no_suggestion() {
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
         .expect("seed tactic");
+    set_player_age(&conn, save_id, 77, Some(25));
     set_player_attributes(&conn, save_id, 77, &attributes_nulling("AerialReach"));
     assign_lane(&conn, save_id, "goalkeeper", 77);
 
@@ -1466,11 +1526,12 @@ fn missing_lane_role_attribute_yields_no_suggestion() {
 }
 
 #[test]
-fn missing_inventory_attribute_has_no_fallback_focus() {
+fn missing_ineligible_category_attribute_does_not_blank_suggestion() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     super::tactic::save_tactic(&conn, save_id, &super::tactic::default_tactic())
         .expect("seed tactic");
+    set_player_age(&conn, save_id, 77, Some(20));
     set_player_attributes(&conn, save_id, 77, &attributes_nulling("Corners"));
     assign_lane(&conn, save_id, "centre_forward", 77);
 
@@ -1481,7 +1542,7 @@ fn missing_inventory_attribute_has_no_fallback_focus() {
         .iter()
         .find(|player| player.uid == 77)
         .expect("assigned player");
-    assert_eq!(player.suggested_training, None);
+    assert_eq!(player.suggested_training.as_deref(), Some("Quickness"));
 }
 
 #[test]
