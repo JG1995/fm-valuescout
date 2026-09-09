@@ -210,7 +210,7 @@ describe("app top bar", () => {
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
-  it("sends unlimited maxAccepted", async () => {
+  it("sends a context-bound request without maxAccepted", async () => {
     const user = userEvent.setup();
     renderWithProviders();
 
@@ -218,7 +218,9 @@ describe("app top bar", () => {
     await screen.findByText(/Loaded 3 players into the database/i);
 
     const args = getLastLoadDataIpcArgs() as Record<string, unknown>;
-    expect(args).toMatchObject({ maxAccepted: null });
+    expect(args.saveId).toBe(1);
+    expect(args.contextToken).toBe("save-token-1");
+    expect(args.maxAccepted).toBeUndefined();
     expect(args.onProgress).toBeDefined();
     expect(typeof args.onProgress).toBe("object");
   });

@@ -25,14 +25,13 @@ describe("loadData API", () => {
 
     const onProgress = vi.fn();
 
-    await loadData(123, 42, "tok-abc", onProgress);
+    await loadData(42, "tok-abc", onProgress);
 
     expect(invokeMock).toHaveBeenCalledWith(
       "load_data",
       expect.objectContaining({
         saveId: 42,
         contextToken: "tok-abc",
-        maxAccepted: 123,
         onProgress: expect.objectContaining({
           onmessage: onProgress,
         }),
@@ -86,20 +85,22 @@ describe("loadData API", () => {
     expect(onProgress).toHaveBeenNthCalledWith(5, events[4]);
   });
 
-  it("passes null maxAccepted with channel when cap is off", async () => {
+  it("omits maxAccepted from the IPC request", async () => {
     const invokeMock = vi.mocked(tauriClient.invokeCommand);
     invokeMock.mockResolvedValue({} as never);
 
-    await loadData(null, 1, "save-token-1", vi.fn());
+    await loadData(1, "save-token-1", vi.fn());
 
     expect(invokeMock).toHaveBeenCalledWith(
       "load_data",
       expect.objectContaining({
         saveId: 1,
         contextToken: "save-token-1",
-        maxAccepted: null,
         onProgress: expect.any(Object),
       }),
     );
+    expect(
+      (invokeMock.mock.calls[0][1] as Record<string, unknown>).maxAccepted,
+    ).toBeUndefined();
   });
 });

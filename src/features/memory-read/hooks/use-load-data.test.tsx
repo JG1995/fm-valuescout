@@ -84,7 +84,7 @@ describe("useLoadData", () => {
     setLoadDataIpcMockMode("busy");
 
     const mutatePromise = act(async () => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
 
     await act(async () => {
@@ -149,7 +149,7 @@ describe("useLoadData", () => {
     setLoadDataIpcMockMode("busy");
 
     act(() => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
 
     await act(async () => {
@@ -245,7 +245,7 @@ describe("useLoadData", () => {
     setLoadDataIpcMockMode("ingestFailed");
 
     await act(async () => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
@@ -311,7 +311,7 @@ describe("useLoadData", () => {
     setLoadDataIpcMockMode("success");
 
     await act(async () => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -374,7 +374,7 @@ describe("useLoadData", () => {
     );
 
     await act(async () => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -427,7 +427,7 @@ describe("useLoadData", () => {
     setLoadDataIpcMockMode("busy");
 
     act(() => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
 
     await act(async () => {
@@ -539,7 +539,7 @@ describe("useLoadData", () => {
 
     setLoadDataIpcMockMode("busy");
     act(() => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
@@ -644,7 +644,7 @@ describe("useLoadData", () => {
 
     setLoadDataIpcMockMode("busy");
     act(() => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
@@ -719,7 +719,7 @@ describe("useLoadData", () => {
 
     setLoadDataIpcMockMode("busy");
     act(() => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
@@ -786,7 +786,7 @@ describe("useLoadData", () => {
     setLoadDataIpcMockMode("busy");
 
     act(() => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
 
     await act(async () => {
@@ -844,7 +844,7 @@ describe("useLoadData", () => {
 
     setLoadDataIpcMockMode("busy");
     act(() => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
@@ -953,7 +953,7 @@ describe("useLoadData", () => {
 
     setLoadDataIpcMockMode("busy");
     act(() => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
@@ -1016,7 +1016,7 @@ describe("useLoadData", () => {
 
     setLoadDataIpcMockMode("busy");
     act(() => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
@@ -1139,7 +1139,7 @@ describe("useLoadData", () => {
 
     setLoadDataIpcMockMode("busy");
     act(() => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
@@ -1289,7 +1289,7 @@ describe("useLoadData", () => {
 
     setLoadDataIpcMockMode("busy");
     act(() => {
-      result.current.mutate(null);
+      result.current.mutate();
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));

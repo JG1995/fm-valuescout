@@ -24,7 +24,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Client UI state:** Zustand v5 (modals, layout chrome, selections not in the URL). `useMoneyballPreferences` persists the app-local Player Search default; the saved General value maps to Profile Overview and the saved Moneyball value maps to Profile Moneyball. Player and staff shortlist filter flags live in URL state; shortlist membership remains save-owned and is not client UI state.
 
-**Styling:** Tailwind CSS v4 via `@tailwindcss/vite`; design tokens bridge to [DESIGN.md](./DESIGN.md). IBM Plex Sans/Mono self-hosted via `@fontsource`; Lucide icons via `lucide-react`. Shared primitives in `src/components/ui/` (Button, Panel, StatusChip, EmptyState, TextField, SelectField, **Modal**, **ScoreBadge**). App shell: `AppTopBar` utility bar (**GlobalPlayerSearch**, active save, optional Load Data player-cap toggle/limit, **Load Data**, and a dismissible context-bound Load Data outcome) followed by `AppNavBar` grouped top navigation; `useLoadDataPreferences` persists the Load Data cap toggle and limit. Route workspaces size from the shell main area, so an outcome banner reduces available panel height instead of creating nested page scrolling. Player search results use **@tanstack/react-virtual** for row virtualization.
+**Styling:** Tailwind CSS v4 via `@tailwindcss/vite`; design tokens bridge to [DESIGN.md](./DESIGN.md). IBM Plex Sans/Mono self-hosted via `@fontsource`; Lucide icons via `lucide-react`. Shared primitives in `src/components/ui/` (Button, Panel, StatusChip, EmptyState, TextField, SelectField, **Modal**, **ScoreBadge**). App shell: `AppTopBar` utility bar (**GlobalPlayerSearch**, active save, **Load Data**, and a dismissible context-bound Load Data outcome) followed by `AppNavBar` grouped top navigation; the Load Data action always requests an unlimited scan. Route workspaces size from the shell main area, so an outcome banner reduces available panel height instead of creating nested page scrolling. Player search results use **@tanstack/react-virtual** for row virtualization.
 
 **Language:** TypeScript (strict) on the frontend; Rust on the backend
 
@@ -361,7 +361,7 @@ Product routes use feature-owned query and command paths. Each path follows the 
 ```text
 AppShellLayout (all routes via __root)
   → AppTopBar utility bar — Back, Forward, GlobalPlayerSearch (Ctrl+K / Meta+K), ActiveSaveSelect,
-                Load Data cap toggle/limit, Load Data + LoadDataOutcome banner
+                Load Data + LoadDataOutcome banner
   → AppNavBar — grouped Dashboard, Search, Moneyball, Staff Search, My Staff, Squad, Planner, Tactic, Youth, and Settings destinations
   → Main content — route Outlet (Dashboard, /search, /settings, …)
   → Skip link to #main-content on first Tab
@@ -437,9 +437,7 @@ The UID-only `boost_staff_current_ability` command uses a separate live staff ca
 User clicks Load Data (AppTopBar)
   → useLoadData mutation creates a typed Channel<LoadDataProgressDto> and captures
     activeSaveContext { id, contextToken } for this invocation
-  → invokeCommand("load_data", { maxAccepted, onProgress, saveId, contextToken })
-      maxAccepted omitted or null = unlimited (production default)
-      positive integer = diagnostic cap (UI toggle via useLoadDataPreferences)
+  → invokeCommand("load_data", { saveId, contextToken, onProgress })
       channel is command-scoped; backend sends invocation save ID/token with every event
   → Rust snapshot/commands::load_data (async, off the main thread):
       Acquire the load lease (`LOAD_GATE`, exclusive with boosts via `inProgress`, not with context switches) before checking whether the supplied save ID/token is still the active save; a concurrent load/boost conflict therefore rejects as `inProgress` before a stale-context `saveChanged`

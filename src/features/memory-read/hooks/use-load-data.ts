@@ -65,12 +65,7 @@ export function useLoadData(options: UseLoadDataOptions) {
     });
   };
 
-  const mutation = useMutation<
-    LoadDataResult,
-    Error,
-    number | null,
-    MutationContext
-  >({
+  const mutation = useMutation<LoadDataResult, Error, void, MutationContext>({
     onMutate: () => {
       const generation = ++generationRef.current;
       const revision = contextRevisionRef.current;
@@ -81,7 +76,7 @@ export function useLoadData(options: UseLoadDataOptions) {
       setProgress(null);
       return ctx;
     },
-    mutationFn: async (maxAccepted: number | null) => {
+    mutationFn: async () => {
       const generation = generationRef.current;
       const ctx = activeRequestRef.current;
       const captured = ctx?.captured ?? null;
@@ -103,12 +98,7 @@ export function useLoadData(options: UseLoadDataOptions) {
       if (!captured) {
         throw new Error("Save context is not available");
       }
-      return loadData(
-        maxAccepted,
-        captured.id,
-        captured.contextToken,
-        onProgress,
-      );
+      return loadData(captured.id, captured.contextToken, onProgress);
     },
     onSuccess: async (data, _variables, context) => {
       const ctx =

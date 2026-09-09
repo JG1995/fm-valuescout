@@ -213,7 +213,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 #### Commit 2 — Reconcile retired freshness documentation
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(snapshot): reconcile retired freshness metadata`
 
@@ -267,7 +267,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 #### Commit 3 — Remove cap from app IPC
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `refactor(load-data): remove cap from app IPC`
 
@@ -652,19 +652,19 @@ The planning commit establishes the ledger. The first implementation change corr
 
 **PR:** PR 1 — refactor(load-data): retire obsolete control support
 
-**Commit:** Commit 2 — Reconcile retired freshness documentation
+**Commit:** Commit 3 — Remove cap from app IPC
 
 ### RED or removal proof
 
-Compare the stale freshness claims in `.wiki/ARCHITECTURE.md` with the current top bar, snapshot DTOs, `SNAPSHOT_ORDER_BY`, and Snapshot Overview and History timestamp presentation.
+Identify the cap argument assertions in the app API, hook, top-bar, and Rust command tests. Preserve the positive full-load, progress, captured-context, invalidation, and rollback proofs.
 
 ### Expected outcome
 
-Architecture documentation no longer claims that the product has a snapshot-freshness chip. It continues to document timestamp persistence, presentation, and equal-game-date ordering.
+Clicking Load Data sends `saveId`, `contextToken`, and `onProgress` without `maxAccepted`. The public Tauri command accepts no cap argument and invokes the existing internal unlimited path.
 
 ### Explicit exclusions
 
-Player-cap documentation, executable code, tests, schemas, generated artifacts, and new freshness behavior.
+Rust request serialization, C# bridge behavior, scanner mechanics, transient result fields, persisted snapshot metadata, and unrelated UI changes.
 
 ## Discoveries and replanning
 
@@ -678,6 +678,7 @@ Player-cap documentation, executable code, tests, schemas, generated artifacts, 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 1 — Record the approved cleanup plan | 1d648730ff4132b5fbe95801a88a2f33acdb8905 | Recorded the reviewed schema 2 ledger and TODO Active entry without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable with the accepted fingerprint; `git diff --cached --check` and pre-commit `check-fast`: passed. | Not applicable | Clear | 0 | The unrelated completed-ledger formatting edit remained unstaged. |
+| PR 1 — refactor(load-data): retire obsolete control support | Commit 2 — Reconcile retired freshness documentation | 0bdbfe8794ea619d167de040809ae7e03fdc8d7c | Removed stale snapshot-freshness chip claims while retaining load-timestamp persistence, presentation, and equal-game-date ordering documentation. | `ledger_state.py`: runnable; `delivery_state.py`: runnable with the accepted fingerprint; `git diff --check` and pre-commit `check-fast`: passed. | Not applicable | Clear | 0 | None. |
 
 ## Final validation
 

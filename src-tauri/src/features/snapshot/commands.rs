@@ -604,7 +604,6 @@ where
 pub async fn load_data(
     save_id: i64,
     context_token: String,
-    max_accepted: Option<i32>,
     db: State<'_, Db>,
     on_progress: tauri::ipc::Channel<LoadDataProgressDto>,
 ) -> Result<LoadDataResultDto, LoadDataError> {
@@ -620,7 +619,7 @@ pub async fn load_data(
     execute_load_data_with(
         db.inner(),
         requested,
-        max_accepted,
+        None,
         |limit| load_data::scan_dump_from_local_app_data(DumpWaitConfig::default(), limit),
         load_data::prepare_raw_for_publish,
         load_data::score_raw_for_publish,
