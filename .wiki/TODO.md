@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-None.
+- **[Local FM graphics](./features/active/local-fm-graphics.md)** — add Rust-owned local FM26 graphics-root indexing, player portraits, and UID-backed club logos without managing graphics packs (Linear JAY-63).
 
 ## Next
 
