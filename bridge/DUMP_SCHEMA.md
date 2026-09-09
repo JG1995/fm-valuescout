@@ -25,7 +25,7 @@ The bridge streams one compact, camelCase JSON object. Whitespace is not signifi
 | `staffCount`, `staff` | number, array | yes | Count must equal array length |
 | `manager` | object \| null | yes | Human-manager metadata when resolved |
 
-Unlimited production scans write `scanTruncated: false` and `maxAccepted: null`. A capped scan still records its positive cap. It sets `scanTruncated: true` only when the accepted-player cap stops the walk; that flag means discovery may be incomplete.
+New scans always write `scanTruncated: false` and `maxAccepted: null`. Historical capped dumps may retain a positive cap and `scanTruncated: true` when discovery stopped early; these fields remain readable for compatibility.
 
 ## Ingestibility rules
 
@@ -108,7 +108,7 @@ When present, `manager` contains `uid`, non-empty `name`, nullable `club`, and n
 | File | Writer | Purpose |
 | --- | --- | --- |
 | `request.json` | Tauri | Full-dump request or one closed player/staff boost |
-| `status.json` | Bridge | Idle, scanning, ready, or failed; optional cap and boost result signals |
+| `status.json` | Bridge | Idle, scanning, ready, or failed; boost result signals (no transient cap or truncation signals) |
 | `dump.json` | Bridge | This schema |
 | `diagnostics.txt` | Bridge | Scan diagnostics, never ingested |
 

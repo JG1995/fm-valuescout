@@ -1,14 +1,8 @@
 import type { LucideIcon } from "lucide-react";
-import {
-  CircleAlert,
-  CircleCheck,
-  LoaderCircle,
-  TriangleAlert,
-  X,
-} from "lucide-react";
+import { CircleAlert, CircleCheck, LoaderCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button/button";
 import { cn } from "@/utils/cn";
-import { formatCount, formatMissable } from "@/utils/format";
+import { formatCount } from "@/utils/format";
 import type { LoadDataProgress, LoadDataResult } from "../types/load-data";
 import { loadDataErrorCopy } from "./load-data-error";
 
@@ -80,23 +74,10 @@ function resolveBanner({ error, result }: LoadDataOutcomeProps): Banner | null {
   const latestMessage = storedBecameLatest
     ? " This snapshot is now the latest."
     : ` Stored this snapshot in history; the latest remains ${formatSnapshotDate(latestSnapshot.gameDate)}.`;
-  if (storedSnapshot.scanTruncated !== true) {
-    return {
-      icon: CircleCheck,
-      tone: toneClasses.success,
-      body: `${loaded}${latestMessage}`,
-    };
-  }
-
-  const cap = formatMissable(
-    storedSnapshot.maxAccepted === null
-      ? null
-      : formatCount(storedSnapshot.maxAccepted),
-  );
   return {
-    icon: TriangleAlert,
-    tone: toneClasses.warning,
-    body: `${loaded} Partial ingest — the scan was capped at ${cap} players.${latestMessage}`,
+    icon: CircleCheck,
+    tone: toneClasses.success,
+    body: `${loaded}${latestMessage}`,
   };
 }
 

@@ -165,7 +165,7 @@ export function AppTopBar() {
                     }
                   : undefined,
               );
-              load.mutate(null);
+              load.mutate();
             }}
           >
             Load Data

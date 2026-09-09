@@ -2011,8 +2011,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             return {
               requestId: "req-smoke",
               playersFound: 0,
-              scanTruncated: false,
-              maxAccepted: null,
               timings: { scanMs: 0, ingestMs: 0, totalMs: 0 },
               storedSnapshot: loadedSnapshot,
               effectiveSnapshot: loadedSnapshot,

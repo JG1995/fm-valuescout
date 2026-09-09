@@ -8,8 +8,6 @@ export type BridgeStatus = {
   requestId?: string | null;
   playersFound?: number | null;
   error?: string | null;
-  scanTruncated?: boolean | null;
-  maxAccepted?: number | null;
 };
 
 export type DumpRequestResult = {
@@ -18,6 +16,4 @@ export type DumpRequestResult = {
   playersFound?: number | null;
   dumpPresent: boolean;
   error?: string | null;
-  scanTruncated?: boolean | null;
-  maxAccepted?: number | null;
 };

@@ -170,7 +170,6 @@ public class Plugin : BasePlugin
             else if (File.Exists(BridgePaths.GetForceScanPath(bridgeDirectory)))
             {
                 // Manual fallback until operators prefer only the in-app request path.
-                // Unlimited — same as production Load Data (null maxAccepted).
                 request = ForceScanRequestFactory.Create(DateTimeOffset.UtcNow);
             }
             else
@@ -206,12 +205,12 @@ public class Plugin : BasePlugin
             {
                 if (acceptedRequest.Operation == BridgeProtocol.OperationFullDump)
                 {
-                    RunDumpScan(
+                    BridgeRequestDispatcher.DispatchFullDump(
+                        acceptedRequest,
                         bridgeDirectory,
-                        acceptedRequest.RequestId,
-                        acceptedRequest.MaxAccepted,
                         acceptedScope,
-                        cancelToken);
+                        cancelToken,
+                        RunDumpScan);
                 }
                 else if (acceptedRequest.Operation == BridgeProtocol.OperationBoostStaffCurrentAbility)
                 {
@@ -237,7 +236,6 @@ public class Plugin : BasePlugin
     private static void RunDumpScan(
         string bridgeDirectory,
         string requestId,
-        int? maxAccepted,
         PlayerDatabaseScope playerDatabaseScope,
         CancellationToken cancellationToken)
     {
@@ -297,7 +295,6 @@ public class Plugin : BasePlugin
                 MyPluginInfo.PLUGIN_VERSION,
                 gameAssembly,
                 known.GamePlugin,
-                maxAccepted,
                 playerDatabaseScope,
                 cancellationToken: cancellationToken);
 
@@ -335,13 +332,9 @@ public class Plugin : BasePlugin
                     requestId: requestId,
                     playersFound: result.PlayerCount,
                     error: null,
-                    scanTruncated: result.ScanTruncated,
-                    maxAccepted: result.MaxAccepted,
                     playerBoostsSupported: playerBoostsSupported,
                     staffBoostsSupported: staffBoostsSupported);
-                Log.LogInfo(
-                    $"Dump request {requestId} wrote {result.PlayerCount} players"
-                    + (result.ScanTruncated ? " (scan truncated)" : ""));
+                Log.LogInfo($"Dump request {requestId} wrote {result.PlayerCount} players");
             }
             else
             {
@@ -672,8 +665,6 @@ public class Plugin : BasePlugin
             requestId: current.RequestId,
             playersFound: current.PlayersFound,
             error: current.Error,
-            scanTruncated: current.ScanTruncated,
-            maxAccepted: current.MaxAccepted,
             playerBoostsSupported: current.PlayerBoostsSupported,
             staffBoostsSupported: current.StaffBoostsSupported,
             playerBoost: current.PlayerBoost,
@@ -714,8 +705,6 @@ public class Plugin : BasePlugin
         string? requestId,
         int? playersFound,
         string? error,
-        bool? scanTruncated = null,
-        int? maxAccepted = null,
         bool? playerBoostsSupported = null,
         bool? staffBoostsSupported = null,
         PlayerBoostResult? playerBoost = null,
@@ -732,8 +721,6 @@ public class Plugin : BasePlugin
             RequestId = requestId,
             PlayersFound = playersFound,
             Error = error,
-            ScanTruncated = scanTruncated,
-            MaxAccepted = maxAccepted,
             PlayerBoostsSupported = playerBoostsSupported,
             StaffBoostsSupported = staffBoostsSupported,
             PlayerBoost = playerBoost,
@@ -754,5 +741,18 @@ public class Plugin : BasePlugin
                 $"Could not enumerate process modules; writing status with modules absent: {ex.Message}");
             return new ModulePresenceSignals(false, false);
         }
+    }
+}
+
+internal static class BridgeRequestDispatcher
+{
+    internal static void DispatchFullDump(
+        BridgeRequest request,
+        string bridgeDirectory,
+        PlayerDatabaseScope playerDatabaseScope,
+        CancellationToken cancellationToken,
+        Action<string, string, PlayerDatabaseScope, CancellationToken> runDumpScan)
+    {
+        runDumpScan(bridgeDirectory, request.RequestId, playerDatabaseScope, cancellationToken);
     }
 }

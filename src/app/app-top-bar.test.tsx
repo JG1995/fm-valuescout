@@ -210,7 +210,7 @@ describe("app top bar", () => {
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
-  it("sends unlimited maxAccepted", async () => {
+  it("sends a context-bound request without maxAccepted", async () => {
     const user = userEvent.setup();
     renderWithProviders();
 
@@ -218,7 +218,9 @@ describe("app top bar", () => {
     await screen.findByText(/Loaded 3 players into the database/i);
 
     const args = getLastLoadDataIpcArgs() as Record<string, unknown>;
-    expect(args).toMatchObject({ maxAccepted: null });
+    expect(args.saveId).toBe(1);
+    expect(args.contextToken).toBe("save-token-1");
+    expect(args.maxAccepted).toBeUndefined();
     expect(args.onProgress).toBeDefined();
     expect(typeof args.onProgress).toBe("object");
   });
@@ -277,18 +279,6 @@ describe("app top bar", () => {
     );
 
     await waitFor(() => expect(mutationWasVisible).toBe(true));
-  });
-
-  it("warns that a capped scan produced a partial ingest", async () => {
-    setLoadDataIpcMockMode("truncatedSuccess");
-    const user = userEvent.setup();
-    renderWithProviders();
-
-    await user.click(await screen.findByRole("button", { name: "Load Data" }));
-
-    expect(
-      await screen.findByText(/the scan was capped at 500 players/i),
-    ).toBeInTheDocument();
   });
 
   it("reports a scan failure from load_data", async () => {

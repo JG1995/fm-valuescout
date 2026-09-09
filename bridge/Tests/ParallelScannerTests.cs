@@ -191,29 +191,6 @@ public sealed class ParallelScannerTests
     }
 
     [MultiCoreFact]
-    public void Capped_person_scan_stays_serial_and_keeps_candidate_region_order()
-    {
-        var layout = Fm263Layout.Instance;
-        var reader = new FakeMemoryReader();
-        PlacePlayer(reader, layout, FirstRegionBase, uid: 101, slot: 1);
-        PlacePlayer(reader, layout, SecondRegionBase, uid: 102, slot: 2);
-        var diagnostics = new ScanDiagnostics();
-
-        var result = PersonScanner.Scan(
-            reader,
-            layout,
-            GameAssembly(),
-            gamePlugin: null,
-            new[] { CandidateRegion(SecondRegionBase), CandidateRegion(FirstRegionBase) },
-            diagnostics,
-            maxAccepted: 1);
-
-        Assert.Equal(new uint[] { 102 }, result.Players.Select(candidate => candidate.Uid));
-        Assert.True(result.StoppedEarly);
-        Assert.Equal(1, diagnostics.ScanWorkerCount);
-    }
-
-    [MultiCoreFact]
     public void Person_scanner_cancellation_stops_parallel_workers()
     {
         var layout = Fm263Layout.Instance;

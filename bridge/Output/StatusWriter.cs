@@ -64,8 +64,6 @@ public static class StatusWriter
             RequestId = status.RequestId,
             PlayersFound = status.PlayersFound,
             Error = "scan failed unexpectedly",
-            ScanTruncated = status.ScanTruncated,
-            MaxAccepted = status.MaxAccepted,
             PlayerBoostsSupported = status.PlayerBoostsSupported,
             StaffBoostsSupported = status.StaffBoostsSupported,
             PlayerBoost = status.PlayerBoost,

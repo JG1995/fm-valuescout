@@ -109,12 +109,6 @@ public sealed class ScanDiagnostics
     /// <summary>Basis for a derived game date.</summary>
     public string? GameDateBasis { get; set; }
 
-    /// <summary>Accepted-player ceiling for this run; null means unlimited.</summary>
-    public int? MaxAccepted { get; set; }
-
-    /// <summary>True when the scanner stopped because <see cref="MaxAccepted"/> was reached.</summary>
-    public bool StoppedEarly { get; set; }
-
     /// <summary>True when the walk was cancelled via <see cref="CancellationToken"/>.</summary>
     public bool Cancelled { get; set; }
 

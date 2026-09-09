@@ -45,8 +45,6 @@ export type LoadDataTimings = {
 export type LoadDataResult = {
   requestId: string;
   playersFound: number | null;
-  scanTruncated: boolean | null;
-  maxAccepted: number | null;
   storedSnapshot: LoadDataSnapshotSummary;
   effectiveSnapshot: LoadDataSnapshotSummary;
   timings: LoadDataTimings;

@@ -176,10 +176,10 @@ public sealed class DumpDocument
     /// <summary>Closed player database scope: men, women, or both.</summary>
     public string PlayerDatabaseScope { get; init; } = "men";
 
-    /// <summary>True when the person scanner stopped because <see cref="MaxAccepted"/> was reached.</summary>
+    /// <summary>Historical cap metadata; new scans always write false.</summary>
     public bool ScanTruncated { get; init; }
 
-    /// <summary>Accepted-player cap used for this dump; null when the walk was unlimited.</summary>
+    /// <summary>Historical accepted-player cap; new scans always write null.</summary>
     public int? MaxAccepted { get; init; }
 
     public int PlayerCount { get; init; }

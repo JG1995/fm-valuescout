@@ -3,14 +3,10 @@ import { describe, expect, it } from "vitest";
 import type { LoadDataProgress, LoadDataResult } from "../types/load-data";
 import { LoadDataOutcome, loadDataPhaseLabels } from "./load-data-outcome";
 
-function resultWithHistoricalStoredSnapshot(
-  scanTruncated = false,
-): LoadDataResult {
+function resultWithHistoricalStoredSnapshot(): LoadDataResult {
   return {
     requestId: "R1",
     playersFound: 1,
-    scanTruncated,
-    maxAccepted: scanTruncated ? 1 : null,
     storedSnapshot: {
       id: 1,
       contextToken: "snapshot-token-1",
@@ -23,8 +19,8 @@ function resultWithHistoricalStoredSnapshot(
       protocolVersion: 1,
       gameDate: "2026-08-14",
       gameDateSource: "memory",
-      scanTruncated,
-      maxAccepted: scanTruncated ? 1 : null,
+      scanTruncated: false,
+      maxAccepted: null,
       playerCount: 1,
       loadedAtUtc: "2026-08-14T12:00:00.000Z",
     },
@@ -61,8 +57,6 @@ function successResult(): LoadDataResult {
   return {
     requestId: "req-1",
     playersFound: 3,
-    scanTruncated: false,
-    maxAccepted: null,
     storedSnapshot: {
       id: 1,
       contextToken: "snapshot-token-1",
@@ -146,23 +140,6 @@ describe("LoadDataOutcome", () => {
       screen.getByText(/Stored this snapshot in history/i),
     ).toBeInTheDocument();
     expect(screen.queryByText(/This snapshot is now the latest/i)).toBeNull();
-  });
-
-  it("keeps the history message on a truncated earlier load", () => {
-    render(
-      <LoadDataOutcome
-        error={null}
-        result={resultWithHistoricalStoredSnapshot(true)}
-        onDismiss={() => undefined}
-      />,
-    );
-
-    expect(screen.getByText(/Partial ingest/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /Stored this snapshot in history; the latest remains 2027-08-16\./i,
-      ),
-    ).toBeInTheDocument();
   });
 
   it("exposes a stable polite live region while idle", () => {
@@ -421,19 +398,6 @@ describe("LoadDataOutcome", () => {
     // ingestMs is aggregate, must not appear as primary bucket
     expect(screen.queryByText(/ingest 400ms/i)).toBeNull();
     expect(screen.queryByText(/%/)).toBeNull();
-  });
-
-  it("preserves truncated copy alongside detailed timings", () => {
-    render(
-      <LoadDataOutcome
-        error={null}
-        result={resultWithHistoricalStoredSnapshot(true)}
-        onDismiss={() => undefined}
-      />,
-    );
-
-    expect(screen.getByText(/Partial ingest/i)).toBeInTheDocument();
-    expect(screen.getByText(/Scan 1\.2s/i)).toBeInTheDocument();
   });
 
   it("preserves historical copy alongside detailed timings", () => {

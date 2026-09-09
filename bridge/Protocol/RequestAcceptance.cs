@@ -182,12 +182,6 @@ public static class RequestAcceptance
     private static bool TryValidateFullDump(BridgeRequest request, out string? rejectReason)
     {
         rejectReason = null;
-        if (request.MaxAccepted is <= 0)
-        {
-            rejectReason = "maxAccepted must be null or a positive integer";
-            return false;
-        }
-
         if (!PlayerDatabaseScopes.TryParse(request.PlayerDatabaseScope, out _))
         {
             rejectReason = "playerDatabaseScope must be one of: men, women, both";
@@ -216,12 +210,6 @@ public static class RequestAcceptance
         out string? rejectReason)
     {
         rejectReason = null;
-        if (request.MaxAccepted is not null)
-        {
-            rejectReason = "staff boost requests do not accept maxAccepted";
-            return false;
-        }
-
         if (!string.Equals(
                 request.PlayerDatabaseScope,
                 PlayerDatabaseScopes.Men,
@@ -323,12 +311,6 @@ public static class RequestAcceptance
     private static bool TryValidateBoostPreconditions(BridgeRequest request, out string? rejectReason)
     {
         rejectReason = null;
-        if (request.MaxAccepted is not null)
-        {
-            rejectReason = "player boost requests do not accept maxAccepted";
-            return false;
-        }
-
         if (request.StaffUid is not null)
         {
             rejectReason = "player boosts do not accept staffUid";
@@ -385,7 +367,6 @@ public static class RequestAcceptance
             RequestId = request.RequestId,
             CreatedAtUtc = createdAtUtc,
             Operation = request.Operation,
-            MaxAccepted = request.MaxAccepted,
             PlayerDatabaseScope = request.PlayerDatabaseScope,
             SourceRequestId = request.SourceRequestId,
             PlayerUid = request.PlayerUid,

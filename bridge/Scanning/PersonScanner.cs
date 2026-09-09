@@ -15,12 +15,6 @@ public static class PersonScanner
     public const int MinAbility = 1;
     public const int MaxAbility = 200;
 
-    /// <summary>
-    /// Default diagnostic/test cap when a caller wants a bounded scan.
-    /// Production Load Data passes request <c>maxAccepted: null</c> (unlimited).
-    /// </summary>
-    public const int DefaultMaxAccepted = 500;
-
     /// <summary>Minimum object header span covering vtable + UID for in-buffer reads.</summary>
     private const int MinObjectHeaderBytes = 0x10;
 
@@ -31,7 +25,6 @@ public static class PersonScanner
         ModuleBounds? gamePlugin,
         IReadOnlyList<MemoryRegion> candidateRegions,
         ScanDiagnostics diagnostics,
-        int? maxAccepted = null,
         PlayerDatabaseScope playerDatabaseScope = PlayerDatabaseScope.Men,
         CancellationToken cancellationToken = default) =>
         Scan(
@@ -41,7 +34,6 @@ public static class PersonScanner
             gamePlugin,
             candidateRegions,
             diagnostics,
-            maxAccepted,
             playerDatabaseScope,
             cancellationToken,
             allowParallel: true);
@@ -53,7 +45,6 @@ public static class PersonScanner
         ModuleBounds? gamePlugin,
         IReadOnlyList<MemoryRegion> candidateRegions,
         ScanDiagnostics diagnostics,
-        int? maxAccepted,
         PlayerDatabaseScope playerDatabaseScope,
         CancellationToken cancellationToken,
         bool allowParallel)
@@ -62,11 +53,6 @@ public static class PersonScanner
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(candidateRegions);
         ArgumentNullException.ThrowIfNull(diagnostics);
-        if (maxAccepted is <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(maxAccepted), maxAccepted, "maxAccepted must be null or positive.");
-        }
-
         if (layout.ObjectUidOffset is < 0 or > int.MaxValue - sizeof(uint))
         {
             throw new ArgumentOutOfRangeException(
@@ -78,7 +64,6 @@ public static class PersonScanner
         diagnostics.LayoutVersionKey = layout.VersionKey;
         diagnostics.LayoutProvisional = layout.IsProvisional;
         diagnostics.ReadSource = reader.ReadSource;
-        diagnostics.MaxAccepted = maxAccepted;
         diagnostics.PlayerDatabaseScope = PlayerDatabaseScopes.ToWireValue(playerDatabaseScope);
         diagnostics.GameAssembly = new ModuleBoundsSnapshot(
             gameAssembly.BaseAddress,
@@ -101,7 +86,6 @@ public static class PersonScanner
             Environment.ProcessorCount,
             memoryStatus);
         var useParallel = allowParallel
-            && maxAccepted is null
             && reader.SupportsConcurrentReads
             && workerCount > 1;
         diagnostics.ScanWorkerCount = candidateRegions.Count == 0
@@ -135,8 +119,6 @@ public static class PersonScanner
         var managers = new Dictionary<uint, PersonCandidate>();
         var clubs = new Dictionary<ulong, ClubCandidate>();
         var classOffsetByVtable = new Dictionary<ulong, int>();
-        var atCap = false;
-        var stoppedDueToCap = false;
         var readQuality = default(ScanReadQuality);
         var headerBytes = Math.Max(MinObjectHeaderBytes, layout.ObjectUidOffset + sizeof(uint));
         if (!TryAlignUp((ulong)headerBytes, 8, out var overlap))
@@ -154,11 +136,6 @@ public static class PersonScanner
         {
             foreach (var region in candidateRegions)
             {
-                if (stoppedDueToCap)
-                {
-                    break;
-                }
-
                 if (cancellationToken.IsCancellationRequested)
                 {
                     diagnostics.Cancelled = true;
@@ -182,11 +159,6 @@ public static class PersonScanner
                 var hasPriorBlock = false;
                 while (end - blockStart >= (ulong)headerBytes)
                 {
-                    if (stoppedDueToCap)
-                    {
-                        break;
-                    }
-
                     if (cancellationToken.IsCancellationRequested)
                     {
                         diagnostics.Cancelled = true;
@@ -309,23 +281,12 @@ public static class PersonScanner
                                 continue;
                             }
 
-                            if (atCap)
-                            {
-                                stoppedDueToCap = true;
-                                break;
-                            }
-
                             players[uid] = candidate;
                             diagnostics.AcceptedPlayerUids.Add(uid);
                             diagnostics.CandidatesAccepted++;
                             if (diagnostics.SampleUids.Count < 16)
                             {
                                 diagnostics.SampleUids.Add(uid);
-                            }
-
-                            if (maxAccepted is { } limit && players.Count >= limit)
-                            {
-                                atCap = true;
                             }
 
                             continue;
@@ -357,11 +318,6 @@ public static class PersonScanner
                         }
                     }
 
-                    if (stoppedDueToCap)
-                    {
-                        break;
-                    }
-
                     var advance = (ulong)toRead > overlap
                         ? toRead - (int)overlap
                         : 8;
@@ -378,7 +334,6 @@ public static class PersonScanner
                 }
             }
 
-            diagnostics.StoppedEarly = stoppedDueToCap;
             return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
         }
         finally
@@ -404,7 +359,7 @@ public static class PersonScanner
             .OrderBy(uid => uid)
             .ToList();
         diagnostics.PlayerStaffOverlapCount = overlapUids.Count;
-        diagnostics.ClubDiscoveryIncomplete = diagnostics.StoppedEarly || diagnostics.Cancelled;
+        diagnostics.ClubDiscoveryIncomplete = diagnostics.Cancelled;
         diagnostics.ReadQuality = readQuality;
 
         var rawStaff = OrderCandidates(staff.Values);
@@ -414,7 +369,6 @@ public static class PersonScanner
             OrderCandidates(managers.Values),
             clubs.Values.OrderBy(candidate => candidate.Address).ToList(),
             overlapUids,
-            diagnostics.StoppedEarly,
             diagnostics.Cancelled,
             readQuality);
         return result with { RawStaff = rawStaff };
@@ -454,7 +408,6 @@ public static class PersonScanner
                         gamePlugin,
                         regions,
                         workerDiagnostics,
-                        maxAccepted: null,
                         playerDatabaseScope,
                         cancellation.Token,
                         allowParallel: false);
@@ -527,7 +480,6 @@ public static class PersonScanner
             }
         }
 
-        diagnostics.StoppedEarly = false;
         return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
     }
 
@@ -622,7 +574,6 @@ public static class PersonScanner
             Array.Empty<PersonCandidate>(),
             Array.Empty<ClubCandidate>(),
             Array.Empty<uint>(),
-            StoppedEarly: false,
             Cancelled: true,
             ReadQuality: default);
 

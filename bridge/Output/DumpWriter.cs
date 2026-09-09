@@ -215,13 +215,6 @@ public static class DiagnosticsWriter
         sb.AppendLine($"totalMs={diagnostics.TotalMs}");
         sb.AppendLine($"processMemoryCalls={diagnostics.ProcessMemoryCalls}");
         sb.AppendLine($"processMemoryRequestedBytes={diagnostics.ProcessMemoryRequestedBytes}");
-        if (diagnostics.MaxAccepted is { } maxAccepted)
-        {
-            sb.AppendLine($"maxAccepted={maxAccepted}");
-        }
-
-        sb.AppendLine($"stoppedEarly={diagnostics.StoppedEarly}");
-
         sb.AppendLine("classOffsetHistogram:");
         foreach (var pair in diagnostics.ClassOffsetHistogram.OrderBy(p => p.Key))
         {
