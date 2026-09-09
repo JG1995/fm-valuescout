@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -144,7 +144,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 **Required checks:** GitHub required strict status `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -652,15 +652,15 @@ The planning commit establishes the ledger. The first implementation change corr
 
 **PR:** PR 1 — refactor(load-data): retire obsolete control support
 
-**Commit:** None — implementation complete
+**Commit:** None — implementation and close-out complete
 
 ### RED or removal proof
 
-All planned removal proofs completed. Run the feature-level validation and review the exact recorded implementation range.
+All planned removal proofs completed. Feature review, correction validation, and documentation reconciliation are complete.
 
 ### Expected outcome
 
-Every planned commit is complete. Full frontend, bridge, Rust, repository, and smoke validation passes before feature review and documentation reconciliation.
+Every planned commit is complete. Full frontend, bridge, Rust, repository, and smoke validation passed after the feature correction, and the PR is ready for final publication.
 
 ### Explicit exclusions
 
@@ -672,6 +672,9 @@ New implementation, unplanned behavior, schema or migration changes, generated b
 - Planning correction round 2: current cap metadata divides into removable bridge producers, removable host consumers, and retained dump/snapshot compatibility fields. Commit 7 removes only optional C# producers; Commit 8 removes compatible Rust/React consumers and unreachable capped-new-load UI. `LoadDataSnapshotSummary` remains a memory-read-local projection with nested persisted cap fields.
 - Planning discovery: C# `BridgeRequest` can drop its cap member without a protocol bump because the current serializer default ignores an old app's unknown JSON property. Commit 5 requires a positive compatibility proof.
 - The reviewed planning artifacts were committed as `1d648730ff4132b5fbe95801a88a2f33acdb8905`. Record future material deviations, blockers, and changed assumptions here before continuing delivery.
+- Feature correction commit `bdd7cbd331b2740338de254135378685c17d4ad1` corrected the stale bridge README banner claim. The correction was documentation-only; no implementation, test, schema, migration, ADR, debug report, or release changes were required.
+- Final validation after the correction passed 98 focused frontend tests, 216 bridge tests with 3 skipped, 806 Rust tests with 2 ignored, the full repository check, and 62 smoke tests.
+- Final feature review is clear. The Test portfolio is Pass, project fit is Conforms, and no findings remain.
 
 ## Completed work
 
@@ -684,7 +687,7 @@ New implementation, unplanned behavior, schema or migration changes, generated b
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 5 — Stop accepting capped dump requests | d5018ddbc88604498bdfb6006ab24ff6151d1022 | Removed active bridge cap request behavior and routed accepted old-shaped requests through a cap-free production dispatch seam to a full scan. | `./scripts/dev bridge-test` passed 217 tests with 3 skipped; `./scripts/dev check` passed with 806 Rust tests and 2 ignored; `git diff --check` and primary C# diagnostics passed. | Pass | Clear | 1 | Initial review found that the compatibility test did not bind accepted input to production dispatch; correction added the narrow shared dispatch seam and passed focused correction review. |
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 6 — Delete scanner cap mechanics | c78d283dc3e0ddd96ddba07e686f10400b549a77 | Deleted scanner cap, early-stop, serial-cap, and diagnostics mechanics; fixed new-dump and temporary result metadata; and proved 501 candidates scan completely. | `./scripts/dev bridge-test` passed 216 tests with 3 skipped; `./scripts/dev check` passed with 806 Rust tests and 2 ignored; `git diff --check` and primary C# diagnostics passed. | Pass | Clear | 0 | None. |
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 7 — Remove bridge transient cap producers | 60df19d9912b47ba2568cd52180708842948eb9d | Removed transient cap fields from the bridge result, ready status, Plugin logging and status output while preserving persisted dump metadata and all supported status fields. | `./scripts/dev bridge-test` passed 216 tests with 3 skipped; `./scripts/dev check` passed with 806 Rust tests and 2 ignored; `git diff --check` and primary C# diagnostics passed. | Pass | Clear | 0 | None. |
-| PR 1 — refactor(load-data): retire obsolete control support | Commit 8 — Remove host transient cap consumers | Pending record | Removed Rust and React transient cap status/result consumers and capped-new-load UI while preserving nested historical metadata, the retained-current Overview warning, and loaded-at history. | Focused frontend tests passed 97 tests; `./scripts/dev bridge-test` passed 216 tests with 3 skipped; `./scripts/dev check-rust` passed 806 tests with 2 ignored; `./scripts/dev check` and `./scripts/dev smoke` passed 62 smoke tests; `git diff --check` and primary diagnostics passed. | Pass | Clear | 1 | Initial review found obsolete Rust fixture arguments and a mock reset leak; both were removed and focused correction review passed. |
+| PR 1 — refactor(load-data): retire obsolete control support | Commit 8 — Remove host transient cap consumers | a3c531f77f5eb035ed90877a9786769bc93c0d01 | Removed Rust and React transient cap status/result consumers and capped-new-load UI while preserving nested historical metadata, the retained-current Overview warning, and loaded-at history. | Focused frontend tests passed 98 tests; `./scripts/dev bridge-test` passed 216 tests with 3 skipped; `./scripts/dev check-rust` passed 806 tests with 2 ignored; `./scripts/dev check` and `./scripts/dev smoke` passed 62 smoke tests; final validation passed after correction commit `bdd7cbd331b2740338de254135378685c17d4ad1`. | Pass | Clear | 1 | Initial review found obsolete Rust fixture arguments and a mock reset leak; both were removed and focused correction review passed. |
 
 ## Final validation
 
@@ -700,4 +703,4 @@ No manual FM attach/app test, `inspect-ui`, generated-binary update, package bui
 
 ## Documentation impact
 
-Complete during reconciliation. Commit 2 corrects the already-retired freshness claim. Commit 3 reconciles app IPC documentation. Commit 5 reconciles active bridge request behavior. Commit 6 reconciles new-dump versus historical-field schema documentation and scanner worker policy. Commit 7 reconciles bridge transient status producers. Commit 8 reconciles the host top-level result contract. Feature close-out must verify that no stale Load Data control claim remains and must not rewrite completed feature records.
+Reconciled. Commit 2 corrected the already-retired freshness claim. Commit 3 reconciled app IPC documentation. Commit 5 reconciled active bridge request behavior. Commit 6 reconciled new-dump versus historical-field schema documentation and scanner worker policy. Commit 7 reconciled bridge transient status producers. Commit 8 reconciled the host top-level result contract. The feature correction commit resolved the stale bridge README banner claim. Architecture, bridge README, and DUMP_SCHEMA are reconciled. No ADR, debug report, BACKLOG, DESIGN, schema, migration, generated binary, release, or further current-state documentation is required.

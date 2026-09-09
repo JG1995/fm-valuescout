@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- **[Retire obsolete Load Data controls](./features/active/retire-obsolete-load-data-controls.md)** — remove accepted-player cap support from the active Load Data app, Rust, and bridge path while retaining historical snapshot metadata; reconcile already-retired snapshot freshness documentation (Linear JAY-55, JAY-56).
+None.
 
 ## Next
 
@@ -60,6 +60,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Completed
 
+- **[Retire obsolete Load Data controls](./features/completed/retire-obsolete-load-data-controls.md)** — removed obsolete Load Data cap support and reconciled snapshot freshness documentation while retaining historical snapshot metadata (Linear JAY-55, JAY-56).
 - **[Refine Suggested Training](./features/completed/refine-suggested-training.md)** — age-category Suggested Training for eligible Squad players while preserving the read-only, non-sortable focus-or-dash contract (Linear JAY-59).
 - **[Player Profile Workspace Redesign](./features/completed/player-profile-workspace-redesign.md)** — persistent identity rail with Overview, Attributes, Role Fit, and Moneyball sections, same-role current → potential summaries, legacy profile URL compatibility, and proven 1280×800 through 3440×1440 containment (Linear JAY-62).
 - **[Tactics Page Redesign](./features/completed/tactics-page-redesign.md)** — one phase-aware normalized tactical canvas with Tactical XI and Selected Slot controls, unique-placement swaps, a one-time v42 tactic reset that preserves assignments and unrelated save data, responsive containment, and landscape orientation at >= 1920px (Linear JAY-57; [PR #122](https://github.com/JG1995/fm-valuescout/pull/122)).
