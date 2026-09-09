@@ -61,10 +61,6 @@ pub struct BridgeStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scan_truncated: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_accepted: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub player_boosts_supported: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub player_boost: Option<PlayerBoostResult>,
@@ -93,10 +89,6 @@ pub struct DumpRequestResult {
     pub players_found: Option<i32>,
     pub dump_present: bool,
     pub error: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scan_truncated: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_accepted: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1025,8 +1017,6 @@ pub fn wait_for_request_terminal(
                     players_found: status.players_found,
                     dump_present,
                     error: status.error,
-                    scan_truncated: status.scan_truncated,
-                    max_accepted: status.max_accepted,
                 });
             }
             Ok(_) => {}
@@ -1226,8 +1216,6 @@ mod tests {
                 Some(&request.request_id),
                 Some(1),
                 None,
-                Some(false),
-                None,
             );
             fs::write(dump_path(&writer_dir), INGESTIBLE_DUMP_FIXTURE).expect("dump");
         });
@@ -1242,7 +1230,6 @@ mod tests {
         )
         .expect("request dump");
         assert_eq!(result.state, "ready");
-        assert_eq!(result.max_accepted, None);
     }
 
     #[test]
@@ -1264,26 +1251,21 @@ mod tests {
                 }
                 thread::sleep(Duration::from_millis(10));
             }
-            write_status_fixture(
-                &writer_dir,
-                "scanning",
-                Some(&writer_id),
-                None,
-                None,
-                None,
-                None,
-            );
+            write_status_fixture(&writer_dir, "scanning", Some(&writer_id), None, None);
             thread::sleep(Duration::from_millis(30));
             fs::write(dump_path(&writer_dir), INGESTIBLE_DUMP_FIXTURE).expect("dump");
-            write_status_fixture(
-                &writer_dir,
-                "ready",
-                Some(&writer_id),
-                Some(42),
-                None,
-                Some(false),
-                None,
-            );
+            write_status_fixture(&writer_dir, "ready", Some(&writer_id), Some(42), None);
+            let status_file = status_path(&writer_dir);
+            let mut old_status: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(&status_file).expect("status"))
+                    .expect("status JSON");
+            old_status["scanTruncated"] = serde_json::Value::Bool(false);
+            old_status["maxAccepted"] = serde_json::Value::from(500);
+            fs::write(
+                status_file,
+                serde_json::to_vec(&old_status).expect("serialize status"),
+            )
+            .expect("write old status shape");
         });
 
         barrier.wait();
@@ -1306,12 +1288,11 @@ mod tests {
         )
         .expect("wait ready");
 
+        assert_eq!(result.request_id, request_id);
         assert_eq!(result.state, "ready");
         assert_eq!(result.players_found, Some(42));
         assert!(result.dump_present);
         assert!(result.error.is_none());
-        assert_eq!(result.scan_truncated, Some(false));
-        assert_eq!(result.max_accepted, None);
         validate_dump_at_bridge_directory(&bridge_dir).expect("dump ingestible after ready");
     }
 
@@ -1327,8 +1308,6 @@ mod tests {
             Some(request_id),
             None,
             Some("scan produced zero player candidates"),
-            None,
-            None,
         );
 
         let result = wait_for_request_terminal(
@@ -1354,7 +1333,7 @@ mod tests {
     fn wait_times_out_when_status_never_reaches_terminal() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let bridge_dir = temp_dir.path();
-        write_status_fixture(bridge_dir, "idle", None, None, None, None, None);
+        write_status_fixture(bridge_dir, "idle", None, None, None);
 
         let error = wait_for_request_terminal(
             bridge_dir,
@@ -1376,15 +1355,7 @@ mod tests {
         let ours = "req-ours".to_string();
         let barrier = Arc::new(Barrier::new(2));
 
-        write_status_fixture(
-            &bridge_dir,
-            "ready",
-            Some("req-stale-other"),
-            Some(9),
-            None,
-            None,
-            None,
-        );
+        write_status_fixture(&bridge_dir, "ready", Some("req-stale-other"), Some(9), None);
 
         let writer_dir = bridge_dir.clone();
         let writer_barrier = Arc::clone(&barrier);
@@ -1393,15 +1364,7 @@ mod tests {
             writer_barrier.wait();
             thread::sleep(Duration::from_millis(40));
             fs::write(dump_path(&writer_dir), INGESTIBLE_DUMP_FIXTURE).expect("dump");
-            write_status_fixture(
-                &writer_dir,
-                "ready",
-                Some(&writer_id),
-                Some(3),
-                None,
-                None,
-                None,
-            );
+            write_status_fixture(&writer_dir, "ready", Some(&writer_id), Some(3), None);
         });
 
         barrier.wait();
@@ -1916,8 +1879,6 @@ mod tests {
         request_id: Option<&str>,
         players_found: Option<i32>,
         error: Option<&str>,
-        scan_truncated: Option<bool>,
-        max_accepted: Option<i32>,
     ) {
         let status = BridgeStatus {
             protocol_version: 1,
@@ -1929,8 +1890,6 @@ mod tests {
             request_id: request_id.map(str::to_string),
             players_found,
             error: error.map(str::to_string),
-            scan_truncated,
-            max_accepted,
             player_boosts_supported: None,
             player_boost: None,
             staff_boosts_supported: None,
@@ -1957,8 +1916,6 @@ mod tests {
             request_id: request_id.map(str::to_string),
             players_found: None,
             error: error.map(str::to_string),
-            scan_truncated: None,
-            max_accepted: None,
             player_boosts_supported: Some(player_boosts_supported),
             player_boost,
             staff_boosts_supported: None,
@@ -1985,8 +1942,6 @@ mod tests {
             request_id: request_id.map(str::to_string),
             players_found: None,
             error: error.map(str::to_string),
-            scan_truncated: None,
-            max_accepted: None,
             player_boosts_supported: None,
             player_boost: None,
             staff_boosts_supported: Some(staff_boosts_supported),

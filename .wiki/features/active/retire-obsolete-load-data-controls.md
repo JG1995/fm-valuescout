@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -124,7 +124,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 ### PR 1 — refactor(load-data): retire obsolete control support
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -523,7 +523,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 #### Commit 7 — Remove bridge transient cap producers
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(bridge): remove transient cap producers`
 
@@ -583,7 +583,7 @@ The planning commit establishes the ledger. The first implementation change corr
 
 #### Commit 8 — Remove host transient cap consumers
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `refactor(load-data): remove transient cap consumers`
 
@@ -652,19 +652,19 @@ The planning commit establishes the ledger. The first implementation change corr
 
 **PR:** PR 1 — refactor(load-data): retire obsolete control support
 
-**Commit:** Commit 7 — Remove bridge transient cap producers
+**Commit:** None — implementation complete
 
 ### RED or removal proof
 
-Identify the `CapADumpResult`, Plugin ready-status/log, `BridgeStatus`, and `StatusWriter` cap producers and their producer-owned serialization tests. Preserve request identity, supported status and boost fields, error sanitization, and full-dump availability.
+All planned removal proofs completed. Run the feature-level validation and review the exact recorded implementation range.
 
 ### Expected outcome
 
-A new bridge ready status contains request identity and all supported status and boost data but no transient cap properties. The existing Rust host remains compatible with omitted optional fields.
+Every planned commit is complete. Full frontend, bridge, Rust, repository, and smoke validation passes before feature review and documentation reconciliation.
 
 ### Explicit exclusions
 
-Rust/React consumers, persisted dump and snapshot metadata, scanner behavior, LoadDataOutcome, snapshot UI, protocol version, migrations, and architecture result-contract documentation.
+New implementation, unplanned behavior, schema or migration changes, generated binaries, release work, and unrelated completed records.
 
 ## Discoveries and replanning
 
@@ -683,6 +683,8 @@ Rust/React consumers, persisted dump and snapshot metadata, scanner behavior, Lo
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 4 — Omit cap from dump requests | 3ecc586597d9d92337e3e8bae59d1fe7141d80e9 | Removed the cap field and limit helper from Rust request serialization and collapsed Load Data orchestration to one parameterless full-dump path. | `./scripts/dev bridge-test` passed 224 tests with 3 skipped; `./scripts/dev check-rust` passed 806 tests with 2 ignored; `./scripts/dev check`, `git diff --check`, and primary LSP diagnostics passed. | Pass | Clear | 0 | None. |
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 5 — Stop accepting capped dump requests | d5018ddbc88604498bdfb6006ab24ff6151d1022 | Removed active bridge cap request behavior and routed accepted old-shaped requests through a cap-free production dispatch seam to a full scan. | `./scripts/dev bridge-test` passed 217 tests with 3 skipped; `./scripts/dev check` passed with 806 Rust tests and 2 ignored; `git diff --check` and primary C# diagnostics passed. | Pass | Clear | 1 | Initial review found that the compatibility test did not bind accepted input to production dispatch; correction added the narrow shared dispatch seam and passed focused correction review. |
 | PR 1 — refactor(load-data): retire obsolete control support | Commit 6 — Delete scanner cap mechanics | c78d283dc3e0ddd96ddba07e686f10400b549a77 | Deleted scanner cap, early-stop, serial-cap, and diagnostics mechanics; fixed new-dump and temporary result metadata; and proved 501 candidates scan completely. | `./scripts/dev bridge-test` passed 216 tests with 3 skipped; `./scripts/dev check` passed with 806 Rust tests and 2 ignored; `git diff --check` and primary C# diagnostics passed. | Pass | Clear | 0 | None. |
+| PR 1 — refactor(load-data): retire obsolete control support | Commit 7 — Remove bridge transient cap producers | 60df19d9912b47ba2568cd52180708842948eb9d | Removed transient cap fields from the bridge result, ready status, Plugin logging and status output while preserving persisted dump metadata and all supported status fields. | `./scripts/dev bridge-test` passed 216 tests with 3 skipped; `./scripts/dev check` passed with 806 Rust tests and 2 ignored; `git diff --check` and primary C# diagnostics passed. | Pass | Clear | 0 | None. |
+| PR 1 — refactor(load-data): retire obsolete control support | Commit 8 — Remove host transient cap consumers | Pending record | Removed Rust and React transient cap status/result consumers and capped-new-load UI while preserving nested historical metadata, the retained-current Overview warning, and loaded-at history. | Focused frontend tests passed 97 tests; `./scripts/dev bridge-test` passed 216 tests with 3 skipped; `./scripts/dev check-rust` passed 806 tests with 2 ignored; `./scripts/dev check` and `./scripts/dev smoke` passed 62 smoke tests; `git diff --check` and primary diagnostics passed. | Pass | Clear | 1 | Initial review found obsolete Rust fixture arguments and a mock reset leak; both were removed and focused correction review passed. |
 
 ## Final validation
 

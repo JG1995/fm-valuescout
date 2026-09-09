@@ -36,8 +36,6 @@ pub struct LoadDataTimings {
 pub struct LoadDataResult {
     pub request_id: String,
     pub players_found: Option<i32>,
-    pub scan_truncated: Option<bool>,
-    pub max_accepted: Option<i32>,
     pub stored_snapshot: SnapshotSummary,
     pub effective_snapshot: SnapshotSummary,
     pub timings: LoadDataTimings,
@@ -156,8 +154,6 @@ pub(crate) fn publish_prepared_with_progress(
         LoadDataResult {
             request_id: dump_result.request_id.clone(),
             players_found: dump_result.players_found,
-            scan_truncated: dump_result.scan_truncated,
-            max_accepted: dump_result.max_accepted,
             stored_snapshot: ingest_result.stored_snapshot,
             effective_snapshot: ingest_result.effective_snapshot,
             timings: LoadDataTimings::default(),
@@ -191,8 +187,6 @@ pub(crate) fn load_data_after_scan_with_context(
     Ok(LoadDataResult {
         request_id: dump_result.request_id,
         players_found: dump_result.players_found,
-        scan_truncated: dump_result.scan_truncated,
-        max_accepted: dump_result.max_accepted,
         stored_snapshot: ingest_result.stored_snapshot,
         effective_snapshot: ingest_result.effective_snapshot,
         timings: LoadDataTimings::default(),
@@ -332,8 +326,6 @@ mod tests {
         request_id: Option<&str>,
         players_found: Option<i32>,
         error: Option<&str>,
-        scan_truncated: Option<bool>,
-        max_accepted: Option<i32>,
     ) {
         let status = BridgeStatus {
             protocol_version: PROTOCOL_VERSION,
@@ -345,8 +337,6 @@ mod tests {
             request_id: request_id.map(str::to_string),
             players_found,
             error: error.map(str::to_string),
-            scan_truncated,
-            max_accepted,
             player_boosts_supported: None,
             player_boost: None,
             staff_boosts_supported: None,
@@ -390,8 +380,6 @@ mod tests {
                             Some(&request.request_id),
                             None,
                             None,
-                            None,
-                            None,
                         );
                         thread::sleep(Duration::from_millis(30));
                         fs::write(dump_path(&bridge_dir), dump_json).expect("dump");
@@ -400,8 +388,6 @@ mod tests {
                             "ready",
                             Some(&request.request_id),
                             Some(42),
-                            None,
-                            Some(false),
                             None,
                         );
                     }
@@ -412,8 +398,6 @@ mod tests {
                             Some(&request.request_id),
                             None,
                             Some(message),
-                            None,
-                            None,
                         );
                     }
                 }
@@ -467,7 +451,6 @@ mod tests {
 
         assert!(result.request_id.starts_with("req-"));
         assert_eq!(result.players_found, Some(42));
-        assert_eq!(result.max_accepted, None);
         assert_eq!(result.stored_snapshot.save_id, active_save.id);
         assert_eq!(result.stored_snapshot.player_count, 1);
         assert_eq!(
@@ -542,8 +525,6 @@ mod tests {
             players_found: Some(1),
             dump_present: true,
             error: None,
-            scan_truncated: Some(false),
-            max_accepted: Some(500),
         };
         let captured_dump_path = dump_path(&bridge_dir);
         let error =
@@ -582,8 +563,6 @@ mod tests {
             players_found: Some(1),
             dump_present: true,
             error: None,
-            scan_truncated: Some(false),
-            max_accepted: Some(500),
         };
 
         let captured_dump_path = dump_path(&bridge_dir);
@@ -633,8 +612,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             },
             &context,
         )
@@ -667,8 +644,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             },
             active_save.id,
         )
@@ -683,8 +658,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             },
             active_save.id,
         )
@@ -736,8 +709,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             },
             active_save.id,
         )
@@ -758,8 +729,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             },
             active_save.id,
         )
@@ -810,8 +779,6 @@ mod tests {
             Some("force-scan-replacement"),
             Some(1),
             None,
-            Some(false),
-            None,
         );
 
         let result = load_data_after_scan(
@@ -838,15 +805,7 @@ mod tests {
         let bridge_dir = temp_dir.path().join("bridge");
         fs::create_dir_all(&bridge_dir).expect("bridge dir");
         fs::write(dump_path(&bridge_dir), GOLDEN_FIXTURE).expect("write dump");
-        write_status_fixture(
-            &bridge_dir,
-            "ready",
-            Some("req-replacement"),
-            Some(1),
-            None,
-            Some(false),
-            None,
-        );
+        write_status_fixture(&bridge_dir, "ready", Some("req-replacement"), Some(1), None);
 
         let error = capture_completed_dump(
             &bridge_dir,
@@ -856,8 +815,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             },
         )
         .expect_err("reject replaced request");

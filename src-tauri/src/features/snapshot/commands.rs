@@ -371,8 +371,6 @@ pub struct LoadDataTimingsDto {
 pub struct LoadDataResultDto {
     pub request_id: String,
     pub players_found: Option<i32>,
-    pub scan_truncated: Option<bool>,
-    pub max_accepted: Option<i32>,
     pub stored_snapshot: SnapshotSummaryDto,
     pub effective_snapshot: SnapshotSummaryDto,
     pub timings: LoadDataTimingsDto,
@@ -397,8 +395,6 @@ impl From<LoadDataResult> for LoadDataResultDto {
         Self {
             request_id: result.request_id,
             players_found: result.players_found,
-            scan_truncated: result.scan_truncated,
-            max_accepted: result.max_accepted,
             stored_snapshot: SnapshotSummaryDto::from(result.stored_snapshot),
             effective_snapshot: SnapshotSummaryDto::from(result.effective_snapshot),
             timings: LoadDataTimingsDto::from(result.timings),
@@ -817,8 +813,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             };
             Ok((path, dump_result))
         };
@@ -963,8 +957,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             };
             // Db mutex must be free during scan
             assert!(db.0.try_lock().is_ok(), "Db mutex must be free during scan");
@@ -1041,8 +1033,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             };
             Ok((path, dump_result))
         };
@@ -1154,8 +1144,6 @@ mod tests {
                 players_found: Some(0),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             };
             Ok((path, dump_result))
         };
@@ -1216,8 +1204,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             };
             Ok((path, dump_result))
         };
@@ -1280,8 +1266,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             };
             Ok((path, dump_result))
         };
@@ -1358,8 +1342,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             };
             Ok((path, dump_result))
         };
@@ -1441,8 +1423,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             };
             Ok((path, dump_result))
         };
@@ -1563,8 +1543,6 @@ mod tests {
         let load_data = serde_json::to_value(LoadDataResultDto {
             request_id: "request".to_string(),
             players_found: Some(25),
-            scan_truncated: Some(false),
-            max_accepted: None,
             stored_snapshot: summary("stored-token"),
             effective_snapshot: summary("effective-token"),
             timings: LoadDataTimingsDto {
@@ -1640,8 +1618,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             };
             Ok((path, dump_result))
         };
@@ -1760,8 +1736,6 @@ mod tests {
                 players_found: Some(1),
                 dump_present: true,
                 error: None,
-                scan_truncated: Some(false),
-                max_accepted: None,
             };
             Ok((path, dump_result))
         };

@@ -458,7 +458,7 @@ User clicks Load Data (AppTopBar)
     compute/select the effective current snapshot by valid game date, load timestamp, then ID, demote/clear derived rows from a displaced current, and only if the newly stored snapshot is the winner write its compact `player_role_metrics`/`staff_role_metrics` rows; non-winners remain raw-only,
     ensure the valid trusted (`memory` or `derived`) in-game year's automatic Academy class only when this row is current
       On ingest failure: roll back; prior current snapshot remains
-  → Returns LoadDataResult { requestId, playersFound, scanTruncated, maxAccepted, storedSnapshot, effectiveSnapshot,
+  → Returns LoadDataResult { requestId, playersFound, storedSnapshot, effectiveSnapshot,
       timings: { scanMs, prepareMs, scoringMs, saveMs, finalizeMs, totalMs, ingestMs } } — the five phase buckets are disjoint; `ingestMs = saveMs + finalizeMs` is a compatibility aggregate, and `totalMs` is total elapsed rather than another phase bucket
   → Frontend keeps Search and Squad mounted during the command and on failure; a successful matching current
     replacement cancels/removes the exact Search/Squad roots under a continuation guard, then schedules current-owner invalidations; mutation settlement does not await those refetches, suppressing stale progress/outcome;
@@ -467,7 +467,7 @@ User clicks Load Data (AppTopBar)
     (indeterminate for scan, determinate only when completed/total truthful); button shows phase-specific label
     with fixed width; success shows detailed disjoint timings and stored-versus-latest copy; bound to the
     captured save token and cleared/replaced by a generic busy state when that context is no longer active
-  → Snapshot panels show ingest outcome (player count, truncated banner when scanTruncated) and ordered history
+  → Snapshot panels show ingest outcome (player count) and ordered history; Snapshot Overview warns only when the retained current snapshot has persisted cap metadata
 ```
 
 Load Data is `#[tauri::command] pub async fn load_data`;

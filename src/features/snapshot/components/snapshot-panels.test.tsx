@@ -8,10 +8,12 @@ import { renderWithProviders as renderApp } from "@/testing/render-with-provider
 import {
   getLastSnapshotManagementIpcArgs,
   observeSnapshotIpcCall,
+  resetSnapshotIpcMock,
   resolveBusyLoadDataRequest,
   resolveBusySnapshotDateEditRequest,
   resolveBusySnapshotDeleteRequest,
   type SnapshotMetadata,
+  setCurrentSnapshotCapIpcMock,
   setLoadDataIpcMockMode,
   setSnapshotDateEditIpcMockMode,
   setSnapshotDeleteIpcMockMode,
@@ -86,6 +88,7 @@ function renderPanels(
 
 describe("snapshot panels", () => {
   beforeEach(() => {
+    setCurrentSnapshotCapIpcMock(null);
     setLoadDataIpcMockMode("success");
   });
 
@@ -125,22 +128,29 @@ describe("snapshot panels", () => {
     expect(screen.queryByText("Alex Morgan")).toBeNull();
   });
 
-  it("shows truncated banner after capped Load Data", async () => {
-    setLoadDataIpcMockMode("truncatedSuccess");
-    const user = userEvent.setup();
+  it("warns for a retained capped current snapshot", async () => {
+    setSnapshotHistoryIpcMock([HISTORY[1]]);
+    setCurrentSnapshotCapIpcMock({ scanTruncated: true, maxAccepted: 500 });
     renderWithProviders();
-
-    await screen.findByText(/No snapshot loaded for the active save/i);
-    await user.click(await screen.findByRole("button", { name: "Load Data" }));
 
     expect(
       await screen.findByText(
         /Incomplete snapshot: scan was capped at 500 players/i,
       ),
     ).toBeInTheDocument();
+  });
+
+  it("clears capped snapshot metadata when the IPC mock resets", async () => {
+    setSnapshotHistoryIpcMock([HISTORY[1]]);
+    setCurrentSnapshotCapIpcMock({ scanTruncated: true, maxAccepted: 500 });
+    resetSnapshotIpcMock();
+    setSnapshotHistoryIpcMock([HISTORY[1]]);
+    renderWithProviders();
+
+    await screen.findByRole("combobox", { name: "Active save" });
     expect(
-      screen.getByText(/Loaded 500 players into the database/i),
-    ).toBeInTheDocument();
+      screen.queryByText(/Incomplete snapshot: scan was capped/i),
+    ).toBeNull();
   });
 
   it("creates and switches saves", async () => {

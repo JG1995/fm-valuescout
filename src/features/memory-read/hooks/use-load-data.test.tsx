@@ -854,8 +854,6 @@ describe("useLoadData", () => {
       resolveBusyLoadDataRequest({
         requestId: "req-mock",
         playersFound: 3,
-        scanTruncated: false,
-        maxAccepted: null,
         storedSnapshot: {
           id: 1,
           contextToken: "snapshot-token-1",
@@ -1032,8 +1030,6 @@ describe("useLoadData", () => {
       resolveBusyLoadDataRequest({
         requestId: "req-mock",
         playersFound: 3,
-        scanTruncated: false,
-        maxAccepted: null,
         storedSnapshot: {
           id: 99,
           contextToken: "snapshot-token-99",
@@ -1158,8 +1154,6 @@ describe("useLoadData", () => {
       resolveBusyLoadDataRequest({
         requestId: "req-mock",
         playersFound: 3,
-        scanTruncated: false,
-        maxAccepted: null,
         storedSnapshot: {
           id: 10,
           contextToken: "snapshot-token-10",
@@ -1299,8 +1293,6 @@ describe("useLoadData", () => {
       resolveBusyLoadDataRequest({
         requestId: "req-mock",
         playersFound: 3,
-        scanTruncated: false,
-        maxAccepted: null,
         storedSnapshot: {
           id: 10,
           contextToken: "snapshot-token-10",

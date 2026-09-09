@@ -22,8 +22,6 @@ type LoadDataTimings = {
 type LoadDataResult = {
   requestId: string;
   playersFound: number | null;
-  scanTruncated: boolean | null;
-  maxAccepted: number | null;
   storedSnapshot: SnapshotSummary;
   effectiveSnapshot: SnapshotSummary;
   timings: LoadDataTimings;
@@ -32,7 +30,6 @@ type LoadDataResult = {
 export type LoadDataIpcMockMode =
   | "success"
   | "historicalSuccess"
-  | "truncatedSuccess"
   | "scanFailed"
   | "ingestFailed"
   | "busy";
@@ -55,6 +52,10 @@ let saves: SaveSummary[] = [{ ...DEFAULT_SAVE }];
 const snapshotsBySaveId = new Map<number, { snapshot: SnapshotSummary }>();
 let snapshotHistory: SnapshotMetadata[] = [];
 let loadDataMode: LoadDataIpcMockMode = "success";
+let currentSnapshotCapOverride: {
+  scanTruncated: boolean;
+  maxAccepted: number | null;
+} | null = null;
 let snapshotDeleteMode: SnapshotManagementIpcMockMode = "success";
 let snapshotRenameMode: SnapshotManagementIpcMockMode = "success";
 let snapshotDateEditMode: SnapshotManagementIpcMockMode = "success";
@@ -136,8 +137,6 @@ function buildLoadDataResult(
   return {
     requestId: "req-mock",
     playersFound: storedSnapshot.playerCount,
-    scanTruncated: storedSnapshot.scanTruncated,
-    maxAccepted: storedSnapshot.maxAccepted,
     storedSnapshot,
     effectiveSnapshot,
     timings: { ...defaultTimings, ...(overrideTimings ?? {}) },
@@ -159,6 +158,7 @@ function historySnapshotState(snapshot: SnapshotMetadata) {
       gameDateSource: snapshot.gameDateSource,
       playerCount: snapshot.playerCount,
       loadedAtUtc: snapshot.loadedAtUtc,
+      ...(currentSnapshotCapOverride ?? {}),
     }),
   };
 }
@@ -315,6 +315,7 @@ export function resetSnapshotIpcMock() {
   snapshotsBySaveId.clear();
   snapshotHistory = [];
   loadDataMode = "success";
+  currentSnapshotCapOverride = null;
   snapshotDeleteMode = "success";
   snapshotRenameMode = "success";
   snapshotDateEditMode = "success";
@@ -389,6 +390,12 @@ export function setActiveSaveIpcMockMode(mode: ActiveSaveIpcMockMode) {
 export function resolvePendingSetActiveSaveIpcMock() {
   busyActiveSaveDeferred?.resolve();
   busyActiveSaveDeferred = null;
+}
+
+export function setCurrentSnapshotCapIpcMock(
+  override: { scanTruncated: boolean; maxAccepted: number | null } | null,
+) {
+  currentSnapshotCapOverride = override;
 }
 
 export function setSnapshotHistoryIpcMock(snapshots: SnapshotMetadata[]) {
@@ -878,7 +885,6 @@ export function resolveLoadDataIpcMock(
   }
 
   const isHistorical = loadDataMode === "historicalSuccess";
-  const truncated = loadDataMode === "truncatedSuccess";
   let result: LoadDataResult;
   if (isHistorical) {
     const existingCurrent = snapshotHistory.find(
@@ -909,21 +915,13 @@ export function resolveLoadDataIpcMock(
         });
     result = buildLoadDataResult({
       playersFound: storedSnapshot.playerCount,
-      scanTruncated: false,
-      maxAccepted: null,
       storedSnapshot,
       effectiveSnapshot,
     });
   } else {
     result = buildLoadDataResult({
-      playersFound: truncated ? 500 : SAMPLE_PLAYER_COUNT,
-      scanTruncated: truncated,
-      maxAccepted: truncated ? 500 : null,
-      storedSnapshot: buildSnapshot({
-        scanTruncated: truncated,
-        maxAccepted: truncated ? 500 : null,
-        playerCount: truncated ? 500 : SAMPLE_PLAYER_COUNT,
-      }),
+      playersFound: SAMPLE_PLAYER_COUNT,
+      storedSnapshot: buildSnapshot(),
     });
   }
 

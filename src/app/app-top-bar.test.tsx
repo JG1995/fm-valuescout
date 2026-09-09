@@ -281,18 +281,6 @@ describe("app top bar", () => {
     await waitFor(() => expect(mutationWasVisible).toBe(true));
   });
 
-  it("warns that a capped scan produced a partial ingest", async () => {
-    setLoadDataIpcMockMode("truncatedSuccess");
-    const user = userEvent.setup();
-    renderWithProviders();
-
-    await user.click(await screen.findByRole("button", { name: "Load Data" }));
-
-    expect(
-      await screen.findByText(/the scan was capped at 500 players/i),
-    ).toBeInTheDocument();
-  });
-
   it("reports a scan failure from load_data", async () => {
     setLoadDataIpcMockMode("scanFailed");
     const user = userEvent.setup();
