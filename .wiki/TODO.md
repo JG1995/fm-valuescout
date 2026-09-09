@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-None.
+- **[Refine Suggested Training](./features/active/refine-suggested-training.md)** — age-category Suggested Training for eligible Squad players while preserving the read-only, non-sortable focus-or-dash contract ([Linear JAY-59](https://linear.app/jaycount/issue/JAY-59/refine-suggested-training)).
 
 ## Next
 
