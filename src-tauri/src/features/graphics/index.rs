@@ -187,10 +187,11 @@ impl GraphicsIndex {
                 &mut parser_records,
                 &mut parser_attributes,
             ) {
-                ParseConfigResult::Complete(mappings) => {
+                ParseConfigResult::Complete { mappings, parent } => {
                     for candidate in mappings {
                         add_mapping(
                             &mut index,
+                            &parent,
                             &candidate.parent,
                             &candidate.from,
                             &candidate.to,
@@ -388,7 +389,10 @@ struct ConfigCandidate {
 }
 
 enum ParseConfigResult {
-    Complete(Vec<ConfigCandidate>),
+    Complete {
+        mappings: Vec<ConfigCandidate>,
+        parent: Dir,
+    },
     Discarded,
     RootLimit,
 }
@@ -572,22 +576,36 @@ fn parse_config(
         index.summary.diagnostics.malformed_config += 1;
         return ParseConfigResult::Discarded;
     }
-    ParseConfigResult::Complete(mappings)
+    ParseConfigResult::Complete {
+        mappings,
+        parent: dir,
+    }
 }
-fn add_mapping(index: &mut GraphicsIndex, config_parent: &[String], source: &str, target: &str) {
+fn add_mapping(
+    index: &mut GraphicsIndex,
+    config_dir: &Dir,
+    config_parent: &[String],
+    source: &str,
+    target: &str,
+) {
     let Some((kind, uid)) = parse_target(target) else {
         index.summary.diagnostics.invalid_mapping += 1;
         return;
     };
-    let Some(source) = source_identity(config_parent, source) else {
-        index.summary.diagnostics.invalid_mapping += 1;
+    let Some(source_parts) = source_relative_identity(source) else {
+        index.summary.diagnostics.source_unreadable += 1;
         return;
     };
-    let path = source_candidates(&source, source.0.last().is_some_and(|x| !x.contains('.')));
-    let Some(path) = path
-        .into_iter()
-        .find(|candidate| source_exists(index.root.as_ref().ok_or(()).unwrap(), &candidate.0))
-    else {
+    let Some(source) = source_identity(config_parent, source) else {
+        index.summary.diagnostics.source_unreadable += 1;
+        return;
+    };
+    let probe = source_parts.last().is_some_and(|x| !x.contains('.'));
+    let path = source_candidates(&source, probe);
+    let Some(path) = path.into_iter().find(|candidate| {
+        let relative = candidate.0[config_parent.len()..].to_vec();
+        source_exists_relative(config_dir, &relative)
+    }) else {
         index.summary.diagnostics.source_unreadable += 1;
         return;
     };
@@ -618,6 +636,18 @@ fn add_mapping(index: &mut GraphicsIndex, config_parent: &[String], source: &str
     }
     index.summary.mappings += 1;
 }
+fn source_relative_identity(source: &str) -> Option<Vec<String>> {
+    let path = Path::new(source);
+    if path.is_absolute() {
+        return None;
+    }
+    path.components()
+        .map(|component| match component {
+            std::path::Component::Normal(value) => Some(value.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect()
+}
 fn source_identity(parent: &[String], source: &str) -> Option<Identity> {
     let path = Path::new(source);
     if path.is_absolute() {
@@ -647,17 +677,24 @@ fn source_candidates(identity: &Identity, probe: bool) -> Vec<Identity> {
         })
         .collect()
 }
-fn source_exists(root: &Dir, identity: &[String]) -> bool {
-    let Some((name, parent)) = identity.split_last() else {
+fn source_exists_relative(parent: &Dir, identity: &[String]) -> bool {
+    let Some((name, components)) = identity.split_last() else {
         return false;
     };
-    let Ok(dir) = open_parent(root, parent) else {
+    let Ok(dir) = open_relative(parent, components) else {
         return false;
     };
     let Ok(file) = open_file(&dir, name) else {
         return false;
     };
     file.metadata().map(|m| m.is_file()).unwrap_or(false)
+}
+fn open_relative(root: &Dir, components: &[String]) -> std::io::Result<Dir> {
+    let mut current = root.try_clone()?;
+    for component in components {
+        current = open_dir(&current, component)?;
+    }
+    Ok(current)
 }
 fn parse_target(target: &str) -> Option<(GraphicsKind, u32)> {
     let mut p = target.split('/');
@@ -811,6 +848,21 @@ mod tests {
         assert_eq!(visited, MAX_ENTRIES);
     }
     #[test]
+    fn missing_source_does_not_discard_valid_sibling() {
+        let d = tempdir().unwrap();
+        png(&d.path().join("ok.png"));
+        fs::write(
+            d.path().join("config.xml"),
+            r#"<root><record from="missing.png" to="graphics/pictures/person/2/portrait"/><record from="ok.png" to="graphics/pictures/person/3/portrait"/></root>"#,
+        )
+        .unwrap();
+        let index = GraphicsIndex::scan(d.path());
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 2).is_none());
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 3).is_some());
+        assert_eq!(index.summary().diagnostics.source_unreadable, 1);
+    }
+
+    #[test]
     fn malformed_record_attribute_discards_config_mappings() {
         let d = tempdir().unwrap();
         png(&d.path().join("p.png"));
@@ -875,7 +927,7 @@ mod tests {
         assert!(GraphicsIndex::scan(d.path())
             .resolve(GraphicsKind::PersonPortrait, 9)
             .is_none());
-        assert!(!source_exists(
+        assert!(!source_exists_relative(
             &Dir::open_ambient_dir(d.path(), ambient_authority()).unwrap(),
             &["direct.png".to_owned()]
         ));
