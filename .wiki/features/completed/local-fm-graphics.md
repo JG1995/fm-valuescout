@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -266,7 +266,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 ### PR 2 — Add local FM graphics
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -284,7 +284,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 **Required checks:** GitHub protected `main` requires strict status `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -579,7 +579,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 #### Commit 7 — Reconcile local graphics delivery records
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(graphics): reconcile local graphics delivery`
 
@@ -631,6 +631,8 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 **Commit:** Reconcile local graphics delivery records
 
+**Active work:** None; feature close-out is complete. No release work is included.
+
 ### RED or removal proof
 
 Run the complete final validation and feature review before documentation reconciliation. Confirm current Architecture, Design, TODO, and active-ledger state remain incomplete or contradictory until the delivered behavior and reviewed evidence are recorded.
@@ -666,7 +668,8 @@ Final validation and feature review clear the complete implementation range. Arc
 | PR 2 — Add local FM graphics | Commit 3 — Add the Graphics Settings section | 740dd747956e35c0a08e9e4e113b968678912946 | Added typed graphics IPC and generation-keyed Query state plus a pathless Settings section for safe status, diagnostics, choose, clear, and rescan actions. Mutation success removes prior-generation available and missing image queries before status refresh. | Eight focused Settings and Query tests passed; `./scripts/dev test` passed 1,005 tests; `./scripts/dev check-app`, `./scripts/dev check`, and `./scripts/dev smoke` passed with 62 browser tests; three required Settings inspections were opened and contained at 1280, 1600, and 3440 widths; `git diff --check` and LSP passed. | Pass | Accepted findings — a MEDIUM advisory remains to clear an earlier action error after a later different action succeeds. | 1 | None |
 | PR 2 — Add local FM graphics | Commit 4 — Render Player Profile identity graphics | 517d08acb508d2f4e7a3b24ddcfe6e552ddb5338 | Added nullable `currentClubUid` to Player Detail and composed current-generation player portrait and current-club logo queries into the fixed profile identity rail through the route. Available graphics render safe data URLs; all other states retain the existing fallbacks and text identity. | Eighty-five focused profile tests passed; `./scripts/dev test` passed 1,011 tests; `./scripts/dev check`, `./scripts/dev check-app`, and `./scripts/dev smoke` passed with 62 browser tests; required profile inspections were opened and contained at 1280, 1600, and 3440 widths; `git diff --check` and LSP passed. | Pass | Clear | 2 | None |
 | PR 2 — Add local FM graphics | Commit 5 — Render player-table identity graphics | d1096f83f9c16ee64215d7b3dff38e00d8b22a29 | Added nullable `currentClubUid` to Search and Squad DTOs and composed current-generation portrait and club-logo queries into both fixed virtualized table identity seams. Exact UID, fallback, generation, row, navigation, and visible-request bounds are protected on both routes. | Two hundred twenty-seven focused Search and Squad tests passed; `./scripts/dev test` passed 1,022 tests; `./scripts/dev check`, `./scripts/dev check-app`, and `./scripts/dev smoke` passed with 62 browser tests; six required Search/My Club inspections were opened and contained at 1280, 1600, and 3440 widths; `git diff --check` and LSP passed. | Pass | Clear | 2 | The correction removed duplicate Search image queries so each visible row issues one request per graphics kind. |
-| PR 2 — Add local FM graphics | Commit 6 — Render the managed-club logo | Pending record | Composed a current-generation managed-club logo from the stored exact `clubUid` into My Club. Only an available managed-club status can query; null, stale, pending, missing, and error states retain the fixed shield and selected text identity. | One hundred forty-three focused My Club tests passed; `./scripts/dev test` passed 1,027 tests; `./scripts/dev check`, `./scripts/dev check-app`, and `./scripts/dev smoke` passed with 62 browser tests; three required My Club inspections were opened and contained at 1280, 1600, and 3440 widths; `git diff --check` and LSP passed. | Pass | Clear | 2 | None |
+| PR 2 — Add local FM graphics | Commit 6 — Render the managed-club logo | b1bc921ca3632770e1946fb5ddd5ed3ff6ae6579 | Composed a current-generation managed-club logo from the stored exact `clubUid` into My Club. Only an available managed-club status can query; null, stale, pending, missing, and error states retain the fixed shield and selected text identity. | One hundred forty-three focused My Club tests passed; `./scripts/dev test` passed 1,027 tests; `./scripts/dev check`, `./scripts/dev check-app`, and `./scripts/dev smoke` passed with 62 browser tests; three required My Club inspections were opened and contained at 1280, 1600, and 3440 widths; `git diff --check` and LSP passed. | Pass | Clear | 2 | None |
+| PR 2 — Add local FM graphics | Commit 7 — Reconcile local graphics delivery records | Close-out commit | Reconciled current-state architecture and design documentation, moved JAY-63 to Completed in TODO, and recorded final feature close-out evidence. | Bridge 219 passed/3 skipped; frontend 1,029 passed; full check/Rust 840 passed/2 ignored; smoke 62 passed; all 12 required captures succeeded and were opened/inspected at recorded viewports with fixed slots, readable text, and no clipping or overflow. Chromium-stub limitation remains. | Pass | Clear | 2 | Feature review cleared after correction commit `42bb458273150c71b2c11637165628b57d460c9f`; Windows CI and post-merge live-pack checks remain pending. |
 
 ## Final validation
 
@@ -692,6 +695,12 @@ Run after all implementation packets and before feature review/publication:
 Inspect each populated capture for fixed slots, fallback state, readable text, clipping, overflow, and profile/table containment. Delete `.work/ui-inspection/` during close-out. Browser captures prove only Chromium-stub UI, not native Tauri, Rust filesystem, SQLite, picker, or live FM.
 
 **Disclosed post-merge manual verification gap:** Before the developer performs the live check, run `./scripts/dev bridge-install`, restart FM26, then test live FM26.3.2 and a real local graphics pack. Verify `club + 0x0C` for senior, reserve/youth, and loan current/parent cases; root choice; nested portrait/logo/icon mappings; duplicate diagnostics; manual rescan/cache refresh; missing fallbacks; and unchanged Load Data. This is a post-merge precondition and manual test, not an automated merge gate. Record it as not run until evidence exists.
+
+## Feature close-out
+
+Final post-correction validation passed: bridge 219 passed with 3 skipped; frontend 1,029 passed; full check/Rust 840 passed with 2 ignored; smoke 62 passed. All 12 required captures succeeded and were opened and inspected at the recorded viewports. Fixed slots, readable text, and no clipping or overflow were confirmed. The Chromium-stub limitation remains.
+
+The initial feature review found three MEDIUM findings. Correction commit `42bb458273150c71b2c11637165628b57d460c9f` addressed them, followed by two correction-review rounds. Final verdict: Pass. Test portfolio: Pass. Project fit: Conforms.
 
 ## Documentation impact
 
