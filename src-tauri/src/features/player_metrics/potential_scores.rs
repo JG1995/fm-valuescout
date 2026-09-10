@@ -69,9 +69,7 @@ pub(crate) fn replace_player(
     )
     .map_err(|error| error.to_string())?;
     let compact_rows = persist_players(tx, snapshot_id, &[player])?;
-    compact::persist_rows(tx, snapshot_id, &compact_rows)?;
-    compact::assert_snapshot_complete(tx, snapshot_id)?;
-    assert_current_snapshot_complete(tx, snapshot_id)
+    compact::persist_rows(tx, snapshot_id, &compact_rows)
 }
 
 /// Clears compact rows and potential-derived state for one snapshot.
@@ -660,6 +658,43 @@ mod tests {
             compact_row(&conn, snapshot_id, 43).as_ref(),
             Some(&other_before)
         );
+    }
+
+    #[test]
+    fn replace_player_does_not_validate_unrelated_derived_state() {
+        let (conn, snapshot_id) = snapshot_with_players(&[42, 43]);
+        let initial_tx = conn
+            .unchecked_transaction()
+            .expect("start initial writer transaction");
+        rebuild_snapshot(&initial_tx, snapshot_id).expect("persist initial derived state");
+        initial_tx.commit().expect("commit initial derived state");
+        conn.execute_batch(&format!(
+            "UPDATE players
+             SET potential_attributes_json = NULL, potential_projection_model_version = NULL
+             WHERE snapshot_id = {snapshot_id} AND uid = 43;
+             UPDATE player_role_metrics
+             SET score_model_version = 1, projection_model_version = 1
+             WHERE snapshot_id = {snapshot_id} AND uid = 43;"
+        ))
+        .expect("corrupt unrelated derived state");
+
+        let replacement_tx = conn
+            .unchecked_transaction()
+            .expect("start replacement transaction");
+        replace_player(&replacement_tx, snapshot_id, 42)
+            .expect("replace one player without scanning unrelated derived state");
+        replacement_tx.commit().expect("commit replacement");
+
+        assert!(compact_row(&conn, snapshot_id, 42).is_some());
+        let unrelated_projection: Option<String> = conn
+            .query_row(
+                "SELECT potential_attributes_json
+                 FROM players WHERE snapshot_id = ?1 AND uid = 43",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("read unrelated projected attributes");
+        assert_eq!(unrelated_projection, None);
     }
 
     #[test]
