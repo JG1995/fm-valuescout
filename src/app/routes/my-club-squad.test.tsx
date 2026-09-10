@@ -19,6 +19,15 @@ import type { MyClubWorkspace } from "@/app/routes/my-club";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
+import {
+  DEFAULT_GRAPHICS_STATUS,
+  getGraphicsIpcMockCalls,
+  getPendingGraphicsResultIpcMockCount,
+  resolveAllPendingGraphicsResultsIpcMock,
+  setGraphicsResultIpcMockForCall,
+  setGraphicsResultIpcMockMode,
+  setGraphicsStatusIpcMock,
+} from "@/features/graphics/api/graphics-ipc-mock";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
@@ -179,6 +188,7 @@ function squadPlayerNamed(name: string, uid: number, ca = 160): SquadPlayer {
     birthDayOfYear: 80,
     nationalities: ["ENG"],
     club: "Metro FC",
+    currentClubUid: null,
     division: "Premier Division",
     ca,
     pa: ca + 5,
@@ -290,6 +300,175 @@ function switchToSecondSave(
 }
 
 describe("My Club route", () => {
+  it("requests exact UID graphics in visible Squad rows and keeps null-club fallbacks", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
+      sources: [],
+    });
+    setGraphicsStatusIpcMock({
+      generation: 11,
+      selected: true,
+      candidate: { available: true, source: "documents" },
+      summary: {
+        configs: 1,
+        mappings: 2,
+        truncated: false,
+        diagnostics: {
+          configLimit: 10000,
+          entryLimit: 1000000,
+          depthLimit: 32,
+          mappingLimit: 500000,
+          configTooLarge: 0,
+          configUnreadable: 0,
+          malformedConfig: 0,
+          invalidMapping: 0,
+          sourceUnreadable: 0,
+        },
+      },
+    });
+    setGraphicsResultIpcMockForCall("personPortrait", 42, {
+      status: "available",
+      mime: "image/png",
+      bytes: [137, 80, 78, 71],
+    });
+    setGraphicsResultIpcMockForCall("clubLogo", 7, {
+      status: "available",
+      mime: "image/png",
+      bytes: [137, 80, 78, 71],
+    });
+    setSquadPlayersOverride([
+      { ...squadPlayerNamed("Exact Squad", 42), currentClubUid: 7 },
+      { ...squadPlayerNamed("Name only Squad", 43), currentClubUid: null },
+    ]);
+    setGraphicsResultIpcMockMode("pending");
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const table = await screen.findByRole("table", { name: "Squad overview" });
+    const row = within(table).getByText("Exact Squad").closest("tr");
+    const legacy = within(table).getByText("Name only Squad").closest("tr");
+    if (!row || !legacy) throw new Error("Expected Squad graphics rows");
+    await waitFor(() =>
+      expect(getGraphicsIpcMockCalls().length).toBeGreaterThanOrEqual(2),
+    );
+    setGraphicsResultIpcMockMode("available");
+    resolveAllPendingGraphicsResultsIpcMock();
+    await waitFor(() => expect(row.querySelectorAll("img")).toHaveLength(2));
+    expect(legacy.querySelectorAll("img")).toHaveLength(0);
+    expect(row).toHaveStyle({ height: "40px" });
+    expect(row).toHaveAttribute("data-index");
+    expect(getGraphicsIpcMockCalls()).toEqual(
+      expect.arrayContaining([
+        { kind: "personPortrait", uid: 42 },
+        { kind: "clubLogo", uid: 7 },
+      ]),
+    );
+    expect(getGraphicsIpcMockCalls()).not.toContainEqual({
+      kind: "clubLogo",
+      uid: 43,
+    });
+
+    setGraphicsResultIpcMockMode("error");
+  });
+  it.each(["pending", "missing", "error"] as const)(
+    "keeps Squad marks and navigation geometry for %s graphics",
+    async (mode) => {
+      await resolveLoadDataIpcMock();
+      resolveSavePlannerClubFamilyIpcMock({
+        primaryClub: { clubName: "Metro FC", clubUid: 1 },
+        sources: [],
+      });
+      setGraphicsStatusIpcMock({
+        generation: 12,
+        selected: true,
+        candidate: { available: true, source: "documents" },
+        summary: {
+          configs: 1,
+          mappings: 1,
+          truncated: false,
+          diagnostics: {
+            configLimit: 10000,
+            entryLimit: 1000000,
+            depthLimit: 32,
+            mappingLimit: 500000,
+            configTooLarge: 0,
+            configUnreadable: 0,
+            malformedConfig: 0,
+            invalidMapping: 0,
+            sourceUnreadable: 0,
+          },
+        },
+      });
+      setGraphicsResultIpcMockMode(mode);
+      setSquadPlayersOverride([
+        { ...squadPlayerNamed("Stateful Squad", 51), currentClubUid: 12 },
+      ]);
+      const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
+      const table = await screen.findByRole("table", {
+        name: "Squad overview",
+      });
+      const row = within(table).getByText("Stateful Squad").closest("tr");
+      if (!row) throw new Error("Expected Squad graphics row");
+      expect(row).toHaveStyle({ height: "40px" });
+      expect(within(row).getByText("Stateful Squad")).toBeVisible();
+      expect(row).toHaveAttribute("tabindex", "0");
+      fireEvent.click(row);
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe("/players/51"),
+      );
+      if (mode === "pending") {
+        setGraphicsResultIpcMockMode("missing");
+        resolveAllPendingGraphicsResultsIpcMock();
+        await waitFor(() =>
+          expect(getPendingGraphicsResultIpcMockCount()).toBe(0),
+        );
+      }
+    },
+  );
+
+  it("bounds Squad graphics requests to rendered virtual rows", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
+      sources: [],
+    });
+    setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
+      generation: 13,
+      selected: true,
+    });
+    const players = manySquadPlayers(200).map((player) => ({
+      ...player,
+      currentClubUid: player.uid + 1000,
+    }));
+    setSquadPlayersOverride(players);
+    setGraphicsResultIpcMockMode("pending");
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
+    const table = await screen.findByRole("table", { name: "Squad overview" });
+    await waitFor(() =>
+      expect(getGraphicsIpcMockCalls().length).toBeGreaterThan(0),
+    );
+    const calls = getGraphicsIpcMockCalls() as Array<{
+      kind: string;
+      uid: number;
+    }>;
+    expect(calls.length).toBeLessThan(players.length);
+    expect(calls.length).toBeLessThan(100);
+    expect(
+      calls.every((call) =>
+        players.some(
+          (player) =>
+            call.uid === player.uid || call.uid === player.currentClubUid,
+        ),
+      ),
+    ).toBe(true);
+    expect(table.querySelectorAll("tr[data-index]").length).toBeGreaterThan(0);
+    setGraphicsResultIpcMockMode("missing");
+    resolveAllPendingGraphicsResultsIpcMock();
+    await waitFor(() => expect(getPendingGraphicsResultIpcMockCount()).toBe(0));
+    queryClient.clear();
+  });
+
   it("selects each Club workspace from navigation with no local tabs", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({

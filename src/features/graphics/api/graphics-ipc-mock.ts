@@ -35,6 +35,19 @@ type GraphicsResult = import("../types/graphics").GraphicsResult;
 let status = { ...DEFAULT_GRAPHICS_STATUS };
 let result: GraphicsResult = { status: "missing" };
 let resultMode: GraphicsResultIpcMockMode = "missing";
+let resultsByCall = new Map<string, GraphicsResult>();
+
+function callKey(args: unknown) {
+  const request = args as {
+    kind?: string;
+    uid?: number;
+  };
+  return `${request.kind ?? ""}:${request.uid ?? 0}`;
+}
+
+function resultForCall(args: unknown) {
+  return resultsByCall.get(callKey(args)) ?? result;
+}
 let pendingResults: Array<{
   args: unknown;
   resolve: (result: GraphicsResult) => void;
@@ -57,6 +70,7 @@ export function resetGraphicsIpcMock() {
   chooseMode = "select";
   result = { status: "missing" };
   resultMode = "missing";
+  resultsByCall = new Map();
   pendingResults = [];
   resolveCalls = [];
 }
@@ -70,20 +84,29 @@ export function setGraphicsResultIpcMock(next: GraphicsResult) {
   resultMode = "available";
 }
 
+export function setGraphicsResultIpcMockForCall(
+  kind: string,
+  uid: number,
+  next: GraphicsResult,
+) {
+  resultsByCall.set(`${kind}:${uid}`, next);
+  resultMode = "available";
+}
+
 export function setGraphicsResultIpcMockMode(mode: GraphicsResultIpcMockMode) {
   resultMode = mode;
 }
 
 export function resolvePendingGraphicsResultIpcMock() {
   const pending = pendingResults.shift();
-  pending?.resolve(result);
+  pending?.resolve(resultForCall(pending.args));
 }
 
 export function resolveAllPendingGraphicsResultsIpcMock() {
   const pending = pendingResults;
   pendingResults = [];
   for (const deferred of pending) {
-    deferred.resolve(result);
+    deferred.resolve(resultForCall(deferred.args));
   }
 }
 
@@ -105,7 +128,9 @@ export function resolveGraphicsIpcMock(args?: unknown) {
       pendingResults.push({ args, resolve });
     });
   }
-  return resultMode === "available" ? result : { status: "missing" };
+  return resultMode === "available"
+    ? resultForCall(args)
+    : { status: "missing" };
 }
 
 export function resolveGraphicsStatusIpcMock() {

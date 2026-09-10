@@ -8,6 +8,11 @@ import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { SquadCsvImportModal } from "@/features/csv-import/components/squad-csv-import-modal";
 import type { CsvImportSummary } from "@/features/csv-import/types/csv-import-summary";
+import {
+  graphicsResultQueryOptions,
+  graphicsStatusQueryOptions,
+} from "@/features/graphics/api/graphics-query-options";
+import type { GraphicsResult } from "@/features/graphics/types/graphics";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import type { TacticContextBoundaryState } from "@/features/planner/components/tactic-context-boundary";
 import { TacticContextBoundary } from "@/features/planner/components/tactic-context-boundary";
@@ -30,6 +35,7 @@ import type {
   FilterRule,
 } from "@/features/search/types/filter-rule";
 import type { PlayerShortlistImportSummary } from "@/features/search/types/player-shortlist-import-summary";
+import type { PlayerSummary } from "@/features/search/types/player-summary";
 import type {
   SearchSortDir,
   SearchSortField,
@@ -64,6 +70,45 @@ import {
   isTacticColumnId,
   type TacticColumnGroup,
 } from "@/utils/tactic-ids";
+
+function graphicsImageSource(result: GraphicsResult | undefined) {
+  if (result?.status !== "available") return undefined;
+  let binary = "";
+  for (const byte of result.bytes) binary += String.fromCharCode(byte);
+  return `data:${result.mime};base64,${btoa(binary)}`;
+}
+
+function SearchIdentityGraphics({
+  player,
+  kind,
+}: {
+  player: PlayerSummary | undefined;
+  kind: "portrait" | "crest";
+}) {
+  const { data: status } = useQuery(graphicsStatusQueryOptions);
+  const graphicsKind = kind === "portrait" ? "personPortrait" : "clubLogo";
+  const uid = kind === "portrait" ? player?.uid : player?.currentClubUid;
+  const result = useQuery({
+    ...graphicsResultQueryOptions(
+      status?.generation ?? 0,
+      graphicsKind,
+      uid ?? 0,
+    ),
+    enabled: status?.selected === true && (uid ?? 0) > 0,
+  });
+  const source = graphicsImageSource(result.data);
+  return source ? (
+    <img
+      src={source}
+      alt=""
+      className={
+        kind === "portrait"
+          ? "size-7 rounded-sm object-contain"
+          : "size-3 object-contain"
+      }
+    />
+  ) : null;
+}
 
 export type SearchRouteSearch = {
   sort: SearchSortField;
@@ -553,6 +598,12 @@ function SearchPageContent() {
               }}
               orderedLaneIds={orderedLaneIds}
               laneLabels={laneLabels}
+              identityGraphics={(player) => ({
+                portrait: (
+                  <SearchIdentityGraphics player={player} kind="portrait" />
+                ),
+                crest: <SearchIdentityGraphics player={player} kind="crest" />,
+              })}
               onSortChange={(nextSort, nextDir) => {
                 updateSearch({ sort: nextSort, dir: nextDir });
               }}

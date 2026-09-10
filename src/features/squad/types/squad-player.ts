@@ -6,6 +6,7 @@ export type SquadPlayer = {
   birthDayOfYear: number;
   nationalities: string[];
   club: string | null;
+  currentClubUid: number | null;
   division: string | null;
   ca: number;
   pa: number;
