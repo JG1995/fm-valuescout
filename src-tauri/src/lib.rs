@@ -74,6 +74,7 @@ pub fn run() {
             features::managed_club::commands::get_managed_club,
             features::managed_club::commands::list_managed_club_options,
             features::managed_club::commands::set_managed_club,
+            features::managed_club_boost::commands::boost_managed_club,
             features::csv_import::commands::import_csv,
             features::csv_import::commands::import_player_shortlist_csv,
             features::csv_import::commands::import_staff_shortlist_csv,

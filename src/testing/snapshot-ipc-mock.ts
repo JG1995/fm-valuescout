@@ -52,6 +52,7 @@ let saves: SaveSummary[] = [{ ...DEFAULT_SAVE }];
 const snapshotsBySaveId = new Map<number, { snapshot: SnapshotSummary }>();
 let snapshotHistory: SnapshotMetadata[] = [];
 let loadDataMode: LoadDataIpcMockMode = "success";
+let currentSnapshotFails = false;
 let currentSnapshotCapOverride: {
   scanTruncated: boolean;
   maxAccepted: number | null;
@@ -315,6 +316,7 @@ export function resetSnapshotIpcMock() {
   snapshotsBySaveId.clear();
   snapshotHistory = [];
   loadDataMode = "success";
+  currentSnapshotFails = false;
   currentSnapshotCapOverride = null;
   snapshotDeleteMode = "success";
   snapshotRenameMode = "success";
@@ -390,6 +392,10 @@ export function setActiveSaveIpcMockMode(mode: ActiveSaveIpcMockMode) {
 export function resolvePendingSetActiveSaveIpcMock() {
   busyActiveSaveDeferred?.resolve();
   busyActiveSaveDeferred = null;
+}
+
+export function setCurrentSnapshotIpcMockFailure(fails: boolean) {
+  currentSnapshotFails = fails;
 }
 
 export function setCurrentSnapshotCapIpcMock(
@@ -565,6 +571,9 @@ export function resolveListSnapshotsIpcMock(args: unknown) {
 
 export function resolveGetCurrentSnapshotIpcMock() {
   onGetCurrentSnapshotCall?.();
+  if (currentSnapshotFails) {
+    throw new Error("Could not load current snapshot");
+  }
   const state = activeSaveSnapshot();
   return state ? { ...state.snapshot } : null;
 }

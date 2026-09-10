@@ -51,6 +51,10 @@ import {
   resolveCsvImportIpcMock,
 } from "@/testing/csv-import-ipc-mock";
 import {
+  resetManagedClubBoostIpcMock,
+  resolveManagedClubBoostIpcMock,
+} from "@/testing/managed-club-boost-ipc-mock";
+import {
   resetPlayerMoneyballOverride,
   resolveGetPlayerMoneyballIpcMock,
 } from "@/testing/moneyball-ipc-mock";
@@ -149,6 +153,10 @@ function registerIpcMocks() {
 
     if (cmd === "get_bridge_status") {
       return resolveBridgeStatusIpcMock();
+    }
+
+    if (cmd === "boost_managed_club") {
+      return resolveManagedClubBoostIpcMock(args);
     }
 
     if (cmd === "request_player_dump") {
@@ -435,6 +443,7 @@ afterEach(() => {
   resetSquadPlayersOverride();
   resetGetPlayerOverride();
   resetPlayerMoneyballOverride();
+  resetManagedClubBoostIpcMock();
   resetPlannerIpcMock();
   resetAcademyIpcMock();
   usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });
