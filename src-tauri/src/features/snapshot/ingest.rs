@@ -1884,19 +1884,19 @@ mod tests {
             .find(|save| save.is_active)
             .expect("active save");
 
-        let json_with_null_attribute = GOLDEN_FIXTURE.replace(
-            "\"Pace\": 15\n      },",
-            "\"Pace\": 15,\n        \"Dribbling\": null\n      },",
-        );
-        let expected_positions = serde_json::from_str::<Value>(&json_with_null_attribute)
-            .expect("parse v9 fixture")
+        let mut fixture: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
+        fixture["players"][0]["attributes"]
+            .as_object_mut()
+            .expect("fixture attributes")
+            .insert("Dribbling".to_string(), Value::Null);
+        let expected_positions = fixture
             .get("players")
             .and_then(Value::as_array)
             .and_then(|players| players.first())
             .and_then(|player| player.get("positions"))
             .cloned()
             .expect("fixture positions");
-        let dump_path = write_dump(&temp_dir, "dump.json", &json_with_null_attribute);
+        let dump_path = write_dump(&temp_dir, "dump.json", &fixture.to_string());
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
 
         assert_eq!(snapshot.save_id, active_save.id);
