@@ -82,13 +82,23 @@ pub struct GraphicsIndex {
     summary: GraphicsSummary,
     limits: Limits,
 }
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ImageResult {
     pub bytes: Vec<u8>,
     pub mime: &'static str,
 }
 
 impl GraphicsIndex {
+    pub fn empty() -> Self {
+        Self {
+            root: None,
+            people: BTreeMap::new(),
+            clubs: BTreeMap::new(),
+            summary: GraphicsSummary::default(),
+            limits: PRODUCTION_LIMITS,
+        }
+    }
+
     pub fn scan(root: &Path) -> Self {
         Self::scan_with_limits(root, PRODUCTION_LIMITS)
     }
@@ -167,9 +177,12 @@ impl GraphicsIndex {
         )
         .ok()
     }
+    #[cfg(test)]
     pub fn people_len(&self) -> usize {
         self.people.len()
     }
+    #[cfg(test)]
+    #[allow(dead_code)]
     pub fn clubs_len(&self) -> usize {
         self.clubs.len()
     }

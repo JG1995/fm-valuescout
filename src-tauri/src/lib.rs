@@ -39,7 +39,13 @@ pub fn run() {
             let db = db::open(&db_path).inspect_err(|_error| {
                 log::error!("database initialization failed during startup");
             })?;
+            let graphics_runtime = {
+                let conn = db.0.lock().map_err(|_| "database lock poisoned")?;
+                features::graphics::runtime::GraphicsRuntime::new(&conn, app.handle())
+                    .map_err(|error| format!("graphics runtime initialization failed: {error}"))?
+            };
             app.manage(db);
+            app.manage(graphics_runtime);
 
             log::info!("FM ValueScout startup complete");
 
@@ -110,6 +116,11 @@ pub fn run() {
             features::planner::commands::clear_planner_assignment,
             features::planner::commands::assign_planner_player,
             features::planner::commands::move_planner_player,
+            features::graphics::commands::get_graphics_status,
+            features::graphics::commands::choose_graphics_root,
+            features::graphics::commands::clear_graphics_root,
+            features::graphics::commands::rescan_graphics,
+            features::graphics::commands::resolve_graphics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

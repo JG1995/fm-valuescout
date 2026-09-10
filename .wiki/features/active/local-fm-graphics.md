@@ -8,7 +8,7 @@ Active
 
 ## Delivery authorization
 
-**Delivery fingerprint:** d64905ed4105624b208f870340d825ff0b2616dae9256a9cbe4b2e8fcdfe5f18
+**Delivery fingerprint:** dad6f4a53cee5420eb3e2301cdfa917d3bf86553e910aeb9e3f84f3eb775ee70
 
 ## Intent
 
@@ -33,7 +33,7 @@ Deliver Linear JAY-63. FM ValueScout will index one user-selected local FM26 gra
 - Discovery is recursive, bounded, no-follow, and independent of discovery order. It skips symlinked directories, Windows junctions/reparse points, and non-regular files. The streaming parser has no external entity or network behavior. It accepts no arbitrary XML path or source escape.
 - Bounds are 32 directory levels, 10,000 `config.xml` files, 1,000,000 directory entries across the whole scan, 8 MiB per config, 500,000 accepted mappings across indexes, and 8 MiB per returned image. Capability discovery streams under the fail-closed global entry budget. It retains at most the lexically smallest 10,000 root-relative config identities in a bounded max-heap, accounts for config overflow/truncation, then globally sorts that retained set before parsing. A config-count overflow may process only those globally first 10,000 configs; entry-budget truncation discards every candidate index. Invalid records and read failures produce categorized aggregate diagnostics.
 - Global root-relative lexical config-path order and first valid mapping determine duplicate precedence after the retained-set sort; arbitrary discovery order cannot change installed precedence. A club `logo` beats `icon` at resolution. Extensionless sources probe PNG, JPEG/JPG, then WebP in that order.
-- Root change and rescan replace the whole runtime generation and clear positive and negative runtime results atomically. Frontend Query keys include that returned generation, and root-change/rescan success removes old generation keys before new results can render.
+- Reservation numbers are monotonic attempt IDs, not current state. A successful SQLite root transition alone creates the committed target generation. The transition gate serializes reserve-plus-persist and the brief completion check/install, while scans run outside the transition gate, runtime mutex, and DB mutex. A persistence failure leaves the prior committed target eligible to install; a newer successful persistence makes every older scan completion stale. Status and frontend Query keys use only the committed generation. Each committed target atomically clears the installed index and positive and negative result caches before its scan can install.
 - Slots stay fixed while requests are pending, missing, or invalid. Existing names remain visible and accessible.
 - No graphics-pack asset, private local path, live dump, UID sample, or real FM data enters the repository.
 
@@ -50,15 +50,15 @@ Deliver Linear JAY-63. FM ValueScout will index one user-selected local FM26 gra
 - `managed_club/service.rs` lists exact effective-current `{ clubName, clubUid }` options, validates and persists the submitted name/UID pair, and returns the nullable UID with `Unconfigured`, `Available`, or `Missing` status. Legacy name-only selections retain a null UID without rebinding. Current cohort SQL remains name based.
 - `player/query.rs`, `search/query.rs`, and `planner/squad.rs` own the Player Detail, Search, and Squad read projections. Staff has no in-scope presentation consumer.
 - `player-identity.tsx` has a player-initial and club-monogram rail. `search-results-panel.tsx` and `squad-overview-panel.tsx` each own the dense player identity cell. `ManagedClubSelector` owns the My Club context seam. `src/app/routes/settings.tsx` owns Settings composition.
-- `tauri-plugin-dialog` and `dialog:allow-open` exist. CSV import is a picker analogue, but it receives a React path and is not acceptable for this root trust boundary. `src-tauri/Cargo.toml` sets `rust-version = "1.77.2"`; the merged lock has `quick-xml` 0.41.0 indirectly but no capability-filesystem crate.
-- `.github/workflows/check.yml` runs Rust checks only on Linux. Its existing Windows job runs bridge tests, so it cannot prove the Rust Windows junction/reparse path.
+- `tauri-plugin-dialog` and `dialog:allow-open` exist. CSV import is a picker analogue, but it receives a React path and is not acceptable for this root trust boundary. `src-tauri/Cargo.toml` sets `rust-version = "1.77.2"`; `quick-xml` 0.41.0, `cap-std` 3.4.6, and `cap-fs-ext` 3.4.6 are direct dependencies and are locked at those approved versions. Cargo resolves `cap-primitives` transitively at 3.4.6.
+- `.github/workflows/check.yml` runs Rust checks on Linux and Windows through `rust-windows`; its `shell: bash` Rust gate contributes to Check aggregation. The existing Windows bridge job still runs bridge tests.
 - Supported validation is `./scripts/dev bridge-test`, `./scripts/dev test`, `./scripts/dev check`, `./scripts/dev smoke`, `./scripts/dev inspect-ui`, and `./scripts/dev bridge-install`. Browser inspection is Chromium-stub evidence only.
 
 ## Feature architecture
 
 1. Completed PR 1 advanced the dump contract to v9, added nullable raw persistence in v44, and bound new managed-club selections to the exact current-snapshot club UID in v45. It preserves legacy null rows and text-led membership queries.
 2. PR 2 first adds a pure Rust graphics engine. It opens the trusted selected root once, then uses capability filesystem handles and root-relative mapping identity for every traversal and image open. Each descendant component opens from its already-open parent capability, including later source resolution. It produces immutable person and club indexes plus safe diagnostics, and resolves one bounded image result without SQLite, Tauri state, commands, or React.
-3. The next packet owns v46 root persistence, Documents/OneDrive candidate discovery and picker start selection, the zero-argument Rust picker, `GraphicsRuntime`, command registration, root generations, and a bounded result cache. It exposes safe non-path status and kind-plus-UID resolution only.
+3. The next packet owns v46 root persistence, Documents/OneDrive candidate discovery and picker start selection, the zero-argument Rust picker, `GraphicsRuntime`, command registration, committed target generations, and a bounded result cache. A dedicated transition gate makes a root change, clear, or rescan durable before it becomes the runtime target; scans remain outside all DB and runtime locks and install only for that durable target. It exposes safe non-path status and kind-plus-UID resolution only.
 4. Settings owns typed IPC and Query lifecycle. Presentation stays organized by UI seam: Profile projects its player club UID; Search and Squad project their table club UIDs together; My Club consumes its already stored selected UID.
 
 ## Uncertainty register
@@ -76,7 +76,8 @@ Deliver Linear JAY-63. FM ValueScout will index one user-selected local FM26 gra
 - Use the Rust native folder picker and narrow commands. Do not widen the existing WebView dialog authority for a caller-supplied root.
 - Retain `quick-xml` 0.41 as the direct streaming parser, reusing the merged lock resolution. Add only `cap-std` 3.4.6 and `cap-fs-ext` 3.4.6 as direct filesystem dependencies. `cap-std::fs::Dir::open_ambient_dir` provides the one ambient root open; `cap-fs-ext` supplies `follow(FollowSymlinks::No)` and Windows `maybe_dir(true)` for no-follow child opens. Do not add `cap-primitives` directly: Cargo resolves it transitively at 3.4.6. The cap-std 3.4.6 workspace declares Rust 1.63, which is compatible with this crate's 1.77.2 MSRV, and it replaces the suggested vulnerable 3.4.5 line. Update `Cargo.lock` with the exact resolved capability crate set. Do not change the MSRV or toolchain configuration.
 - Add a `rust-windows` Windows Rust `./scripts/dev check-rust` job to the existing Check workflow with the existing Rust job's checkout, pinned toolchain, and Rust-cache pattern. Set `shell: bash` for that command. Add `rust-windows` to `check.needs`, add `RUST_WINDOWS: ${{ needs.rust-windows.result }}` to the required-result environment, and include `"$RUST_WINDOWS"` in the aggregation loop. Keep it with this trust-boundary packet because Linux cannot prove Windows junction/reparse behavior.
-- Cache at most 256 available and 256 missing results per graphics kind. Evict least-recently-used entries within each class; replace the complete cache on every accepted root generation.
+- Cache at most 256 available and 256 missing results per graphics kind. Evict least-recently-used entries within each class; replace the complete cache on every committed target generation.
+- Use one dedicated transition gate. It serializes root-operation reservation and SQLite persistence, then guards the short scan-completion current-target check and index install. It never covers filesystem scanning. A reservation is monotonic even when persistence fails; only a successful write advances the committed target and status generation. This is the minimum coordination needed to make SQLite and runtime target state converge without holding the DB mutex during a scan.
 - Do not create an ADR. These choices apply the existing Rust-owned SQLite, filesystem, and IPC architecture.
 
 ### Unknowns and accepted gaps
@@ -89,7 +90,7 @@ Deliver Linear JAY-63. FM ValueScout will index one user-selected local FM26 gra
 - A team UID, stale schema field, or partial ingest would misidentify a logo or lose identity. Keep the protocol writer, validator, prepared ingest, migration, and persistence together.
 - Malformed local packs can escape containment or consume work. The pure engine must prove every bound and deterministic precedence on a temporary filesystem. It must reject an entry-budget-truncated candidate before installation and prove no-follow Windows junction/reparse and intermediate-directory replacement behavior on Windows.
 - A capability crate or CI job that cannot provide no-follow child directory/file opens on Windows would invalidate the approved architecture. Keep the dependency surface to `cap-std` plus `cap-fs-ext`; `cap-primitives` remains transitive.
-- Overlapping scans and stale Query data can render an old positive or missing result. Generation replacement and generation-keyed invalidation are required.
+- An in-flight reservation can race a newer root operation. The old check-then-write model lets a failed newer persistence strand SQLite on an earlier root while the runtime rejects that earlier scan. The transition gate, separate committed target, and controlled interleaving proof must show that a failed newer reservation cannot invalidate an earlier durable scan, while a newer durable root always makes older scan completion stale. Generation-keyed invalidation remains required for frontend data.
 - Profile and dense-table changes can shift geometry. Keep each UI seam atomic and inspect populated routes.
 
 ## Walking skeleton
@@ -350,7 +351,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 #### Commit 2 — Manage the configured graphics runtime and IPC
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(graphics): manage graphics runtime and IPC`
 
@@ -364,9 +365,17 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 **Implementation packet:**
 
-**Ordered implementation steps:** Add v46/runtime RED tests; implement fixed-order Documents/OneDrive candidate discovery, its absence behavior, and Rust-owned picker start selection; add root storage and a zero-argument picker; install generation/cache behavior; register commands/state; prove stale scans and safe serialization; run Rust gates.
+**Ordered implementation steps:**
 
-**Tests and proof:** Rust tests prove Documents-first candidate precedence, candidate absence, picker starting-directory selection, cache capacity and least-recent eviction, root replacement clearing available and missing entries, stale scan discard, no DB-mutex scan, and DTO serialization with neither requested nor returned paths.
+1. Add controlled v46/runtime RED tests with synthetic roots that produce distinct available and missing resolves, a scan seam that starts and completes named scans on demand, and a persistence seam that can fail a chosen transition. Use status and resolve observations to distinguish a monotonic reservation from a committed target, prove a successful committed root replacement clears both cache classes before or with accepted-generation installation, and prove a newer persistence failure preserves the prior committed target, index, and caches.
+2. Implement fixed-order Documents/OneDrive candidate discovery, its absence behavior, and Rust-owned picker start selection. Add singleton v46 storage and the zero-argument picker.
+3. Add one `GraphicsRuntime` transition gate. For choose, clear, and rescan, take that gate; allocate the next reservation under a brief runtime-state lock; release that state lock; take the DB mutex and write the selected root, `NULL`, or the same root for rescan; then update the committed target under the runtime-state lock before releasing the gate. Do not hold the runtime-state lock while the SQLite update runs. No path may acquire the DB mutex or runtime-state lock and then wait for the transition gate.
+4. Represent the monotonic next reservation, the committed `{ generation, root }` target, an optional installed index generation, and in-flight scans separately. The persisted root loaded at startup is committed generation zero. Status reports the committed generation only. A failed write drops only its in-flight reservation and leaves the previous committed target, index, positive and missing caches, and scan eligibility unchanged. A successful write commits its target, atomically clears the prior installed index and both cache classes before or with accepted-generation installation, and starts its filesystem scan after all locks and the transition gate are released. Clear commits the empty target and empty index without filesystem work.
+5. Let choose, rescan, and lazy resolve scan outside the DB mutex, transition gate, and runtime-state mutex. At completion, take the transition gate and then the runtime-state lock briefly; install only when the completed `(generation, root)` equals the committed target. Otherwise discard it. Lazy resolve starts at most one scan for the current committed target; it never adopts an unpersisted reservation.
+6. Register the narrow commands and managed state. Keep the resolver at kind plus positive UID, serving only an installed index that matches the committed target; otherwise return normal missing or trigger the bounded lazy scan. Retain safe DTO serialization and the per-kind LRU bounds.
+7. Run the focused proof, then the Rust gates.
+
+**Tests and proof:** Rust tests prove Documents-first candidate precedence, candidate absence, picker starting-directory selection, cache capacity and least-recent eviction, and no-path DTO serialization. Controlled interleaving tests use synthetic roots with distinct available and missing results, plus status and resolve observations, to prove: (1) after A commits, scans, and fills both cache classes, B reserves then fails persistence, so SQLite, committed status, A's installed index, and both A cache entries remain; (2) a successful committed A-to-B root replacement clears A's available and missing entries before or with B's accepted-generation installation, so resolves cannot reuse either A result; (3) A and B both persist, B's scan completes first, and A's inverted later completion is stale; (4) choose, clear, rescan, and lazy restart scans each discard a completion when a later successful transition changes the committed target, while a failed later reservation does not discard the earlier scan; (5) a blocked scan leaves the DB mutex available for an unrelated database operation and releases the transition gate so a newer reserve-plus-persist can finish; and (6) after each successful transition and after the A-success/B-fail path, `graphics_settings.root` and the runtime committed root/generation converge, with an installed index either absent or for that same committed generation. The tests use controlled scan/persistence seams only; they do not expose a path through a DTO.
 
 **Patterns to verify:** Existing `lib.rs` managed-state/command registration and snapshot's prepare-outside-mutex pattern.
 
@@ -375,28 +384,28 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 **Dependencies and sequencing:** Requires the pure engine in Commit 1. Settings in Commit 3 consumes only this narrow contract.
 
 - Add v46 singleton app-wide root persistence. In Rust, test a fixed Documents-first then OneDrive candidate list for `Sports Interactive/Football Manager 2026/graphics`; the first readable directory wins. When no candidate exists, report only safe absent state and keep configuration unchanged. Implement a Rust-owned zero-argument native directory picker that starts at the detected candidate, otherwise the first existing candidate parent in that same order, otherwise the native default. Provide status, choose, clear, rescan, and positive-UID resolution commands. Register the module, managed `GraphicsRuntime`, and commands in `features/mod.rs` and `lib.rs`.
-- `GraphicsRuntime` owns the current root, candidate state, generation, immutable indexes, safe summary, and per-kind LRU caches: at most 256 available and 256 missing results for each kind. Status exposes only non-path candidate state; no response retains a filesystem path.
-- On choose/root replacement and rescan, reserve a monotonically increasing generation before scan work. Build outside the DB mutex; install only if the completed target generation is still current. An older completion is discarded. On accepted replacement, atomically swap root/index/summary/generation and empty every result cache. Lazy restart scan follows the same generation rule.
-- Root change/rescan completion reports the current generation. The resolver accepts only kind and positive UID and returns available bounded data/MIME or normal missing from that generation.
+- `GraphicsRuntime` owns candidate state; a monotonic next-reservation counter; a separately stored committed `{ generation, root }` target; optional installed index generation; in-flight scan identity; safe summary; and per-kind LRU caches with at most 256 available and 256 missing results. Status exposes the committed generation and non-path state only; no response retains a filesystem path.
+- The transition gate serializes only root-operation reserve-plus-persist transitions and the short completion check/install. Lock order is transition gate, brief runtime-state lock, DB mutex for the one SQLite update, then brief runtime-state lock to commit the target; runtime state is not locked during the update. Scan completion uses transition gate then runtime-state lock and never the DB mutex. Filesystem scan work holds none of these locks. Successful choose, clear, and rescan writes establish the committed target; clear installs an empty index. Failed persistence cancels only that in-flight reservation and preserves the prior committed target, index, and positive and missing caches. A successful committed target clears the installed index, summary, and both result-cache classes before its scan begins and before or with accepted-generation installation.
+- A completion installs only when its target equals the committed target. Thus A's scan remains eligible after a transient newer B reservation fails persistence, but a successfully persisted B immediately makes A stale even if B's scan completes first. Lazy restart scans the committed persisted root under the same rule and cannot use an unpersisted target. The resolver accepts only kind and positive UID and returns available bounded data/MIME only from an index for the committed generation, otherwise normal missing.
 
 **Files and responsibilities:**
 
 - `src-tauri/src/db/migrations.rs` — v46 root row and upgrade tests.
 - `src-tauri/src/features/graphics/{runtime.rs,service.rs,commands.rs,mod.rs}` — candidate discovery, picker start, persistence, generation, safe non-path status, cache, and commands over Commit 1 engine.
 - `src-tauri/src/{features/mod.rs,lib.rs}` — module, managed state, and registration.
-- Colocated Rust tests — migration, Documents-before-OneDrive selection and absence, picker start, no-path DTO serialization, LRU capacity/eviction, replacement, and stale-scan completion protection.
+- Colocated Rust tests — migration, Documents-before-OneDrive selection and absence, picker start, no-path DTO serialization, LRU capacity/eviction, synthetic-root available/missing cache replacement and persistence-failure preservation, and stale-scan completion protection.
 
-**Behavior and data flow:** Rust determines the conventional candidate and native picker start without exposing either path; a zero-argument picker selects a root under Rust control; v46 stores it; a scan installs the matching generation; status reports only safe aggregate and candidate state; callers resolve only `(kind, uid)`.
+**Behavior and data flow:** Rust determines the conventional candidate and native picker start without exposing either path. A zero-argument picker supplies a root to a serialized Rust transition. v46 persists that target before the runtime marks it committed; only then does the operation scan outside all locks. A brief gated completion installs only the matching committed target. Status reports that committed generation and safe aggregate state; callers resolve only `(kind, uid)`.
 
-**Validation:** `./scripts/dev check-rust`; `./scripts/dev check`.
+**Validation:** Run the focused controlled-interleaving Rust tests for the runtime and service first, then `./scripts/dev check-rust` and `./scripts/dev check`.
 
-**Stop conditions:** Stop if the Rust dialog API needs a new capability, the fixed candidate order or safe absence behavior cannot be implemented, picker start needs a caller path, a command needs a caller path, file work holds the DB mutex, replacement cannot be atomic at the runtime boundary, or stale completion can install older indexes.
+**Stop conditions:** Stop and replan if the Rust dialog API needs a new capability, the fixed candidate order or safe absence behavior cannot be implemented, picker start or any command needs a caller path, any scan holds the DB mutex or transition gate, lock order permits DB/runtime state to wait for the transition gate, a failed newer reservation can invalidate an earlier persisted scan, a successful newer persistence cannot immediately stale an older completion, SQLite and the committed runtime target can diverge, or a resolver can serve a non-committed index.
 
-**Review mandate:** Verify Documents-before-OneDrive candidate precedence, absence, and Rust-only picker start; v46 stores only the root; picker has no path parameter; each command is registered and narrow; generation/install/cache semantics handle overlap; positive and negative LRU limits/eviction are exact; no index/image bytes persist and no filesystem path crosses IPC.
+**Review mandate:** Verify Documents-before-OneDrive candidate precedence, absence, and Rust-only picker start; v46 stores only the root; picker has no path parameter; the exact transition-gate lock order has no reverse acquisition and excludes filesystem scanning; reservations remain monotonic while status/current target advance only after persistence; the real transition and scan seams use synthetic roots plus observable status and resolves to prove both cache classes clear before or with successful accepted-generation installation and a newer persistence failure preserves the prior committed target, index, and caches; A-success/B-success inverted completion, clear, choose, rescan, and lazy interactions preserve the same model; a blocked scan leaves the DB mutex available; every installed index and SQLite row converges on the committed target; positive and negative LRU limits/eviction are exact; no index/image bytes persist and no filesystem path crosses IPC.
 
 #### Commit 3 — Add the Graphics Settings section
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(settings): configure local graphics`
 
@@ -620,20 +629,20 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 **PR:** PR 2 — Add local FM graphics
 
-**Commit:** Manage the configured graphics runtime and IPC
+**Commit:** Add the Graphics Settings section
 
 ### RED or removal proof
 
-Add v46 and runtime tests first. Confirm they fail because root persistence, Rust-only candidate selection and folder choice, generation-safe runtime installation, narrow commands, and bounded per-kind result caches do not exist.
+Add Query lifecycle and Settings route tests first. Confirm they fail because the frontend has no typed graphics command layer, generation-keyed image queries, old-generation removal, or pathless Settings controls.
 
 ### Expected outcome
 
-Rust selects safe conventional candidates and picker starts, persists one chosen root, and serves non-path status and kind-plus-positive-UID resolution through a generation-owned runtime. Root changes, rescans, and lazy restart scans replace indexes and both result-cache classes atomically, while stale scans cannot install.
+Settings shows safe graphics runtime status and offers choose, clear, and rescan actions through pathless commands. Each accepted generation removes old available and missing image queries before current-generation consumers can render.
 
 ### Explicit exclusions
 
-- Settings UI, Query keys, React, and image presentation.
-- Watchers, persisted indexes or image bytes, and caller-supplied paths.
+- React candidate detection, picker-start selection, or any filesystem path authority.
+- Player Profile, Search, Squad, My Club graphics, and runtime behavior changes.
 - The unrelated dirty completed-ledger URL formatting changes.
 
 ## Discoveries and replanning
@@ -643,6 +652,7 @@ Rust selects safe conventional candidates and picker starts, persists one chosen
 - This bounded replan retains the two-PR and later-packet order. Only PR 2 Commit 1 gains its required Cargo lockfile and Check-workflow companion changes. The index plan uses bounded max-heap retention plus a global root-relative sort, not per-directory/DFS order, so discovery order cannot choose duplicate precedence.
 - PR 1 Commit 2 no longer exposes speculative staff, manager, or player-facing read DTOs. Staff and manager IDs persist only. Profile, Search, and Squad introduce their own player club-UID projections when they consume them.
 - `DESIGN.md` has an explicit bundled-only/no-image rule. The close-out packet must reconcile it with local-only delivered images.
+- This bounded replan followed the exhausted three-fix-round cap for PR 2 Commit 2's root-generation/persistence race. The prior model checked whether a reservation was current while holding the DB mutex, then wrote SQLite; B could reserve between that check and A's update. If B then failed persistence, SQLite could retain A while A's later scan was rejected because B had displaced A's pending reservation. The accepted packet separates monotonic attempts from persisted committed targets and uses a transition gate plus controlled interleaving proof. It preserves the PR boundary, later packets, dependencies, intent, and non-goals.
 
 ## Completed work
 
@@ -651,7 +661,8 @@ Rust selects safe conventional candidates and picker starts, persists one chosen
 | PR 1 — Persist FM club identity | Commit 1 — Record the approved feature plan | 810a242b788986750edad38c776748e6b1b03b60 | Recorded the reviewed schema-2 JAY-63 ledger and its one Active TODO link without changing executable behavior. | `ledger_state.py` and `delivery_state.py` reported runnable with the accepted fingerprint; exact cached stat and diff were inspected; `git diff --cached --check` passed. | Not applicable | Clear | 0 | None |
 | PR 1 — Persist FM club identity | Commit 2 — Upgrade dumps to schema v9 and persist nullable club UIDs | bf923ac4d599695fedf9d99d453932888927b79d | Advanced the bridge and Rust dump contract to v9, extracted exact nullable club-object UIDs, added migration v44, and retained the IDs through prepared atomic snapshot persistence while legacy rows remain null. | `./scripts/dev bridge-test` passed 219 tests with 3 skipped; `./scripts/dev check-rust` and `./scripts/dev check` passed 809 Rust tests with 2 ignored; focused manager tests, v8-reference audit, LSP diagnostics, and `git diff --cached --check` passed. | Pass | Clear | 2 | Review corrections bound manager UID to the selected graph-or-contract source, completed exact fake-memory/migration/persistence proofs, and reconciled current v9 bridge and Architecture documentation. |
 | PR 1 — Persist FM club identity | Commit 3 — Bind managed-club selections to club UIDs | ade7c9f2763fb225f57572abf578aa0955e6df46 | Added migration v45 and exact effective-current managed-club name/UID options, validation, persistence, status, and typed picker flow while retaining name-based cohorts and legacy null identity. | `./scripts/dev test` passed 1,000 tests; `./scripts/dev check` passed 811 Rust tests with 2 ignored; `./scripts/dev smoke` passed 62 tests; exact mock/stub pair proofs, LSP diagnostics, and `git diff --cached --check` passed. | Pass | Accepted findings — direct populated v44-to-v45 managed-club upgrade proof remains a MEDIUM advisory for feature close-out. | 3 | Review corrections removed all name/index-derived UID behavior from Vitest and Playwright doubles, required exact option pairs, and aligned browser smoke with the IPC contract. |
-| PR 2 — Add local FM graphics | Commit 1 — Build the bounded local graphics index | Pending record | Added a capability-owned, root-relative graphics index with bounded no-follow discovery, globally deterministic config precedence, fail-closed entry truncation, streaming XML parsing, and bounded lazy image resolution. Added Windows Rust CI coverage for junction and reparse behavior. | Twelve focused graphics tests passed on Linux; `./scripts/dev check-rust` and `./scripts/dev check` passed 823 Rust tests with 2 ignored; `git diff --check` and primary Rust LSP diagnostics passed. The Windows-only proof is pending GitHub CI. | Pass | Accepted findings — correction review accepted the blocking fixes; a MEDIUM discovery-iterator error advisory remains for feature close-out. | 2 | Replaced the invalidated `std::fs` scanner with direct `cap-std` and `cap-fs-ext` 3.4.6 capability traversal and added the packet-required `rust-windows` Check job. |
+| PR 2 — Add local FM graphics | Commit 1 — Build the bounded local graphics index | e80b6ef1ffb9e97e49399f63d0f3bac75a782ded | Added a capability-owned, root-relative graphics index with bounded no-follow discovery, globally deterministic config precedence, fail-closed entry truncation, streaming XML parsing, and bounded lazy image resolution. Added Windows Rust CI coverage for junction and reparse behavior. | Twelve focused graphics tests passed on Linux; `./scripts/dev check-rust` and `./scripts/dev check` passed 823 Rust tests with 2 ignored; `git diff --check` and primary Rust LSP diagnostics passed. The Windows-only proof is pending GitHub CI. | Pass | Accepted findings — correction review accepted the blocking fixes; a MEDIUM discovery-iterator error advisory remains for feature close-out. | 2 | Replaced the invalidated `std::fs` scanner with direct `cap-std` and `cap-fs-ext` 3.4.6 capability traversal and added the packet-required `rust-windows` Check job. |
+| PR 2 — Add local FM graphics | Commit 2 — Manage the configured graphics runtime and IPC | Pending record | Added v46 root persistence, Rust-only conventional candidate and native folder-choice ownership, and narrow graphics commands over a managed runtime. The runtime separates monotonic attempts from committed generations, scans outside locks, rejects stale completion, and bounds available and missing LRU results per kind. | Fourteen focused runtime tests and the v45-to-v46 migration test passed; `./scripts/dev check-rust` and `./scripts/dev check` passed 839 Rust tests with 2 ignored; `git diff --check` and primary Rust LSP diagnostics passed. | Pass | Clear | 3 | A reviewed bounded replan replaced the check-then-write generation model with a transition-gated committed-target model and controlled SQLite, cache, and lazy-scan interleaving proof. |
 
 ## Final validation
 
