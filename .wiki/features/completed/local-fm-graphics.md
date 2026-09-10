@@ -286,7 +286,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 **Feature close-out:** Current
 
-**CI repair rounds:** 0
+**CI repair rounds:** 1
 
 **Provisional PR title:** `feat(graphics): add local FM graphics`
 
@@ -655,6 +655,7 @@ Final validation and feature review clear the complete implementation range. Arc
 - PR 1 Commit 2 no longer exposes speculative staff, manager, or player-facing read DTOs. Staff and manager IDs persist only. Profile, Search, and Squad introduce their own player club-UID projections when they consume them.
 - `DESIGN.md` has an explicit bundled-only/no-image rule. The close-out packet must reconcile it with local-only delivered images.
 - This bounded replan followed the exhausted three-fix-round cap for PR 2 Commit 2's root-generation/persistence race. The prior model checked whether a reservation was current while holding the DB mutex, then wrote SQLite; B could reserve between that check and A's update. If B then failed persistence, SQLite could retain A while A's later scan was rejected because B had displaced A's pending reservation. The accepted packet separates monotonic attempts from persisted committed targets and uses a transition gate plus controlled interleaving proof. It preserves the PR boundary, later packets, dependencies, intent, and non-goals.
+- PR 2 CI repair 1, `2ea24d49e801102ea7e043e0b501ce4e14d31188`, gates the non-Windows-only `BridgeInstallError::UnsupportedPlatform` variant and display arm after Windows `-D dead-code` compilation exposed the mismatch. Independent correction review was clear. The complete local rerun passed Bridge 219/3 skipped, frontend 1,029, Rust 840/2 ignored, smoke 62, all 12 required UI inspections, `git diff --check`, and primary Rust LSP; the unrelated initial frontend timeout did not reproduce. Exact Windows proof remains pending the repaired PR head.
 
 ## Completed work
 
