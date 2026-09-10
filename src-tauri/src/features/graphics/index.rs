@@ -5,13 +5,18 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BinaryHeap};
-use std::io::Read;
+use std::io::{self, BufReader, Read};
 use std::path::Path;
 
 const MAX_DEPTH: usize = 32;
 const MAX_CONFIGS: usize = 10_000;
 const MAX_ENTRIES: usize = 1_000_000;
-const MAX_CONFIG_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_CONFIG_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_PARSER_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_CONFIG_RECORDS: usize = 2_000_000;
+const MAX_PARSER_RECORDS: usize = 10_000_000;
+const MAX_CONFIG_ATTRIBUTES: usize = 8_000_000;
+const MAX_PARSER_ATTRIBUTES: usize = 40_000_000;
 const MAX_MAPPINGS: usize = 500_000;
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 
@@ -39,6 +44,12 @@ pub struct ScanDiagnostics {
     pub malformed_config: usize,
     pub invalid_mapping: usize,
     pub source_unreadable: usize,
+    pub config_byte_limit: usize,
+    pub config_record_limit: usize,
+    pub config_attribute_limit: usize,
+    pub parser_byte_limit: usize,
+    pub parser_record_limit: usize,
+    pub parser_attribute_limit: usize,
 }
 #[derive(Clone, Copy, Debug)]
 struct Limits {
@@ -46,6 +57,11 @@ struct Limits {
     configs: usize,
     entries: usize,
     config_bytes: u64,
+    parser_bytes: u64,
+    config_records: usize,
+    parser_records: usize,
+    config_attributes: usize,
+    parser_attributes: usize,
     mappings: usize,
     image_bytes: u64,
 }
@@ -54,6 +70,11 @@ const PRODUCTION_LIMITS: Limits = Limits {
     configs: MAX_CONFIGS,
     entries: MAX_ENTRIES,
     config_bytes: MAX_CONFIG_BYTES,
+    parser_bytes: MAX_PARSER_BYTES,
+    config_records: MAX_CONFIG_RECORDS,
+    parser_records: MAX_PARSER_RECORDS,
+    config_attributes: MAX_CONFIG_ATTRIBUTES,
+    parser_attributes: MAX_PARSER_ATTRIBUTES,
     mappings: MAX_MAPPINGS,
     image_bytes: MAX_IMAGE_BYTES,
 };
@@ -149,9 +170,34 @@ impl GraphicsIndex {
             summary: state.summary,
             limits,
         };
+        let mut parser_bytes = 0;
+        let mut parser_records = 0;
+        let mut parser_attributes = 0;
         for identity in configs {
             index.summary.configs += 1;
-            parse_config(&mut index, &identity);
+            match parse_config(
+                &mut index,
+                &identity,
+                &mut parser_bytes,
+                &mut parser_records,
+                &mut parser_attributes,
+            ) {
+                ParseConfigResult::Complete(mappings) => {
+                    for candidate in mappings {
+                        add_mapping(
+                            &mut index,
+                            &candidate.parent,
+                            &candidate.from,
+                            &candidate.to,
+                        );
+                    }
+                }
+                ParseConfigResult::RootLimit => {
+                    index.summary.truncated = true;
+                    break;
+                }
+                ParseConfigResult::Discarded => {}
+            }
         }
         index
     }
@@ -323,42 +369,115 @@ fn read_bounded(file: File, limit: u64) -> Result<Vec<u8>, ReadBoundedError> {
         Ok(bytes)
     }
 }
-fn parse_config(index: &mut GraphicsIndex, identity: &Identity) {
+#[derive(Debug)]
+struct ConfigCandidate {
+    from: String,
+    to: String,
+    parent: Vec<String>,
+}
+
+enum ParseConfigResult {
+    Complete(Vec<ConfigCandidate>),
+    Discarded,
+    RootLimit,
+}
+
+struct CountingReader {
+    file: File,
+    config_bytes: u64,
+    root_bytes: u64,
+    config_limit: u64,
+    root_limit: u64,
+    exceeded: bool,
+}
+impl Read for CountingReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.exceeded {
+            return Ok(0);
+        }
+        let remaining_config = self.config_limit.saturating_sub(self.config_bytes);
+        let remaining_root = self.root_limit.saturating_sub(self.root_bytes);
+        let allowed = remaining_config.min(remaining_root);
+        let request = (allowed + 1).min(buf.len() as u64) as usize;
+        if request == 0 {
+            self.exceeded = true;
+            return Ok(0);
+        }
+        let read = self.file.read(&mut buf[..request])?;
+        self.config_bytes += read as u64;
+        self.root_bytes += read as u64;
+        if self.config_bytes > self.config_limit || self.root_bytes > self.root_limit {
+            self.exceeded = true;
+        }
+        Ok(read)
+    }
+}
+
+fn parse_config(
+    index: &mut GraphicsIndex,
+    identity: &Identity,
+    root_bytes: &mut u64,
+    root_records: &mut usize,
+    root_attributes: &mut usize,
+) -> ParseConfigResult {
     let Some((parent, name)) = split_identity(identity) else {
-        return;
+        return ParseConfigResult::Discarded;
     };
-    let dir = match open_parent(index.root.as_ref().ok_or(()).unwrap(), parent) {
+    let Some(root) = index.root.as_ref() else {
+        return ParseConfigResult::Discarded;
+    };
+    let dir = match open_parent(root, parent) {
         Ok(d) => d,
         Err(_) => {
             index.summary.diagnostics.config_unreadable += 1;
-            return;
+            return ParseConfigResult::Discarded;
         }
     };
-    let bytes = match open_file(&dir, name)
-        .map_err(|_| ReadBoundedError::Unreadable)
-        .and_then(|f| read_bounded(f, index.limits.config_bytes))
-    {
-        Ok(bytes) => bytes,
-        Err(ReadBoundedError::TooLarge) => {
-            index.summary.diagnostics.config_too_large += 1;
-            return;
-        }
-        Err(ReadBoundedError::Unreadable) => {
+    let file = match open_file(&dir, name) {
+        Ok(file) => file,
+        Err(_) => {
             index.summary.diagnostics.config_unreadable += 1;
-            return;
+            return ParseConfigResult::Discarded;
         }
     };
-    let mut reader = Reader::from_reader(bytes.as_slice());
+    let mut source = CountingReader {
+        file,
+        config_bytes: 0,
+        root_bytes: *root_bytes,
+        config_limit: index.limits.config_bytes,
+        root_limit: index.limits.parser_bytes,
+        exceeded: false,
+    };
+    let mut reader = Reader::from_reader(BufReader::new(&mut source));
     reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
     let mut mappings = Vec::new();
+    let mut config_records = 0;
+    let mut config_attributes = 0;
     let mut malformed = false;
+    let mut local_limit = false;
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Empty(e)) | Ok(Event::Start(e)) if e.name().as_ref() == b"record" => {
+                config_records += 1;
+                *root_records += 1;
+                if config_records > index.limits.config_records {
+                    local_limit = true;
+                }
+                if *root_records > index.limits.parser_records {
+                    local_limit = true;
+                }
                 let mut from = None;
                 let mut to = None;
                 for attr in e.attributes() {
+                    config_attributes += 1;
+                    *root_attributes += 1;
+                    if config_attributes > index.limits.config_attributes {
+                        local_limit = true;
+                    }
+                    if *root_attributes > index.limits.parser_attributes {
+                        local_limit = true;
+                    }
                     let attr = match attr {
                         Ok(attr) => attr,
                         Err(_) => {
@@ -377,17 +496,22 @@ fn parse_config(index: &mut GraphicsIndex, identity: &Identity) {
                         }
                     };
                     if attr.key.as_ref() == b"from" {
-                        from = Some(value.into_owned())
+                        from = Some(value.into_owned());
                     } else if attr.key.as_ref() == b"to" {
-                        to = Some(value.into_owned())
+                        to = Some(value.into_owned());
                     }
                 }
                 if malformed {
                     break;
                 }
-                match (from, to) {
-                    (Some(from), Some(to)) => mappings.push((from, to)),
-                    _ => index.summary.diagnostics.invalid_mapping += 1,
+                if let (Some(from), Some(to)) = (from, to) {
+                    mappings.push(ConfigCandidate {
+                        from,
+                        to,
+                        parent: parent.to_vec(),
+                    });
+                } else {
+                    index.summary.diagnostics.invalid_mapping += 1;
                 }
             }
             Ok(Event::Eof) => break,
@@ -399,13 +523,45 @@ fn parse_config(index: &mut GraphicsIndex, identity: &Identity) {
         }
         buf.clear();
     }
+    drop(reader);
+    *root_bytes = source.root_bytes;
+    if source.exceeded {
+        if source.root_bytes > index.limits.parser_bytes {
+            index.summary.diagnostics.parser_byte_limit += 1;
+            return ParseConfigResult::RootLimit;
+        }
+        if source.config_bytes > index.limits.config_bytes {
+            index.summary.diagnostics.config_byte_limit += 1;
+            index.summary.diagnostics.config_too_large += 1;
+            return ParseConfigResult::Discarded;
+        }
+        index.summary.diagnostics.parser_byte_limit += 1;
+        return ParseConfigResult::RootLimit;
+    }
+    if *root_records > index.limits.parser_records
+        || *root_attributes > index.limits.parser_attributes
+    {
+        index.summary.diagnostics.parser_record_limit +=
+            usize::from(*root_records > index.limits.parser_records);
+        index.summary.diagnostics.parser_attribute_limit +=
+            usize::from(*root_attributes > index.limits.parser_attributes);
+        return ParseConfigResult::RootLimit;
+    }
+    if config_records > index.limits.config_records
+        || config_attributes > index.limits.config_attributes
+        || local_limit
+    {
+        index.summary.diagnostics.config_record_limit +=
+            usize::from(config_records > index.limits.config_records);
+        index.summary.diagnostics.config_attribute_limit +=
+            usize::from(config_attributes > index.limits.config_attributes);
+        return ParseConfigResult::Discarded;
+    }
     if malformed {
         index.summary.diagnostics.malformed_config += 1;
-        return;
+        return ParseConfigResult::Discarded;
     }
-    for (from, to) in mappings {
-        add_mapping(index, parent, &from, &to);
-    }
+    ParseConfigResult::Complete(mappings)
 }
 fn add_mapping(index: &mut GraphicsIndex, config_parent: &[String], source: &str, target: &str) {
     let Some((kind, uid)) = parse_target(target) else {
@@ -610,6 +766,21 @@ mod tests {
         assert!(index.resolve(GraphicsKind::PersonPortrait, 1).is_none());
         assert_eq!(index.summary().diagnostics.malformed_config, 1);
     }
+
+    #[test]
+    fn malformed_after_valid_record_has_no_source_validation_side_effect() {
+        let d = tempdir().unwrap();
+        fs::write(
+            d.path().join("config.xml"),
+            r#"<root><record from="missing.png" to="graphics/pictures/person/2/portrait"/><record from="ok.png" to="graphics/pictures/person/3/portrait" broken="&invalid;"/></root>"#,
+        )
+        .unwrap();
+        let index = GraphicsIndex::scan(d.path());
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 2).is_none());
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 3).is_none());
+        assert_eq!(index.summary().diagnostics.source_unreadable, 0);
+        assert_eq!(index.summary().diagnostics.malformed_config, 1);
+    }
     #[test]
     fn logo_beats_icon_and_probe_order_is_fixed() {
         let d = tempdir().unwrap();
@@ -803,6 +974,151 @@ mod tests {
         assert_eq!(mapping_limited.summary().mappings, 1);
         assert_eq!(mapping_limited.people_len(), 1);
         assert!(mapping_limited.summary().diagnostics.mapping_limit >= 1);
+    }
+
+    #[test]
+    fn streaming_parser_accepts_config_larger_than_legacy_byte_limit() {
+        let d = tempdir().unwrap();
+        png(&d.path().join("p.png"));
+        let padding = " ".repeat(9 * 1024 * 1024);
+        fs::write(
+            d.path().join("config.xml"),
+            format!(r#"<root>{padding}<record from="p.png" to="graphics/pictures/person/39/portrait"/></root>"#),
+        )
+        .unwrap();
+        let index = GraphicsIndex::scan(d.path());
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 39).is_some());
+    }
+
+    #[test]
+    fn per_config_record_limit_discards_only_that_config() {
+        let d = tempdir().unwrap();
+        png(&d.path().join("p.png"));
+        fs::write(
+            d.path().join("config.xml"),
+            r#"<root><record from="p.png" to="graphics/pictures/person/1/portrait"/><record from="p.png" to="graphics/pictures/person/2/portrait"/></root>"#,
+        )
+        .unwrap();
+        let index = GraphicsIndex::scan_with_limits(
+            d.path(),
+            Limits {
+                config_records: 1,
+                ..PRODUCTION_LIMITS
+            },
+        );
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 1).is_none());
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 2).is_none());
+        assert_eq!(index.summary().diagnostics.config_record_limit, 1);
+    }
+
+    #[test]
+    fn root_parser_limit_keeps_only_complete_lexical_predecessors() {
+        let d = tempdir().unwrap();
+        let first = d.path().join("a");
+        let second = d.path().join("b");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        png(&first.join("a.png"));
+        png(&second.join("b.png"));
+        fs::write(
+            first.join("config.xml"),
+            r#"<record from="a.png" to="graphics/pictures/person/1/portrait"/>"#,
+        )
+        .unwrap();
+        fs::write(
+            second.join("config.xml"),
+            r#"<record from="b.png" to="graphics/pictures/person/2/portrait"/>"#,
+        )
+        .unwrap();
+        let first_size = fs::metadata(first.join("config.xml")).unwrap().len();
+        let index = GraphicsIndex::scan_with_limits(
+            d.path(),
+            Limits {
+                parser_bytes: first_size + 1,
+                ..PRODUCTION_LIMITS
+            },
+        );
+        assert!(index.summary().truncated);
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 1).is_some());
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 2).is_none());
+        assert_eq!(index.summary().diagnostics.parser_byte_limit, 1);
+    }
+
+    #[test]
+    fn per_config_byte_limit_discards_only_that_config() {
+        let d = tempdir().unwrap();
+        let first = d.path().join("a");
+        let second = d.path().join("b");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        png(&second.join("b.png"));
+        let first_config = format!(
+            "<root>{}<record from=\"missing.png\" to=\"graphics/pictures/person/1/portrait\"/></root>",
+            " ".repeat(512),
+        );
+        fs::write(first.join("config.xml"), &first_config).unwrap();
+        let second_config = r#"<record from="b.png" to="graphics/pictures/person/2/portrait"/>"#;
+        fs::write(second.join("config.xml"), second_config).unwrap();
+        let second_size = fs::metadata(second.join("config.xml")).unwrap().len();
+        let config_limit = 128;
+        let first_read = config_limit + 1;
+        let parser_limit = first_read + second_size + 10;
+        assert!(first_config.len() as u64 > config_limit);
+        assert!(second_size <= config_limit);
+        assert!(first_read + second_size <= parser_limit);
+        assert!(first_config.len() as u64 > parser_limit);
+        let index = GraphicsIndex::scan_with_limits(
+            d.path(),
+            Limits {
+                config_bytes: config_limit,
+                parser_bytes: parser_limit,
+                ..PRODUCTION_LIMITS
+            },
+        );
+        assert!(!index.summary().truncated);
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 2).is_some());
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 1).is_none());
+        assert_eq!(index.summary().diagnostics.config_byte_limit, 1);
+        assert_eq!(index.summary().diagnostics.config_too_large, 1);
+        assert_eq!(index.summary().diagnostics.parser_byte_limit, 0);
+    }
+
+    #[test]
+    fn simultaneous_actual_byte_breach_returns_root_truncation() {
+        let d = tempdir().unwrap();
+        let first = d.path().join("a");
+        let second = d.path().join("b");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        png(&first.join("a.png"));
+        png(&second.join("b.png"));
+        let first_config = r#"<record from="a.png" to="graphics/pictures/person/1/portrait"/>"#;
+        let second_config = format!(
+            "<root>{}<record from=\"b.png\" to=\"graphics/pictures/person/2/portrait\"/></root>",
+            " ".repeat(256),
+        );
+        fs::write(first.join("config.xml"), first_config).unwrap();
+        fs::write(second.join("config.xml"), &second_config).unwrap();
+        let first_size = fs::metadata(first.join("config.xml")).unwrap().len();
+        let second_size = fs::metadata(second.join("config.xml")).unwrap().len();
+        let config_limit = second_size - 1;
+        let parser_limit = first_size + config_limit;
+        assert!(first_size <= config_limit);
+        assert!(second_size > config_limit);
+        assert!(first_size + (config_limit + 1) > parser_limit);
+        let index = GraphicsIndex::scan_with_limits(
+            d.path(),
+            Limits {
+                config_bytes: config_limit,
+                parser_bytes: parser_limit,
+                ..PRODUCTION_LIMITS
+            },
+        );
+        assert!(index.summary().truncated);
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 1).is_some());
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 2).is_none());
+        assert_eq!(index.summary().diagnostics.parser_byte_limit, 1);
+        assert_eq!(index.summary().diagnostics.config_byte_limit, 0);
     }
 
     #[test]

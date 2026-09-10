@@ -171,7 +171,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 #### Commit 2 — Stream bounded config candidates
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(graphics): stream bounded config candidates`
 
@@ -218,7 +218,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 #### Commit 3 — Reduce discovery allocation and enforce entry cap
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(graphics): bound graphics discovery`
 
@@ -640,19 +640,19 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 **PR:** PR 1 — Scale local graphics delivery
 
-**Commit:** Commit 2 — Stream bounded config candidates
+**Commit:** Commit 3 — Reduce discovery allocation and enforce entry cap
 
 ### RED or removal proof
 
-Add generated parser-bound tests that fail under whole-config parsing and prove that malformed input after valid records cannot commit staged candidates.
+Add generated discovery tests that prove exact equality succeeds and the first entry above the configured root cap discards the complete candidate index.
 
 ### Expected outcome
 
-Graphics config parsing streams compact candidates within per-config and root-wide byte, record, and attribute limits. Only clean, complete configs reach later source validation.
+Graphics discovery uses mutable component traversal and lexical component comparison without per-entry parent cloning or comparator joins. The inclusive entry cap fails closed on the first excess entry.
 
 ### Explicit exclusions
 
-- Discovery identity allocation, entry-cap behavior, source validation, runtime scheduling, cache policy, protocol/CSP/frontend work, and final production values.
+- Config parser/source semantics, worker lifecycle, cache policy, protocol/frontend work, and final production values.
 
 ## Discoveries and replanning
 
@@ -666,7 +666,8 @@ Graphics config parsing streams compact candidates within per-config and root-wi
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — Scale local graphics delivery | Commit 1 — Record the approved production-scale plan | Pending record | Recorded the accepted schema-2 ledger, JAY-64 TODO pointer, and ADR-0029 on the authorized feature branch. | `delivery_state.py` and `ledger_state.py` reported runnable; `git diff --cached --check` passed. | Not applicable | Clear | 0 | None |
+| PR 1 — Scale local graphics delivery | Commit 1 — Record the approved production-scale plan | `c4bd51150fe97e75170301c31e234561a3108f60` | Recorded the accepted schema-2 ledger, JAY-64 TODO pointer, and ADR-0029 on the authorized feature branch. | `delivery_state.py` and `ledger_state.py` reported runnable; `git diff --cached --check` passed. | Not applicable | Clear | 0 | None |
+| PR 1 — Scale local graphics delivery | Commit 2 — Stream bounded config candidates | Pending record | Streamed config XML into clean-EOF candidate groups with per-config and root-wide byte, record, and attribute bounds; local breaches discard one config and root breaches retain only complete lexical predecessors. | Graphics index tests passed; `./scripts/dev check-rust` and `./scripts/dev check` passed with 851 Rust tests and 2 ignored; `git diff --cached --check` passed. | Pass | Accepted findings — provisional parser limits still use the production limit name and must be labeled before close-out. | 2 | The initial implementation did not capture RED before code; correction tests reproduced and fixed the byte-precedence defect. |
 
 ## Final validation
 
