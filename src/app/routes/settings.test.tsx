@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import {
+  DEFAULT_GRAPHICS_STATUS,
   setGraphicsChooseIpcMockMode,
+  setGraphicsMutationIpcMockMode,
+  setGraphicsStatusIpcMock,
   setGraphicsStatusIpcMockMode,
 } from "@/features/graphics/api/graphics-ipc-mock";
 import { graphicsKeys } from "@/features/graphics/api/graphics-keys";
@@ -90,6 +93,61 @@ describe("Settings", () => {
       within(graphics).getByRole("button", { name: "Choose graphics folder" }),
     );
     expect(await screen.findByText(/index is rebuilding/)).toBeInTheDocument();
+  });
+
+  it("shows bounded nonzero scan diagnostics, including configured limits", async () => {
+    setGraphicsStatusIpcMock({
+      generation: 2,
+      selected: true,
+      candidate: { available: false, source: "absent" },
+      summary: {
+        configs: 4,
+        mappings: 7,
+        truncated: true,
+        diagnostics: {
+          configLimit: 1,
+          entryLimit: 2,
+          depthLimit: 3,
+          mappingLimit: 4,
+          configTooLarge: 5,
+          configUnreadable: 6,
+          malformedConfig: 7,
+          invalidMapping: 8,
+          sourceUnreadable: 9,
+        },
+      },
+    });
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    const graphics = await screen.findByRole("region", { name: "Graphics" });
+    expect(graphics).toHaveTextContent(
+      "1 config-limit hits, 2 entry-limit hits, 3 depth-limit hits, 4 mapping-limit hits, 5 oversized configs, 6 unreadable configs, 7 malformed configs, 8 invalid mappings, 9 unreadable sources.",
+    );
+  });
+
+  it("clears an earlier action error when a later action succeeds", async () => {
+    const user = userEvent.setup();
+    setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
+      selected: true,
+    });
+    setGraphicsMutationIpcMockMode("failed");
+    renderWithProviders({ initialEntries: ["/settings"] });
+    const graphics = await screen.findByRole("region", { name: "Graphics" });
+
+    await user.click(
+      within(graphics).getByRole("button", { name: "Choose graphics folder" }),
+    );
+    expect(
+      await within(graphics).findByText(/Graphics update failed/),
+    ).toBeInTheDocument();
+
+    setGraphicsMutationIpcMockMode("ready");
+    await user.click(
+      within(graphics).getByRole("button", { name: "Rescan graphics" }),
+    );
+    await within(graphics).findByText(/index is rebuilding/);
+    expect(within(graphics).queryByText(/Graphics update failed/)).toBeNull();
   });
 
   it("keeps selected graphics and cached results when choosing is cancelled", async () => {

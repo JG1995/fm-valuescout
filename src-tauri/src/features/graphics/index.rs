@@ -198,14 +198,14 @@ fn discover(dir: &Dir, parent: &[String], depth: usize, state: &mut Discovery) -
         state.summary.diagnostics.depth_limit += 1;
         return true;
     }
-    let mut entries = match dir.entries() {
+    let entries = match dir.entries() {
         Ok(e) => e,
         Err(_) => {
             state.summary.diagnostics.source_unreadable += 1;
             return true;
         }
     };
-    while let Some(Ok(entry)) = entries.next() {
+    consume_entries(entries, state, |entry, state| {
         state.entries += 1;
         if state.entries >= state.limits.entries {
             return false;
@@ -217,25 +217,45 @@ fn discover(dir: &Dir, parent: &[String], depth: usize, state: &mut Discovery) -
             Ok(t) => t,
             Err(_) => {
                 state.summary.diagnostics.source_unreadable += 1;
-                continue;
+                return true;
             }
         };
         if ty.is_symlink() {
-            continue;
+            return true;
         }
         if ty.is_dir() {
             let child = match open_dir(dir, &name) {
                 Ok(d) => d,
                 Err(_) => {
                     state.summary.diagnostics.source_unreadable += 1;
-                    continue;
+                    return true;
                 }
             };
-            if !discover(&child, &identity, depth + 1, state) {
-                return false;
+            discover(&child, &identity, depth + 1, state)
+        } else {
+            if ty.is_file() && name == "config.xml" {
+                retain_config(state, Identity(identity));
             }
-        } else if ty.is_file() && name == "config.xml" {
-            retain_config(state, Identity(identity));
+            true
+        }
+    })
+}
+
+fn consume_entries<I, T, F>(entries: I, state: &mut Discovery, mut visit: F) -> bool
+where
+    I: Iterator<Item = std::io::Result<T>>,
+    F: FnMut(T, &mut Discovery) -> bool,
+{
+    for item in entries {
+        match item {
+            Ok(entry) => {
+                if !visit(entry, state) {
+                    return false;
+                }
+            }
+            Err(_) => {
+                state.summary.diagnostics.source_unreadable += 1;
+            }
         }
     }
     true
@@ -518,6 +538,32 @@ mod tests {
     fn png(path: &Path) {
         fs::write(path, b"\x89PNG\r\n\x1a\n").unwrap();
     }
+    #[test]
+    fn entry_errors_are_reported_and_later_entries_are_processed() {
+        let mut state = Discovery {
+            configs: BinaryHeap::new(),
+            entries: 0,
+            limits: PRODUCTION_LIMITS,
+            summary: GraphicsSummary::default(),
+        };
+        let mut visited = Vec::new();
+        assert!(consume_entries(
+            vec![
+                Err(std::io::Error::other("unreadable entry")),
+                Ok("valid"),
+                Ok("later"),
+            ]
+            .into_iter(),
+            &mut state,
+            |entry, _| {
+                visited.push(entry);
+                true
+            },
+        ));
+        assert_eq!(visited, ["valid", "later"]);
+        assert_eq!(state.summary.diagnostics.source_unreadable, 1);
+    }
+
     #[test]
     fn nested_and_deterministic_resolution() {
         let d = tempdir().unwrap();

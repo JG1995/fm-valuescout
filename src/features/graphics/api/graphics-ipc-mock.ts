@@ -9,10 +9,10 @@ export const DEFAULT_GRAPHICS_STATUS: GraphicsStatus = {
     mappings: 0,
     truncated: false,
     diagnostics: {
-      configLimit: 10000,
-      entryLimit: 1000000,
-      depthLimit: 32,
-      mappingLimit: 500000,
+      configLimit: 0,
+      entryLimit: 0,
+      depthLimit: 0,
+      mappingLimit: 0,
       configTooLarge: 0,
       configUnreadable: 0,
       malformedConfig: 0,
@@ -23,6 +23,7 @@ export const DEFAULT_GRAPHICS_STATUS: GraphicsStatus = {
 };
 
 export type GraphicsStatusIpcMockMode = "ready" | "failed";
+export type GraphicsMutationIpcMockMode = "ready" | "failed";
 export type GraphicsChooseIpcMockMode = "select" | "cancel";
 export type GraphicsResultIpcMockMode =
   | "available"
@@ -54,10 +55,17 @@ let pendingResults: Array<{
 }> = [];
 let resolveCalls: unknown[] = [];
 let statusMode: GraphicsStatusIpcMockMode = "ready";
+let mutationMode: GraphicsMutationIpcMockMode = "ready";
 let chooseMode: GraphicsChooseIpcMockMode = "select";
 
 export function setGraphicsStatusIpcMockMode(mode: GraphicsStatusIpcMockMode) {
   statusMode = mode;
+}
+
+export function setGraphicsMutationIpcMockMode(
+  mode: GraphicsMutationIpcMockMode,
+) {
+  mutationMode = mode;
 }
 
 export function setGraphicsChooseIpcMockMode(mode: GraphicsChooseIpcMockMode) {
@@ -67,6 +75,7 @@ export function setGraphicsChooseIpcMockMode(mode: GraphicsChooseIpcMockMode) {
 export function resetGraphicsIpcMock() {
   status = { ...DEFAULT_GRAPHICS_STATUS };
   statusMode = "ready";
+  mutationMode = "ready";
   chooseMode = "select";
   result = { status: "missing" };
   resultMode = "missing";
@@ -140,6 +149,9 @@ export function resolveGraphicsStatusIpcMock() {
   return status;
 }
 export function resolveGraphicsMutationIpcMock(command: string) {
+  if (mutationMode === "failed") {
+    throw new Error("graphics update unavailable");
+  }
   if (command === "choose_graphics_root" && chooseMode === "cancel") {
     return status;
   }

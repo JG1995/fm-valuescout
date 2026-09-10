@@ -678,7 +678,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 configs: 0,
                 mappings: 0,
                 truncated: false,
-                diagnostics: { configLimit: 10000, entryLimit: 1000000, depthLimit: 32, mappingLimit: 500000, configTooLarge: 0, configUnreadable: 0, malformedConfig: 0, invalidMapping: 0, sourceUnreadable: 0 },
+                diagnostics: { configLimit: 0, entryLimit: 0, depthLimit: 0, mappingLimit: 0, configTooLarge: 0, configUnreadable: 0, malformedConfig: 0, invalidMapping: 0, sourceUnreadable: 0 },
               },
             };
           }
@@ -688,7 +688,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               generation: 1,
               selected: cmd !== "clear_graphics_root",
               candidate: { available: false, source: "absent" },
-              summary: { configs: 0, mappings: 0, truncated: false, diagnostics: { configLimit: 10000, entryLimit: 1000000, depthLimit: 32, mappingLimit: 500000, configTooLarge: 0, configUnreadable: 0, malformedConfig: 0, invalidMapping: 0, sourceUnreadable: 0 } },
+              summary: { configs: 0, mappings: 0, truncated: false, diagnostics: { configLimit: 0, entryLimit: 0, depthLimit: 0, mappingLimit: 0, configTooLarge: 0, configUnreadable: 0, malformedConfig: 0, invalidMapping: 0, sourceUnreadable: 0 } },
             };
           }
 

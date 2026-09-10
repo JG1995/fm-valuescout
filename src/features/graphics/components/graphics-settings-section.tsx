@@ -61,6 +61,10 @@ const diagnosticLabels: [
   keyof GraphicsStatus["summary"]["diagnostics"],
   string,
 ][] = [
+  ["configLimit", "config-limit hits"],
+  ["entryLimit", "entry-limit hits"],
+  ["depthLimit", "depth-limit hits"],
+  ["mappingLimit", "mapping-limit hits"],
   ["configTooLarge", "oversized configs"],
   ["configUnreadable", "unreadable configs"],
   ["malformedConfig", "malformed configs"],
@@ -68,11 +72,14 @@ const diagnosticLabels: [
   ["sourceUnreadable", "unreadable sources"],
 ];
 
+type GraphicsAction = "choose" | "clear" | "rescan";
+
 export function GraphicsSettingsSection() {
   const { data } = useSuspenseQuery(graphicsStatusQueryOptions);
   const [cancelledGeneration, setCancelledGeneration] = useState<number | null>(
     null,
   );
+  const [activeAction, setActiveAction] = useState<GraphicsAction | null>(null);
   const choose = useGraphicsMutation(chooseGraphicsRoot, () =>
     setCancelledGeneration(data.generation),
   );
@@ -83,7 +90,15 @@ export function GraphicsSettingsSection() {
     setCancelledGeneration(null),
   );
   const pending = choose.isPending || clear.isPending || rescan.isPending;
-  const error = choose.error ?? clear.error ?? rescan.error;
+  const activeMutation =
+    activeAction === "choose"
+      ? choose
+      : activeAction === "clear"
+        ? clear
+        : activeAction === "rescan"
+          ? rescan
+          : null;
+  const error = activeMutation?.error ?? null;
   const diagnostics = diagnosticLabels.filter(
     ([key]) => data.summary.diagnostics[key] > 0,
   );
@@ -144,7 +159,11 @@ export function GraphicsSettingsSection() {
           loading={choose.isPending}
           loadingLabel="Choosing…"
           disabled={pending}
-          onClick={() => choose.mutate()}
+          onClick={() => {
+            setActiveAction("choose");
+            setCancelledGeneration(null);
+            choose.mutate();
+          }}
         >
           Choose graphics folder
         </Button>
@@ -153,7 +172,11 @@ export function GraphicsSettingsSection() {
           loading={rescan.isPending}
           loadingLabel="Rescanning…"
           disabled={pending || !data.selected}
-          onClick={() => rescan.mutate()}
+          onClick={() => {
+            setActiveAction("rescan");
+            setCancelledGeneration(null);
+            rescan.mutate();
+          }}
         >
           Rescan graphics
         </Button>
@@ -162,7 +185,11 @@ export function GraphicsSettingsSection() {
           loading={clear.isPending}
           loadingLabel="Clearing…"
           disabled={pending || !data.selected}
-          onClick={() => clear.mutate()}
+          onClick={() => {
+            setActiveAction("clear");
+            setCancelledGeneration(null);
+            clear.mutate();
+          }}
         >
           Clear graphics folder
         </Button>
@@ -172,11 +199,13 @@ export function GraphicsSettingsSection() {
           Graphics update failed: {error.message}
         </p>
       ) : null}
-      {choose.isSuccess && cancelledGeneration === data.generation ? (
+      {activeAction === "choose" &&
+      choose.isSuccess &&
+      cancelledGeneration === data.generation ? (
         <p className="mt-3 text-body-sm text-on-surface-variant">
           Folder choice cancelled. Graphics settings are unchanged.
         </p>
-      ) : choose.isSuccess || clear.isSuccess || rescan.isSuccess ? (
+      ) : activeMutation?.isSuccess ? (
         <p className="mt-3 text-body-sm text-success">
           Graphics settings updated. The index is rebuilding in the background.
         </p>
