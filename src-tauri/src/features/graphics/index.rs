@@ -83,7 +83,12 @@ const PRODUCTION_LIMITS: Limits = Limits {
 struct Identity(Vec<String>);
 impl Ord for Identity {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.0.join("/").cmp(&other.0.join("/"))
+        fn components(parts: &[String]) -> impl Iterator<Item = char> + '_ {
+            parts.iter().enumerate().flat_map(|(index, part)| {
+                part.chars().chain((index + 1 < parts.len()).then_some('/'))
+            })
+        }
+        components(&self.0).cmp(components(&other.0))
     }
 }
 impl PartialOrd for Identity {
@@ -148,7 +153,7 @@ impl GraphicsIndex {
             limits,
             summary: GraphicsSummary::default(),
         };
-        if !discover(&root_dir, &[], 0, &mut state) {
+        if !discover(&root_dir, &mut Vec::new(), 0, &mut state) {
             state.summary.truncated = true;
             state.summary.diagnostics.entry_limit += 1;
         }
@@ -239,7 +244,7 @@ struct Discovery {
     limits: Limits,
     summary: GraphicsSummary,
 }
-fn discover(dir: &Dir, parent: &[String], depth: usize, state: &mut Discovery) -> bool {
+fn discover(dir: &Dir, identity: &mut Vec<String>, depth: usize, state: &mut Discovery) -> bool {
     if depth > state.limits.depth {
         state.summary.diagnostics.depth_limit += 1;
         return true;
@@ -252,39 +257,45 @@ fn discover(dir: &Dir, parent: &[String], depth: usize, state: &mut Discovery) -
         }
     };
     consume_entries(entries, state, |entry, state| {
-        state.entries += 1;
-        if state.entries >= state.limits.entries {
+        if !admit_entry(state) {
             return false;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        let mut identity = parent.to_vec();
         identity.push(name.clone());
         let ty = match entry.file_type() {
             Ok(t) => t,
             Err(_) => {
+                identity.pop();
                 state.summary.diagnostics.source_unreadable += 1;
                 return true;
             }
         };
-        if ty.is_symlink() {
-            return true;
-        }
-        if ty.is_dir() {
+        let result = if ty.is_symlink() {
+            true
+        } else if ty.is_dir() {
             let child = match open_dir(dir, &name) {
                 Ok(d) => d,
                 Err(_) => {
+                    identity.pop();
                     state.summary.diagnostics.source_unreadable += 1;
                     return true;
                 }
             };
-            discover(&child, &identity, depth + 1, state)
+            discover(&child, identity, depth + 1, state)
         } else {
             if ty.is_file() && name == "config.xml" {
-                retain_config(state, Identity(identity));
+                retain_config(state, Identity(identity.clone()));
             }
             true
-        }
+        };
+        identity.pop();
+        result
     })
+}
+
+fn admit_entry(state: &mut Discovery) -> bool {
+    state.entries += 1;
+    state.entries <= state.limits.entries
 }
 
 fn consume_entries<I, T, F>(entries: I, state: &mut Discovery, mut visit: F) -> bool
@@ -735,7 +746,7 @@ mod tests {
         assert!(i.resolve(GraphicsKind::PersonPortrait, 2).is_some());
     }
     #[test]
-    fn entry_budget_equality_discards_candidate() {
+    fn entry_budget_equality_accepts_candidate() {
         let d = tempdir().unwrap();
         png(&d.path().join("p.png"));
         fs::write(
@@ -750,8 +761,54 @@ mod tests {
                 ..PRODUCTION_LIMITS
             },
         );
-        assert!(i.summary.truncated);
-        assert_eq!(i.people_len(), 0);
+        assert!(!i.summary.truncated);
+        assert_eq!(i.people_len(), 1);
+    }
+
+    #[test]
+    fn entry_budget_overflow_discards_candidate() {
+        let d = tempdir().unwrap();
+        png(&d.path().join("p.png"));
+        fs::write(d.path().join("extra.txt"), b"extra").unwrap();
+        fs::write(
+            d.path().join("config.xml"),
+            r#"<record from="p.png" to="graphics/pictures/person/1/portrait"/>"#,
+        )
+        .unwrap();
+        let index = GraphicsIndex::scan_with_limits(
+            d.path(),
+            Limits {
+                entries: 2,
+                ..PRODUCTION_LIMITS
+            },
+        );
+        assert!(index.summary().truncated);
+        assert_eq!(index.summary().diagnostics.entry_limit, 1);
+        assert_eq!(index.people_len(), 0);
+    }
+
+    #[test]
+    fn generated_entry_stream_over_legacy_limit_fails_on_first_excess() {
+        let mut state = Discovery {
+            configs: BinaryHeap::new(),
+            entries: 0,
+            limits: Limits {
+                entries: MAX_ENTRIES,
+                ..PRODUCTION_LIMITS
+            },
+            summary: GraphicsSummary::default(),
+        };
+        let mut visited = 0;
+        let completed = consume_entries((0..=MAX_ENTRIES).map(Ok), &mut state, |_, state| {
+            if !admit_entry(state) {
+                return false;
+            }
+            visited += 1;
+            true
+        });
+        assert!(!completed);
+        assert_eq!(state.entries, MAX_ENTRIES + 1);
+        assert_eq!(visited, MAX_ENTRIES);
     }
     #[test]
     fn malformed_record_attribute_discards_config_mappings() {

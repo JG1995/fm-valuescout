@@ -218,7 +218,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 #### Commit 3 — Reduce discovery allocation and enforce entry cap
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(graphics): bound graphics discovery`
 
@@ -263,7 +263,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 #### Commit 4 — Validate config sources by parent capability
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(graphics): validate staged config sources`
 
@@ -640,19 +640,19 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 **PR:** PR 1 — Scale local graphics delivery
 
-**Commit:** Commit 3 — Reduce discovery allocation and enforce entry cap
+**Commit:** Commit 4 — Validate config sources by parent capability
 
 ### RED or removal proof
 
-Add generated discovery tests that prove exact equality succeeds and the first entry above the configured root cap discards the complete candidate index.
+Add tests that place a missing source beside a valid sibling and that prove malformed input performs no source validation before clean EOF.
 
 ### Expected outcome
 
-Graphics discovery uses mutable component traversal and lexical component comparison without per-entry parent cloning or comparator joins. The inclusive entry cap fails closed on the first excess entry.
+Each clean config validates staged source records through its already-open parent capability. One missing or unsafe source affects only that record, while malformed configs install nothing.
 
 ### Explicit exclusions
 
-- Config parser/source semantics, worker lifecycle, cache policy, protocol/frontend work, and final production values.
+- New parser bounds, entry accounting, runtime work, cache policy, protocol/frontend work, and final production values.
 
 ## Discoveries and replanning
 
@@ -667,7 +667,8 @@ Graphics discovery uses mutable component traversal and lexical component compar
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Scale local graphics delivery | Commit 1 — Record the approved production-scale plan | `c4bd51150fe97e75170301c31e234561a3108f60` | Recorded the accepted schema-2 ledger, JAY-64 TODO pointer, and ADR-0029 on the authorized feature branch. | `delivery_state.py` and `ledger_state.py` reported runnable; `git diff --cached --check` passed. | Not applicable | Clear | 0 | None |
-| PR 1 — Scale local graphics delivery | Commit 2 — Stream bounded config candidates | Pending record | Streamed config XML into clean-EOF candidate groups with per-config and root-wide byte, record, and attribute bounds; local breaches discard one config and root breaches retain only complete lexical predecessors. | Graphics index tests passed; `./scripts/dev check-rust` and `./scripts/dev check` passed with 851 Rust tests and 2 ignored; `git diff --cached --check` passed. | Pass | Accepted findings — provisional parser limits still use the production limit name and must be labeled before close-out. | 2 | The initial implementation did not capture RED before code; correction tests reproduced and fixed the byte-precedence defect. |
+| PR 1 — Scale local graphics delivery | Commit 2 — Stream bounded config candidates | `b305ac4ea460aec248129b6fa7de7e0006aab326` | Streamed config XML into clean-EOF candidate groups with per-config and root-wide byte, record, and attribute bounds; local breaches discard one config and root breaches retain only complete lexical predecessors. | Graphics index tests passed; `./scripts/dev check-rust` and `./scripts/dev check` passed with 851 Rust tests and 2 ignored; `git diff --cached --check` passed. | Pass | Accepted findings — provisional parser limits still use the production limit name and must be labeled before close-out. | 2 | The initial implementation did not capture RED before code; correction tests reproduced and fixed the byte-precedence defect. |
+| PR 1 — Scale local graphics delivery | Commit 3 — Reduce discovery allocation and enforce entry cap | Pending record | Reworked discovery around one mutable component path and direct lexical component comparison; made the entry cap inclusive and discarded the whole index on first overflow. | Graphics tests passed; `./scripts/dev check-rust` passed with 853 Rust tests and 2 ignored; `./scripts/dev check` and `git diff --cached --check` passed. | Pass | Clear | 0 | None |
 
 ## Final validation
 
