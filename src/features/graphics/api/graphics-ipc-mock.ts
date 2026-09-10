@@ -3,6 +3,7 @@ import type { GraphicsStatus } from "../types/graphics";
 export const DEFAULT_GRAPHICS_STATUS: GraphicsStatus = {
   generation: 0,
   selected: false,
+  rebuilding: false,
   candidate: { available: false, source: "absent" },
   summary: {
     configs: 0,

@@ -15,6 +15,7 @@ export type GraphicsDiagnostics = {
 export type GraphicsStatus = {
   generation: number;
   selected: boolean;
+  rebuilding?: boolean;
   candidate: {
     available: boolean;
     source: "documents" | "onedrive" | "absent";

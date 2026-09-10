@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -16,6 +16,7 @@ const CACHE_LIMIT: usize = 256;
 pub struct GraphicsStatus {
     pub generation: u64,
     pub selected: bool,
+    pub rebuilding: bool,
     pub candidate: CandidateState,
     pub summary: GraphicsSummaryDto,
 }
@@ -146,6 +147,14 @@ struct Target {
     generation: u64,
     root: Option<PathBuf>,
 }
+struct WorkerState {
+    stopping: bool,
+    pending: Option<Target>,
+}
+struct WorkerControl {
+    state: Mutex<WorkerState>,
+    wake: Condvar,
+}
 struct State {
     next_reservation: u64,
     committed: Target,
@@ -159,9 +168,23 @@ struct State {
 type Scanner = Arc<dyn Fn(Option<&std::path::Path>) -> GraphicsIndex + Send + Sync>;
 
 pub struct GraphicsRuntime {
-    state: Mutex<State>,
-    transition_gate: Mutex<()>,
+    state: Arc<Mutex<State>>,
+    transition_gate: Arc<Mutex<()>>,
     scanner: Scanner,
+    worker: Arc<WorkerControl>,
+}
+
+impl Drop for GraphicsRuntime {
+    fn drop(&mut self) {
+        let mut w = self
+            .worker
+            .state
+            .lock()
+            .expect("graphics worker state poisoned");
+        w.stopping = true;
+        w.pending = None;
+        self.worker.wake.notify_one();
+    }
 }
 
 impl GraphicsRuntime {
@@ -192,7 +215,7 @@ impl GraphicsRuntime {
         scanner: Scanner,
     ) -> Self {
         Self {
-            state: Mutex::new(State {
+            state: Arc::new(Mutex::new(State {
                 next_reservation: 0,
                 committed: Target {
                     generation: 0,
@@ -204,19 +227,102 @@ impl GraphicsRuntime {
                 summary: GraphicsSummaryDto::default(),
                 candidate,
                 caches: [Lru::new(), Lru::new(), Lru::new()],
-            }),
-            transition_gate: Mutex::new(()),
+            })),
+            transition_gate: Arc::new(Mutex::new(())),
             scanner,
+            worker: Arc::new(WorkerControl {
+                state: Mutex::new(WorkerState {
+                    stopping: false,
+                    pending: None,
+                }),
+                wake: Condvar::new(),
+            }),
         }
     }
     fn state(&self) -> MutexGuard<'_, State> {
         self.state.lock().expect("graphics runtime state poisoned")
+    }
+    pub fn start_worker(&self) {
+        let state = Arc::clone(&self.state);
+        let gate = Arc::clone(&self.transition_gate);
+        let worker = Arc::clone(&self.worker);
+        let scanner = Arc::clone(&self.scanner);
+        let initial = {
+            let s = self.state();
+            s.committed.root.as_ref().map(|_| Target {
+                generation: s.committed.generation,
+                root: s.committed.root.clone(),
+            })
+        };
+        {
+            let mut w = worker.state.lock().expect("graphics worker state poisoned");
+            if w.pending.is_some() {
+                return;
+            }
+            w.pending = initial;
+            worker.wake.notify_one();
+        }
+        std::thread::spawn(move || loop {
+            let target = {
+                let mut w = worker.state.lock().expect("graphics worker state poisoned");
+                while !w.stopping && w.pending.is_none() {
+                    w = worker.wake.wait(w).expect("graphics worker wait poisoned");
+                }
+                if w.stopping {
+                    return;
+                }
+                w.pending.take().expect("pending target")
+            };
+            let index = scanner(target.root.as_deref());
+            let w = worker.state.lock().expect("graphics worker state poisoned");
+            if w.stopping {
+                return;
+            }
+            drop(w);
+            let _gate = gate.lock().expect("graphics transition gate poisoned");
+            let w = worker.state.lock().expect("graphics worker state poisoned");
+            if w.stopping {
+                return;
+            }
+            drop(w);
+            let mut s = state.lock().expect("graphics runtime state poisoned");
+            if s.committed.generation == target.generation && s.committed.root == target.root {
+                GraphicsRuntime::commit_locked(&mut s, target, Some(index));
+            }
+        });
+    }
+    pub fn enqueue(&self, target: (u64, Option<PathBuf>)) {
+        let mut w = self
+            .worker
+            .state
+            .lock()
+            .expect("graphics worker state poisoned");
+        if !w.stopping {
+            w.pending = Some(Target {
+                generation: target.0,
+                root: target.1,
+            });
+            self.worker.wake.notify_one();
+        }
+    }
+    fn wake_worker(&self) {
+        self.worker.wake.notify_one();
+    }
+    pub fn cancel_pending(&self) {
+        let mut w = self
+            .worker
+            .state
+            .lock()
+            .expect("graphics worker state poisoned");
+        w.pending = None;
+        self.wake_worker();
     }
     pub fn status(&self) -> GraphicsStatus {
         let s = self.state();
         GraphicsStatus {
             generation: s.committed.generation,
             selected: s.committed.root.is_some(),
+            rebuilding: s.in_flight.is_some(),
             candidate: s.candidate.clone(),
             summary: s.summary.clone(),
         }
@@ -359,6 +465,7 @@ impl GraphicsRuntime {
         });
         Ok(Some((generation, root)))
     }
+    #[cfg(test)]
     pub fn complete_scan(&self, target: u64, root: Option<PathBuf>, index: GraphicsIndex) -> bool {
         let _gate = self
             .transition_gate
@@ -378,6 +485,7 @@ impl GraphicsRuntime {
         );
         true
     }
+    #[cfg(test)]
     pub fn scan_reserved(&self, target: u64, root: Option<PathBuf>) -> bool {
         self.scan_reserved_with(target, root, |root| {
             root.map(GraphicsIndex::scan)
@@ -387,6 +495,7 @@ impl GraphicsRuntime {
 
     /// Controlled scanner seam. Production callers use the filesystem-backed scanner above;
     /// tests supply a deterministic scanner to interleave completion and transitions.
+    #[cfg(test)]
     pub fn scan_reserved_with<F>(&self, target: u64, root: Option<PathBuf>, scan: F) -> bool
     where
         F: FnOnce(Option<&std::path::Path>) -> GraphicsIndex,
@@ -398,37 +507,15 @@ impl GraphicsRuntime {
         if uid == 0 {
             return ResolveResult::Missing;
         }
-        let scan = {
-            let mut s = self.state();
-            if let Some(v) = s.caches[kind as usize].get(uid) {
-                return v
-                    .map(|x| ResolveResult::Available {
-                        bytes: x.bytes,
-                        mime: x.mime,
-                    })
-                    .unwrap_or(ResolveResult::Missing);
-            }
-            if s.index.is_some() {
-                None
-            } else if s.committed.root.is_some() && s.in_flight.is_none() {
-                let target = Target {
-                    generation: s.committed.generation,
-                    root: s.committed.root.clone(),
-                };
-                s.in_flight = Some(Target {
-                    generation: target.generation,
-                    root: target.root.clone(),
-                });
-                Some(target)
-            } else {
-                None
-            }
-        };
-        if let Some(target) = scan {
-            let index = (self.scanner)(target.root.as_deref());
-            self.complete_scan(target.generation, target.root, index);
-        }
         let mut s = self.state();
+        if let Some(v) = s.caches[kind as usize].get(uid) {
+            return v
+                .map(|x| ResolveResult::Available {
+                    bytes: x.bytes,
+                    mime: x.mime,
+                })
+                .unwrap_or(ResolveResult::Missing);
+        }
         let value = s.index.as_ref().and_then(|i| i.resolve(kind, uid));
         s.caches[kind as usize].put(uid, value.clone());
         value
@@ -595,6 +682,7 @@ mod tests {
         let status = GraphicsStatus {
             generation: 4,
             selected: true,
+            rebuilding: false,
             candidate: CandidateState {
                 available: false,
                 source: "absent",
@@ -834,59 +922,29 @@ mod tests {
         let lazy_runtime = test_runtime_with_root(Some(a.path().to_path_buf()));
         assert_eq!(
             lazy_runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Available {
-                bytes: b"\x89PNG\r\n\x1a\nA".to_vec(),
-                mime: "image/png"
-            }
+            ResolveResult::Missing
         );
     }
 
     #[test]
-    fn lazy_resolve_uses_injectable_scanner_and_rejects_stale_completion() {
-        let a = root_with_image("a.png", 101, b"\x89PNG\r\n\x1a\nA");
-        let b = root_with_image("b.png", 202, b"\x89PNG\r\n\x1a\nB");
-        let a_root = a.path().to_path_buf();
-        let b_root = b.path().to_path_buf();
-        let (started_tx, started_rx) = mpsc::channel();
-        let (release_tx, release_rx) = mpsc::channel();
-        let scanned_a_root = a_root.clone();
-        let release_rx = Mutex::new(release_rx);
-        let scanner = Arc::new(move |root: Option<&std::path::Path>| {
-            if root == Some(scanned_a_root.as_path()) {
-                started_tx.send(()).unwrap();
-                release_rx.lock().unwrap().recv().unwrap();
-            }
-            root.map(GraphicsIndex::scan)
-                .unwrap_or_else(GraphicsIndex::empty)
-        });
-        let runtime = Arc::new(GraphicsRuntime::from_root_with_scanner(
-            Some(a_root),
+    fn resolve_never_starts_a_scan() {
+        let (called_tx, called_rx) = mpsc::channel();
+        let runtime = GraphicsRuntime::from_root_with_scanner(
+            Some(PathBuf::from("root")),
             CandidateState {
                 available: false,
                 source: "absent",
             },
-            scanner,
-        ));
-        let lazy_runtime = runtime.clone();
-        let handle = thread::spawn(move || lazy_runtime.resolve(GraphicsKind::PersonPortrait, 101));
-        started_rx.recv().unwrap();
-
-        let (b_generation, b_root) = runtime
-            .persist_transition_with(Some(b_root), || Ok(true))
-            .unwrap()
-            .unwrap();
-        assert!(runtime.scan_reserved(b_generation, b_root));
-        release_tx.send(()).unwrap();
-
-        assert_eq!(handle.join().unwrap(), ResolveResult::Missing);
+            Arc::new(move |_| {
+                called_tx.send(()).unwrap();
+                GraphicsIndex::empty()
+            }),
+        );
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
             ResolveResult::Missing
         );
-        assert!(matches!(
-            runtime.resolve(GraphicsKind::PersonPortrait, 202),
-            ResolveResult::Available { .. }
-        ));
+        assert!(called_rx.try_recv().is_err());
     }
 
     #[test]
@@ -953,5 +1011,84 @@ mod tests {
         assert!(!runtime.complete_scan(first, first_root, GraphicsIndex::empty()));
         assert!(runtime.complete_scan(second, second_root, GraphicsIndex::empty()));
         assert_eq!(runtime.status().generation, second);
+    }
+
+    #[test]
+    fn worker_replaces_pending_target_and_scans_serially() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let (started, started_rx) = mpsc::channel();
+        let (release, release_rx) = mpsc::channel();
+        let release_rx = Mutex::new(release_rx);
+        let (scanned, scanned_rx) = mpsc::channel();
+        let first_path = first.path().to_path_buf();
+        let scanner = Arc::new(move |root: Option<&std::path::Path>| {
+            scanned.send(root.unwrap().to_path_buf()).unwrap();
+            if root == Some(first_path.as_path()) {
+                started.send(()).unwrap();
+                release_rx.lock().unwrap().recv().unwrap();
+            }
+            GraphicsIndex::empty()
+        });
+        let runtime = GraphicsRuntime::from_root_with_scanner(
+            None,
+            CandidateState {
+                available: false,
+                source: "absent",
+            },
+            scanner,
+        );
+        runtime.start_worker();
+        let a = runtime
+            .persist_transition_with(Some(first.path().to_path_buf()), || Ok(true))
+            .unwrap()
+            .unwrap();
+        runtime.enqueue(a);
+        started_rx.recv().unwrap();
+        let b = runtime
+            .persist_transition_with(Some(second.path().to_path_buf()), || Ok(true))
+            .unwrap()
+            .unwrap();
+        let b_generation = b.0;
+        runtime.enqueue(b);
+        release.send(()).unwrap();
+        assert_eq!(scanned_rx.recv().unwrap(), first.path());
+        assert_eq!(scanned_rx.recv().unwrap(), second.path());
+        assert_eq!(runtime.status().generation, b_generation);
+    }
+
+    #[test]
+    fn dropping_runtime_revokes_active_installation_without_waiting() {
+        let root = tempfile::tempdir().unwrap();
+        let (started, started_rx) = mpsc::channel();
+        let (release, release_rx) = mpsc::channel();
+        let release_rx = Mutex::new(release_rx);
+        let (finished, finished_rx) = mpsc::channel();
+        let scanner = Arc::new(move |_root: Option<&std::path::Path>| {
+            started.send(()).unwrap();
+            release_rx.lock().unwrap().recv().unwrap();
+            finished.send(()).unwrap();
+            GraphicsIndex::empty()
+        });
+        let runtime = Arc::new(GraphicsRuntime::from_root_with_scanner(
+            None,
+            CandidateState {
+                available: false,
+                source: "absent",
+            },
+            scanner,
+        ));
+        runtime.start_worker();
+        let target = runtime
+            .persist_transition_with(Some(root.path().to_path_buf()), || Ok(true))
+            .unwrap()
+            .unwrap();
+        runtime.enqueue(target);
+        started_rx.recv().unwrap();
+        let observer = Arc::clone(&runtime.state);
+        drop(runtime);
+        release.send(()).unwrap();
+        finished_rx.recv().unwrap();
+        assert!(observer.lock().unwrap().index.is_none());
     }
 }

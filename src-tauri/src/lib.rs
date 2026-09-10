@@ -46,6 +46,8 @@ pub fn run() {
             };
             app.manage(db);
             app.manage(graphics_runtime);
+            app.state::<features::graphics::runtime::GraphicsRuntime>()
+                .start_worker();
 
             log::info!("FM ValueScout startup complete");
 

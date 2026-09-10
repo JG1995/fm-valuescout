@@ -21,8 +21,8 @@ pub fn choose_graphics_root(
     if root.as_os_str().is_empty() {
         return Ok(runtime.status());
     }
-    if let Some((generation, root)) = runtime.persist_transition(&db.0, Some(root))? {
-        runtime.scan_reserved(generation, root);
+    if let Some(target) = runtime.persist_transition(&db.0, Some(root))? {
+        runtime.enqueue(target);
     }
     Ok(runtime.status())
 }
@@ -32,8 +32,8 @@ pub fn clear_graphics_root(
     db: State<'_, Db>,
     runtime: State<'_, GraphicsRuntime>,
 ) -> Result<GraphicsStatus, String> {
-    if let Some((generation, root)) = runtime.persist_transition(&db.0, None)? {
-        runtime.scan_reserved(generation, root);
+    if runtime.persist_transition(&db.0, None)?.is_some() {
+        runtime.cancel_pending();
     }
     Ok(runtime.status())
 }
@@ -43,8 +43,8 @@ pub fn rescan_graphics(
     db: State<'_, Db>,
     runtime: State<'_, GraphicsRuntime>,
 ) -> Result<GraphicsStatus, String> {
-    if let Some((generation, root)) = runtime.begin_rescan(&db.0)? {
-        runtime.scan_reserved(generation, root);
+    if let Some(target) = runtime.begin_rescan(&db.0)? {
+        runtime.enqueue(target);
     }
     Ok(runtime.status())
 }
