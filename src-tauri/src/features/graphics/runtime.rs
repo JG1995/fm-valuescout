@@ -10,6 +10,7 @@ use tauri_plugin_dialog::DialogExt;
 use super::index::{GraphicsIndex, GraphicsKind, GraphicsSummary, ImageResult};
 
 const CACHE_LIMIT: usize = 256;
+const AVAILABLE_CACHE_BYTE_LIMIT: usize = 32 * 1024 * 1024;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -89,6 +90,7 @@ struct Lru {
     missing: HashMap<u32, ()>,
     order_available: VecDeque<u32>,
     order_missing: VecDeque<u32>,
+    available_bytes: usize,
 }
 impl Lru {
     fn new() -> Self {
@@ -97,6 +99,7 @@ impl Lru {
             missing: HashMap::new(),
             order_available: VecDeque::new(),
             order_missing: VecDeque::new(),
+            available_bytes: 0,
         }
     }
     fn clear(&mut self) {
@@ -116,17 +119,27 @@ impl Lru {
         None
     }
     fn put(&mut self, uid: u32, value: Option<ImageResult>) {
-        self.available.remove(&uid);
+        if let Some(previous) = self.available.remove(&uid) {
+            self.available_bytes -= previous.bytes.len();
+        }
         self.missing.remove(&uid);
         self.order_available.retain(|x| *x != uid);
         self.order_missing.retain(|x| *x != uid);
         match value {
             Some(v) => {
+                if v.bytes.len() > AVAILABLE_CACHE_BYTE_LIMIT {
+                    return;
+                }
+                self.available_bytes += v.bytes.len();
                 self.available.insert(uid, v);
                 self.order_available.push_back(uid);
-                while self.order_available.len() > CACHE_LIMIT {
+                while self.order_available.len() > CACHE_LIMIT
+                    || self.available_bytes > AVAILABLE_CACHE_BYTE_LIMIT
+                {
                     if let Some(x) = self.order_available.pop_front() {
-                        self.available.remove(&x);
+                        if let Some(evicted) = self.available.remove(&x) {
+                            self.available_bytes -= evicted.bytes.len();
+                        }
                     }
                 }
             }
@@ -680,6 +693,7 @@ mod tests {
                 )
             }
             assert_eq!(c.available.len(), CACHE_LIMIT);
+            assert_eq!(c.available_bytes, CACHE_LIMIT);
             assert!(!c.available.contains_key(&1));
             let _ = c.get(2);
             c.put(
@@ -689,6 +703,7 @@ mod tests {
                     mime: "image/png",
                 }),
             );
+            assert_eq!(c.available_bytes, CACHE_LIMIT);
             assert!(c.available.contains_key(&2));
             assert!(!c.available.contains_key(&3));
             for uid in 1..=257 {
@@ -698,10 +713,60 @@ mod tests {
             assert!(!c.missing.contains_key(&1));
             let _ = c.get(2);
             c.put(258, None);
+            assert_eq!(c.available_bytes, 0);
             assert!(c.missing.contains_key(&2));
             assert!(!c.missing.contains_key(&3));
         }
     }
+    #[test]
+    fn available_cache_accounts_replacement_eviction_touch_and_clear_bytes() {
+        let mut c = Lru::new();
+        c.put(
+            1,
+            Some(ImageResult {
+                bytes: vec![1, 2, 3],
+                mime: "image/png",
+            }),
+        );
+        assert_eq!(c.available_bytes, 3);
+        c.put(
+            1,
+            Some(ImageResult {
+                bytes: vec![4, 5],
+                mime: "image/png",
+            }),
+        );
+        assert_eq!(c.available_bytes, 2);
+        assert!(matches!(c.get(1), Some(Some(_))));
+        assert_eq!(c.available_bytes, 2);
+        c.put(
+            2,
+            Some(ImageResult {
+                bytes: vec![6; AVAILABLE_CACHE_BYTE_LIMIT],
+                mime: "image/png",
+            }),
+        );
+        assert_eq!(c.available_bytes, AVAILABLE_CACHE_BYTE_LIMIT);
+        assert!(!c.available.contains_key(&1));
+        c.clear();
+        assert_eq!(c.available_bytes, 0);
+        assert!(c.available.is_empty());
+    }
+
+    #[test]
+    fn oversized_available_image_is_returned_but_not_cached() {
+        let mut c = Lru::new();
+        c.put(
+            1,
+            Some(ImageResult {
+                bytes: vec![1; AVAILABLE_CACHE_BYTE_LIMIT + 1],
+                mime: "image/png",
+            }),
+        );
+        assert!(c.available.is_empty());
+        assert_eq!(c.available_bytes, 0);
+    }
+
     #[test]
     fn serialized_status_contains_no_filesystem_identity() {
         let status = GraphicsStatus {
@@ -843,11 +908,19 @@ mod tests {
             runtime.resolve(GraphicsKind::PersonPortrait, 999),
             ResolveResult::Missing
         );
+        assert_eq!(
+            runtime.state().caches[GraphicsKind::PersonPortrait as usize].available_bytes,
+            9
+        );
         let (bg, br) = runtime
             .persist_transition_with(Some(b.path().to_path_buf()), || Ok(true))
             .unwrap()
             .unwrap();
         assert!(runtime.scan_reserved(bg, br));
+        assert_eq!(
+            runtime.state().caches[GraphicsKind::PersonPortrait as usize].available_bytes,
+            0
+        );
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
             ResolveResult::Missing
