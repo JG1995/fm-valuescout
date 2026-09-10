@@ -8,7 +8,7 @@ Active
 
 ## Delivery authorization
 
-**Delivery fingerprint:** 4273401a7b9d0334c973168681f1636285e5b117317263515b6cb403defc41cf
+**Delivery fingerprint:** d64905ed4105624b208f870340d825ff0b2616dae9256a9cbe4b2e8fcdfe5f18
 
 ## Intent
 
@@ -29,9 +29,10 @@ Deliver Linear JAY-63. FM ValueScout will index one user-selected local FM26 gra
 - New v9 dumps contain nullable player `currentClubUid` and `parentClubUid`, staff `clubUid`, and manager `clubUid`. Rust rejects v8 and older dumps with the existing update-and-rescan message. Existing SQLite rows remain readable with null IDs.
 - The bridge reads a positive `u32` only at `club + ObjectUidOffset`; it never stores a team UID as a club UID.
 - React sends only graphics kind and positive UID to resolve an image. Rust owns folder choice, root validation, discovery, parsing, file containment, image reads, MIME detection, and result bounds. No command returns a filesystem path.
-- Discovery is recursive, bounded, sorted, and no-follow. It skips symlinked directories and non-regular files. The streaming parser has no external entity or network behavior. It accepts no arbitrary XML path or source escape.
-- Bounds are 32 directory levels, 10,000 `config.xml` files, 8 MiB per config, 500,000 accepted mappings across indexes, and 8 MiB per returned image. Reaching a count limit reports truncation; invalid records and read failures produce categorized aggregate diagnostics.
-- Lexical config-path order and first valid mapping determine duplicate precedence. A club `logo` beats `icon` at resolution. Extensionless sources probe PNG, JPEG/JPG, then WebP in that order.
+- Rust opens the selected root once with ambient authority. Every later directory and file traversal or open uses that root capability or a descendant capability. It opens each descendant component from its already-open parent capability, including every later source-resolution component. The engine retains only root-relative capability-owned mapping identity; it never stores canonical or absolute paths.
+- Discovery is recursive, bounded, no-follow, and independent of discovery order. It skips symlinked directories, Windows junctions/reparse points, and non-regular files. The streaming parser has no external entity or network behavior. It accepts no arbitrary XML path or source escape.
+- Bounds are 32 directory levels, 10,000 `config.xml` files, 1,000,000 directory entries across the whole scan, 8 MiB per config, 500,000 accepted mappings across indexes, and 8 MiB per returned image. Capability discovery streams under the fail-closed global entry budget. It retains at most the lexically smallest 10,000 root-relative config identities in a bounded max-heap, accounts for config overflow/truncation, then globally sorts that retained set before parsing. A config-count overflow may process only those globally first 10,000 configs; entry-budget truncation discards every candidate index. Invalid records and read failures produce categorized aggregate diagnostics.
+- Global root-relative lexical config-path order and first valid mapping determine duplicate precedence after the retained-set sort; arbitrary discovery order cannot change installed precedence. A club `logo` beats `icon` at resolution. Extensionless sources probe PNG, JPEG/JPG, then WebP in that order.
 - Root change and rescan replace the whole runtime generation and clear positive and negative runtime results atomically. Frontend Query keys include that returned generation, and root-change/rescan success removes old generation keys before new results can render.
 - Slots stay fixed while requests are pending, missing, or invalid. Existing names remain visible and accessible.
 - No graphics-pack asset, private local path, live dump, UID sample, or real FM data enters the repository.
@@ -44,18 +45,19 @@ Deliver Linear JAY-63. FM ValueScout will index one user-selected local FM26 gra
 
 ## Current-state map
 
-- `bridge/Layouts/Fm263Layout.cs` sets `ObjectUidOffset = 0x0C`; `ContractClubReader`, `SquadClubIndex`, `HumanManagerSelector`, and `CapADumpPipeline` own the club-address and selected-current/parent seams. `BridgeProtocol`, `DumpDocument`, `DumpWriter`, and `bridge/DUMP_SCHEMA.md` currently specify schema v8.
-- `src-tauri/src/features/memory_read/dump_validation.rs` accepts v8. `snapshot/ingest.rs` prepares outside the database mutex and publishes snapshots atomically. `db/migrations.rs` ends at v43. Player, staff, snapshot, and managed-club storage currently contain names but no club UIDs.
-- `managed_club/service.rs` lists string names from the effective current snapshot and persists a name-only selection. Its command and frontend types are the exact-selection seam; current cohort SQL remains name based.
+- PR 1 is the completed, merged club-identity foundation. `bridge/Layouts/Fm263Layout.cs` sets `ObjectUidOffset = 0x0C`; `ContractClubReader`, `SquadClubIndex`, `HumanManagerSelector`, and `CapADumpPipeline` own the club-address and selected-current/parent seams. `BridgeProtocol`, `DumpDocument`, `DumpWriter`, and `bridge/DUMP_SCHEMA.md` specify schema v9.
+- `src-tauri/src/features/memory_read/dump_validation.rs` accepts v9 and rejects v8 and older. `snapshot/ingest.rs` prepares outside the database mutex and publishes snapshots atomically. `db/migrations.rs` ends at v45. Player raw current/parent-club UID fields, staff club UID, snapshot manager club UID, and managed-club `club_uid` are nullable; legacy stored rows remain readable with null IDs.
+- `managed_club/service.rs` lists exact effective-current `{ clubName, clubUid }` options, validates and persists the submitted name/UID pair, and returns the nullable UID with `Unconfigured`, `Available`, or `Missing` status. Legacy name-only selections retain a null UID without rebinding. Current cohort SQL remains name based.
 - `player/query.rs`, `search/query.rs`, and `planner/squad.rs` own the Player Detail, Search, and Squad read projections. Staff has no in-scope presentation consumer.
 - `player-identity.tsx` has a player-initial and club-monogram rail. `search-results-panel.tsx` and `squad-overview-panel.tsx` each own the dense player identity cell. `ManagedClubSelector` owns the My Club context seam. `src/app/routes/settings.tsx` owns Settings composition.
-- `tauri-plugin-dialog` and `dialog:allow-open` exist. CSV import is a picker analogue, but it receives a React path and is not acceptable for this root trust boundary. `src-tauri/Cargo.toml` sets `rust-version = "1.77.2"`.
+- `tauri-plugin-dialog` and `dialog:allow-open` exist. CSV import is a picker analogue, but it receives a React path and is not acceptable for this root trust boundary. `src-tauri/Cargo.toml` sets `rust-version = "1.77.2"`; the merged lock has `quick-xml` 0.41.0 indirectly but no capability-filesystem crate.
+- `.github/workflows/check.yml` runs Rust checks only on Linux. Its existing Windows job runs bridge tests, so it cannot prove the Rust Windows junction/reparse path.
 - Supported validation is `./scripts/dev bridge-test`, `./scripts/dev test`, `./scripts/dev check`, `./scripts/dev smoke`, `./scripts/dev inspect-ui`, and `./scripts/dev bridge-install`. Browser inspection is Chromium-stub evidence only.
 
 ## Feature architecture
 
-1. PR 1 advances the dump contract to v9, adds nullable raw persistence in v44, and binds new managed-club selections to the exact current-snapshot club UID in v45. It preserves legacy null rows and text-led membership queries.
-2. PR 2 first adds a pure Rust graphics engine. It accepts a trusted root only as an internal `Path`, produces immutable person and club indexes plus safe diagnostics, and resolves one bounded image result without SQLite, Tauri state, commands, or React.
+1. Completed PR 1 advanced the dump contract to v9, added nullable raw persistence in v44, and bound new managed-club selections to the exact current-snapshot club UID in v45. It preserves legacy null rows and text-led membership queries.
+2. PR 2 first adds a pure Rust graphics engine. It opens the trusted selected root once, then uses capability filesystem handles and root-relative mapping identity for every traversal and image open. Each descendant component opens from its already-open parent capability, including later source resolution. It produces immutable person and club indexes plus safe diagnostics, and resolves one bounded image result without SQLite, Tauri state, commands, or React.
 3. The next packet owns v46 root persistence, Documents/OneDrive candidate discovery and picker start selection, the zero-argument Rust picker, `GraphicsRuntime`, command registration, root generations, and a bounded result cache. It exposes safe non-path status and kind-plus-UID resolution only.
 4. Settings owns typed IPC and Query lifecycle. Presentation stays organized by UI seam: Profile projects its player club UID; Search and Squad project their table club UIDs together; My Club consumes its already stored selected UID.
 
@@ -63,7 +65,7 @@ Deliver Linear JAY-63. FM ValueScout will index one user-selected local FM26 gra
 
 ### Known
 
-- The FM26 club-address path and the existing schema-v8, v43, dialog, Query, route, and identity seams above exist in source.
+- The FM26 club-address path, merged schema-v9/v44/v45 identity foundation, dialog, Query, route, and identity seams above exist in source.
 - `DESIGN.md` currently says bundled-only/no portraits-or-crests because no source exists. Delivery must reconcile that contradiction; it is not optional documentation polish.
 - The protected-main rule, GitHub PR template, squash merge, and release exclusion are recorded in the existing ledger and repository contract.
 
@@ -72,7 +74,8 @@ Deliver Linear JAY-63. FM ValueScout will index one user-selected local FM26 gra
 - Keep two PRs. PR 1 is the independently mergeable schema and persistence boundary. PR 2 depends on its squash merge being reachable from synchronized `main` and contains the local graphics feature.
 - Persist only the configured root in SQLite. Keep indexes and image bytes in memory only.
 - Use the Rust native folder picker and narrow commands. Do not widen the existing WebView dialog authority for a caller-supplied root.
-- Use `quick-xml` as the one streaming parser dependency. Add it as a direct dependency by reusing the existing locked resolution where Cargo permits. Include `Cargo.lock` only if Cargo changes it; otherwise verify that it is unchanged. Do not change MSRV, CI, or toolchain configuration. JAY-63 does not establish minimum-Rust compatibility.
+- Retain `quick-xml` 0.41 as the direct streaming parser, reusing the merged lock resolution. Add only `cap-std` 3.4.6 and `cap-fs-ext` 3.4.6 as direct filesystem dependencies. `cap-std::fs::Dir::open_ambient_dir` provides the one ambient root open; `cap-fs-ext` supplies `follow(FollowSymlinks::No)` and Windows `maybe_dir(true)` for no-follow child opens. Do not add `cap-primitives` directly: Cargo resolves it transitively at 3.4.6. The cap-std 3.4.6 workspace declares Rust 1.63, which is compatible with this crate's 1.77.2 MSRV, and it replaces the suggested vulnerable 3.4.5 line. Update `Cargo.lock` with the exact resolved capability crate set. Do not change the MSRV or toolchain configuration.
+- Add a `rust-windows` Windows Rust `./scripts/dev check-rust` job to the existing Check workflow with the existing Rust job's checkout, pinned toolchain, and Rust-cache pattern. Set `shell: bash` for that command. Add `rust-windows` to `check.needs`, add `RUST_WINDOWS: ${{ needs.rust-windows.result }}` to the required-result environment, and include `"$RUST_WINDOWS"` in the aggregation loop. Keep it with this trust-boundary packet because Linux cannot prove Windows junction/reparse behavior.
 - Cache at most 256 available and 256 missing results per graphics kind. Evict least-recently-used entries within each class; replace the complete cache on every accepted root generation.
 - Do not create an ADR. These choices apply the existing Rust-owned SQLite, filesystem, and IPC architecture.
 
@@ -84,7 +87,8 @@ Deliver Linear JAY-63. FM ValueScout will index one user-selected local FM26 gra
 ### Risks
 
 - A team UID, stale schema field, or partial ingest would misidentify a logo or lose identity. Keep the protocol writer, validator, prepared ingest, migration, and persistence together.
-- Malformed local packs can escape containment or consume work. The pure engine must prove every bound and deterministic precedence on a temporary filesystem.
+- Malformed local packs can escape containment or consume work. The pure engine must prove every bound and deterministic precedence on a temporary filesystem. It must reject an entry-budget-truncated candidate before installation and prove no-follow Windows junction/reparse and intermediate-directory replacement behavior on Windows.
+- A capability crate or CI job that cannot provide no-follow child directory/file opens on Windows would invalidate the approved architecture. Keep the dependency surface to `cap-std` plus `cap-fs-ext`; `cap-primitives` remains transitive.
 - Overlapping scans and stale Query data can render an old positive or missing result. Generation replacement and generation-keyed invalidation are required.
 - Profile and dense-table changes can shift geometry. Keep each UI seam atomic and inspect populated routes.
 
@@ -96,11 +100,11 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 ### PR 1 — Persist FM club identity
 
-**Status:** Ready for publication
+**Status:** Merged
 
 **PR ref:** <https://github.com/JG1995/fm-valuescout/pull/140>
 
-**Merge ref:** Not merged
+**Merge ref:** 1f94a491a535adfb924f86db1e7e7f751ba067f4
 
 **Branch:** `feature/local-fm-club-identity`
 
@@ -261,7 +265,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 ### PR 2 — Add local FM graphics
 
-**Status:** Awaiting prior PR merge
+**Status:** Active
 
 **PR ref:** Not published
 
@@ -291,51 +295,62 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 #### Commit 1 — Build the bounded local graphics index
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `feat(graphics): index local FM graphics`
 
-**Work:** Add the pure Rust, temporary-filesystem-testable index and bounded image resolver.
+**Work:** Replace the invalidated `std::fs` scanner with a pure Rust, temporary-filesystem-testable capability index and bounded image resolver.
 
-**Size assessment:** Above the soft target because bounded no-follow discovery, streaming XML parsing, immutable indexes, deterministic precedence, and image validation are one trust-boundary engine. It is maximally atomic: a scanner without resolution cannot prove containment/MIME behavior, and resolution without its index cannot prove deterministic mappings.
+**Size assessment:** Above the soft target because the one trust-boundary outcome needs a capability traversal, root-relative mapping identity, global entry budget, streaming XML parsing, immutable accepted indexes, deterministic precedence, bounded image validation, and its Windows CI proof. Splitting scanner, resolver, or Windows validation would leave a partial containment contract on trunk.
 
-**Distinct outcome:** Trusted internal-root input produces immutable deterministic indexes and a bounded available-or-missing image result.
+**Distinct outcome:** An accepted complete scan from one trusted capability root produces immutable deterministic indexes and a bounded available-or-missing image result; an entry-budget-truncated scan installs no index.
 
 **Out of scope:** SQLite, root persistence, folder picker, managed app state, registered commands, cache, React, Query, Settings, and all presentation.
 
 **Implementation packet:**
 
-**Ordered implementation steps:** Add temporary-tree RED tests; add the direct parser dependency and reuse the existing locked resolution where Cargo permits; implement discovery/index/result; prove all bounds and precedence; verify whether Cargo changed `Cargo.lock`; run Rust gates.
+**Ordered implementation steps:**
 
-**Tests and proof:** Temporary-tree tests cover nested configs, reordered or multiline attributes, containment, no-follow traversal, bounds, MIME and size result validation, deterministic duplicates, logo-over-icon resolution, extension probing, and no image preload.
+1. Add temporary-tree RED tests for accepted scans, global entry-budget rejection with no installed index, globally root-relative duplicate precedence, and capability no-follow behavior. Add an adversarial ordering tree where per-directory DFS differs from full root-relative ordering, such as `a/config.xml` before sibling `a.b/config.xml` in DFS even though `a.b/config.xml` sorts first because `.` precedes `/`. Add Windows-only junction/reparse and intermediate-directory replacement proof before production code; make that proof run in the new Windows Rust CI job.
+2. Replace the staged `std::fs` scanner. Retain direct `quick-xml` 0.41, add direct `cap-std` 3.4.6 and `cap-fs-ext` 3.4.6, and update `Cargo.lock`. Verify the lock has the patched 3.4.6 `cap-std`, `cap-fs-ext`, and transitive `cap-primitives` set, with no direct `cap-primitives` manifest dependency.
+3. At the engine entry point, open the selected root exactly once with `Dir::open_ambient_dir`. Pass only the resulting root or descendant directory capability through discovery and resolution. Replace stored canonical/absolute `PathBuf` values with validated root-relative capability mapping identity.
+4. Stream capability discovery under the remaining global entry budget. Open each descendant directory or file one component at a time from its already-open parent capability with `follow(FollowSymlinks::No)`; use `maybe_dir(true)` for Windows directory handles. Descend only through the returned child capability. For each discovered `config.xml`, retain its root-relative identity in a bounded max-heap of the lexically smallest 10,000 identities and count overflow/truncation. Reject skipped symlinks, junctions, reparse points, non-regular files, and all failed child opens.
+5. If the global entry budget is reached, report truncation and discard every candidate index. Otherwise, globally sort the retained config identities before parsing. A config-count overflow may parse only the globally first 10,000 retained configs under the existing contract. Apply first-valid duplicate precedence from that global order, so arbitrary discovery order cannot alter an installed index.
+6. Stream only record attributes from globally ordered retained configs. Retain the existing relative-source, image signature, MIME, extension-probe, config-byte, mapping, depth, and image-result bounds under component-by-component capability opens, including later source resolution. Return only bounded bytes/MIME or normal missing.
+7. Add the `rust-windows` job with `shell: bash` for `./scripts/dev check-rust`; add it to `check.needs`, add `RUST_WINDOWS` from `needs.rust-windows.result` to the aggregation environment, and add `"$RUST_WINDOWS"` to its loop so that result gates `check`. Run the recorded Rust gates and inspect the lockfile, workflow, and full diff.
 
-**Patterns to verify:** Existing Rust trust-boundary error mapping and `tempfile` test style; do not reuse the React CSV picker.
+**Tests and proof:** Temporary-tree tests add accepted nested configs, reordered or multiline attributes, root-relative containment, global entry-budget reach that reports truncation and exposes no index, remaining bounds, MIME and size result validation, deterministic duplicates, logo-over-icon resolution, extension probing, and no image preload. Add a duplicate-precedence test where DFS/per-directory order differs from full root-relative lexical order (`a/config.xml` versus `a.b/config.xml`) and assert the globally first config wins. Add no-follow child-directory/file proof plus an intermediate-directory replacement proof. On Windows, create a junction/reparse test tree and prove traversal and resolution reject it without opening an external target; run that test through the new Windows Rust CI job. Fixtures remain synthetic names and image signatures only.
 
-**Constraints and non-goals:** Pure engine only: no SQLite, picker, runtime, commands, cache, managed state, React, or image UI.
+**Patterns to verify:** `tempfile` test style, existing Rust trust-boundary error mapping, and the Check workflow's pinned Rust toolchain/cache job pattern. Do not reuse the React CSV picker or its path authority.
 
-**Dependencies and sequencing:** This packet establishes the engine required by Commit 2; no other packet may bypass it. Merged PR 1 is required for later consumers, but this pure engine has no database or Tauri dependency.
+**Constraints and non-goals:** Pure engine only: no SQLite, picker, runtime, commands, cache, managed state, React, or image UI. Ambient authority is permitted once for the selected root only. Do not use `std::fs` traversal, canonical absolute-path containment, platform flag constants, direct `cap-primitives`, or a partial index after entry-budget truncation.
 
-- Add `quick-xml` as a direct dependency, reusing the existing locked `quick-xml` resolution where Cargo permits. Include `src-tauri/Cargo.lock` only if Cargo changes it; otherwise verify it is unchanged.
-- Build a pure `features/graphics` engine that recursively discovers `config.xml` without following directory links; sorts paths; streams only record attributes; recognizes person portrait and club/team logo/icon targets; validates relative sources and indexes validated paths without loading image bytes.
-- Enforce all stated depth, file, config-byte, mapping, and result-byte limits. Reject absolute, escaping, symlinked, non-regular, unsupported, unreadable, malformed, or invalid MIME/image inputs. Use fixed extension probing and first-valid duplicate/variant precedence.
-- Return immutable person and club indexes plus safe aggregate diagnostics, then resolve one kind/positive UID to bounded data/MIME or normal missing. Use only synthetic temporary files and signatures in tests.
+**Dependencies and sequencing:** PR 1's merge ref `1f94a491a535adfb924f86db1e7e7f751ba067f4` is reachable from this branch. This packet establishes the engine and the required Windows proof for Commit 2; no other packet may bypass it. It requires the manifest, lockfile, and Check workflow changes in the same atomic outcome.
+
+- Retain `quick-xml` 0.41 directly and add only `cap-std` plus `cap-fs-ext` at 3.4.6. Let the lockfile provide transitive `cap-primitives` 3.4.6; do not add it to `Cargo.toml`.
+- Build a pure `features/graphics` engine that opens its trusted selected root once, recursively discovers `config.xml` only through capability handles, and retains each accepted source as root-relative capability-owned identity. Stream discovery under the entry budget, keep only the lexically smallest 10,000 config identities in a bounded max-heap, then globally sort that set before parsing. Never store or return a canonical or absolute path.
+- Enforce all stated depth, config, global-directory-entry, config-byte, mapping, and result-byte limits. A config-count overflow may process the globally first 10,000 configs; entry-budget reach is a truncated failed candidate that installs no indexes. Reject absolute or escaping source text, symlinks, Windows junctions/reparse points, non-regular files, unsupported files, unreadable files, malformed input, and invalid MIME/image inputs.
+- Return immutable person and club indexes plus safe aggregate diagnostics after the globally ordered retained parse, then resolve one kind/positive UID through component-by-component retained capability identity to bounded data/MIME or normal missing. Use only synthetic temporary files and signatures in tests.
 
 **Files and responsibilities:**
 
-- `src-tauri/Cargo.toml` — direct streaming-parser dependency; `src-tauri/Cargo.lock` — include only if Cargo changes the existing locked resolution.
-- New `src-tauri/src/features/graphics/{mod.rs,index.rs}` and colocated tests — pure discovery, parser, index, image validation, result DTO, and temporary filesystem proof.
+- `src-tauri/Cargo.toml` — direct `quick-xml` 0.41, `cap-std` 3.4.6, and `cap-fs-ext` 3.4.6 dependencies; no direct `cap-primitives`.
+- `src-tauri/Cargo.lock` — locked direct and transitive capability resolution, including patched 3.4.6 capability crates.
+- `src-tauri/src/features/graphics/{mod.rs,index.rs}` and colocated tests — pure capability-root discovery, root-relative mapping identity, sorted bounded traversal, parser, accepted-index install, image validation, result DTO, and synthetic filesystem proof.
+- `src-tauri/src/features/mod.rs` — graphics module registration only; do not register commands or managed state.
+- `.github/workflows/check.yml` — `rust-windows` quality job with `shell: bash` for `./scripts/dev check-rust`, plus its explicit `check.needs`, `RUST_WINDOWS` environment, and aggregation-loop entries.
 
-**Behavior and data flow:** An internal root path enters discovery; sorted nested configs yield immutable validated mappings and diagnostics; one UID lookup reads and revalidates one bounded file before returning data or missing.
+**Behavior and data flow:** The engine receives the selected root internally, opens it once with ambient authority, and retains the resulting root capability. Capability discovery streams under the global entry budget, retains the lexically smallest root-relative config identities in a bounded max-heap, and globally sorts them before parsing; discovery order cannot affect installed precedence. Every traversal and later source-resolution component opens only from its already-open parent capability. An entry-complete scan atomically yields immutable indexes and safe diagnostics; entry-budget truncation yields diagnostics without an installed candidate. One positive UID lookup returns bounded bytes/MIME or missing.
 
-**Validation:** `./scripts/dev check-rust`; `./scripts/dev check`.
+**Validation:** `./scripts/dev check-rust`; `./scripts/dev check`; the Linux Rust job and the new `rust-windows` job, with `shell: bash` for `./scripts/dev check-rust`, must pass in GitHub Actions; inspect `Cargo.toml`, `Cargo.lock`, and `.github/workflows/check.yml` to confirm the direct and transitive dependency set, `rust-windows` in `check.needs`, `RUST_WINDOWS` in the aggregation environment and loop, and Check aggregation; `git diff --check`.
 
-**Stop conditions:** Stop and replan if a streaming parser cannot uphold the boundary, no-follow traversal is not implementable with the supported platform APIs, or image resolution requires an unbounded/path-returning result.
+**Stop conditions:** Stop and replan if `cap-std` plus `cap-fs-ext` 3.4.6 cannot provide Windows no-follow child directory and file opens, a child or intermediate replacement can escape its parent capability, the root must be reopened with ambient authority, mapping identity needs a canonical or absolute path, entry-budget truncation can install any partial index, Cargo cannot resolve the documented patched set under Rust 1.77.2, or a Windows Rust CI job cannot execute the required proof.
 
-**Review mandate:** Verify no SQLite/Tauri/React path slipped in; inspect every limit and symlink/source containment path; verify streaming parsing, deterministic duplicate/variant rules, immutable indexes, bounded data/MIME results, and synthetic-only fixtures.
+**Review mandate:** Verify (1) only one ambient root open occurs and no `std::fs` traversal/canonical absolute path remains; (2) every descendant directory, file, and later source-resolution component opens from its already-open parent capability and is no-follow, including Windows `maybe_dir` behavior; (3) no direct `cap-primitives` exists and the lock resolves the 3.4.6 patched set under the recorded MSRV; (4) discovery streams under the global 1,000,000-entry budget, the max-heap retains only the lexically smallest 10,000 root-relative configs, entry-budget truncation installs nothing, and retained configs sort globally before parsing; (5) arbitrary discovery order cannot change first-valid precedence, including the DFS-versus-root-relative adversarial test; (6) all other parser, source, mapping, and image bounds remain enforced; (7) synthetic tests cover intermediate replacement and Windows junction/reparse rejection; and (8) `rust-windows` uses `shell: bash` for `./scripts/dev check-rust` and gates Check through explicit `needs`, environment, and aggregation-loop entries, with no SQLite, Tauri, or React scope.
 
 #### Commit 2 — Manage the configured graphics runtime and IPC
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(graphics): manage graphics runtime and IPC`
 
@@ -584,7 +599,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 **Dependencies and sequencing:** All implementation packets, merged and synchronized PR 1, final validation, and clear feature review are required.
 
-- Reconcile `.wiki/ARCHITECTURE.md` with v9/v44-v46, root persistence, Rust-owned trust boundary, generations/cache, narrow IPC, and UID data flow after implementation proves them.
+- Reconcile `.wiki/ARCHITECTURE.md` with v9/v44-v46, root persistence, Rust-owned trust boundary, generations/cache, narrow IPC, UID data flow, the new `rust-windows` Rust job, and Check aggregation after implementation proves them.
 - Reconcile `.wiki/DESIGN.md` as mandatory work: replace its bundled-only/no-image wording with delivered local-only portrait/logo, fixed-slot, fallback, and text-first rules. Do not leave it contradictory.
 - Move JAY-63 from Active to Completed in `.wiki/TODO.md`; move this ledger to `.wiki/features/completed/local-fm-graphics.md`; retain PR authority, fingerprints, completed rows, and final validation. Do not write a final self-merge ref into its own content.
 
@@ -603,27 +618,29 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 ## Active work
 
-**PR:** PR 1 — Persist FM club identity — ready for publication
+**PR:** PR 2 — Add local FM graphics
 
-**Commit:** None — all PR 1 commits completed
+**Commit:** Manage the configured graphics runtime and IPC
 
 ### RED or removal proof
 
-Not applicable at the PR boundary. All three PR 1 packets have completed validation and independent review.
+Add v46 and runtime tests first. Confirm they fail because root persistence, Rust-only candidate selection and folder choice, generation-safe runtime installation, narrow commands, and bounded per-kind result caches do not exist.
 
 ### Expected outcome
 
-PR 1 publishes the v9 nullable club-identity foundation and exact managed-club UID binding before PR 2 begins.
+Rust selects safe conventional candidates and picker starts, persists one chosen root, and serves non-path status and kind-plus-positive-UID resolution through a generation-owned runtime. Root changes, rescans, and lazy restart scans replace indexes and both result-cache classes atomically, while stale scans cannot install.
 
 ### Explicit exclusions
 
-- PR 2 implementation before PR 1 merges and `main` synchronizes.
-- Release preparation or publication.
-- `.wiki/features/completed/refine-suggested-training.md` and `.wiki/features/completed/retire-obsolete-load-data-controls.md`.
+- Settings UI, Query keys, React, and image presentation.
+- Watchers, persisted indexes or image bytes, and caller-supplied paths.
+- The unrelated dirty completed-ledger URL formatting changes.
 
 ## Discoveries and replanning
 
-- This bounded replan replaces the previous mixed graphics packets with two PRs and ten outcomes: 3 foundation packets and 7 graphics/close-out packets. The changed division follows the approved UI seams and separates the pure trust-boundary engine from app runtime, Settings, and presentation.
+- This bounded replan replaces the prior `std::fs` attempt in PR 2 Commit 1. Review found its per-directory `Vec<DirEntry>` collection unbounded and its canonical-path checks unable to prevent intermediate Windows junction/reparse replacement races. The packet now requires capability handles, root-relative identity, a global 1,000,000-entry budget, fail-closed installation, and a Windows Rust CI proof.
+- The approved capability choice is direct `cap-std` plus `cap-fs-ext` 3.4.6, with transitive `cap-primitives` 3.4.6. Source and crate metadata show `Dir::open_ambient_dir`, no-follow final-child options, Windows `maybe_dir`, and Rust 1.63 workspace compatibility; do not use the suggested 3.4.5 line.
+- This bounded replan retains the two-PR and later-packet order. Only PR 2 Commit 1 gains its required Cargo lockfile and Check-workflow companion changes. The index plan uses bounded max-heap retention plus a global root-relative sort, not per-directory/DFS order, so discovery order cannot choose duplicate precedence.
 - PR 1 Commit 2 no longer exposes speculative staff, manager, or player-facing read DTOs. Staff and manager IDs persist only. Profile, Search, and Squad introduce their own player club-UID projections when they consume them.
 - `DESIGN.md` has an explicit bundled-only/no-image rule. The close-out packet must reconcile it with local-only delivered images.
 
@@ -634,6 +651,7 @@ PR 1 publishes the v9 nullable club-identity foundation and exact managed-club U
 | PR 1 — Persist FM club identity | Commit 1 — Record the approved feature plan | 810a242b788986750edad38c776748e6b1b03b60 | Recorded the reviewed schema-2 JAY-63 ledger and its one Active TODO link without changing executable behavior. | `ledger_state.py` and `delivery_state.py` reported runnable with the accepted fingerprint; exact cached stat and diff were inspected; `git diff --cached --check` passed. | Not applicable | Clear | 0 | None |
 | PR 1 — Persist FM club identity | Commit 2 — Upgrade dumps to schema v9 and persist nullable club UIDs | bf923ac4d599695fedf9d99d453932888927b79d | Advanced the bridge and Rust dump contract to v9, extracted exact nullable club-object UIDs, added migration v44, and retained the IDs through prepared atomic snapshot persistence while legacy rows remain null. | `./scripts/dev bridge-test` passed 219 tests with 3 skipped; `./scripts/dev check-rust` and `./scripts/dev check` passed 809 Rust tests with 2 ignored; focused manager tests, v8-reference audit, LSP diagnostics, and `git diff --cached --check` passed. | Pass | Clear | 2 | Review corrections bound manager UID to the selected graph-or-contract source, completed exact fake-memory/migration/persistence proofs, and reconciled current v9 bridge and Architecture documentation. |
 | PR 1 — Persist FM club identity | Commit 3 — Bind managed-club selections to club UIDs | ade7c9f2763fb225f57572abf578aa0955e6df46 | Added migration v45 and exact effective-current managed-club name/UID options, validation, persistence, status, and typed picker flow while retaining name-based cohorts and legacy null identity. | `./scripts/dev test` passed 1,000 tests; `./scripts/dev check` passed 811 Rust tests with 2 ignored; `./scripts/dev smoke` passed 62 tests; exact mock/stub pair proofs, LSP diagnostics, and `git diff --cached --check` passed. | Pass | Accepted findings — direct populated v44-to-v45 managed-club upgrade proof remains a MEDIUM advisory for feature close-out. | 3 | Review corrections removed all name/index-derived UID behavior from Vitest and Playwright doubles, required exact option pairs, and aligned browser smoke with the IPC contract. |
+| PR 2 — Add local FM graphics | Commit 1 — Build the bounded local graphics index | Pending record | Added a capability-owned, root-relative graphics index with bounded no-follow discovery, globally deterministic config precedence, fail-closed entry truncation, streaming XML parsing, and bounded lazy image resolution. Added Windows Rust CI coverage for junction and reparse behavior. | Twelve focused graphics tests passed on Linux; `./scripts/dev check-rust` and `./scripts/dev check` passed 823 Rust tests with 2 ignored; `git diff --check` and primary Rust LSP diagnostics passed. The Windows-only proof is pending GitHub CI. | Pass | Accepted findings — correction review accepted the blocking fixes; a MEDIUM discovery-iterator error advisory remains for feature close-out. | 2 | Replaced the invalidated `std::fs` scanner with direct `cap-std` and `cap-fs-ext` 3.4.6 capability traversal and added the packet-required `rust-windows` Check job. |
 
 ## Final validation
 
@@ -662,4 +680,4 @@ Inspect each populated capture for fixed slots, fallback state, readable text, c
 
 ## Documentation impact
 
-Commit 2 updates `bridge/DUMP_SCHEMA.md` with the v9 contract. Close-out must update `.wiki/ARCHITECTURE.md`, reconcile `.wiki/DESIGN.md`, transition `.wiki/TODO.md`, and archive the ledger. No release documentation is in scope.
+Commit 2 updates `bridge/DUMP_SCHEMA.md` with the v9 contract. Close-out must update `.wiki/ARCHITECTURE.md` for delivered graphics behavior, the `rust-windows` Rust job, and Check aggregation; reconcile `.wiki/DESIGN.md`; transition `.wiki/TODO.md`; and archive the ledger. No release documentation is in scope.
