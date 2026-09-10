@@ -447,7 +447,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 #### Commit 8 — Register closed graphics protocol
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(graphics): register closed image protocol`
 
@@ -496,7 +496,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 #### Commit 9 — Migrate graphics consumers to one component
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(graphics): migrate graphics to protocol`
 
@@ -640,19 +640,19 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 **PR:** PR 1 — Scale local graphics delivery
 
-**Commit:** Commit 8 — Register closed graphics protocol
+**Commit:** Commit 9 — Migrate graphics consumers to one component
 
 ### RED or removal proof
 
-Add protocol parser and response tests for the exact accepted URL and every rejected method, host, segment, kind, UID, generation, query, fragment, missing, and unreadable case.
+Add shared-component URL, lazy/async loading, and native-error fallback tests, then prove the retired resolve IPC, byte-array types, query keys, mocks, and base64 helpers are absent.
 
 ### Expected outcome
 
-One asynchronous `graphics` protocol serves validated raw PNG, JPEG, or WebP bytes from the existing runtime with narrow request grammar, secure response headers, bounded failures, and exact CSP allowance.
+Profile, Search, Squad, and My Club use one closed `GraphicsImage` component while preserving caller-owned fallback geometry and exact-UID/virtual-row bounds. No image bytes cross invoke or become data URLs.
 
 ### Explicit exclusions
 
-- Consumer migration, shared frontend component, resolve IPC deletion, new graphics kinds, and final production values.
+- Root/index/persistence changes, styling redesign, Staff imagery, new kinds, network URLs, and final production values.
 
 ## Discoveries and replanning
 
@@ -672,7 +672,8 @@ One asynchronous `graphics` protocol serves validated raw PNG, JPEG, or WebP byt
 | PR 1 — Scale local graphics delivery | Commit 4 — Validate config sources by parent capability | `350a4be30992eed8a31c66289724ed802b94ff65` | Validated clean-EOF candidates through their open config-parent capability and retained valid siblings when another source was missing or unsafe. | Graphics index tests passed; `./scripts/dev check-rust` and `./scripts/dev check` passed; `git diff --cached --check` and Rust LSP passed. | Pass | Clear | 0 | None |
 | PR 1 — Scale local graphics delivery | Commit 5 — Rebuild graphics through one stopping worker | `b2ef48b167a6056442e137b92cc8b122678afe45` | Moved startup, choose, and rescan rebuilds to one runtime-owned serial worker with replaceable pending work, generation-safe installation, and non-blocking stop revocation. | Runtime tests passed; `./scripts/dev check-rust` passed with 856 Rust tests and 2 ignored; `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Accepted findings — the safe `rebuilding` flag is stale after clear and false during startup rebuild; correct it before close-out. | 0 | None |
 | PR 1 — Scale local graphics delivery | Commit 6 — Read graphics outside runtime locks | `d24d6bb126ca15414fc7e8c547a22f8f6be398eb` | Split lookup into a generation-validated locator snapshot, unlocked image read, and generation-rechecked cache insertion while retaining count-bounded caches and resolve IPC. | Focused graphics tests passed; `./scripts/dev check-rust` passed with 857 Rust tests and 2 ignored; `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Clear | 0 | None |
-| PR 1 — Scale local graphics delivery | Commit 7 — Account for graphics cache bytes | Pending record | Added exact raw-byte accounting and combined byte/count eviction to every per-kind available cache while retaining count-only missing caches. | Runtime tests passed; `./scripts/dev check-rust` passed with 859 Rust tests; `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Clear | 0 | None |
+| PR 1 — Scale local graphics delivery | Commit 7 — Account for graphics cache bytes | `966cf8dbb86c174f5629089c79915f1dfddf17ca` | Added exact raw-byte accounting and combined byte/count eviction to every per-kind available cache while retaining count-only missing caches. | Runtime tests passed; `./scripts/dev check-rust` passed with 859 Rust tests; `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Clear | 0 | None |
+| PR 1 — Scale local graphics delivery | Commit 8 — Register closed graphics protocol | Pending record | Registered one asynchronous closed graphics protocol on the managed runtime, added raw validated-image responses with secure headers, and allowed the exact origin while retaining current data-URL consumers. | Protocol tests passed; `./scripts/dev check-rust` and `./scripts/dev check` passed with 863 Rust tests; `./scripts/dev smoke` passed 62 tests; `git diff --cached --check` and LSP passed. | Pass | Accepted findings — URI fragments are stripped before the handler and explicit ports need a closed-authority decision; add direct stale-generation proof before close-out. | 1 | Native Windows protocol/CSP proof remains the developer-approved validation gap. |
 
 ## Final validation
 

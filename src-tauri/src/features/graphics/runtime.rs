@@ -517,10 +517,25 @@ impl GraphicsRuntime {
         self.complete_scan(target, root, index)
     }
     pub fn resolve(&self, kind: GraphicsKind, uid: u32) -> ResolveResult {
-        self.resolve_with_reader(kind, uid, |locator| locator.read())
+        self.resolve_with_reader(None, kind, uid, |locator| locator.read())
     }
 
-    fn resolve_with_reader<F>(&self, kind: GraphicsKind, uid: u32, read: F) -> ResolveResult
+    pub fn resolve_at_generation(
+        &self,
+        generation: u64,
+        kind: GraphicsKind,
+        uid: u32,
+    ) -> ResolveResult {
+        self.resolve_with_reader(Some(generation), kind, uid, |locator| locator.read())
+    }
+
+    fn resolve_with_reader<F>(
+        &self,
+        expected_generation: Option<u64>,
+        kind: GraphicsKind,
+        uid: u32,
+        read: F,
+    ) -> ResolveResult
     where
         F: FnOnce(super::index::ImageLocator) -> Option<ImageResult>,
     {
@@ -529,7 +544,10 @@ impl GraphicsRuntime {
         }
         let (generation, cached, locator) = {
             let mut s = self.state();
-            if s.installed_generation != Some(s.committed.generation) {
+            if s.installed_generation != Some(s.committed.generation)
+                || expected_generation
+                    .is_some_and(|generation| generation != s.committed.generation)
+            {
                 return ResolveResult::Missing;
             }
             let cached = s.caches[kind as usize].get(uid);
@@ -552,7 +570,10 @@ impl GraphicsRuntime {
         }
         let value = locator.and_then(read);
         let mut s = self.state();
-        if s.committed.generation != generation || s.installed_generation != Some(generation) {
+        if s.committed.generation != generation
+            || s.installed_generation != Some(generation)
+            || expected_generation.is_some_and(|expected| expected != generation)
+        {
             return ResolveResult::Missing;
         }
         s.caches[kind as usize].put(uid, value.clone());
@@ -972,7 +993,7 @@ mod tests {
         let (release_tx, release_rx) = mpsc::channel();
         let reading = runtime.clone();
         let handle = thread::spawn(move || {
-            reading.resolve_with_reader(GraphicsKind::PersonPortrait, 101, |locator| {
+            reading.resolve_with_reader(None, GraphicsKind::PersonPortrait, 101, |locator| {
                 started_tx.send(()).unwrap();
                 release_rx.recv().unwrap();
                 locator.read()
