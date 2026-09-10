@@ -24,6 +24,7 @@ pub struct BridgeInstallStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", content = "message", rename_all = "camelCase")]
 pub enum BridgeInstallError {
+    #[cfg(not(windows))]
     UnsupportedPlatform(String),
     BepinexMissing(String),
     SourceMissing(String),
@@ -34,8 +35,9 @@ pub enum BridgeInstallError {
 impl std::fmt::Display for BridgeInstallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UnsupportedPlatform(message)
-            | Self::BepinexMissing(message)
+            #[cfg(not(windows))]
+            Self::UnsupportedPlatform(message) => write!(f, "{message}"),
+            Self::BepinexMissing(message)
             | Self::SourceMissing(message)
             | Self::WriteFailed(message)
             | Self::RemoveFailed(message) => write!(f, "{message}"),

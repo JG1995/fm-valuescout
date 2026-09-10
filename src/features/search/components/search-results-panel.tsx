@@ -167,10 +167,14 @@ function PlayerIdentityCell({
   name,
   club,
   division,
+  portrait,
+  crest,
 }: {
   name: string | undefined;
   club: string | null | undefined;
   division: string | null | undefined;
+  portrait?: ReactNode;
+  crest?: ReactNode;
 }) {
   const context =
     name === undefined
@@ -180,10 +184,9 @@ function PlayerIdentityCell({
           .join(" · ");
   return (
     <div className="flex h-table-row-height-two-line items-center gap-2 px-2">
-      <span
-        aria-hidden="true"
-        className="h-7 w-7 shrink-0 rounded-sm bg-surface-container-high"
-      />
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-surface-container-high">
+        {portrait}
+      </span>
       <span className="min-w-0 flex-1">
         <span
           className="block truncate text-body-sm text-on-surface"
@@ -191,13 +194,12 @@ function PlayerIdentityCell({
         >
           {name ?? "…"}
         </span>
-        {context ? (
+        {name !== undefined ? (
           <span className="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-on-surface-variant">
-            <span
-              aria-hidden="true"
-              className="h-3 w-3 shrink-0 rounded-[2px] bg-surface-container-high"
-            />
-            <span className="block truncate">{context}</span>
+            <span className="flex h-3 w-3 shrink-0 items-center justify-center rounded-[2px] bg-surface-container-high">
+              {crest}
+            </span>
+            {context ? <span className="block truncate">{context}</span> : null}
           </span>
         ) : null}
       </span>
@@ -527,7 +529,13 @@ export function SearchResultsPanel({
   pageContext,
   orderedLaneIds,
   laneLabels,
-}: SearchResultsPanelProps) {
+  identityGraphics,
+}: SearchResultsPanelProps & {
+  identityGraphics?: (player: PlayerSummary | undefined) => {
+    portrait?: ReactNode;
+    crest?: ReactNode;
+  };
+}) {
   const tableId = view === "moneyball" ? "moneyball-search" : "search";
   const layout = usePlayerTableStore((state) => state.layouts[tableId]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
@@ -552,10 +560,12 @@ export function SearchResultsPanel({
           name={player?.name}
           club={player?.club}
           division={player?.division}
+          portrait={identityGraphics?.(player)?.portrait}
+          crest={identityGraphics?.(player)?.crest}
         />
       ),
     }),
-    [identityWidth, setIdentityWidth, tableId],
+    [identityGraphics, identityWidth, setIdentityWidth, tableId],
   );
   const columns = useMemo<TableColumn[]>(
     () =>

@@ -27,3 +27,6 @@ tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 tempfile = "3"
+quick-xml = "0.41"
+cap-std = "3.4.6"
+cap-fs-ext = "3.4.6"

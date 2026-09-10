@@ -32,6 +32,11 @@ test.describe("application smoke", () => {
     await expect(
       main.getByRole("heading", { level: 1, name: "Settings" }),
     ).toBeVisible();
+    await expect(main.getByRole("region", { name: "Graphics" })).toBeVisible();
+    await expect(
+      main.getByRole("button", { name: "Choose graphics folder" }),
+    ).toBeVisible();
+    await expect(main.getByText(/never displays its path/)).toBeVisible();
     await expect(main.getByRole("region", { name: "Save data" })).toBeVisible();
     await expect(
       main.getByRole("region", { name: "Managed club" }),

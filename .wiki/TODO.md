@@ -52,14 +52,13 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- **[Local FM graphics](./features/active/local-fm-graphics.md)** — add Rust-owned local FM26 graphics-root indexing, player portraits, and UID-backed club logos without managing graphics packs (Linear JAY-63).
-
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
 
 ## Completed
 
+- **[Local FM graphics](./features/completed/local-fm-graphics.md)** — Rust-owned local FM26 graphics-root indexing, player portraits, and UID-backed club logos without managing graphics packs (Linear JAY-63).
 - **[Retire obsolete Load Data controls](./features/completed/retire-obsolete-load-data-controls.md)** — removed obsolete Load Data cap support and reconciled snapshot freshness documentation while retaining historical snapshot metadata (Linear JAY-55, JAY-56).
 - **[Refine Suggested Training](./features/completed/refine-suggested-training.md)** — age-category Suggested Training for eligible Squad players while preserving the read-only, non-sortable focus-or-dash contract (Linear JAY-59).
 - **[Player Profile Workspace Redesign](./features/completed/player-profile-workspace-redesign.md)** — persistent identity rail with Overview, Attributes, Role Fit, and Moneyball sections, same-role current → potential summaries, legacy profile URL compatibility, and proven 1280×800 through 3440×1440 containment (Linear JAY-62).

@@ -137,6 +137,8 @@ function clubMonogram(club: string | null | undefined) {
 
 type PlayerIdentityRailProps = {
   player: PlayerDetail;
+  portrait?: ReactNode;
+  crest?: ReactNode;
   actions?: ReactNode;
   hiddenInformationPending?: boolean;
   hiddenInformationError?: Error | null;
@@ -145,6 +147,8 @@ type PlayerIdentityRailProps = {
 
 export function PlayerIdentityRail({
   player,
+  portrait,
+  crest,
   actions,
   hiddenInformationPending,
   hiddenInformationError,
@@ -159,22 +163,26 @@ export function PlayerIdentityRail({
       className="flex w-full shrink-0 flex-col overflow-y-auto rounded-lg border border-outline-variant bg-surface-container px-4 py-3 lg:h-full lg:w-80"
     >
       <div className="-mx-4 -mt-3 flex h-44 shrink-0 items-center justify-around rounded-t-lg bg-surface-container-lowest px-6">
-        <span
-          role="img"
-          aria-label="Player portrait placeholder"
-          title="Player portrait placeholder"
-          className="flex size-28 shrink-0 items-center justify-center rounded-full bg-surface-container-high font-mono text-mono-lg text-on-surface-variant"
-        >
-          {playerInitials(player.name)}
-        </span>
-        <span
-          role="img"
-          aria-label="Club crest placeholder"
-          title="Club crest placeholder"
-          className="flex size-16 shrink-0 items-center justify-center rounded-lg bg-surface-container-high font-mono text-mono-md text-on-surface-variant"
-        >
-          {clubMonogram(player.club)}
-        </span>
+        {portrait ?? (
+          <span
+            role="img"
+            aria-label="Player portrait placeholder"
+            title="Player portrait placeholder"
+            className="flex size-28 shrink-0 items-center justify-center rounded-full bg-surface-container-high font-mono text-mono-lg text-on-surface-variant"
+          >
+            {playerInitials(player.name)}
+          </span>
+        )}
+        {crest ?? (
+          <span
+            role="img"
+            aria-label="Club crest placeholder"
+            title="Club crest placeholder"
+            className="flex size-16 shrink-0 items-center justify-center rounded-lg bg-surface-container-high font-mono text-mono-md text-on-surface-variant"
+          >
+            {clubMonogram(player.club)}
+          </span>
+        )}
       </div>
       <div className="mt-4">
         <PlayerIdentity player={player} />

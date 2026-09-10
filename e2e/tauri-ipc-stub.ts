@@ -378,6 +378,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           birthDayOfYear: 80,
           nationalities: ["ENG"],
           club: "Barcelona",
+          currentClubUid: 9001,
           division: "La Liga",
           ca: 160,
           pa: 170,
@@ -391,6 +392,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           birthDayOfYear: 124,
           nationalities: ["ESP"],
           club: "Barcelona",
+          currentClubUid: 9001,
           division: "La Liga",
           ca: 150,
           pa: 165,
@@ -407,6 +409,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           birthDayOfYear: index + 1,
           nationalities: ["ENG"],
           club: "Moneyball FC",
+          currentClubUid: 9002,
           division: "Premier Division",
           marketValueGbp: 1000000 + index * 10000,
           dynamicValues: {
@@ -440,6 +443,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           birthDayOfYear: index + 1,
           nationalities: ["ENG"],
           club: "Shortlist FC",
+          currentClubUid: 9003,
           division: "Premier Division",
           ca: 165 - index,
           pa: 185 - index,
@@ -576,6 +580,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           birthDayOfYear: 80,
           nationalities: ["ENG"],
           club: "Barcelona",
+          currentClubUid: 9001,
           division: "La Liga",
           ca: 200 - index,
           pa: 210 - index,
@@ -641,6 +646,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           birthDayOfYear: 80,
           nationalities: ["ENG"],
           club: "Barcelona",
+          currentClubUid: 9001,
           division: "La Liga",
           ca: 200 - index,
           pa: 210 - index,
@@ -662,6 +668,31 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           if (cmd === "plugin:dialog|open") {
             return csvImportFormat ? "/tmp/smoke-import.csv" : null;
           }
+
+          if (cmd === "get_graphics_status") {
+            return {
+              generation: 0,
+              selected: false,
+              candidate: { available: false, source: "absent" },
+              summary: {
+                configs: 0,
+                mappings: 0,
+                truncated: false,
+                diagnostics: { configLimit: 0, entryLimit: 0, depthLimit: 0, mappingLimit: 0, configTooLarge: 0, configUnreadable: 0, malformedConfig: 0, invalidMapping: 0, sourceUnreadable: 0 },
+              },
+            };
+          }
+
+          if (cmd === "choose_graphics_root" || cmd === "clear_graphics_root" || cmd === "rescan_graphics") {
+            return {
+              generation: 1,
+              selected: cmd !== "clear_graphics_root",
+              candidate: { available: false, source: "absent" },
+              summary: { configs: 0, mappings: 0, truncated: false, diagnostics: { configLimit: 0, entryLimit: 0, depthLimit: 0, mappingLimit: 0, configTooLarge: 0, configUnreadable: 0, malformedConfig: 0, invalidMapping: 0, sourceUnreadable: 0 } },
+            };
+          }
+
+          if (cmd === "resolve_graphics") return { status: "missing" };
 
           if (cmd === "get_bridge_status") {
             return {

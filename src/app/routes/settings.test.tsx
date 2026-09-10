@@ -3,6 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
+import {
+  DEFAULT_GRAPHICS_STATUS,
+  setGraphicsChooseIpcMockMode,
+  setGraphicsMutationIpcMockMode,
+  setGraphicsStatusIpcMock,
+  setGraphicsStatusIpcMockMode,
+} from "@/features/graphics/api/graphics-ipc-mock";
+import { graphicsKeys } from "@/features/graphics/api/graphics-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
@@ -62,6 +70,170 @@ describe("Settings", () => {
     expect(
       screen.getByRole("combobox", { name: "Active save" }),
     ).toBeInTheDocument();
+  });
+
+  it("renders safe graphics status and pathless controls", async () => {
+    const user = userEvent.setup();
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    const graphics = await screen.findByRole("region", { name: "Graphics" });
+    expect(graphics).toHaveTextContent("No root selected");
+    expect(graphics).toHaveTextContent("never displays its path");
+    expect(
+      within(graphics).getByRole("button", { name: "Choose graphics folder" }),
+    ).toBeInTheDocument();
+    expect(
+      within(graphics).getByRole("button", { name: "Rescan graphics" }),
+    ).toBeDisabled();
+    expect(
+      within(graphics).getByRole("button", { name: "Clear graphics folder" }),
+    ).toBeDisabled();
+
+    await user.click(
+      within(graphics).getByRole("button", { name: "Choose graphics folder" }),
+    );
+    expect(await screen.findByText(/index is rebuilding/)).toBeInTheDocument();
+  });
+
+  it("shows bounded nonzero scan diagnostics, including configured limits", async () => {
+    setGraphicsStatusIpcMock({
+      generation: 2,
+      selected: true,
+      candidate: { available: false, source: "absent" },
+      summary: {
+        configs: 4,
+        mappings: 7,
+        truncated: true,
+        diagnostics: {
+          configLimit: 1,
+          entryLimit: 2,
+          depthLimit: 3,
+          mappingLimit: 4,
+          configTooLarge: 5,
+          configUnreadable: 6,
+          malformedConfig: 7,
+          invalidMapping: 8,
+          sourceUnreadable: 9,
+        },
+      },
+    });
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    const graphics = await screen.findByRole("region", { name: "Graphics" });
+    expect(graphics).toHaveTextContent(
+      "1 config-limit hits, 2 entry-limit hits, 3 depth-limit hits, 4 mapping-limit hits, 5 oversized configs, 6 unreadable configs, 7 malformed configs, 8 invalid mappings, 9 unreadable sources.",
+    );
+  });
+
+  it("clears an earlier action error when a later action succeeds", async () => {
+    const user = userEvent.setup();
+    setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
+      selected: true,
+    });
+    setGraphicsMutationIpcMockMode("failed");
+    renderWithProviders({ initialEntries: ["/settings"] });
+    const graphics = await screen.findByRole("region", { name: "Graphics" });
+
+    await user.click(
+      within(graphics).getByRole("button", { name: "Choose graphics folder" }),
+    );
+    expect(
+      await within(graphics).findByText(/Graphics update failed/),
+    ).toBeInTheDocument();
+
+    setGraphicsMutationIpcMockMode("ready");
+    await user.click(
+      within(graphics).getByRole("button", { name: "Rescan graphics" }),
+    );
+    await within(graphics).findByText(/index is rebuilding/);
+    expect(within(graphics).queryByText(/Graphics update failed/)).toBeNull();
+  });
+
+  it("keeps selected graphics and cached results when choosing is cancelled", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = renderWithProviders({
+      initialEntries: ["/settings"],
+    });
+    const graphics = await screen.findByRole("region", { name: "Graphics" });
+    await user.click(
+      within(graphics).getByRole("button", { name: "Choose graphics folder" }),
+    );
+    await screen.findByText(/index is rebuilding/);
+    const status = queryClient.getQueryData<{ generation: number }>(
+      graphicsKeys.status(),
+    );
+    expect(status?.generation).toBe(1);
+    const resultKey = graphicsKeys.result(1, "personPortrait", 42);
+    queryClient.setQueryData(resultKey, { status: "available", image: "old" });
+    setGraphicsChooseIpcMockMode("cancel");
+
+    await user.click(
+      within(graphics).getByRole("button", { name: "Choose graphics folder" }),
+    );
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(resultKey)).toEqual({
+        status: "available",
+        image: "old",
+      });
+    });
+    expect(graphics).toHaveTextContent("Folder choice cancelled");
+    expect(graphics).not.toHaveTextContent("index is rebuilding");
+    expect(
+      queryClient.getQueryState(graphicsKeys.status())?.isInvalidated,
+    ).toBe(false);
+  });
+
+  it("removes available and missing results before each new generation", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = renderWithProviders({
+      initialEntries: ["/settings"],
+    });
+    const graphics = await screen.findByRole("region", { name: "Graphics" });
+
+    const clickAndAssertGeneration = async (
+      label: string,
+      previousGeneration: number,
+      nextGeneration: number,
+    ) => {
+      const availableKey = graphicsKeys.result(
+        previousGeneration,
+        "personPortrait",
+        42,
+      );
+      const missingKey = graphicsKeys.result(previousGeneration, "clubLogo", 7);
+      queryClient.setQueryData(availableKey, {
+        status: "available",
+        image: "old",
+      });
+      queryClient.setQueryData(missingKey, { status: "missing" });
+      await user.click(within(graphics).getByRole("button", { name: label }));
+      await waitFor(() => {
+        expect(queryClient.getQueryData(graphicsKeys.status())).toMatchObject({
+          generation: nextGeneration,
+        });
+      });
+      expect(queryClient.getQueryData(availableKey)).toBeUndefined();
+      expect(queryClient.getQueryData(missingKey)).toBeUndefined();
+    };
+
+    await clickAndAssertGeneration("Choose graphics folder", 0, 1);
+    await clickAndAssertGeneration("Rescan graphics", 1, 2);
+    await clickAndAssertGeneration("Clear graphics folder", 2, 3);
+  });
+
+  it("keeps the other Settings sections rendered when graphics status fails", async () => {
+    setGraphicsStatusIpcMockMode("failed");
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    expect(
+      await screen.findByText("Could not load graphics data"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Save data" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Bridge" })).toBeInTheDocument();
   });
 
   it("sets the shared default player analysis view", async () => {

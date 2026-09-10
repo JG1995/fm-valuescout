@@ -58,6 +58,10 @@ type TableColumn = PlayerTableColumn;
 
 type SquadOverviewPanelProps = {
   actions?: ReactNode;
+  identityGraphics?: (player: SquadPlayer | undefined) => {
+    portrait?: ReactNode;
+    crest?: ReactNode;
+  };
   feedback?: ReactNode;
   feedbackRef?: RefObject<HTMLDivElement | null>;
   sortBy: SquadSortField;
@@ -127,10 +131,14 @@ function SquadIdentityCell({
   name,
   club,
   division,
+  portrait,
+  crest,
 }: {
   name: string | undefined;
   club: string | null | undefined;
   division: string | null | undefined;
+  portrait?: ReactNode;
+  crest?: ReactNode;
 }) {
   const context =
     name === undefined
@@ -140,10 +148,9 @@ function SquadIdentityCell({
           .join(" · ");
   return (
     <div className="flex h-table-row-height-two-line items-center gap-2 px-2">
-      <span
-        aria-hidden="true"
-        className="h-7 w-7 shrink-0 rounded-sm bg-surface-container-high"
-      />
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-surface-container-high">
+        {portrait}
+      </span>
       <span className="min-w-0 flex-1">
         <span
           className="block truncate text-body-sm text-on-surface"
@@ -151,13 +158,12 @@ function SquadIdentityCell({
         >
           {name ?? "…"}
         </span>
-        {context ? (
+        {name !== undefined ? (
           <span className="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-on-surface-variant">
-            <span
-              aria-hidden="true"
-              className="h-3 w-3 shrink-0 rounded-[2px] bg-surface-container-high"
-            />
-            <span className="block truncate">{context}</span>
+            <span className="flex h-3 w-3 shrink-0 items-center justify-center rounded-[2px] bg-surface-container-high">
+              {crest}
+            </span>
+            {context ? <span className="block truncate">{context}</span> : null}
           </span>
         ) : null}
       </span>
@@ -376,6 +382,7 @@ export function SquadOverviewPanel({
   sortDir,
   onSortChange,
   pageContext,
+  identityGraphics,
 }: SquadOverviewPanelProps) {
   const layout = usePlayerTableStore((state) => state.layouts.squad);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
@@ -399,10 +406,12 @@ export function SquadOverviewPanel({
           name={player?.name}
           club={player?.club}
           division={player?.division}
+          portrait={identityGraphics?.(player)?.portrait}
+          crest={identityGraphics?.(player)?.crest}
         />
       ),
     }),
-    [identityWidth, setIdentityWidth],
+    [identityGraphics, identityWidth, setIdentityWidth],
   );
   const columns = useMemo<TableColumn[]>(
     () =>

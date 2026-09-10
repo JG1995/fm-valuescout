@@ -32,6 +32,7 @@ export type PlayerDetail = {
   reputationCurrent: number | null;
   reputationWorld: number | null;
   club: string | null;
+  currentClubUid: number | null;
   parentClub: string | null;
   onLoan: boolean | null;
   division: string | null;

@@ -1352,9 +1352,12 @@ mod tests {
 
     #[test]
     fn rejects_missing_scan_truncated() {
-        let json = GOLDEN_FIXTURE.replace("\"scanTruncated\": false,\n  ", "");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
+        root.as_object_mut()
+            .expect("fixture object")
+            .remove("scanTruncated");
 
-        let error = validate_dump_json(&json).expect_err("missing scanTruncated");
+        let error = validate_dump_json(&root.to_string()).expect_err("missing scanTruncated");
 
         assert!(
             matches!(error, DumpValidationError::MissingField(field) if field == "scanTruncated")

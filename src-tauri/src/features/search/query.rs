@@ -289,6 +289,7 @@ pub struct PlayerSummary {
     pub birth_day_of_year: i64,
     pub nationalities: Vec<String>,
     pub club: Option<String>,
+    pub current_club_uid: Option<i64>,
     pub division: Option<String>,
     pub ca: i64,
     pub pa: i64,
@@ -592,6 +593,7 @@ pub fn search_players_in_view(
                 players.birth_day_of_year,
                 players.nationalities_json,
                 players.current_club,
+                players.current_club_uid,
                 players.division,
                 players.ca,
                 players.pa,
@@ -994,6 +996,7 @@ fn search_players_with_roles(
                 players.birth_day_of_year,
                 players.nationalities_json,
                 players.current_club,
+                players.current_club_uid,
                 players.division,
                 players.ca,
                 players.pa,
@@ -1243,7 +1246,7 @@ fn map_role_search_candidate(
         include_persisted_percentiles,
     )?;
     let total_cols = row.as_ref().column_count();
-    let expected_without_tactic = 11
+    let expected_without_tactic = 12
         + sql_dynamic_fields.len()
         + if include_persisted_percentiles {
             moneyball_fields.len()
@@ -1256,7 +1259,7 @@ fn map_role_search_candidate(
     let mut player_foot = "right".to_string();
     let mut offset_adjust = 0;
     if has_positions {
-        let pos_idx = 11
+        let pos_idx = 12
             + sql_dynamic_fields.len()
             + if include_persisted_percentiles {
                 moneyball_fields.len()
@@ -1271,7 +1274,7 @@ fn map_role_search_candidate(
         player_foot = foot;
         offset_adjust = 2;
     }
-    let role_metric_start = 11
+    let role_metric_start = 12
         + sql_dynamic_fields.len()
         + if include_persisted_percentiles {
             moneyball_fields.len()
@@ -1336,14 +1339,14 @@ fn map_player_summary(
 
     let mut dynamic_values = BTreeMap::new();
     for (offset, field) in dynamic_fields.iter().enumerate() {
-        let idx = 11 + offset;
+        let idx = 12 + offset;
         let cell = read_dynamic_value(row, idx, field)?;
         dynamic_values.insert(field.id().to_string(), cell);
     }
     let mut moneyball_percentiles = BTreeMap::new();
     if include_persisted_percentiles {
         for (offset, (field_id, _)) in moneyball_fields.iter().enumerate() {
-            let index = 11 + dynamic_fields.len() + offset;
+            let index = 12 + dynamic_fields.len() + offset;
             moneyball_percentiles.insert((*field_id).to_string(), row.get(index)?);
         }
     }
@@ -1356,10 +1359,11 @@ fn map_player_summary(
         birth_day_of_year: row.get(4)?,
         nationalities,
         club: row.get(6)?,
-        division: row.get(7)?,
-        ca: row.get(8)?,
-        pa: row.get(9)?,
-        market_value_gbp: row.get(10)?,
+        current_club_uid: row.get(7)?,
+        division: row.get(8)?,
+        ca: row.get(9)?,
+        pa: row.get(10)?,
+        market_value_gbp: row.get(11)?,
         dynamic_values,
         moneyball_percentiles,
     })

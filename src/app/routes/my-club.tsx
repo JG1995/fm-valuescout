@@ -7,7 +7,7 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CircleAlert, DatabaseZap, UsersRound } from "lucide-react";
+import { CircleAlert, DatabaseZap, Shield, UsersRound } from "lucide-react";
 import { Suspense, useRef, useState } from "react";
 import { clearPlayerResultContext } from "@/app/player-result-context";
 import { ErrorBoundary } from "@/components/error-boundary/error-boundary";
@@ -24,12 +24,18 @@ import type {
   ClubDnaUpsertResult,
 } from "@/features/club-dna/types/club-dna";
 import { SquadCsvImportActions } from "@/features/csv-import/components/squad-csv-import-actions";
+import {
+  graphicsResultQueryOptions,
+  graphicsStatusQueryOptions,
+} from "@/features/graphics/api/graphics-query-options";
+import type { GraphicsResult } from "@/features/graphics/types/graphics";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import {
   managedClubOptionsQueryOptions,
   managedClubQueryOptions,
 } from "@/features/managed-club/api/managed-club-query-options";
 import { ManagedClubSelector } from "@/features/managed-club/components/managed-club-selector";
+import type { ManagedClubStatus } from "@/features/managed-club/types/managed-club";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import { plannerDepthQueryOptions } from "@/features/planner/api/planner-depth-query-options";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
@@ -51,6 +57,7 @@ import {
   type SquadPlayerBoostAction,
   SquadWonderkidMentalityBoost,
 } from "@/features/squad/components/squad-player-boost";
+import type { SquadPlayer } from "@/features/squad/types/squad-player";
 import type { SquadPlayerBoostProgress } from "@/features/squad/types/squad-player-boost";
 import type {
   SquadSortDir,
@@ -109,6 +116,84 @@ type SquadBoostMutationVariables = {
   snapshotId: number;
   onProgress: (progress: SquadPlayerBoostProgress) => void;
 };
+
+function graphicsImageSource(result: GraphicsResult | undefined) {
+  if (result?.status !== "available") return undefined;
+  let binary = "";
+  for (const byte of result.bytes) binary += String.fromCharCode(byte);
+  return `data:${result.mime};base64,${btoa(binary)}`;
+}
+
+function ManagedClubLogo({
+  clubUid,
+  managedClubStatus,
+}: {
+  clubUid: number | null;
+  managedClubStatus: ManagedClubStatus["status"];
+}) {
+  const { data: status } = useQuery(graphicsStatusQueryOptions);
+  const result = useQuery({
+    ...graphicsResultQueryOptions(
+      status?.generation ?? 0,
+      "clubLogo",
+      clubUid ?? 0,
+    ),
+    enabled:
+      managedClubStatus === "available" &&
+      status?.selected === true &&
+      (clubUid ?? 0) > 0,
+  });
+  const source = graphicsImageSource(result.data);
+
+  return source ? (
+    <img
+      src={source}
+      alt=""
+      aria-hidden="true"
+      className="size-6 shrink-0 object-contain"
+    />
+  ) : (
+    <Shield
+      aria-hidden="true"
+      className="size-6 shrink-0 text-on-surface-variant"
+      strokeWidth={1.5}
+    />
+  );
+}
+
+function SquadIdentityGraphics({
+  player,
+  kind,
+}: {
+  player: SquadPlayer | undefined;
+  kind: "portrait" | "crest";
+}) {
+  const { data: status } = useQuery(graphicsStatusQueryOptions);
+  const result = useQuery({
+    ...graphicsResultQueryOptions(
+      status?.generation ?? 0,
+      kind === "portrait" ? "personPortrait" : "clubLogo",
+      kind === "portrait" ? (player?.uid ?? 0) : (player?.currentClubUid ?? 0),
+    ),
+    enabled:
+      status?.selected === true &&
+      (kind === "portrait"
+        ? (player?.uid ?? 0)
+        : (player?.currentClubUid ?? 0)) > 0,
+  });
+  const source = graphicsImageSource(result.data);
+  return source ? (
+    <img
+      src={source}
+      alt=""
+      className={
+        kind === "portrait"
+          ? "size-7 rounded-sm object-contain"
+          : "size-3 object-contain"
+      }
+    />
+  ) : null;
+}
 
 export const Route = createFileRoute("/my-club")({
   loaderDeps: ({ search }) => {
@@ -453,8 +538,12 @@ function MyClubPageContent() {
         <div>
           <h1 className="text-headline-lg text-on-surface">My Club</h1>
           {managedClub.clubName ? (
-            <p className="text-body-sm text-on-surface-variant">
-              Managed club: {managedClub.clubName}
+            <p className="flex items-center gap-2 text-body-sm text-on-surface-variant">
+              <ManagedClubLogo
+                clubUid={managedClub.clubUid}
+                managedClubStatus={managedClub.status}
+              />
+              <span>Managed club: {managedClub.clubName}</span>
             </p>
           ) : null}
         </div>
@@ -530,6 +619,12 @@ function MyClubPageContent() {
           ) : (
             <SquadOverviewPanel
               key={`${activeSave?.id}:${activeSave?.contextToken}:${snapshot.id}:${snapshot.saveId}:${managedClub.clubName}:${managedClub.status}`}
+              identityGraphics={(player) => ({
+                portrait: (
+                  <SquadIdentityGraphics player={player} kind="portrait" />
+                ),
+                crest: <SquadIdentityGraphics player={player} kind="crest" />,
+              })}
               pageContext={{
                 activeSave: activeSave
                   ? { id: activeSave.id, contextToken: activeSave.contextToken }

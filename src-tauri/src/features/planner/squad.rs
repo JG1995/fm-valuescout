@@ -125,6 +125,7 @@ pub struct SquadPlayer {
     pub birth_day_of_year: i64,
     pub nationalities: Vec<String>,
     pub club: Option<String>,
+    pub current_club_uid: Option<i64>,
     pub division: Option<String>,
     pub ca: i64,
     pub pa: i64,
@@ -307,6 +308,7 @@ pub fn list_squad_players(
              p.birth_day_of_year,
              p.nationalities_json,
              p.current_club,
+             p.current_club_uid,
              p.division,
              p.ca,
              p.pa,
@@ -546,7 +548,7 @@ fn map_player(
             )),
         )
     })?;
-    let attributes_json: String = row.get(11)?;
+    let attributes_json: String = row.get(12)?;
     let attributes: HashMap<String, Option<u8>> =
         serde_json::from_str(&attributes_json).map_err(|error| {
             rusqlite::Error::FromSqlConversionFailure(
@@ -562,7 +564,7 @@ fn map_player(
     for (offset, field) in dynamic_fields.iter().enumerate() {
         dynamic_values.insert(
             field.id().to_string(),
-            read_dynamic_value(row, 12 + offset, field)?,
+            read_dynamic_value(row, 13 + offset, field)?,
         );
     }
 
@@ -575,10 +577,11 @@ fn map_player(
             birth_day_of_year: row.get(4)?,
             nationalities,
             club: row.get(6)?,
-            division: row.get(7)?,
-            ca: row.get(8)?,
-            pa: row.get(9)?,
-            market_value_gbp: row.get(10)?,
+            current_club_uid: row.get(7)?,
+            division: row.get(8)?,
+            ca: row.get(9)?,
+            pa: row.get(10)?,
+            market_value_gbp: row.get(11)?,
             suggested_training: None,
             dynamic_values,
         },

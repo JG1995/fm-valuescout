@@ -15,6 +15,15 @@ import {
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
+import {
+  DEFAULT_GRAPHICS_STATUS,
+  getGraphicsIpcMockCalls,
+  getPendingGraphicsResultIpcMockCount,
+  resolveAllPendingGraphicsResultsIpcMock,
+  setGraphicsResultIpcMockForCall,
+  setGraphicsResultIpcMockMode,
+  setGraphicsStatusIpcMock,
+} from "@/features/graphics/api/graphics-ipc-mock";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import type { PlayerSummary } from "@/features/search/types/player-summary";
@@ -95,6 +104,7 @@ function playerNamed(name: string, ca: number): PlayerSummary {
     birthDayOfYear: 80,
     nationalities: ["ENG"],
     club: "Test FC",
+    currentClubUid: null,
     division: "Premier Division",
     ca,
     pa: ca + 5,
@@ -111,6 +121,7 @@ function manyPlayers(count: number): PlayerSummary[] {
     birthDayOfYear: 1 + (index % 28),
     nationalities: ["ENG"],
     club: index % 3 === 0 ? null : `Club ${index % 10}`,
+    currentClubUid: null,
     division: index % 3 === 0 ? null : "Premier Division",
     ca: 200 - index,
     pa: 200 - (index % 40),
@@ -145,6 +156,207 @@ describe("search route", () => {
   beforeEach(() => {
     openCsvDialog.mockReset();
     useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
+  });
+
+  it("requests bounded exact-UID graphics and preserves identity rows across states and generations", async () => {
+    await resolveLoadDataIpcMock();
+    setGraphicsStatusIpcMock({
+      generation: 7,
+      selected: true,
+      candidate: { available: true, source: "documents" },
+      summary: {
+        configs: 1,
+        mappings: 2,
+        truncated: false,
+        diagnostics: {
+          configLimit: 0,
+          entryLimit: 0,
+          depthLimit: 0,
+          mappingLimit: 0,
+          configTooLarge: 0,
+          configUnreadable: 0,
+          malformedConfig: 0,
+          invalidMapping: 0,
+          sourceUnreadable: 0,
+        },
+      },
+    });
+    setGraphicsResultIpcMockForCall("personPortrait", 42, {
+      status: "available",
+      mime: "image/png",
+      bytes: [137, 80, 78, 71],
+    });
+    setGraphicsResultIpcMockForCall("clubLogo", 9, {
+      status: "available",
+      mime: "image/png",
+      bytes: [137, 80, 78, 71],
+    });
+    setGraphicsResultIpcMockForCall("personPortrait", 43, {
+      status: "missing",
+    });
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Exact UID player", 160),
+        uid: 42,
+        currentClubUid: 9,
+      },
+      {
+        ...playerNamed("Legacy name only", 150),
+        uid: 43,
+        currentClubUid: null,
+      },
+    ]);
+    const { queryClient } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const availableRow = within(table)
+      .getByText("Exact UID player")
+      .closest("tr");
+    const legacyRow = within(table).getByText("Legacy name only").closest("tr");
+    if (!availableRow || !legacyRow) throw new Error("Expected graphics rows");
+    await waitFor(() => {
+      expect(availableRow.querySelectorAll("img")).toHaveLength(2);
+    });
+    expect(
+      Array.from(availableRow.querySelectorAll("img")).map((image) =>
+        image.getAttribute("src"),
+      ),
+    ).toEqual([
+      expect.stringContaining("data:image/png;base64"),
+      expect.stringContaining("data:image/png;base64"),
+    ]);
+    expect(legacyRow.querySelectorAll("img")).toHaveLength(0);
+    expect(availableRow).toHaveAttribute("data-index");
+    expect(availableRow).toHaveStyle({ height: "40px" });
+    expect(getGraphicsIpcMockCalls()).toEqual(
+      expect.arrayContaining([
+        { kind: "personPortrait", uid: 42 },
+        { kind: "clubLogo", uid: 9 },
+      ]),
+    );
+    expect(getGraphicsIpcMockCalls()).not.toContainEqual({
+      kind: "clubLogo",
+      uid: 43,
+    });
+
+    setGraphicsStatusIpcMock({
+      generation: 8,
+      selected: true,
+      candidate: { available: true, source: "documents" },
+      summary: { ...DEFAULT_GRAPHICS_STATUS.summary, configs: 1, mappings: 1 },
+    });
+    setGraphicsResultIpcMockForCall("personPortrait", 42, {
+      status: "missing",
+    });
+    setGraphicsResultIpcMockForCall("clubLogo", 9, { status: "missing" });
+    setGraphicsResultIpcMockMode("pending");
+    act(() => {
+      void queryClient.invalidateQueries({ queryKey: ["graphics"] });
+    });
+    await waitFor(() =>
+      expect(getGraphicsIpcMockCalls()).toEqual(
+        expect.arrayContaining([
+          { kind: "personPortrait", uid: 42 },
+          { kind: "clubLogo", uid: 9 },
+        ]),
+      ),
+    );
+    await waitFor(() =>
+      expect(availableRow.querySelectorAll("img")).toHaveLength(0),
+    );
+    expect(within(table).getByText("Exact UID player")).toBeInTheDocument();
+    expect(getGraphicsIpcMockCalls().length).toBeLessThan(10);
+    setGraphicsResultIpcMockMode("missing");
+    await act(async () => {
+      resolveAllPendingGraphicsResultsIpcMock();
+    });
+    expect(getPendingGraphicsResultIpcMockCount()).toBe(0);
+  });
+
+  it.each(["pending", "missing", "error"] as const)(
+    "keeps Search marks and navigation geometry for %s graphics",
+    async (mode) => {
+      await resolveLoadDataIpcMock();
+      setGraphicsStatusIpcMock({
+        ...DEFAULT_GRAPHICS_STATUS,
+        generation: 4,
+        selected: true,
+      });
+      setGraphicsResultIpcMockMode(mode);
+      setSearchPlayersOverride([
+        {
+          ...playerNamed("Stateful graphics", 160),
+          uid: 51,
+          currentClubUid: 12,
+        },
+      ]);
+      const { router } = renderSearchRoute();
+      const table = await screen.findByRole("table", {
+        name: "Player search results",
+      });
+      const row = within(table).getByText("Stateful graphics").closest("tr");
+      if (!row) throw new Error("Expected graphics row");
+      await waitFor(() => expect(row).toHaveStyle({ height: "40px" }));
+      expect(row.querySelectorAll("img")).toHaveLength(0);
+      expect(within(row).getByText("Stateful graphics")).toBeVisible();
+      expect(row).toHaveAttribute("tabindex", "0");
+      fireEvent.click(row);
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe("/players/51"),
+      );
+      if (mode === "pending") {
+        setGraphicsResultIpcMockMode("missing");
+        await act(async () => {
+          resolveAllPendingGraphicsResultsIpcMock();
+        });
+        expect(getPendingGraphicsResultIpcMockCount()).toBe(0);
+      }
+    },
+  );
+
+  it("bounds Search graphics requests to rendered virtual rows", async () => {
+    await resolveLoadDataIpcMock();
+    setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
+      generation: 9,
+      selected: true,
+    });
+    const players = manyPlayers(200).map((player) => ({
+      ...player,
+      currentClubUid: player.uid + 1000,
+    }));
+    setSearchPlayersOverride(players);
+    setGraphicsResultIpcMockMode("pending");
+    const { queryClient } = renderSearchRoute();
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    await waitFor(() =>
+      expect(getGraphicsIpcMockCalls().length).toBeGreaterThan(0),
+    );
+    const calls = getGraphicsIpcMockCalls() as Array<{
+      kind: string;
+      uid: number;
+    }>;
+    expect(calls.length).toBeLessThan(players.length);
+    expect(calls.length).toBeLessThan(100);
+    expect(
+      calls.every((call) =>
+        players.some(
+          (player) =>
+            call.uid === player.uid || call.uid === player.currentClubUid,
+        ),
+      ),
+    ).toBe(true);
+    expect(table.querySelectorAll("tr[data-index]").length).toBeGreaterThan(0);
+    setGraphicsResultIpcMockMode("missing");
+    await act(async () => {
+      resolveAllPendingGraphicsResultsIpcMock();
+    });
+    expect(getPendingGraphicsResultIpcMockCount()).toBe(0);
+    queryClient.clear();
   });
 
   it("keeps Search controls mounted without a snapshot and does not touch tactic state", async () => {

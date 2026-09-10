@@ -19,6 +19,7 @@ function playerNamed(name: string, ca: number): PlayerSummary {
     birthDayOfYear: 80,
     nationalities: ["ENG"],
     club: "Test FC",
+    currentClubUid: null,
     division: "Premier Division",
     ca,
     pa: ca + 5,

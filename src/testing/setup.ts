@@ -3,6 +3,12 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 import {
+  resetGraphicsIpcMock,
+  resolveGraphicsIpcMock,
+  resolveGraphicsMutationIpcMock,
+  resolveGraphicsStatusIpcMock,
+} from "@/features/graphics/api/graphics-ipc-mock";
+import {
   resetBridgeInstallIpcMock,
   resolveBridgeInstallStatusIpcMock,
   resolveInstallBridgePluginIpcMock,
@@ -125,6 +131,22 @@ import {
 
 function registerIpcMocks() {
   mockIPC((cmd, args) => {
+    if (cmd === "get_graphics_status") {
+      return resolveGraphicsStatusIpcMock();
+    }
+
+    if (
+      cmd === "choose_graphics_root" ||
+      cmd === "clear_graphics_root" ||
+      cmd === "rescan_graphics"
+    ) {
+      return resolveGraphicsMutationIpcMock(cmd);
+    }
+
+    if (cmd === "resolve_graphics") {
+      return resolveGraphicsIpcMock(args);
+    }
+
     if (cmd === "get_bridge_status") {
       return resolveBridgeStatusIpcMock();
     }
@@ -402,6 +424,7 @@ afterEach(() => {
   setDumpRequestIpcMockMode("success");
   setLoadDataIpcMockMode("success");
   resetBridgeInstallIpcMock();
+  resetGraphicsIpcMock();
   resetSnapshotIpcMock();
   resetCsvImportIpcMock();
   resetPlayerShortlistImportIpcMock();

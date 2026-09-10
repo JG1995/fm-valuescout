@@ -1,5 +1,6 @@
 import {
   useMutation,
+  useQuery,
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
@@ -9,6 +10,11 @@ import { type ReactNode, Suspense, useEffect, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { academyKeys } from "@/features/academy/api/academy-keys";
+import {
+  graphicsResultQueryOptions,
+  graphicsStatusQueryOptions,
+} from "@/features/graphics/api/graphics-query-options";
+import type { GraphicsResult } from "@/features/graphics/types/graphics";
 import { getPlayerMoneyballQueryOptions } from "@/features/moneyball/api/get-player-moneyball-query-options";
 import { MoneyballProfilePanel } from "@/features/moneyball/components/moneyball-profile-panel";
 import { MoneyballRoleFitPanel } from "@/features/moneyball/components/moneyball-role-fit-panel";
@@ -357,6 +363,13 @@ function MoneyballPlayerProfile({
   );
 }
 
+function graphicsImageSource(result: GraphicsResult | undefined) {
+  if (result?.status !== "available") return undefined;
+  let binary = "";
+  for (const byte of result.bytes) binary += String.fromCharCode(byte);
+  return `data:${result.mime};base64,${btoa(binary)}`;
+}
+
 function PlayerProfileContent({
   uid,
   section,
@@ -376,6 +389,24 @@ function PlayerProfileContent({
 }) {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: player } = useSuspenseQuery(getPlayerQueryOptions(uid));
+  const { data: graphicsStatus } = useQuery(graphicsStatusQueryOptions);
+  const portraitQuery = useQuery({
+    ...graphicsResultQueryOptions(
+      graphicsStatus?.generation ?? 0,
+      "personPortrait",
+      player?.uid ?? 0,
+    ),
+    enabled: graphicsStatus?.selected === true && (player?.uid ?? 0) > 0,
+  });
+  const crestQuery = useQuery({
+    ...graphicsResultQueryOptions(
+      graphicsStatus?.generation ?? 0,
+      "clubLogo",
+      player?.currentClubUid ?? 0,
+    ),
+    enabled:
+      graphicsStatus?.selected === true && (player?.currentClubUid ?? 0) > 0,
+  });
   const queryClient = useQueryClient();
   const hiddenInformation = useMutation({
     mutationFn: ({ revealed }: PlayerHiddenInformationMutation) =>
@@ -435,6 +466,24 @@ function PlayerProfileContent({
     <div className="flex min-h-0 flex-col gap-gutter lg:h-full lg:flex-row lg:overflow-hidden">
       <PlayerIdentityRail
         player={player}
+        portrait={
+          graphicsImageSource(portraitQuery.data) ? (
+            <img
+              src={graphicsImageSource(portraitQuery.data)}
+              alt={`Portrait of ${player.name}`}
+              className="size-28 shrink-0 rounded-full object-contain"
+            />
+          ) : undefined
+        }
+        crest={
+          graphicsImageSource(crestQuery.data) ? (
+            <img
+              src={graphicsImageSource(crestQuery.data)}
+              alt={player.club ? `Crest of ${player.club}` : "Club crest"}
+              className="size-16 shrink-0 rounded-lg object-contain"
+            />
+          ) : undefined
+        }
         hiddenInformationPending={
           hiddenInformationContextIsCurrent && hiddenInformation.isPending
         }
