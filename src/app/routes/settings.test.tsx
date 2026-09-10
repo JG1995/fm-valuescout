@@ -14,11 +14,20 @@ import { graphicsKeys } from "@/features/graphics/api/graphics-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
+import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
+import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import type { SaveSummary } from "@/features/snapshot/types/save";
 import { staffKeys } from "@/features/staff/api/staff-keys";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
+import {
+  getManagedClubBoostIpcMockCalls,
+  setManagedClubBoostError,
+  setManagedClubBoostRecoveryRequired,
+} from "@/testing/managed-club-boost-ipc-mock";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
   type SnapshotMetadata,
+  setCurrentSnapshotIpcMockFailure,
   setSnapshotHistoryIpcMock,
 } from "@/testing/snapshot-ipc-mock";
 
@@ -70,6 +79,122 @@ describe("Settings", () => {
     expect(
       screen.getByRole("combobox", { name: "Active save" }),
     ).toBeInTheDocument();
+  });
+
+  it("confirms and applies every managed-club boost in one action", async () => {
+    const user = userEvent.setup();
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    const section = await screen.findByRole("region", {
+      name: "All boosts",
+    });
+    await user.click(
+      within(section).getByRole("button", { name: "Apply all boosts" }),
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Apply all boosts?" });
+    expect(dialog).toHaveTextContent("Make all Wonderkids");
+    expect(dialog).toHaveTextContent("age-restricted player CA boost");
+    expect(dialog).toHaveTextContent("staff CA boost");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Apply all boosts" }),
+    );
+
+    expect(
+      await within(section).findByText(
+        "Completed — 7 updated, 2 skipped, 0 failed.",
+      ),
+    ).toBeInTheDocument();
+    expect(getManagedClubBoostIpcMockCalls()).toHaveLength(1);
+  });
+
+  it("blocks a recovery retry until Load Data replaces the snapshot", async () => {
+    setManagedClubBoostRecoveryRequired(true);
+    const user = userEvent.setup();
+    const { queryClient } = renderWithProviders({
+      initialEntries: ["/settings"],
+    });
+    const section = await screen.findByRole("region", { name: "All boosts" });
+    const action = within(section).getByRole("button", {
+      name: "Apply all boosts",
+    });
+
+    await user.click(action);
+    await user.click(
+      within(
+        screen.getByRole("dialog", { name: "Apply all boosts?" }),
+      ).getByRole("button", { name: "Apply all boosts" }),
+    );
+
+    expect(await within(section).findByText(/Stopped —/)).toBeInTheDocument();
+    expect(action).toBeDisabled();
+
+    setSnapshotHistoryIpcMock([
+      ...HISTORY.map((snapshot) => ({ ...snapshot, isCurrent: false })),
+      {
+        ...HISTORY[1],
+        id: 13,
+        contextToken: "snapshot-token-13",
+        gameDate: "2026-09-01",
+        isCurrent: true,
+      },
+    ]);
+    await queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
+
+    await waitFor(() => {
+      const currentSection = screen.getByRole("region", { name: "All boosts" });
+      expect(
+        within(currentSection).getByRole("button", {
+          name: "Apply all boosts",
+        }),
+      ).toBeEnabled();
+      expect(within(currentSection).queryByText(/Stopped —/)).toBeNull();
+    });
+  });
+
+  it("clears a snapshot-less save error when the active save changes", async () => {
+    setManagedClubBoostError("Load Data before using boosts");
+    const user = userEvent.setup();
+    const { queryClient } = renderWithProviders({
+      initialEntries: ["/settings"],
+    });
+    const section = await screen.findByRole("region", { name: "All boosts" });
+
+    await user.click(
+      within(section).getByRole("button", { name: "Apply all boosts" }),
+    );
+    await user.click(
+      within(
+        screen.getByRole("dialog", { name: "Apply all boosts?" }),
+      ).getByRole("button", { name: "Apply all boosts" }),
+    );
+    expect(
+      await screen.findByText(/Load Data before using boosts/),
+    ).toBeInTheDocument();
+
+    const saves = queryClient.getQueryData<SaveSummary[]>(
+      savesQueryOptions.queryKey,
+    );
+    expect(saves).toHaveLength(1);
+    if (!saves) throw new Error("Expected the default save");
+    queryClient.setQueryData<SaveSummary[]>(savesQueryOptions.queryKey, [
+      { ...saves[0], isActive: false },
+      {
+        id: 2,
+        contextToken: "save-token-2",
+        name: "Other save",
+        isActive: true,
+        createdAtUtc: "2026-07-29T00:00:00.000Z",
+        updatedAtUtc: "2026-07-29T00:00:00.000Z",
+      },
+    ]);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Apply all boosts?" }),
+      ).toBeNull();
+      expect(screen.queryByText(/Load Data before using boosts/)).toBeNull();
+    });
   });
 
   it("renders safe graphics status and pathless controls", async () => {
@@ -221,6 +346,22 @@ describe("Settings", () => {
     await clickAndAssertGeneration("Choose graphics folder", 0, 1);
     await clickAndAssertGeneration("Rescan graphics", 1, 2);
     await clickAndAssertGeneration("Clear graphics folder", 2, 3);
+  });
+
+  it("keeps other Settings sections rendered when boost context fails", async () => {
+    setCurrentSnapshotIpcMockFailure(true);
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    expect(
+      await screen.findByText("Could not load boost context"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Graphics" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Save data" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Bridge" })).toBeInTheDocument();
   });
 
   it("keeps the other Settings sections rendered when graphics status fails", async () => {

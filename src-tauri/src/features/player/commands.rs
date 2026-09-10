@@ -316,6 +316,23 @@ where
     )
 }
 
+pub(crate) fn boost_squad_current_ability_under_guard<R>(
+    db: &Db,
+    guard: &boost_gate::BoostGuard,
+    on_progress: R,
+) -> Result<SquadPlayerBoostResultDto, PlayerBoostError>
+where
+    R: FnMut(SquadPlayerBoostProgressDto) -> bool,
+{
+    execute_squad_player_boost_under_guard(
+        db,
+        guard,
+        service::prepare_current_ability_boost,
+        request_local_player_boost,
+        on_progress,
+    )
+}
+
 #[cfg(test)]
 fn execute_squad_wonderkid_mentality_boost_with<F>(
     db: &Db,
@@ -344,8 +361,46 @@ where
     )
 }
 
+pub(crate) fn boost_squad_wonderkid_mentality_under_guard<R>(
+    db: &Db,
+    guard: &boost_gate::BoostGuard,
+    on_progress: R,
+) -> Result<SquadPlayerBoostResultDto, PlayerBoostError>
+where
+    R: FnMut(SquadPlayerBoostProgressDto) -> bool,
+{
+    execute_squad_player_boost_under_guard(
+        db,
+        guard,
+        service::prepare_wonderkid_mentality_boost,
+        request_local_player_boost,
+        on_progress,
+    )
+}
+
 fn execute_squad_player_boost_with<F, R>(
     db: &Db,
+    prepare: fn(&rusqlite::Connection, i64) -> Result<PreparedPlayerBoost, PlayerBoostError>,
+    request_bridge_boost: F,
+    on_progress: R,
+) -> Result<SquadPlayerBoostResultDto, PlayerBoostError>
+where
+    F: FnMut(&PreparedPlayerBoost) -> Result<PlayerBoostResult, PlayerBoostError>,
+    R: FnMut(SquadPlayerBoostProgressDto) -> bool,
+{
+    let boost_guard = acquire_player_boost_gate()?;
+    execute_squad_player_boost_under_guard(
+        db,
+        &boost_guard,
+        prepare,
+        request_bridge_boost,
+        on_progress,
+    )
+}
+
+fn execute_squad_player_boost_under_guard<F, R>(
+    db: &Db,
+    _guard: &boost_gate::BoostGuard,
     prepare: fn(&rusqlite::Connection, i64) -> Result<PreparedPlayerBoost, PlayerBoostError>,
     mut request_bridge_boost: F,
     mut on_progress: R,
@@ -354,7 +409,6 @@ where
     F: FnMut(&PreparedPlayerBoost) -> Result<PlayerBoostResult, PlayerBoostError>,
     R: FnMut(SquadPlayerBoostProgressDto) -> bool,
 {
-    let _boost_guard = acquire_player_boost_gate()?;
     let (context, player_uids) = {
         let conn = db.0.lock().map_err(|_| PlayerBoostError::Eligibility {
             kind: "databaseUnavailable".to_string(),

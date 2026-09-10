@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { clearPlayerResultContext } from "@/app/player-result-context";
@@ -7,6 +7,7 @@ import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import { graphicsStatusQueryOptions } from "@/features/graphics/api/graphics-query-options";
 import { GraphicsSettingsSectionWithErrorBoundary } from "@/features/graphics/components/graphics-settings-section-with-error-boundary";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
+import { ManagedClubBoost } from "@/features/managed-club-boost/components/managed-club-boost";
 import { bridgeInstallQueryOptions } from "@/features/memory-read/api/bridge-install-query-options";
 import { bridgeStatusQueryOptions } from "@/features/memory-read/api/bridge-status-query-options";
 import { BridgeStatusPanelWithErrorBoundary } from "@/features/memory-read/components/bridge-status-panel-with-error-boundary";
@@ -16,6 +17,7 @@ import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
+import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { SnapshotPanelsWithErrorBoundary } from "@/features/snapshot/components/snapshot-panels-with-error-boundary";
 import { staffKeys } from "@/features/staff/api/staff-keys";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
@@ -51,6 +53,12 @@ function SectionFallback({ label }: { label: string }) {
 
 function SettingsPage() {
   const queryClient = useQueryClient();
+  const snapshotQuery = useQuery(currentSnapshotQueryOptions);
+  const savesQuery = useQuery(savesQueryOptions);
+  const activeSave = savesQuery.data?.find((save) => save.isActive);
+  const boostContextKey = `${activeSave?.contextToken ?? "no-save"}:${snapshotQuery.data?.contextToken ?? "no-snapshot"}`;
+  const boostContextPending = snapshotQuery.isPending || savesQuery.isPending;
+  const boostContextError = snapshotQuery.isError || savesQuery.isError;
   const defaultAnalysisView = useMoneyballPreferences(
     (state) => state.defaultAnalysisView,
   );
@@ -58,6 +66,7 @@ function SettingsPage() {
     (state) => state.setDefaultAnalysisView,
   );
   const invalidateCurrentContext = () => {
+    void queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
     void queryClient.invalidateQueries({ queryKey: searchKeys.all });
     void queryClient.invalidateQueries({ queryKey: playerKeys.all });
     void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
@@ -102,6 +111,28 @@ function SettingsPage() {
             specify a view.
           </span>
         </div>
+      </section>
+
+      <section aria-labelledby="all-boosts-heading" className="space-y-3">
+        <h2 className="text-title-lg text-on-surface" id="all-boosts-heading">
+          All boosts
+        </h2>
+        {boostContextPending ? (
+          <SectionFallback label="Loading boost context…" />
+        ) : boostContextError ? (
+          <div
+            className="flex min-h-24 items-center rounded-lg border border-outline-variant bg-surface-container p-4 text-body-md text-error"
+            role="alert"
+          >
+            Could not load boost context
+          </div>
+        ) : (
+          <ManagedClubBoost
+            key={boostContextKey}
+            contextKey={boostContextKey}
+            onSettled={invalidateCurrentContext}
+          />
+        )}
       </section>
 
       <section aria-labelledby="graphics-heading" className="space-y-3">

@@ -655,6 +655,35 @@ where
 
 fn execute_my_staff_boost_with_progress<F, R>(
     db: &Db,
+    request_bridge_boost: F,
+    on_progress: R,
+) -> Result<MyStaffBoostResultDto, StaffBoostError>
+where
+    F: FnMut(&PreparedStaffBoost) -> Result<StaffBoostResult, StaffBoostError>,
+    R: FnMut(MyStaffBoostProgressDto) -> bool,
+{
+    let boost_guard =
+        boost_gate::acquire_boost_gate().map_err(|message| StaffBoostError::Bridge {
+            kind: "inProgress".to_string(),
+            message,
+        })?;
+    execute_my_staff_boost_under_guard(db, &boost_guard, request_bridge_boost, on_progress)
+}
+
+pub(crate) fn boost_my_staff_current_ability_under_guard<R>(
+    db: &Db,
+    guard: &boost_gate::BoostGuard,
+    on_progress: R,
+) -> Result<MyStaffBoostResultDto, StaffBoostError>
+where
+    R: FnMut(MyStaffBoostProgressDto) -> bool,
+{
+    execute_my_staff_boost_under_guard(db, guard, request_local_staff_boost, on_progress)
+}
+
+fn execute_my_staff_boost_under_guard<F, R>(
+    db: &Db,
+    _guard: &boost_gate::BoostGuard,
     mut request_bridge_boost: F,
     mut on_progress: R,
 ) -> Result<MyStaffBoostResultDto, StaffBoostError>
@@ -662,11 +691,6 @@ where
     F: FnMut(&PreparedStaffBoost) -> Result<StaffBoostResult, StaffBoostError>,
     R: FnMut(MyStaffBoostProgressDto) -> bool,
 {
-    let _boost_guard =
-        boost_gate::acquire_boost_gate().map_err(|message| StaffBoostError::Bridge {
-            kind: "inProgress".to_string(),
-            message,
-        })?;
     let (context, staff_uids) = capture_my_staff_boost_cohort(db)?;
     let mut result = MyStaffBoostResultDto {
         updated: 0,

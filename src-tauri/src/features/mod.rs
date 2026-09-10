@@ -3,6 +3,7 @@ pub mod club_dna;
 pub mod csv_import;
 pub mod graphics;
 pub mod managed_club;
+pub mod managed_club_boost;
 pub mod memory_read;
 pub mod moneyball;
 pub mod planner;

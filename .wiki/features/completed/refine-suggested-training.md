@@ -107,7 +107,7 @@ Refine the read-time Suggested Training recommendation so its focus matches a de
 
 **Status:** Ready for publication
 
-**PR ref:** https://github.com/JG1995/fm-valuescout/pull/138
+**PR ref:** <https://github.com/JG1995/fm-valuescout/pull/138>
 
 **Merge ref:** Not merged
 
