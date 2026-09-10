@@ -450,7 +450,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 #### Commit 4 — Render Player Profile identity graphics
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): render local identity graphics`
 
@@ -493,7 +493,7 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 #### Commit 5 — Render player-table identity graphics
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(players): render local table identity graphics`
 
@@ -629,20 +629,20 @@ PR 1 first records the plan, then stores a nullable extracted current-club UID i
 
 **PR:** PR 2 — Add local FM graphics
 
-**Commit:** Render Player Profile identity graphics
+**Commit:** Render player-table identity graphics
 
 ### RED or removal proof
 
-Add Player Detail UID and rail fallback tests first. Confirm they fail because Player Detail does not project `currentClubUid` and the profile rail has no current-generation portrait or club-logo presenters.
+Add Search and Squad exact-UID and fallback tests first. Confirm they fail because their player row DTOs do not project `currentClubUid` and their fixed dense identity cells do not request current-generation portrait and club marks.
 
 ### Expected outcome
 
-Player Profile requests the person portrait by player UID and the club logo by nullable current-club UID. The existing fixed rail slots and text identity remain stable for pending, null, missing, and error states.
+Search and Squad rows request portraits by player UID and club marks by nullable current-club UID while preserving fixed two-slot geometry, row height, virtualization, navigation, names, and fallbacks.
 
 ### Explicit exclusions
 
-- Search, Squad, My Club, Staff, and manager graphics or DTOs.
-- Resolver/runtime changes, name matching, and layout changes outside the profile rail.
+- Player Profile, My Club, Staff, and manager graphics or DTOs.
+- Resolver/runtime changes, name matching, and table redesign.
 - The unrelated dirty completed-ledger URL formatting changes.
 
 ## Discoveries and replanning
@@ -663,7 +663,8 @@ Player Profile requests the person portrait by player UID and the club logo by n
 | PR 1 — Persist FM club identity | Commit 3 — Bind managed-club selections to club UIDs | ade7c9f2763fb225f57572abf578aa0955e6df46 | Added migration v45 and exact effective-current managed-club name/UID options, validation, persistence, status, and typed picker flow while retaining name-based cohorts and legacy null identity. | `./scripts/dev test` passed 1,000 tests; `./scripts/dev check` passed 811 Rust tests with 2 ignored; `./scripts/dev smoke` passed 62 tests; exact mock/stub pair proofs, LSP diagnostics, and `git diff --cached --check` passed. | Pass | Accepted findings — direct populated v44-to-v45 managed-club upgrade proof remains a MEDIUM advisory for feature close-out. | 3 | Review corrections removed all name/index-derived UID behavior from Vitest and Playwright doubles, required exact option pairs, and aligned browser smoke with the IPC contract. |
 | PR 2 — Add local FM graphics | Commit 1 — Build the bounded local graphics index | e80b6ef1ffb9e97e49399f63d0f3bac75a782ded | Added a capability-owned, root-relative graphics index with bounded no-follow discovery, globally deterministic config precedence, fail-closed entry truncation, streaming XML parsing, and bounded lazy image resolution. Added Windows Rust CI coverage for junction and reparse behavior. | Twelve focused graphics tests passed on Linux; `./scripts/dev check-rust` and `./scripts/dev check` passed 823 Rust tests with 2 ignored; `git diff --check` and primary Rust LSP diagnostics passed. The Windows-only proof is pending GitHub CI. | Pass | Accepted findings — correction review accepted the blocking fixes; a MEDIUM discovery-iterator error advisory remains for feature close-out. | 2 | Replaced the invalidated `std::fs` scanner with direct `cap-std` and `cap-fs-ext` 3.4.6 capability traversal and added the packet-required `rust-windows` Check job. |
 | PR 2 — Add local FM graphics | Commit 2 — Manage the configured graphics runtime and IPC | c1256ce67969f001357d59c3e09fa8150898ef4 | Added v46 root persistence, Rust-only conventional candidate and native folder-choice ownership, and narrow graphics commands over a managed runtime. The runtime separates monotonic attempts from committed generations, scans outside locks, rejects stale completion, and bounds available and missing LRU results per kind. | Fourteen focused runtime tests and the v45-to-v46 migration test passed; `./scripts/dev check-rust` and `./scripts/dev check` passed 839 Rust tests with 2 ignored; `git diff --check` and primary Rust LSP diagnostics passed. | Pass | Clear | 3 | A reviewed bounded replan replaced the check-then-write generation model with a transition-gated committed-target model and controlled SQLite, cache, and lazy-scan interleaving proof. |
-| PR 2 — Add local FM graphics | Commit 3 — Add the Graphics Settings section | Pending record | Added typed graphics IPC and generation-keyed Query state plus a pathless Settings section for safe status, diagnostics, choose, clear, and rescan actions. Mutation success removes prior-generation available and missing image queries before status refresh. | Eight focused Settings and Query tests passed; `./scripts/dev test` passed 1,005 tests; `./scripts/dev check-app`, `./scripts/dev check`, and `./scripts/dev smoke` passed with 62 browser tests; three required Settings inspections were opened and contained at 1280, 1600, and 3440 widths; `git diff --check` and LSP passed. | Pass | Accepted findings — a MEDIUM advisory remains to clear an earlier action error after a later different action succeeds. | 1 | None |
+| PR 2 — Add local FM graphics | Commit 3 — Add the Graphics Settings section | 740dd747956e35c0a08e9e4e113b968678912946 | Added typed graphics IPC and generation-keyed Query state plus a pathless Settings section for safe status, diagnostics, choose, clear, and rescan actions. Mutation success removes prior-generation available and missing image queries before status refresh. | Eight focused Settings and Query tests passed; `./scripts/dev test` passed 1,005 tests; `./scripts/dev check-app`, `./scripts/dev check`, and `./scripts/dev smoke` passed with 62 browser tests; three required Settings inspections were opened and contained at 1280, 1600, and 3440 widths; `git diff --check` and LSP passed. | Pass | Accepted findings — a MEDIUM advisory remains to clear an earlier action error after a later different action succeeds. | 1 | None |
+| PR 2 — Add local FM graphics | Commit 4 — Render Player Profile identity graphics | Pending record | Added nullable `currentClubUid` to Player Detail and composed current-generation player portrait and current-club logo queries into the fixed profile identity rail through the route. Available graphics render safe data URLs; all other states retain the existing fallbacks and text identity. | Eighty-five focused profile tests passed; `./scripts/dev test` passed 1,011 tests; `./scripts/dev check`, `./scripts/dev check-app`, and `./scripts/dev smoke` passed with 62 browser tests; required profile inspections were opened and contained at 1280, 1600, and 3440 widths; `git diff --check` and LSP passed. | Pass | Clear | 2 | None |
 
 ## Final validation
 

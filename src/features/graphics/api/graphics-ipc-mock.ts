@@ -24,8 +24,22 @@ export const DEFAULT_GRAPHICS_STATUS: GraphicsStatus = {
 
 export type GraphicsStatusIpcMockMode = "ready" | "failed";
 export type GraphicsChooseIpcMockMode = "select" | "cancel";
+export type GraphicsResultIpcMockMode =
+  | "available"
+  | "missing"
+  | "pending"
+  | "error";
+
+type GraphicsResult = import("../types/graphics").GraphicsResult;
 
 let status = { ...DEFAULT_GRAPHICS_STATUS };
+let result: GraphicsResult = { status: "missing" };
+let resultMode: GraphicsResultIpcMockMode = "missing";
+let pendingResults: Array<{
+  args: unknown;
+  resolve: (result: GraphicsResult) => void;
+}> = [];
+let resolveCalls: unknown[] = [];
 let statusMode: GraphicsStatusIpcMockMode = "ready";
 let chooseMode: GraphicsChooseIpcMockMode = "select";
 
@@ -41,7 +55,59 @@ export function resetGraphicsIpcMock() {
   status = { ...DEFAULT_GRAPHICS_STATUS };
   statusMode = "ready";
   chooseMode = "select";
+  result = { status: "missing" };
+  resultMode = "missing";
+  pendingResults = [];
+  resolveCalls = [];
 }
+
+export function setGraphicsStatusIpcMock(next: GraphicsStatus) {
+  status = next;
+}
+
+export function setGraphicsResultIpcMock(next: GraphicsResult) {
+  result = next;
+  resultMode = "available";
+}
+
+export function setGraphicsResultIpcMockMode(mode: GraphicsResultIpcMockMode) {
+  resultMode = mode;
+}
+
+export function resolvePendingGraphicsResultIpcMock() {
+  const pending = pendingResults.shift();
+  pending?.resolve(result);
+}
+
+export function resolveAllPendingGraphicsResultsIpcMock() {
+  const pending = pendingResults;
+  pendingResults = [];
+  for (const deferred of pending) {
+    deferred.resolve(result);
+  }
+}
+
+export function getPendingGraphicsResultIpcMockCount() {
+  return pendingResults.length;
+}
+
+export function getGraphicsIpcMockCalls() {
+  return resolveCalls;
+}
+
+export function resolveGraphicsIpcMock(args?: unknown) {
+  resolveCalls = [...resolveCalls, args];
+  if (resultMode === "error") {
+    throw new Error("graphics result unavailable");
+  }
+  if (resultMode === "pending") {
+    return new Promise<GraphicsResult>((resolve) => {
+      pendingResults.push({ args, resolve });
+    });
+  }
+  return resultMode === "available" ? result : { status: "missing" };
+}
+
 export function resolveGraphicsStatusIpcMock() {
   if (statusMode === "failed") {
     throw new Error("graphics status unavailable");

@@ -151,6 +151,7 @@ export function fixturePlayerDetail(
     reputationCurrent: 5000,
     reputationWorld: 4000,
     club: "Test FC",
+    currentClubUid: null,
     parentClub: null,
     onLoan: false,
     division: "Premier Division",

@@ -9,6 +9,16 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
 import { Route } from "@/app/routes/players.$uid";
+import {
+  DEFAULT_GRAPHICS_STATUS,
+  getGraphicsIpcMockCalls,
+  getPendingGraphicsResultIpcMockCount,
+  resolveAllPendingGraphicsResultsIpcMock,
+  resolvePendingGraphicsResultIpcMock,
+  setGraphicsResultIpcMock,
+  setGraphicsResultIpcMockMode,
+  setGraphicsStatusIpcMock,
+} from "@/features/graphics/api/graphics-ipc-mock";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
@@ -64,6 +74,172 @@ describe("player profile route", () => {
   beforeEach(() => {
     useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
     setGetPlayerOverride(undefined);
+  });
+
+  it("requests portrait and crest by their exact UIDs", async () => {
+    setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
+      generation: 4,
+      selected: true,
+    });
+    setGraphicsResultIpcMock({
+      status: "available",
+      bytes: [137, 80, 78, 71],
+      mime: "image/png",
+    });
+    setGetPlayerOverride(fixturePlayerDetail({ currentClubUid: 9001 }));
+
+    renderProfileRoute("/players/42");
+
+    await waitFor(() =>
+      expect(getGraphicsIpcMockCalls()).toEqual(
+        expect.arrayContaining([
+          { kind: "personPortrait", uid: 42 },
+          { kind: "clubLogo", uid: 9001 },
+        ]),
+      ),
+    );
+  });
+
+  it("renders available portrait and crest data with adjacent text identity", async () => {
+    setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
+      generation: 4,
+      selected: true,
+    });
+    setGraphicsResultIpcMock({
+      status: "available",
+      bytes: [137, 80, 78, 71],
+      mime: "image/png",
+    });
+    setGetPlayerOverride(fixturePlayerDetail({ currentClubUid: 9001 }));
+    await resolveLoadDataIpcMock();
+
+    renderProfileRoute("/players/42");
+
+    const rail = await screen.findByRole("complementary", {
+      name: "Player identity",
+    });
+    await waitFor(() =>
+      expect(getGraphicsIpcMockCalls()).toEqual(
+        expect.arrayContaining([
+          { kind: "personPortrait", uid: 42 },
+          { kind: "clubLogo", uid: 9001 },
+        ]),
+      ),
+    );
+    expect(
+      within(rail).getByRole("img", { name: "Portrait of Alex Scout" }),
+    ).toHaveAttribute("src", "data:image/png;base64,iVBORw==");
+    expect(
+      within(rail).getByRole("img", { name: "Crest of Test FC" }),
+    ).toHaveAttribute("src", "data:image/png;base64,iVBORw==");
+    expect(
+      within(rail).getByRole("heading", { name: "Alex Scout" }),
+    ).toBeInTheDocument();
+    expect(within(rail).getByText("Test FC")).toBeInTheDocument();
+  });
+
+  it("does not request a crest for a nullable current club UID", async () => {
+    setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
+      generation: 4,
+      selected: true,
+    });
+    setGraphicsResultIpcMockMode("pending");
+    setGetPlayerOverride(fixturePlayerDetail({ currentClubUid: null }));
+    await resolveLoadDataIpcMock();
+
+    const view = renderProfileRoute("/players/42");
+    const rail = await screen.findByRole("complementary", {
+      name: "Player identity",
+    });
+    expect(
+      within(rail).getByLabelText("Club crest placeholder"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(getGraphicsIpcMockCalls()).toEqual([
+        { kind: "personPortrait", uid: 42 },
+      ]),
+    );
+    expect(getPendingGraphicsResultIpcMockCount()).toBe(1);
+    resolvePendingGraphicsResultIpcMock();
+    await waitFor(() => expect(getPendingGraphicsResultIpcMockCount()).toBe(0));
+    view.unmount();
+  });
+
+  it.each([
+    ["missing", "missing"],
+    ["error", "error"],
+  ] as const)(
+    "keeps fixed identity slots and names when graphics are %s",
+    async (_label, mode) => {
+      setGraphicsStatusIpcMock({
+        ...DEFAULT_GRAPHICS_STATUS,
+        generation: 4,
+        selected: true,
+      });
+      setGraphicsResultIpcMockMode(mode);
+      setGetPlayerOverride(fixturePlayerDetail({ currentClubUid: 9001 }));
+      await resolveLoadDataIpcMock();
+
+      renderProfileRoute("/players/42");
+
+      const rail = await screen.findByRole("complementary", {
+        name: "Player identity",
+      });
+      await waitFor(() => expect(getGraphicsIpcMockCalls()).toHaveLength(2));
+      expect(
+        within(rail).getByLabelText("Player portrait placeholder"),
+      ).toHaveClass("size-28");
+      expect(within(rail).getByLabelText("Club crest placeholder")).toHaveClass(
+        "size-16",
+      );
+      expect(
+        within(rail).getByRole("heading", { name: "Alex Scout" }),
+      ).toBeInTheDocument();
+      expect(within(rail).getByText("Test FC")).toBeInTheDocument();
+      expect(getPendingGraphicsResultIpcMockCount()).toBe(0);
+    },
+  );
+
+  it("keeps fixed identity slots and names while graphics are pending", async () => {
+    setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
+      generation: 4,
+      selected: true,
+    });
+    setGraphicsResultIpcMockMode("pending");
+    setGetPlayerOverride(fixturePlayerDetail({ currentClubUid: 9001 }));
+    await resolveLoadDataIpcMock();
+
+    const view = renderProfileRoute("/players/42");
+    const rail = await screen.findByRole("complementary", {
+      name: "Player identity",
+    });
+    await waitFor(() => expect(getGraphicsIpcMockCalls()).toHaveLength(2));
+    expect(getPendingGraphicsResultIpcMockCount()).toBe(2);
+    expect(
+      within(rail).getByLabelText("Player portrait placeholder"),
+    ).toHaveClass("size-28");
+    expect(within(rail).getByLabelText("Club crest placeholder")).toHaveClass(
+      "size-16",
+    );
+    expect(
+      within(rail).getByRole("heading", { name: "Alex Scout" }),
+    ).toBeInTheDocument();
+    expect(within(rail).getByText("Test FC")).toBeInTheDocument();
+    resolveAllPendingGraphicsResultsIpcMock();
+    await waitFor(() => {
+      expect(getPendingGraphicsResultIpcMockCount()).toBe(0);
+      expect(
+        within(rail).getByLabelText("Player portrait placeholder"),
+      ).toHaveClass("size-28");
+      expect(within(rail).getByLabelText("Club crest placeholder")).toHaveClass(
+        "size-16",
+      );
+    });
+    view.unmount();
   });
 
   it("shows rail identity with overview analysis for a known player", async () => {

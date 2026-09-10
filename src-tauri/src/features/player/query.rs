@@ -48,6 +48,7 @@ pub struct PlayerDetail {
     pub reputation_current: Option<i64>,
     pub reputation_world: Option<i64>,
     pub club: Option<String>,
+    pub current_club_uid: Option<i64>,
     pub parent_club: Option<String>,
     pub on_loan: Option<bool>,
     pub division: Option<String>,
@@ -104,6 +105,7 @@ pub fn get_player(conn: &Connection, uid: i64) -> Result<Option<PlayerDetail>, S
                 reputation_current,
                 reputation_world,
                 current_club,
+                current_club_uid,
                 parent_club,
                 on_loan,
                 division,
@@ -191,12 +193,13 @@ fn map_player_row(row: &Row<'_>) -> rusqlite::Result<PlayerDetail> {
         reputation_current: row.get(20)?,
         reputation_world: row.get(21)?,
         club: row.get(22)?,
-        parent_club: row.get(23)?,
-        on_loan: optional_bool(row.get(24)?)?,
-        division: row.get(25)?,
-        team_level: row.get(26)?,
-        ca: row.get(27)?,
-        pa: row.get(28)?,
+        current_club_uid: row.get(23)?,
+        parent_club: row.get(24)?,
+        on_loan: optional_bool(row.get(25)?)?,
+        division: row.get(26)?,
+        team_level: row.get(27)?,
+        ca: row.get(28)?,
+        pa: row.get(29)?,
         hidden_information_revealed: false,
         role_scores: Vec::new(),
     })
@@ -646,6 +649,7 @@ mod tests {
         assert_eq!(player.height_cm, Some(182));
         assert_eq!(player.preferred_foot, "right");
         assert_eq!(player.club.as_deref(), Some("Loan FC"));
+        assert_eq!(player.current_club_uid, Some(1000));
         assert!(!player.role_scores.is_empty());
         let goalkeeper = player
             .role_scores
