@@ -504,19 +504,44 @@ impl GraphicsRuntime {
         self.complete_scan(target, root, index)
     }
     pub fn resolve(&self, kind: GraphicsKind, uid: u32) -> ResolveResult {
+        self.resolve_with_reader(kind, uid, |locator| locator.read())
+    }
+
+    fn resolve_with_reader<F>(&self, kind: GraphicsKind, uid: u32, read: F) -> ResolveResult
+    where
+        F: FnOnce(super::index::ImageLocator) -> Option<ImageResult>,
+    {
         if uid == 0 {
             return ResolveResult::Missing;
         }
-        let mut s = self.state();
-        if let Some(v) = s.caches[kind as usize].get(uid) {
-            return v
+        let (generation, cached, locator) = {
+            let mut s = self.state();
+            if s.installed_generation != Some(s.committed.generation) {
+                return ResolveResult::Missing;
+            }
+            let cached = s.caches[kind as usize].get(uid);
+            let locator = if cached.is_none() {
+                s.index
+                    .as_ref()
+                    .and_then(|index| index.resolve_locator(kind, uid))
+            } else {
+                None
+            };
+            (s.committed.generation, cached, locator)
+        };
+        if let Some(value) = cached {
+            return value
                 .map(|x| ResolveResult::Available {
                     bytes: x.bytes,
                     mime: x.mime,
                 })
                 .unwrap_or(ResolveResult::Missing);
         }
-        let value = s.index.as_ref().and_then(|i| i.resolve(kind, uid));
+        let value = locator.and_then(read);
+        let mut s = self.state();
+        if s.committed.generation != generation || s.installed_generation != Some(generation) {
+            return ResolveResult::Missing;
+        }
         s.caches[kind as usize].put(uid, value.clone());
         value
             .map(|x| ResolveResult::Available {
@@ -856,6 +881,44 @@ mod tests {
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
             ResolveResult::Missing
+        );
+    }
+
+    #[test]
+    fn blocked_image_read_releases_transition_gate_and_rejects_stale_result() {
+        let runtime = std::sync::Arc::new(test_runtime());
+        let a = root_with_image("a.png", 101, b"\x89PNG\r\n\x1a\nA");
+        let b = root_with_image("b.png", 101, b"\x89PNG\r\n\x1a\nB");
+        let db = test_db();
+        let (a_generation, a_root) = runtime
+            .persist_transition(&db, Some(a.path().to_path_buf()))
+            .unwrap()
+            .unwrap();
+        assert!(runtime.complete_scan(a_generation, a_root, GraphicsIndex::scan(a.path())));
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let reading = runtime.clone();
+        let handle = thread::spawn(move || {
+            reading.resolve_with_reader(GraphicsKind::PersonPortrait, 101, |locator| {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                locator.read()
+            })
+        });
+        started_rx.recv().unwrap();
+        let (b_generation, b_root) = runtime
+            .persist_transition(&db, Some(b.path().to_path_buf()))
+            .unwrap()
+            .unwrap();
+        assert!(runtime.complete_scan(b_generation, b_root, GraphicsIndex::scan(b.path())));
+        release_tx.send(()).unwrap();
+        assert_eq!(handle.join().unwrap(), ResolveResult::Missing);
+        assert_eq!(
+            runtime.resolve(GraphicsKind::PersonPortrait, 101),
+            ResolveResult::Available {
+                bytes: b"\x89PNG\r\n\x1a\nB".to_vec(),
+                mime: "image/png"
+            }
         );
     }
 

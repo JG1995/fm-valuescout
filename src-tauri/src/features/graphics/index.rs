@@ -114,6 +114,18 @@ pub struct ImageResult {
     pub mime: &'static str,
 }
 
+#[derive(Debug)]
+pub(crate) struct ImageLocator {
+    root: Dir,
+    path: Vec<String>,
+    limit: u64,
+}
+impl ImageLocator {
+    pub(crate) fn read(self) -> Option<ImageResult> {
+        read_image(&self.root, &self.path, self.limit).ok()
+    }
+}
+
 impl GraphicsIndex {
     pub fn empty() -> Self {
         Self {
@@ -210,7 +222,7 @@ impl GraphicsIndex {
     pub fn summary(&self) -> &GraphicsSummary {
         &self.summary
     }
-    pub fn resolve(&self, kind: GraphicsKind, uid: u32) -> Option<ImageResult> {
+    pub(crate) fn resolve_locator(&self, kind: GraphicsKind, uid: u32) -> Option<ImageLocator> {
         if uid == 0 {
             return None;
         }
@@ -222,12 +234,16 @@ impl GraphicsIndex {
                 .and_then(|x| x.0.as_ref().or(x.1.as_ref())),
             GraphicsKind::ClubIcon => self.clubs.get(&uid).and_then(|x| x.1.as_ref()),
         }?;
-        read_image(
-            self.root.as_ref()?,
-            &mapping.path.0,
-            self.limits.image_bytes,
-        )
-        .ok()
+        Some(ImageLocator {
+            root: self.root.as_ref()?.try_clone().ok()?,
+            path: mapping.path.0.clone(),
+            limit: self.limits.image_bytes,
+        })
+    }
+
+    #[cfg(test)]
+    pub fn resolve(&self, kind: GraphicsKind, uid: u32) -> Option<ImageResult> {
+        self.resolve_locator(kind, uid)?.read()
     }
     #[cfg(test)]
     pub fn people_len(&self) -> usize {

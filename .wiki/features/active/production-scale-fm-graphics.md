@@ -357,7 +357,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 #### Commit 6 — Read graphics outside runtime locks
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(graphics): read graphics outside locks`
 
@@ -403,7 +403,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 #### Commit 7 — Account for graphics cache bytes
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(graphics): bound graphics cache bytes`
 
@@ -640,19 +640,19 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 **PR:** PR 1 — Scale local graphics delivery
 
-**Commit:** Commit 6 — Read graphics outside runtime locks
+**Commit:** Commit 7 — Account for graphics cache bytes
 
 ### RED or removal proof
 
-Add blocked-image-read and stale-cache-insert tests that fail while image I/O remains under runtime state access.
+Add cache-accounting tests for insert, replacement, touch, eviction, clear, generation replacement, and missing-result bounds.
 
 ### Expected outcome
 
-Lookup snapshots a generation-safe root-relative locator, releases runtime and transition locks for image I/O, and inserts cache results only if the committed generation still matches. Lookup never scans.
+Each available-image cache enforces exact raw-byte and entry-count limits through every mutation. Missing caches remain count-bounded and consume no available-byte budget.
 
 ### Explicit exclusions
 
-- Available-cache byte accounting, protocol/CSP/frontend migration, worker scheduling, and final production values.
+- New cache dependencies, worker changes, protocol/CSP/frontend migration, persistence, and final production values.
 
 ## Discoveries and replanning
 
@@ -670,7 +670,8 @@ Lookup snapshots a generation-safe root-relative locator, releases runtime and t
 | PR 1 — Scale local graphics delivery | Commit 2 — Stream bounded config candidates | `b305ac4ea460aec248129b6fa7de7e0006aab326` | Streamed config XML into clean-EOF candidate groups with per-config and root-wide byte, record, and attribute bounds; local breaches discard one config and root breaches retain only complete lexical predecessors. | Graphics index tests passed; `./scripts/dev check-rust` and `./scripts/dev check` passed with 851 Rust tests and 2 ignored; `git diff --cached --check` passed. | Pass | Accepted findings — provisional parser limits still use the production limit name and must be labeled before close-out. | 2 | The initial implementation did not capture RED before code; correction tests reproduced and fixed the byte-precedence defect. |
 | PR 1 — Scale local graphics delivery | Commit 3 — Reduce discovery allocation and enforce entry cap | `fbe18777052fdc444d78a390e0d14efd0947643c` | Reworked discovery around one mutable component path and direct lexical component comparison; made the entry cap inclusive and discarded the whole index on first overflow. | Graphics tests passed; `./scripts/dev check-rust` passed with 853 Rust tests and 2 ignored; `./scripts/dev check` and `git diff --cached --check` passed. | Pass | Clear | 0 | None |
 | PR 1 — Scale local graphics delivery | Commit 4 — Validate config sources by parent capability | `350a4be30992eed8a31c66289724ed802b94ff65` | Validated clean-EOF candidates through their open config-parent capability and retained valid siblings when another source was missing or unsafe. | Graphics index tests passed; `./scripts/dev check-rust` and `./scripts/dev check` passed; `git diff --cached --check` and Rust LSP passed. | Pass | Clear | 0 | None |
-| PR 1 — Scale local graphics delivery | Commit 5 — Rebuild graphics through one stopping worker | Pending record | Moved startup, choose, and rescan rebuilds to one runtime-owned serial worker with replaceable pending work, generation-safe installation, and non-blocking stop revocation. | Runtime tests passed; `./scripts/dev check-rust` passed with 856 Rust tests and 2 ignored; `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Accepted findings — the safe `rebuilding` flag is stale after clear and false during startup rebuild; correct it before close-out. | 0 | None |
+| PR 1 — Scale local graphics delivery | Commit 5 — Rebuild graphics through one stopping worker | `b2ef48b167a6056442e137b92cc8b122678afe45` | Moved startup, choose, and rescan rebuilds to one runtime-owned serial worker with replaceable pending work, generation-safe installation, and non-blocking stop revocation. | Runtime tests passed; `./scripts/dev check-rust` passed with 856 Rust tests and 2 ignored; `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Accepted findings — the safe `rebuilding` flag is stale after clear and false during startup rebuild; correct it before close-out. | 0 | None |
+| PR 1 — Scale local graphics delivery | Commit 6 — Read graphics outside runtime locks | Pending record | Split lookup into a generation-validated locator snapshot, unlocked image read, and generation-rechecked cache insertion while retaining count-bounded caches and resolve IPC. | Focused graphics tests passed; `./scripts/dev check-rust` passed with 857 Rust tests and 2 ignored; `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Clear | 0 | None |
 
 ## Final validation
 
