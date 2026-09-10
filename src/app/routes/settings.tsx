@@ -4,6 +4,8 @@ import { Suspense } from "react";
 import { clearPlayerResultContext } from "@/app/player-result-context";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
+import { graphicsStatusQueryOptions } from "@/features/graphics/api/graphics-query-options";
+import { GraphicsSettingsSectionWithErrorBoundary } from "@/features/graphics/components/graphics-settings-section-with-error-boundary";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import { bridgeInstallQueryOptions } from "@/features/memory-read/api/bridge-install-query-options";
 import { bridgeStatusQueryOptions } from "@/features/memory-read/api/bridge-status-query-options";
@@ -34,6 +36,7 @@ export const Route = createFileRoute("/settings")({
       queryClient.prefetchQuery(currentSnapshotQueryOptions),
       queryClient.prefetchQuery(bridgeInstallQueryOptions),
       queryClient.prefetchQuery(bridgeStatusQueryOptions),
+      queryClient.prefetchQuery(graphicsStatusQueryOptions),
     ]),
   component: SettingsPage,
 });
@@ -99,6 +102,17 @@ function SettingsPage() {
             specify a view.
           </span>
         </div>
+      </section>
+
+      <section aria-labelledby="graphics-heading" className="space-y-3">
+        <h2 className="text-title-lg text-on-surface" id="graphics-heading">
+          Graphics
+        </h2>
+        <Suspense
+          fallback={<SectionFallback label="Loading graphics status…" />}
+        >
+          <GraphicsSettingsSectionWithErrorBoundary />
+        </Suspense>
       </section>
 
       <section aria-labelledby="save-data-heading" className="space-y-3">

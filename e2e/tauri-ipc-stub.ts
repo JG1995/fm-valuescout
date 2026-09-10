@@ -663,6 +663,31 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             return csvImportFormat ? "/tmp/smoke-import.csv" : null;
           }
 
+          if (cmd === "get_graphics_status") {
+            return {
+              generation: 0,
+              selected: false,
+              candidate: { available: false, source: "absent" },
+              summary: {
+                configs: 0,
+                mappings: 0,
+                truncated: false,
+                diagnostics: { configLimit: 10000, entryLimit: 1000000, depthLimit: 32, mappingLimit: 500000, configTooLarge: 0, configUnreadable: 0, malformedConfig: 0, invalidMapping: 0, sourceUnreadable: 0 },
+              },
+            };
+          }
+
+          if (cmd === "choose_graphics_root" || cmd === "clear_graphics_root" || cmd === "rescan_graphics") {
+            return {
+              generation: 1,
+              selected: cmd !== "clear_graphics_root",
+              candidate: { available: false, source: "absent" },
+              summary: { configs: 0, mappings: 0, truncated: false, diagnostics: { configLimit: 10000, entryLimit: 1000000, depthLimit: 32, mappingLimit: 500000, configTooLarge: 0, configUnreadable: 0, malformedConfig: 0, invalidMapping: 0, sourceUnreadable: 0 } },
+            };
+          }
+
+          if (cmd === "resolve_graphics") return { status: "missing" };
+
           if (cmd === "get_bridge_status") {
             return {
               protocolVersion: 1,
