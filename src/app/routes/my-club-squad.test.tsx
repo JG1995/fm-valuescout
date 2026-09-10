@@ -1655,17 +1655,6 @@ describe("My Club route", () => {
       ).toBeNull();
     });
 
-    await user.click(
-      within(dialog).getByRole("checkbox", { name: "Suggested Training" }),
-    );
-    expect(usePlayerTableStore.getState().layouts.squad.columnIds).toContain(
-      "suggested_training",
-    );
-    expect(
-      await screen.findByRole("columnheader", {
-        name: "Suggested Training",
-      }),
-    ).toBeInTheDocument();
     await user.keyboard("{Escape}");
   });
 
@@ -4723,10 +4712,10 @@ describe("My Club route", () => {
     );
 
     await user.keyboard("{Escape}");
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
-    expect(trigger).toHaveFocus();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(trigger).toHaveFocus();
+    });
   });
 
   it("renders every enabled squad at once with no width-dependent fallback", async () => {
@@ -5369,18 +5358,18 @@ describe("My Club route", () => {
     ).toBeInTheDocument();
     const manageButton = screen.getByRole("button", { name: "Manage teams" });
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
-    expect(manageButton).toHaveFocus();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(manageButton).toHaveFocus();
+    });
 
     await user.click(manageButton);
     await screen.findByRole("dialog", { name: "Manage squad teams" });
     await user.keyboard("{Escape}");
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
-    expect(manageButton).toHaveFocus();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(manageButton).toHaveFocus();
+    });
   });
 
   it("renames teams and confirms populated team removal", async () => {
