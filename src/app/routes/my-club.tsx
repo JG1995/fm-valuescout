@@ -7,7 +7,7 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CircleAlert, DatabaseZap, UsersRound } from "lucide-react";
+import { CircleAlert, DatabaseZap, Shield, UsersRound } from "lucide-react";
 import { Suspense, useRef, useState } from "react";
 import { clearPlayerResultContext } from "@/app/player-result-context";
 import { ErrorBoundary } from "@/components/error-boundary/error-boundary";
@@ -35,6 +35,7 @@ import {
   managedClubQueryOptions,
 } from "@/features/managed-club/api/managed-club-query-options";
 import { ManagedClubSelector } from "@/features/managed-club/components/managed-club-selector";
+import type { ManagedClubStatus } from "@/features/managed-club/types/managed-club";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import { plannerDepthQueryOptions } from "@/features/planner/api/planner-depth-query-options";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
@@ -121,6 +122,43 @@ function graphicsImageSource(result: GraphicsResult | undefined) {
   let binary = "";
   for (const byte of result.bytes) binary += String.fromCharCode(byte);
   return `data:${result.mime};base64,${btoa(binary)}`;
+}
+
+function ManagedClubLogo({
+  clubUid,
+  managedClubStatus,
+}: {
+  clubUid: number | null;
+  managedClubStatus: ManagedClubStatus["status"];
+}) {
+  const { data: status } = useQuery(graphicsStatusQueryOptions);
+  const result = useQuery({
+    ...graphicsResultQueryOptions(
+      status?.generation ?? 0,
+      "clubLogo",
+      clubUid ?? 0,
+    ),
+    enabled:
+      managedClubStatus === "available" &&
+      status?.selected === true &&
+      (clubUid ?? 0) > 0,
+  });
+  const source = graphicsImageSource(result.data);
+
+  return source ? (
+    <img
+      src={source}
+      alt=""
+      aria-hidden="true"
+      className="size-6 shrink-0 object-contain"
+    />
+  ) : (
+    <Shield
+      aria-hidden="true"
+      className="size-6 shrink-0 text-on-surface-variant"
+      strokeWidth={1.5}
+    />
+  );
 }
 
 function SquadIdentityGraphics({
@@ -500,8 +538,12 @@ function MyClubPageContent() {
         <div>
           <h1 className="text-headline-lg text-on-surface">My Club</h1>
           {managedClub.clubName ? (
-            <p className="text-body-sm text-on-surface-variant">
-              Managed club: {managedClub.clubName}
+            <p className="flex items-center gap-2 text-body-sm text-on-surface-variant">
+              <ManagedClubLogo
+                clubUid={managedClub.clubUid}
+                managedClubStatus={managedClub.status}
+              />
+              <span>Managed club: {managedClub.clubName}</span>
             </p>
           ) : null}
         </div>

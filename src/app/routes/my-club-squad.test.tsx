@@ -28,6 +28,7 @@ import {
   setGraphicsResultIpcMockMode,
   setGraphicsStatusIpcMock,
 } from "@/features/graphics/api/graphics-ipc-mock";
+import { graphicsStatusQueryOptions } from "@/features/graphics/api/graphics-query-options";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
@@ -370,6 +371,140 @@ describe("My Club route", () => {
 
     setGraphicsResultIpcMockMode("error");
   });
+  it("renders the selected managed-club logo by exact UID", async () => {
+    await resolveLoadDataIpcMock();
+    setManagedClubIpcMock({
+      clubName: "Barcelona",
+      clubUid: 42,
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
+    setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
+      generation: 7,
+      selected: true,
+      candidate: { available: true, source: "documents" },
+    });
+    setGraphicsResultIpcMockForCall("clubLogo", 42, {
+      status: "available",
+      mime: "image/png",
+      bytes: [137, 80, 78, 71],
+    });
+
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    expect(await screen.findByText("Managed club: Barcelona")).toBeVisible();
+    await waitFor(() =>
+      expect(getGraphicsIpcMockCalls()).toContainEqual({
+        kind: "clubLogo",
+        uid: 42,
+      }),
+    );
+    expect(
+      screen
+        .getByText("Managed club: Barcelona")
+        .parentElement?.querySelector("img"),
+    ).toBeTruthy();
+  });
+
+  it("does not look up a persisted UID when managed club status is missing", async () => {
+    await resolveLoadDataIpcMock();
+    setManagedClubIpcMock({
+      clubName: "Barcelona",
+      clubUid: 42,
+      status: "missing",
+      unclassifiedPlayerCount: 0,
+    });
+    setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
+      generation: 8,
+      selected: true,
+    });
+    setGraphicsResultIpcMockForCall("clubLogo", 42, {
+      status: "available",
+      mime: "image/png",
+      bytes: [137, 80, 78, 71],
+    });
+
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const label = await screen.findByText("Managed club: Barcelona");
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryState(graphicsStatusQueryOptions.queryKey),
+      ).toMatchObject({
+        status: "success",
+        data: expect.objectContaining({ selected: true }),
+      });
+    });
+    expect(getGraphicsIpcMockCalls()).not.toContainEqual({
+      kind: "clubLogo",
+      uid: 42,
+    });
+    expect(label.parentElement?.querySelector("img")).toBeNull();
+    expect(
+      label.parentElement?.querySelector('svg[aria-hidden="true"]'),
+    ).toBeTruthy();
+  });
+
+  it.each(["pending", "missing", "error"] as const)(
+    "keeps the managed-club shield fallback for %s graphics",
+    async (mode) => {
+      await resolveLoadDataIpcMock();
+      setManagedClubIpcMock({
+        clubName: "Barcelona",
+        clubUid: 42,
+        status: "available",
+        unclassifiedPlayerCount: 0,
+      });
+      setGraphicsStatusIpcMock({
+        ...DEFAULT_GRAPHICS_STATUS,
+        generation: 8,
+        selected: true,
+      });
+      setGraphicsResultIpcMockForCall("clubLogo", 42, { status: "missing" });
+      setGraphicsResultIpcMockMode(mode);
+      renderMyClubRoute({ initialEntry: "/my-club" });
+
+      const label = await screen.findByText("Managed club: Barcelona");
+      await waitFor(() =>
+        expect(label.parentElement?.querySelector("img")).toBeNull(),
+      );
+      expect(
+        label.parentElement?.querySelector('svg[aria-hidden="true"]'),
+      ).toBeTruthy();
+      setGraphicsResultIpcMockMode("error");
+    },
+  );
+
+  it("does not look up a logo for a legacy name-only selection", async () => {
+    await resolveLoadDataIpcMock();
+    setManagedClubIpcMock({
+      clubName: "Barcelona",
+      clubUid: null,
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
+    setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
+      generation: 9,
+      selected: true,
+    });
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const label = await screen.findByText("Managed club: Barcelona");
+    await waitFor(() =>
+      expect(label.parentElement?.querySelector("img")).toBeNull(),
+    );
+    expect(getGraphicsIpcMockCalls()).not.toContainEqual({
+      kind: "clubLogo",
+      uid: 0,
+    });
+    expect(
+      label.parentElement?.querySelector('svg[aria-hidden="true"]'),
+    ).toBeTruthy();
+  });
+
   it.each(["pending", "missing", "error"] as const)(
     "keeps Squad marks and navigation geometry for %s graphics",
     async (mode) => {
