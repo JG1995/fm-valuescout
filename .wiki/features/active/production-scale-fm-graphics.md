@@ -8,7 +8,9 @@ Active
 
 ## Delivery authorization
 
-**Delivery fingerprint:** b6f45d38f916e96f77fc5eb8ecd66077dc20ffea79e183f04a85cfe4c58d694a
+**Delivery fingerprint:** 63f607c51a453fcbd4b20790bf1c775989a489395a518feb5d4b5f469d046070
+
+**Current delivery run:** Accepted.
 
 ## Intent
 
@@ -41,59 +43,59 @@ Deliver Linear JAY-64. Scale one selected local FM graphics root to representati
 
 ## Current-state map
 
-- `src-tauri/src/features/graphics/index.rs` owns `GraphicsIndex`, capability traversal, `Limits`, bounded config/image reads, root-relative `Identity`, deterministic `BTreeMap` indexes, and parser diagnostics. Current limits are 8 MiB per config, 1,000,000 entries, and 500,000 accepted mappings. `parse_config` reads whole configs, stages `(from, to)` strings, `discover` uses `parent.to_vec()` per entry, `Identity::cmp` joins components, and `add_mapping` reopens source parents from root.
-- `src-tauri/src/features/graphics/runtime.rs` owns selected-root generations, scan completion, and three per-kind `Lru` caches. It scans synchronously from commands and lazy `resolve`; available and missing classes each permit 256 UIDs, but available bytes have no bound.
-- `src-tauri/src/features/graphics/commands.rs` registers `resolve_graphics`, which returns `ResolveResult::Available { bytes: Vec<u8>, mime }` through serde. `src-tauri/src/lib.rs` registers it and has no graphics protocol.
-- `src/features/graphics/api/graphics-query-options.ts` invokes `resolve_graphics`; `types/graphics.ts` exposes number-array bytes; `graphics-ipc-mock.ts` models resolve calls. `search.tsx`, `my-club.tsx`, and `players.$uid.tsx` convert bytes to base64 data URLs and each own graphics rendering logic.
-- `src-tauri/tauri.conf.json` allows `data:` images in both CSP modes. Tauri 2.11.3 supports `Builder::register_asynchronous_uri_scheme_protocol`; its documented Windows form is `http://<scheme>.localhost/...` and CSP must permit it. Source: <https://docs.rs/tauri/latest/tauri/struct.Builder.html>.
-- Existing Rust tests cover malformed-config atomicity, deterministic precedence, entry-budget discard, no-follow/junction behavior, source replacement, and image bounds. Existing route tests cover exact UID requests, fallback geometry, and visible virtual-row bounds; migration replaces their resolve-IPC evidence with protocol URL evidence.
-- Supported commands are `./scripts/dev test`, `./scripts/dev check-rust`, `./scripts/dev check`, `./scripts/dev smoke`, and `./scripts/dev inspect-ui`. `./scripts/dev package-windows` is installer validation, not real-pack measurement.
+- `src-tauri/src/features/graphics/index.rs` owns `GraphicsIndex`, capability traversal, `Limits`, bounded config/image reads, root-relative `Identity`, deterministic `BTreeMap` indexes, and parser diagnostics. Current provisional limits are depth 32, 10,000 configs, 1,000,000 entries, 64 MiB per config, 256 MiB root parser bytes, 2,000,000 records per config, 10,000,000 root records, 8,000,000 attributes per config, 40,000,000 root attributes, 500,000 mappings, and 8 MiB per image. Discovery has the inclusive entry cap. Parsing streams clean-EOF candidate groups. `add_mapping` opens each candidate source parent relative to the already-open config parent, then does a no-follow file metadata check for each record.
+- `src-tauri/src/features/graphics/runtime.rs` owns selected-root generations, one serial stopping worker, scan completion, and three per-kind `Lru` caches. Available entries have a 256-entry and 32 MiB bound; missing entries have a 256-entry bound. Lookup reads images outside runtime, transition, and database locks.
+- `src-tauri/src/features/graphics/commands.rs` owns the closed `http://graphics.localhost/<generation>/<kind>/<uid>` protocol grammar and bounded raw-image response. `src-tauri/src/lib.rs` registers the asynchronous protocol; resolve IPC is removed.
+- `src/features/graphics/components` supplies one lazy, asynchronously decoded protocol image component to Profile, Search, Squad, and My Club. Bundled nationality flags still require `data:` CSP; graphics images do not use it.
+- Existing Rust tests cover malformed-config atomicity, deterministic precedence, entry-budget discard, no-follow/junction behavior, source replacement, source sibling containment, image bounds, cache accounting, worker lifecycle, and protocol grammar. `graphics_calibration_harness` currently reports total scan time as each phase time, derives its discovery count from config diagnostics instead of entries, and sends a protocol request for every mapped image to calculate size distribution.
+- Supported commands are `./scripts/dev test`, `./scripts/dev check-rust`, `./scripts/dev check`, `./scripts/dev smoke`, `./scripts/dev inspect-ui`, and private-root `./scripts/dev graphics-calibration`. `./scripts/dev package-windows` is installer validation, not representative-pack measurement.
 
 ## Feature architecture
 
-1. `GraphicsIndex` remains the pure capability engine. It scans configs in global lexical order, streams bounded compact candidates, and only after each clean EOF validates each candidate from the already-open config-parent capability. Per-config failures stay local; root-wide parser truncation may retain only complete lexical predecessors.
+1. `GraphicsIndex` remains the pure capability engine. It scans configs in global lexical order, streams bounded compact candidates, and only after each clean EOF groups candidates by source directory under the already-open config-parent capability. It opens and enumerates each such directory once with no-follow regular-file checks, marks valid ordered probes, then folds records in their original order. Per-config failures stay local; root-wide parser truncation may retain only complete lexical predecessors.
 2. `GraphicsRuntime` owns a dedicated stdlib worker-control object. Commands reserve the committed generation, replace the one pending target, and return. The worker serially scans and installs only an unstopped matching generation. Lookup snapshots a mapping/cache decision, reads after locks release, and inserts only for the matching generation.
 3. One asynchronous `graphics` URI protocol uses the existing runtime. It validates an exact Windows protocol URL and returns raw bytes with explicit MIME, `X-Content-Type-Options: nosniff`, and `Cache-Control: no-store`.
 4. One shared `GraphicsImage` component forms the closed URL from safe graphics status, a closed kind, and a positive UID. It uses native lazy loading and asynchronous decoding, then removes itself on error so caller-owned fallback slots remain.
-5. A local host-aware calibration command runs an ignored Rust test against a private environment root and emits path-free JSON with exact host/OS/filesystem context. A later commit records representative evidence and final values without labeling WSL measurements as native Windows.
+5. A local host-aware calibration command runs an ignored Rust test against a private environment root and emits path-free JSON with exact host/OS/filesystem context. It measures discovery, parsing, and source validation at their actual boundaries; takes image-size metadata during validation through a bounded sample; and makes exactly one cold and one warm protocol request. A later commit records representative evidence and final values without labeling WSL measurements as native Windows.
 
 ## Uncertainty register
 
 ### Known
 
 - JAY-63 persists only the selected root and already uses generations to reject stale scan completion. This feature retains that ownership model.
-- `quick_xml` currently parses after a bounded whole-file read. The replacement must preserve config atomicity while separating syntactic staging from source validation.
-- Tauri documents asynchronous protocol responders and the Windows `http://<scheme>.localhost` origin.
-- The developer supplied a representative graphics root. The supervisor confirmed that the current host can access it through the mounted Windows filesystem.
-- The current WSL environment has no `powershell.exe` bridge.
+- `quick_xml` streams clean-EOF candidate groups. Current source validation still opens a nested source parent and calls `open_file` plus metadata for each mapped record.
+- The representative mounted-Windows root has safe aggregates of 1,584,013 entries, 480 configs, 109,610,653 total config bytes, a 45,808,191-byte largest config, and 1,320,006 XML records. The 1,000,000-entry production cap truncates before parsing.
+- A temporary test-only envelope of 4,000,000 entries and 2,000,000 mappings did not complete within 1,200 seconds. Its current harness phase counts and phase times are not valid evidence because they infer counts and repeat total scan time.
+- The current WSL environment can access the mounted Windows filesystem without `powershell.exe`. It is not native-Windows performance evidence.
 
 ### Assumptions
 
-- The capability crates can stream through `BufReader` while preserving the no-follow handle and metadata checks. Existing Linux and Windows containment proof must confirm that before replacement.
+- A sorted temporary vector of candidate references can group source directories and preserve a separate original-order fold without a `HashMap`. The RED proof must demonstrate the capability and ordering contracts before calibration relies on it.
+- Metadata from the validation pass can provide a bounded, path-free image-size sample without opening every mapped image through the protocol. The calibration packet must prove its report does not read every mapped image.
 
 ### Decisions
 
-- Use one PR. Scanner, worker, protocol, consumer migration, and calibration share the same scale and image-delivery regression surface. An additional PR would expose an unused protocol or retain synchronous production behavior on trunk.
-- ADR-0029 records the consequential raw-image protocol decision. Directory-index omission is accepted because this task may edit only the ledger, the JAY-64 Active entry in `.wiki/TODO.md`, and ADR-0029.
-- Retain `BTreeMap`; do not add dependencies, persistence, a watcher, parallelism, interning, or a speculative `HashMap`.
-- Use provisional, visibly non-production limits only until calibration records measured values. They must support generated proofs above the superseded 8 MiB and 1,000,000 thresholds.
-- Commit 11 may select and record final numeric limits without a further per-constant approval. It uses approximately twice the observed structural workload for entries, config bytes, total parser bytes/records/attributes, mappings, and source work when that remains reasonable; it preserves depth 32 and the 8 MiB per-image limit unless the representative pack disproves them; and it derives available-cache count and bytes from observed image sizes and peak working set.
-- The developer waives native Windows Tauri custom-protocol/CSP manual proof. This is an accepted validation gap, not a protocol, CSP, or filesystem-security change. Unit parser/response tests, compilation, existing automated Linux/Windows Rust checks, frontend tests, and `./scripts/dev smoke` still run; smoke is Chromium-stub evidence and does not prove native Windows custom-protocol registration or CSP.
+- Keep one PR and all existing branch, base, provider, template, required-check, and merge fields unchanged. Scanner, worker, protocol, consumer migration, and calibration share one scale and image-delivery regression surface.
+- Retain `BTreeMap`; add no dependency, persistence, watcher, parallel traversal/parsing, interning, path arena, or source-validation `HashMap`. The existing LRU `HashMap`s remain outside this decision.
+- Commit 11 replaces per-record source-parent reopening with grouped source-directory validation. It does not select final limits. It must preserve clean-EOF atomicity, local missing-source containment, probe order, original-record precedence, root-relative locators, and no-follow/junction protection at validation and resolution.
+- Commit 12 first makes calibration measurements truthful, then uses one completed representative run under a test-only non-production 4,000,000-entry / 2,000,000-mapping envelope to select final limits. It uses approximately twice observed structural workload where reasonable; retains depth 32 and the 8 MiB image limit unless evidence disproves them; and derives available-cache bounds from validation metadata and peak working set. It must not report a final value from the failed run.
+- The developer waives native Windows Tauri custom-protocol/CSP manual proof. This remains an accepted validation gap. Unit parser/response tests, compilation, automated Linux/Windows Rust checks, frontend tests, and `./scripts/dev smoke` still run; smoke is Chromium-stub evidence and does not prove native Windows protocol registration or CSP.
+- This replan invalidates delivery fingerprint `b6f45d...`. The current delivery run stops until an independent plan review clears the changed packets, the supervisor recomputes a fingerprint, and the developer accepts it.
 
 ### Unknowns
 
-- Representative structural totals, phase timings, peak working set, host/OS/filesystem context, image-size distribution, and final entry/config/mapping/parser/cache limits.
+- Whether grouped validation completes the representative root within the prior 1,200-second calibration window; truthful per-phase time/counts; peak working set; validation-metadata image-size distribution; and final entry/config/mapping/parser/cache limits.
 
 ### Risks
 
-- Streaming code can commit before EOF, erase valid siblings after one missing source, or turn a local breach into a root failure. Packets 2–4 isolate and prove those semantics.
-- Worker shutdown can install after stopping or block app exit. Packet 5 owns that lifecycle and controlled interleavings.
-- Protocol validation or CSP can broaden filesystem access. Packets 8–9 use a closed request grammar and delete the former transport only after all consumers migrate.
-- Supporting the representative pack with reasonable headroom can require excessive scan time or memory, weaken a security invariant, cause partial entry-truncated installation, or require a structural change outside this plan. Packet 11 stops only for those conditions.
+- Grouping validation can accidentally validate before EOF, enumerate one source directory more than once, change extension probe order, or fold mappings in grouping order instead of original record order. Commit 11 owns direct RED proof for these paths.
+- Directory-entry metadata can be stale after validation. Resolution must retain the capability-based no-follow open, regular-file metadata check, and image-signature validation, so replacement or a junction cannot become image authority.
+- A truthful calibration can still expose a bottleneck outside source validation or a resource requirement beyond the accepted architecture. Commit 12 stops and replans instead of changing persistence, dependencies, indexing structures, or security bounds.
+- Worker shutdown and protocol/CSP risks remain as recorded in completed packets; this replan does not reopen those contracts.
 
 ## Walking skeleton
 
-Record the reviewed plan and ADR; parse one generated config larger than 8 MiB without committing malformed input; scan more than 1,000,000 entries with the inclusive cap and fail-closed overflow; validate a clean config's sibling sources through its parent capability; enqueue one persisted root through the owned worker; serve one portrait through the closed protocol; then migrate every consumer and calibrate final values.
+Record the reviewed plan and ADR; parse one generated config larger than 8 MiB without committing malformed input; scan more than 1,000,000 entries with the inclusive cap and fail-closed overflow; batch a clean config's sibling-source validation through its parent capability while folding in record order; enqueue one persisted root through the owned worker; serve one portrait through the closed protocol; then collect truthful calibration evidence and set final values.
 
 ## Delivery plan
 
@@ -590,77 +592,131 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 **Review mandate:** Verify local host-aware behavior, no path echo/leak in JSON/errors, ignored-test invocation, exact WSL/native-Windows labeling, protocol cold/warm measurement, and that the implementation commit—not this planning task—updates `AGENTS.md`.
 
-#### Commit 11 — Calibrate final graphics limits
+#### Commit 11 — Batch config source validation
+
+**Status:** Completed
+
+**Provisional commit:** `perf(graphics): batch source validation`
+
+**Work:** Replace repeated per-record source-parent opens and metadata reads with one no-follow enumeration for each relative source directory under an already-open config parent, then fold validation results in original record order.
+
+**Atomicity:** Source-directory grouping, validation marking, and original-order folding are one source-validation contract. Splitting them would either retain the measured per-record capability work or leave a batch result that can change probe or duplicate precedence without meaningful proof.
+
+**Size assessment:** Expected within the soft target. The change stays in one index module; its security and ordering tests are coupled to the loop.
+
+**Out of scope:** Final production constants, representative-pack calibration, protocol/cache/runtime/UI changes, persistence, dependencies, parallelism, interning, path arenas, and a source-validation `HashMap`.
+
+**Implementation packet:**
+
+- Keep `parse_config` as clean-EOF syntactic staging. Before any source enumeration, reject malformed XML, malformed attributes, and per-config parser breaches exactly as now.
+- Normalize each clean candidate's relative source path and closed target after EOF. Keep its original record ordinal and ordered extension probes. Group only valid source-directory candidates through a sorted temporary vector of references; do not use a `HashMap` and do not change the staged vector's record order.
+- For each group, open its relative source directory one time from the already-open config-parent capability with no-follow protection. Enumerate it once, accept only regular non-link files, and mark matching ordered probes as valid. Invalid targets or source paths retain their safe diagnostics; a missing or unreadable record remains local to that record.
+- Fold the marks through the original candidate order into the existing deterministic maps. Preserve duplicate precedence, logo-over-icon selection, extension probe order (`png`, `jpeg`, `jpg`, `webp`), root-relative locators, mapping-cap behavior, and complete-config prefix behavior. Resolution continues to open the selected locator with no-follow protection, regular-file metadata validation, bounded read, and signature validation.
+
+**Files and responsibilities:**
+
+- `src-tauri/src/features/graphics/index.rs` — grouped source-directory validation, original-order mapping fold, minimal test-only observation seam, and index tests.
+- `.wiki/features/active/production-scale-fm-graphics.md` — mechanical commit completion evidence and activation of Commit 12; keep Commit 11 Git ref `Pending record` until Commit 12 records it.
+
+**Behavior and data flow:** A config reaches clean EOF with its candidate vector intact. A sorted reference view batches only source-directory validation against the open config parent. Validation marks return to the unchanged vector, whose original record order alone decides probes, duplicates, and mapping insertion. A later image request revalidates the selected root-relative file before serving bytes.
+
+**Ordered implementation steps:**
+
+1. Add RED tests that observe one source-directory enumeration for many same-directory records and that fail if grouping changes original-order output.
+2. Build the no-follow grouped validation pass after clean EOF, including local invalid/missing handling and ordered probe marking.
+3. Fold marked candidates in their original order and remove the per-record source-parent open path.
+4. Re-run parser atomicity, source containment, precedence, and resolution security proofs before the Rust gates.
+
+**Tests and proof:** Add focused Rust RED/GREEN proof for one nested source directory with many records, a missing sibling beside a valid one, grouped records whose original order controls the duplicate winner, and fixed extension probing. Retain malformed-after-valid-record proof with zero source validation, per-config breach discard, root-relative locator, Linux replacement/no-follow, and Windows junction/reparse proof. The test-only observation must show one enumeration per relative source directory, not per mapping.
+
+**Patterns to verify:** `parse_config`, `ConfigCandidate`, `source_relative_identity`, `source_candidates`, `open_relative`, `open_file`, `read_image`, and the existing source-containment and lexical-precedence tests.
+
+**Constraints and non-goals:** Do not source-check before clean EOF; reopen a source parent from root; retain per-record directory enumeration; permit symlinks, junctions, absolute or escaping locators; reorder mapping insertion; or relax resolution validation.
+
+**Dependencies and sequencing:** Follows Commit 10. Commit 12 depends on this validation pass for representative scale and metadata sampling. It does not alter the existing provisional production limits.
+
+**Validation:** Focused graphics index tests, including the new RED proof; `./scripts/dev check-rust`; `./scripts/dev check`; and required Windows `rust-windows` Check job.
+
+**Stop conditions:** Replan if one no-follow directory enumeration cannot validate the required regular files, a grouped pass needs a new dependency or `HashMap`, any malformed config reaches validation, original-order fold cannot preserve precedence, or Linux/Windows containment proof changes its supported result.
+
+**Review mandate:** Verify source access begins only after clean EOF; trace a nested source directory from open capability through one enumeration to original-order insertion; recalculate probe and duplicate outcomes; reject per-record parent opens, path authority, altered diagnostics, or any relaxation of resolution's no-follow/signature checks.
+
+#### Commit 12 — Calibrate truthful final graphics limits
 
 **Status:** Active
 
 **Provisional commit:** `perf(graphics): calibrate production limits`
 
-**Work:** Use representative-pack evidence from the host-aware harness to set final bounded limits, update tests, and record safe calibration evidence in the ledger.
+**Work:** Replace false harness phase fields with boundary-owned measurements, use validation metadata rather than protocol fan-out for image-size distribution, run the representative root without truncation, and set final bounded constants from that evidence.
 
-**Atomicity:** This is the smallest sensible evidence-to-constant outcome: representative measurement, chosen values, final-bound proof, and safe ledger record are one auditable decision. A further split cannot produce two coherent, independently reviewable, revertible, trunk-safe outcomes with meaningful proof because constants without evidence violate the accepted basis and evidence without final values leaves production intentionally provisional.
+**Atomicity:** Truthful instrumentation, one complete representative run, final-bound tests, and the path-free ledger record form one auditable evidence-to-constant result. Splitting them would leave either misleading calibration output or production constants without their required basis.
 
-**Out of scope:** New feature behavior, pack assets or paths, implementation refactors, watcher/parallelism/dependencies, and a `HashMap` conversion without a bounded replan.
+**Size assessment:** Expected within the soft target unless boundary instrumentation requires a small shared measurement type. Do not add an abstraction beyond the scanner and ignored-harness need.
+
+**Out of scope:** New user-visible behavior, private assets/paths/logs, protocol fan-out, persistence, watchers, dependencies, `HashMap` conversion, parallel work, or a native-Windows performance claim.
 
 **Implementation packet:**
 
-- Run `FM_VALUESCOUT_GRAPHICS_ROOT=<private-root> ./scripts/dev graphics-calibration` privately against the developer-supplied representative root. Record only the harness's path-free structural totals, phase timings, peak-working-set method/result, first/warm protocol latency, and exact host/OS/filesystem context. Do not persist the path, raw log, pack asset, UID, or image. Do not label WSL timing or memory data as native Windows performance.
-- Set final entry, config, mapping, parser byte/record/attribute, image, available-cache byte/count, and missing-count bounds from that evidence. Where reasonable, use approximately twice the observed entries, config bytes, total parser bytes/records/attributes, mappings, and source work for ordinary-growth headroom. Preserve depth 32 and the 8 MiB per-image bound unless the representative pack disproves either. Derive available-cache count and bytes from observed image sizes and peak working set rather than doubling all memory limits. Replace provisional markers consistently.
-- Require the representative complete run to have no truncation. Rerun generated tests against final values, including `<= max_entries` success and first-beyond whole-index failure. The worker may choose and record the final numbers without a further approval.
+- Make the scanner measure discovery, config parsing, and source validation at their real boundaries. Report actual discovery entries, parsed config bytes/records/attributes, source records and source directories, mapping/index totals, and separate elapsed time for each phase. Do not derive a phase count from summary diagnostics or reuse total scan time for a phase.
+- Use a test-only, visibly non-production calibration envelope of 4,000,000 entries and 2,000,000 mappings. It exists only for the ignored private harness, exceeds the known representative totals, and must never become an application production limit.
+- During grouped validation, retain a bounded path-free sample of successful source metadata lengths with its method and count. Report sample distribution from that metadata, not raw image bytes, UIDs, locators, or a request for every mapping. Select one deterministic installed mapping, make exactly one cold and one warm protocol request for it, and fail the harness if either request cannot supply its measurement.
+- Run the private representative root once after the harness becomes truthful. Require no truncation. Record only safe aggregates, execution/filesystem context, measurement method, phase data, metadata sample, peak-working-set method/result, two image latencies, final constants, headroom rationale, and validation results in this ledger.
+- Set final entry, config, mapping, parser byte/record/attribute, image, available-cache byte/count, and missing-count bounds from the complete run. Use the accepted approximately-two-times structural headroom where reasonable; keep depth 32 and the 8 MiB image limit unless evidence disproves them. Re-run final boundary tests after replacing all provisional wording.
 
 **Files and responsibilities:**
 
-- `src-tauri/src/features/graphics/{index.rs,runtime.rs}` and tests — measured final constants and final-bound proof.
-- `.wiki/features/active/production-scale-fm-graphics.md` — path-free structural evidence, host/OS/filesystem context, chosen values, no-truncation result, and validation evidence.
+- `src-tauri/src/features/graphics/index.rs` — boundary-owned scan measurements, bounded validation-metadata sample, test-only calibration envelope, final index limits, and final-bound tests.
+- `src-tauri/src/features/graphics/runtime.rs` — truthful path-free harness report, exactly two protocol requests, cache-limit tests, and host/working-set reporting.
+- `.wiki/features/active/production-scale-fm-graphics.md` — Commit 11 ref, path-free representative evidence, final values, headroom rationale, no-truncation result, and validation evidence.
 
-**Behavior and data flow:** The delivered runtime measures one complete selected root and raw protocol reads. Safe aggregate evidence selects bounded constants with ordinary-growth headroom; later over-cap roots still install no index.
+**Behavior and data flow:** The ignored harness invokes the same capability scanner under test-only calibration limits. Scanner boundaries produce their own counts and durations. Source validation supplies bounded metadata statistics without image reads. The protocol proves one uncached and one cached raw-image request; the safe report then selects limits that still fail closed on later entry overflow.
 
 **Ordered implementation steps:**
 
-1. Run the private host-aware harness and record only safe evidence and its execution context.
-2. Select constants using the delegated headroom and cache-sizing rules, then update final-bound tests.
-3. Verify no truncation, complete-root support, and retained entry-overflow failure.
-4. Record values and evidence in this ledger with no private data.
+1. Add RED tests for distinct phase accounting, actual discovery-entry count, bounded metadata sampling, and exactly two protocol calls.
+2. Add the smallest scanner-owned measurements and harness report fields that make those proofs green.
+3. Run the complete private representative calibration once under the test-only envelope and stop unless it completes without truncation within 1,200 seconds.
+4. Select final constants from the truthful report, update final-bound/cache tests, and record only safe evidence in this ledger.
 
-**Patterns to verify:** Harness JSON schema, current `Limits`, cache tests, generated scale tests, and JAY-63's real-pack validation gap.
+**Tests and proof:** Prove phase time/counts come from their owning scanner boundaries; discovery count is filesystem entries rather than configs; source validation uses a bounded metadata sample and never protocol-reads every mapping; the harness makes exactly one cold plus one warm request; output and ledger contain no root path, UID, image, locator, or raw log; and the representative run has no truncation. Retain generated >8 MiB and >1,000,000 legacy-threshold proofs, final `<=` entry acceptance, first-beyond whole-index discard, cache accounting, and the developer-approved native-Windows protocol/CSP gap.
 
-**Constraints and non-goals:** Do not guess values, commit a pack/path/log/image, weaken cap behavior or a security invariant, optimize speculatively, or change `BTreeMap` without replan.
+**Patterns to verify:** `GraphicsIndex::scan`, `GraphicsSummary`, grouped validation from Commit 11, `graphics_calibration_harness`, `graphics_protocol_response`, `Lru`, the calibration command, and current generated-bound tests.
 
-**Dependencies and sequencing:** Requires Commit 10 and the developer-supplied representative root through the current host's mounted Windows filesystem. No later numeric-constant approval or native Windows protocol/CSP proof is required.
+**Constraints and non-goals:** Do not report the failed run as calibration evidence; infer phase data; read every mapped image through the protocol; persist a sample or raw logs; expose path, UID, asset, image, or locator; guess constants; or label WSL measurements as native Windows.
 
-**Tests and proof:** Prove generated >8 MiB and >1,000,000 legacy-threshold cases, final `<=` entry acceptance, first-beyond fail-closed discard, no representative truncation, path-free report/ledger, correct host-context labeling, bounded cache accounting based on the measured image-size and peak-working-set evidence, and measured first/warm methodology. Add no pack fixture. The developer-approved native Windows protocol/CSP gap remains; `./scripts/dev smoke` is Chromium-stub evidence only.
+**Dependencies and sequencing:** Requires Commit 11 and the same private representative root accessible from the current host. The existing native-Windows protocol/CSP gap remains accepted. No later numeric-constant approval is required after the complete truthful run.
 
-**Validation:** `FM_VALUESCOUT_GRAPHICS_ROOT=<private-root> ./scripts/dev graphics-calibration` on the current host; focused final-bound Rust tests; `./scripts/dev check-rust`; `./scripts/dev check`; `./scripts/dev smoke`; required Windows `rust-windows` Check job; recorded peak-working-set observation and host/OS/filesystem context. Run `./scripts/dev inspect-ui` only if calibration changes component behavior.
+**Validation:** Focused graphics index/runtime/harness tests; one private `FM_VALUESCOUT_GRAPHICS_ROOT=<private-root> ./scripts/dev graphics-calibration` run on the current host; `./scripts/dev check-rust`; `./scripts/dev check`; `./scripts/dev smoke`; required Windows `rust-windows` Check job; and `git diff --check`. Run `./scripts/dev inspect-ui` only if calibration changes component behavior.
 
-**Stop conditions:** Replan only if supporting the representative pack with reasonable headroom would require clearly excessive scan time or memory, weaken a security invariant, permit partial entry-truncated installation, or require a structural change outside this plan.
+**Stop conditions:** Replan if the representative root truncates under the test-only envelope, still does not finish within 1,200 seconds, phase evidence identifies a material bottleneck outside this packet, sample collection requires unbounded storage or image reads, final headroom weakens a security invariant or needs excessive resources, or final support requires persistence, a dependency, parallelism, or a different index structure.
 
-**Review mandate:** Trace every final constant to recorded measurement and delegated sizing rule; verify no truncation, path-free evidence, host-context labeling, final cap boundaries, and cache values; reject guessed values, mislabeled native-Windows claims, unrelated optimization, or unplanned `HashMap` conversion.
+**Review mandate:** Trace each phase count and duration to one scanner boundary; verify exactly two protocol requests and bounded metadata sampling; verify path-free report and ledger fields; trace every final constant to safe complete-run evidence and sizing rule; confirm entry overflow remains fail-closed; and reject inferred metrics, private data, guessed values, or unplanned architecture changes.
 
 ## Active work
 
 **PR:** PR 1 — Scale local graphics delivery
 
-**Commit:** Commit 11 — Calibrate final graphics limits
+**Commit:** Commit 12 — Calibrate truthful final graphics limits
 
 ### RED or removal proof
 
-Run the private representative-pack harness and require no truncation, then add final-bound tests for exact entry-cap equality and first-beyond whole-index failure.
+Add tests for scanner-owned phase counts/timings, actual discovery entries, bounded metadata sampling, and exactly one cold plus one warm protocol request before running the representative root.
 
 ### Expected outcome
 
-Measured path-free representative evidence selects final bounded entry, config, mapping, parser, image, and cache limits with recorded host/filesystem context and headroom rationale.
+One complete path-free representative calibration under the test-only envelope supplies truthful structural and performance evidence for final bounded index and cache values.
 
 ### Explicit exclusions
 
-- New behavior, committed pack paths/assets/logs, watcher/parallelism/dependencies, speculative optimization, and `HashMap` conversion without replan.
+- New user-visible behavior, private paths/assets/logs, protocol fan-out, persistence, watchers, dependencies, parallelism, `HashMap` conversion, and native-Windows performance claims.
 
 ## Discoveries and replanning
 
-- Current `parse_config` stages strings but reopens source parents from root. Packets 2 and 4 separate clean-EOF syntax staging from parent-capability source validation to preserve both atomicity and per-record source failure containment.
-- Current entry equality fails at `>=`; Packet 3 changes the contract to accept equality and fail only on the first entry beyond the limit.
-- Current runtime synchronously scans from commands and lazy resolve. Packet 5 replaces it with owned serial worker-control and non-blocking stopping behavior.
-- The accepted protocol keeps `Cache-Control: no-store`; browser caching must not bypass the bounded Rust cache.
-- The developer delegated final numeric limit selection. Commit 11 now uses the supplied representative root, measured structural evidence, and the recorded sizing rules; it stops only for the explicit excessive-resource, security-invariant, entry-truncation, or out-of-plan structural conditions.
+- Commit 11 hit its explicit stop condition. The 1,000,000-entry production cap truncates before parsing the representative root. A temporary 4,000,000-entry / 2,000,000-mapping run did not complete within 1,200 seconds, so it cannot select final values.
+- Current clean-EOF staging and config-parent ownership remain sound, but each record opens its source parent and file then reads metadata. Commit 11 now batches validation by relative source directory and folds marks in original order. This is the narrowest source-side change that can address the evidenced bottleneck without persistence, a dependency, or a `HashMap`.
+- Commit 10's calibration harness reports false phase timing and discovery count, and it reads every mapped image through the protocol. Commit 12 replaces those outputs before one representative run: scanner-owned phase metrics, bounded validation-metadata image sampling, and exactly one cold plus one warm protocol request.
+- The accepted protocol keeps `Cache-Control: no-store`; browser caching must not bypass the bounded Rust cache. The developer-approved native-Windows protocol/CSP validation gap remains unchanged.
+- This material packet split invalidates fingerprint `b6f45d...`. The current delivery run stops for independent plan review, supervisor fingerprint recomputation, and developer acceptance. Completed Commit 10 is preserved at `dfc8a9c4805cec9b3532c41381be6cb6a7a521e7`; no private root, UID, asset, image, or raw log is recorded.
 
 ## Completed work
 
@@ -675,7 +731,8 @@ Measured path-free representative evidence selects final bounded entry, config, 
 | PR 1 — Scale local graphics delivery | Commit 7 — Account for graphics cache bytes | `966cf8dbb86c174f5629089c79915f1dfddf17ca` | Added exact raw-byte accounting and combined byte/count eviction to every per-kind available cache while retaining count-only missing caches. | Runtime tests passed; `./scripts/dev check-rust` passed with 859 Rust tests; `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Clear | 0 | None |
 | PR 1 — Scale local graphics delivery | Commit 8 — Register closed graphics protocol | `96b043fccdde188ff2226d2c181219520978fbd7` | Registered one asynchronous closed graphics protocol on the managed runtime, added raw validated-image responses with secure headers, and allowed the exact origin while retaining current data-URL consumers. | Protocol tests passed; `./scripts/dev check-rust` and `./scripts/dev check` passed with 863 Rust tests; `./scripts/dev smoke` passed 62 tests; `git diff --cached --check` and LSP passed. | Pass | Accepted findings — URI fragments are stripped before the handler and explicit ports need a closed-authority decision; add direct stale-generation proof before close-out. | 1 | Native Windows protocol/CSP proof remains the developer-approved validation gap. |
 | PR 1 — Scale local graphics delivery | Commit 9 — Migrate graphics consumers to one component | `7055ed098d9ba16a8a31c66289724ed802b94ff65` | Migrated Profile, Search, Squad, and My Club to one lazy protocol image component; removed resolve IPC, result queries/types/mocks, and base64 conversion while retaining `data:` CSP for bundled nationality flags. | `./scripts/dev test` passed 1,020 tests; `./scripts/dev check-app`, `./scripts/dev check-rust`, `./scripts/dev check`, and `./scripts/dev smoke` passed; three required 1280×800 UI inspections passed; absence search, diff check, and LSP passed. | Pass | Clear | 2 | Native Windows protocol/CSP proof remains the developer-approved gap; Chromium inspection confirmed fallback slots and containment only. |
-| PR 1 — Scale local graphics delivery | Commit 10 — Add private graphics calibration harness | Pending record | Added the stable private-root calibration command and ignored host-aware harness with path-free JSON, protocol timings, image-size distribution, and peak-working-set reporting; documented its contract. | Disposable-root calibration emitted one JSON line; missing and unreadable roots failed without echoing the supplied value; `./scripts/dev check-rust`, `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Accepted findings — phase fields currently repeat total scan time and discovery count does not measure filesystem entries; Commit 11 must replace these with truthful measurements before selecting limits. | 0 | No representative private pack ran and no final value was selected in this commit. |
+| PR 1 — Scale local graphics delivery | Commit 10 — Add private graphics calibration harness | `dfc8a9c4805cec9b3532c41381be6cb6a7a521e7` | Added the stable private-root calibration command and ignored host-aware harness with path-free JSON, protocol timings, image-size distribution, and peak-working-set reporting; documented its contract. | Disposable-root calibration emitted one JSON line; missing and unreadable roots failed without echoing the supplied value; `./scripts/dev check-rust`, `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Accepted findings — phase fields repeat total scan time and discovery count does not measure filesystem entries; Commit 12 must replace them before selecting limits. | 0 | No representative private pack ran and no final value was selected in this commit. |
+| PR 1 — Scale local graphics delivery | Commit 11 — Batch config source validation | Pending record | Grouped clean-EOF candidates by relative source directory, enumerated each capability once with no-follow regular-file checks, and folded valid probes in original record order. | Graphics index tests passed; `./scripts/dev check-rust`, `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Clear | 1 | The accepted replan and renewed delivery fingerprint are recorded in this commit. |
 
 ## Final validation
 
@@ -690,7 +747,7 @@ Run after all implementation packets and before feature review/publication:
 7. `./scripts/dev inspect-ui /my-club 1280 800`
 8. Required GitHub Linux and Windows Rust checks, including no-follow/junction/reparse proof.
 9. Record the developer-approved gap for native Windows Tauri custom-protocol/CSP registration and CSP proof. Unit parser/response tests, compilation, existing automated Linux/Windows Rust checks, frontend tests, and `./scripts/dev smoke` still run; smoke is Chromium-stub evidence and does not prove native Windows custom-protocol registration or CSP.
-10. Host-aware representative-pack calibration with no truncation and path-free evidence for exact host/OS/filesystem context, peak working set, phase totals/timings, mapping/config/entry totals, observed image sizes, first/warm image latency, delegated headroom rationale, and final values.
+10. One host-aware representative-pack calibration with no truncation under the test-only 4,000,000-entry / 2,000,000-mapping envelope; path-free evidence for exact host/OS/filesystem context, scanner-owned discovery/config/source totals and timings, bounded validation-metadata image-size sample, peak working set, exactly one cold and one warm image latency, delegated headroom rationale, and final values.
 
 Inspect captured UI for fixed fallback slots, readable text, row/rail containment, and no stale image after generation replacement. Chromium captures do not prove native Tauri protocol, filesystem, SQLite, or real-pack behavior.
 

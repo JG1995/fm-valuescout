@@ -107,6 +107,8 @@ pub struct GraphicsIndex {
     clubs: BTreeMap<u32, (Option<Mapping>, Option<Mapping>)>,
     summary: GraphicsSummary,
     limits: Limits,
+    #[cfg(test)]
+    source_directory_enumerations: usize,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ImageResult {
@@ -134,6 +136,8 @@ impl GraphicsIndex {
             clubs: BTreeMap::new(),
             summary: GraphicsSummary::default(),
             limits: PRODUCTION_LIMITS,
+            #[cfg(test)]
+            source_directory_enumerations: 0,
         }
     }
 
@@ -156,6 +160,8 @@ impl GraphicsIndex {
                         ..Default::default()
                     },
                     limits,
+                    #[cfg(test)]
+                    source_directory_enumerations: 0,
                 }
             }
         };
@@ -176,6 +182,8 @@ impl GraphicsIndex {
                 clubs: BTreeMap::new(),
                 summary: state.summary,
                 limits,
+                #[cfg(test)]
+                source_directory_enumerations: 0,
             };
         }
         let mut configs = state.configs.into_vec();
@@ -186,6 +194,8 @@ impl GraphicsIndex {
             clubs: BTreeMap::new(),
             summary: state.summary,
             limits,
+            #[cfg(test)]
+            source_directory_enumerations: 0,
         };
         let mut parser_bytes = 0;
         let mut parser_records = 0;
@@ -200,15 +210,10 @@ impl GraphicsIndex {
                 &mut parser_attributes,
             ) {
                 ParseConfigResult::Complete { mappings, parent } => {
-                    for candidate in mappings {
-                        add_mapping(
-                            &mut index,
-                            &parent,
-                            &candidate.parent,
-                            &candidate.from,
-                            &candidate.to,
-                        );
-                    }
+                    let config_parent = split_identity(&identity)
+                        .map(|(parent, _)| parent)
+                        .unwrap_or(&[]);
+                    validate_config_sources(&mut index, &parent, config_parent, mappings);
                 }
                 ParseConfigResult::RootLimit => {
                     index.summary.truncated = true;
@@ -255,6 +260,11 @@ impl GraphicsIndex {
         self.clubs.len()
     }
     #[cfg(test)]
+    #[allow(dead_code)]
+    fn source_directory_enumerations(&self) -> usize {
+        self.source_directory_enumerations
+    }
+    #[allow(dead_code)]
     pub(crate) fn calibration_requests(&self) -> Vec<(GraphicsKind, u32)> {
         self.people
             .keys()
@@ -414,7 +424,16 @@ fn read_bounded(file: File, limit: u64) -> Result<Vec<u8>, ReadBoundedError> {
 struct ConfigCandidate {
     from: String,
     to: String,
-    parent: Vec<String>,
+}
+
+#[derive(Debug)]
+struct PreparedCandidate {
+    kind: GraphicsKind,
+    uid: u32,
+    paths: Vec<Identity>,
+    directory: Vec<String>,
+    names: Vec<String>,
+    valid: Vec<bool>,
 }
 
 enum ParseConfigResult {
@@ -549,11 +568,7 @@ fn parse_config(
                     break;
                 }
                 if let (Some(from), Some(to)) = (from, to) {
-                    mappings.push(ConfigCandidate {
-                        from,
-                        to,
-                        parent: parent.to_vec(),
-                    });
+                    mappings.push(ConfigCandidate { from, to });
                 } else {
                     index.summary.diagnostics.invalid_mapping += 1;
                 }
@@ -610,34 +625,114 @@ fn parse_config(
         parent: dir,
     }
 }
-fn add_mapping(
+fn validate_config_sources(
     index: &mut GraphicsIndex,
     config_dir: &Dir,
     config_parent: &[String],
-    source: &str,
-    target: &str,
+    mappings: Vec<ConfigCandidate>,
 ) {
-    let Some((kind, uid)) = parse_target(target) else {
-        index.summary.diagnostics.invalid_mapping += 1;
-        return;
-    };
-    let Some(source_parts) = source_relative_identity(source) else {
-        index.summary.diagnostics.source_unreadable += 1;
-        return;
-    };
-    let Some(source) = source_identity(config_parent, source) else {
-        index.summary.diagnostics.source_unreadable += 1;
-        return;
-    };
-    let probe = source_parts.last().is_some_and(|x| !x.contains('.'));
-    let path = source_candidates(&source, probe);
-    let Some(path) = path.into_iter().find(|candidate| {
-        let relative = candidate.0[config_parent.len()..].to_vec();
-        source_exists_relative(config_dir, &relative)
-    }) else {
-        index.summary.diagnostics.source_unreadable += 1;
-        return;
-    };
+    let mut candidates = Vec::new();
+    for candidate in mappings {
+        let Some((kind, uid)) = parse_target(&candidate.to) else {
+            index.summary.diagnostics.invalid_mapping += 1;
+            continue;
+        };
+        let Some(parts) = source_relative_identity(&candidate.from) else {
+            index.summary.diagnostics.source_unreadable += 1;
+            continue;
+        };
+        let Some(identity) = source_identity(config_parent, &candidate.from) else {
+            index.summary.diagnostics.source_unreadable += 1;
+            continue;
+        };
+        let Some(last) = parts.last() else {
+            index.summary.diagnostics.source_unreadable += 1;
+            continue;
+        };
+        let probe = !last.contains('.');
+        let paths = source_candidates(&identity, probe);
+        let names = paths
+            .iter()
+            .filter_map(|path| path.0.last().cloned())
+            .collect::<Vec<_>>();
+        let directory = parts[..parts.len() - 1].to_vec();
+        let name_count = names.len();
+        candidates.push(PreparedCandidate {
+            kind,
+            uid,
+            paths,
+            directory,
+            names,
+            valid: vec![false; name_count],
+        });
+    }
+
+    let mut grouped = candidates
+        .iter()
+        .enumerate()
+        .map(|(ordinal, candidate)| (candidate.directory.clone(), ordinal))
+        .collect::<Vec<_>>();
+    grouped.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut group_start = 0;
+    while group_start < grouped.len() {
+        let directory = &grouped[group_start].0;
+        let mut group_end = group_start + 1;
+        while group_end < grouped.len() && grouped[group_end].0 == *directory {
+            group_end += 1;
+        }
+        #[cfg(test)]
+        {
+            index.source_directory_enumerations += 1;
+        }
+        let entries = match open_relative(config_dir, directory).and_then(|dir| dir.entries()) {
+            Ok(entries) => entries,
+            Err(_) => {
+                for _ in &grouped[group_start..group_end] {
+                    index.summary.diagnostics.source_unreadable += 1;
+                }
+                group_start = group_end;
+                continue;
+            }
+        };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_symlink() || !file_type.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            for (_, ordinal) in &grouped[group_start..group_end] {
+                let matches = candidates[*ordinal]
+                    .names
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(probe, candidate_name)| {
+                        (candidate_name == &name).then_some(probe)
+                    })
+                    .collect::<Vec<_>>();
+                for probe in matches {
+                    candidates[*ordinal].valid[probe] = true;
+                }
+            }
+        }
+        group_start = group_end;
+    }
+    for candidate in candidates {
+        let Some(probe) = candidate.valid.iter().position(|valid| *valid) else {
+            index.summary.diagnostics.source_unreadable += 1;
+            continue;
+        };
+        fold_mapping(
+            index,
+            candidate.kind,
+            candidate.uid,
+            candidate.paths[probe].clone(),
+        );
+    }
+}
+
+fn fold_mapping(index: &mut GraphicsIndex, kind: GraphicsKind, uid: u32, path: Identity) {
     let duplicate = match kind {
         GraphicsKind::PersonPortrait => index.people.contains_key(&uid),
         GraphicsKind::ClubLogo => index.clubs.get(&uid).is_some_and(|x| x.0.is_some()),
@@ -706,6 +801,15 @@ fn source_candidates(identity: &Identity, probe: bool) -> Vec<Identity> {
         })
         .collect()
 }
+fn open_relative(root: &Dir, components: &[String]) -> std::io::Result<Dir> {
+    let mut current = root.try_clone()?;
+    for component in components {
+        current = open_dir(&current, component)?;
+    }
+    Ok(current)
+}
+
+#[cfg(test)]
 fn source_exists_relative(parent: &Dir, identity: &[String]) -> bool {
     let Some((name, components)) = identity.split_last() else {
         return false;
@@ -717,13 +821,6 @@ fn source_exists_relative(parent: &Dir, identity: &[String]) -> bool {
         return false;
     };
     file.metadata().map(|m| m.is_file()).unwrap_or(false)
-}
-fn open_relative(root: &Dir, components: &[String]) -> std::io::Result<Dir> {
-    let mut current = root.try_clone()?;
-    for component in components {
-        current = open_dir(&current, component)?;
-    }
-    Ok(current)
 }
 fn parse_target(target: &str) -> Option<(GraphicsKind, u32)> {
     let mut p = target.split('/');
@@ -889,6 +986,74 @@ mod tests {
         assert!(index.resolve(GraphicsKind::PersonPortrait, 2).is_none());
         assert!(index.resolve(GraphicsKind::PersonPortrait, 3).is_some());
         assert_eq!(index.summary().diagnostics.source_unreadable, 1);
+    }
+
+    #[test]
+    fn same_source_directory_is_enumerated_once_and_probe_order_is_fixed() {
+        let d = tempdir().unwrap();
+        fs::create_dir(d.path().join("faces")).unwrap();
+        png(&d.path().join("faces").join("one.png"));
+        png(&d.path().join("faces").join("one.jpeg"));
+        fs::write(
+            d.path().join("config.xml"),
+            r#"<root><record from="faces/one" to="graphics/pictures/person/1/portrait"/><record from="faces/one.jpeg" to="graphics/pictures/person/2/portrait"/></root>"#,
+        )
+        .unwrap();
+        let index = GraphicsIndex::scan(d.path());
+        assert_eq!(index.source_directory_enumerations(), 1);
+        assert_eq!(
+            index
+                .resolve_locator(GraphicsKind::PersonPortrait, 1)
+                .unwrap()
+                .path
+                .last(),
+            Some(&"one.png".to_string())
+        );
+        assert_eq!(
+            index
+                .resolve_locator(GraphicsKind::PersonPortrait, 2)
+                .unwrap()
+                .path
+                .last(),
+            Some(&"one.jpeg".to_string())
+        );
+    }
+
+    #[test]
+    fn original_record_order_controls_duplicate_winner_after_grouping() {
+        let d = tempdir().unwrap();
+        fs::create_dir(d.path().join("a-earlier")).unwrap();
+        fs::create_dir(d.path().join("z-later")).unwrap();
+        fs::write(
+            d.path().join("z-later").join("first.png"),
+            b"\x89PNG\r\n\x1a\nfirst",
+        )
+        .unwrap();
+        fs::write(
+            d.path().join("a-earlier").join("second.png"),
+            b"\x89PNG\r\n\x1a\nsecond",
+        )
+        .unwrap();
+        fs::write(
+            d.path().join("config.xml"),
+            r#"<root><record from="z-later/first.png" to="graphics/pictures/person/7/portrait"/><record from="a-earlier/second.png" to="graphics/pictures/person/7/portrait"/></root>"#,
+        )
+        .unwrap();
+        let index = GraphicsIndex::scan(d.path());
+        assert_eq!(
+            index
+                .resolve_locator(GraphicsKind::PersonPortrait, 7)
+                .unwrap()
+                .path,
+            vec!["z-later".to_string(), "first.png".to_string()]
+        );
+        assert_eq!(
+            index
+                .resolve(GraphicsKind::PersonPortrait, 7)
+                .unwrap()
+                .bytes,
+            b"\x89PNG\r\n\x1a\nfirst"
+        );
     }
 
     #[test]
