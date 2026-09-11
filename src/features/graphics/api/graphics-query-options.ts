@@ -6,4 +6,5 @@ import { graphicsKeys } from "./graphics-keys";
 export const graphicsStatusQueryOptions = queryOptions({
   queryKey: graphicsKeys.status(),
   queryFn: fetchGraphicsStatus,
+  refetchInterval: (query) => (query.state.data?.rebuilding ? 500 : false),
 });

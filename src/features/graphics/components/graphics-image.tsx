@@ -18,28 +18,30 @@ type GraphicsImageProps = {
 
 export function GraphicsImage({ kind, uid, slot }: GraphicsImageProps) {
   const { data: status } = useQuery(graphicsStatusQueryOptions);
-  const [failed, setFailed] = useState(false);
+  const [failedSource, setFailedSource] = useState<string | null>(null);
   const generation = status?.generation;
+  const source = `http://graphics.localhost/${generation}/${kind}/${uid}`;
 
   if (
     !status?.selected ||
+    status.rebuilding ||
     generation === undefined ||
     !Number.isInteger(uid) ||
     uid <= 0 ||
-    failed
+    failedSource === source
   ) {
     return slot.fallback ?? null;
   }
 
   return (
     <img
-      src={`http://graphics.localhost/${generation}/${kind}/${uid}`}
+      src={source}
       alt={slot.alt}
       aria-hidden={slot.ariaHidden}
       className={slot.className}
       loading="lazy"
       decoding="async"
-      onError={() => setFailed(true)}
+      onError={() => setFailedSource(source)}
     />
   );
 }
