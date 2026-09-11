@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -101,7 +101,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 ### PR 1 — Scale local graphics delivery
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -643,7 +643,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 #### Commit 12 — Calibrate truthful final graphics limits
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `perf(graphics): calibrate production limits`
 
@@ -692,24 +692,6 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 **Review mandate:** Trace each phase count and duration to one scanner boundary; verify exactly two protocol requests and bounded metadata sampling; verify path-free report and ledger fields; trace every final constant to safe complete-run evidence and sizing rule; confirm entry overflow remains fail-closed; and reject inferred metrics, private data, guessed values, or unplanned architecture changes.
 
-## Active work
-
-**PR:** PR 1 — Scale local graphics delivery
-
-**Commit:** Commit 12 — Calibrate truthful final graphics limits
-
-### RED or removal proof
-
-Add tests for scanner-owned phase counts/timings, actual discovery entries, bounded metadata sampling, and exactly one cold plus one warm protocol request before running the representative root.
-
-### Expected outcome
-
-One complete path-free representative calibration under the test-only envelope supplies truthful structural and performance evidence for final bounded index and cache values.
-
-### Explicit exclusions
-
-- New user-visible behavior, private paths/assets/logs, protocol fan-out, persistence, watchers, dependencies, parallelism, `HashMap` conversion, and native-Windows performance claims.
-
 ## Discoveries and replanning
 
 - Commit 11 hit its explicit stop condition. The 1,000,000-entry production cap truncates before parsing the representative root. A temporary 4,000,000-entry / 2,000,000-mapping run did not complete within 1,200 seconds, so it cannot select final values.
@@ -732,7 +714,8 @@ One complete path-free representative calibration under the test-only envelope s
 | PR 1 — Scale local graphics delivery | Commit 8 — Register closed graphics protocol | `96b043fccdde188ff2226d2c181219520978fbd7` | Registered one asynchronous closed graphics protocol on the managed runtime, added raw validated-image responses with secure headers, and allowed the exact origin while retaining current data-URL consumers. | Protocol tests passed; `./scripts/dev check-rust` and `./scripts/dev check` passed with 863 Rust tests; `./scripts/dev smoke` passed 62 tests; `git diff --cached --check` and LSP passed. | Pass | Accepted findings — URI fragments are stripped before the handler and explicit ports need a closed-authority decision; add direct stale-generation proof before close-out. | 1 | Native Windows protocol/CSP proof remains the developer-approved validation gap. |
 | PR 1 — Scale local graphics delivery | Commit 9 — Migrate graphics consumers to one component | `7055ed098d9ba16a8a31c66289724ed802b94ff65` | Migrated Profile, Search, Squad, and My Club to one lazy protocol image component; removed resolve IPC, result queries/types/mocks, and base64 conversion while retaining `data:` CSP for bundled nationality flags. | `./scripts/dev test` passed 1,020 tests; `./scripts/dev check-app`, `./scripts/dev check-rust`, `./scripts/dev check`, and `./scripts/dev smoke` passed; three required 1280×800 UI inspections passed; absence search, diff check, and LSP passed. | Pass | Clear | 2 | Native Windows protocol/CSP proof remains the developer-approved gap; Chromium inspection confirmed fallback slots and containment only. |
 | PR 1 — Scale local graphics delivery | Commit 10 — Add private graphics calibration harness | `dfc8a9c4805cec9b3532c41381be6cb6a7a521e7` | Added the stable private-root calibration command and ignored host-aware harness with path-free JSON, protocol timings, image-size distribution, and peak-working-set reporting; documented its contract. | Disposable-root calibration emitted one JSON line; missing and unreadable roots failed without echoing the supplied value; `./scripts/dev check-rust`, `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Accepted findings — phase fields repeat total scan time and discovery count does not measure filesystem entries; Commit 12 must replace them before selecting limits. | 0 | No representative private pack ran and no final value was selected in this commit. |
-| PR 1 — Scale local graphics delivery | Commit 11 — Batch config source validation | Pending record | Grouped clean-EOF candidates by relative source directory, enumerated each capability once with no-follow regular-file checks, and folded valid probes in original record order. | Graphics index tests passed; `./scripts/dev check-rust`, `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Clear | 1 | The accepted replan and renewed delivery fingerprint are recorded in this commit. |
+| PR 1 — Scale local graphics delivery | Commit 11 — Batch config source validation | `80367d689e515bf7ee61073ac19b26f3dc484dd4` | Grouped clean-EOF candidates by relative source directory, enumerated each capability once with no-follow regular-file checks, and folded valid probes in original record order. | Graphics index tests passed; `./scripts/dev check-rust`, `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Clear | 1 | Representative calibration exposed quadratic entry-to-probe matching; bounded correction `409d53a7c59f04b5fe0c944673894471c1f9f268` replaced it with reviewed sorted binary-range matching while preserving the packet contract. |
+| PR 1 — Scale local graphics delivery | Commit 12 — Calibrate truthful final graphics limits | Pending record | Added scanner-owned discovery, parser, and source metrics; bounded deterministic successful-source metadata sampling; a test-only calibration envelope; exactly one cold and warm protocol request; and calibrated production index/cache limits. | Graphics tests passed (49); the representative run completed without truncation under 1,200 seconds; `./scripts/dev check-rust` and `./scripts/dev check` passed with 867 Rust tests and 3 ignored; `./scripts/dev smoke` passed 62 tests; `git diff --cached --check` and Rust LSP passed. Safe representative evidence: Linux x86_64 native-Unix execution on a mounted-Windows filesystem; 1,584,012 entries; 480 configs; 109,610,653 parser bytes; 1,320,006 records; 2,639,052 attributes; 635,489 source records across 5 directories; 635,159 mappings; a 4,096-entry smallest-successful metadata sample (1,511 minimum, 11,736 p50, 12,315 p95, 12,353 maximum bytes); discovery/parser/source times 4,518/8,374/327,544 ms; 1,021,104,128-byte peak working set by `linux-proc-vmHWM`; and 4/0 ms cold/warm requests. | Pass | Clear | 0 | Final bounds are depth 32, 960 configs, 3,200,000 entries, 96 MiB per config, 220 MiB root parser bytes, 2,700,000 records and 5,300,000 attributes at each scope, 1,300,000 mappings, 8 MiB images, and per-kind caches of 512 available entries/64 MiB plus 512 missing entries. Structural limits use approximately twice observed workload where reasonable; depth/image security bounds remain unchanged. Native-Windows protocol/CSP proof remains the accepted gap. |
 
 ## Final validation
 

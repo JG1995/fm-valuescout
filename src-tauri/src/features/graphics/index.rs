@@ -8,17 +8,19 @@ use std::collections::{BTreeMap, BinaryHeap};
 use std::io::{self, BufReader, Read};
 use std::path::Path;
 
+// Calibrated against the complete representative root; depth and image size retain their security bounds.
 const MAX_DEPTH: usize = 32;
-const MAX_CONFIGS: usize = 10_000;
-const MAX_ENTRIES: usize = 1_000_000;
-const MAX_CONFIG_BYTES: u64 = 64 * 1024 * 1024;
-const MAX_PARSER_BYTES: u64 = 256 * 1024 * 1024;
-const MAX_CONFIG_RECORDS: usize = 2_000_000;
-const MAX_PARSER_RECORDS: usize = 10_000_000;
-const MAX_CONFIG_ATTRIBUTES: usize = 8_000_000;
-const MAX_PARSER_ATTRIBUTES: usize = 40_000_000;
-const MAX_MAPPINGS: usize = 500_000;
+const MAX_CONFIGS: usize = 960;
+const MAX_ENTRIES: usize = 3_200_000;
+const MAX_CONFIG_BYTES: u64 = 96 * 1024 * 1024;
+const MAX_PARSER_BYTES: u64 = 220 * 1024 * 1024;
+const MAX_CONFIG_RECORDS: usize = 2_700_000;
+const MAX_PARSER_RECORDS: usize = 2_700_000;
+const MAX_CONFIG_ATTRIBUTES: usize = 5_300_000;
+const MAX_PARSER_ATTRIBUTES: usize = 5_300_000;
+const MAX_MAPPINGS: usize = 1_300_000;
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
+pub(crate) const CALIBRATION_SAMPLE_LIMIT: usize = 4096;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum GraphicsKind {
@@ -32,6 +34,19 @@ pub struct GraphicsSummary {
     pub mappings: usize,
     pub diagnostics: ScanDiagnostics,
     pub truncated: bool,
+}
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ScanMetrics {
+    pub discovery_entries: usize,
+    pub parser_bytes: u64,
+    pub parser_records: usize,
+    pub parser_attributes: usize,
+    pub source_records: usize,
+    pub source_directories: usize,
+    pub successful_image_sizes: Vec<u64>,
+    pub discovery_elapsed_ms: u128,
+    pub parser_elapsed_ms: u128,
+    pub source_elapsed_ms: u128,
 }
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ScanDiagnostics {
@@ -52,20 +67,20 @@ pub struct ScanDiagnostics {
     pub parser_attribute_limit: usize,
 }
 #[derive(Clone, Copy, Debug)]
-struct Limits {
-    depth: usize,
-    configs: usize,
-    entries: usize,
-    config_bytes: u64,
-    parser_bytes: u64,
-    config_records: usize,
-    parser_records: usize,
-    config_attributes: usize,
-    parser_attributes: usize,
-    mappings: usize,
-    image_bytes: u64,
+pub(crate) struct Limits {
+    pub(crate) depth: usize,
+    pub(crate) configs: usize,
+    pub(crate) entries: usize,
+    pub(crate) config_bytes: u64,
+    pub(crate) parser_bytes: u64,
+    pub(crate) config_records: usize,
+    pub(crate) parser_records: usize,
+    pub(crate) config_attributes: usize,
+    pub(crate) parser_attributes: usize,
+    pub(crate) mappings: usize,
+    pub(crate) image_bytes: u64,
 }
-const PRODUCTION_LIMITS: Limits = Limits {
+pub(crate) const PRODUCTION_LIMITS: Limits = Limits {
     depth: MAX_DEPTH,
     configs: MAX_CONFIGS,
     entries: MAX_ENTRIES,
@@ -106,6 +121,7 @@ pub struct GraphicsIndex {
     people: BTreeMap<u32, Mapping>,
     clubs: BTreeMap<u32, (Option<Mapping>, Option<Mapping>)>,
     summary: GraphicsSummary,
+    metrics: ScanMetrics,
     limits: Limits,
     #[cfg(test)]
     source_directory_enumerations: usize,
@@ -137,6 +153,7 @@ impl GraphicsIndex {
             people: BTreeMap::new(),
             clubs: BTreeMap::new(),
             summary: GraphicsSummary::default(),
+            metrics: ScanMetrics::default(),
             limits: PRODUCTION_LIMITS,
             #[cfg(test)]
             source_directory_enumerations: 0,
@@ -148,7 +165,7 @@ impl GraphicsIndex {
     pub fn scan(root: &Path) -> Self {
         Self::scan_with_limits(root, PRODUCTION_LIMITS)
     }
-    fn scan_with_limits(root: &Path, limits: Limits) -> Self {
+    pub(crate) fn scan_with_limits(root: &Path, limits: Limits) -> Self {
         let root_dir = match Dir::open_ambient_dir(root, ambient_authority()) {
             Ok(dir) => dir,
             Err(_) => {
@@ -163,6 +180,7 @@ impl GraphicsIndex {
                         },
                         ..Default::default()
                     },
+                    metrics: ScanMetrics::default(),
                     limits,
                     #[cfg(test)]
                     source_directory_enumerations: 0,
@@ -177,7 +195,10 @@ impl GraphicsIndex {
             limits,
             summary: GraphicsSummary::default(),
         };
-        if !discover(&root_dir, &mut Vec::new(), 0, &mut state) {
+        let discovery_started = std::time::Instant::now();
+        let discovered = discover(&root_dir, &mut Vec::new(), 0, &mut state);
+        let discovery_elapsed_ms = discovery_started.elapsed().as_millis();
+        if !discovered {
             state.summary.truncated = true;
             state.summary.diagnostics.entry_limit += 1;
         }
@@ -187,6 +208,11 @@ impl GraphicsIndex {
                 people: BTreeMap::new(),
                 clubs: BTreeMap::new(),
                 summary: state.summary,
+                metrics: ScanMetrics {
+                    discovery_entries: state.entries,
+                    discovery_elapsed_ms,
+                    ..Default::default()
+                },
                 limits,
                 #[cfg(test)]
                 source_directory_enumerations: 0,
@@ -201,6 +227,11 @@ impl GraphicsIndex {
             people: BTreeMap::new(),
             clubs: BTreeMap::new(),
             summary: state.summary,
+            metrics: ScanMetrics {
+                discovery_entries: state.entries,
+                discovery_elapsed_ms,
+                ..Default::default()
+            },
             limits,
             #[cfg(test)]
             source_directory_enumerations: 0,
@@ -210,20 +241,27 @@ impl GraphicsIndex {
         let mut parser_bytes = 0;
         let mut parser_records = 0;
         let mut parser_attributes = 0;
+        let mut parser_elapsed_ms = 0;
+        let mut source_elapsed_ms = 0;
         for identity in configs {
             index.summary.configs += 1;
-            match parse_config(
+            let parser_started = std::time::Instant::now();
+            let result = parse_config(
                 &mut index,
                 &identity,
                 &mut parser_bytes,
                 &mut parser_records,
                 &mut parser_attributes,
-            ) {
+            );
+            parser_elapsed_ms += parser_started.elapsed().as_millis();
+            match result {
                 ParseConfigResult::Complete { mappings, parent } => {
                     let config_parent = split_identity(&identity)
                         .map(|(parent, _)| parent)
                         .unwrap_or(&[]);
+                    let source_started = std::time::Instant::now();
                     validate_config_sources(&mut index, &parent, config_parent, mappings);
+                    source_elapsed_ms += source_started.elapsed().as_millis();
                 }
                 ParseConfigResult::RootLimit => {
                     index.summary.truncated = true;
@@ -232,10 +270,19 @@ impl GraphicsIndex {
                 ParseConfigResult::Discarded => {}
             }
         }
+        index.metrics.parser_bytes = parser_bytes;
+        index.metrics.parser_records = parser_records;
+        index.metrics.parser_attributes = parser_attributes;
+        index.metrics.parser_elapsed_ms = parser_elapsed_ms;
+        index.metrics.source_elapsed_ms = source_elapsed_ms;
         index
     }
     pub fn summary(&self) -> &GraphicsSummary {
         &self.summary
+    }
+    #[cfg(test)]
+    pub(crate) fn metrics(&self) -> &ScanMetrics {
+        &self.metrics
     }
     pub(crate) fn resolve_locator(&self, kind: GraphicsKind, uid: u32) -> Option<ImageLocator> {
         if uid == 0 {
@@ -682,6 +729,7 @@ fn validate_config_sources(
         });
     }
 
+    index.metrics.source_records += candidates.len();
     let mut grouped = candidates
         .iter()
         .enumerate()
@@ -695,6 +743,7 @@ fn validate_config_sources(
         while group_end < grouped.len() && grouped[group_end].0 == *directory {
             group_end += 1;
         }
+        index.metrics.source_directories += 1;
         #[cfg(test)]
         {
             index.source_directory_enumerations += 1;
@@ -743,6 +792,20 @@ fn validate_config_sources(
                     }
                     probe.0.as_str() == name.as_str()
                 });
+            if lower < upper {
+                if let Ok(length) = entry.metadata().map(|metadata| metadata.len()) {
+                    let sample = &mut index.metrics.successful_image_sizes;
+                    if sample.len() < CALIBRATION_SAMPLE_LIMIT {
+                        sample.push(length);
+                        sample.sort_unstable();
+                    } else if let Some(last) = sample.last_mut() {
+                        if length < *last {
+                            *last = length;
+                            sample.sort_unstable();
+                        }
+                    }
+                }
+            }
             for (_, ordinal, probe) in &probes[lower..upper] {
                 candidates[*ordinal].valid[*probe] = true;
             }
@@ -926,6 +989,25 @@ mod tests {
     }
 
     #[test]
+    fn scan_metrics_are_owned_by_each_boundary() {
+        let d = tempdir().unwrap();
+        png(&d.path().join("p.png"));
+        fs::write(
+            d.path().join("config.xml"),
+            r#"<record from="p.png" to="graphics/pictures/person/2/portrait"/>"#,
+        )
+        .unwrap();
+        let index = GraphicsIndex::scan(d.path());
+        let metrics = index.metrics();
+        assert_eq!(metrics.discovery_entries, 2);
+        assert_eq!(metrics.parser_records, 1);
+        assert_eq!(metrics.parser_attributes, 2);
+        assert_eq!(metrics.source_records, 1);
+        assert_eq!(metrics.source_directories, 1);
+        assert_eq!(metrics.successful_image_sizes, vec![8]);
+    }
+
+    #[test]
     fn nested_and_deterministic_resolution() {
         let d = tempdir().unwrap();
         let a = d.path().join("a");
@@ -982,27 +1064,26 @@ mod tests {
     }
 
     #[test]
-    fn generated_entry_stream_over_legacy_limit_fails_on_first_excess() {
-        let mut state = Discovery {
-            configs: BinaryHeap::new(),
-            entries: 0,
-            limits: Limits {
-                entries: MAX_ENTRIES,
-                ..PRODUCTION_LIMITS
-            },
-            summary: GraphicsSummary::default(),
+    fn production_entry_limit_is_inclusive_and_first_excess_fails() {
+        let run = |entry_count| {
+            let mut state = Discovery {
+                configs: BinaryHeap::new(),
+                entries: 0,
+                limits: PRODUCTION_LIMITS,
+                summary: GraphicsSummary::default(),
+            };
+            let mut visited = 0;
+            let completed = consume_entries((0..entry_count).map(Ok), &mut state, |_, state| {
+                if !admit_entry(state) {
+                    return false;
+                }
+                visited += 1;
+                true
+            });
+            (completed, state.entries, visited)
         };
-        let mut visited = 0;
-        let completed = consume_entries((0..=MAX_ENTRIES).map(Ok), &mut state, |_, state| {
-            if !admit_entry(state) {
-                return false;
-            }
-            visited += 1;
-            true
-        });
-        assert!(!completed);
-        assert_eq!(state.entries, MAX_ENTRIES + 1);
-        assert_eq!(visited, MAX_ENTRIES);
+        assert_eq!(run(MAX_ENTRIES), (true, MAX_ENTRIES, MAX_ENTRIES));
+        assert_eq!(run(MAX_ENTRIES + 1), (false, MAX_ENTRIES + 1, MAX_ENTRIES));
     }
     #[test]
     fn missing_source_does_not_discard_valid_sibling() {

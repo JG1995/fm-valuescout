@@ -9,8 +9,8 @@ use tauri_plugin_dialog::DialogExt;
 
 use super::index::{GraphicsIndex, GraphicsKind, GraphicsSummary, ImageResult};
 
-const CACHE_LIMIT: usize = 256;
-const AVAILABLE_CACHE_BYTE_LIMIT: usize = 32 * 1024 * 1024;
+const CACHE_LIMIT: usize = 512;
+const AVAILABLE_CACHE_BYTE_LIMIT: usize = 64 * 1024 * 1024;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -687,6 +687,10 @@ mod tests {
         test: &'static str,
         host: CalibrationHost,
         phases: CalibrationPhases,
+        parser_bytes: u64,
+        parser_records: usize,
+        parser_attributes: usize,
+        source_directories: usize,
         index: CalibrationIndex,
         peak_working_set: CalibrationMemory,
         image_sizes: CalibrationImageSizes,
@@ -726,12 +730,14 @@ mod tests {
 
     #[derive(Serialize)]
     struct CalibrationImageSizes {
+        method: &'static str,
+        sample_limit: usize,
         count: usize,
-        min_bytes: usize,
-        p50_bytes: usize,
-        p95_bytes: usize,
-        max_bytes: usize,
-        total_bytes: usize,
+        min_bytes: u64,
+        p50_bytes: u64,
+        p95_bytes: u64,
+        max_bytes: u64,
+        total_bytes: u64,
     }
 
     fn peak_working_set() -> CalibrationMemory {
@@ -773,10 +779,17 @@ mod tests {
             .map(std::path::PathBuf::from)
             .filter(|path| path.is_dir() && std::fs::read_dir(path).is_ok())
             .expect("private graphics root is missing or unreadable");
-        let scan_started = Instant::now();
-        let index = GraphicsIndex::scan(&root);
-        let scan_elapsed = scan_started.elapsed().as_millis();
+        let index = GraphicsIndex::scan_with_limits(
+            &root,
+            super::super::index::Limits {
+                entries: 4_000_000,
+                mappings: 2_000_000,
+                ..super::super::index::PRODUCTION_LIMITS
+            },
+        );
         let summary = index.summary().clone();
+        assert!(!summary.truncated, "representative calibration truncated");
+        let metrics = index.metrics().clone();
         let people = index.people_len();
         let clubs = index.clubs_len();
         let requests = index.calibration_requests();
@@ -795,32 +808,19 @@ mod tests {
                 .body(Vec::new())
                 .expect("calibration request is valid")
         };
-        let first = requests
-            .iter()
-            .find_map(|(kind, uid)| {
-                let started = Instant::now();
-                let response = graphics_protocol_response(request(*kind, *uid), &runtime);
-                (response.status() == http::StatusCode::OK).then(|| {
-                    (
-                        started.elapsed().as_millis(),
-                        response.body().len(),
-                        *kind,
-                        *uid,
-                    )
-                })
-            })
-            .expect("private graphics root has no readable protocol image");
+        let (kind, uid) = requests
+            .first()
+            .copied()
+            .expect("private graphics root has no indexed image");
+        let cold_started = Instant::now();
+        let cold = graphics_protocol_response(request(kind, uid), &runtime);
+        assert_eq!(cold.status(), http::StatusCode::OK);
+        let cold_image_ms = cold_started.elapsed().as_millis();
         let warm_started = Instant::now();
-        let warm = graphics_protocol_response(request(first.2, first.3), &runtime);
+        let warm = graphics_protocol_response(request(kind, uid), &runtime);
         assert_eq!(warm.status(), http::StatusCode::OK);
-        let mut sizes = Vec::new();
-        for (kind, uid) in requests {
-            let response = graphics_protocol_response(request(kind, uid), &runtime);
-            if response.status() == http::StatusCode::OK {
-                sizes.push(response.body().len());
-            }
-        }
-        sizes.sort_unstable();
+        let warm_image_ms = warm_started.elapsed().as_millis();
+        let sizes = metrics.successful_image_sizes;
         let percentile = |percent: usize| {
             sizes
                 .get(sizes.len().saturating_sub(1) * percent / 100)
@@ -852,20 +852,22 @@ mod tests {
             },
             phases: CalibrationPhases {
                 discovery: CalibrationPhase {
-                    count: summary.configs
-                        + summary.diagnostics.depth_limit
-                        + summary.diagnostics.entry_limit,
-                    elapsed_ms: scan_elapsed,
+                    count: metrics.discovery_entries,
+                    elapsed_ms: metrics.discovery_elapsed_ms,
                 },
                 config: CalibrationPhase {
                     count: summary.configs,
-                    elapsed_ms: scan_elapsed,
+                    elapsed_ms: metrics.parser_elapsed_ms,
                 },
                 source: CalibrationPhase {
-                    count: summary.mappings,
-                    elapsed_ms: scan_elapsed,
+                    count: metrics.source_records,
+                    elapsed_ms: metrics.source_elapsed_ms,
                 },
             },
+            parser_bytes: metrics.parser_bytes,
+            parser_records: metrics.parser_records,
+            parser_attributes: metrics.parser_attributes,
+            source_directories: metrics.source_directories,
             index: CalibrationIndex {
                 configs: summary.configs,
                 mappings: summary.mappings,
@@ -875,6 +877,8 @@ mod tests {
             },
             peak_working_set: peak_working_set(),
             image_sizes: CalibrationImageSizes {
+                method: "smallest-successful-source-metadata-lengths",
+                sample_limit: super::super::index::CALIBRATION_SAMPLE_LIMIT,
                 count: sizes.len(),
                 min_bytes: sizes.first().copied().unwrap_or(0),
                 p50_bytes: percentile(50),
@@ -882,8 +886,8 @@ mod tests {
                 max_bytes: sizes.last().copied().unwrap_or(0),
                 total_bytes: sizes.iter().sum(),
             },
-            first_image_ms: first.0,
-            warm_image_ms: warm_started.elapsed().as_millis(),
+            first_image_ms: cold_image_ms,
+            warm_image_ms,
         };
         let json = serde_json::to_string(&report).expect("calibration report serializes");
         assert!(!json.contains(root.to_string_lossy().as_ref()));
@@ -924,7 +928,7 @@ mod tests {
     fn every_kind_has_bounded_available_and_missing_lru_classes() {
         for _ in 0..3 {
             let mut c = Lru::new();
-            for uid in 1..=257 {
+            for uid in 1..=(CACHE_LIMIT as u32 + 1) {
                 c.put(
                     uid,
                     Some(ImageResult {
@@ -938,7 +942,7 @@ mod tests {
             assert!(!c.available.contains_key(&1));
             let _ = c.get(2);
             c.put(
-                258,
+                CACHE_LIMIT as u32 + 2,
                 Some(ImageResult {
                     bytes: vec![1],
                     mime: "image/png",
@@ -947,13 +951,13 @@ mod tests {
             assert_eq!(c.available_bytes, CACHE_LIMIT);
             assert!(c.available.contains_key(&2));
             assert!(!c.available.contains_key(&3));
-            for uid in 1..=257 {
+            for uid in 1..=(CACHE_LIMIT as u32 + 1) {
                 c.put(uid, None)
             }
             assert_eq!(c.missing.len(), CACHE_LIMIT);
             assert!(!c.missing.contains_key(&1));
             let _ = c.get(2);
-            c.put(258, None);
+            c.put(CACHE_LIMIT as u32 + 2, None);
             assert_eq!(c.available_bytes, 0);
             assert!(c.missing.contains_key(&2));
             assert!(!c.missing.contains_key(&3));
