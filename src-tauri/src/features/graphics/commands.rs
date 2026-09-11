@@ -1,5 +1,5 @@
 use super::index::GraphicsKind;
-use super::runtime::{picker, GraphicsRuntime, GraphicsStatus, ResolveResult};
+use super::runtime::{picker, GraphicsRuntime, GraphicsStatus, ImageLookupResult};
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
 use tauri::{http, AppHandle, State};
@@ -47,15 +47,6 @@ pub fn rescan_graphics(
         runtime.enqueue(target);
     }
     Ok(runtime.status())
-}
-
-#[tauri::command]
-pub fn resolve_graphics(
-    kind: GraphicsKindDto,
-    uid: u32,
-    runtime: State<'_, GraphicsRuntime>,
-) -> ResolveResult {
-    runtime.resolve(kind.into(), uid)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -125,16 +116,16 @@ fn protocol_response(status: http::StatusCode) -> http::Response<Vec<u8>> {
         .expect("static protocol response is valid")
 }
 
-fn image_protocol_response(result: ResolveResult) -> http::Response<Vec<u8>> {
+fn image_protocol_response(result: ImageLookupResult) -> http::Response<Vec<u8>> {
     match result {
-        ResolveResult::Available { bytes, mime } => http::Response::builder()
+        ImageLookupResult::Available { bytes, mime } => http::Response::builder()
             .status(http::StatusCode::OK)
             .header(http::header::CONTENT_TYPE, mime)
             .header(http::header::X_CONTENT_TYPE_OPTIONS, "nosniff")
             .header(http::header::CACHE_CONTROL, "no-store")
             .body(bytes)
             .expect("static protocol response is valid"),
-        ResolveResult::Missing => protocol_response(http::StatusCode::NOT_FOUND),
+        ImageLookupResult::Missing => protocol_response(http::StatusCode::NOT_FOUND),
     }
 }
 
@@ -259,7 +250,7 @@ mod tests {
 
     #[test]
     fn image_response_is_raw_and_security_bounded() {
-        let response = image_protocol_response(ResolveResult::Available {
+        let response = image_protocol_response(ImageLookupResult::Available {
             bytes: vec![1, 2, 3],
             mime: "image/webp",
         });
@@ -275,7 +266,7 @@ mod tests {
 
     #[test]
     fn missing_response_is_bounded_non_success() {
-        let response = image_protocol_response(ResolveResult::Missing);
+        let response = image_protocol_response(ImageLookupResult::Missing);
         assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
         assert!(response.body().is_empty());
     }

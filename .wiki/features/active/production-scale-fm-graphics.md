@@ -496,7 +496,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 #### Commit 9 — Migrate graphics consumers to one component
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(graphics): migrate graphics to protocol`
 
@@ -545,7 +545,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 #### Commit 10 — Add private graphics calibration harness
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `test(graphics): add calibration harness`
 
@@ -640,19 +640,19 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 **PR:** PR 1 — Scale local graphics delivery
 
-**Commit:** Commit 9 — Migrate graphics consumers to one component
+**Commit:** Commit 10 — Add private graphics calibration harness
 
 ### RED or removal proof
 
-Add shared-component URL, lazy/async loading, and native-error fallback tests, then prove the retired resolve IPC, byte-array types, query keys, mocks, and base64 helpers are absent.
+Add an ignored calibration test and command-level privacy/context assertions that fail without a supplied readable private root and never echo its path.
 
 ### Expected outcome
 
-Profile, Search, Squad, and My Club use one closed `GraphicsImage` component while preserving caller-owned fallback geometry and exact-UID/virtual-row bounds. No image bytes cross invoke or become data URLs.
+`./scripts/dev graphics-calibration` runs one ignored host-aware Rust harness against `FM_VALUESCOUT_GRAPHICS_ROOT` and emits one path-free JSON report with exact execution context and delivered protocol measurements.
 
 ### Explicit exclusions
 
-- Root/index/persistence changes, styling redesign, Staff imagery, new kinds, network URLs, and final production values.
+- Running the representative pack, choosing final values, committing private paths/assets/logs, arbitrary optimization, and `HashMap` conversion.
 
 ## Discoveries and replanning
 
@@ -673,7 +673,8 @@ Profile, Search, Squad, and My Club use one closed `GraphicsImage` component whi
 | PR 1 — Scale local graphics delivery | Commit 5 — Rebuild graphics through one stopping worker | `b2ef48b167a6056442e137b92cc8b122678afe45` | Moved startup, choose, and rescan rebuilds to one runtime-owned serial worker with replaceable pending work, generation-safe installation, and non-blocking stop revocation. | Runtime tests passed; `./scripts/dev check-rust` passed with 856 Rust tests and 2 ignored; `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Accepted findings — the safe `rebuilding` flag is stale after clear and false during startup rebuild; correct it before close-out. | 0 | None |
 | PR 1 — Scale local graphics delivery | Commit 6 — Read graphics outside runtime locks | `d24d6bb126ca15414fc7e8c547a22f8f6be398eb` | Split lookup into a generation-validated locator snapshot, unlocked image read, and generation-rechecked cache insertion while retaining count-bounded caches and resolve IPC. | Focused graphics tests passed; `./scripts/dev check-rust` passed with 857 Rust tests and 2 ignored; `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Clear | 0 | None |
 | PR 1 — Scale local graphics delivery | Commit 7 — Account for graphics cache bytes | `966cf8dbb86c174f5629089c79915f1dfddf17ca` | Added exact raw-byte accounting and combined byte/count eviction to every per-kind available cache while retaining count-only missing caches. | Runtime tests passed; `./scripts/dev check-rust` passed with 859 Rust tests; `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Clear | 0 | None |
-| PR 1 — Scale local graphics delivery | Commit 8 — Register closed graphics protocol | Pending record | Registered one asynchronous closed graphics protocol on the managed runtime, added raw validated-image responses with secure headers, and allowed the exact origin while retaining current data-URL consumers. | Protocol tests passed; `./scripts/dev check-rust` and `./scripts/dev check` passed with 863 Rust tests; `./scripts/dev smoke` passed 62 tests; `git diff --cached --check` and LSP passed. | Pass | Accepted findings — URI fragments are stripped before the handler and explicit ports need a closed-authority decision; add direct stale-generation proof before close-out. | 1 | Native Windows protocol/CSP proof remains the developer-approved validation gap. |
+| PR 1 — Scale local graphics delivery | Commit 8 — Register closed graphics protocol | `96b043fccdde188ff2226d2c181219520978fbd7` | Registered one asynchronous closed graphics protocol on the managed runtime, added raw validated-image responses with secure headers, and allowed the exact origin while retaining current data-URL consumers. | Protocol tests passed; `./scripts/dev check-rust` and `./scripts/dev check` passed with 863 Rust tests; `./scripts/dev smoke` passed 62 tests; `git diff --cached --check` and LSP passed. | Pass | Accepted findings — URI fragments are stripped before the handler and explicit ports need a closed-authority decision; add direct stale-generation proof before close-out. | 1 | Native Windows protocol/CSP proof remains the developer-approved validation gap. |
+| PR 1 — Scale local graphics delivery | Commit 9 — Migrate graphics consumers to one component | Pending record | Migrated Profile, Search, Squad, and My Club to one lazy protocol image component; removed resolve IPC, result queries/types/mocks, and base64 conversion while retaining `data:` CSP for bundled nationality flags. | `./scripts/dev test` passed 1,020 tests; `./scripts/dev check-app`, `./scripts/dev check-rust`, `./scripts/dev check`, and `./scripts/dev smoke` passed; three required 1280×800 UI inspections passed; absence search, diff check, and LSP passed. | Pass | Clear | 2 | Native Windows protocol/CSP proof remains the developer-approved gap; Chromium inspection confirmed fallback slots and containment only. |
 
 ## Final validation
 

@@ -80,7 +80,7 @@ impl From<&GraphicsSummary> for GraphicsSummaryDto {
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", tag = "status")]
-pub enum ResolveResult {
+pub enum ImageLookupResult {
     Available { bytes: Vec<u8>, mime: &'static str },
     Missing,
 }
@@ -516,7 +516,8 @@ impl GraphicsRuntime {
         let index = scan(root.as_deref());
         self.complete_scan(target, root, index)
     }
-    pub fn resolve(&self, kind: GraphicsKind, uid: u32) -> ResolveResult {
+    #[cfg(test)]
+    pub fn resolve(&self, kind: GraphicsKind, uid: u32) -> ImageLookupResult {
         self.resolve_with_reader(None, kind, uid, |locator| locator.read())
     }
 
@@ -525,7 +526,7 @@ impl GraphicsRuntime {
         generation: u64,
         kind: GraphicsKind,
         uid: u32,
-    ) -> ResolveResult {
+    ) -> ImageLookupResult {
         self.resolve_with_reader(Some(generation), kind, uid, |locator| locator.read())
     }
 
@@ -535,12 +536,12 @@ impl GraphicsRuntime {
         kind: GraphicsKind,
         uid: u32,
         read: F,
-    ) -> ResolveResult
+    ) -> ImageLookupResult
     where
         F: FnOnce(super::index::ImageLocator) -> Option<ImageResult>,
     {
         if uid == 0 {
-            return ResolveResult::Missing;
+            return ImageLookupResult::Missing;
         }
         let (generation, cached, locator) = {
             let mut s = self.state();
@@ -548,7 +549,7 @@ impl GraphicsRuntime {
                 || expected_generation
                     .is_some_and(|generation| generation != s.committed.generation)
             {
-                return ResolveResult::Missing;
+                return ImageLookupResult::Missing;
             }
             let cached = s.caches[kind as usize].get(uid);
             let locator = if cached.is_none() {
@@ -562,11 +563,11 @@ impl GraphicsRuntime {
         };
         if let Some(value) = cached {
             return value
-                .map(|x| ResolveResult::Available {
+                .map(|x| ImageLookupResult::Available {
                     bytes: x.bytes,
                     mime: x.mime,
                 })
-                .unwrap_or(ResolveResult::Missing);
+                .unwrap_or(ImageLookupResult::Missing);
         }
         let value = locator.and_then(read);
         let mut s = self.state();
@@ -574,15 +575,15 @@ impl GraphicsRuntime {
             || s.installed_generation != Some(generation)
             || expected_generation.is_some_and(|expected| expected != generation)
         {
-            return ResolveResult::Missing;
+            return ImageLookupResult::Missing;
         }
         s.caches[kind as usize].put(uid, value.clone());
         value
-            .map(|x| ResolveResult::Available {
+            .map(|x| ImageLookupResult::Available {
                 bytes: x.bytes,
                 mime: x.mime,
             })
-            .unwrap_or(ResolveResult::Missing)
+            .unwrap_or(ImageLookupResult::Missing)
     }
 }
 
@@ -679,7 +680,7 @@ mod tests {
     }
     #[test]
     fn resolve_and_kind_dtos_are_pathless_and_closed() {
-        let available = serde_json::to_string(&ResolveResult::Available {
+        let available = serde_json::to_string(&ImageLookupResult::Available {
             bytes: vec![1, 2],
             mime: "image/png",
         })
@@ -689,7 +690,7 @@ mod tests {
             r#"{"status":"available","bytes":[1,2],"mime":"image/png"}"#
         );
         assert_eq!(
-            serde_json::to_string(&ResolveResult::Missing).unwrap(),
+            serde_json::to_string(&ImageLookupResult::Missing).unwrap(),
             r#"{"status":"missing"}"#
         );
         assert!(!available.contains("path"));
@@ -863,14 +864,14 @@ mod tests {
         assert_eq!(runtime.status().generation, generation);
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Available {
+            ImageLookupResult::Available {
                 bytes: b"\x89PNG\r\n\x1a\nA".to_vec(),
                 mime: "image/png"
             }
         );
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 999),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
         let before = runtime.status();
         db.lock()
@@ -896,7 +897,7 @@ mod tests {
         assert_eq!(runtime.status().selected, before.selected);
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Available {
+            ImageLookupResult::Available {
                 bytes: b"\x89PNG\r\n\x1a\nA".to_vec(),
                 mime: "image/png"
             }
@@ -923,11 +924,11 @@ mod tests {
         assert!(runtime.scan_reserved(ag, ar));
         assert!(matches!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Available { .. }
+            ImageLookupResult::Available { .. }
         ));
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 999),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
         assert_eq!(
             runtime.state().caches[GraphicsKind::PersonPortrait as usize].available_bytes,
@@ -944,11 +945,11 @@ mod tests {
         );
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
         assert!(matches!(
             runtime.resolve(GraphicsKind::PersonPortrait, 202),
-            ResolveResult::Available { .. }
+            ImageLookupResult::Available { .. }
         ));
     }
 
@@ -970,11 +971,11 @@ mod tests {
         assert_eq!(runtime.status().generation, bg);
         assert!(matches!(
             runtime.resolve(GraphicsKind::PersonPortrait, 202),
-            ResolveResult::Available { .. }
+            ImageLookupResult::Available { .. }
         ));
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
     }
 
@@ -1006,10 +1007,10 @@ mod tests {
             .unwrap();
         assert!(runtime.complete_scan(b_generation, b_root, GraphicsIndex::scan(b.path())));
         release_tx.send(()).unwrap();
-        assert_eq!(handle.join().unwrap(), ResolveResult::Missing);
+        assert_eq!(handle.join().unwrap(), ImageLookupResult::Missing);
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Available {
+            ImageLookupResult::Available {
                 bytes: b"\x89PNG\r\n\x1a\nB".to_vec(),
                 mime: "image/png"
             }
@@ -1055,7 +1056,7 @@ mod tests {
         assert!(runtime.scan_reserved(a_generation, a_root));
         assert!(matches!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Available { .. }
+            ImageLookupResult::Available { .. }
         ));
 
         let (clear_generation, clear_root) =
@@ -1063,7 +1064,7 @@ mod tests {
         assert!(runtime.scan_reserved(clear_generation, clear_root));
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
 
         let (rescan_generation, rescan_root) = runtime.begin_rescan(&db).unwrap().unwrap();
@@ -1079,7 +1080,7 @@ mod tests {
         let lazy_runtime = test_runtime_with_root(Some(a.path().to_path_buf()));
         assert_eq!(
             lazy_runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
     }
 
@@ -1099,7 +1100,7 @@ mod tests {
         );
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
         assert!(called_rx.try_recv().is_err());
     }
@@ -1116,11 +1117,11 @@ mod tests {
         assert!(runtime.complete_scan(a_generation, a_root.clone(), GraphicsIndex::empty()));
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 1),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
         assert_eq!(
             runtime.resolve(GraphicsKind::ClubLogo, 2),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
 
         let (b_generation, b_root) = runtime
@@ -1132,11 +1133,11 @@ mod tests {
         assert_eq!(runtime.status().generation, b_generation);
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 1),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
         assert_eq!(
             runtime.resolve(GraphicsKind::ClubLogo, 2),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
     }
 

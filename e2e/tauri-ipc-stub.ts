@@ -692,8 +692,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             };
           }
 
-          if (cmd === "resolve_graphics") return { status: "missing" };
-
           if (cmd === "get_bridge_status") {
             return {
               protocolVersion: 1,

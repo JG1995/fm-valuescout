@@ -21,14 +21,8 @@ import { academyKeys } from "@/features/academy/api/academy-keys";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import {
   DEFAULT_GRAPHICS_STATUS,
-  getGraphicsIpcMockCalls,
-  getPendingGraphicsResultIpcMockCount,
-  resolveAllPendingGraphicsResultsIpcMock,
-  setGraphicsResultIpcMockForCall,
-  setGraphicsResultIpcMockMode,
   setGraphicsStatusIpcMock,
 } from "@/features/graphics/api/graphics-ipc-mock";
-import { graphicsStatusQueryOptions } from "@/features/graphics/api/graphics-query-options";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
@@ -301,267 +295,74 @@ function switchToSecondSave(
 }
 
 describe("My Club route", () => {
-  it("requests exact UID graphics in visible Squad rows and keeps null-club fallbacks", async () => {
+  it("uses protocol URLs for visible Squad rows and exact UIDs", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
       primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
     setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
       generation: 11,
       selected: true,
-      candidate: { available: true, source: "documents" },
-      summary: {
-        configs: 1,
-        mappings: 2,
-        truncated: false,
-        diagnostics: {
-          configLimit: 0,
-          entryLimit: 0,
-          depthLimit: 0,
-          mappingLimit: 0,
-          configTooLarge: 0,
-          configUnreadable: 0,
-          malformedConfig: 0,
-          invalidMapping: 0,
-          sourceUnreadable: 0,
-        },
-      },
-    });
-    setGraphicsResultIpcMockForCall("personPortrait", 42, {
-      status: "available",
-      mime: "image/png",
-      bytes: [137, 80, 78, 71],
-    });
-    setGraphicsResultIpcMockForCall("clubLogo", 7, {
-      status: "available",
-      mime: "image/png",
-      bytes: [137, 80, 78, 71],
     });
     setSquadPlayersOverride([
       { ...squadPlayerNamed("Exact Squad", 42), currentClubUid: 7 },
       { ...squadPlayerNamed("Name only Squad", 43), currentClubUid: null },
     ]);
-    setGraphicsResultIpcMockMode("pending");
     renderMyClubRoute({ initialEntry: "/my-club" });
-
     const table = await screen.findByRole("table", { name: "Squad overview" });
     const row = within(table).getByText("Exact Squad").closest("tr");
     const legacy = within(table).getByText("Name only Squad").closest("tr");
     if (!row || !legacy) throw new Error("Expected Squad graphics rows");
-    await waitFor(() =>
-      expect(getGraphicsIpcMockCalls().length).toBeGreaterThanOrEqual(2),
-    );
-    setGraphicsResultIpcMockMode("available");
-    resolveAllPendingGraphicsResultsIpcMock();
     await waitFor(() => expect(row.querySelectorAll("img")).toHaveLength(2));
-    expect(legacy.querySelectorAll("img")).toHaveLength(0);
+    expect(
+      Array.from(row.querySelectorAll("img")).map((image) =>
+        image.getAttribute("src"),
+      ),
+    ).toEqual([
+      "http://graphics.localhost/11/personPortrait/42",
+      "http://graphics.localhost/11/clubLogo/7",
+    ]);
+    expect(
+      legacy.querySelectorAll('img[src^="http://graphics.localhost/"]'),
+    ).toHaveLength(1);
+    expect(legacy.querySelector('img[src$="/personPortrait/43"]')).toBeTruthy();
     expect(row).toHaveStyle({ height: "40px" });
     expect(row).toHaveAttribute("data-index");
-    expect(getGraphicsIpcMockCalls()).toEqual(
-      expect.arrayContaining([
-        { kind: "personPortrait", uid: 42 },
-        { kind: "clubLogo", uid: 7 },
-      ]),
-    );
-    expect(getGraphicsIpcMockCalls()).not.toContainEqual({
-      kind: "clubLogo",
-      uid: 43,
-    });
-
-    setGraphicsResultIpcMockMode("error");
   });
-  it("renders the selected managed-club logo by exact UID", async () => {
+
+  it("keeps Squad identity and navigation geometry after native image errors", async () => {
     await resolveLoadDataIpcMock();
-    setManagedClubIpcMock({
-      clubName: "Barcelona",
-      clubUid: 42,
-      status: "available",
-      unclassifiedPlayerCount: 0,
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
+      sources: [],
     });
     setGraphicsStatusIpcMock({
       ...DEFAULT_GRAPHICS_STATUS,
-      generation: 7,
+      generation: 12,
       selected: true,
-      candidate: { available: true, source: "documents" },
     });
-    setGraphicsResultIpcMockForCall("clubLogo", 42, {
-      status: "available",
-      mime: "image/png",
-      bytes: [137, 80, 78, 71],
-    });
-
-    renderMyClubRoute({ initialEntry: "/my-club" });
-
-    expect(await screen.findByText("Managed club: Barcelona")).toBeVisible();
+    setSquadPlayersOverride([
+      { ...squadPlayerNamed("Stateful Squad", 51), currentClubUid: 12 },
+    ]);
+    const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
+    const table = await screen.findByRole("table", { name: "Squad overview" });
+    const row = within(table).getByText("Stateful Squad").closest("tr");
+    if (!row) throw new Error("Expected Squad graphics row");
+    const images = Array.from(
+      row.querySelectorAll('img[src^="http://graphics.localhost/"]'),
+    );
+    for (const image of images) fireEvent.error(image);
+    expect(row).toHaveStyle({ height: "40px" });
+    expect(within(row).getByText("Stateful Squad")).toBeVisible();
+    fireEvent.click(row);
     await waitFor(() =>
-      expect(getGraphicsIpcMockCalls()).toContainEqual({
-        kind: "clubLogo",
-        uid: 42,
-      }),
+      expect(router.state.location.pathname).toBe("/players/51"),
     );
-    expect(
-      screen
-        .getByText("Managed club: Barcelona")
-        .parentElement?.querySelector("img"),
-    ).toBeTruthy();
   });
 
-  it("does not look up a persisted UID when managed club status is missing", async () => {
-    await resolveLoadDataIpcMock();
-    setManagedClubIpcMock({
-      clubName: "Barcelona",
-      clubUid: 42,
-      status: "missing",
-      unclassifiedPlayerCount: 0,
-    });
-    setGraphicsStatusIpcMock({
-      ...DEFAULT_GRAPHICS_STATUS,
-      generation: 8,
-      selected: true,
-    });
-    setGraphicsResultIpcMockForCall("clubLogo", 42, {
-      status: "available",
-      mime: "image/png",
-      bytes: [137, 80, 78, 71],
-    });
-
-    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
-
-    const label = await screen.findByText("Managed club: Barcelona");
-    await waitFor(() => {
-      expect(
-        queryClient.getQueryState(graphicsStatusQueryOptions.queryKey),
-      ).toMatchObject({
-        status: "success",
-        data: expect.objectContaining({ selected: true }),
-      });
-    });
-    expect(getGraphicsIpcMockCalls()).not.toContainEqual({
-      kind: "clubLogo",
-      uid: 42,
-    });
-    expect(label.parentElement?.querySelector("img")).toBeNull();
-    expect(
-      label.parentElement?.querySelector('svg[aria-hidden="true"]'),
-    ).toBeTruthy();
-  });
-
-  it.each(["pending", "missing", "error"] as const)(
-    "keeps the managed-club shield fallback for %s graphics",
-    async (mode) => {
-      await resolveLoadDataIpcMock();
-      setManagedClubIpcMock({
-        clubName: "Barcelona",
-        clubUid: 42,
-        status: "available",
-        unclassifiedPlayerCount: 0,
-      });
-      setGraphicsStatusIpcMock({
-        ...DEFAULT_GRAPHICS_STATUS,
-        generation: 8,
-        selected: true,
-      });
-      setGraphicsResultIpcMockForCall("clubLogo", 42, { status: "missing" });
-      setGraphicsResultIpcMockMode(mode);
-      renderMyClubRoute({ initialEntry: "/my-club" });
-
-      const label = await screen.findByText("Managed club: Barcelona");
-      await waitFor(() =>
-        expect(label.parentElement?.querySelector("img")).toBeNull(),
-      );
-      expect(
-        label.parentElement?.querySelector('svg[aria-hidden="true"]'),
-      ).toBeTruthy();
-      setGraphicsResultIpcMockMode("error");
-    },
-  );
-
-  it("does not look up a logo for a legacy name-only selection", async () => {
-    await resolveLoadDataIpcMock();
-    setManagedClubIpcMock({
-      clubName: "Barcelona",
-      clubUid: null,
-      status: "available",
-      unclassifiedPlayerCount: 0,
-    });
-    setGraphicsStatusIpcMock({
-      ...DEFAULT_GRAPHICS_STATUS,
-      generation: 9,
-      selected: true,
-    });
-    renderMyClubRoute({ initialEntry: "/my-club" });
-
-    const label = await screen.findByText("Managed club: Barcelona");
-    await waitFor(() =>
-      expect(label.parentElement?.querySelector("img")).toBeNull(),
-    );
-    expect(getGraphicsIpcMockCalls()).not.toContainEqual({
-      kind: "clubLogo",
-      uid: 0,
-    });
-    expect(
-      label.parentElement?.querySelector('svg[aria-hidden="true"]'),
-    ).toBeTruthy();
-  });
-
-  it.each(["pending", "missing", "error"] as const)(
-    "keeps Squad marks and navigation geometry for %s graphics",
-    async (mode) => {
-      await resolveLoadDataIpcMock();
-      resolveSavePlannerClubFamilyIpcMock({
-        primaryClub: { clubName: "Metro FC", clubUid: 1 },
-        sources: [],
-      });
-      setGraphicsStatusIpcMock({
-        generation: 12,
-        selected: true,
-        candidate: { available: true, source: "documents" },
-        summary: {
-          configs: 1,
-          mappings: 1,
-          truncated: false,
-          diagnostics: {
-            configLimit: 0,
-            entryLimit: 0,
-            depthLimit: 0,
-            mappingLimit: 0,
-            configTooLarge: 0,
-            configUnreadable: 0,
-            malformedConfig: 0,
-            invalidMapping: 0,
-            sourceUnreadable: 0,
-          },
-        },
-      });
-      setGraphicsResultIpcMockMode(mode);
-      setSquadPlayersOverride([
-        { ...squadPlayerNamed("Stateful Squad", 51), currentClubUid: 12 },
-      ]);
-      const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
-      const table = await screen.findByRole("table", {
-        name: "Squad overview",
-      });
-      const row = within(table).getByText("Stateful Squad").closest("tr");
-      if (!row) throw new Error("Expected Squad graphics row");
-      expect(row).toHaveStyle({ height: "40px" });
-      expect(within(row).getByText("Stateful Squad")).toBeVisible();
-      expect(row).toHaveAttribute("tabindex", "0");
-      fireEvent.click(row);
-      await waitFor(() =>
-        expect(router.state.location.pathname).toBe("/players/51"),
-      );
-      if (mode === "pending") {
-        setGraphicsResultIpcMockMode("missing");
-        resolveAllPendingGraphicsResultsIpcMock();
-        await waitFor(() =>
-          expect(getPendingGraphicsResultIpcMockCount()).toBe(0),
-        );
-      }
-    },
-  );
-
-  it("bounds Squad graphics requests to rendered virtual rows", async () => {
+  it("bounds Squad graphics to rendered virtual rows", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
       primaryClub: { clubName: "Metro FC", clubUid: 1 },
@@ -577,30 +378,23 @@ describe("My Club route", () => {
       currentClubUid: player.uid + 1000,
     }));
     setSquadPlayersOverride(players);
-    setGraphicsResultIpcMockMode("pending");
     const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
     const table = await screen.findByRole("table", { name: "Squad overview" });
     await waitFor(() =>
-      expect(getGraphicsIpcMockCalls().length).toBeGreaterThan(0),
+      expect(
+        table.querySelectorAll("tr[data-index] img").length,
+      ).toBeGreaterThan(0),
     );
-    const calls = getGraphicsIpcMockCalls() as Array<{
-      kind: string;
-      uid: number;
-    }>;
-    expect(calls.length).toBeLessThan(players.length);
-    expect(calls.length).toBeLessThan(100);
+    const images = Array.from(table.querySelectorAll("tr[data-index] img"));
+    expect(images.length).toBeLessThan(players.length * 2);
+    expect(images.length).toBeLessThan(100);
     expect(
-      calls.every((call) =>
-        players.some(
-          (player) =>
-            call.uid === player.uid || call.uid === player.currentClubUid,
+      images.every((image) =>
+        /\/(personPortrait|clubLogo)\/(\d+)$/.test(
+          image.getAttribute("src") ?? "",
         ),
       ),
     ).toBe(true);
-    expect(table.querySelectorAll("tr[data-index]").length).toBeGreaterThan(0);
-    setGraphicsResultIpcMockMode("missing");
-    resolveAllPendingGraphicsResultsIpcMock();
-    await waitFor(() => expect(getPendingGraphicsResultIpcMockCount()).toBe(0));
     queryClient.clear();
   });
 

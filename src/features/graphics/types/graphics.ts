@@ -27,7 +27,3 @@ export type GraphicsStatus = {
     diagnostics: GraphicsDiagnostics;
   };
 };
-
-export type GraphicsResult =
-  | { status: "available"; bytes: number[]; mime: string }
-  | { status: "missing" };

@@ -132,7 +132,6 @@ pub fn run() {
             features::graphics::commands::choose_graphics_root,
             features::graphics::commands::clear_graphics_root,
             features::graphics::commands::rescan_graphics,
-            features::graphics::commands::resolve_graphics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
