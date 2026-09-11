@@ -52,6 +52,8 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
+- **[Load Data processing performance](./features/active/load-data-processing-performance.md)** — remove redundant terminal dump validation and no-op historical projected-state cleanup, and reuse the winning-snapshot projected-attribute statement while preserving atomic snapshot publication (Linear JAY-66).
+
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
