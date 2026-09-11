@@ -730,6 +730,8 @@ fn validate_config_sources(
     }
 
     index.metrics.source_records += candidates.len();
+    let mut successful_image_sizes =
+        BinaryHeap::from(std::mem::take(&mut index.metrics.successful_image_sizes));
     let mut grouped = candidates
         .iter()
         .enumerate()
@@ -794,15 +796,9 @@ fn validate_config_sources(
                 });
             if lower < upper {
                 if let Ok(length) = entry.metadata().map(|metadata| metadata.len()) {
-                    let sample = &mut index.metrics.successful_image_sizes;
-                    if sample.len() < CALIBRATION_SAMPLE_LIMIT {
-                        sample.push(length);
-                        sample.sort_unstable();
-                    } else if let Some(last) = sample.last_mut() {
-                        if length < *last {
-                            *last = length;
-                            sample.sort_unstable();
-                        }
+                    successful_image_sizes.push(length);
+                    if successful_image_sizes.len() > CALIBRATION_SAMPLE_LIMIT {
+                        successful_image_sizes.pop();
                     }
                 }
             }
@@ -812,6 +808,7 @@ fn validate_config_sources(
         }
         group_start = group_end;
     }
+    index.metrics.successful_image_sizes = successful_image_sizes.into_sorted_vec();
     for candidate in candidates {
         let Some(probe) = candidate.valid.iter().position(|valid| *valid) else {
             index.summary.diagnostics.source_unreadable += 1;
@@ -997,11 +994,17 @@ mod tests {
             r#"<record from="p.png" to="graphics/pictures/person/2/portrait"/>"#,
         )
         .unwrap();
+        fs::create_dir(d.path().join("z")).unwrap();
+        fs::write(
+            d.path().join("z/config.xml"),
+            r#"<record from="missing.png" to="invalid"/>"#,
+        )
+        .unwrap();
         let index = GraphicsIndex::scan(d.path());
         let metrics = index.metrics();
-        assert_eq!(metrics.discovery_entries, 2);
-        assert_eq!(metrics.parser_records, 1);
-        assert_eq!(metrics.parser_attributes, 2);
+        assert_eq!(metrics.discovery_entries, 4);
+        assert_eq!(metrics.parser_records, 2);
+        assert_eq!(metrics.parser_attributes, 4);
         assert_eq!(metrics.source_records, 1);
         assert_eq!(metrics.source_directories, 1);
         assert_eq!(metrics.successful_image_sizes, vec![8]);

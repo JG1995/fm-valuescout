@@ -232,11 +232,14 @@ impl GraphicsRuntime {
                 next_reservation: 0,
                 committed: Target {
                     generation: 0,
-                    root,
+                    root: root.clone(),
                 },
                 index: None,
                 installed_generation: None,
-                in_flight: None,
+                in_flight: root.as_ref().map(|_| Target {
+                    generation: 0,
+                    root: root.clone(),
+                }),
                 summary: GraphicsSummaryDto::default(),
                 candidate,
                 caches: [Lru::new(), Lru::new(), Lru::new()],
@@ -419,10 +422,12 @@ impl GraphicsRuntime {
             },
             None,
         );
-        s.in_flight = Some(Target {
-            generation,
-            root: root.clone(),
-        });
+        if root.is_some() {
+            s.in_flight = Some(Target {
+                generation,
+                root: root.clone(),
+            });
+        }
         Ok(Some((generation, root)))
     }
     pub fn begin_rescan(
@@ -1028,6 +1033,50 @@ mod tests {
         assert!(!json.contains('/') && !json.contains('\\'));
         assert!(!json.contains("path"));
     }
+    #[test]
+    fn startup_with_persisted_root_reports_rebuilding_until_scan_completes() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = test_runtime_with_root(Some(root.path().to_path_buf()));
+
+        assert!(runtime.status().rebuilding);
+        assert!(runtime.complete_scan(0, Some(root.path().to_path_buf()), GraphicsIndex::empty()));
+        assert!(!runtime.status().rebuilding);
+    }
+
+    #[test]
+    fn clearing_root_does_not_report_a_rebuild_for_empty_target() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = test_runtime_with_root(Some(root.path().to_path_buf()));
+
+        runtime
+            .persist_transition_with(None, || Ok(true))
+            .expect("clear persists")
+            .expect("clear changes persisted root");
+        assert!(!runtime.status().selected);
+        assert!(!runtime.status().rebuilding);
+    }
+
+    #[test]
+    fn stale_generation_protocol_response_is_bounded_not_found() {
+        let first = root_with_image("first.png", 101, b"first");
+        let second = tempfile::tempdir().unwrap();
+        let runtime = test_runtime_with_root(Some(first.path().to_path_buf()));
+        assert!(runtime.scan_reserved(0, Some(first.path().to_path_buf()),));
+        runtime
+            .persist_transition_with(Some(second.path().to_path_buf()), || Ok(true))
+            .expect("replace persists")
+            .expect("replace changes persisted root");
+
+        let request = http::Request::builder()
+            .method(http::Method::GET)
+            .uri("http://graphics.localhost/0/personPortrait/101")
+            .body(Vec::new())
+            .unwrap();
+        let response = graphics_protocol_response(request, &runtime);
+        assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
+        assert!(response.body().is_empty());
+    }
+
     #[test]
     fn candidate_order_and_safe_absence() {
         let t = tempfile::tempdir().unwrap();

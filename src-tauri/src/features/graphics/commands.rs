@@ -63,10 +63,12 @@ pub fn parse_protocol_request(
         return Err(http::StatusCode::METHOD_NOT_ALLOWED);
     }
     let uri = request.uri();
+    // URI fragments are browser-side and are not transmitted to this handler;
+    // they are therefore outside the handler grammar.
     if uri.scheme_str() != Some("http")
         || uri.host() != Some("graphics.localhost")
+        || uri.port().is_some()
         || uri.query().is_some()
-        || uri.path().contains('#')
     {
         return Err(http::StatusCode::BAD_REQUEST);
     }
@@ -235,6 +237,14 @@ mod tests {
             (
                 http::Method::GET,
                 "http://graphics.localhost/12/personPortrait/042",
+            ),
+            (
+                http::Method::GET,
+                "http://graphics.localhost:80/12/personPortrait/42",
+            ),
+            (
+                http::Method::GET,
+                "http://graphics.localhost:8080/12/personPortrait/42",
             ),
             (
                 http::Method::GET,
