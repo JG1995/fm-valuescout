@@ -87,7 +87,7 @@ Record the reviewed plan, then remove the terminal reparse while proving capture
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** <https://github.com/JG1995/fm-valuescout/pull/147>
 
 **Merge ref:** Not merged
 
@@ -372,7 +372,7 @@ Do not require `./scripts/dev smoke`: this feature changes no frontend route, br
 - Feature-level validation passed on committed HEAD `81effcdd9b62252ca9874693a79552fad0bff30b`: `./scripts/dev check-rust && ./scripts/dev check`; 872 Rust tests passed, 3 ignored, and app, TypeScript, and secret gates passed.
 - LSP on all five changed paths reported 0 diagnostics, and pi-lens reported no issues.
 - The fresh feature review verdict was Clear/Accept. It reported no CRITICAL, HIGH, MEDIUM, or NITPICK findings; the test portfolio passed and project fit conforms. No CI repair rounds occurred.
-- The feature is ready for final publication. The PR is ready for publication and remains `Not published`; the merge ref remains `Not merged`. No PR URL or merge ref is recorded.
+- The feature is ready for final publication. PR <https://github.com/JG1995/fm-valuescout/pull/147> is ready for publication; the merge ref remains `Not merged`.
 - JAY-68 remains the deferred Linear follow-up. No speedup claim is made without equivalent measurements.
 
 ## Documentation impact
