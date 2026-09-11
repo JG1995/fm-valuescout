@@ -6,6 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-11
+
+### Added
+
+- Settings can now index one local FM graphics root and show pack-supplied player portraits and club logos across Player Profiles, Search, Squad, and My Club. Large packs rebuild in the background, and images load only when needed.
+- Settings now provides one confirmed managed-club action that applies Wonderkid Mentality, eligible player CA, and staff CA boosts from one **Load Data** scan.
+
+### Changed
+
+- Suggested Training now limits each developing player's recommended focus to the Physical, Technical, or Mental category for their age.
+- **Load Data** no longer retains obsolete accepted-player cap behavior. New scans process all supported players and avoid redundant dump validation and snapshot cleanup while retaining atomic publication and history.
+- The FM bridge now uses lower-overhead memory reads and dump writes and checks for **Load Data** requests more often.
+- Player boosts now reconcile derived data only for the edited player instead of validating unrelated snapshot rows.
+- New **Load Data** scans store exact club identities for graphics. Existing snapshots remain readable but require a fresh scan before club logos can appear.
+
+### Fixed
+
+- Local graphics now refresh when background indexing finishes, load through the packaged Windows protocol, discover both `config.xml` and `_config.xml`, support `r-<uid>` newgen portraits, and preserve fallback club identities for logos.
+
 ## [0.18.1] - 2026-09-08
 
 ### Added
