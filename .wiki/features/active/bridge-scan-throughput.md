@@ -172,7 +172,7 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 #### Commit 2 — Pin scalar memory reads
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `perf(memory-read): pin scalar read buffers`
 
@@ -230,7 +230,7 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 #### Commit 3 — Batch dump writer flushes
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `perf(dump): batch streaming flushes`
 
@@ -348,19 +348,19 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 **PR:** PR 1 — Improve bridge scan throughput
 
-**Commit:** Commit 2 — Pin scalar memory reads
+**Commit:** Commit 3 — Batch dump writer flushes
 
 ### RED or removal proof
 
-Add a Windows-only current-process scalar-read test whose warmed repeated-read loop fails while `TryRead` allocates `new byte[destination.Length]`.
+Rewrite the existing 5,000-player tracking-stream test so per-record flushing fails its substantially-fewer-writes assertion while exact count and bounded chunks remain required.
 
 ### Expected outcome
 
-`WindowsMemoryReader.TryRead` reads directly into the caller span without managed allocation while preserving exact native bytes-read and complete-read semantics.
+Player and staff records flush only after the fixed 64 KiB pending-byte threshold while cancellation, valid schema-v9 output, final flushing, and atomic replacement remain unchanged.
 
 ### Explicit exclusions
 
-`IMemoryReader` redesign, block-read changes, memory writes, array pooling, dependencies, benchmark tooling, layout changes, and extraction changes.
+Removing intermediate flushing, configurable thresholds, output-schema changes, complete-document buffering, serializer replacement, protocol changes, and cancellation or replacement redesign.
 
 ## Discoveries and replanning
 
@@ -372,6 +372,7 @@ Add a Windows-only current-process scalar-read test whose warmed repeated-read l
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Improve bridge scan throughput | Commit 1 — Record the approved feature plan | a34a314bc8c666be67820f9282b50974b19c0771 | Recorded the accepted schema-2 JAY-65 ledger and its sole TODO activation link. | `ledger_state.py` runnable; exact-path and staged diff checks clean; pre-commit fast gate passed. | Not applicable | Clear | 0 | None. |
+| PR 1 — Improve bridge scan throughput | Commit 2 — Pin scalar memory reads | 000a00b77a40fdedfb0baccfd2300ec77cddd744 | Pinned scalar caller spans at the existing native read boundary and added a Windows current-process value and allocation proof. | `./scripts/dev bridge-test`: 219 passed, 4 skipped on Linux; `./scripts/dev check`: passed; staged diff check and C# diagnostics clean. | Pass | Clear | 0 | Native proof is skipped locally and runs in Windows CI. |
 
 ## Final validation
 

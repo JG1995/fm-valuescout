@@ -111,10 +111,10 @@ public sealed class DumpWriterStreamingTests
         tracking.Flush();
 
         // One-shot Serialize-to-string then a single Write is one huge chunk and one call.
-        // Per-player Utf8JsonWriter.Flush produces many small writes.
+        // A per-player flush would produce nearly as many writes as records.
         Assert.True(
-            tracking.WriteCallCount >= 5_000,
-            $"expected at least one flush write per player, got WriteCallCount={tracking.WriteCallCount}");
+            tracking.WriteCallCount < 500,
+            $"expected substantially fewer writes than players, got WriteCallCount={tracking.WriteCallCount}");
         Assert.True(
             tracking.MaxWriteBytes < 256 * 1024,
             $"expected streamed writes under 256 KiB, got max write {tracking.MaxWriteBytes} bytes");
