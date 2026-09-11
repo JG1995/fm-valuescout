@@ -809,7 +809,7 @@ mod tests {
             };
             http::Request::builder()
                 .method(http::Method::GET)
-                .uri(format!("http://graphics.localhost/0/{kind}/{uid}"))
+                .uri(format!("graphics://localhost/0/{kind}/{uid}"))
                 .body(Vec::new())
                 .expect("calibration request is valid")
         };
@@ -1057,6 +1057,24 @@ mod tests {
     }
 
     #[test]
+    fn registered_protocol_request_returns_mapped_image() {
+        let root = root_with_image("portrait.png", 101, b"\x89PNG\r\n\x1a\n");
+        let runtime = test_runtime_with_root(Some(root.path().to_path_buf()));
+        assert!(runtime.scan_reserved(0, Some(root.path().to_path_buf())));
+
+        let request = http::Request::builder()
+            .method(http::Method::GET)
+            .uri("graphics://localhost/0/personPortrait/101")
+            .body(Vec::new())
+            .unwrap();
+        let response = graphics_protocol_response(request, &runtime);
+
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(response.body(), b"\x89PNG\r\n\x1a\n");
+        assert_eq!(response.headers()[http::header::CONTENT_TYPE], "image/png");
+    }
+
+    #[test]
     fn stale_generation_protocol_response_is_bounded_not_found() {
         let first = root_with_image("first.png", 101, b"first");
         let second = tempfile::tempdir().unwrap();
@@ -1069,7 +1087,7 @@ mod tests {
 
         let request = http::Request::builder()
             .method(http::Method::GET)
-            .uri("http://graphics.localhost/0/personPortrait/101")
+            .uri("graphics://localhost/0/personPortrait/101")
             .body(Vec::new())
             .unwrap();
         let response = graphics_protocol_response(request, &runtime);
