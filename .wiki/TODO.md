@@ -52,11 +52,13 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- **[Production-scale FM graphics](./features/active/production-scale-fm-graphics.md)** — scale local graphics indexing for representative Sortitoutsi facepacks, move image delivery to a bounded generation/UID custom protocol, and calibrate final production limits from measured representative-pack evidence with recorded host/OS/filesystem context (Linear JAY-64).
-
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
+
+## Recently completed
+
+- **[Production-scale FM graphics](./features/completed/production-scale-fm-graphics.md)** — scaled local graphics indexing for representative Sortitoutsi facepacks, moved image delivery to a bounded generation/UID custom protocol, and calibrated final production limits from measured representative-pack evidence (Linear JAY-64).
 
 ## Completed
 

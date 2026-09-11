@@ -22,7 +22,7 @@ Register one asynchronous `graphics` Tauri custom protocol. It accepts only a `G
 http://graphics.localhost/<generation>/<kind>/<uid>
 ```
 
-`generation` is the committed graphics generation. `kind` is one closed graphics kind. `uid` is a positive decimal UID. The handler rejects every other host, method, segment shape, query, fragment, kind, UID, stale generation, missing mapping, or failed image read.
+`generation` is the committed graphics generation. `kind` is one closed graphics kind. `uid` is a positive decimal UID. The authority has no explicit port; the handler rejects every explicit port and every other host, method, segment shape, query, kind, UID, stale generation, missing mapping, or failed image read. URI fragments are browser-side and are not transmitted to the handler; they are outside the handler grammar, not handler-rejected input.
 
 The handler retrieves the existing Rust-owned `GraphicsRuntime`. It does not open a root, accept a path, create a second cache, or cross invoke. It returns only validated raw PNG, JPEG, or WebP bytes with explicit MIME, `X-Content-Type-Options: nosniff`, and `Cache-Control: no-store` headers. Runtime cache bounds remain the owner of image-byte reuse.
 
@@ -30,7 +30,7 @@ React uses one shared graphics image component. It builds only the closed protoc
 
 This decision narrowly amends [ADR-0014](./0014-rust-backend-ipc-boundary.md): `invoke` remains the sole production request/response boundary for product DTOs, status, and mutations. The `graphics` protocol is the sole exception for local graphics raw image bytes. It is not an HTTP server or a general file-access surface.
 
-JAY-64 first registers and proves this closed protocol while `resolve_graphics` remains available. Its next atomic migration moves every consumer to the shared component, then removes `resolve_graphics`, byte-array result types, result Query keys/options, resolve mocks, and route-local base64 data URL conversion together. Packet 9 audits every remaining image flow and removes `data:` from image CSP only if none requires it; otherwise, it retains `data:`. The custom protocol origin allowance remains exact and narrow. The developer waived manual native Windows Tauri custom-protocol/CSP proof. This changes validation evidence only; it does not change the closed request grammar, narrow CSP, or filesystem-security invariants.
+JAY-64 implemented this closed protocol, migrated every graphics consumer to the shared component, and removed `resolve_graphics`, byte-array result types, result Query keys/options, resolve mocks, and route-local base64 data URL conversion. Bundled nationality flags still require `data:` CSP; the custom protocol origin allowance remains exact and narrow. The developer waived manual native Windows Tauri custom-protocol/CSP proof. This changes validation evidence only; it does not change the closed request grammar, narrow CSP, or filesystem-security invariants.
 
 ## Alternatives considered
 
@@ -61,16 +61,15 @@ Persisted derived data could avoid a scan after startup. It adds invalidation, d
 - The developer-approved validation gap leaves native Windows custom-protocol registration and CSP unproven. Unit parser/response tests, compilation, existing automated Linux/Windows Rust checks, frontend tests, and `./scripts/dev smoke` still run; smoke is Chromium-stub evidence and does not prove native Windows custom-protocol registration or CSP.
 - Custom protocol request validation and error response tests become part of the graphics trust-boundary portfolio.
 
-### Follow-up
+### Outcome
 
-- JAY-64 first implements and validates this protocol while retaining the existing resolve IPC path, then migrates all consumers and removes that path atomically.
-- The implementation records final production limits only after path-free representative-pack calibration with no truncation. The local host-aware harness records exact host/OS/filesystem context and does not label WSL timing or memory data as native Windows performance.
+- JAY-64 completed the protocol migration and calibration. The final limits come from a path-free representative-pack run with no truncation. The host-aware harness records exact host/OS/filesystem context and does not label WSL timing or memory data as native Windows performance.
+- The final implementation uses a serial background worker, no-follow capability scanning, generation-safe lookup, bounded image caches, and raw custom-protocol bytes without image-byte IPC or base64.
 
 ## Related work
 
-- Feature plan: [Production-scale FM graphics](../features/active/production-scale-fm-graphics.md)
+- Feature record: [Production-scale FM graphics](../features/completed/production-scale-fm-graphics.md)
 - Existing boundary: [ADR-0014](./0014-rust-backend-ipc-boundary.md), narrowly amended for local graphics raw image bytes only
 - Existing graphics delivery: [Local FM graphics](../features/completed/local-fm-graphics.md)
-- Commits: Pending JAY-64 delivery
+- Commits: `96b043fccdde188ff2226d2c181219520978fbd7`, `7055ed098d9ba16a8a24793576bd6ed1ec21ed0a`, `137515592727bed3b7e66f838bfb8a32644fd72c`, final correction `5cc2eb59e5f74498013494d7c507d6b537c9d3ce`
 - Supersedes: JSON number-array/base64 data URL delivery for local graphics
-- Directory index: Deliberately unchanged because this bounded JAY-64 replan permits only the active ledger, the JAY-64 Active entry in `.wiki/TODO.md`, and this ADR.
