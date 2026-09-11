@@ -85,7 +85,7 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** <https://github.com/JG1995/fm-valuescout/pull/148>
 
 **Merge ref:** Not merged
 
