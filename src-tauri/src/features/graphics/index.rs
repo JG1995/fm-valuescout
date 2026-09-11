@@ -109,6 +109,8 @@ pub struct GraphicsIndex {
     limits: Limits,
     #[cfg(test)]
     source_directory_enumerations: usize,
+    #[cfg(test)]
+    source_probe_comparisons: usize,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ImageResult {
@@ -138,6 +140,8 @@ impl GraphicsIndex {
             limits: PRODUCTION_LIMITS,
             #[cfg(test)]
             source_directory_enumerations: 0,
+            #[cfg(test)]
+            source_probe_comparisons: 0,
         }
     }
 
@@ -162,6 +166,8 @@ impl GraphicsIndex {
                     limits,
                     #[cfg(test)]
                     source_directory_enumerations: 0,
+                    #[cfg(test)]
+                    source_probe_comparisons: 0,
                 }
             }
         };
@@ -184,6 +190,8 @@ impl GraphicsIndex {
                 limits,
                 #[cfg(test)]
                 source_directory_enumerations: 0,
+                #[cfg(test)]
+                source_probe_comparisons: 0,
             };
         }
         let mut configs = state.configs.into_vec();
@@ -196,6 +204,8 @@ impl GraphicsIndex {
             limits,
             #[cfg(test)]
             source_directory_enumerations: 0,
+            #[cfg(test)]
+            source_probe_comparisons: 0,
         };
         let mut parser_bytes = 0;
         let mut parser_records = 0;
@@ -263,6 +273,11 @@ impl GraphicsIndex {
     #[allow(dead_code)]
     fn source_directory_enumerations(&self) -> usize {
         self.source_directory_enumerations
+    }
+
+    #[cfg(test)]
+    fn source_probe_comparisons(&self) -> usize {
+        self.source_probe_comparisons
     }
     #[allow(dead_code)]
     pub(crate) fn calibration_requests(&self) -> Vec<(GraphicsKind, u32)> {
@@ -694,6 +709,17 @@ fn validate_config_sources(
                 continue;
             }
         };
+        let mut probes = grouped[group_start..group_end]
+            .iter()
+            .flat_map(|(_, ordinal)| {
+                candidates[*ordinal]
+                    .names
+                    .iter()
+                    .enumerate()
+                    .map(|(probe, name)| (name.clone(), *ordinal, probe))
+            })
+            .collect::<Vec<_>>();
+        probes.sort_unstable_by(|left, right| left.0.cmp(&right.0));
         for entry in entries.flatten() {
             let Ok(file_type) = entry.file_type() else {
                 continue;
@@ -702,18 +728,23 @@ fn validate_config_sources(
                 continue;
             }
             let name = entry.file_name().to_string_lossy().into_owned();
-            for (_, ordinal) in &grouped[group_start..group_end] {
-                let matches = candidates[*ordinal]
-                    .names
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(probe, candidate_name)| {
-                        (candidate_name == &name).then_some(probe)
-                    })
-                    .collect::<Vec<_>>();
-                for probe in matches {
-                    candidates[*ordinal].valid[probe] = true;
+            let lower = probes.partition_point(|probe| {
+                #[cfg(test)]
+                {
+                    index.source_probe_comparisons += 1;
                 }
+                probe.0.as_str() < name.as_str()
+            });
+            let upper = lower
+                + probes[lower..].partition_point(|probe| {
+                    #[cfg(test)]
+                    {
+                        index.source_probe_comparisons += 1;
+                    }
+                    probe.0.as_str() == name.as_str()
+                });
+            for (_, ordinal, probe) in &probes[lower..upper] {
+                candidates[*ordinal].valid[*probe] = true;
             }
         }
         group_start = group_end;
@@ -1016,6 +1047,33 @@ mod tests {
                 .path
                 .last(),
             Some(&"one.jpeg".to_string())
+        );
+    }
+
+    #[test]
+    fn grouped_probe_lookup_bounds_filename_comparisons() {
+        const RECORDS: usize = 512;
+        let d = tempdir().unwrap();
+        fs::create_dir(d.path().join("faces")).unwrap();
+        let mut config = String::from("<root>");
+        for uid in 1..=RECORDS {
+            let name = format!("face-{uid}.png");
+            png(&d.path().join("faces").join(&name));
+            config.push_str(&format!(
+                r#"<record from="faces/{name}" to="graphics/pictures/person/{uid}/portrait"/>"#
+            ));
+        }
+        config.push_str("</root>");
+        fs::write(d.path().join("config.xml"), config).unwrap();
+
+        let index = GraphicsIndex::scan(d.path());
+
+        assert_eq!(index.people_len(), RECORDS);
+        assert_eq!(index.source_directory_enumerations(), 1);
+        assert!(
+            index.source_probe_comparisons() < RECORDS * 40,
+            "probe comparisons were not logarithmically bounded: {}",
+            index.source_probe_comparisons()
         );
     }
 
