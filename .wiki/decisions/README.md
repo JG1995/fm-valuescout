@@ -42,6 +42,7 @@ Use a short, numbered filename such as `0001-decision-title.md`.
 | [0026](./0026-eager-current-potential-scoring.md) | Eager current-snapshot potential scoring (superseded by ADR-0028) |
 | [0027](./0027-scoped-potential-read-validation.md) | Scoped potential read validation (normalized-row scope superseded by ADR-0028) |
 | [0028](./0028-compact-current-snapshot-metrics.md) | Compact current-snapshot player and staff metrics with a fresh database generation |
+| [0029](./0029-local-graphics-custom-protocol.md) | Local graphics custom protocol |
 
 ## ADR format
 

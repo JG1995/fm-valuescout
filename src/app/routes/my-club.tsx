@@ -24,11 +24,7 @@ import type {
   ClubDnaUpsertResult,
 } from "@/features/club-dna/types/club-dna";
 import { SquadCsvImportActions } from "@/features/csv-import/components/squad-csv-import-actions";
-import {
-  graphicsResultQueryOptions,
-  graphicsStatusQueryOptions,
-} from "@/features/graphics/api/graphics-query-options";
-import type { GraphicsResult } from "@/features/graphics/types/graphics";
+import { GraphicsImage } from "@/features/graphics/components/graphics-image";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import {
   managedClubOptionsQueryOptions,
@@ -117,13 +113,6 @@ type SquadBoostMutationVariables = {
   onProgress: (progress: SquadPlayerBoostProgress) => void;
 };
 
-function graphicsImageSource(result: GraphicsResult | undefined) {
-  if (result?.status !== "available") return undefined;
-  let binary = "";
-  for (const byte of result.bytes) binary += String.fromCharCode(byte);
-  return `data:${result.mime};base64,${btoa(binary)}`;
-}
-
 function ManagedClubLogo({
   clubUid,
   managedClubStatus,
@@ -131,26 +120,22 @@ function ManagedClubLogo({
   clubUid: number | null;
   managedClubStatus: ManagedClubStatus["status"];
 }) {
-  const { data: status } = useQuery(graphicsStatusQueryOptions);
-  const result = useQuery({
-    ...graphicsResultQueryOptions(
-      status?.generation ?? 0,
-      "clubLogo",
-      clubUid ?? 0,
-    ),
-    enabled:
-      managedClubStatus === "available" &&
-      status?.selected === true &&
-      (clubUid ?? 0) > 0,
-  });
-  const source = graphicsImageSource(result.data);
-
-  return source ? (
-    <img
-      src={source}
-      alt=""
-      aria-hidden="true"
-      className="size-6 shrink-0 object-contain"
+  return managedClubStatus === "available" ? (
+    <GraphicsImage
+      kind="clubLogo"
+      uid={clubUid ?? 0}
+      slot={{
+        alt: "",
+        ariaHidden: true,
+        className: "size-6 shrink-0 object-contain",
+        fallback: (
+          <Shield
+            aria-hidden="true"
+            className="size-6 shrink-0 text-on-surface-variant"
+            strokeWidth={1.5}
+          />
+        ),
+      }}
     />
   ) : (
     <Shield
@@ -168,31 +153,21 @@ function SquadIdentityGraphics({
   player: SquadPlayer | undefined;
   kind: "portrait" | "crest";
 }) {
-  const { data: status } = useQuery(graphicsStatusQueryOptions);
-  const result = useQuery({
-    ...graphicsResultQueryOptions(
-      status?.generation ?? 0,
-      kind === "portrait" ? "personPortrait" : "clubLogo",
-      kind === "portrait" ? (player?.uid ?? 0) : (player?.currentClubUid ?? 0),
-    ),
-    enabled:
-      status?.selected === true &&
-      (kind === "portrait"
-        ? (player?.uid ?? 0)
-        : (player?.currentClubUid ?? 0)) > 0,
-  });
-  const source = graphicsImageSource(result.data);
-  return source ? (
-    <img
-      src={source}
-      alt=""
-      className={
-        kind === "portrait"
-          ? "size-7 rounded-sm object-contain"
-          : "size-3 object-contain"
+  return (
+    <GraphicsImage
+      kind={kind === "portrait" ? "personPortrait" : "clubLogo"}
+      uid={
+        kind === "portrait" ? (player?.uid ?? 0) : (player?.currentClubUid ?? 0)
       }
+      slot={{
+        alt: "",
+        className:
+          kind === "portrait"
+            ? "size-7 rounded-sm object-contain"
+            : "size-3 object-contain",
+      }}
     />
-  ) : null;
+  );
 }
 
 export const Route = createFileRoute("/my-club")({

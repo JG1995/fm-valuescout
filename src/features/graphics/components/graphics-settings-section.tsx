@@ -38,18 +38,6 @@ function useGraphicsMutation(
         return;
       }
 
-      queryClient.removeQueries({
-        queryKey: graphicsKeys.results(),
-        predicate: (query) => {
-          const generation = (
-            query.queryKey[2] as { generation?: number } | undefined
-          )?.generation;
-          return (
-            generation !== undefined &&
-            generation <= (context?.previousGeneration ?? status.generation)
-          );
-        },
-      });
       queryClient.setQueryData(graphicsKeys.status(), status);
       void queryClient.invalidateQueries({ queryKey: graphicsKeys.status() });
       void queryClient.invalidateQueries({ queryKey: graphicsKeys.all });

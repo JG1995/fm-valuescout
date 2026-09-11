@@ -56,6 +56,10 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
 
+## Recently completed
+
+- **[Production-scale FM graphics](./features/completed/production-scale-fm-graphics.md)** — scaled local graphics indexing for representative Sortitoutsi facepacks, moved image delivery to a bounded generation/UID custom protocol, and calibrated final production limits from measured representative-pack evidence (Linear JAY-64).
+
 ## Completed
 
 - **[Local FM graphics](./features/completed/local-fm-graphics.md)** — Rust-owned local FM26 graphics-root indexing, player portraits, and UID-backed club logos without managing graphics packs (Linear JAY-63).

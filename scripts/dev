@@ -7,7 +7,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|inspect-ui|mutate|bridge-install|package-windows|release-metadata|dependency-automerge-policy} [args...]
+Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|graphics-calibration|bridge-test|format|secrets|smoke|inspect-ui|mutate|bridge-install|package-windows|release-metadata|dependency-automerge-policy} [args...]
 
 Commands:
   test [args...]    Run vitest run (full suite or forwarded file patterns and flags).
@@ -15,6 +15,9 @@ Commands:
   check-app         Run Biome, TypeScript, and full-tree secretlint.
   check-fast        Run Biome, TypeScript, and secretlint on staged files (pre-commit fast path).
   check-rust        Run cargo fmt --check, clippy, and test in src-tauri/.
+  graphics-calibration
+                    Run the ignored private graphics calibration harness. Requires
+                    FM_VALUESCOUT_GRAPHICS_ROOT; output is one path-free JSON report.
   bridge-test       Run the C# bridge unit tests (requires the .NET 6 SDK).
   format [paths...] Apply Biome lint/format fixes, then cargo fmt in src-tauri/.
                     Optional paths forward to Biome only; cargo fmt always runs.
@@ -176,6 +179,27 @@ run_check_rust() {
   run_rust_quality_gates
 
   printf 'Rust quality checks passed.\n'
+}
+
+run_graphics_calibration() {
+  require_no_arguments graphics-calibration "$@"
+  DEV_COMMAND_LABEL=graphics-calibration
+
+  local root="${FM_VALUESCOUT_GRAPHICS_ROOT:-}"
+  if [[ -z "$root" || ! -d "$root" || ! -r "$root" ]]; then
+    printf 'graphics-calibration requires a readable private graphics root.\n' >&2
+    exit 66
+  fi
+
+  local output report
+  output="$(cd "$repo_root/src-tauri" && CARGO_TARGET_DIR="$repo_root/src-tauri/target" \
+    cargo test --quiet features::graphics::runtime::tests::graphics_calibration_harness -- --ignored --exact --nocapture 2>/dev/null)"
+  report="$(printf '%s\n' "$output" | awk '/^\{/{line=$0} END{print line}')"
+  if [[ -z "$report" ]]; then
+    printf 'graphics-calibration did not produce a report.\n' >&2
+    exit 66
+  fi
+  printf '%s\n' "$report"
 }
 
 run_bridge_test() {
@@ -493,6 +517,9 @@ case "$command" in
     ;;
   check-rust)
     run_check_rust "$@"
+    ;;
+  graphics-calibration)
+    run_graphics_calibration "$@"
     ;;
   bridge-test)
     run_bridge_test "$@"

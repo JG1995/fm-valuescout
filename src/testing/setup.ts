@@ -4,7 +4,6 @@ import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 import {
   resetGraphicsIpcMock,
-  resolveGraphicsIpcMock,
   resolveGraphicsMutationIpcMock,
   resolveGraphicsStatusIpcMock,
 } from "@/features/graphics/api/graphics-ipc-mock";
@@ -145,10 +144,6 @@ function registerIpcMocks() {
       cmd === "rescan_graphics"
     ) {
       return resolveGraphicsMutationIpcMock(cmd);
-    }
-
-    if (cmd === "resolve_graphics") {
-      return resolveGraphicsIpcMock(args);
     }
 
     if (cmd === "get_bridge_status") {

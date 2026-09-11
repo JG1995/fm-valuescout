@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -9,13 +9,15 @@ use tauri_plugin_dialog::DialogExt;
 
 use super::index::{GraphicsIndex, GraphicsKind, GraphicsSummary, ImageResult};
 
-const CACHE_LIMIT: usize = 256;
+const CACHE_LIMIT: usize = 512;
+const AVAILABLE_CACHE_BYTE_LIMIT: usize = 64 * 1024 * 1024;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphicsStatus {
     pub generation: u64,
     pub selected: bool,
+    pub rebuilding: bool,
     pub candidate: CandidateState,
     pub summary: GraphicsSummaryDto,
 }
@@ -78,7 +80,7 @@ impl From<&GraphicsSummary> for GraphicsSummaryDto {
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", tag = "status")]
-pub enum ResolveResult {
+pub enum ImageLookupResult {
     Available { bytes: Vec<u8>, mime: &'static str },
     Missing,
 }
@@ -88,6 +90,7 @@ struct Lru {
     missing: HashMap<u32, ()>,
     order_available: VecDeque<u32>,
     order_missing: VecDeque<u32>,
+    available_bytes: usize,
 }
 impl Lru {
     fn new() -> Self {
@@ -96,6 +99,7 @@ impl Lru {
             missing: HashMap::new(),
             order_available: VecDeque::new(),
             order_missing: VecDeque::new(),
+            available_bytes: 0,
         }
     }
     fn clear(&mut self) {
@@ -115,17 +119,27 @@ impl Lru {
         None
     }
     fn put(&mut self, uid: u32, value: Option<ImageResult>) {
-        self.available.remove(&uid);
+        if let Some(previous) = self.available.remove(&uid) {
+            self.available_bytes -= previous.bytes.len();
+        }
         self.missing.remove(&uid);
         self.order_available.retain(|x| *x != uid);
         self.order_missing.retain(|x| *x != uid);
         match value {
             Some(v) => {
+                if v.bytes.len() > AVAILABLE_CACHE_BYTE_LIMIT {
+                    return;
+                }
+                self.available_bytes += v.bytes.len();
                 self.available.insert(uid, v);
                 self.order_available.push_back(uid);
-                while self.order_available.len() > CACHE_LIMIT {
+                while self.order_available.len() > CACHE_LIMIT
+                    || self.available_bytes > AVAILABLE_CACHE_BYTE_LIMIT
+                {
                     if let Some(x) = self.order_available.pop_front() {
-                        self.available.remove(&x);
+                        if let Some(evicted) = self.available.remove(&x) {
+                            self.available_bytes -= evicted.bytes.len();
+                        }
                     }
                 }
             }
@@ -146,6 +160,14 @@ struct Target {
     generation: u64,
     root: Option<PathBuf>,
 }
+struct WorkerState {
+    stopping: bool,
+    pending: Option<Target>,
+}
+struct WorkerControl {
+    state: Mutex<WorkerState>,
+    wake: Condvar,
+}
 struct State {
     next_reservation: u64,
     committed: Target,
@@ -159,9 +181,23 @@ struct State {
 type Scanner = Arc<dyn Fn(Option<&std::path::Path>) -> GraphicsIndex + Send + Sync>;
 
 pub struct GraphicsRuntime {
-    state: Mutex<State>,
-    transition_gate: Mutex<()>,
+    state: Arc<Mutex<State>>,
+    transition_gate: Arc<Mutex<()>>,
     scanner: Scanner,
+    worker: Arc<WorkerControl>,
+}
+
+impl Drop for GraphicsRuntime {
+    fn drop(&mut self) {
+        let mut w = self
+            .worker
+            .state
+            .lock()
+            .expect("graphics worker state poisoned");
+        w.stopping = true;
+        w.pending = None;
+        self.worker.wake.notify_one();
+    }
 }
 
 impl GraphicsRuntime {
@@ -192,31 +228,117 @@ impl GraphicsRuntime {
         scanner: Scanner,
     ) -> Self {
         Self {
-            state: Mutex::new(State {
+            state: Arc::new(Mutex::new(State {
                 next_reservation: 0,
                 committed: Target {
                     generation: 0,
-                    root,
+                    root: root.clone(),
                 },
                 index: None,
                 installed_generation: None,
-                in_flight: None,
+                in_flight: root.as_ref().map(|_| Target {
+                    generation: 0,
+                    root: root.clone(),
+                }),
                 summary: GraphicsSummaryDto::default(),
                 candidate,
                 caches: [Lru::new(), Lru::new(), Lru::new()],
-            }),
-            transition_gate: Mutex::new(()),
+            })),
+            transition_gate: Arc::new(Mutex::new(())),
             scanner,
+            worker: Arc::new(WorkerControl {
+                state: Mutex::new(WorkerState {
+                    stopping: false,
+                    pending: None,
+                }),
+                wake: Condvar::new(),
+            }),
         }
     }
     fn state(&self) -> MutexGuard<'_, State> {
         self.state.lock().expect("graphics runtime state poisoned")
+    }
+    pub fn start_worker(&self) {
+        let state = Arc::clone(&self.state);
+        let gate = Arc::clone(&self.transition_gate);
+        let worker = Arc::clone(&self.worker);
+        let scanner = Arc::clone(&self.scanner);
+        let initial = {
+            let s = self.state();
+            s.committed.root.as_ref().map(|_| Target {
+                generation: s.committed.generation,
+                root: s.committed.root.clone(),
+            })
+        };
+        {
+            let mut w = worker.state.lock().expect("graphics worker state poisoned");
+            if w.pending.is_some() {
+                return;
+            }
+            w.pending = initial;
+            worker.wake.notify_one();
+        }
+        std::thread::spawn(move || loop {
+            let target = {
+                let mut w = worker.state.lock().expect("graphics worker state poisoned");
+                while !w.stopping && w.pending.is_none() {
+                    w = worker.wake.wait(w).expect("graphics worker wait poisoned");
+                }
+                if w.stopping {
+                    return;
+                }
+                w.pending.take().expect("pending target")
+            };
+            let index = scanner(target.root.as_deref());
+            let w = worker.state.lock().expect("graphics worker state poisoned");
+            if w.stopping {
+                return;
+            }
+            drop(w);
+            let _gate = gate.lock().expect("graphics transition gate poisoned");
+            let w = worker.state.lock().expect("graphics worker state poisoned");
+            if w.stopping {
+                return;
+            }
+            drop(w);
+            let mut s = state.lock().expect("graphics runtime state poisoned");
+            if s.committed.generation == target.generation && s.committed.root == target.root {
+                GraphicsRuntime::commit_locked(&mut s, target, Some(index));
+            }
+        });
+    }
+    pub fn enqueue(&self, target: (u64, Option<PathBuf>)) {
+        let mut w = self
+            .worker
+            .state
+            .lock()
+            .expect("graphics worker state poisoned");
+        if !w.stopping {
+            w.pending = Some(Target {
+                generation: target.0,
+                root: target.1,
+            });
+            self.worker.wake.notify_one();
+        }
+    }
+    fn wake_worker(&self) {
+        self.worker.wake.notify_one();
+    }
+    pub fn cancel_pending(&self) {
+        let mut w = self
+            .worker
+            .state
+            .lock()
+            .expect("graphics worker state poisoned");
+        w.pending = None;
+        self.wake_worker();
     }
     pub fn status(&self) -> GraphicsStatus {
         let s = self.state();
         GraphicsStatus {
             generation: s.committed.generation,
             selected: s.committed.root.is_some(),
+            rebuilding: s.in_flight.is_some(),
             candidate: s.candidate.clone(),
             summary: s.summary.clone(),
         }
@@ -300,10 +422,12 @@ impl GraphicsRuntime {
             },
             None,
         );
-        s.in_flight = Some(Target {
-            generation,
-            root: root.clone(),
-        });
+        if root.is_some() {
+            s.in_flight = Some(Target {
+                generation,
+                root: root.clone(),
+            });
+        }
         Ok(Some((generation, root)))
     }
     pub fn begin_rescan(
@@ -359,6 +483,7 @@ impl GraphicsRuntime {
         });
         Ok(Some((generation, root)))
     }
+    #[cfg(test)]
     pub fn complete_scan(&self, target: u64, root: Option<PathBuf>, index: GraphicsIndex) -> bool {
         let _gate = self
             .transition_gate
@@ -378,6 +503,7 @@ impl GraphicsRuntime {
         );
         true
     }
+    #[cfg(test)]
     pub fn scan_reserved(&self, target: u64, root: Option<PathBuf>) -> bool {
         self.scan_reserved_with(target, root, |root| {
             root.map(GraphicsIndex::scan)
@@ -387,6 +513,7 @@ impl GraphicsRuntime {
 
     /// Controlled scanner seam. Production callers use the filesystem-backed scanner above;
     /// tests supply a deterministic scanner to interleave completion and transitions.
+    #[cfg(test)]
     pub fn scan_reserved_with<F>(&self, target: u64, root: Option<PathBuf>, scan: F) -> bool
     where
         F: FnOnce(Option<&std::path::Path>) -> GraphicsIndex,
@@ -394,49 +521,74 @@ impl GraphicsRuntime {
         let index = scan(root.as_deref());
         self.complete_scan(target, root, index)
     }
-    pub fn resolve(&self, kind: GraphicsKind, uid: u32) -> ResolveResult {
+    #[cfg(test)]
+    pub fn resolve(&self, kind: GraphicsKind, uid: u32) -> ImageLookupResult {
+        self.resolve_with_reader(None, kind, uid, |locator| locator.read())
+    }
+
+    pub fn resolve_at_generation(
+        &self,
+        generation: u64,
+        kind: GraphicsKind,
+        uid: u32,
+    ) -> ImageLookupResult {
+        self.resolve_with_reader(Some(generation), kind, uid, |locator| locator.read())
+    }
+
+    fn resolve_with_reader<F>(
+        &self,
+        expected_generation: Option<u64>,
+        kind: GraphicsKind,
+        uid: u32,
+        read: F,
+    ) -> ImageLookupResult
+    where
+        F: FnOnce(super::index::ImageLocator) -> Option<ImageResult>,
+    {
         if uid == 0 {
-            return ResolveResult::Missing;
+            return ImageLookupResult::Missing;
         }
-        let scan = {
+        let (generation, cached, locator) = {
             let mut s = self.state();
-            if let Some(v) = s.caches[kind as usize].get(uid) {
-                return v
-                    .map(|x| ResolveResult::Available {
-                        bytes: x.bytes,
-                        mime: x.mime,
-                    })
-                    .unwrap_or(ResolveResult::Missing);
+            if s.installed_generation != Some(s.committed.generation)
+                || expected_generation
+                    .is_some_and(|generation| generation != s.committed.generation)
+            {
+                return ImageLookupResult::Missing;
             }
-            if s.index.is_some() {
-                None
-            } else if s.committed.root.is_some() && s.in_flight.is_none() {
-                let target = Target {
-                    generation: s.committed.generation,
-                    root: s.committed.root.clone(),
-                };
-                s.in_flight = Some(Target {
-                    generation: target.generation,
-                    root: target.root.clone(),
-                });
-                Some(target)
+            let cached = s.caches[kind as usize].get(uid);
+            let locator = if cached.is_none() {
+                s.index
+                    .as_ref()
+                    .and_then(|index| index.resolve_locator(kind, uid))
             } else {
                 None
-            }
+            };
+            (s.committed.generation, cached, locator)
         };
-        if let Some(target) = scan {
-            let index = (self.scanner)(target.root.as_deref());
-            self.complete_scan(target.generation, target.root, index);
+        if let Some(value) = cached {
+            return value
+                .map(|x| ImageLookupResult::Available {
+                    bytes: x.bytes,
+                    mime: x.mime,
+                })
+                .unwrap_or(ImageLookupResult::Missing);
         }
+        let value = locator.and_then(read);
         let mut s = self.state();
-        let value = s.index.as_ref().and_then(|i| i.resolve(kind, uid));
+        if s.committed.generation != generation
+            || s.installed_generation != Some(generation)
+            || expected_generation.is_some_and(|expected| expected != generation)
+        {
+            return ImageLookupResult::Missing;
+        }
         s.caches[kind as usize].put(uid, value.clone());
         value
-            .map(|x| ResolveResult::Available {
+            .map(|x| ImageLookupResult::Available {
                 bytes: x.bytes,
                 mime: x.mime,
             })
-            .unwrap_or(ResolveResult::Missing)
+            .unwrap_or(ImageLookupResult::Missing)
     }
 }
 
@@ -511,9 +663,12 @@ pub fn picker(app: &AppHandle) -> Result<Option<PathBuf>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::features::graphics::commands::GraphicsKindDto;
+    use crate::features::graphics::commands::{graphics_protocol_response, GraphicsKindDto};
+    use serde::Serialize;
     use std::sync::mpsc;
     use std::thread;
+    use std::time::Instant;
+    use tauri::http;
 
     fn root_with_image(name: &str, uid: u32, bytes: &[u8]) -> tempfile::TempDir {
         let root = tempfile::tempdir().unwrap();
@@ -526,6 +681,226 @@ mod tests {
         root
     }
 
+    #[derive(Serialize)]
+    struct CalibrationPhase {
+        count: usize,
+        elapsed_ms: u128,
+    }
+
+    #[derive(Serialize)]
+    struct CalibrationReport {
+        test: &'static str,
+        host: CalibrationHost,
+        phases: CalibrationPhases,
+        parser_bytes: u64,
+        parser_records: usize,
+        parser_attributes: usize,
+        source_directories: usize,
+        index: CalibrationIndex,
+        peak_working_set: CalibrationMemory,
+        image_sizes: CalibrationImageSizes,
+        first_image_ms: u128,
+        warm_image_ms: u128,
+    }
+
+    #[derive(Serialize)]
+    struct CalibrationHost {
+        os: &'static str,
+        architecture: &'static str,
+        execution_context: &'static str,
+        filesystem_context: &'static str,
+    }
+
+    #[derive(Serialize)]
+    struct CalibrationPhases {
+        discovery: CalibrationPhase,
+        config: CalibrationPhase,
+        source: CalibrationPhase,
+    }
+
+    #[derive(Serialize)]
+    struct CalibrationIndex {
+        configs: usize,
+        mappings: usize,
+        people: usize,
+        clubs: usize,
+        truncated: bool,
+    }
+
+    #[derive(Serialize)]
+    struct CalibrationMemory {
+        method: &'static str,
+        result_bytes: Option<u64>,
+    }
+
+    #[derive(Serialize)]
+    struct CalibrationImageSizes {
+        method: &'static str,
+        sample_limit: usize,
+        count: usize,
+        min_bytes: u64,
+        p50_bytes: u64,
+        p95_bytes: u64,
+        max_bytes: u64,
+        total_bytes: u64,
+    }
+
+    fn peak_working_set() -> CalibrationMemory {
+        #[cfg(target_os = "linux")]
+        {
+            let result_bytes = std::fs::read_to_string("/proc/self/status")
+                .ok()
+                .and_then(|status| {
+                    status
+                        .lines()
+                        .find(|line| line.starts_with("VmHWM:"))
+                        .map(str::to_owned)
+                })
+                .and_then(|line| {
+                    line.split_whitespace()
+                        .nth(1)
+                        .and_then(|value| value.parse::<u64>().ok())
+                })
+                .map(|kilobytes| kilobytes * 1024);
+            CalibrationMemory {
+                method: "linux-proc-vmHWM",
+                result_bytes,
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            CalibrationMemory {
+                method: "unavailable",
+                result_bytes: None,
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn graphics_calibration_harness() {
+        let root = std::env::var_os("FM_VALUESCOUT_GRAPHICS_ROOT")
+            .filter(|value| !value.is_empty())
+            .map(std::path::PathBuf::from)
+            .filter(|path| path.is_dir() && std::fs::read_dir(path).is_ok())
+            .expect("private graphics root is missing or unreadable");
+        let index = GraphicsIndex::scan_with_limits(
+            &root,
+            super::super::index::Limits {
+                entries: 4_000_000,
+                mappings: 2_000_000,
+                ..super::super::index::PRODUCTION_LIMITS
+            },
+        );
+        let summary = index.summary().clone();
+        assert!(!summary.truncated, "representative calibration truncated");
+        let metrics = index.metrics().clone();
+        let people = index.people_len();
+        let clubs = index.clubs_len();
+        let requests = index.calibration_requests();
+        let runtime = test_runtime_with_root(Some(root.clone()));
+        assert!(runtime.complete_scan(0, Some(root.clone()), index));
+
+        let request = |kind: GraphicsKind, uid: u32| {
+            let kind = match kind {
+                GraphicsKind::PersonPortrait => "personPortrait",
+                GraphicsKind::ClubLogo => "clubLogo",
+                GraphicsKind::ClubIcon => "clubIcon",
+            };
+            http::Request::builder()
+                .method(http::Method::GET)
+                .uri(format!("http://graphics.localhost/0/{kind}/{uid}"))
+                .body(Vec::new())
+                .expect("calibration request is valid")
+        };
+        let (kind, uid) = requests
+            .first()
+            .copied()
+            .expect("private graphics root has no indexed image");
+        let cold_started = Instant::now();
+        let cold = graphics_protocol_response(request(kind, uid), &runtime);
+        assert_eq!(cold.status(), http::StatusCode::OK);
+        let cold_image_ms = cold_started.elapsed().as_millis();
+        let warm_started = Instant::now();
+        let warm = graphics_protocol_response(request(kind, uid), &runtime);
+        assert_eq!(warm.status(), http::StatusCode::OK);
+        let warm_image_ms = warm_started.elapsed().as_millis();
+        let sizes = metrics.successful_image_sizes;
+        let percentile = |percent: usize| {
+            sizes
+                .get(sizes.len().saturating_sub(1) * percent / 100)
+                .copied()
+                .unwrap_or(0)
+        };
+        let report = CalibrationReport {
+            test: "graphics_calibration_harness",
+            host: CalibrationHost {
+                os: std::env::consts::OS,
+                architecture: std::env::consts::ARCH,
+                execution_context: if cfg!(target_os = "windows") {
+                    "native-windows"
+                } else if std::env::var_os("WSL_INTEROP").is_some()
+                    || std::fs::read_to_string("/proc/version")
+                        .is_ok_and(|v| v.contains("Microsoft"))
+                {
+                    "wsl"
+                } else {
+                    "native-unix"
+                },
+                filesystem_context: if cfg!(target_os = "windows") {
+                    "windows-filesystem"
+                } else if root.to_string_lossy().starts_with("/mnt/") {
+                    "mounted-windows-filesystem"
+                } else {
+                    "native-unix-filesystem"
+                },
+            },
+            phases: CalibrationPhases {
+                discovery: CalibrationPhase {
+                    count: metrics.discovery_entries,
+                    elapsed_ms: metrics.discovery_elapsed_ms,
+                },
+                config: CalibrationPhase {
+                    count: summary.configs,
+                    elapsed_ms: metrics.parser_elapsed_ms,
+                },
+                source: CalibrationPhase {
+                    count: metrics.source_records,
+                    elapsed_ms: metrics.source_elapsed_ms,
+                },
+            },
+            parser_bytes: metrics.parser_bytes,
+            parser_records: metrics.parser_records,
+            parser_attributes: metrics.parser_attributes,
+            source_directories: metrics.source_directories,
+            index: CalibrationIndex {
+                configs: summary.configs,
+                mappings: summary.mappings,
+                people,
+                clubs,
+                truncated: summary.truncated,
+            },
+            peak_working_set: peak_working_set(),
+            image_sizes: CalibrationImageSizes {
+                method: "smallest-successful-source-metadata-lengths",
+                sample_limit: super::super::index::CALIBRATION_SAMPLE_LIMIT,
+                count: sizes.len(),
+                min_bytes: sizes.first().copied().unwrap_or(0),
+                p50_bytes: percentile(50),
+                p95_bytes: percentile(95),
+                max_bytes: sizes.last().copied().unwrap_or(0),
+                total_bytes: sizes.iter().sum(),
+            },
+            first_image_ms: cold_image_ms,
+            warm_image_ms,
+        };
+        let json = serde_json::to_string(&report).expect("calibration report serializes");
+        assert!(!json.contains(root.to_string_lossy().as_ref()));
+        assert!(!json.contains(std::path::MAIN_SEPARATOR));
+        assert!(!json.contains("graphics/") && !json.contains("/person/") && !json.contains("\\"));
+        println!("{json}");
+    }
+
     fn test_db() -> Mutex<Connection> {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE graphics_settings (id INTEGER PRIMARY KEY CHECK (id=1), root TEXT); INSERT INTO graphics_settings VALUES (1, NULL);").unwrap();
@@ -533,7 +908,7 @@ mod tests {
     }
     #[test]
     fn resolve_and_kind_dtos_are_pathless_and_closed() {
-        let available = serde_json::to_string(&ResolveResult::Available {
+        let available = serde_json::to_string(&ImageLookupResult::Available {
             bytes: vec![1, 2],
             mime: "image/png",
         })
@@ -543,7 +918,7 @@ mod tests {
             r#"{"status":"available","bytes":[1,2],"mime":"image/png"}"#
         );
         assert_eq!(
-            serde_json::to_string(&ResolveResult::Missing).unwrap(),
+            serde_json::to_string(&ImageLookupResult::Missing).unwrap(),
             r#"{"status":"missing"}"#
         );
         assert!(!available.contains("path"));
@@ -558,7 +933,7 @@ mod tests {
     fn every_kind_has_bounded_available_and_missing_lru_classes() {
         for _ in 0..3 {
             let mut c = Lru::new();
-            for uid in 1..=257 {
+            for uid in 1..=(CACHE_LIMIT as u32 + 1) {
                 c.put(
                     uid,
                     Some(ImageResult {
@@ -568,33 +943,86 @@ mod tests {
                 )
             }
             assert_eq!(c.available.len(), CACHE_LIMIT);
+            assert_eq!(c.available_bytes, CACHE_LIMIT);
             assert!(!c.available.contains_key(&1));
             let _ = c.get(2);
             c.put(
-                258,
+                CACHE_LIMIT as u32 + 2,
                 Some(ImageResult {
                     bytes: vec![1],
                     mime: "image/png",
                 }),
             );
+            assert_eq!(c.available_bytes, CACHE_LIMIT);
             assert!(c.available.contains_key(&2));
             assert!(!c.available.contains_key(&3));
-            for uid in 1..=257 {
+            for uid in 1..=(CACHE_LIMIT as u32 + 1) {
                 c.put(uid, None)
             }
             assert_eq!(c.missing.len(), CACHE_LIMIT);
             assert!(!c.missing.contains_key(&1));
             let _ = c.get(2);
-            c.put(258, None);
+            c.put(CACHE_LIMIT as u32 + 2, None);
+            assert_eq!(c.available_bytes, 0);
             assert!(c.missing.contains_key(&2));
             assert!(!c.missing.contains_key(&3));
         }
     }
     #[test]
+    fn available_cache_accounts_replacement_eviction_touch_and_clear_bytes() {
+        let mut c = Lru::new();
+        c.put(
+            1,
+            Some(ImageResult {
+                bytes: vec![1, 2, 3],
+                mime: "image/png",
+            }),
+        );
+        assert_eq!(c.available_bytes, 3);
+        c.put(
+            1,
+            Some(ImageResult {
+                bytes: vec![4, 5],
+                mime: "image/png",
+            }),
+        );
+        assert_eq!(c.available_bytes, 2);
+        assert!(matches!(c.get(1), Some(Some(_))));
+        assert_eq!(c.available_bytes, 2);
+        c.put(
+            2,
+            Some(ImageResult {
+                bytes: vec![6; AVAILABLE_CACHE_BYTE_LIMIT],
+                mime: "image/png",
+            }),
+        );
+        assert_eq!(c.available_bytes, AVAILABLE_CACHE_BYTE_LIMIT);
+        assert!(!c.available.contains_key(&1));
+        c.clear();
+        assert_eq!(c.available_bytes, 0);
+        assert!(c.available.is_empty());
+    }
+
+    #[test]
+    fn oversized_available_image_is_returned_but_not_cached() {
+        let mut c = Lru::new();
+        c.put(
+            1,
+            Some(ImageResult {
+                bytes: vec![1; AVAILABLE_CACHE_BYTE_LIMIT + 1],
+                mime: "image/png",
+            }),
+        );
+        assert!(c.available.is_empty());
+        assert_eq!(c.available_bytes, 0);
+    }
+
+    #[test]
     fn serialized_status_contains_no_filesystem_identity() {
         let status = GraphicsStatus {
             generation: 4,
             selected: true,
+            rebuilding: false,
             candidate: CandidateState {
                 available: false,
                 source: "absent",
@@ -605,6 +1033,50 @@ mod tests {
         assert!(!json.contains('/') && !json.contains('\\'));
         assert!(!json.contains("path"));
     }
+    #[test]
+    fn startup_with_persisted_root_reports_rebuilding_until_scan_completes() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = test_runtime_with_root(Some(root.path().to_path_buf()));
+
+        assert!(runtime.status().rebuilding);
+        assert!(runtime.complete_scan(0, Some(root.path().to_path_buf()), GraphicsIndex::empty()));
+        assert!(!runtime.status().rebuilding);
+    }
+
+    #[test]
+    fn clearing_root_does_not_report_a_rebuild_for_empty_target() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = test_runtime_with_root(Some(root.path().to_path_buf()));
+
+        runtime
+            .persist_transition_with(None, || Ok(true))
+            .expect("clear persists")
+            .expect("clear changes persisted root");
+        assert!(!runtime.status().selected);
+        assert!(!runtime.status().rebuilding);
+    }
+
+    #[test]
+    fn stale_generation_protocol_response_is_bounded_not_found() {
+        let first = root_with_image("first.png", 101, b"first");
+        let second = tempfile::tempdir().unwrap();
+        let runtime = test_runtime_with_root(Some(first.path().to_path_buf()));
+        assert!(runtime.scan_reserved(0, Some(first.path().to_path_buf()),));
+        runtime
+            .persist_transition_with(Some(second.path().to_path_buf()), || Ok(true))
+            .expect("replace persists")
+            .expect("replace changes persisted root");
+
+        let request = http::Request::builder()
+            .method(http::Method::GET)
+            .uri("http://graphics.localhost/0/personPortrait/101")
+            .body(Vec::new())
+            .unwrap();
+        let response = graphics_protocol_response(request, &runtime);
+        assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
+        assert!(response.body().is_empty());
+    }
+
     #[test]
     fn candidate_order_and_safe_absence() {
         let t = tempfile::tempdir().unwrap();
@@ -664,14 +1136,14 @@ mod tests {
         assert_eq!(runtime.status().generation, generation);
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Available {
+            ImageLookupResult::Available {
                 bytes: b"\x89PNG\r\n\x1a\nA".to_vec(),
                 mime: "image/png"
             }
         );
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 999),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
         let before = runtime.status();
         db.lock()
@@ -697,7 +1169,7 @@ mod tests {
         assert_eq!(runtime.status().selected, before.selected);
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Available {
+            ImageLookupResult::Available {
                 bytes: b"\x89PNG\r\n\x1a\nA".to_vec(),
                 mime: "image/png"
             }
@@ -724,11 +1196,15 @@ mod tests {
         assert!(runtime.scan_reserved(ag, ar));
         assert!(matches!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Available { .. }
+            ImageLookupResult::Available { .. }
         ));
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 999),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
+        );
+        assert_eq!(
+            runtime.state().caches[GraphicsKind::PersonPortrait as usize].available_bytes,
+            9
         );
         let (bg, br) = runtime
             .persist_transition_with(Some(b.path().to_path_buf()), || Ok(true))
@@ -736,12 +1212,16 @@ mod tests {
             .unwrap();
         assert!(runtime.scan_reserved(bg, br));
         assert_eq!(
+            runtime.state().caches[GraphicsKind::PersonPortrait as usize].available_bytes,
+            0
+        );
+        assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
         assert!(matches!(
             runtime.resolve(GraphicsKind::PersonPortrait, 202),
-            ResolveResult::Available { .. }
+            ImageLookupResult::Available { .. }
         ));
     }
 
@@ -763,11 +1243,49 @@ mod tests {
         assert_eq!(runtime.status().generation, bg);
         assert!(matches!(
             runtime.resolve(GraphicsKind::PersonPortrait, 202),
-            ResolveResult::Available { .. }
+            ImageLookupResult::Available { .. }
         ));
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
+        );
+    }
+
+    #[test]
+    fn blocked_image_read_releases_transition_gate_and_rejects_stale_result() {
+        let runtime = std::sync::Arc::new(test_runtime());
+        let a = root_with_image("a.png", 101, b"\x89PNG\r\n\x1a\nA");
+        let b = root_with_image("b.png", 101, b"\x89PNG\r\n\x1a\nB");
+        let db = test_db();
+        let (a_generation, a_root) = runtime
+            .persist_transition(&db, Some(a.path().to_path_buf()))
+            .unwrap()
+            .unwrap();
+        assert!(runtime.complete_scan(a_generation, a_root, GraphicsIndex::scan(a.path())));
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let reading = runtime.clone();
+        let handle = thread::spawn(move || {
+            reading.resolve_with_reader(None, GraphicsKind::PersonPortrait, 101, |locator| {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                locator.read()
+            })
+        });
+        started_rx.recv().unwrap();
+        let (b_generation, b_root) = runtime
+            .persist_transition(&db, Some(b.path().to_path_buf()))
+            .unwrap()
+            .unwrap();
+        assert!(runtime.complete_scan(b_generation, b_root, GraphicsIndex::scan(b.path())));
+        release_tx.send(()).unwrap();
+        assert_eq!(handle.join().unwrap(), ImageLookupResult::Missing);
+        assert_eq!(
+            runtime.resolve(GraphicsKind::PersonPortrait, 101),
+            ImageLookupResult::Available {
+                bytes: b"\x89PNG\r\n\x1a\nB".to_vec(),
+                mime: "image/png"
+            }
         );
     }
 
@@ -810,7 +1328,7 @@ mod tests {
         assert!(runtime.scan_reserved(a_generation, a_root));
         assert!(matches!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Available { .. }
+            ImageLookupResult::Available { .. }
         ));
 
         let (clear_generation, clear_root) =
@@ -818,7 +1336,7 @@ mod tests {
         assert!(runtime.scan_reserved(clear_generation, clear_root));
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
 
         let (rescan_generation, rescan_root) = runtime.begin_rescan(&db).unwrap().unwrap();
@@ -834,59 +1352,29 @@ mod tests {
         let lazy_runtime = test_runtime_with_root(Some(a.path().to_path_buf()));
         assert_eq!(
             lazy_runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Available {
-                bytes: b"\x89PNG\r\n\x1a\nA".to_vec(),
-                mime: "image/png"
-            }
+            ImageLookupResult::Missing
         );
     }
 
     #[test]
-    fn lazy_resolve_uses_injectable_scanner_and_rejects_stale_completion() {
-        let a = root_with_image("a.png", 101, b"\x89PNG\r\n\x1a\nA");
-        let b = root_with_image("b.png", 202, b"\x89PNG\r\n\x1a\nB");
-        let a_root = a.path().to_path_buf();
-        let b_root = b.path().to_path_buf();
-        let (started_tx, started_rx) = mpsc::channel();
-        let (release_tx, release_rx) = mpsc::channel();
-        let scanned_a_root = a_root.clone();
-        let release_rx = Mutex::new(release_rx);
-        let scanner = Arc::new(move |root: Option<&std::path::Path>| {
-            if root == Some(scanned_a_root.as_path()) {
-                started_tx.send(()).unwrap();
-                release_rx.lock().unwrap().recv().unwrap();
-            }
-            root.map(GraphicsIndex::scan)
-                .unwrap_or_else(GraphicsIndex::empty)
-        });
-        let runtime = Arc::new(GraphicsRuntime::from_root_with_scanner(
-            Some(a_root),
+    fn resolve_never_starts_a_scan() {
+        let (called_tx, called_rx) = mpsc::channel();
+        let runtime = GraphicsRuntime::from_root_with_scanner(
+            Some(PathBuf::from("root")),
             CandidateState {
                 available: false,
                 source: "absent",
             },
-            scanner,
-        ));
-        let lazy_runtime = runtime.clone();
-        let handle = thread::spawn(move || lazy_runtime.resolve(GraphicsKind::PersonPortrait, 101));
-        started_rx.recv().unwrap();
-
-        let (b_generation, b_root) = runtime
-            .persist_transition_with(Some(b_root), || Ok(true))
-            .unwrap()
-            .unwrap();
-        assert!(runtime.scan_reserved(b_generation, b_root));
-        release_tx.send(()).unwrap();
-
-        assert_eq!(handle.join().unwrap(), ResolveResult::Missing);
+            Arc::new(move |_| {
+                called_tx.send(()).unwrap();
+                GraphicsIndex::empty()
+            }),
+        );
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 101),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
-        assert!(matches!(
-            runtime.resolve(GraphicsKind::PersonPortrait, 202),
-            ResolveResult::Available { .. }
-        ));
+        assert!(called_rx.try_recv().is_err());
     }
 
     #[test]
@@ -901,11 +1389,11 @@ mod tests {
         assert!(runtime.complete_scan(a_generation, a_root.clone(), GraphicsIndex::empty()));
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 1),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
         assert_eq!(
             runtime.resolve(GraphicsKind::ClubLogo, 2),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
 
         let (b_generation, b_root) = runtime
@@ -917,11 +1405,11 @@ mod tests {
         assert_eq!(runtime.status().generation, b_generation);
         assert_eq!(
             runtime.resolve(GraphicsKind::PersonPortrait, 1),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
         assert_eq!(
             runtime.resolve(GraphicsKind::ClubLogo, 2),
-            ResolveResult::Missing
+            ImageLookupResult::Missing
         );
     }
 
@@ -953,5 +1441,84 @@ mod tests {
         assert!(!runtime.complete_scan(first, first_root, GraphicsIndex::empty()));
         assert!(runtime.complete_scan(second, second_root, GraphicsIndex::empty()));
         assert_eq!(runtime.status().generation, second);
+    }
+
+    #[test]
+    fn worker_replaces_pending_target_and_scans_serially() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let (started, started_rx) = mpsc::channel();
+        let (release, release_rx) = mpsc::channel();
+        let release_rx = Mutex::new(release_rx);
+        let (scanned, scanned_rx) = mpsc::channel();
+        let first_path = first.path().to_path_buf();
+        let scanner = Arc::new(move |root: Option<&std::path::Path>| {
+            scanned.send(root.unwrap().to_path_buf()).unwrap();
+            if root == Some(first_path.as_path()) {
+                started.send(()).unwrap();
+                release_rx.lock().unwrap().recv().unwrap();
+            }
+            GraphicsIndex::empty()
+        });
+        let runtime = GraphicsRuntime::from_root_with_scanner(
+            None,
+            CandidateState {
+                available: false,
+                source: "absent",
+            },
+            scanner,
+        );
+        runtime.start_worker();
+        let a = runtime
+            .persist_transition_with(Some(first.path().to_path_buf()), || Ok(true))
+            .unwrap()
+            .unwrap();
+        runtime.enqueue(a);
+        started_rx.recv().unwrap();
+        let b = runtime
+            .persist_transition_with(Some(second.path().to_path_buf()), || Ok(true))
+            .unwrap()
+            .unwrap();
+        let b_generation = b.0;
+        runtime.enqueue(b);
+        release.send(()).unwrap();
+        assert_eq!(scanned_rx.recv().unwrap(), first.path());
+        assert_eq!(scanned_rx.recv().unwrap(), second.path());
+        assert_eq!(runtime.status().generation, b_generation);
+    }
+
+    #[test]
+    fn dropping_runtime_revokes_active_installation_without_waiting() {
+        let root = tempfile::tempdir().unwrap();
+        let (started, started_rx) = mpsc::channel();
+        let (release, release_rx) = mpsc::channel();
+        let release_rx = Mutex::new(release_rx);
+        let (finished, finished_rx) = mpsc::channel();
+        let scanner = Arc::new(move |_root: Option<&std::path::Path>| {
+            started.send(()).unwrap();
+            release_rx.lock().unwrap().recv().unwrap();
+            finished.send(()).unwrap();
+            GraphicsIndex::empty()
+        });
+        let runtime = Arc::new(GraphicsRuntime::from_root_with_scanner(
+            None,
+            CandidateState {
+                available: false,
+                source: "absent",
+            },
+            scanner,
+        ));
+        runtime.start_worker();
+        let target = runtime
+            .persist_transition_with(Some(root.path().to_path_buf()), || Ok(true))
+            .unwrap()
+            .unwrap();
+        runtime.enqueue(target);
+        started_rx.recv().unwrap();
+        let observer = Arc::clone(&runtime.state);
+        drop(runtime);
+        release.send(()).unwrap();
+        finished_rx.recv().unwrap();
+        assert!(observer.lock().unwrap().index.is_none());
     }
 }

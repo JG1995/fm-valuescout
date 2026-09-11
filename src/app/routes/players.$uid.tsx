@@ -1,20 +1,15 @@
 import {
   useMutation,
-  useQuery,
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { DatabaseZap, UserX } from "lucide-react";
+import { DatabaseZap, Shield, UserX } from "lucide-react";
 import { type ReactNode, Suspense, useEffect, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { academyKeys } from "@/features/academy/api/academy-keys";
-import {
-  graphicsResultQueryOptions,
-  graphicsStatusQueryOptions,
-} from "@/features/graphics/api/graphics-query-options";
-import type { GraphicsResult } from "@/features/graphics/types/graphics";
+import { GraphicsImage } from "@/features/graphics/components/graphics-image";
 import { getPlayerMoneyballQueryOptions } from "@/features/moneyball/api/get-player-moneyball-query-options";
 import { MoneyballProfilePanel } from "@/features/moneyball/components/moneyball-profile-panel";
 import { MoneyballRoleFitPanel } from "@/features/moneyball/components/moneyball-role-fit-panel";
@@ -363,13 +358,6 @@ function MoneyballPlayerProfile({
   );
 }
 
-function graphicsImageSource(result: GraphicsResult | undefined) {
-  if (result?.status !== "available") return undefined;
-  let binary = "";
-  for (const byte of result.bytes) binary += String.fromCharCode(byte);
-  return `data:${result.mime};base64,${btoa(binary)}`;
-}
-
 function PlayerProfileContent({
   uid,
   section,
@@ -389,24 +377,6 @@ function PlayerProfileContent({
 }) {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: player } = useSuspenseQuery(getPlayerQueryOptions(uid));
-  const { data: graphicsStatus } = useQuery(graphicsStatusQueryOptions);
-  const portraitQuery = useQuery({
-    ...graphicsResultQueryOptions(
-      graphicsStatus?.generation ?? 0,
-      "personPortrait",
-      player?.uid ?? 0,
-    ),
-    enabled: graphicsStatus?.selected === true && (player?.uid ?? 0) > 0,
-  });
-  const crestQuery = useQuery({
-    ...graphicsResultQueryOptions(
-      graphicsStatus?.generation ?? 0,
-      "clubLogo",
-      player?.currentClubUid ?? 0,
-    ),
-    enabled:
-      graphicsStatus?.selected === true && (player?.currentClubUid ?? 0) > 0,
-  });
   const queryClient = useQueryClient();
   const hiddenInformation = useMutation({
     mutationFn: ({ revealed }: PlayerHiddenInformationMutation) =>
@@ -467,22 +437,51 @@ function PlayerProfileContent({
       <PlayerIdentityRail
         player={player}
         portrait={
-          graphicsImageSource(portraitQuery.data) ? (
-            <img
-              src={graphicsImageSource(portraitQuery.data)}
-              alt={`Portrait of ${player.name}`}
-              className="size-28 shrink-0 rounded-full object-contain"
-            />
-          ) : undefined
+          <GraphicsImage
+            kind="personPortrait"
+            uid={player.uid}
+            slot={{
+              alt: `Portrait of ${player.name}`,
+              className: "size-28 shrink-0 rounded-full object-contain",
+              fallback: (
+                <span
+                  role="img"
+                  aria-label="Player portrait placeholder"
+                  className="flex size-28 shrink-0 items-center justify-center rounded-full bg-surface-container-high font-mono text-mono-lg text-on-surface-variant"
+                >
+                  {player.name
+                    .split(" ")
+                    .map((part) => part[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase()}
+                </span>
+              ),
+            }}
+          />
         }
         crest={
-          graphicsImageSource(crestQuery.data) ? (
-            <img
-              src={graphicsImageSource(crestQuery.data)}
-              alt={player.club ? `Crest of ${player.club}` : "Club crest"}
-              className="size-16 shrink-0 rounded-lg object-contain"
-            />
-          ) : undefined
+          <GraphicsImage
+            kind="clubLogo"
+            uid={player.currentClubUid ?? 0}
+            slot={{
+              alt: player.club ? `Crest of ${player.club}` : "Club crest",
+              className: "size-16 shrink-0 rounded-lg object-contain",
+              fallback: (
+                <span
+                  role="img"
+                  aria-label="Club crest placeholder"
+                  className="flex size-16 shrink-0 items-center justify-center rounded-lg bg-surface-container-high text-on-surface-variant"
+                >
+                  <Shield
+                    aria-hidden="true"
+                    className="size-8"
+                    strokeWidth={1.5}
+                  />
+                </span>
+              ),
+            }}
+          />
         }
         hiddenInformationPending={
           hiddenInformationContextIsCurrent && hiddenInformation.isPending

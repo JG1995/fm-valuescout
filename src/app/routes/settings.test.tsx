@@ -275,77 +275,37 @@ describe("Settings", () => {
     expect(within(graphics).queryByText(/Graphics update failed/)).toBeNull();
   });
 
-  it("keeps selected graphics and cached results when choosing is cancelled", async () => {
+  it("keeps graphics status unchanged when choosing is cancelled", async () => {
     const user = userEvent.setup();
+    setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
+      generation: 7,
+      selected: true,
+    });
+    setGraphicsChooseIpcMockMode("cancel");
     const { queryClient } = renderWithProviders({
       initialEntries: ["/settings"],
     });
+
     const graphics = await screen.findByRole("region", { name: "Graphics" });
-    await user.click(
-      within(graphics).getByRole("button", { name: "Choose graphics folder" }),
-    );
-    await screen.findByText(/index is rebuilding/);
-    const status = queryClient.getQueryData<{ generation: number }>(
-      graphicsKeys.status(),
-    );
-    expect(status?.generation).toBe(1);
-    const resultKey = graphicsKeys.result(1, "personPortrait", 42);
-    queryClient.setQueryData(resultKey, { status: "available", image: "old" });
-    setGraphicsChooseIpcMockMode("cancel");
-
+    const statusBefore = queryClient.getQueryData(graphicsKeys.status());
     await user.click(
       within(graphics).getByRole("button", { name: "Choose graphics folder" }),
     );
 
-    await waitFor(() => {
-      expect(queryClient.getQueryData(resultKey)).toEqual({
-        status: "available",
-        image: "old",
-      });
-    });
-    expect(graphics).toHaveTextContent("Folder choice cancelled");
+    expect(
+      await within(graphics).findByText(
+        "Folder choice cancelled. Graphics settings are unchanged.",
+      ),
+    ).toBeInTheDocument();
+    expect(graphics).toHaveTextContent("Generation 7");
     expect(graphics).not.toHaveTextContent("index is rebuilding");
+    expect(queryClient.getQueryData(graphicsKeys.status())).toEqual(
+      statusBefore,
+    );
     expect(
       queryClient.getQueryState(graphicsKeys.status())?.isInvalidated,
     ).toBe(false);
-  });
-
-  it("removes available and missing results before each new generation", async () => {
-    const user = userEvent.setup();
-    const { queryClient } = renderWithProviders({
-      initialEntries: ["/settings"],
-    });
-    const graphics = await screen.findByRole("region", { name: "Graphics" });
-
-    const clickAndAssertGeneration = async (
-      label: string,
-      previousGeneration: number,
-      nextGeneration: number,
-    ) => {
-      const availableKey = graphicsKeys.result(
-        previousGeneration,
-        "personPortrait",
-        42,
-      );
-      const missingKey = graphicsKeys.result(previousGeneration, "clubLogo", 7);
-      queryClient.setQueryData(availableKey, {
-        status: "available",
-        image: "old",
-      });
-      queryClient.setQueryData(missingKey, { status: "missing" });
-      await user.click(within(graphics).getByRole("button", { name: label }));
-      await waitFor(() => {
-        expect(queryClient.getQueryData(graphicsKeys.status())).toMatchObject({
-          generation: nextGeneration,
-        });
-      });
-      expect(queryClient.getQueryData(availableKey)).toBeUndefined();
-      expect(queryClient.getQueryData(missingKey)).toBeUndefined();
-    };
-
-    await clickAndAssertGeneration("Choose graphics folder", 0, 1);
-    await clickAndAssertGeneration("Rescan graphics", 1, 2);
-    await clickAndAssertGeneration("Clear graphics folder", 2, 3);
   });
 
   it("keeps other Settings sections rendered when boost context fails", async () => {

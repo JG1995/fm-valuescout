@@ -11,6 +11,15 @@ const RELEASE_LOG_FILE_NAME: &str = "fm-valuescout";
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol("graphics", |_ctx, request, responder| {
+            let app_handle = _ctx.app_handle().clone();
+            std::thread::spawn(move || {
+                let runtime = app_handle.state::<features::graphics::runtime::GraphicsRuntime>();
+                let response =
+                    features::graphics::commands::graphics_protocol_response(request, &runtime);
+                responder.respond(response);
+            });
+        })
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             app.handle().plugin(
@@ -46,6 +55,8 @@ pub fn run() {
             };
             app.manage(db);
             app.manage(graphics_runtime);
+            app.state::<features::graphics::runtime::GraphicsRuntime>()
+                .start_worker();
 
             log::info!("FM ValueScout startup complete");
 
@@ -121,7 +132,6 @@ pub fn run() {
             features::graphics::commands::choose_graphics_root,
             features::graphics::commands::clear_graphics_root,
             features::graphics::commands::rescan_graphics,
-            features::graphics::commands::resolve_graphics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

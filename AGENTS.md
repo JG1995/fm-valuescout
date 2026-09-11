@@ -100,6 +100,7 @@ Use the stable `./scripts/dev` surface instead of stack-native commands:
 ./scripts/dev bridge-install
 ./scripts/dev package-windows
 ./scripts/dev release-metadata [latest-tag|none] [release-intent]
+./scripts/dev graphics-calibration
 ```
 
 `check` is the full commit gate: Biome, TypeScript, secretlint, Rust format, Clippy, and Rust tests. `check-fast` is the pre-commit frontend and staged-secret path; it does not replace `check`. `check-app` runs the frontend CI gate. `check-rust` runs the Rust gate. `bridge-test` requires the .NET 6 SDK. Install Chromium once with `pnpm exec playwright install chromium`, then use `smoke` for the Playwright product suite.
@@ -110,7 +111,7 @@ For material UI work, read the project-local `ui-inspection` skill, capture the 
 
 CI selects frontend, browser, Rust, bridge, and CI checks from changed paths. The required `check` status aggregates applicable results. It does not validate release metadata or package Windows installers. The Release workflow starts only after an explicit release-preparation change reaches `main`; it waits for that exact `check` before packaging and publishing.
 
-For every human-authored pull request, use `.pi/skills/create-pr/SKILL.md` with `.github/pull_request_template.md`. Ordinary pull requests do not classify or prepare a release. Use `.pi/skills/create-release/SKILL.md` only when the developer explicitly requests a release. `release-metadata` validates prepared version and changelog state without writing files or calling GitHub.
+For every human-authored pull request, use `.pi/skills/create-pr/SKILL.md` with `.github/pull_request_template.md`. Ordinary pull requests do not classify or prepare a release. Use `.pi/skills/create-release/SKILL.md` only when the developer explicitly requests a release. `release-metadata` validates prepared version and changelog state without writing files or calling GitHub. `graphics-calibration` is a private local command. Set `FM_VALUESCOUT_GRAPHICS_ROOT` to a readable graphics root before running it. The command runs one ignored Rust test with `--nocapture` and emits one path-free JSON report. It does not use PowerShell and works from WSL against a mounted Windows filesystem. Reports label WSL execution as WSL and mounted Windows storage as a mounted Windows filesystem; they do not describe WSL measurements as native Windows performance. Missing or unreadable roots fail without printing the supplied value.
 
 For changed behavior:
 
