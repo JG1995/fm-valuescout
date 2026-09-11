@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -83,7 +83,7 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 ### PR 1 — Improve bridge scan throughput
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -101,7 +101,7 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 **Required checks:** GitHub required strict status check
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -288,7 +288,7 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 #### Commit 4 — Shorten bridge request polling
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `perf(bridge): reduce request poll interval`
 
@@ -348,24 +348,29 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 **PR:** PR 1 — Improve bridge scan throughput
 
-**Commit:** Commit 4 — Shorten bridge request polling
+**Active work:** None — documentation close-out
+
+**Commit:** None — documentation close-out
 
 ### RED or removal proof
 
-No new test. Verify by source inspection that the direct fixed interval remains the cancellation-aware `PollRequests` wait input and update the matching bridge documentation.
+Not applicable — all planned implementation packets passed deterministic validation and independent checkpoint review.
 
 ### Expected outcome
 
-The existing request loop waits at most 250 ms between polls while retaining its cancellation and stale-module behavior.
+The complete implementation range passed final automated validation and the clear feature review with no correction rounds. Documentation reconciliation is complete, and the feature is ready for publication.
 
 ### Explicit exclusions
 
-A scheduler, file watcher, configuration, abstraction, polling-loop redesign, protocol change, diagnostics, or a test that only restates the literal.
+New implementation scope, manual or native pre-merge testing, release work, and deferred JAY-68 or JAY-69 work.
 
 ## Discoveries and replanning
 
-- Provisional plan based on current `main` evidence. Independent review must classify the packets and replace the Delivery fingerprint placeholder before developer acceptance.
-- Replan if native scalar pinning changes the `IMemoryReader` read contract, a fixed writer threshold cannot keep the required bounded streaming proof, or the poll constant reveals a lifecycle or protocol boundary.
+- Final validation on implementation HEAD `a6749a5c9ea4dfb9839d32b9d70e0bc32db130fd` passed `./scripts/dev bridge-test` with 219 passed and 4 skipped on Linux, and `./scripts/dev check` with 872 Rust tests and 3 ignored; Windows-only native proof runs in Windows CI.
+- Feature review is clear, with Test portfolio Pass, Architecture and Project fit Conform, and 0 correction rounds.
+- Commit 3 uses the standard-library `ArrayBufferWriter<byte>` because the stream-backed writer commits internally before `BytesPending` reaches the threshold; the public streaming contract is unchanged.
+- No speedup claim is recorded. Developer-owned post-merge Windows FM smoke and equivalent timing remain follow-up evidence only.
+- No manual or native pre-merge gate applies.
 
 ## Completed work
 
@@ -374,6 +379,7 @@ A scheduler, file watcher, configuration, abstraction, polling-loop redesign, pr
 | PR 1 — Improve bridge scan throughput | Commit 1 — Record the approved feature plan | a34a314bc8c666be67820f9282b50974b19c0771 | Recorded the accepted schema-2 JAY-65 ledger and its sole TODO activation link. | `ledger_state.py` runnable; exact-path and staged diff checks clean; pre-commit fast gate passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — Improve bridge scan throughput | Commit 2 — Pin scalar memory reads | 000a00b77a40fdedfb0baccfd2300ec77cddd744 | Pinned scalar caller spans at the existing native read boundary and added a Windows current-process value and allocation proof. | `./scripts/dev bridge-test`: 219 passed, 4 skipped on Linux; `./scripts/dev check`: passed; staged diff check and C# diagnostics clean. | Pass | Clear | 0 | Native proof is skipped locally and runs in Windows CI. |
 | PR 1 — Improve bridge scan throughput | Commit 3 — Batch dump writer flushes | f23ea8259e590a5b11ada674cd5970e7d19046ce | Buffered `Utf8JsonWriter` output to a fixed 64 KiB threshold, wrote bounded chunks, and changed the tracking proof to reject per-record flushing and full-document buffering. | `./scripts/dev bridge-test`: 219 passed, 4 skipped on Linux; `./scripts/dev check`: passed; staged diff check and C# diagnostics clean. | Pass | Clear | 0 | Used the standard-library `ArrayBufferWriter<byte>` sink because the stream-backed writer commits internally before `BytesPending` reaches the threshold; the public streaming contract is unchanged. |
+| PR 1 — Improve bridge scan throughput | Commit 4 — Shorten bridge request polling | a6749a5c9ea4dfb9839d32b9d70e0bc32db130fd | Reduced the fixed request poll interval to 250 ms and updated the bridge request-protocol documentation. | `./scripts/dev bridge-test`: 219 passed, 4 skipped on Linux; `./scripts/dev check`: passed; staged diff check and C# diagnostics clean. | Pass | Clear | 0 | No test added because a test of the private constant would only restate its literal. |
 
 ## Final validation
 
@@ -386,4 +392,4 @@ Do not require a manual/native pre-merge test. After merge, the developer may ru
 
 ## Documentation impact
 
-Complete during feature reconciliation. Commit 4 updates `bridge/README.md` because it currently states the poll interval. No current-state architecture, TODO completion, BACKLOG, ADR, release, or protocol documentation change is warranted until implementation and close-out.
+Documentation reconciliation is complete. Commit 4 updated `bridge/README.md` with the implemented fixed 250 ms interval. `.wiki/TODO.md` records completion and links the archive destination. No architecture, ADR, debug report, BACKLOG, protocol, schema, or release documentation changes are warranted. The orchestrator will move this ledger to `.wiki/features/completed/bridge-scan-throughput.md`.
