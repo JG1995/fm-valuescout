@@ -65,8 +65,8 @@ pub fn parse_protocol_request(
     let uri = request.uri();
     // URI fragments are browser-side and are not transmitted to this handler;
     // they are therefore outside the handler grammar.
-    if uri.scheme_str() != Some("http")
-        || uri.host() != Some("graphics.localhost")
+    if uri.scheme_str() != Some("graphics")
+        || uri.host() != Some("localhost")
         || uri.port().is_some()
         || uri.query().is_some()
     {
@@ -180,7 +180,7 @@ mod tests {
         assert_eq!(
             parse_protocol_request(&request(
                 http::Method::GET,
-                "http://graphics.localhost/12/personPortrait/42"
+                "graphics://localhost/12/personPortrait/42"
             )),
             Ok(ProtocolRequest {
                 generation: 12,
@@ -195,60 +195,51 @@ mod tests {
         for (method, uri) in [
             (
                 http::Method::POST,
+                "graphics://localhost/12/personPortrait/42",
+            ),
+            (http::Method::GET, "graphics://other/12/personPortrait/42"),
+            (
+                http::Method::GET,
                 "http://graphics.localhost/12/personPortrait/42",
             ),
+            (http::Method::GET, "graphics://localhost//personPortrait/42"),
+            (http::Method::GET, "graphics://localhost/12/personPortrait/"),
             (
                 http::Method::GET,
-                "http://other.localhost/12/personPortrait/42",
+                "graphics://localhost/12/personPortrait/42/extra",
+            ),
+            (http::Method::GET, "graphics://localhost/12/unknown/42"),
+            (
+                http::Method::GET,
+                "graphics://localhost/12/personPortrait/0",
             ),
             (
                 http::Method::GET,
-                "https://graphics.localhost/12/personPortrait/42",
+                "graphics://localhost/12/personPortrait/-1",
             ),
             (
                 http::Method::GET,
-                "http://graphics.localhost//personPortrait/42",
+                "graphics://localhost/12/personPortrait/4.2",
             ),
             (
                 http::Method::GET,
-                "http://graphics.localhost/12/personPortrait/",
+                "graphics://localhost/012/personPortrait/42",
             ),
             (
                 http::Method::GET,
-                "http://graphics.localhost/12/personPortrait/42/extra",
-            ),
-            (http::Method::GET, "http://graphics.localhost/12/unknown/42"),
-            (
-                http::Method::GET,
-                "http://graphics.localhost/12/personPortrait/0",
+                "graphics://localhost/12/personPortrait/042",
             ),
             (
                 http::Method::GET,
-                "http://graphics.localhost/12/personPortrait/-1",
+                "graphics://localhost:80/12/personPortrait/42",
             ),
             (
                 http::Method::GET,
-                "http://graphics.localhost/12/personPortrait/4.2",
+                "graphics://localhost:8080/12/personPortrait/42",
             ),
             (
                 http::Method::GET,
-                "http://graphics.localhost/012/personPortrait/42",
-            ),
-            (
-                http::Method::GET,
-                "http://graphics.localhost/12/personPortrait/042",
-            ),
-            (
-                http::Method::GET,
-                "http://graphics.localhost:80/12/personPortrait/42",
-            ),
-            (
-                http::Method::GET,
-                "http://graphics.localhost:8080/12/personPortrait/42",
-            ),
-            (
-                http::Method::GET,
-                "http://graphics.localhost/12/personPortrait/42?x=1",
+                "graphics://localhost/12/personPortrait/42?x=1",
             ),
         ] {
             assert!(

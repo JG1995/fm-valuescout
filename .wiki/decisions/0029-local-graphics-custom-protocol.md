@@ -16,13 +16,19 @@ The developer supplied a representative graphics root, and the supervisor confir
 
 ## Decision
 
-Register one asynchronous `graphics` Tauri custom protocol. It accepts only a `GET` request with the exact closed request identity:
+Register one asynchronous `graphics` Tauri custom protocol. The Windows WebView requests the exact closed browser URL:
 
 ```text
 http://graphics.localhost/<generation>/<kind>/<uid>
 ```
 
-`generation` is the committed graphics generation. `kind` is one closed graphics kind. `uid` is a positive decimal UID. The authority has no explicit port; the handler rejects every explicit port and every other host, method, segment shape, query, kind, UID, stale generation, missing mapping, or failed image read. URI fragments are browser-side and are not transmitted to the handler; they are outside the handler grammar, not handler-rejected input.
+Wry intercepts that URL and restores the registered protocol URI before it calls the Rust handler:
+
+```text
+graphics://localhost/<generation>/<kind>/<uid>
+```
+
+`generation` is the committed graphics generation. `kind` is one closed graphics kind. `uid` is a positive decimal UID. The authority has no explicit port; the handler accepts only the restored `graphics` scheme and `localhost` host, and rejects every explicit port and every other host, method, segment shape, query, kind, UID, stale generation, missing mapping, or failed image read. URI fragments are browser-side and are not transmitted to the handler; they are outside the handler grammar, not handler-rejected input.
 
 The handler retrieves the existing Rust-owned `GraphicsRuntime`. It does not open a root, accept a path, create a second cache, or cross invoke. It returns only validated raw PNG, JPEG, or WebP bytes with explicit MIME, `X-Content-Type-Options: nosniff`, and `Cache-Control: no-store` headers. Runtime cache bounds remain the owner of image-byte reuse.
 
@@ -30,7 +36,7 @@ React uses one shared graphics image component. It builds only the closed protoc
 
 This decision narrowly amends [ADR-0014](./0014-rust-backend-ipc-boundary.md): `invoke` remains the sole production request/response boundary for product DTOs, status, and mutations. The `graphics` protocol is the sole exception for local graphics raw image bytes. It is not an HTTP server or a general file-access surface.
 
-JAY-64 implemented this closed protocol, migrated every graphics consumer to the shared component, and removed `resolve_graphics`, byte-array result types, result Query keys/options, resolve mocks, and route-local base64 data URL conversion. Bundled nationality flags still require `data:` CSP; the custom protocol origin allowance remains exact and narrow. The developer waived manual native Windows Tauri custom-protocol/CSP proof. This changes validation evidence only; it does not change the closed request grammar, narrow CSP, or filesystem-security invariants.
+JAY-64 implemented this closed protocol, migrated every graphics consumer to the shared component, and removed `resolve_graphics`, byte-array result types, result Query keys/options, resolve mocks, and route-local base64 data URL conversion. The first implementation incorrectly validated the browser-facing Windows URL inside the handler, although Wry had already restored it to the registered protocol URI; the handler now validates the restored URI and the frontend retains the browser-facing URL. Bundled nationality flags still require `data:` CSP; the custom protocol origin allowance remains exact and narrow. The developer waived manual native Windows Tauri custom-protocol/CSP proof. This changes validation evidence only; it does not change the closed request grammar, narrow CSP, or filesystem-security invariants.
 
 ## Alternatives considered
 
