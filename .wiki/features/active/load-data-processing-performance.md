@@ -115,7 +115,7 @@ Record the reviewed plan, then remove the terminal reparse while proving capture
 
 #### Commit 1 — Record the approved feature plan
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(load-data): record processing performance plan`
 
@@ -173,7 +173,7 @@ Record the reviewed plan, then remove the terminal reparse while proving capture
 
 #### Commit 2 — Remove terminal dump revalidation
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `perf(memory-read): remove terminal dump revalidation`
 
@@ -232,7 +232,7 @@ Record the reviewed plan, then remove the terminal reparse while proving capture
 
 #### Commit 3 — Skip no-op historical projection cleanup
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `perf(snapshot): skip cleared projection cleanup`
 
@@ -348,19 +348,19 @@ Record the reviewed plan, then remove the terminal reparse while proving capture
 
 **PR:** PR 1
 
-**Commit:** Commit 1
+**Commit:** Commit 3
 
 ### RED or removal proof
 
-Not applicable — independently reviewed planning documents only. The ledger classifier and exact-path diff check provide the planning proof.
+Use the existing retained-history publication seam and a focused SQLite update-observation proof to show that displaced or partially stale projected state is cleared while historical rows already `(NULL, NULL)` are not rewritten.
 
 ### Expected outcome
 
-A reviewed schema-2 ledger and TODO entry record the active JAY-66 feature, one PR, the planning commit, and three pending independent implementation outcomes.
+Canonical publication clears only non-current player rows with at least one projected-state value, preserving raw history, current selection, rollback, and all other cleanup behavior.
 
 ### Explicit exclusions
 
-No implementation, tests, BACKLOG, planned spec, ADR, configuration, branch, commit, or publication mutation.
+No compact/staff cleanup, snapshot ordering, raw history, scoring formula, winning-player statement reuse, transaction ordering, or schema change.
 
 ## Discoveries and replanning
 
@@ -371,6 +371,8 @@ No implementation, tests, BACKLOG, planned spec, ADR, configuration, branch, com
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — Streamline Load Data publication | Commit 1 — Record the approved feature plan | 86fd0699c06af5350a8924d81b71776eafbcd8cc | Recorded the accepted schema-2 JAY-66 ledger and active TODO pointer. | `ledger_state.py` runnable; exact-path `git diff --check` clean; Markdown LSP clean. | Not applicable | Clear | 0 | None |
+| PR 1 — Streamline Load Data publication | Commit 2 — Remove terminal dump revalidation | Pending record | Removed warning-only terminal dump parsing and obsolete file-validation wrappers while retaining captured-copy validation before publication. | `./scripts/dev check-rust` and `./scripts/dev check` passed (869 Rust tests, 3 ignored); Rust LSP and `git diff --check` clean. | Pass | Clear | 0 | None |
 
 ## Final validation
 

@@ -1008,9 +1008,6 @@ pub fn wait_for_request_terminal(
                     && is_terminal_state(&status.state) =>
             {
                 let dump_present = dump_path(bridge_directory).is_file();
-                if dump_present && validate_dump_at_bridge_directory(bridge_directory).is_err() {
-                    log::warn!("dump.json failed ingestibility validation");
-                }
                 return Ok(DumpRequestResult {
                     request_id: request_id.to_string(),
                     state: status.state,
@@ -1036,13 +1033,6 @@ pub fn wait_for_request_terminal(
 
 fn is_terminal_state(state: &str) -> bool {
     matches!(state, "ready" | "failed")
-}
-
-/// Validates `dump.json` under the bridge directory (ingest pre-check for feature 2).
-pub fn validate_dump_at_bridge_directory(
-    bridge_directory: &Path,
-) -> Result<(), super::dump_validation::DumpValidationError> {
-    super::dump_validation::validate_dump_file(&dump_path(bridge_directory))
 }
 
 /// Production IPC entry: resolve LocalAppData bridge dir, then request + wait.
@@ -1233,7 +1223,7 @@ mod tests {
     }
 
     #[test]
-    fn wait_returns_ready_when_status_reaches_terminal_for_request() {
+    fn wait_returns_ready_when_terminal_dump_is_present_even_if_content_is_invalid() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let bridge_dir = temp_dir.path().to_path_buf();
         let request_id = "req-watch-ready".to_string();
@@ -1253,7 +1243,7 @@ mod tests {
             }
             write_status_fixture(&writer_dir, "scanning", Some(&writer_id), None, None);
             thread::sleep(Duration::from_millis(30));
-            fs::write(dump_path(&writer_dir), INGESTIBLE_DUMP_FIXTURE).expect("dump");
+            fs::write(dump_path(&writer_dir), "{\"schemaVersion\":99}").expect("dump");
             write_status_fixture(&writer_dir, "ready", Some(&writer_id), Some(42), None);
             let status_file = status_path(&writer_dir);
             let mut old_status: serde_json::Value =
@@ -1293,7 +1283,6 @@ mod tests {
         assert_eq!(result.players_found, Some(42));
         assert!(result.dump_present);
         assert!(result.error.is_none());
-        validate_dump_at_bridge_directory(&bridge_dir).expect("dump ingestible after ready");
     }
 
     #[test]
@@ -1380,7 +1369,6 @@ mod tests {
 
         assert_eq!(result.request_id, "req-ours");
         assert_eq!(result.players_found, Some(3));
-        validate_dump_at_bridge_directory(&bridge_dir).expect("dump ingestible after ready");
     }
 
     #[test]
