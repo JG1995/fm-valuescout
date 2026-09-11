@@ -665,24 +665,27 @@ pub(crate) fn publish_prepared_snapshot_canonical(
         }
         player_compact::clear_non_current_snapshots(&tx, save_id)?;
         tx.execute(
-            "UPDATE players SET potential_attributes_json = NULL, potential_projection_model_version = NULL WHERE snapshot_id IN (SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0)",
+            "UPDATE players SET potential_attributes_json = NULL, potential_projection_model_version = NULL WHERE snapshot_id IN (SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0) AND (potential_attributes_json IS NOT NULL OR potential_projection_model_version IS NOT NULL)",
             rusqlite::params![save_id],
         )
         .map_err(|e| e.to_string())?;
         crate::features::staff::scoring::clear_non_current_snapshots(&tx, save_id)?;
         if let Some(effective) = current_id {
             if effective == snapshot_id {
-                for player in &prepared.players {
-                    tx.execute(
+                let mut statement = tx
+                    .prepare(
                         "UPDATE players SET potential_attributes_json = ?3, potential_projection_model_version = ?4 WHERE snapshot_id = ?1 AND uid = ?2",
-                        rusqlite::params![
+                    )
+                    .map_err(|e| e.to_string())?;
+                for player in &prepared.players {
+                    statement
+                        .execute(rusqlite::params![
                             snapshot_id,
                             player.uid,
                             player.projected_attributes_json,
                             potential_scores::PROJECTION_MODEL_VERSION
-                        ],
-                    )
-                    .map_err(|e| e.to_string())?;
+                        ])
+                        .map_err(|e| e.to_string())?;
                 }
                 player_compact::persist_rows_borrowed(
                     &tx,
@@ -2094,6 +2097,80 @@ mod tests {
     }
 
     #[test]
+    fn winning_ingest_persists_projected_state_for_each_player() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-multiple-projections.db"));
+        list_saves(&conn).expect("seed default save");
+
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse fixture");
+        let second_player = {
+            let first_player = root["players"][0].clone();
+            let mut second_player = first_player;
+            second_player["uid"] = Value::from(78);
+            second_player["name"] = Value::from("Second fixture player");
+            second_player
+        };
+        root["players"]
+            .as_array_mut()
+            .expect("players array")
+            .push(second_player);
+        root["playerCount"] = Value::from(2);
+        let dump_path = write_dump(&temp_dir, "multiple-projections.json", &root.to_string());
+        let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest multiple players");
+
+        let projected_states: Vec<(i64, Option<String>, Option<i64>)> = conn
+            .prepare(
+                "SELECT uid, potential_attributes_json, potential_projection_model_version
+                 FROM players WHERE snapshot_id = ?1 ORDER BY uid",
+            )
+            .expect("prepare projected state query")
+            .query_map([snapshot.id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .expect("query projected states")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read projected states");
+        assert_eq!(projected_states.len(), 2);
+        assert!(projected_states
+            .iter()
+            .all(|(_, projected, version)| projected.is_some()
+                && *version == Some(potential_scores::PROJECTION_MODEL_VERSION)));
+    }
+
+    #[test]
+    fn failed_projected_attribute_update_rolls_back_ingest_and_keeps_prior_current_visible() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-projection-rollback.db"));
+        let first_path = write_dump(
+            &temp_dir,
+            "first.json",
+            &dump_with_game_date(Some("2026-08-14"), "Earlier player"),
+        );
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        let first_potential_state = potential_state(&conn, first.id);
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER reject_projected_attribute_update
+             BEFORE UPDATE OF potential_attributes_json ON players
+             WHEN NEW.snapshot_id <> {}
+             BEGIN SELECT RAISE(ABORT, 'projected attribute update failure'); END;",
+            first.id
+        ))
+        .expect("reject projected attribute updates");
+        let later_path = write_dump(
+            &temp_dir,
+            "later.json",
+            &dump_with_game_date(Some("2027-08-16"), "Later player"),
+        );
+
+        assert!(ingest_dump_file(&mut conn, &later_path)
+            .expect_err("roll back projected attribute materialization")
+            .contains("projected attribute update failure"));
+        assert_eq!(snapshot_count(&conn, first.save_id), 1);
+        assert_eq!(current_snapshot_id(&conn, first.save_id), Some(first.id));
+        assert_eq!(potential_state(&conn, first.id), first_potential_state);
+    }
+
+    #[test]
     fn winning_ingest_materializes_null_compact_scores_for_missing_attributes() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("ingest-compact-null.db"));
@@ -2952,6 +3029,104 @@ mod tests {
         let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 9", "\"schemaVersion\": 4");
         assert!(prepare_dump_json(&bad_json).is_err());
         assert_eq!(snapshot_count(&conn, save_context.id), 2);
+    }
+
+    #[test]
+    fn cleanup_skips_noop_historical_projection_updates_and_clears_partial_state() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("projection-cleanup.db"));
+        let save_context = service::capture_active_save_context(&conn).expect("capture");
+        conn.execute_batch(
+            "CREATE TABLE projection_update_observations (snapshot_id INTEGER NOT NULL, uid INTEGER NOT NULL);
+             CREATE TRIGGER observe_projection_cleanup AFTER UPDATE OF potential_attributes_json, potential_projection_model_version ON players
+             WHEN (SELECT is_current FROM snapshots WHERE id = OLD.snapshot_id) = 0
+             BEGIN
+                 INSERT INTO projection_update_observations (snapshot_id, uid) VALUES (OLD.snapshot_id, OLD.uid);
+             END;",
+        )
+        .expect("create projection observation seam");
+
+        let first = publish_prepared_snapshot(
+            &mut conn,
+            &save_context,
+            prepare_dump_json(&dump_with_game_date(Some("2026-08-16"), "First"))
+                .expect("prepare first"),
+            Some("first"),
+        )
+        .expect("publish first")
+        .stored_snapshot;
+        let raw_history = publish_prepared_snapshot(
+            &mut conn,
+            &save_context,
+            prepare_dump_json(&dump_with_game_date(Some("2025-08-16"), "Raw history"))
+                .expect("prepare raw history"),
+            Some("raw-history"),
+        )
+        .expect("publish raw history")
+        .stored_snapshot;
+        assert_empty_potential_state(&conn, raw_history.id);
+
+        let second = publish_prepared_snapshot(
+            &mut conn,
+            &save_context,
+            prepare_dump_json(&dump_with_game_date(Some("2027-08-16"), "Second"))
+                .expect("prepare second"),
+            Some("second"),
+        )
+        .expect("publish second")
+        .stored_snapshot;
+        assert_eq!(current_snapshot_id(&conn, save_context.id), Some(second.id));
+        assert_empty_potential_state(&conn, first.id);
+        assert_eq!(player_count_for_snapshot(&conn, first.id), 1);
+        assert_eq!(player_count_for_snapshot(&conn, raw_history.id), 1);
+        let updates_after_displacement: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM projection_update_observations WHERE snapshot_id = ?1",
+                [first.id],
+                |row| row.get(0),
+            )
+            .expect("count displaced updates");
+        assert_eq!(updates_after_displacement, 1);
+        let raw_history_updates: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM projection_update_observations WHERE snapshot_id = ?1",
+                [raw_history.id],
+                |row| row.get(0),
+            )
+            .expect("count raw history updates");
+        assert_eq!(raw_history_updates, 0);
+
+        conn.execute(
+            "UPDATE players SET potential_projection_model_version = ?2 WHERE snapshot_id = ?1 AND uid = 77",
+            params![raw_history.id, potential_scores::PROJECTION_MODEL_VERSION],
+        )
+        .expect("seed partial stale state");
+        conn.execute(
+            "DELETE FROM projection_update_observations WHERE snapshot_id = ?1",
+            [raw_history.id],
+        )
+        .expect("reset projection observation");
+        let third = publish_prepared_snapshot(
+            &mut conn,
+            &save_context,
+            prepare_dump_json(&dump_with_game_date(Some("2028-08-16"), "Third"))
+                .expect("prepare third"),
+            Some("third"),
+        )
+        .expect("publish third")
+        .stored_snapshot;
+        assert_eq!(current_snapshot_id(&conn, save_context.id), Some(third.id));
+        assert_empty_potential_state(&conn, second.id);
+        assert_empty_potential_state(&conn, raw_history.id);
+        assert_eq!(player_count_for_snapshot(&conn, raw_history.id), 1);
+        let raw_history_updates: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM projection_update_observations WHERE snapshot_id = ?1",
+                [raw_history.id],
+                |row| row.get(0),
+            )
+            .expect("count cleared partial update");
+        assert_eq!(raw_history_updates, 1);
     }
 
     #[test]

@@ -1,8 +1,5 @@
-use std::collections::HashSet;
-use std::fs;
-use std::path::Path;
-
 use serde_json::Value;
+use std::collections::HashSet;
 
 pub const DUMP_SCHEMA_VERSION: i64 = 9;
 pub const DUMP_PROTOCOL_VERSION: i64 = 1;
@@ -215,6 +212,7 @@ impl std::fmt::Display for DumpValidationError {
 impl std::error::Error for DumpValidationError {}
 
 /// Validates that `dump.json` content is ingestible without importing into SQLite.
+#[allow(dead_code)]
 pub fn validate_dump_json(json: &str) -> Result<(), DumpValidationError> {
     parse_and_validate_dump(json).map(|_| ())
 }
@@ -377,16 +375,6 @@ pub fn validate_dump_value(root: &Value) -> Result<(), DumpValidationError> {
     validate_manager(object.get("manager"), &staff_uids)?;
 
     Ok(())
-}
-
-pub fn validate_dump_file(path: &Path) -> Result<(), DumpValidationError> {
-    let json = fs::read_to_string(path).map_err(|error| match error.kind() {
-        std::io::ErrorKind::NotFound => {
-            DumpValidationError::Corrupt("dump.json not found".to_string())
-        }
-        _ => DumpValidationError::Corrupt("dump.json could not be read".to_string()),
-    })?;
-    validate_dump_json(&json)
 }
 
 fn validate_player_object(player: &Value, index: usize) -> Result<u64, DumpValidationError> {
@@ -1698,14 +1686,5 @@ mod tests {
             gender_error,
             DumpValidationError::WrongType { field, .. } if field == "players[0].gender"
         ));
-    }
-
-    #[test]
-    fn validate_dump_file_reads_golden_fixture_from_disk() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let path = temp_dir.path().join("dump.json");
-        fs::write(&path, GOLDEN_FIXTURE).expect("write fixture");
-
-        validate_dump_file(&path).expect("file validation");
     }
 }

@@ -58,10 +58,11 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Recently completed
 
-- **[Production-scale FM graphics](./features/completed/production-scale-fm-graphics.md)** — scaled local graphics indexing for representative Sortitoutsi facepacks, moved image delivery to a bounded generation/UID custom protocol, and calibrated final production limits from measured representative-pack evidence (Linear JAY-64).
+- **[Load Data processing performance](./features/completed/load-data-processing-performance.md)** — removed redundant Load Data processing while preserving captured-dump validation, current-only derived state, retained raw history, and atomic publication (Linear JAY-66).
 
 ## Completed
 
+- **[Production-scale FM graphics](./features/completed/production-scale-fm-graphics.md)** — scaled local graphics indexing for representative Sortitoutsi facepacks, moved image delivery to a bounded generation/UID custom protocol, and calibrated final production limits from measured representative-pack evidence (Linear JAY-64).
 - **[Local FM graphics](./features/completed/local-fm-graphics.md)** — Rust-owned local FM26 graphics-root indexing, player portraits, and UID-backed club logos without managing graphics packs (Linear JAY-63).
 - **[Retire obsolete Load Data controls](./features/completed/retire-obsolete-load-data-controls.md)** — removed obsolete Load Data cap support and reconciled snapshot freshness documentation while retaining historical snapshot metadata (Linear JAY-55, JAY-56).
 - **[Refine Suggested Training](./features/completed/refine-suggested-training.md)** — age-category Suggested Training for eligible Squad players while preserving the read-only, non-sortable focus-or-dash contract (Linear JAY-59).
