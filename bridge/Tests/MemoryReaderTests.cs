@@ -294,6 +294,39 @@ public sealed class MemoryReaderTests
     }
 
     [WindowsFact]
+    public void TryRead_on_windows_reads_scalar_bytes_and_allocates_nothing_after_warmup()
+    {
+        var source = new byte[] { 0x78, 0x56, 0x34, 0x12 };
+        var reader = new WindowsMemoryReader();
+        unsafe
+        {
+            fixed (byte* ptr = source)
+            {
+                Span<byte> destination = stackalloc byte[source.Length];
+                var ok = reader.TryRead((ulong)ptr, destination, out var bytesRead);
+
+                Assert.True(ok);
+                Assert.Equal(source.Length, bytesRead);
+                Assert.Equal(0x12345678u, BitConverter.ToUInt32(destination));
+                Assert.Equal(source, destination.ToArray());
+
+                for (var i = 0; i < 10; i++)
+                {
+                    reader.TryRead((ulong)ptr, destination, out _);
+                }
+
+                var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+                for (var i = 0; i < 100; i++)
+                {
+                    reader.TryRead((ulong)ptr, destination, out _);
+                }
+
+                Assert.Equal(allocatedBefore, GC.GetAllocatedBytesForCurrentThread());
+            }
+        }
+    }
+
+    [WindowsFact]
     public void TryReadBlock_on_windows_fills_from_current_process_without_requiring_span_copy()
     {
         var source = new byte[64];

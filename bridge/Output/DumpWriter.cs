@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using FmDataBridge.Models;
@@ -7,6 +8,8 @@ namespace FmDataBridge.Output;
 
 public static class DumpWriter
 {
+    private const int PendingBytesFlushThreshold = 64 * 1024;
+
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -71,7 +74,8 @@ public static class DumpWriter
         ArgumentNullException.ThrowIfNull(document);
         cancellationToken.ThrowIfCancellationRequested();
 
-        using var writer = new Utf8JsonWriter(stream, WriterOptions);
+        var output = new ArrayBufferWriter<byte>();
+        using var writer = new Utf8JsonWriter(output, WriterOptions);
         writer.WriteStartObject();
         writer.WriteNumber("schemaVersion", document.SchemaVersion);
         writer.WriteString("generatedAtUtc", document.GeneratedAtUtc);
@@ -108,7 +112,12 @@ public static class DumpWriter
         {
             cancellationToken.ThrowIfCancellationRequested();
             JsonSerializer.Serialize(writer, player, SerializerOptions);
-            writer.Flush();
+            if (writer.BytesPending + output.WrittenCount >= PendingBytesFlushThreshold)
+            {
+                writer.Flush();
+                stream.Write(output.WrittenSpan);
+                output.Clear();
+            }
         }
 
         writer.WriteEndArray();
@@ -119,7 +128,12 @@ public static class DumpWriter
         {
             cancellationToken.ThrowIfCancellationRequested();
             JsonSerializer.Serialize(writer, staff, SerializerOptions);
-            writer.Flush();
+            if (writer.BytesPending + output.WrittenCount >= PendingBytesFlushThreshold)
+            {
+                writer.Flush();
+                stream.Write(output.WrittenSpan);
+                output.Clear();
+            }
         }
 
         writer.WriteEndArray();
@@ -136,6 +150,7 @@ public static class DumpWriter
         cancellationToken.ThrowIfCancellationRequested();
         writer.WriteEndObject();
         writer.Flush();
+        stream.Write(output.WrittenSpan);
     }
 
     public static string Serialize(DumpDocument document)

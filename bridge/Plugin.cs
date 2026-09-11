@@ -23,7 +23,7 @@ public class Plugin : BasePlugin
 
     private static Thread? s_operationThread;
 
-    private static readonly TimeSpan RequestPollInterval = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan RequestPollInterval = TimeSpan.FromMilliseconds(250);
 
     private static readonly TimeSpan RequestTtl = TimeSpan.FromSeconds(BridgeProtocol.RequestTtlSeconds);
 
