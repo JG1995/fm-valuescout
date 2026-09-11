@@ -103,7 +103,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** <https://github.com/JG1995/fm-valuescout/pull/146>
 
 **Merge ref:** Not merged
 
