@@ -423,6 +423,7 @@ public sealed class CapADumpPipeline
             else if (parentName is not null)
             {
                 currentName = parentName;
+                currentClubUid = parentClubUid;
             }
 
             bool? onLoan = null;
