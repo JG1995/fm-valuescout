@@ -672,17 +672,20 @@ pub(crate) fn publish_prepared_snapshot_canonical(
         crate::features::staff::scoring::clear_non_current_snapshots(&tx, save_id)?;
         if let Some(effective) = current_id {
             if effective == snapshot_id {
-                for player in &prepared.players {
-                    tx.execute(
+                let mut statement = tx
+                    .prepare(
                         "UPDATE players SET potential_attributes_json = ?3, potential_projection_model_version = ?4 WHERE snapshot_id = ?1 AND uid = ?2",
-                        rusqlite::params![
+                    )
+                    .map_err(|e| e.to_string())?;
+                for player in &prepared.players {
+                    statement
+                        .execute(rusqlite::params![
                             snapshot_id,
                             player.uid,
                             player.projected_attributes_json,
                             potential_scores::PROJECTION_MODEL_VERSION
-                        ],
-                    )
-                    .map_err(|e| e.to_string())?;
+                        ])
+                        .map_err(|e| e.to_string())?;
                 }
                 player_compact::persist_rows_borrowed(
                     &tx,
@@ -2091,6 +2094,80 @@ mod tests {
 
         assert_eq!(compact_row_count(&conn, snapshot.id), 1);
         assert_uniform_compact_values(&conn, snapshot.id, 77);
+    }
+
+    #[test]
+    fn winning_ingest_persists_projected_state_for_each_player() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-multiple-projections.db"));
+        list_saves(&conn).expect("seed default save");
+
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse fixture");
+        let second_player = {
+            let first_player = root["players"][0].clone();
+            let mut second_player = first_player;
+            second_player["uid"] = Value::from(78);
+            second_player["name"] = Value::from("Second fixture player");
+            second_player
+        };
+        root["players"]
+            .as_array_mut()
+            .expect("players array")
+            .push(second_player);
+        root["playerCount"] = Value::from(2);
+        let dump_path = write_dump(&temp_dir, "multiple-projections.json", &root.to_string());
+        let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest multiple players");
+
+        let projected_states: Vec<(i64, Option<String>, Option<i64>)> = conn
+            .prepare(
+                "SELECT uid, potential_attributes_json, potential_projection_model_version
+                 FROM players WHERE snapshot_id = ?1 ORDER BY uid",
+            )
+            .expect("prepare projected state query")
+            .query_map([snapshot.id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .expect("query projected states")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read projected states");
+        assert_eq!(projected_states.len(), 2);
+        assert!(projected_states
+            .iter()
+            .all(|(_, projected, version)| projected.is_some()
+                && *version == Some(potential_scores::PROJECTION_MODEL_VERSION)));
+    }
+
+    #[test]
+    fn failed_projected_attribute_update_rolls_back_ingest_and_keeps_prior_current_visible() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-projection-rollback.db"));
+        let first_path = write_dump(
+            &temp_dir,
+            "first.json",
+            &dump_with_game_date(Some("2026-08-14"), "Earlier player"),
+        );
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        let first_potential_state = potential_state(&conn, first.id);
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER reject_projected_attribute_update
+             BEFORE UPDATE OF potential_attributes_json ON players
+             WHEN NEW.snapshot_id <> {}
+             BEGIN SELECT RAISE(ABORT, 'projected attribute update failure'); END;",
+            first.id
+        ))
+        .expect("reject projected attribute updates");
+        let later_path = write_dump(
+            &temp_dir,
+            "later.json",
+            &dump_with_game_date(Some("2027-08-16"), "Later player"),
+        );
+
+        assert!(ingest_dump_file(&mut conn, &later_path)
+            .expect_err("roll back projected attribute materialization")
+            .contains("projected attribute update failure"));
+        assert_eq!(snapshot_count(&conn, first.save_id), 1);
+        assert_eq!(current_snapshot_id(&conn, first.save_id), Some(first.id));
+        assert_eq!(potential_state(&conn, first.id), first_potential_state);
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -85,7 +85,7 @@ Record the reviewed plan, then remove the terminal reparse while proving capture
 
 ### PR 1 — Streamline Load Data publication
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -289,7 +289,7 @@ Record the reviewed plan, then remove the terminal reparse while proving capture
 
 #### Commit 4 — Reuse the winning-player projection statement
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `perf(snapshot): reuse projected attribute statement`
 
@@ -344,24 +344,6 @@ Record the reviewed plan, then remove the terminal reparse while proving capture
 
 **Review mandate:** Check one statement is prepared only in the winning branch and reused for all players, bindings and model version are exact, no per-player `tx.execute` remains for this UPDATE, non-winners stay raw-only, error propagation rolls back, and phase/progress boundaries are unchanged.
 
-## Active work
-
-**PR:** PR 1
-
-**Commit:** Commit 4
-
-### RED or removal proof
-
-Use the existing multi-player winning publication and forced projected-write rollback seams to prove every winning player's projected JSON and model version are persisted and any statement execution failure leaves the prior current snapshot visible.
-
-### Expected outcome
-
-Canonical publication prepares the winning-player projected-attribute UPDATE once inside the transaction and reuses it for all prepared players without changing bindings, rollback, completeness checks, progress, or timing boundaries.
-
-### Explicit exclusions
-
-No scoring representation, completeness-scan, batching, non-winning scoring, Club DNA, schema, progress, timing instrumentation, or new helper change.
-
 ## Discoveries and replanning
 
 - Repository evidence confirms the terminal revalidation is a warning-only full-file parse after terminal status, while the captured-copy preparation path validates again before publication.
@@ -373,7 +355,8 @@ No scoring representation, completeness-scan, batching, non-winning scoring, Clu
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Streamline Load Data publication | Commit 1 — Record the approved feature plan | 86fd0699c06af5350a8924d81b71776eafbcd8cc | Recorded the accepted schema-2 JAY-66 ledger and active TODO pointer. | `ledger_state.py` runnable; exact-path `git diff --check` clean; Markdown LSP clean. | Not applicable | Clear | 0 | None |
 | PR 1 — Streamline Load Data publication | Commit 2 — Remove terminal dump revalidation | 86821c9f8fcb7fe1c619b16237a05451c9aee14e | Removed warning-only terminal dump parsing and obsolete file-validation wrappers while retaining captured-copy validation before publication. | `./scripts/dev check-rust` and `./scripts/dev check` passed (869 Rust tests, 3 ignored); Rust LSP and `git diff --check` clean. | Pass | Clear | 0 | None |
-| PR 1 — Streamline Load Data publication | Commit 3 — Skip no-op historical projection cleanup | Pending record | Limited historical projected-state cleanup to rows with data while preserving displaced and partial stale-state clearing. | `./scripts/dev check-rust` and `./scripts/dev check` passed (870 Rust tests, 3 ignored); Rust LSP, pi-lens, and `git diff --check` clean. | Pass | Clear | 0 | None |
+| PR 1 — Streamline Load Data publication | Commit 3 — Skip no-op historical projection cleanup | 55b121a0acede65c4e237b685d2b87689b8ee1d9 | Limited historical projected-state cleanup to rows with data while preserving displaced and partial stale-state clearing. | `./scripts/dev check-rust` and `./scripts/dev check` passed (870 Rust tests, 3 ignored); Rust LSP, pi-lens, and `git diff --check` clean. | Pass | Clear | 0 | None |
+| PR 1 — Streamline Load Data publication | Commit 4 — Reuse the winning-player projection statement | Pending record | Prepared the winning projected-attribute UPDATE once per transaction and reused it for all winning players with unchanged bindings and rollback. | `./scripts/dev check-rust` and `./scripts/dev check` passed (872 Rust tests, 3 ignored); Rust LSP, pi-lens, and `git diff --check` clean. | Pass | Clear | 0 | None |
 
 ## Final validation
 
