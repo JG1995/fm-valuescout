@@ -385,7 +385,7 @@ fn discover(dir: &Dir, identity: &mut Vec<String>, depth: usize, state: &mut Dis
             };
             discover(&child, identity, depth + 1, state)
         } else {
-            if ty.is_file() && name == "config.xml" {
+            if ty.is_file() && matches!(name.as_str(), "config.xml" | "_config.xml") {
                 retain_config(state, Identity(identity.clone()));
             }
             true
@@ -1024,6 +1024,33 @@ mod tests {
         let i = GraphicsIndex::scan(d.path());
         assert!(i.resolve(GraphicsKind::PersonPortrait, 2).is_some());
     }
+    #[test]
+    fn discovers_standard_and_underscored_config_names() {
+        let d = tempdir().unwrap();
+        let standard = d.path().join("standard");
+        let underscored = d.path().join("underscored");
+        fs::create_dir(&standard).unwrap();
+        fs::create_dir(&underscored).unwrap();
+        png(&standard.join("one.png"));
+        png(&underscored.join("two.png"));
+        fs::write(
+            standard.join("config.xml"),
+            r#"<record from="one.png" to="graphics/pictures/person/1/portrait"/>"#,
+        )
+        .unwrap();
+        fs::write(
+            underscored.join("_config.xml"),
+            r#"<record from="two.png" to="graphics/pictures/person/2/portrait"/>"#,
+        )
+        .unwrap();
+
+        let index = GraphicsIndex::scan(d.path());
+
+        assert_eq!(index.summary().configs, 2);
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 1).is_some());
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 2).is_some());
+    }
+
     #[test]
     fn entry_budget_equality_accepts_candidate() {
         let d = tempdir().unwrap();
