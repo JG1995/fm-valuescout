@@ -385,7 +385,7 @@ fn discover(dir: &Dir, identity: &mut Vec<String>, depth: usize, state: &mut Dis
             };
             discover(&child, identity, depth + 1, state)
         } else {
-            if ty.is_file() && name == "config.xml" {
+            if ty.is_file() && matches!(name.as_str(), "config.xml" | "_config.xml") {
                 retain_config(state, Identity(identity.clone()));
             }
             true
@@ -919,20 +919,25 @@ fn parse_target(target: &str) -> Option<(GraphicsKind, u32)> {
         return None;
     }
     let category = p.next()?;
-    let uid = p.next()?.parse().ok().filter(|x: &u32| *x > 0)?;
+    let resource_id = p.next()?;
     let variant = p.next()?;
     if p.next().is_some() {
         return None;
     }
-    Some((
-        match (category, variant) {
-            ("person", "portrait") => GraphicsKind::PersonPortrait,
-            ("club" | "team", "logo") => GraphicsKind::ClubLogo,
-            ("club" | "team", "icon") => GraphicsKind::ClubIcon,
-            _ => return None,
-        },
-        uid,
-    ))
+    let kind = match (category, variant) {
+        ("person", "portrait") => GraphicsKind::PersonPortrait,
+        ("club" | "team", "logo") => GraphicsKind::ClubLogo,
+        ("club" | "team", "icon") => GraphicsKind::ClubIcon,
+        _ => return None,
+    };
+    let uid = match kind {
+        GraphicsKind::PersonPortrait => resource_id.strip_prefix("r-").unwrap_or(resource_id),
+        GraphicsKind::ClubLogo | GraphicsKind::ClubIcon => resource_id,
+    }
+    .parse()
+    .ok()
+    .filter(|x: &u32| *x > 0)?;
+    Some((kind, uid))
 }
 fn read_image(root: &Dir, identity: &[String], limit: u64) -> Result<ImageResult, ()> {
     let (name, parent) = identity.split_last().ok_or(())?;
@@ -1024,6 +1029,59 @@ mod tests {
         let i = GraphicsIndex::scan(d.path());
         assert!(i.resolve(GraphicsKind::PersonPortrait, 2).is_some());
     }
+    #[test]
+    fn indexes_newgen_portrait_target_with_resource_prefix() {
+        let d = tempdir().unwrap();
+        png(&d.path().join("PP7Westafrica2250.png"));
+        fs::write(
+            d.path().join("config.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<record>
+  <boolean id="preload" value="false"/>
+  <boolean id="amap" value="false"/>
+  <list id="maps">
+    <!-- PLAYER MAPPINGS BEGIN -->
+    <record from="PP7Westafrica2250" to="graphics/pictures/person/r-2000141468/portrait"/>
+  </list>
+</record>"#,
+        )
+        .unwrap();
+
+        let index = GraphicsIndex::scan(d.path());
+
+        assert!(index
+            .resolve(GraphicsKind::PersonPortrait, 2_000_141_468)
+            .is_some());
+        assert_eq!(parse_target("graphics/pictures/club/r-679/logo"), None);
+    }
+
+    #[test]
+    fn discovers_standard_and_underscored_config_names() {
+        let d = tempdir().unwrap();
+        let standard = d.path().join("standard");
+        let underscored = d.path().join("underscored");
+        fs::create_dir(&standard).unwrap();
+        fs::create_dir(&underscored).unwrap();
+        png(&standard.join("one.png"));
+        png(&underscored.join("two.png"));
+        fs::write(
+            standard.join("config.xml"),
+            r#"<record from="one.png" to="graphics/pictures/person/1/portrait"/>"#,
+        )
+        .unwrap();
+        fs::write(
+            underscored.join("_config.xml"),
+            r#"<record from="two.png" to="graphics/pictures/person/2/portrait"/>"#,
+        )
+        .unwrap();
+
+        let index = GraphicsIndex::scan(d.path());
+
+        assert_eq!(index.summary().configs, 2);
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 1).is_some());
+        assert!(index.resolve(GraphicsKind::PersonPortrait, 2).is_some());
+    }
+
     #[test]
     fn entry_budget_equality_accepts_candidate() {
         let d = tempdir().unwrap();

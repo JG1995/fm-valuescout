@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using FmDataBridge.Layouts;
 using FmDataBridge.Memory;
@@ -1216,6 +1217,70 @@ public sealed class CapADumpTests
             Assert.False(doc.RootElement.GetProperty("scanTruncated").GetBoolean());
             Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("maxAccepted").ValueKind);
             Assert.True(File.Exists(BridgePaths.GetDiagnosticsPath(bridgeDir)));
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Pipeline_carries_contract_club_uid_into_current_club_fallback()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var layout = Fm263Layout.Instance;
+            var reader = new FakeMemoryReader();
+            const ulong contract = 0x410000;
+            const ulong team = 0x420000;
+            const ulong club = 0x430000;
+            const ulong clubName = 0x440000;
+            const uint clubUid = 679;
+
+            PlacePlayerFixture(
+                reader,
+                layout,
+                PersonAddress,
+                uid: 12345,
+                ca: 150,
+                pa: 170,
+                name: "Test Player",
+                birthYear: 2000,
+                birthDoy: 100);
+            reader.AddBytes(
+                PersonAddress + (ulong)layout.FullContractPtrOffset,
+                BitConverter.GetBytes(contract));
+            reader.AddBytes(
+                contract + (ulong)layout.ContractTeamPtrOffset,
+                BitConverter.GetBytes(team));
+            reader.AddBytes(
+                team + (ulong)layout.TeamClubPtrOffset,
+                BitConverter.GetBytes(club));
+            reader.AddBytes(
+                club + (ulong)layout.ObjectUidOffset,
+                BitConverter.GetBytes(clubUid));
+            reader.AddBytes(
+                club + (ulong)layout.ClubNameOffset,
+                BitConverter.GetBytes(clubName));
+            reader.AddBytes(
+                clubName,
+                new byte[4].Concat(Encoding.UTF8.GetBytes("Fallback FC\0")).ToArray());
+
+            var result = new CapADumpPipeline().Run(
+                reader,
+                bridgeDir,
+                gameVersion: "26.3.1",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.True(result.Success);
+            using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
+            var player = doc.RootElement.GetProperty("players")[0];
+            Assert.Equal("Fallback FC", player.GetProperty("currentClub").GetString());
+            Assert.Equal(clubUid, player.GetProperty("currentClubUid").GetUInt32());
+            Assert.Equal("Fallback FC", player.GetProperty("parentClub").GetString());
+            Assert.Equal(clubUid, player.GetProperty("parentClubUid").GetUInt32());
         }
         finally
         {
