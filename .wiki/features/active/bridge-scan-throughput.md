@@ -230,7 +230,7 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 #### Commit 3 — Batch dump writer flushes
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `perf(dump): batch streaming flushes`
 
@@ -288,7 +288,7 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 #### Commit 4 — Shorten bridge request polling
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `perf(bridge): reduce request poll interval`
 
@@ -348,19 +348,19 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 **PR:** PR 1 — Improve bridge scan throughput
 
-**Commit:** Commit 3 — Batch dump writer flushes
+**Commit:** Commit 4 — Shorten bridge request polling
 
 ### RED or removal proof
 
-Rewrite the existing 5,000-player tracking-stream test so per-record flushing fails its substantially-fewer-writes assertion while exact count and bounded chunks remain required.
+No new test. Verify by source inspection that the direct fixed interval remains the cancellation-aware `PollRequests` wait input and update the matching bridge documentation.
 
 ### Expected outcome
 
-Player and staff records flush only after the fixed 64 KiB pending-byte threshold while cancellation, valid schema-v9 output, final flushing, and atomic replacement remain unchanged.
+The existing request loop waits at most 250 ms between polls while retaining its cancellation and stale-module behavior.
 
 ### Explicit exclusions
 
-Removing intermediate flushing, configurable thresholds, output-schema changes, complete-document buffering, serializer replacement, protocol changes, and cancellation or replacement redesign.
+A scheduler, file watcher, configuration, abstraction, polling-loop redesign, protocol change, diagnostics, or a test that only restates the literal.
 
 ## Discoveries and replanning
 
@@ -373,6 +373,7 @@ Removing intermediate flushing, configurable thresholds, output-schema changes, 
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Improve bridge scan throughput | Commit 1 — Record the approved feature plan | a34a314bc8c666be67820f9282b50974b19c0771 | Recorded the accepted schema-2 JAY-65 ledger and its sole TODO activation link. | `ledger_state.py` runnable; exact-path and staged diff checks clean; pre-commit fast gate passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — Improve bridge scan throughput | Commit 2 — Pin scalar memory reads | 000a00b77a40fdedfb0baccfd2300ec77cddd744 | Pinned scalar caller spans at the existing native read boundary and added a Windows current-process value and allocation proof. | `./scripts/dev bridge-test`: 219 passed, 4 skipped on Linux; `./scripts/dev check`: passed; staged diff check and C# diagnostics clean. | Pass | Clear | 0 | Native proof is skipped locally and runs in Windows CI. |
+| PR 1 — Improve bridge scan throughput | Commit 3 — Batch dump writer flushes | f23ea8259e590a5b11ada674cd5970e7d19046ce | Buffered `Utf8JsonWriter` output to a fixed 64 KiB threshold, wrote bounded chunks, and changed the tracking proof to reject per-record flushing and full-document buffering. | `./scripts/dev bridge-test`: 219 passed, 4 skipped on Linux; `./scripts/dev check`: passed; staged diff check and C# diagnostics clean. | Pass | Clear | 0 | Used the standard-library `ArrayBufferWriter<byte>` sink because the stream-backed writer commits internally before `BytesPending` reaches the threshold; the public streaming contract is unchanged. |
 
 ## Final validation
 
