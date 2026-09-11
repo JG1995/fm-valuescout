@@ -52,6 +52,8 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
+- [Bridge scan throughput](./features/active/bridge-scan-throughput.md) — remove proven bridge per-read allocation and per-record dump flushing, and reduce fixed request-poll latency without changing the bridge protocol or scan architecture (Linear JAY-65).
+
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
