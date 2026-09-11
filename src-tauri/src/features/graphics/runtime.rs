@@ -658,9 +658,12 @@ pub fn picker(app: &AppHandle) -> Result<Option<PathBuf>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::features::graphics::commands::GraphicsKindDto;
+    use crate::features::graphics::commands::{graphics_protocol_response, GraphicsKindDto};
+    use serde::Serialize;
     use std::sync::mpsc;
     use std::thread;
+    use std::time::Instant;
+    use tauri::http;
 
     fn root_with_image(name: &str, uid: u32, bytes: &[u8]) -> tempfile::TempDir {
         let root = tempfile::tempdir().unwrap();
@@ -671,6 +674,222 @@ mod tests {
         )
         .unwrap();
         root
+    }
+
+    #[derive(Serialize)]
+    struct CalibrationPhase {
+        count: usize,
+        elapsed_ms: u128,
+    }
+
+    #[derive(Serialize)]
+    struct CalibrationReport {
+        test: &'static str,
+        host: CalibrationHost,
+        phases: CalibrationPhases,
+        index: CalibrationIndex,
+        peak_working_set: CalibrationMemory,
+        image_sizes: CalibrationImageSizes,
+        first_image_ms: u128,
+        warm_image_ms: u128,
+    }
+
+    #[derive(Serialize)]
+    struct CalibrationHost {
+        os: &'static str,
+        architecture: &'static str,
+        execution_context: &'static str,
+        filesystem_context: &'static str,
+    }
+
+    #[derive(Serialize)]
+    struct CalibrationPhases {
+        discovery: CalibrationPhase,
+        config: CalibrationPhase,
+        source: CalibrationPhase,
+    }
+
+    #[derive(Serialize)]
+    struct CalibrationIndex {
+        configs: usize,
+        mappings: usize,
+        people: usize,
+        clubs: usize,
+        truncated: bool,
+    }
+
+    #[derive(Serialize)]
+    struct CalibrationMemory {
+        method: &'static str,
+        result_bytes: Option<u64>,
+    }
+
+    #[derive(Serialize)]
+    struct CalibrationImageSizes {
+        count: usize,
+        min_bytes: usize,
+        p50_bytes: usize,
+        p95_bytes: usize,
+        max_bytes: usize,
+        total_bytes: usize,
+    }
+
+    fn peak_working_set() -> CalibrationMemory {
+        #[cfg(target_os = "linux")]
+        {
+            let result_bytes = std::fs::read_to_string("/proc/self/status")
+                .ok()
+                .and_then(|status| {
+                    status
+                        .lines()
+                        .find(|line| line.starts_with("VmHWM:"))
+                        .map(str::to_owned)
+                })
+                .and_then(|line| {
+                    line.split_whitespace()
+                        .nth(1)
+                        .and_then(|value| value.parse::<u64>().ok())
+                })
+                .map(|kilobytes| kilobytes * 1024);
+            CalibrationMemory {
+                method: "linux-proc-vmHWM",
+                result_bytes,
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            CalibrationMemory {
+                method: "unavailable",
+                result_bytes: None,
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn graphics_calibration_harness() {
+        let root = std::env::var_os("FM_VALUESCOUT_GRAPHICS_ROOT")
+            .filter(|value| !value.is_empty())
+            .map(std::path::PathBuf::from)
+            .filter(|path| path.is_dir() && std::fs::read_dir(path).is_ok())
+            .expect("private graphics root is missing or unreadable");
+        let scan_started = Instant::now();
+        let index = GraphicsIndex::scan(&root);
+        let scan_elapsed = scan_started.elapsed().as_millis();
+        let summary = index.summary().clone();
+        let people = index.people_len();
+        let clubs = index.clubs_len();
+        let requests = index.calibration_requests();
+        let runtime = test_runtime_with_root(Some(root.clone()));
+        assert!(runtime.complete_scan(0, Some(root.clone()), index));
+
+        let request = |kind: GraphicsKind, uid: u32| {
+            let kind = match kind {
+                GraphicsKind::PersonPortrait => "personPortrait",
+                GraphicsKind::ClubLogo => "clubLogo",
+                GraphicsKind::ClubIcon => "clubIcon",
+            };
+            http::Request::builder()
+                .method(http::Method::GET)
+                .uri(format!("http://graphics.localhost/0/{kind}/{uid}"))
+                .body(Vec::new())
+                .expect("calibration request is valid")
+        };
+        let first = requests
+            .iter()
+            .find_map(|(kind, uid)| {
+                let started = Instant::now();
+                let response = graphics_protocol_response(request(*kind, *uid), &runtime);
+                (response.status() == http::StatusCode::OK).then(|| {
+                    (
+                        started.elapsed().as_millis(),
+                        response.body().len(),
+                        *kind,
+                        *uid,
+                    )
+                })
+            })
+            .expect("private graphics root has no readable protocol image");
+        let warm_started = Instant::now();
+        let warm = graphics_protocol_response(request(first.2, first.3), &runtime);
+        assert_eq!(warm.status(), http::StatusCode::OK);
+        let mut sizes = Vec::new();
+        for (kind, uid) in requests {
+            let response = graphics_protocol_response(request(kind, uid), &runtime);
+            if response.status() == http::StatusCode::OK {
+                sizes.push(response.body().len());
+            }
+        }
+        sizes.sort_unstable();
+        let percentile = |percent: usize| {
+            sizes
+                .get(sizes.len().saturating_sub(1) * percent / 100)
+                .copied()
+                .unwrap_or(0)
+        };
+        let report = CalibrationReport {
+            test: "graphics_calibration_harness",
+            host: CalibrationHost {
+                os: std::env::consts::OS,
+                architecture: std::env::consts::ARCH,
+                execution_context: if cfg!(target_os = "windows") {
+                    "native-windows"
+                } else if std::env::var_os("WSL_INTEROP").is_some()
+                    || std::fs::read_to_string("/proc/version")
+                        .is_ok_and(|v| v.contains("Microsoft"))
+                {
+                    "wsl"
+                } else {
+                    "native-unix"
+                },
+                filesystem_context: if cfg!(target_os = "windows") {
+                    "windows-filesystem"
+                } else if root.to_string_lossy().starts_with("/mnt/") {
+                    "mounted-windows-filesystem"
+                } else {
+                    "native-unix-filesystem"
+                },
+            },
+            phases: CalibrationPhases {
+                discovery: CalibrationPhase {
+                    count: summary.configs
+                        + summary.diagnostics.depth_limit
+                        + summary.diagnostics.entry_limit,
+                    elapsed_ms: scan_elapsed,
+                },
+                config: CalibrationPhase {
+                    count: summary.configs,
+                    elapsed_ms: scan_elapsed,
+                },
+                source: CalibrationPhase {
+                    count: summary.mappings,
+                    elapsed_ms: scan_elapsed,
+                },
+            },
+            index: CalibrationIndex {
+                configs: summary.configs,
+                mappings: summary.mappings,
+                people,
+                clubs,
+                truncated: summary.truncated,
+            },
+            peak_working_set: peak_working_set(),
+            image_sizes: CalibrationImageSizes {
+                count: sizes.len(),
+                min_bytes: sizes.first().copied().unwrap_or(0),
+                p50_bytes: percentile(50),
+                p95_bytes: percentile(95),
+                max_bytes: sizes.last().copied().unwrap_or(0),
+                total_bytes: sizes.iter().sum(),
+            },
+            first_image_ms: first.0,
+            warm_image_ms: warm_started.elapsed().as_millis(),
+        };
+        let json = serde_json::to_string(&report).expect("calibration report serializes");
+        assert!(!json.contains(root.to_string_lossy().as_ref()));
+        assert!(!json.contains(std::path::MAIN_SEPARATOR));
+        assert!(!json.contains("graphics/") && !json.contains("/person/") && !json.contains("\\"));
+        println!("{json}");
     }
 
     fn test_db() -> Mutex<Connection> {

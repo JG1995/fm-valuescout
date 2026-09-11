@@ -254,6 +254,19 @@ impl GraphicsIndex {
     pub fn clubs_len(&self) -> usize {
         self.clubs.len()
     }
+    #[cfg(test)]
+    pub(crate) fn calibration_requests(&self) -> Vec<(GraphicsKind, u32)> {
+        self.people
+            .keys()
+            .map(|uid| (GraphicsKind::PersonPortrait, *uid))
+            .chain(self.clubs.keys().flat_map(|uid| {
+                [
+                    (GraphicsKind::ClubLogo, *uid),
+                    (GraphicsKind::ClubIcon, *uid),
+                ]
+            }))
+            .collect()
+    }
 }
 struct Discovery {
     configs: BinaryHeap<Identity>,

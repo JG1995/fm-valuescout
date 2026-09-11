@@ -545,7 +545,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 #### Commit 10 — Add private graphics calibration harness
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `test(graphics): add calibration harness`
 
@@ -592,7 +592,7 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 #### Commit 11 — Calibrate final graphics limits
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `perf(graphics): calibrate production limits`
 
@@ -640,19 +640,19 @@ Record the reviewed plan and ADR; parse one generated config larger than 8 MiB w
 
 **PR:** PR 1 — Scale local graphics delivery
 
-**Commit:** Commit 10 — Add private graphics calibration harness
+**Commit:** Commit 11 — Calibrate final graphics limits
 
 ### RED or removal proof
 
-Add an ignored calibration test and command-level privacy/context assertions that fail without a supplied readable private root and never echo its path.
+Run the private representative-pack harness and require no truncation, then add final-bound tests for exact entry-cap equality and first-beyond whole-index failure.
 
 ### Expected outcome
 
-`./scripts/dev graphics-calibration` runs one ignored host-aware Rust harness against `FM_VALUESCOUT_GRAPHICS_ROOT` and emits one path-free JSON report with exact execution context and delivered protocol measurements.
+Measured path-free representative evidence selects final bounded entry, config, mapping, parser, image, and cache limits with recorded host/filesystem context and headroom rationale.
 
 ### Explicit exclusions
 
-- Running the representative pack, choosing final values, committing private paths/assets/logs, arbitrary optimization, and `HashMap` conversion.
+- New behavior, committed pack paths/assets/logs, watcher/parallelism/dependencies, speculative optimization, and `HashMap` conversion without replan.
 
 ## Discoveries and replanning
 
@@ -674,7 +674,8 @@ Add an ignored calibration test and command-level privacy/context assertions tha
 | PR 1 — Scale local graphics delivery | Commit 6 — Read graphics outside runtime locks | `d24d6bb126ca15414fc7e8c547a22f8f6be398eb` | Split lookup into a generation-validated locator snapshot, unlocked image read, and generation-rechecked cache insertion while retaining count-bounded caches and resolve IPC. | Focused graphics tests passed; `./scripts/dev check-rust` passed with 857 Rust tests and 2 ignored; `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Clear | 0 | None |
 | PR 1 — Scale local graphics delivery | Commit 7 — Account for graphics cache bytes | `966cf8dbb86c174f5629089c79915f1dfddf17ca` | Added exact raw-byte accounting and combined byte/count eviction to every per-kind available cache while retaining count-only missing caches. | Runtime tests passed; `./scripts/dev check-rust` passed with 859 Rust tests; `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Clear | 0 | None |
 | PR 1 — Scale local graphics delivery | Commit 8 — Register closed graphics protocol | `96b043fccdde188ff2226d2c181219520978fbd7` | Registered one asynchronous closed graphics protocol on the managed runtime, added raw validated-image responses with secure headers, and allowed the exact origin while retaining current data-URL consumers. | Protocol tests passed; `./scripts/dev check-rust` and `./scripts/dev check` passed with 863 Rust tests; `./scripts/dev smoke` passed 62 tests; `git diff --cached --check` and LSP passed. | Pass | Accepted findings — URI fragments are stripped before the handler and explicit ports need a closed-authority decision; add direct stale-generation proof before close-out. | 1 | Native Windows protocol/CSP proof remains the developer-approved validation gap. |
-| PR 1 — Scale local graphics delivery | Commit 9 — Migrate graphics consumers to one component | Pending record | Migrated Profile, Search, Squad, and My Club to one lazy protocol image component; removed resolve IPC, result queries/types/mocks, and base64 conversion while retaining `data:` CSP for bundled nationality flags. | `./scripts/dev test` passed 1,020 tests; `./scripts/dev check-app`, `./scripts/dev check-rust`, `./scripts/dev check`, and `./scripts/dev smoke` passed; three required 1280×800 UI inspections passed; absence search, diff check, and LSP passed. | Pass | Clear | 2 | Native Windows protocol/CSP proof remains the developer-approved gap; Chromium inspection confirmed fallback slots and containment only. |
+| PR 1 — Scale local graphics delivery | Commit 9 — Migrate graphics consumers to one component | `7055ed098d9ba16a8a31c66289724ed802b94ff65` | Migrated Profile, Search, Squad, and My Club to one lazy protocol image component; removed resolve IPC, result queries/types/mocks, and base64 conversion while retaining `data:` CSP for bundled nationality flags. | `./scripts/dev test` passed 1,020 tests; `./scripts/dev check-app`, `./scripts/dev check-rust`, `./scripts/dev check`, and `./scripts/dev smoke` passed; three required 1280×800 UI inspections passed; absence search, diff check, and LSP passed. | Pass | Clear | 2 | Native Windows protocol/CSP proof remains the developer-approved gap; Chromium inspection confirmed fallback slots and containment only. |
+| PR 1 — Scale local graphics delivery | Commit 10 — Add private graphics calibration harness | Pending record | Added the stable private-root calibration command and ignored host-aware harness with path-free JSON, protocol timings, image-size distribution, and peak-working-set reporting; documented its contract. | Disposable-root calibration emitted one JSON line; missing and unreadable roots failed without echoing the supplied value; `./scripts/dev check-rust`, `./scripts/dev check`, `git diff --cached --check`, and LSP passed. | Pass | Accepted findings — phase fields currently repeat total scan time and discovery count does not measure filesystem entries; Commit 11 must replace these with truthful measurements before selecting limits. | 0 | No representative private pack ran and no final value was selected in this commit. |
 
 ## Final validation
 
