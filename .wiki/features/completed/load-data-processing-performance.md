@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -103,7 +103,7 @@ Record the reviewed plan, then remove the terminal reparse while proving capture
 
 **Required checks:** GitHub required strict status check
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -356,7 +356,7 @@ Record the reviewed plan, then remove the terminal reparse while proving capture
 | PR 1 — Streamline Load Data publication | Commit 1 — Record the approved feature plan | 86fd0699c06af5350a8924d81b71776eafbcd8cc | Recorded the accepted schema-2 JAY-66 ledger and active TODO pointer. | `ledger_state.py` runnable; exact-path `git diff --check` clean; Markdown LSP clean. | Not applicable | Clear | 0 | None |
 | PR 1 — Streamline Load Data publication | Commit 2 — Remove terminal dump revalidation | 86821c9f8fcb7fe1c619b16237a05451c9aee14e | Removed warning-only terminal dump parsing and obsolete file-validation wrappers while retaining captured-copy validation before publication. | `./scripts/dev check-rust` and `./scripts/dev check` passed (869 Rust tests, 3 ignored); Rust LSP and `git diff --check` clean. | Pass | Clear | 0 | None |
 | PR 1 — Streamline Load Data publication | Commit 3 — Skip no-op historical projection cleanup | 55b121a0acede65c4e237b685d2b87689b8ee1d9 | Limited historical projected-state cleanup to rows with data while preserving displaced and partial stale-state clearing. | `./scripts/dev check-rust` and `./scripts/dev check` passed (870 Rust tests, 3 ignored); Rust LSP, pi-lens, and `git diff --check` clean. | Pass | Clear | 0 | None |
-| PR 1 — Streamline Load Data publication | Commit 4 — Reuse the winning-player projection statement | Pending record | Prepared the winning projected-attribute UPDATE once per transaction and reused it for all winning players with unchanged bindings and rollback. | `./scripts/dev check-rust` and `./scripts/dev check` passed (872 Rust tests, 3 ignored); Rust LSP, pi-lens, and `git diff --check` clean. | Pass | Clear | 0 | None |
+| PR 1 — Streamline Load Data publication | Commit 4 — Reuse the winning-player projection statement | 81effcdd9b62252ca9874693a79552fad0bff30b | Prepared the winning projected-attribute UPDATE once per transaction and reused it for all winning players with unchanged bindings and rollback. | `./scripts/dev check-rust` and `./scripts/dev check` passed (872 Rust tests, 3 ignored); app, TypeScript, and secret gates passed; Rust LSP on all five changed paths and pi-lens reported 0 diagnostics; `git diff --check` clean. | Pass | Clear | 0 | None |
 
 ## Final validation
 
@@ -367,6 +367,14 @@ Run only automated commands before feature review and merge:
 
 Do not require `./scripts/dev smoke`: this feature changes no frontend route, browser interaction, or IPC-stub contract, and the Playwright smoke suite cannot prove the native bridge or SQLite publication changes. Do not require a manual/native smoke test or timing capture before merge. Do not claim a speedup without equivalent measurements.
 
+## Feature close-out
+
+- Feature-level validation passed on committed HEAD `81effcdd9b62252ca9874693a79552fad0bff30b`: `./scripts/dev check-rust && ./scripts/dev check`; 872 Rust tests passed, 3 ignored, and app, TypeScript, and secret gates passed.
+- LSP on all five changed paths reported 0 diagnostics, and pi-lens reported no issues.
+- The fresh feature review verdict was Clear/Accept. It reported no CRITICAL, HIGH, MEDIUM, or NITPICK findings; the test portfolio passed and project fit conforms. No CI repair rounds occurred.
+- The feature is ready for final publication. The PR is ready for publication and remains `Not published`; the merge ref remains `Not merged`. No PR URL or merge ref is recorded.
+- JAY-68 remains the deferred Linear follow-up. No speedup claim is made without equivalent measurements.
+
 ## Documentation impact
 
-Complete during reconciliation. No current-state document, ADR, BACKLOG, planned spec, or release documentation change is expected because the supported behavior and architecture remain unchanged.
+Reconciled during feature close-out. Updated `.wiki/TODO.md` to remove the Active pointer, make this feature the sole top Recently completed entry, and move Production-scale FM graphics to the top of Completed. No `.wiki/ARCHITECTURE.md`, ADR, BACKLOG, planned spec, command/runbook, release, or other current-state update is warranted because the supported behavior and architecture remain unchanged. JAY-68 remains the deferred Linear follow-up. No speedup claim is made without equivalent measurements.
