@@ -900,7 +900,7 @@ fn open_relative(root: &Dir, components: &[String]) -> std::io::Result<Dir> {
     Ok(current)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 fn source_exists_relative(parent: &Dir, identity: &[String]) -> bool {
     let Some((name, components)) = identity.split_last() else {
         return false;
