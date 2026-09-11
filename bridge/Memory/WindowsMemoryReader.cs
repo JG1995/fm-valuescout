@@ -36,23 +36,21 @@ public sealed class WindowsMemoryReader : IMemoryReader, IMemoryWriter
             return true;
         }
 
-        var buffer = new byte[destination.Length];
-        // ponytail: allocate per read
-        // Upgrade to ArrayPool<byte>.Shared if scan hot path shows GC pressure from TryRead
-        var ok = NativeMethods.ReadProcessMemory(
-            _processHandle,
-            (IntPtr)address,
-            buffer,
-            (IntPtr)buffer.Length,
-            out var read);
-
-        bytesRead = (int)read;
-        if (bytesRead > 0)
+        unsafe
         {
-            buffer.AsSpan(0, bytesRead).CopyTo(destination);
-        }
+            fixed (byte* ptr = destination)
+            {
+                var ok = NativeMethods.ReadProcessMemory(
+                    _processHandle,
+                    (IntPtr)address,
+                    (IntPtr)ptr,
+                    (IntPtr)destination.Length,
+                    out var read);
 
-        return ok && bytesRead == destination.Length;
+                bytesRead = (int)read;
+                return ok && bytesRead == destination.Length;
+            }
+        }
     }
 
     bool IMemoryWriter.TryWriteByte(ulong address, byte value, out int bytesWritten) =>

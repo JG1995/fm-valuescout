@@ -113,7 +113,7 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 #### Commit 1 — Record the approved feature plan
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(bridge): record scan throughput plan`
 
@@ -172,7 +172,7 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 #### Commit 2 — Pin scalar memory reads
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `perf(memory-read): pin scalar read buffers`
 
@@ -348,19 +348,19 @@ Record the reviewed plan, remove scalar-read allocation with a native Windows pr
 
 **PR:** PR 1 — Improve bridge scan throughput
 
-**Commit:** Commit 1 — Record the approved feature plan
+**Commit:** Commit 2 — Pin scalar memory reads
 
 ### RED or removal proof
 
-Not applicable — independently reviewed planning documents only. Run `ledger_state.py` and the exact-path `git diff --check` validation.
+Add a Windows-only current-process scalar-read test whose warmed repeated-read loop fails while `TryRead` allocates `new byte[destination.Length]`.
 
 ### Expected outcome
 
-One classifier-valid active schema-2 ledger and one TODO activation link for JAY-65, with no executable change.
+`WindowsMemoryReader.TryRead` reads directly into the caller span without managed allocation while preserving exact native bytes-read and complete-read semantics.
 
 ### Explicit exclusions
 
-Implementation, tests, BACKLOG, ADRs, Git state, Linear, and every path other than the ledger and TODO.
+`IMemoryReader` redesign, block-read changes, memory writes, array pooling, dependencies, benchmark tooling, layout changes, and extraction changes.
 
 ## Discoveries and replanning
 
@@ -371,6 +371,7 @@ Implementation, tests, BACKLOG, ADRs, Git state, Linear, and every path other th
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — Improve bridge scan throughput | Commit 1 — Record the approved feature plan | a34a314bc8c666be67820f9282b50974b19c0771 | Recorded the accepted schema-2 JAY-65 ledger and its sole TODO activation link. | `ledger_state.py` runnable; exact-path and staged diff checks clean; pre-commit fast gate passed. | Not applicable | Clear | 0 | None. |
 
 ## Final validation
 
