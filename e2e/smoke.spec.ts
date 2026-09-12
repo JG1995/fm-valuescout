@@ -520,9 +520,11 @@ test.describe("application smoke", () => {
     await page.goto("/staff?shortlistOnly=true");
 
     const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Configure Club Staff" }).click();
+    await main
+      .getByRole("button", { name: "Configure staffing needs" })
+      .click();
     const dialog = page.getByRole("dialog", {
-      name: "Configure assignment slots",
+      name: "Configure staffing needs",
     });
     const firstTeam = dialog.getByRole("group", { name: "First Team" });
     const coaching = firstTeam.getByRole("group", { name: "Coaching" });
@@ -606,7 +608,9 @@ test.describe("application smoke", () => {
     await expect(main.getByRole("status")).toHaveText("Slot counts saved.");
     await expect(dialog).toBeHidden();
 
-    await main.getByRole("button", { name: "Configure Club Staff" }).click();
+    await main
+      .getByRole("button", { name: "Configure staffing needs" })
+      .click();
     await expect(dialog).toBeVisible();
     await expect(assistantManager).toHaveValue("1");
     await expect(coaches).toHaveValue("1");
@@ -724,9 +728,11 @@ test.describe("application smoke", () => {
     await page.goto("/staff?shortlistOnly=true");
 
     const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Configure Club Staff" }).click();
+    await main
+      .getByRole("button", { name: "Configure staffing needs" })
+      .click();
     const dialog = page.getByRole("dialog", {
-      name: "Configure assignment slots",
+      name: "Configure staffing needs",
     });
     const club = dialog.getByRole("group", { name: "Club" });
 

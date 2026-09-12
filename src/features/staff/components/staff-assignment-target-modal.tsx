@@ -10,6 +10,7 @@ import type {
   StaffAssignmentSection,
   StaffAssignmentTarget,
   StaffAssignmentTargetInput,
+  StaffAssignmentTargets,
 } from "../types/staff-assignment";
 
 type DraftTarget = Pick<StaffAssignmentTarget, "scope" | "jobId"> & {
@@ -23,11 +24,22 @@ type SaveTargetRequest = {
   targets: StaffAssignmentTargetInput[];
 };
 
+export type StaffAssignmentModalStatus = {
+  saved: boolean;
+  error: string | null;
+};
+
 type StaffAssignmentTargetModalProps = {
   context: StaffAssignmentContext;
   contextKey: string;
+  targets?: StaffAssignmentTargets;
+  targetsError?: Error | null;
+  targetsPending?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onSaved?: () => void;
   onPendingChange?: (pending: boolean) => void;
+  onStatusChange?: (status: StaffAssignmentModalStatus) => void;
 };
 
 function draftKey(target: Pick<DraftTarget, "scope" | "jobId">) {
@@ -64,14 +76,29 @@ function errorMessage(error: unknown) {
 export function StaffAssignmentTargetModal({
   context,
   contextKey,
+  targets,
+  targetsError = null,
+  targetsPending = false,
+  open,
+  onOpenChange,
   onSaved,
   onPendingChange,
+  onStatusChange,
 }: StaffAssignmentTargetModalProps) {
   const queryClient = useQueryClient();
-  const targetsQuery = useQuery(
-    staffAssignmentTargetsQueryOptions(context, contextKey),
-  );
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const fallbackQuery = useQuery({
+    ...staffAssignmentTargetsQueryOptions(context, contextKey),
+    enabled: targets === undefined,
+  });
+  const resolvedTargets = targets ?? fallbackQuery.data;
+  const resolvedError =
+    targetsError ??
+    (fallbackQuery.error instanceof Error ? fallbackQuery.error : null);
+  const resolvedPending =
+    targetsPending ?? (fallbackQuery.isPending || fallbackQuery.isFetching);
+  const resolvedOpen = open ?? internalOpen;
+  const changeOpen = onOpenChange ?? setInternalOpen;
   const [draft, setDraft] = useState<DraftTarget[]>([]);
   const [saved, setSaved] = useState(false);
   const currentContextKey = useRef(contextKey);
@@ -106,7 +133,7 @@ export function StaffAssignmentTargetModal({
         return;
       }
       setSaved(true);
-      setOpen(false);
+      changeOpen(false);
       setDraft([]);
       onSaved?.();
     },
@@ -124,15 +151,25 @@ export function StaffAssignmentTargetModal({
     previousContextKey.current = contextKey;
     requestGeneration.current += 1;
     onPendingChange?.(false);
-    setOpen(false);
+    changeOpen(false);
     setDraft([]);
     setSaved(false);
     saveTargets.reset();
-  }, [contextKey, onPendingChange, saveTargets.reset]);
+  }, [changeOpen, contextKey, onPendingChange, saveTargets.reset]);
 
   const pending = saveTargets.isPending;
+  const formError = saveTargets.isError
+    ? errorMessage(saveTargets.error)
+    : resolvedError
+      ? errorMessage(resolvedError)
+      : null;
+
+  useEffect(() => {
+    onStatusChange?.({ saved, error: formError });
+  }, [formError, onStatusChange, saved]);
+
   const errors = new Map(
-    (targetsQuery.data?.targets ?? []).map((target) => {
+    (resolvedTargets?.targets ?? []).map((target) => {
       const key = draftKey(target);
       const draftTarget = draft.find(
         (candidate) => draftKey(candidate) === key,
@@ -144,26 +181,26 @@ export function StaffAssignmentTargetModal({
     }),
   );
   const canSave =
-    targetsQuery.isSuccess &&
-    draft.length === targetsQuery.data.targets.length &&
+    resolvedTargets !== undefined &&
+    draft.length === resolvedTargets.targets.length &&
     [...errors.values()].every((error) => error === undefined) &&
     !pending;
 
   const openModal = () => {
-    if (!targetsQuery.data || targetsQuery.isFetching || targetsQuery.isError) {
+    if (!resolvedTargets || resolvedPending || resolvedError) {
       return;
     }
     setSaved(false);
     saveTargets.reset();
-    setDraft(draftFromTargets(targetsQuery.data.targets));
-    setOpen(true);
+    setDraft(draftFromTargets(resolvedTargets.targets));
+    changeOpen(true);
   };
 
   const closeModal = () => {
     if (pending) {
       return;
     }
-    setOpen(false);
+    changeOpen(false);
     setDraft([]);
     saveTargets.reset();
   };
@@ -197,28 +234,23 @@ export function StaffAssignmentTargetModal({
     });
   };
 
-  const formError = saveTargets.isError
-    ? errorMessage(saveTargets.error)
-    : targetsQuery.isError
-      ? errorMessage(targetsQuery.error)
-      : null;
-  const targetGroups = targetsQuery.data
+  const targetGroups = resolvedTargets
     ? [
-        ...targetsQuery.data.teams.map((team) => ({
+        ...resolvedTargets.teams.map((team) => ({
           scope: team.team,
           title: team.displayName,
-          targets: targetsQuery.data.targets.filter(
+          targets: resolvedTargets.targets.filter(
             (target) =>
               target.scope === team.team ||
               (team.team === "senior" && target.scope === "club"),
           ),
         })),
-        ...(!targetsQuery.data.teams.some(({ team }) => team === "senior")
+        ...(!resolvedTargets.teams.some(({ team }) => team === "senior")
           ? [
               {
                 scope: "club" as const,
                 title: "Club",
-                targets: targetsQuery.data.targets.filter(
+                targets: resolvedTargets.targets.filter(
                   (target) => target.scope === "club",
                 ),
               },
@@ -231,24 +263,24 @@ export function StaffAssignmentTargetModal({
     <>
       <Button
         variant="secondary"
-        disabled={targetsQuery.isFetching || targetsQuery.isError || pending}
+        disabled={resolvedPending || resolvedError !== null || pending}
         onClick={openModal}
       >
-        Configure Club Staff
+        Configure staffing needs
       </Button>
-      {saved ? (
+      {!onStatusChange && saved ? (
         <p role="status" className="text-body-sm text-success">
           Slot counts saved.
         </p>
       ) : null}
-      {targetsQuery.isError && !open ? (
+      {!onStatusChange && resolvedError && !resolvedOpen ? (
         <p role="alert" className="text-body-sm text-error">
           {formError}
         </p>
       ) : null}
       <Modal
-        open={open}
-        title="Configure assignment slots"
+        open={resolvedOpen}
+        title="Configure staffing needs"
         onClose={closeModal}
         footer={
           <>

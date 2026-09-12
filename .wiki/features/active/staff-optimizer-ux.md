@@ -154,7 +154,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 #### Commit 1 — Record the approved feature plan
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(staff): plan optimizer UX improvements`
 
@@ -201,7 +201,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 #### Commit 2 — Add optimizer readiness and stable feedback
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): clarify optimizer readiness`
 
@@ -250,7 +250,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 #### Commit 3 — Improve staffing-needs controls
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): improve staffing needs controls`
 
@@ -573,31 +573,33 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 **PR:** PR 1 — Improve Staff Optimizer UX
 
-**Commit:** Commit 1 — Record the approved feature plan
+**Commit:** Commit 3 — Improve staffing-needs controls
 
 ### RED or removal proof
 
-Not applicable — independently reviewed planning documents only. Run the ledger classifier; after independent review/orchestrator recording, run delivery-state validation with the recorded fingerprint.
+Add focused Modal proofs that fail because staffing counts currently have plain inputs only, no bounded decrement/increment actions, no valid-draft team or section totals, and no single zero-exclusion explanation. Add an inspection proof that fails before the populated dialog state can be reached by its stable inspection fragment.
 
 ### Expected outcome
 
-A classifier-valid schema-2 ledger and one TODO Active link define the reviewed feature before implementation begins on `feature/staff-optimizer-tweaks` after its exact two-commit precursor range is verified.
+The controlled Configure staffing needs dialog supports direct numeric entry plus bounded accessible step controls, explains zero once, reports truthful valid-draft totals, and has a durable populated inspection state.
 
 ### Explicit exclusions
 
-No implementation, test, configuration, current-state document, BACKLOG, ADR, planned-spec, Git, staging, branch, commit, publication, or predecessor-history change occurs in planning.
+No readiness/action hierarchy changes, target persistence or Rust validation changes, result presentation, new shared form primitive, target catalog metadata changes, or screenshot behavior in smoke.
 
 ## Discoveries and replanning
 
 - Approved replan: adopt local-only `feature/staff-optimizer-tweaks` rather than requiring separate merges. `bb41169` and `0386fa5` are reviewed precursor commits on the eventual PR branch, outside this ledger's schema-2 packet sequence. Before Commit 1, their exact two-commit `main..HEAD` range must be verified; after that, delivery may build on the branch without synchronization.
 - The existing controller and target Modal both own adjacent parts of target state. The accepted plan settles one target Query/controller plus controlled Modal flow rather than adding a second source of truth.
 - Initial `/staff` inspection cannot reach the approved dialog/result states. The durable `ui-inspection.spec.ts` extension must reach each state through the existing populated stub and accessible controls; inspection PNGs remain evidence, not a baseline gate.
+- Commit 2 correction review retained one MEDIUM advisory: standalone `StaffAssignmentTargetModal` defaults `targetsPending` to `false`, so its fallback query pending state does not disable the trigger. Production uses the controlled path and remains correct. The advisory does not block advancement and remains open for feature close-out unless explicitly delegated.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-
+| PR 1 — Improve Staff Optimizer UX | Commit 1 — Record the approved feature plan | `036471db667b0e4cafd6794726c07b0c77fa8e51` | Recorded the accepted schema-2 ledger and TODO Active link after the exact reviewed precursor range. | `ledger_state.py`; `delivery_state.py`; `git diff --cached --check` — passed. | Not applicable | Clear | 0 | None |
+| PR 1 — Improve Staff Optimizer UX | Commit 2 — Add optimizer readiness and stable feedback | Pending record | Added one-query controlled staffing configuration, explicit readiness and recovery, single-primary action hierarchy, and stable full-width feedback while preserving context/reset guards. | Focused component/route tests (74 passed before correction; latest focused optimizer/modal 21 passed); full frontend tests (1,025 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport UI inspection; LSP and diff checks — passed. | Pass | Accepted findings — one MEDIUM standalone fallback-pending advisory retained for feature close-out; no CRITICAL or HIGH findings remain. | 1 | Initial review found three HIGH hierarchy, feedback-placement, and test-value defects; correction review verified all three fixed. |
 ## Final validation
 
 After all implementation commits complete and before feature review:

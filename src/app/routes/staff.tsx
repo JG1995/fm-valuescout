@@ -521,18 +521,26 @@ function StaffSearchContent() {
   return (
     <>
       <h1 className="sr-only">Staff Search</h1>
-      <div
-        className="flex w-full flex-wrap items-center justify-end gap-2"
-        data-testid="staff-page-actions"
-      >
-        <Button onClick={() => setImportOpen(true)}>Upload CSV</Button>
+      <div data-testid="staff-page-actions">
         {staffAssignmentContext ? (
           <StaffAssignmentOptimizer
             context={staffAssignmentContext}
             contextKey={staffAssignmentContextKey}
             contextUnavailable={staffAssignmentContextUnavailable}
+            shortlistReady={shortlistOptionsPage.state !== "no_shortlist"}
+            uploadAction={
+              <Button variant="secondary" onClick={() => setImportOpen(true)}>
+                Upload CSV
+              </Button>
+            }
           />
-        ) : null}
+        ) : (
+          <div className="flex w-full justify-end">
+            <Button variant="secondary" onClick={() => setImportOpen(true)}>
+              Upload CSV
+            </Button>
+          </div>
+        )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-gutter">
         {shortlistImport?.contextKey === shortlistContextKey ? (

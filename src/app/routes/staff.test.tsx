@@ -662,7 +662,7 @@ describe("staff route", () => {
     expect(dialog).toBeInTheDocument();
   });
 
-  it("keeps shortlist upload, Configure Club Staff, and Optimize visible with conditional metadata filters", async () => {
+  it("keeps shortlist upload, Configure staffing needs, and Optimize visible with conditional metadata filters", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
     const { router } = renderStaffRoute("/staff");
@@ -671,7 +671,7 @@ describe("staff route", () => {
       await screen.findByRole("button", { name: "Upload CSV" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Configure Club Staff" }),
+      screen.getByRole("button", { name: "Configure staffing needs" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Optimize assignments" }),
@@ -991,6 +991,7 @@ describe("staff route", () => {
   });
 
   it("optimizes without shortlist presentation filters", async () => {
+    setStaffShortlistOverride([fixtureStaff()]);
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     renderStaffRoute(
@@ -1010,6 +1011,7 @@ describe("staff route", () => {
   });
 
   it("uses the route context for complete slot saves and token replacement", async () => {
+    setStaffShortlistOverride([fixtureStaff()]);
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     const targets = fixtureStaffAssignmentTargets();
@@ -1018,10 +1020,10 @@ describe("staff route", () => {
     const { queryClient } = renderStaffRoute("/staff?shortlistOnly=true");
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure Club Staff" }),
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     const dialog = await screen.findByRole("dialog", {
-      name: "Configure assignment slots",
+      name: "Configure staffing needs",
     });
     expect(within(dialog).getByText("B Squad")).toBeInTheDocument();
     await user.click(
@@ -1041,7 +1043,7 @@ describe("staff route", () => {
     ).toHaveLength(28);
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure Club Staff" }),
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     const reopened = await screen.findByRole("dialog");
     const assistantManager = within(reopened).getAllByRole("spinbutton", {
@@ -1064,16 +1066,16 @@ describe("staff route", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     const configureClubStaff = await screen.findByRole("button", {
-      name: "Configure Club Staff",
+      name: "Configure staffing needs",
     });
     expect(configureClubStaff).toHaveFocus();
     await user.click(configureClubStaff);
     expect(
       screen.getAllByRole("spinbutton", { name: "Assistant Manager slots" })[0],
-    ).toHaveValue(0);
+    ).toHaveValue(1);
   });
 
-  it("renders standalone Club sections through Configure Club Staff without Senior", async () => {
+  it("renders standalone Club sections through Configure staffing needs without Senior", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     const targets = fixtureStaffAssignmentTargets();
@@ -1083,10 +1085,10 @@ describe("staff route", () => {
     renderStaffRoute("/staff?shortlistOnly=true");
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure Club Staff" }),
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     const dialog = await screen.findByRole("dialog", {
-      name: "Configure assignment slots",
+      name: "Configure staffing needs",
     });
     const club = within(dialog).getByRole("group", { name: "Club" });
 
@@ -1097,6 +1099,7 @@ describe("staff route", () => {
   });
 
   it("suppresses recommendations during a pending Planner team save and recovers after resolve", async () => {
+    setStaffShortlistOverride([fixtureStaff()]);
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerTeamRemovalImpacts([]);
@@ -1413,7 +1416,7 @@ describe("staff route", () => {
       ).toHaveClass("sr-only");
       for (const name of [
         "Upload CSV",
-        "Configure Club Staff",
+        "Configure staffing needs",
         "Optimize assignments",
       ]) {
         expect(
@@ -1421,6 +1424,17 @@ describe("staff route", () => {
         ).toBeInTheDocument();
         expect(within(toolbar).queryByRole("button", { name })).toBeNull();
       }
+      expect(
+        within(actions).getByRole("button", { name: "Optimize assignments" }),
+      ).toHaveClass("bg-primary");
+      expect(
+        within(actions).getByRole("button", { name: "Upload CSV" }),
+      ).toHaveClass("border-outline");
+      expect(
+        within(actions).getByRole("button", {
+          name: "Configure staffing needs",
+        }),
+      ).toHaveClass("border-outline");
     });
 
     it("removes chips and clears all through the toolbar", async () => {

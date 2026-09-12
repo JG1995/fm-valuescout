@@ -1,18 +1,25 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { optimizeStaffAssignments } from "../api/optimize-staff-assignments";
+import { staffAssignmentTargetsQueryOptions } from "../api/staff-assignment-targets-query-options";
 import type {
   StaffAssignmentContext,
   StaffAssignmentOptimization,
 } from "../types/staff-assignment";
 import { StaffAssignmentResults } from "./staff-assignment-results";
-import { StaffAssignmentTargetModal } from "./staff-assignment-target-modal";
+import {
+  type StaffAssignmentModalStatus,
+  StaffAssignmentTargetModal,
+} from "./staff-assignment-target-modal";
 
 type StaffAssignmentOptimizerProps = {
   context: StaffAssignmentContext;
   contextKey: string;
   contextUnavailable: boolean;
+  shortlistReady: boolean;
+  uploadAction?: ReactNode;
 };
 
 type OptimizeRequest = {
@@ -72,7 +79,13 @@ export function StaffAssignmentOptimizer({
   context,
   contextKey,
   contextUnavailable,
+  shortlistReady,
+  uploadAction,
 }: StaffAssignmentOptimizerProps) {
+  const targetsQuery = useQuery(
+    staffAssignmentTargetsQueryOptions(context, contextKey),
+  );
+  const [modalOpen, setModalOpen] = useState(false);
   const currentContext = useRef(context);
   const currentContextKey = useRef(contextKey);
   const previousContextKey = useRef(contextKey);
@@ -81,6 +94,10 @@ export function StaffAssignmentOptimizer({
   const [targetSavePending, setTargetSavePending] = useState(false);
   const [result, setResult] = useState<PresentedResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [modalStatus, setModalStatus] = useState<StaffAssignmentModalStatus>({
+    saved: false,
+    error: null,
+  });
   currentContext.current = context;
   currentContextKey.current = contextKey;
 
@@ -115,8 +132,16 @@ export function StaffAssignmentOptimizer({
     requestGeneration.current += 1;
     setResult(null);
     setError(null);
+    setModalStatus({ saved: false, error: null });
     resetOptimize();
   }, [resetOptimize]);
+
+  const handleModalStatusChange = useCallback(
+    (status: StaffAssignmentModalStatus) => {
+      setModalStatus(status);
+    },
+    [],
+  );
 
   useLayoutEffect(() => {
     const contextChanged = previousContextKey.current !== contextKey;
@@ -129,6 +154,21 @@ export function StaffAssignmentOptimizer({
     }
   }, [contextKey, contextUnavailable, resetOutcome]);
 
+  const configuredSlotCount = (targetsQuery.data?.targets ?? []).reduce(
+    (total, target) => total + target.slotCount,
+    0,
+  );
+  const optimizeDisabledReason = contextUnavailable
+    ? "Assignment context is refreshing."
+    : targetsQuery.isPending
+      ? "Loading staffing needs."
+      : targetsQuery.isError
+        ? "Staffing needs could not be loaded. Try again."
+        : configuredSlotCount === 0
+          ? "Configure staffing needs before optimizing assignments."
+          : !shortlistReady
+            ? "Upload a Staff Shortlist before optimizing assignments."
+            : null;
   const currentResult =
     !contextUnavailable &&
     result?.contextKey === contextKey &&
@@ -136,13 +176,26 @@ export function StaffAssignmentOptimizer({
       ? result.value
       : null;
   const message = currentResult ? setupMessage(currentResult) : null;
+  const statusError = modalStatus.error ?? error;
+  const statusSuccess = modalStatus.saved;
 
   return (
-    <div className="contents">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="w-full">
+      <div
+        data-testid="assignment-action-row"
+        className="flex w-full flex-wrap items-center justify-end gap-2"
+      >
+        {uploadAction}
         <StaffAssignmentTargetModal
           context={context}
           contextKey={contextKey}
+          targets={targetsQuery.data}
+          targetsError={
+            targetsQuery.error instanceof Error ? targetsQuery.error : null
+          }
+          targetsPending={targetsQuery.isPending || targetsQuery.isFetching}
+          open={modalOpen}
+          onOpenChange={setModalOpen}
           onSaved={resetOutcome}
           onPendingChange={(pending) => {
             setTargetSavePending(pending);
@@ -150,9 +203,13 @@ export function StaffAssignmentOptimizer({
               resetOutcome();
             }
           }}
+          onStatusChange={handleModalStatusChange}
         />
         <Button
-          disabled={contextUnavailable || targetSavePending}
+          aria-describedby={
+            optimizeDisabledReason ? "assignment-readiness" : undefined
+          }
+          disabled={Boolean(optimizeDisabledReason) || targetSavePending}
           loading={optimize.isPending}
           loadingLabel="Optimizing…"
           onClick={() => {
@@ -168,22 +225,38 @@ export function StaffAssignmentOptimizer({
           Optimize assignments
         </Button>
       </div>
-      {!contextUnavailable && error ? (
+      {optimizeDisabledReason ? (
         <p
-          role="alert"
-          className="w-full shrink-0 basis-full text-body-sm text-error"
+          id="assignment-readiness"
+          className="mt-2 w-full text-body-sm text-on-surface-variant"
         >
-          {error}
+          {optimizeDisabledReason}
         </p>
       ) : null}
-      {message ? (
-        <p
-          role="status"
-          className="w-full shrink-0 basis-full text-body-md text-on-surface-variant"
-        >
-          {message}
-        </p>
-      ) : null}
+      <div
+        data-testid="assignment-status-region"
+        role={statusError || message || statusSuccess ? "status" : undefined}
+        className="mt-2 w-full min-h-6 text-body-sm"
+      >
+        {!contextUnavailable && statusError ? (
+          <p
+            role="alert"
+            className="w-full shrink-0 basis-full text-body-sm text-error"
+          >
+            {statusError}
+          </p>
+        ) : null}
+        {statusSuccess ? (
+          <p className="w-full shrink-0 basis-full text-body-sm text-success">
+            Slot counts saved.
+          </p>
+        ) : null}
+        {message ? (
+          <p className="w-full shrink-0 basis-full text-body-md text-on-surface-variant">
+            {message}
+          </p>
+        ) : null}
+      </div>
       {currentResult?.state === "ready" ? (
         <StaffAssignmentResults result={currentResult} />
       ) : null}

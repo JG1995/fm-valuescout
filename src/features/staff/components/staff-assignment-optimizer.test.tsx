@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import {
   fixtureStaffAssignmentOptimization,
+  fixtureStaffAssignmentTargets,
   getLastStaffAssignmentOptimizerIpcArgs,
   getStaffAssignmentOptimizerIpcCallCount,
   resolvePendingStaffAssignmentOptimizationIpcMock,
@@ -24,16 +25,27 @@ const context = {
 function renderOptimizer(
   contextUnavailable = false,
   contextKey = "assignment-context-a",
+  zeroSlots = false,
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  const targets = fixtureStaffAssignmentTargets();
+  targets.targets = targets.targets.map((target) => ({
+    ...target,
+    slotCount: zeroSlots ? 0 : 1,
+  }));
+  queryClient.setQueryData(
+    ["staff", "assignment-targets", contextKey],
+    targets,
+  );
   const result = render(
     <QueryClientProvider client={queryClient}>
       <StaffAssignmentOptimizer
         context={context}
         contextKey={contextKey}
         contextUnavailable={contextUnavailable}
+        shortlistReady={true}
       />
     </QueryClientProvider>,
   );
@@ -51,6 +63,7 @@ function renderOptimizer(
             context={nextContext}
             contextKey={nextContextKey}
             contextUnavailable={nextUnavailable}
+            shortlistReady={true}
           />
         </QueryClientProvider>,
       );
@@ -59,6 +72,43 @@ function renderOptimizer(
 }
 
 describe("StaffAssignmentOptimizer", () => {
+  it("keeps modal feedback in the stable status region outside the action row", async () => {
+    const user = userEvent.setup();
+    renderOptimizer();
+
+    await user.click(
+      screen.getByRole("button", { name: "Configure staffing needs" }),
+    );
+    await user.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Save slots",
+      }),
+    );
+
+    const actionRow = screen.getByTestId("assignment-action-row");
+    expect(within(actionRow).queryByText("Slot counts saved.")).toBeNull();
+    expect(await screen.findByText("Slot counts saved.")).toBeInTheDocument();
+    expect(screen.getByTestId("assignment-status-region")).toHaveTextContent(
+      "Slot counts saved.",
+    );
+  });
+  it("disables Optimize assignments and explains how to configure zero slots", async () => {
+    renderOptimizer(false, "assignment-context-a", true);
+
+    const optimize = await screen.findByRole("button", {
+      name: "Optimize assignments",
+    });
+    expect(optimize).toBeDisabled();
+    const readiness = screen.getByText(
+      "Configure staffing needs before optimizing assignments.",
+    );
+    expect(readiness).toBeInTheDocument();
+    expect(optimize).toHaveAttribute(
+      "aria-describedby",
+      readiness.getAttribute("id"),
+    );
+  });
+
   it("sends only immutable tokens and renders Rust-provided recommendations and vacancies", async () => {
     const user = userEvent.setup();
     setStaffAssignmentOptimizationIpcMock(
@@ -351,10 +401,10 @@ describe("StaffAssignmentOptimizer", () => {
     );
     setStaffAssignmentTargetsIpcMockMode("pending");
     await user.click(
-      screen.getByRole("button", { name: "Configure Club Staff" }),
+      screen.getByRole("button", { name: "Configure staffing needs" }),
     );
     const dialog = await screen.findByRole("dialog", {
-      name: "Configure assignment slots",
+      name: "Configure staffing needs",
     });
     await user.click(
       within(dialog).getByRole("button", { name: "Save slots" }),
@@ -377,7 +427,7 @@ describe("StaffAssignmentOptimizer", () => {
     const { rerenderOptimizer } = renderOptimizer();
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure Club Staff" }),
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     await user.click(screen.getByRole("button", { name: "Save slots" }));
     expect(
@@ -389,10 +439,10 @@ describe("StaffAssignmentOptimizer", () => {
       snapshotContextToken: "snapshot-token-b",
     });
     await user.click(
-      await screen.findByRole("button", { name: "Configure Club Staff" }),
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     const dialog = await screen.findByRole("dialog", {
-      name: "Configure assignment slots",
+      name: "Configure staffing needs",
     });
     await user.click(
       within(dialog).getByRole("button", { name: "Save slots" }),

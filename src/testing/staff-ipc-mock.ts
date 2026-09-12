@@ -238,7 +238,7 @@ export function fixtureStaffAssignmentTargets(
         jobLabel,
         section,
         maxSlotCount: 50,
-        slotCount: 0,
+        slotCount: 1,
       })),
     ),
     ...ASSIGNMENT_CLUB_JOBS.map(
@@ -248,7 +248,7 @@ export function fixtureStaffAssignmentTargets(
         jobLabel,
         section,
         maxSlotCount,
-        slotCount: 0,
+        slotCount: 1,
       }),
     ),
   ];
