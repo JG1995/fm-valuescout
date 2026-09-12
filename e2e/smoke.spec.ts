@@ -637,12 +637,22 @@ test.describe("application smoke", () => {
     await expect(assignments).toContainText(
       "Preferred Job: Coach. Eligible for this target. Coach requirement: Attacking Technical.",
     );
-    await expect(assignments).toContainText("Current staff");
-    await expect(assignments).toContainText("Riley Scout");
+    await expect(
+      assignments.getByRole("img", { name: "Current staff" }),
+    ).toHaveCount(2);
+    await expect(
+      assignments.getByRole("columnheader", { name: "Classification" }),
+    ).toHaveCount(0);
+    const recruitmentRow = assignments.getByRole("row", {
+      name: /Riley Scout/,
+    });
+    await expect(recruitmentRow).toBeVisible();
+    await expect(
+      recruitmentRow.getByRole("img", { name: "Current staff" }),
+    ).toHaveCount(0);
     await expect(assignments).toContainText(
       "Preferred Job: Scout. Eligible for this target.",
     );
-    await expect(assignments).toContainText("Recruitment");
     await expect(
       assignments.getByRole("img", {
         name: "Assistant Manager: 82, Excellent",

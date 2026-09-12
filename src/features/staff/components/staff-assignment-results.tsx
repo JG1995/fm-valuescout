@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { Building2, ChevronDown, ChevronUp } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
@@ -85,9 +85,6 @@ export function StaffAssignmentResults({
                   <th scope="col" className="px-2 py-2">
                     Person
                   </th>
-                  <th scope="col" className="px-2 py-2">
-                    Classification
-                  </th>
                   <th scope="col" className="px-2 py-2 text-right">
                     Score
                   </th>
@@ -109,15 +106,23 @@ export function StaffAssignmentResults({
                     {slot.kind === "recommendation" ? (
                       <>
                         <td
-                          className="max-w-48 truncate px-2 py-2"
+                          className="max-w-48 px-2 py-2"
                           title={slot.name ?? undefined}
                         >
-                          {slot.name ?? "—"}
-                        </td>
-                        <td className="px-2 py-2">
-                          {slot.classification === "current_staff"
-                            ? "Current staff"
-                            : "Recruitment"}
+                          <span className="flex min-w-0 items-center gap-1">
+                            {slot.classification === "current_staff" ? (
+                              <Building2
+                                aria-label="Current staff"
+                                className="size-3.5 shrink-0 text-info"
+                                role="img"
+                              />
+                            ) : null}
+                            <span
+                              className={`truncate ${slot.classification === "current_staff" ? "font-medium text-info" : ""}`}
+                            >
+                              {slot.name ?? "—"}
+                            </span>
+                          </span>
                         </td>
                         <td className="px-2 py-2 text-right">
                           <ScoreBadge
@@ -135,7 +140,6 @@ export function StaffAssignmentResults({
                       </>
                     ) : (
                       <>
-                        <td className="px-2 py-2">—</td>
                         <td className="px-2 py-2">Vacancy</td>
                         <td className="px-2 py-2 text-right">—</td>
                         <td className="px-2 py-2 text-on-surface-variant">

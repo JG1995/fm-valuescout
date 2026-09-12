@@ -79,12 +79,26 @@ describe("StaffAssignmentOptimizer", () => {
             coachRequirement: "attacking_technical",
           },
           {
+            kind: "recommendation",
+            scope: "senior",
+            scopeDisplayName: "First Team",
+            jobId: "coaches",
+            jobLabel: "Coaches",
+            slotNumber: 2,
+            uid: 102,
+            name: "Riley Recruit",
+            preferredJob: "Coach",
+            classification: "recruitment",
+            score: 79,
+            coachRequirement: null,
+          },
+          {
             kind: "vacancy",
             scope: "club",
             scopeDisplayName: "Club",
             jobId: "coaches",
             jobLabel: "Coaches",
-            slotNumber: 2,
+            slotNumber: 3,
             coachRequirement: "goalkeeping",
             evidence: {
               jobId: "coaches",
@@ -113,8 +127,15 @@ describe("StaffAssignmentOptimizer", () => {
         name: "Staff assignment recommendations and vacancies",
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Current staff")).toBeInTheDocument();
-    expect(screen.getByText("First Team")).toBeInTheDocument();
+    const currentStaffName = screen.getByText("Alex Coach");
+    expect(currentStaffName).toHaveClass("font-medium", "text-info");
+    expect(screen.getByRole("img", { name: "Current staff" })).toBeVisible();
+    expect(screen.getByText("Riley Recruit")).not.toHaveClass("text-info");
+    expect(
+      screen.queryByRole("columnheader", { name: "Classification" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Recruitment")).not.toBeInTheDocument();
+    expect(screen.getAllByText("First Team")).toHaveLength(2);
     expect(screen.getByText("Club")).toBeInTheDocument();
     expect(screen.queryByText("senior")).not.toBeInTheDocument();
     expect(
