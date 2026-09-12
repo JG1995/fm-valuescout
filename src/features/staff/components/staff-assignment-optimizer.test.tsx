@@ -287,7 +287,7 @@ describe("StaffAssignmentOptimizer", () => {
     expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
   });
 
-  it("discloses assignment evidence accessibly without optimizing again", async () => {
+  it("collapses assignment recommendations accessibly without optimizing again", async () => {
     const user = userEvent.setup();
     renderOptimizer();
 
@@ -301,6 +301,7 @@ describe("StaffAssignmentOptimizer", () => {
     const body = bodyId ? document.getElementById(bodyId) : null;
 
     expect(collapse).toHaveAttribute("aria-expanded", "true");
+    expect(within(collapse).getByText("Collapse")).toBeVisible();
     expect(body).toBeVisible();
     expect(body).toHaveTextContent("Alex Coach");
     expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
@@ -311,6 +312,7 @@ describe("StaffAssignmentOptimizer", () => {
       name: "Expand assignment recommendations",
     });
     expect(expand).toHaveAttribute("aria-expanded", "false");
+    expect(within(expand).getByText("Expand")).toBeVisible();
     expect(expand).toHaveAttribute("aria-controls", bodyId);
     expect(body).not.toBeVisible();
     expect(body).toHaveTextContent("Alex Coach");

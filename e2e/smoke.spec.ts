@@ -695,11 +695,13 @@ test.describe("application smoke", () => {
     });
     const bodyId = await collapse.getAttribute("aria-controls");
     await expect(collapse).toHaveAttribute("aria-expanded", "true");
+    await expect(collapse.getByText("Collapse")).toBeVisible();
     await collapse.click();
     const expand = main.getByRole("button", {
       name: "Expand assignment recommendations",
     });
     await expect(expand).toHaveAttribute("aria-expanded", "false");
+    await expect(expand.getByText("Expand")).toBeVisible();
     await expect(expand).toHaveAttribute("aria-controls", bodyId ?? "");
     await expect(assignments).toBeHidden();
     await expect(main.getByText("Alex Assistant")).toBeHidden();

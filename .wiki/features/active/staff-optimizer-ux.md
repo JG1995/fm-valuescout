@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -124,7 +124,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 ### PR 1 — Improve Staff Optimizer UX
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -526,7 +526,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 #### Commit 9 — Label the result collapse control
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): label result collapse control`
 
@@ -569,24 +569,6 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 **Review mandate:** Verify compact visible label and chevron; `aria-expanded`/`aria-controls`; keyboard operation; same-result/no-rerun/new-result behavior; current context clearing; and non-duplicative focused plus smoke proof.
 
-## Active work
-
-**PR:** PR 1 — Improve Staff Optimizer UX
-
-**Commit:** Commit 9 — Label the result collapse control
-
-### RED or removal proof
-
-Update the existing collapse proof so it fails because the panel control has only a chevron/accessibility name and no visible Collapse/Expand text.
-
-### Expected outcome
-
-The result control visibly says Collapse or Expand beside its chevron while preserving `aria-expanded`, stable `aria-controls`, keyboard operation, accepted-result retention, new-result expansion, and no optimizer rerun.
-
-### Explicit exclusions
-
-No result ownership, grouping, evidence, animation, shared Panel API, persisted expansion, or optimizer mutation change.
-
 ## Discoveries and replanning
 
 - Approved replan: adopt local-only `feature/staff-optimizer-tweaks` rather than requiring separate merges. `bb41169` and `0386fa5` are reviewed precursor commits on the eventual PR branch, outside this ledger's schema-2 packet sequence. Before Commit 1, their exact two-commit `main..HEAD` range must be verified; after that, delivery may build on the branch without synchronization.
@@ -594,7 +576,7 @@ No result ownership, grouping, evidence, animation, shared Panel API, persisted 
 - Initial `/staff` inspection cannot reach the approved dialog/result states. The durable `ui-inspection.spec.ts` extension must reach each state through the existing populated stub and accessible controls; inspection PNGs remain evidence, not a baseline gate.
 - Commit 2 correction review retained one MEDIUM advisory: standalone `StaffAssignmentTargetModal` defaults `targetsPending` to `false`, so its fallback query pending state does not disable the trigger. Production uses the controlled path and remains correct. The advisory does not block advancement and remains open for feature close-out unless explicitly delegated.
 - Commit 5 review retained one MEDIUM proof advisory: the Adjust staffing needs test proves the controlled dialog opens but does not assert a seeded draft value. The implementation reuses `draftFromTargets`, and existing trigger-path tests prove that helper; the advisory remains open for feature close-out unless explicitly delegated.
-- Commit 7 review retained one MEDIUM naming advisory: a pre-existing panel Collapse/Expand test was accidentally renamed to claim evidence-disclosure coverage while its body still proves panel collapse. Disclosure behavior remains directly protected in the preceding component test and smoke. Commit 9 owns this collapse test and should restore an accurate name while extending its visible-label proof.
+- Commit 7 review retained one MEDIUM naming advisory: a pre-existing panel Collapse/Expand test was accidentally renamed to claim evidence-disclosure coverage while its body still proved panel collapse. Commit 9 resolved it within the owning test while adding the visible-label proof.
 
 ## Completed work
 
@@ -607,7 +589,8 @@ No result ownership, grouping, evidence, animation, shared Panel API, persisted 
 | PR 1 — Improve Staff Optimizer UX | Commit 5 — Make vacancies recoverable | `81ed8e1e5c88e36802f76e6f393884d4e3419a09` | Added warning-token vacancy cues and reasons plus controlled staffing and route-owned shortlist recovery without rerunning optimization. | Focused optimizer/route tests (71 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); LSP and diff checks — passed. | Pass | Accepted findings — one MEDIUM Adjust-path draft-content proof advisory retained for feature close-out; no CRITICAL or HIGH findings. | 0 | None |
 | PR 1 — Improve Staff Optimizer UX | Commit 6 — Group assignment results by scope | `d6c2c74fb4b71d0ed1f974c48042eae8892a2720` | Grouped adjacent Rust display names in received order, added per-group filled/configured headers, removed Scope, and added durable populated result inspection. | Focused optimizer tests (16 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport result inspection; LSP and diff checks — passed. | Pass | Clear | 0 | None |
 | PR 1 — Improve Staff Optimizer UX | Commit 7 — Disclose assignment evidence on demand | `9aea5b4c7a8735a51d5df7f822fe671df99fc38a` | Kept row reasons concise and moved exact bounded Rust vacancy counts into native accessible disclosures without rerunning optimization. | Focused component/route tests (77 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); LSP and diff checks — passed. | Pass | Accepted findings — one MEDIUM inaccurate collapse-test name retained for Commit 9; no CRITICAL or HIGH findings. | 0 | None |
-| PR 1 — Improve Staff Optimizer UX | Commit 8 — Keep result headers visible | Pending record | Kept assignment column headers visible within the existing bounded result scroller using documented sticky surface/layer tokens. | `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport result inspection; LSP and diff checks — passed. | Pass | Clear | 0 | None |
+| PR 1 — Improve Staff Optimizer UX | Commit 8 — Keep result headers visible | `64bfcce46da8306bb648fa28b1f6b7f49851fd6d` | Kept assignment column headers visible within the existing bounded result scroller using documented sticky surface/layer tokens. | `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport result inspection; LSP and diff checks — passed. | Pass | Clear | 0 | None |
+| PR 1 — Improve Staff Optimizer UX | Commit 9 — Label the result collapse control | Pending record | Added compact visible Collapse/Expand text beside the chevron while preserving ARIA state, result retention, context clearing, new-result expansion, and no rerun. | Focused optimizer tests (16 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); four final UI inspections; LSP and diff checks — passed. | Pass | Clear | 0 | Resolved Commit 7's inaccurate collapse-test name within the owning test. |
 
 ## Final validation
 

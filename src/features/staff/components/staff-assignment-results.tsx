@@ -82,14 +82,16 @@ export function StaffAssignmentResults({
       title="Assignment recommendations"
       actions={
         <Button
-          size="icon"
           variant="ghost"
           icon={ToggleIcon}
           aria-label={`${expanded ? "Collapse" : "Expand"} assignment recommendations`}
           aria-controls={bodyId}
           aria-expanded={expanded}
+          className="gap-1 px-2"
           onClick={() => setExpanded((current) => !current)}
-        />
+        >
+          {expanded ? "Collapse" : "Expand"}
+        </Button>
       }
       className="w-full shrink-0 basis-full"
     >
