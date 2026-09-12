@@ -1,8 +1,9 @@
-import { Building2, ChevronDown, ChevronUp } from "lucide-react";
+import { Building2, ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
+import { StatusChip } from "@/components/ui/status-chip/status-chip";
 import type {
   CoachRequirement,
   StaffAssignmentOptimization,
@@ -11,6 +12,8 @@ import type {
 
 type StaffAssignmentResultsProps = {
   result: StaffAssignmentOptimization;
+  onRequestConfiguration: () => void;
+  onReviewShortlist: () => void;
 };
 
 const coachRequirementLabels: Record<CoachRequirement, string> = {
@@ -40,6 +43,8 @@ function evidenceText(slot: Extract<StaffAssignmentSlot, { kind: "vacancy" }>) {
 
 export function StaffAssignmentResults({
   result,
+  onRequestConfiguration,
+  onReviewShortlist,
 }: StaffAssignmentResultsProps) {
   const [expanded, setExpanded] = useState(true);
   const bodyId = useId();
@@ -167,10 +172,31 @@ export function StaffAssignmentResults({
                       </>
                     ) : (
                       <>
-                        <td className="px-2 py-2">Vacancy</td>
+                        <td className="px-2 py-2">
+                          <StatusChip tone="warning" icon={TriangleAlert}>
+                            Vacancy
+                          </StatusChip>
+                        </td>
                         <td className="px-2 py-2 text-right">—</td>
-                        <td className="px-2 py-2 text-on-surface-variant">
-                          {evidenceText(slot)}
+                        <td className="space-y-2 px-2 py-2 text-on-surface-variant">
+                          <p>
+                            No eligible shortlisted candidate filled this slot.
+                          </p>
+                          <p>{evidenceText(slot)}</p>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              variant="secondary"
+                              onClick={onRequestConfiguration}
+                            >
+                              Adjust staffing needs
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              onClick={onReviewShortlist}
+                            >
+                              Review shortlist
+                            </Button>
+                          </div>
                         </td>
                       </>
                     )}

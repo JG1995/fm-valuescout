@@ -533,6 +533,7 @@ function StaffSearchContent() {
                 Upload CSV
               </Button>
             }
+            onReviewShortlist={() => void updateSearch({ shortlistOnly: true })}
           />
         ) : (
           <div className="flex w-full justify-end">

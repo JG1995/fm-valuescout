@@ -112,6 +112,7 @@ export function StaffAssignmentTargetModal({
   const changeOpen = onOpenChange ?? setInternalOpen;
   const [draft, setDraft] = useState<DraftTarget[]>([]);
   const [saved, setSaved] = useState(false);
+  const previousOpen = useRef(resolvedOpen);
   const controlIdPrefix = useId();
   const currentContextKey = useRef(contextKey);
   const previousContextKey = useRef(contextKey);
@@ -207,6 +208,20 @@ export function StaffAssignmentTargetModal({
     setDraft(draftFromTargets(resolvedTargets.targets));
     changeOpen(true);
   };
+
+  useEffect(() => {
+    if (
+      resolvedOpen &&
+      !previousOpen.current &&
+      resolvedTargets &&
+      !resolvedPending &&
+      !resolvedError
+    ) {
+      setSaved(false);
+      setDraft(draftFromTargets(resolvedTargets.targets));
+    }
+    previousOpen.current = resolvedOpen;
+  }, [resolvedError, resolvedOpen, resolvedPending, resolvedTargets]);
 
   const closeModal = () => {
     if (pending) {

@@ -990,6 +990,28 @@ describe("staff route", () => {
     expect(router.history.location.pathname).toBe("/staff/101");
   });
 
+  it("recovers a vacancy through the route-owned shortlist filter", async () => {
+    setStaffShortlistOverride([fixtureStaff()]);
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const { router } = renderStaffRoute("/staff");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Optimize assignments" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Review shortlist" }),
+    );
+
+    await waitFor(() =>
+      expect(router.state.location.search.shortlistOnly).toBe(true),
+    );
+    expect(getLastStaffAssignmentOptimizerIpcArgs()).toEqual({
+      expectedSaveContextToken: "save-token-1",
+      expectedSnapshotContextToken: "snapshot-token-1",
+    });
+  });
+
   it("optimizes without shortlist presentation filters", async () => {
     setStaffShortlistOverride([fixtureStaff()]);
     const user = userEvent.setup();

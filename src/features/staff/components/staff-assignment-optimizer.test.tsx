@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   fixtureStaffAssignmentOptimization,
   fixtureStaffAssignmentTargets,
@@ -26,6 +26,7 @@ function renderOptimizer(
   contextUnavailable = false,
   contextKey = "assignment-context-a",
   zeroSlots = false,
+  onReviewShortlist = vi.fn(),
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -46,6 +47,7 @@ function renderOptimizer(
         contextKey={contextKey}
         contextUnavailable={contextUnavailable}
         shortlistReady={true}
+        onReviewShortlist={onReviewShortlist}
       />
     </QueryClientProvider>,
   );
@@ -64,6 +66,7 @@ function renderOptimizer(
             contextKey={nextContextKey}
             contextUnavailable={nextUnavailable}
             shortlistReady={true}
+            onReviewShortlist={onReviewShortlist}
           />
         </QueryClientProvider>,
       );
@@ -111,6 +114,7 @@ describe("StaffAssignmentOptimizer", () => {
 
   it("sends only immutable tokens and renders Rust-provided recommendations and vacancies", async () => {
     const user = userEvent.setup();
+    const onReviewShortlist = vi.fn();
     setStaffAssignmentOptimizationIpcMock(
       fixtureStaffAssignmentOptimization({
         slots: [
@@ -160,7 +164,7 @@ describe("StaffAssignmentOptimizer", () => {
         ],
       }),
     );
-    renderOptimizer();
+    renderOptimizer(false, "assignment-context-a", false, onReviewShortlist);
 
     await user.click(
       screen.getByRole("button", { name: "Optimize assignments" }),
@@ -212,6 +216,16 @@ describe("StaffAssignmentOptimizer", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText(/unsupported Preferred Job/i)).toBeInTheDocument();
+
+    const configure = screen.getByRole("button", {
+      name: "Adjust staffing needs",
+    });
+    await user.click(configure);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Review shortlist" }));
+    expect(onReviewShortlist).toHaveBeenCalledOnce();
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
   });
 
   it("collapses and expands the accepted result without optimizing again", async () => {

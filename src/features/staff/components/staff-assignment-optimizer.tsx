@@ -20,6 +20,7 @@ type StaffAssignmentOptimizerProps = {
   contextUnavailable: boolean;
   shortlistReady: boolean;
   uploadAction?: ReactNode;
+  onReviewShortlist?: () => void;
 };
 
 type OptimizeRequest = {
@@ -81,6 +82,7 @@ export function StaffAssignmentOptimizer({
   contextUnavailable,
   shortlistReady,
   uploadAction,
+  onReviewShortlist = () => {},
 }: StaffAssignmentOptimizerProps) {
   const targetsQuery = useQuery(
     staffAssignmentTargetsQueryOptions(context, contextKey),
@@ -258,7 +260,11 @@ export function StaffAssignmentOptimizer({
         ) : null}
       </div>
       {currentResult?.state === "ready" ? (
-        <StaffAssignmentResults result={currentResult} />
+        <StaffAssignmentResults
+          result={currentResult}
+          onRequestConfiguration={() => setModalOpen(true)}
+          onReviewShortlist={onReviewShortlist}
+        />
       ) : null}
     </div>
   );
