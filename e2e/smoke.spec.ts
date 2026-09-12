@@ -373,7 +373,7 @@ test.describe("application smoke", () => {
     const main = page.getByRole("main");
     await expect(
       main.getByRole("heading", { level: 1, name: "Staff Search" }),
-    ).toBeVisible();
+    ).toHaveClass(/sr-only/);
     await expect(main.getByRole("tablist")).toHaveCount(0);
     await expect(
       page.getByRole("link", { name: "Staff Search" }),
@@ -680,22 +680,23 @@ test.describe("application smoke", () => {
     await expect(assignments).toBeVisible();
     await expect(assignments).toContainText("Alex Assistant");
 
+    const assignmentPanel = assignments.locator("xpath=ancestor::section[1]");
     for (const [width, height] of [
       [1280, 800],
       [1600, 900],
     ] as const) {
       await page.setViewportSize({ width, height });
       await expect(assignments).toBeVisible();
-      const [assignmentsBox, mainBox] = await Promise.all([
-        assignments.boundingBox(),
+      const [assignmentPanelBox, mainBox] = await Promise.all([
+        assignmentPanel.boundingBox(),
         main.boundingBox(),
       ]);
-      expect(assignmentsBox).not.toBeNull();
+      expect(assignmentPanelBox).not.toBeNull();
       expect(mainBox).not.toBeNull();
-      expect(assignmentsBox?.x).toBeGreaterThanOrEqual(mainBox?.x ?? 0);
+      expect(assignmentPanelBox?.x).toBeCloseTo((mainBox?.x ?? 0) + 16, 0);
       expect(
-        (assignmentsBox?.x ?? 0) + (assignmentsBox?.width ?? 0),
-      ).toBeLessThanOrEqual((mainBox?.x ?? 0) + (mainBox?.width ?? 0) + 1);
+        (assignmentPanelBox?.x ?? 0) + (assignmentPanelBox?.width ?? 0),
+      ).toBeCloseTo((mainBox?.x ?? 0) + (mainBox?.width ?? 0) - 16, 0);
     }
 
     await page

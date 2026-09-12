@@ -520,28 +520,20 @@ function StaffSearchContent() {
 
   return (
     <>
-      {/* Page header owns the title and every page action (Upload
-      Shortlist, Configure, Optimize): the generic table toolbar below owns
-      only dataset slots and never hosts these controls. */}
-      <header
-        data-testid="staff-page-header"
-        className="flex w-full flex-wrap items-start justify-between gap-3"
+      <h1 className="sr-only">Staff Search</h1>
+      <div
+        className="flex w-full flex-wrap items-center justify-end gap-2"
+        data-testid="staff-page-actions"
       >
-        <h1 className="text-headline-lg text-on-surface">Staff Search</h1>
-        <div
-          className="flex flex-wrap items-center justify-end gap-2"
-          data-testid="staff-page-actions"
-        >
-          <Button onClick={() => setImportOpen(true)}>Upload CSV</Button>
-          {staffAssignmentContext ? (
-            <StaffAssignmentOptimizer
-              context={staffAssignmentContext}
-              contextKey={staffAssignmentContextKey}
-              contextUnavailable={staffAssignmentContextUnavailable}
-            />
-          ) : null}
-        </div>
-      </header>
+        <Button onClick={() => setImportOpen(true)}>Upload CSV</Button>
+        {staffAssignmentContext ? (
+          <StaffAssignmentOptimizer
+            context={staffAssignmentContext}
+            contextKey={staffAssignmentContextKey}
+            contextUnavailable={staffAssignmentContextUnavailable}
+          />
+        ) : null}
+      </div>
       <div className="flex min-h-0 flex-1 flex-col gap-gutter">
         {shortlistImport?.contextKey === shortlistContextKey ? (
           <p role="status" className="text-body-sm text-on-surface-variant">

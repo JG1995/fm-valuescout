@@ -95,8 +95,8 @@ describe("staff route", () => {
     const staffLink = await screen.findByRole("link", { name: "Staff Search" });
     expect(staffLink).toHaveAttribute("aria-current", "page");
     expect(
-      await screen.findByRole("heading", { name: "Staff Search" }),
-    ).toBeInTheDocument();
+      await screen.findByRole("heading", { level: 1, name: "Staff Search" }),
+    ).toHaveClass("sr-only");
     expect(screen.queryByRole("tablist")).toBeNull();
 
     const table = await screen.findByRole("table", {
@@ -1399,7 +1399,7 @@ describe("staff route", () => {
       ).toBeTruthy();
     });
 
-    it("keeps Upload, Configure, and Optimize outside the generic toolbar", async () => {
+    it("keeps page actions outside the generic toolbar without a redundant title", async () => {
       await resolveLoadDataIpcMock();
       renderStaffRoute();
 
@@ -1407,24 +1407,17 @@ describe("staff route", () => {
       const toolbar = screen.getByRole("toolbar", {
         name: "Staff results toolbar",
       });
-      const header = screen.getByTestId("staff-page-header");
+      const actions = screen.getByTestId("staff-page-actions");
       expect(
-        within(header).getByRole("heading", {
-          level: 1,
-          name: "Staff Search",
-        }),
-      ).toBeInTheDocument();
-      expect(
-        within(header).getByTestId("staff-page-actions"),
-      ).toBeInTheDocument();
+        screen.getByRole("heading", { level: 1, name: "Staff Search" }),
+      ).toHaveClass("sr-only");
       for (const name of [
         "Upload CSV",
         "Configure Club Staff",
         "Optimize assignments",
       ]) {
-        expect(screen.getByRole("button", { name })).toBeInTheDocument();
         expect(
-          within(header).getByRole("button", { name }),
+          within(actions).getByRole("button", { name }),
         ).toBeInTheDocument();
         expect(within(toolbar).queryByRole("button", { name })).toBeNull();
       }
