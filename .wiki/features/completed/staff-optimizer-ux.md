@@ -126,7 +126,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** <https://github.com/JG1995/fm-valuescout/pull/154>
 
 **Merge ref:** Not merged
 
@@ -643,15 +643,15 @@ Planning changes only the active ledger and TODO. During feature reconciliation,
 | `64bfcce46da8306bb648fa28b1f6b7f49851fd6d` | Content |
 | `cb065374fab331959cbc2e44892f68522f3df50d` | Content |
 
-Correction ref: none. Close-out documentation ref: Pending record.
+Correction ref: none. Close-out documentation ref: `d4d38559fa1226717de2ee4f33de63ffd0a0be8b`.
 
 ## Final publication
 
 ```yaml
 status: ready_for_publication
-pr_status: not_published
+pr_status: open
 merge_status: not_merged
-pr_ref: "Not published"
+pr_ref: "https://github.com/JG1995/fm-valuescout/pull/154"
 merge_ref: "Not merged"
 branch: feature/staff-optimizer-tweaks
 base_branch: main
@@ -690,8 +690,9 @@ final_pr_commit_set:
   - 9aea5b4c7a8735a51d5df7f822fe671df99fc38a
   - 64bfcce46da8306bb648fa28b1f6b7f49851fd6d
   - cb065374fab331959cbc2e44892f68522f3df50d
+  - d4d38559fa1226717de2ee4f33de63ffd0a0be8b
 correction_ref: none
-close_out_documentation_ref: "Pending record"
+close_out_documentation_ref: d4d38559fa1226717de2ee4f33de63ffd0a0be8b
 publication_correction_evidence: none
 project_fit: conforms
 
