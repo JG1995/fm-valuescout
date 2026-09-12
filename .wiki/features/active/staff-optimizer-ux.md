@@ -436,7 +436,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 #### Commit 7 — Disclose assignment evidence on demand
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): disclose assignment evidence on demand`
 
@@ -481,7 +481,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 #### Commit 8 — Keep result headers visible
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): keep assignment headers visible`
 
@@ -573,19 +573,19 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 **PR:** PR 1 — Improve Staff Optimizer UX
 
-**Commit:** Commit 7 — Disclose assignment evidence on demand
+**Commit:** Commit 8 — Keep result headers visible
 
 ### RED or removal proof
 
-Add focused result proof that fails because detailed vacancy counts are always visible instead of hidden behind a keyboard-accessible native disclosure while the default row retains one concise reason.
+Add a browser proof that fails because scrolling the existing bounded assignment-results container moves the table column header out of its scrollport.
 
 ### Expected outcome
 
-Each row stays concise by default, and expanding native details reveals the exact bounded Rust evidence without IPC, eligibility computation, or result-state changes.
+Assignment column headers remain visible inside the existing bounded result scroller after vertical scrolling, using documented surface and sticky-layer tokens without changing rows or overflow ownership.
 
 ### Explicit exclusions
 
-No vacancy recovery, grouping, sticky headers, collapse-label changes, custom popover, DTO changes, or frontend evidence computation.
+No group/column content changes, evidence or collapse changes, Data Table refactor, global CSS, new scroll container, or unbounded result layout.
 
 ## Discoveries and replanning
 
@@ -594,6 +594,7 @@ No vacancy recovery, grouping, sticky headers, collapse-label changes, custom po
 - Initial `/staff` inspection cannot reach the approved dialog/result states. The durable `ui-inspection.spec.ts` extension must reach each state through the existing populated stub and accessible controls; inspection PNGs remain evidence, not a baseline gate.
 - Commit 2 correction review retained one MEDIUM advisory: standalone `StaffAssignmentTargetModal` defaults `targetsPending` to `false`, so its fallback query pending state does not disable the trigger. Production uses the controlled path and remains correct. The advisory does not block advancement and remains open for feature close-out unless explicitly delegated.
 - Commit 5 review retained one MEDIUM proof advisory: the Adjust staffing needs test proves the controlled dialog opens but does not assert a seeded draft value. The implementation reuses `draftFromTargets`, and existing trigger-path tests prove that helper; the advisory remains open for feature close-out unless explicitly delegated.
+- Commit 7 review retained one MEDIUM naming advisory: a pre-existing panel Collapse/Expand test was accidentally renamed to claim evidence-disclosure coverage while its body still proves panel collapse. Disclosure behavior remains directly protected in the preceding component test and smoke. Commit 9 owns this collapse test and should restore an accurate name while extending its visible-label proof.
 
 ## Completed work
 
@@ -604,7 +605,8 @@ No vacancy recovery, grouping, sticky headers, collapse-label changes, custom po
 | PR 1 — Improve Staff Optimizer UX | Commit 3 — Improve staffing-needs controls | `34ce800e7fe605aea06b7b15339f01224dc9e653` | Added explicitly labelled bounded step controls, direct numeric entry, pending locks, one zero rule, truthful valid-draft team/section totals, and a durable populated dialog inspection state. | Focused optimizer/modal tests (22 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport modal inspection; LSP and diff checks — passed. | Pass | Clear | 1 | Initial review found invalid label-wrapped step buttons; correction used explicit collision-safe label/input association and added live Chromium step proof. |
 | PR 1 — Improve Staff Optimizer UX | Commit 4 — Summarize assignment results | `6a762e1776a1f31d7695fbeb5c381cccabb7a792` | Added compact filled, vacancy, current-staff, and recruit metrics derived only from received slot tags while retaining candidate/configured supporting text. | Focused optimizer tests (16 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed); LSP and diff checks — passed. | Pass | Clear | 0 | None |
 | PR 1 — Improve Staff Optimizer UX | Commit 5 — Make vacancies recoverable | `81ed8e1e5c88e36802f76e6f393884d4e3419a09` | Added warning-token vacancy cues and reasons plus controlled staffing and route-owned shortlist recovery without rerunning optimization. | Focused optimizer/route tests (71 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); LSP and diff checks — passed. | Pass | Accepted findings — one MEDIUM Adjust-path draft-content proof advisory retained for feature close-out; no CRITICAL or HIGH findings. | 0 | None |
-| PR 1 — Improve Staff Optimizer UX | Commit 6 — Group assignment results by scope | Pending record | Grouped adjacent Rust display names in received order, added per-group filled/configured headers, removed Scope, and added durable populated result inspection. | Focused optimizer tests (16 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport result inspection; LSP and diff checks — passed. | Pass | Clear | 0 | None |
+| PR 1 — Improve Staff Optimizer UX | Commit 6 — Group assignment results by scope | `d6c2c74fb4b71d0ed1f974c48042eae8892a2720` | Grouped adjacent Rust display names in received order, added per-group filled/configured headers, removed Scope, and added durable populated result inspection. | Focused optimizer tests (16 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport result inspection; LSP and diff checks — passed. | Pass | Clear | 0 | None |
+| PR 1 — Improve Staff Optimizer UX | Commit 7 — Disclose assignment evidence on demand | Pending record | Kept row reasons concise and moved exact bounded Rust vacancy counts into native accessible disclosures without rerunning optimization. | Focused component/route tests (77 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); LSP and diff checks — passed. | Pass | Accepted findings — one MEDIUM inaccurate collapse-test name retained for Commit 9; no CRITICAL or HIGH findings. | 0 | None |
 
 ## Final validation
 

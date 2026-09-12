@@ -242,13 +242,39 @@ describe("StaffAssignmentOptimizer", () => {
     expect(
       screen.getByText("5 joined shortlisted candidates; 4 configured slots."),
     ).toBeInTheDocument();
+    const vacancyRow = screen.getByRole("row", { name: /Vacancy/ });
     expect(
-      screen.getByText(
-        /Coach requirement: Goalkeeping\. 0 eligible scores; 2 unavailable scores/i,
+      within(vacancyRow).getByText(
+        "No eligible shortlisted candidate filled this slot.",
       ),
     ).toBeInTheDocument();
+    expect(
+      within(vacancyRow).getByText(/eligible scores;.*unavailable scores/i),
+    ).not.toBeVisible();
+    const evidence = within(vacancyRow).getByRole("group");
+    expect(
+      within(evidence).getByText("Show assignment evidence"),
+    ).toBeInTheDocument();
+    expect(evidence).not.toHaveAttribute("open");
+    await user.click(within(evidence).getByText("Show assignment evidence"));
+    expect(evidence).toHaveAttribute("open");
+    expect(evidence).toHaveTextContent(
+      "0 eligible scores; 2 unavailable scores; 2 joined shortlisted candidates.",
+    );
+    expect(
+      within(vacancyRow).getByText("Coach requirement: Goalkeeping."),
+    ).toBeInTheDocument();
+    await user.click(within(evidence).getByText("Show assignment evidence"));
+    expect(evidence).not.toHaveAttribute("open");
+    expect(
+      within(vacancyRow).getByText(/eligible scores;.*unavailable scores/i),
+    ).not.toBeVisible();
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
     expect(screen.getByText("Taylor Coach")).toBeInTheDocument();
     expect(screen.getByText(/unsupported Preferred Job/i)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Preferred Job: Coach\. Eligible for this target\./),
+    ).toHaveLength(2);
 
     const configure = screen.getByRole("button", {
       name: "Adjust staffing needs",
@@ -261,7 +287,7 @@ describe("StaffAssignmentOptimizer", () => {
     expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
   });
 
-  it("collapses and expands the accepted result without optimizing again", async () => {
+  it("discloses assignment evidence accessibly without optimizing again", async () => {
     const user = userEvent.setup();
     renderOptimizer();
 

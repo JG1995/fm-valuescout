@@ -676,8 +676,18 @@ test.describe("application smoke", () => {
       }),
     ).toBeVisible();
     await expect(assignments).toContainText("Vacancy");
-    await expect(assignments).toContainText(
-      "Coach requirement: Goalkeeping. 0 eligible scores; 1 unavailable score; 1 joined shortlisted candidate.",
+    const vacancyRow = assignments.getByRole("row", { name: /Vacancy/ });
+    await expect(vacancyRow).toContainText(
+      "No eligible shortlisted candidate filled this slot.",
+    );
+    await expect(vacancyRow).toContainText("Coach requirement: Goalkeeping.");
+    const evidence = vacancyRow.getByRole("group");
+    await expect(evidence).toBeVisible();
+    await expect(evidence).not.toHaveAttribute("open");
+    await evidence.getByText("Show assignment evidence").click();
+    await expect(evidence).toHaveAttribute("open");
+    await expect(evidence).toContainText(
+      "0 eligible scores; 1 unavailable score; 1 joined shortlisted candidate.",
     );
 
     const collapse = main.getByRole("button", {

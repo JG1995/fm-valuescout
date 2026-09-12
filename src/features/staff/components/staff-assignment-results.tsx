@@ -33,12 +33,12 @@ function coachRequirementText(requirement: CoachRequirement | null) {
     : null;
 }
 
-function evidenceText(slot: Extract<StaffAssignmentSlot, { kind: "vacancy" }>) {
+function evidenceCountsText(
+  slot: Extract<StaffAssignmentSlot, { kind: "vacancy" }>,
+) {
   const { eligibleScoreCount, joinedCandidateCount, unavailableScoreCount } =
     slot.evidence;
-  const evidence = `${eligibleScoreCount} eligible score${eligibleScoreCount === 1 ? "" : "s"}; ${unavailableScoreCount} unavailable score${unavailableScoreCount === 1 ? "" : "s"}; ${joinedCandidateCount} joined shortlisted candidate${joinedCandidateCount === 1 ? "" : "s"}.`;
-  const requirement = coachRequirementText(slot.coachRequirement);
-  return requirement ? `${requirement} ${evidence}` : evidence;
+  return `${eligibleScoreCount} eligible score${eligibleScoreCount === 1 ? "" : "s"}; ${unavailableScoreCount} unavailable score${unavailableScoreCount === 1 ? "" : "s"}; ${joinedCandidateCount} joined shortlisted candidate${joinedCandidateCount === 1 ? "" : "s"}.`;
 }
 
 function groupAdjacentSlots(slots: StaffAssignmentSlot[]) {
@@ -211,7 +211,19 @@ export function StaffAssignmentResults({
                                 No eligible shortlisted candidate filled this
                                 slot.
                               </p>
-                              <p>{evidenceText(slot)}</p>
+                              {slot.coachRequirement ? (
+                                <p>
+                                  {coachRequirementText(slot.coachRequirement)}
+                                </p>
+                              ) : null}
+                              <details>
+                                <summary className="cursor-pointer text-on-surface">
+                                  Show assignment evidence
+                                </summary>
+                                <p className="mt-2">
+                                  {evidenceCountsText(slot)}
+                                </p>
+                              </details>
                               <div className="flex flex-wrap gap-2">
                                 <Button
                                   variant="secondary"
