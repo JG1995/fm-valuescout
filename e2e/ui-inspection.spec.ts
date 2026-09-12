@@ -145,6 +145,36 @@ for (const inspectedPage of pages) {
     }
     expect(pageErrors).toEqual([]);
 
+    if (inspectedPage.route.includes("#inspection-assignment-modal")) {
+      await page
+        .getByRole("button", { name: "Configure staffing needs" })
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: "Configure staffing needs",
+      });
+      await expect(dialog).toBeVisible();
+      await expect(
+        dialog.getByText("Zero excludes a role from recommendations."),
+      ).toBeVisible();
+      const coachesInput = dialog
+        .getByRole("spinbutton", { name: "Coaches slots" })
+        .first();
+      const coachesBefore = Number(await coachesInput.inputValue());
+      const assistantManagerInput = dialog
+        .getByRole("spinbutton", { name: "Assistant Manager slots" })
+        .first();
+      const assistantManagerBefore = await assistantManagerInput.inputValue();
+      await expect(
+        dialog.getByRole("button", { name: "Increase Coaches slots" }).first(),
+      ).toBeVisible();
+      await dialog
+        .getByRole("button", { name: "Increase Coaches slots" })
+        .first()
+        .click();
+      await expect(coachesInput).toHaveValue(String(coachesBefore + 1));
+      await expect(assistantManagerInput).toHaveValue(assistantManagerBefore);
+    }
+
     await mkdir(outputDirectory, { recursive: true });
     const screenshotPath = path.join(
       outputDirectory,
