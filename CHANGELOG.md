@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-09-12
+
+### Added
+
+- Staff Search now provides guided assignment optimization with clear setup requirements, compact staffing controls, grouped recommendations, and actionable vacancy details.
+
+### Changed
+
+- Youth-team staff recommendations now balance each candidate's role score with Working With Youngsters, while other assignments keep their existing scoring.
+
 ## [0.19.0] - 2026-09-11
 
 ### Added
