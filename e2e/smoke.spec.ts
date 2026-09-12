@@ -626,13 +626,26 @@ test.describe("application smoke", () => {
     await expect(
       main.getByText("5 joined shortlisted candidates; 4 configured slots."),
     ).toBeVisible();
-    await expect(assignments.getByRole("row")).toHaveCount(5);
-    await expect(assignments).toContainText("First Team");
-    await expect(assignments).toContainText("Reserves");
-    await expect(assignments).toContainText("Club");
+    await expect(assignments.getByRole("row")).toHaveCount(8);
+    await expect(
+      assignments.getByRole("rowheader", {
+        name: "First Team — 2 of 2 filled",
+      }),
+    ).toBeVisible();
+    await expect(
+      assignments.getByRole("rowheader", { name: "Club — 1 of 1 filled" }),
+    ).toBeVisible();
+    await expect(
+      assignments.getByRole("rowheader", { name: "Reserves — 0 of 1 filled" }),
+    ).toBeVisible();
     const assignmentRows = assignments.locator("tbody tr");
-    await expect(assignmentRows.nth(2)).toContainText("Club");
-    await expect(assignmentRows.nth(3)).toContainText("Reserves");
+    await expect(assignmentRows.nth(1)).toContainText("Alex Assistant");
+    await expect(assignmentRows.nth(2)).toContainText("Coach Casey");
+    await expect(assignmentRows.nth(4)).toContainText("Riley Scout");
+    await expect(assignmentRows.nth(6)).toContainText("Vacancy");
+    await expect(
+      assignments.getByRole("columnheader", { name: "Scope" }),
+    ).toHaveCount(0);
     await expect(assignments).toContainText("Alex Assistant");
     await expect(assignments).toContainText(
       "Preferred Job: Assistant Manager. Eligible for this target.",

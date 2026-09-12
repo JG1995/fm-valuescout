@@ -121,7 +121,7 @@ describe("StaffAssignmentOptimizer", () => {
           {
             kind: "recommendation",
             scope: "senior",
-            scopeDisplayName: "First Team",
+            scopeDisplayName: "Alpha Unit",
             jobId: "coaches",
             jobLabel: "Coaches",
             slotNumber: 1,
@@ -135,7 +135,7 @@ describe("StaffAssignmentOptimizer", () => {
           {
             kind: "recommendation",
             scope: "senior",
-            scopeDisplayName: "First Team",
+            scopeDisplayName: "Alpha Unit",
             jobId: "coaches",
             jobLabel: "Coaches",
             slotNumber: 2,
@@ -149,7 +149,7 @@ describe("StaffAssignmentOptimizer", () => {
           {
             kind: "vacancy",
             scope: "club",
-            scopeDisplayName: "Club",
+            scopeDisplayName: "Club Services",
             jobId: "coaches",
             jobLabel: "Coaches",
             slotNumber: 3,
@@ -160,6 +160,20 @@ describe("StaffAssignmentOptimizer", () => {
               eligibleScoreCount: 0,
               unavailableScoreCount: 2,
             },
+          },
+          {
+            kind: "recommendation",
+            scope: "senior",
+            scopeDisplayName: "Alpha Unit",
+            jobId: "assistant_manager",
+            jobLabel: "Assistant Manager",
+            slotNumber: 4,
+            uid: 103,
+            name: "Taylor Coach",
+            preferredJob: "Assistant Manager",
+            classification: "recruitment",
+            score: 75,
+            coachRequirement: null,
           },
         ],
       }),
@@ -189,9 +203,27 @@ describe("StaffAssignmentOptimizer", () => {
       screen.queryByRole("columnheader", { name: "Classification" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Recruitment")).not.toBeInTheDocument();
-    expect(screen.getAllByText("First Team")).toHaveLength(2);
-    expect(screen.getByText("Club")).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("rowheader", { name: /Alpha Unit/ }),
+    ).toHaveLength(2);
+    expect(screen.getByText("Alpha Unit — 2 of 2 filled")).toBeInTheDocument();
+    expect(
+      screen.getByText("Club Services — 0 of 1 filled"),
+    ).toBeInTheDocument();
+    const resultRows = screen.getByRole("table").querySelectorAll("tbody tr");
+    expect(Array.from(resultRows).map((row) => row.textContent)).toEqual([
+      "Alpha Unit — 2 of 2 filled",
+      expect.stringContaining("Alex Coach"),
+      expect.stringContaining("Riley Recruit"),
+      "Club Services — 0 of 1 filled",
+      expect.stringContaining("Vacancy"),
+      "Alpha Unit — 1 of 1 filled",
+      expect.stringContaining("Taylor Coach"),
+    ]);
     expect(screen.queryByText("senior")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: "Scope" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByText(/Coach requirement: Attacking Technical\./),
     ).toBeInTheDocument();
@@ -200,13 +232,13 @@ describe("StaffAssignmentOptimizer", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Vacancy")).toBeInTheDocument();
     expect(screen.getByText("Filled slots").parentElement).toHaveTextContent(
-      "2",
+      "3",
     );
     expect(screen.getByText("Vacancies").parentElement).toHaveTextContent("1");
     expect(screen.getByText("Current staff").parentElement).toHaveTextContent(
       "1",
     );
-    expect(screen.getByText("Recruits").parentElement).toHaveTextContent("1");
+    expect(screen.getByText("Recruits").parentElement).toHaveTextContent("2");
     expect(
       screen.getByText("5 joined shortlisted candidates; 4 configured slots."),
     ).toBeInTheDocument();
@@ -215,6 +247,7 @@ describe("StaffAssignmentOptimizer", () => {
         /Coach requirement: Goalkeeping\. 0 eligible scores; 2 unavailable scores/i,
       ),
     ).toBeInTheDocument();
+    expect(screen.getByText("Taylor Coach")).toBeInTheDocument();
     expect(screen.getByText(/unsupported Preferred Job/i)).toBeInTheDocument();
 
     const configure = screen.getByRole("button", {
@@ -375,7 +408,7 @@ describe("StaffAssignmentOptimizer", () => {
     );
 
     const row = await screen.findByRole("row", {
-      name: /First Team.*Assistant Manager.*Slot 1/i,
+      name: /Assistant Manager.*Slot 1/i,
     });
     const person = within(row).getByText("—");
     expect(person).not.toHaveAttribute("title");

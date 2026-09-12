@@ -389,7 +389,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 #### Commit 6 — Group assignment results by scope
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): group assignment results by scope`
 
@@ -436,7 +436,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 #### Commit 7 — Disclose assignment evidence on demand
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): disclose assignment evidence on demand`
 
@@ -573,19 +573,19 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 **PR:** PR 1 — Improve Staff Optimizer UX
 
-**Commit:** Commit 6 — Group assignment results by scope
+**Commit:** Commit 7 — Disclose assignment evidence on demand
 
 ### RED or removal proof
 
-Add focused and smoke proofs that fail because result rows still repeat the Scope column instead of using consecutive Rust-provided group headers with per-group filled/configured counts and preserved row order. Add an inspection proof that fails before a ready grouped result can be reached.
+Add focused result proof that fails because detailed vacancy counts are always visible instead of hidden behind a keyboard-accessible native disclosure while the default row retains one concise reason.
 
 ### Expected outcome
 
-Results preserve received slot order under consecutive Rust display-name groups, show each group’s filled/configured count, remove the repeated Scope column, and expose a durable populated results inspection state.
+Each row stays concise by default, and expanding native details reveals the exact bounded Rust evidence without IPC, eligibility computation, or result-state changes.
 
 ### Explicit exclusions
 
-No sticky headers, evidence disclosure, collapse-label changes, allocation/order changes, frontend scope maps, or additional tables.
+No vacancy recovery, grouping, sticky headers, collapse-label changes, custom popover, DTO changes, or frontend evidence computation.
 
 ## Discoveries and replanning
 
@@ -603,7 +603,8 @@ No sticky headers, evidence disclosure, collapse-label changes, allocation/order
 | PR 1 — Improve Staff Optimizer UX | Commit 2 — Add optimizer readiness and stable feedback | `990e47d50dd12251381d386522fec86c873cdbcd` | Added one-query controlled staffing configuration, explicit readiness and recovery, single-primary action hierarchy, and stable full-width feedback while preserving context/reset guards. | Focused component/route tests (74 passed before correction; latest focused optimizer/modal 21 passed); full frontend tests (1,025 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport UI inspection; LSP and diff checks — passed. | Pass | Accepted findings — one MEDIUM standalone fallback-pending advisory retained for feature close-out; no CRITICAL or HIGH findings remain. | 1 | Initial review found three HIGH hierarchy, feedback-placement, and test-value defects; correction review verified all three fixed. |
 | PR 1 — Improve Staff Optimizer UX | Commit 3 — Improve staffing-needs controls | `34ce800e7fe605aea06b7b15339f01224dc9e653` | Added explicitly labelled bounded step controls, direct numeric entry, pending locks, one zero rule, truthful valid-draft team/section totals, and a durable populated dialog inspection state. | Focused optimizer/modal tests (22 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport modal inspection; LSP and diff checks — passed. | Pass | Clear | 1 | Initial review found invalid label-wrapped step buttons; correction used explicit collision-safe label/input association and added live Chromium step proof. |
 | PR 1 — Improve Staff Optimizer UX | Commit 4 — Summarize assignment results | `6a762e1776a1f31d7695fbeb5c381cccabb7a792` | Added compact filled, vacancy, current-staff, and recruit metrics derived only from received slot tags while retaining candidate/configured supporting text. | Focused optimizer tests (16 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed); LSP and diff checks — passed. | Pass | Clear | 0 | None |
-| PR 1 — Improve Staff Optimizer UX | Commit 5 — Make vacancies recoverable | Pending record | Added warning-token vacancy cues and reasons plus controlled staffing and route-owned shortlist recovery without rerunning optimization. | Focused optimizer/route tests (71 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); LSP and diff checks — passed. | Pass | Accepted findings — one MEDIUM Adjust-path draft-content proof advisory retained for feature close-out; no CRITICAL or HIGH findings. | 0 | None |
+| PR 1 — Improve Staff Optimizer UX | Commit 5 — Make vacancies recoverable | `81ed8e1e5c88e36802f76e6f393884d4e3419a09` | Added warning-token vacancy cues and reasons plus controlled staffing and route-owned shortlist recovery without rerunning optimization. | Focused optimizer/route tests (71 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); LSP and diff checks — passed. | Pass | Accepted findings — one MEDIUM Adjust-path draft-content proof advisory retained for feature close-out; no CRITICAL or HIGH findings. | 0 | None |
+| PR 1 — Improve Staff Optimizer UX | Commit 6 — Group assignment results by scope | Pending record | Grouped adjacent Rust display names in received order, added per-group filled/configured headers, removed Scope, and added durable populated result inspection. | Focused optimizer tests (16 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport result inspection; LSP and diff checks — passed. | Pass | Clear | 0 | None |
 
 ## Final validation
 

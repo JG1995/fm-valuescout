@@ -122,7 +122,19 @@ for (const inspectedPage of pages) {
     page.on("pageerror", (error) => pageErrors.push(error.message));
 
     await page.setViewportSize(viewport);
-    await stubTauriIpc(page, populatedOptions);
+    await stubTauriIpc(
+      page,
+      inspectedPage.route.includes("#inspection-assignment-results")
+        ? {
+            ...populatedOptions,
+            plannerSnapshot: false,
+            playerProfile: false,
+            squadOverview: false,
+            staffWorkspace: false,
+            snapshotHistory: false,
+          }
+        : populatedOptions,
+    );
     await page.goto(inspectedPage.route);
 
     await expect(
@@ -173,6 +185,58 @@ for (const inspectedPage of pages) {
         .click();
       await expect(coachesInput).toHaveValue(String(coachesBefore + 1));
       await expect(assistantManagerInput).toHaveValue(assistantManagerBefore);
+    }
+
+    if (inspectedPage.route.includes("#inspection-assignment-results")) {
+      await page
+        .getByRole("button", { name: "Configure staffing needs" })
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: "Configure staffing needs",
+      });
+      await expect(dialog).toBeVisible();
+      for (const label of [
+        "Assistant Manager slots",
+        "Coaches slots",
+        "Manager slots",
+        "Scout slots",
+      ]) {
+        await dialog.getByRole("spinbutton", { name: label }).first().fill("1");
+      }
+      await dialog.getByRole("button", { name: "Save slots" }).click();
+      await expect(dialog).toBeHidden();
+      await expect(page.getByRole("status")).toHaveText("Slot counts saved.");
+      await page
+        .getByRole("button", { name: "Configure staffing needs" })
+        .click();
+      const reopenedDialog = page.getByRole("dialog", {
+        name: "Configure staffing needs",
+      });
+      await expect(
+        reopenedDialog
+          .getByRole("spinbutton", { name: "Assistant Manager slots" })
+          .first(),
+      ).toHaveValue("1");
+      await reopenedDialog.getByRole("button", { name: "Cancel" }).click();
+      const optimize = page.getByRole("button", {
+        name: "Optimize assignments",
+      });
+      await expect(optimize).toBeEnabled();
+      await optimize.click();
+      const staleContext = page.getByRole("alert", {
+        name: "Staff assignment context changed",
+      });
+      if (await staleContext.isVisible()) {
+        await optimize.click();
+      }
+      await expect(
+        page.getByRole("table", {
+          name: "Staff assignment recommendations and vacancies",
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("rowheader", { name: /First Team/ }),
+      ).toBeVisible();
     }
 
     await mkdir(outputDirectory, { recursive: true });
