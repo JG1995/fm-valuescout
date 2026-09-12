@@ -1,8 +1,9 @@
-import { ChevronDown, ChevronUp } from "lucide-react";
-import { useId, useState } from "react";
+import { Building2, ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
+import { Fragment, useId, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
+import { StatusChip } from "@/components/ui/status-chip/status-chip";
 import type {
   CoachRequirement,
   StaffAssignmentOptimization,
@@ -11,6 +12,8 @@ import type {
 
 type StaffAssignmentResultsProps = {
   result: StaffAssignmentOptimization;
+  onRequestConfiguration: () => void;
+  onReviewShortlist: () => void;
 };
 
 const coachRequirementLabels: Record<CoachRequirement, string> = {
@@ -30,38 +33,82 @@ function coachRequirementText(requirement: CoachRequirement | null) {
     : null;
 }
 
-function evidenceText(slot: Extract<StaffAssignmentSlot, { kind: "vacancy" }>) {
+function evidenceCountsText(
+  slot: Extract<StaffAssignmentSlot, { kind: "vacancy" }>,
+) {
   const { eligibleScoreCount, joinedCandidateCount, unavailableScoreCount } =
     slot.evidence;
-  const evidence = `${eligibleScoreCount} eligible score${eligibleScoreCount === 1 ? "" : "s"}; ${unavailableScoreCount} unavailable score${unavailableScoreCount === 1 ? "" : "s"}; ${joinedCandidateCount} joined shortlisted candidate${joinedCandidateCount === 1 ? "" : "s"}.`;
-  const requirement = coachRequirementText(slot.coachRequirement);
-  return requirement ? `${requirement} ${evidence}` : evidence;
+  return `${eligibleScoreCount} eligible score${eligibleScoreCount === 1 ? "" : "s"}; ${unavailableScoreCount} unavailable score${unavailableScoreCount === 1 ? "" : "s"}; ${joinedCandidateCount} joined shortlisted candidate${joinedCandidateCount === 1 ? "" : "s"}.`;
+}
+
+function groupAdjacentSlots(slots: StaffAssignmentSlot[]) {
+  const groups: { displayName: string; slots: StaffAssignmentSlot[] }[] = [];
+  for (const slot of slots) {
+    const previous = groups.at(-1);
+    if (previous?.displayName === slot.scopeDisplayName) {
+      previous.slots.push(slot);
+    } else {
+      groups.push({ displayName: slot.scopeDisplayName, slots: [slot] });
+    }
+  }
+  return groups;
 }
 
 export function StaffAssignmentResults({
   result,
+  onRequestConfiguration,
+  onReviewShortlist,
 }: StaffAssignmentResultsProps) {
   const [expanded, setExpanded] = useState(true);
   const bodyId = useId();
   const ToggleIcon = expanded ? ChevronUp : ChevronDown;
+  const filledSlotCount = result.slots.filter(
+    (slot) => slot.kind === "recommendation",
+  ).length;
+  const vacancyCount = result.slots.filter(
+    (slot) => slot.kind === "vacancy",
+  ).length;
+  const currentStaffCount = result.slots.filter(
+    (slot) =>
+      slot.kind === "recommendation" && slot.classification === "current_staff",
+  ).length;
+  const recruitCount = result.slots.filter(
+    (slot) =>
+      slot.kind === "recommendation" && slot.classification === "recruitment",
+  ).length;
 
   return (
     <Panel
       title="Assignment recommendations"
       actions={
         <Button
-          size="icon"
           variant="ghost"
           icon={ToggleIcon}
           aria-label={`${expanded ? "Collapse" : "Expand"} assignment recommendations`}
           aria-controls={bodyId}
           aria-expanded={expanded}
+          className="gap-1 px-2"
           onClick={() => setExpanded((current) => !current)}
-        />
+        >
+          {expanded ? "Collapse" : "Expand"}
+        </Button>
       }
       className="w-full shrink-0 basis-full"
     >
       <div id={bodyId} hidden={!expanded} className="space-y-3">
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            ["Filled slots", filledSlotCount],
+            ["Vacancies", vacancyCount],
+            ["Current staff", currentStaffCount],
+            ["Recruits", recruitCount],
+          ].map(([label, count]) => (
+            <div key={label}>
+              <dt className="text-label-md text-on-surface-variant">{label}</dt>
+              <dd className="text-headline-sm text-on-surface">{count}</dd>
+            </div>
+          ))}
+        </dl>
         <p className="text-body-sm text-on-surface-variant">
           {result.joinedCandidateCount} joined shortlisted candidate
           {result.joinedCandidateCount === 1 ? "" : "s"};{" "}
@@ -74,19 +121,13 @@ export function StaffAssignmentResults({
               <caption className="sr-only">
                 Staff assignment recommendations and vacancies
               </caption>
-              <thead className="bg-surface-container-lowest text-label-md text-on-surface-variant">
+              <thead className="sticky top-0 z-10 bg-surface-container-lowest text-label-md text-on-surface-variant">
                 <tr>
-                  <th scope="col" className="px-2 py-2">
-                    Scope
-                  </th>
                   <th scope="col" className="px-2 py-2">
                     Target
                   </th>
                   <th scope="col" className="px-2 py-2">
                     Person
-                  </th>
-                  <th scope="col" className="px-2 py-2">
-                    Classification
                   </th>
                   <th scope="col" className="px-2 py-2 text-right">
                     Score
@@ -97,53 +138,114 @@ export function StaffAssignmentResults({
                 </tr>
               </thead>
               <tbody>
-                {result.slots.map((slot) => (
-                  <tr
-                    key={`${slot.scope}:${slot.jobId}:${slot.slotNumber}`}
-                    className="border-t border-outline-variant"
+                {groupAdjacentSlots(result.slots).map((group) => (
+                  <Fragment
+                    key={`${group.displayName}:${group.slots[0].jobId}:${group.slots[0].slotNumber}`}
                   >
-                    <td className="px-2 py-2">{slot.scopeDisplayName}</td>
-                    <td className="px-2 py-2">
-                      {slot.jobLabel} · Slot {slot.slotNumber}
-                    </td>
-                    {slot.kind === "recommendation" ? (
-                      <>
-                        <td
-                          className="max-w-48 truncate px-2 py-2"
-                          title={slot.name ?? undefined}
-                        >
-                          {slot.name ?? "—"}
-                        </td>
+                    <tr>
+                      <th
+                        scope="rowgroup"
+                        colSpan={4}
+                        className="bg-surface-container-high px-2 py-2 text-label-md text-on-surface"
+                      >
+                        {group.displayName} —{" "}
+                        {
+                          group.slots.filter(
+                            (slot) => slot.kind === "recommendation",
+                          ).length
+                        }{" "}
+                        of {group.slots.length} filled
+                      </th>
+                    </tr>
+                    {group.slots.map((slot) => (
+                      <tr
+                        key={`${slot.scope}:${slot.jobId}:${slot.slotNumber}`}
+                        className="border-t border-outline-variant"
+                      >
                         <td className="px-2 py-2">
-                          {slot.classification === "current_staff"
-                            ? "Current staff"
-                            : "Recruitment"}
+                          {slot.jobLabel} · Slot {slot.slotNumber}
                         </td>
-                        <td className="px-2 py-2 text-right">
-                          <ScoreBadge
-                            score={slot.score}
-                            roleName={slot.jobLabel}
-                          />
-                        </td>
-                        <td className="px-2 py-2 text-on-surface-variant">
-                          Preferred Job: {slot.preferredJob}. Eligible for this
-                          target.
-                          {slot.coachRequirement
-                            ? ` ${coachRequirementText(slot.coachRequirement)}`
-                            : null}
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="px-2 py-2">—</td>
-                        <td className="px-2 py-2">Vacancy</td>
-                        <td className="px-2 py-2 text-right">—</td>
-                        <td className="px-2 py-2 text-on-surface-variant">
-                          {evidenceText(slot)}
-                        </td>
-                      </>
-                    )}
-                  </tr>
+                        {slot.kind === "recommendation" ? (
+                          <>
+                            <td
+                              className="max-w-48 px-2 py-2"
+                              title={slot.name ?? undefined}
+                            >
+                              <span className="flex min-w-0 items-center gap-1">
+                                {slot.classification === "current_staff" ? (
+                                  <Building2
+                                    aria-label="Current staff"
+                                    className="size-3.5 shrink-0 text-info"
+                                    role="img"
+                                  />
+                                ) : null}
+                                <span
+                                  className={`truncate ${slot.classification === "current_staff" ? "font-medium text-info" : ""}`}
+                                >
+                                  {slot.name ?? "—"}
+                                </span>
+                              </span>
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              <ScoreBadge
+                                score={slot.score}
+                                roleName={slot.jobLabel}
+                              />
+                            </td>
+                            <td className="px-2 py-2 text-on-surface-variant">
+                              Preferred Job: {slot.preferredJob}. Eligible for
+                              this target.
+                              {slot.coachRequirement
+                                ? ` ${coachRequirementText(slot.coachRequirement)}`
+                                : null}
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-2 py-2">
+                              <StatusChip tone="warning" icon={TriangleAlert}>
+                                Vacancy
+                              </StatusChip>
+                            </td>
+                            <td className="px-2 py-2 text-right">—</td>
+                            <td className="space-y-2 px-2 py-2 text-on-surface-variant">
+                              <p>
+                                No eligible shortlisted candidate filled this
+                                slot.
+                              </p>
+                              {slot.coachRequirement ? (
+                                <p>
+                                  {coachRequirementText(slot.coachRequirement)}
+                                </p>
+                              ) : null}
+                              <details>
+                                <summary className="cursor-pointer text-on-surface">
+                                  Show assignment evidence
+                                </summary>
+                                <p className="mt-2">
+                                  {evidenceCountsText(slot)}
+                                </p>
+                              </details>
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  variant="secondary"
+                                  onClick={onRequestConfiguration}
+                                >
+                                  Adjust staffing needs
+                                </Button>
+                                <Button
+                                  variant="secondary"
+                                  onClick={onReviewShortlist}
+                                >
+                                  Review shortlist
+                                </Button>
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

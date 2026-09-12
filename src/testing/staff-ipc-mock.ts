@@ -238,7 +238,7 @@ export function fixtureStaffAssignmentTargets(
         jobLabel,
         section,
         maxSlotCount: 50,
-        slotCount: 0,
+        slotCount: 1,
       })),
     ),
     ...ASSIGNMENT_CLUB_JOBS.map(
@@ -248,7 +248,7 @@ export function fixtureStaffAssignmentTargets(
         jobLabel,
         section,
         maxSlotCount,
-        slotCount: 0,
+        slotCount: 1,
       }),
     ),
   ];
@@ -273,8 +273,8 @@ export function fixtureStaffAssignmentOptimization(
     saveContextToken: "save-token-1",
     snapshotId: 1,
     snapshotContextToken: "snapshot-token-1",
-    joinedCandidateCount: 2,
-    configuredSlotCount: 2,
+    joinedCandidateCount: 5,
+    configuredSlotCount: 4,
     unsupportedPreferredJobCount: 1,
     slots: [
       {

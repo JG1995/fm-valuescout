@@ -373,7 +373,7 @@ test.describe("application smoke", () => {
     const main = page.getByRole("main");
     await expect(
       main.getByRole("heading", { level: 1, name: "Staff Search" }),
-    ).toBeVisible();
+    ).toHaveClass(/sr-only/);
     await expect(main.getByRole("tablist")).toHaveCount(0);
     await expect(
       page.getByRole("link", { name: "Staff Search" }),
@@ -520,9 +520,11 @@ test.describe("application smoke", () => {
     await page.goto("/staff?shortlistOnly=true");
 
     const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Configure Club Staff" }).click();
+    await main
+      .getByRole("button", { name: "Configure staffing needs" })
+      .click();
     const dialog = page.getByRole("dialog", {
-      name: "Configure assignment slots",
+      name: "Configure staffing needs",
     });
     const firstTeam = dialog.getByRole("group", { name: "First Team" });
     const coaching = firstTeam.getByRole("group", { name: "Coaching" });
@@ -606,7 +608,9 @@ test.describe("application smoke", () => {
     await expect(main.getByRole("status")).toHaveText("Slot counts saved.");
     await expect(dialog).toBeHidden();
 
-    await main.getByRole("button", { name: "Configure Club Staff" }).click();
+    await main
+      .getByRole("button", { name: "Configure staffing needs" })
+      .click();
     await expect(dialog).toBeVisible();
     await expect(assistantManager).toHaveValue("1");
     await expect(coaches).toHaveValue("1");
@@ -622,13 +626,26 @@ test.describe("application smoke", () => {
     await expect(
       main.getByText("5 joined shortlisted candidates; 4 configured slots."),
     ).toBeVisible();
-    await expect(assignments.getByRole("row")).toHaveCount(5);
-    await expect(assignments).toContainText("First Team");
-    await expect(assignments).toContainText("Reserves");
-    await expect(assignments).toContainText("Club");
+    await expect(assignments.getByRole("row")).toHaveCount(8);
+    await expect(
+      assignments.getByRole("rowheader", {
+        name: "First Team — 2 of 2 filled",
+      }),
+    ).toBeVisible();
+    await expect(
+      assignments.getByRole("rowheader", { name: "Club — 1 of 1 filled" }),
+    ).toBeVisible();
+    await expect(
+      assignments.getByRole("rowheader", { name: "Reserves — 0 of 1 filled" }),
+    ).toBeVisible();
     const assignmentRows = assignments.locator("tbody tr");
-    await expect(assignmentRows.nth(2)).toContainText("Club");
-    await expect(assignmentRows.nth(3)).toContainText("Reserves");
+    await expect(assignmentRows.nth(1)).toContainText("Alex Assistant");
+    await expect(assignmentRows.nth(2)).toContainText("Coach Casey");
+    await expect(assignmentRows.nth(4)).toContainText("Riley Scout");
+    await expect(assignmentRows.nth(6)).toContainText("Vacancy");
+    await expect(
+      assignments.getByRole("columnheader", { name: "Scope" }),
+    ).toHaveCount(0);
     await expect(assignments).toContainText("Alex Assistant");
     await expect(assignments).toContainText(
       "Preferred Job: Assistant Manager. Eligible for this target.",
@@ -637,20 +654,40 @@ test.describe("application smoke", () => {
     await expect(assignments).toContainText(
       "Preferred Job: Coach. Eligible for this target. Coach requirement: Attacking Technical.",
     );
-    await expect(assignments).toContainText("Current staff");
-    await expect(assignments).toContainText("Riley Scout");
+    await expect(
+      assignments.getByRole("img", { name: "Current staff" }),
+    ).toHaveCount(2);
+    await expect(
+      assignments.getByRole("columnheader", { name: "Classification" }),
+    ).toHaveCount(0);
+    const recruitmentRow = assignments.getByRole("row", {
+      name: /Riley Scout/,
+    });
+    await expect(recruitmentRow).toBeVisible();
+    await expect(
+      recruitmentRow.getByRole("img", { name: "Current staff" }),
+    ).toHaveCount(0);
     await expect(assignments).toContainText(
       "Preferred Job: Scout. Eligible for this target.",
     );
-    await expect(assignments).toContainText("Recruitment");
     await expect(
       assignments.getByRole("img", {
         name: "Assistant Manager: 82, Excellent",
       }),
     ).toBeVisible();
     await expect(assignments).toContainText("Vacancy");
-    await expect(assignments).toContainText(
-      "Coach requirement: Goalkeeping. 0 eligible scores; 1 unavailable score; 1 joined shortlisted candidate.",
+    const vacancyRow = assignments.getByRole("row", { name: /Vacancy/ });
+    await expect(vacancyRow).toContainText(
+      "No eligible shortlisted candidate filled this slot.",
+    );
+    await expect(vacancyRow).toContainText("Coach requirement: Goalkeeping.");
+    const evidence = vacancyRow.getByRole("group");
+    await expect(evidence).toBeVisible();
+    await expect(evidence).not.toHaveAttribute("open");
+    await evidence.getByText("Show assignment evidence").click();
+    await expect(evidence).toHaveAttribute("open");
+    await expect(evidence).toContainText(
+      "0 eligible scores; 1 unavailable score; 1 joined shortlisted candidate.",
     );
 
     const collapse = main.getByRole("button", {
@@ -658,11 +695,13 @@ test.describe("application smoke", () => {
     });
     const bodyId = await collapse.getAttribute("aria-controls");
     await expect(collapse).toHaveAttribute("aria-expanded", "true");
+    await expect(collapse.getByText("Collapse")).toBeVisible();
     await collapse.click();
     const expand = main.getByRole("button", {
       name: "Expand assignment recommendations",
     });
     await expect(expand).toHaveAttribute("aria-expanded", "false");
+    await expect(expand.getByText("Expand")).toBeVisible();
     await expect(expand).toHaveAttribute("aria-controls", bodyId ?? "");
     await expect(assignments).toBeHidden();
     await expect(main.getByText("Alex Assistant")).toBeHidden();
@@ -670,22 +709,59 @@ test.describe("application smoke", () => {
     await expect(assignments).toBeVisible();
     await expect(assignments).toContainText("Alex Assistant");
 
+    const resultScroller = assignments.locator(
+      "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' max-h-80 ')]",
+    );
+    await expect(resultScroller).toHaveCount(1);
+    const scrollState = await resultScroller.evaluate((element) => {
+      const scroller = element as unknown as {
+        scrollTop: number;
+        scrollHeight: number;
+        querySelector: (selector: string) => {
+          getBoundingClientRect: () => { top: number; bottom: number };
+        } | null;
+        getBoundingClientRect: () => { top: number; bottom: number };
+      };
+      const header = scroller.querySelector("thead");
+      if (!header) {
+        throw new Error("Expected assignment table header.");
+      }
+      scroller.scrollTop = scroller.scrollHeight;
+      const scrollerBox = scroller.getBoundingClientRect();
+      const headerBox = header.getBoundingClientRect();
+      return {
+        scrollTop: scroller.scrollTop,
+        headerTop: headerBox.top,
+        headerBottom: headerBox.bottom,
+        scrollerTop: scrollerBox.top,
+        scrollerBottom: scrollerBox.bottom,
+      };
+    });
+    expect(scrollState.scrollTop).toBeGreaterThan(0);
+    expect(scrollState.headerTop).toBeGreaterThanOrEqual(
+      scrollState.scrollerTop,
+    );
+    expect(scrollState.headerBottom).toBeLessThanOrEqual(
+      scrollState.scrollerBottom,
+    );
+
+    const assignmentPanel = assignments.locator("xpath=ancestor::section[1]");
     for (const [width, height] of [
       [1280, 800],
       [1600, 900],
     ] as const) {
       await page.setViewportSize({ width, height });
       await expect(assignments).toBeVisible();
-      const [assignmentsBox, mainBox] = await Promise.all([
-        assignments.boundingBox(),
+      const [assignmentPanelBox, mainBox] = await Promise.all([
+        assignmentPanel.boundingBox(),
         main.boundingBox(),
       ]);
-      expect(assignmentsBox).not.toBeNull();
+      expect(assignmentPanelBox).not.toBeNull();
       expect(mainBox).not.toBeNull();
-      expect(assignmentsBox?.x).toBeGreaterThanOrEqual(mainBox?.x ?? 0);
+      expect(assignmentPanelBox?.x).toBeCloseTo((mainBox?.x ?? 0) + 16, 0);
       expect(
-        (assignmentsBox?.x ?? 0) + (assignmentsBox?.width ?? 0),
-      ).toBeLessThanOrEqual((mainBox?.x ?? 0) + (mainBox?.width ?? 0) + 1);
+        (assignmentPanelBox?.x ?? 0) + (assignmentPanelBox?.width ?? 0),
+      ).toBeCloseTo((mainBox?.x ?? 0) + (mainBox?.width ?? 0) - 16, 0);
     }
 
     await page
@@ -713,9 +789,11 @@ test.describe("application smoke", () => {
     await page.goto("/staff?shortlistOnly=true");
 
     const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Configure Club Staff" }).click();
+    await main
+      .getByRole("button", { name: "Configure staffing needs" })
+      .click();
     const dialog = page.getByRole("dialog", {
-      name: "Configure assignment slots",
+      name: "Configure staffing needs",
     });
     const club = dialog.getByRole("group", { name: "Club" });
 

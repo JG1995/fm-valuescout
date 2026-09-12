@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   fixtureStaffAssignmentOptimization,
+  fixtureStaffAssignmentTargets,
   getLastStaffAssignmentOptimizerIpcArgs,
   getStaffAssignmentOptimizerIpcCallCount,
   resolvePendingStaffAssignmentOptimizationIpcMock,
@@ -24,16 +25,29 @@ const context = {
 function renderOptimizer(
   contextUnavailable = false,
   contextKey = "assignment-context-a",
+  zeroSlots = false,
+  onReviewShortlist = vi.fn(),
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  const targets = fixtureStaffAssignmentTargets();
+  targets.targets = targets.targets.map((target) => ({
+    ...target,
+    slotCount: zeroSlots ? 0 : 1,
+  }));
+  queryClient.setQueryData(
+    ["staff", "assignment-targets", contextKey],
+    targets,
+  );
   const result = render(
     <QueryClientProvider client={queryClient}>
       <StaffAssignmentOptimizer
         context={context}
         contextKey={contextKey}
         contextUnavailable={contextUnavailable}
+        shortlistReady={true}
+        onReviewShortlist={onReviewShortlist}
       />
     </QueryClientProvider>,
   );
@@ -51,6 +65,8 @@ function renderOptimizer(
             context={nextContext}
             contextKey={nextContextKey}
             contextUnavailable={nextUnavailable}
+            shortlistReady={true}
+            onReviewShortlist={onReviewShortlist}
           />
         </QueryClientProvider>,
       );
@@ -59,15 +75,53 @@ function renderOptimizer(
 }
 
 describe("StaffAssignmentOptimizer", () => {
+  it("keeps modal feedback in the stable status region outside the action row", async () => {
+    const user = userEvent.setup();
+    renderOptimizer();
+
+    await user.click(
+      screen.getByRole("button", { name: "Configure staffing needs" }),
+    );
+    await user.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Save slots",
+      }),
+    );
+
+    const actionRow = screen.getByTestId("assignment-action-row");
+    expect(within(actionRow).queryByText("Slot counts saved.")).toBeNull();
+    expect(await screen.findByText("Slot counts saved.")).toBeInTheDocument();
+    expect(screen.getByTestId("assignment-status-region")).toHaveTextContent(
+      "Slot counts saved.",
+    );
+  });
+  it("disables Optimize assignments and explains how to configure zero slots", async () => {
+    renderOptimizer(false, "assignment-context-a", true);
+
+    const optimize = await screen.findByRole("button", {
+      name: "Optimize assignments",
+    });
+    expect(optimize).toBeDisabled();
+    const readiness = screen.getByText(
+      "Configure staffing needs before optimizing assignments.",
+    );
+    expect(readiness).toBeInTheDocument();
+    expect(optimize).toHaveAttribute(
+      "aria-describedby",
+      readiness.getAttribute("id"),
+    );
+  });
+
   it("sends only immutable tokens and renders Rust-provided recommendations and vacancies", async () => {
     const user = userEvent.setup();
+    const onReviewShortlist = vi.fn();
     setStaffAssignmentOptimizationIpcMock(
       fixtureStaffAssignmentOptimization({
         slots: [
           {
             kind: "recommendation",
             scope: "senior",
-            scopeDisplayName: "First Team",
+            scopeDisplayName: "Alpha Unit",
             jobId: "coaches",
             jobLabel: "Coaches",
             slotNumber: 1,
@@ -79,12 +133,26 @@ describe("StaffAssignmentOptimizer", () => {
             coachRequirement: "attacking_technical",
           },
           {
-            kind: "vacancy",
-            scope: "club",
-            scopeDisplayName: "Club",
+            kind: "recommendation",
+            scope: "senior",
+            scopeDisplayName: "Alpha Unit",
             jobId: "coaches",
             jobLabel: "Coaches",
             slotNumber: 2,
+            uid: 102,
+            name: "Riley Recruit",
+            preferredJob: "Coach",
+            classification: "recruitment",
+            score: 79,
+            coachRequirement: null,
+          },
+          {
+            kind: "vacancy",
+            scope: "club",
+            scopeDisplayName: "Club Services",
+            jobId: "coaches",
+            jobLabel: "Coaches",
+            slotNumber: 3,
             coachRequirement: "goalkeeping",
             evidence: {
               jobId: "coaches",
@@ -93,10 +161,24 @@ describe("StaffAssignmentOptimizer", () => {
               unavailableScoreCount: 2,
             },
           },
+          {
+            kind: "recommendation",
+            scope: "senior",
+            scopeDisplayName: "Alpha Unit",
+            jobId: "assistant_manager",
+            jobLabel: "Assistant Manager",
+            slotNumber: 4,
+            uid: 103,
+            name: "Taylor Coach",
+            preferredJob: "Assistant Manager",
+            classification: "recruitment",
+            score: 75,
+            coachRequirement: null,
+          },
         ],
       }),
     );
-    renderOptimizer();
+    renderOptimizer(false, "assignment-context-a", false, onReviewShortlist);
 
     await user.click(
       screen.getByRole("button", { name: "Optimize assignments" }),
@@ -113,10 +195,35 @@ describe("StaffAssignmentOptimizer", () => {
         name: "Staff assignment recommendations and vacancies",
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Current staff")).toBeInTheDocument();
-    expect(screen.getByText("First Team")).toBeInTheDocument();
-    expect(screen.getByText("Club")).toBeInTheDocument();
+    const currentStaffName = screen.getByText("Alex Coach");
+    expect(currentStaffName).toHaveClass("font-medium", "text-info");
+    expect(screen.getByRole("img", { name: "Current staff" })).toBeVisible();
+    expect(screen.getByText("Riley Recruit")).not.toHaveClass("text-info");
+    expect(
+      screen.queryByRole("columnheader", { name: "Classification" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Recruitment")).not.toBeInTheDocument();
+    expect(
+      screen.getAllByRole("rowheader", { name: /Alpha Unit/ }),
+    ).toHaveLength(2);
+    expect(screen.getByText("Alpha Unit — 2 of 2 filled")).toBeInTheDocument();
+    expect(
+      screen.getByText("Club Services — 0 of 1 filled"),
+    ).toBeInTheDocument();
+    const resultRows = screen.getByRole("table").querySelectorAll("tbody tr");
+    expect(Array.from(resultRows).map((row) => row.textContent)).toEqual([
+      "Alpha Unit — 2 of 2 filled",
+      expect.stringContaining("Alex Coach"),
+      expect.stringContaining("Riley Recruit"),
+      "Club Services — 0 of 1 filled",
+      expect.stringContaining("Vacancy"),
+      "Alpha Unit — 1 of 1 filled",
+      expect.stringContaining("Taylor Coach"),
+    ]);
     expect(screen.queryByText("senior")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: "Scope" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByText(/Coach requirement: Attacking Technical\./),
     ).toBeInTheDocument();
@@ -124,15 +231,63 @@ describe("StaffAssignmentOptimizer", () => {
       screen.getByRole("img", { name: /Coaches: 82, Excellent/i }),
     ).toBeInTheDocument();
     expect(screen.getByText("Vacancy")).toBeInTheDocument();
+    expect(screen.getByText("Filled slots").parentElement).toHaveTextContent(
+      "3",
+    );
+    expect(screen.getByText("Vacancies").parentElement).toHaveTextContent("1");
+    expect(screen.getByText("Current staff").parentElement).toHaveTextContent(
+      "1",
+    );
+    expect(screen.getByText("Recruits").parentElement).toHaveTextContent("2");
     expect(
-      screen.getByText(
-        /Coach requirement: Goalkeeping\. 0 eligible scores; 2 unavailable scores/i,
+      screen.getByText("5 joined shortlisted candidates; 4 configured slots."),
+    ).toBeInTheDocument();
+    const vacancyRow = screen.getByRole("row", { name: /Vacancy/ });
+    expect(
+      within(vacancyRow).getByText(
+        "No eligible shortlisted candidate filled this slot.",
       ),
     ).toBeInTheDocument();
+    expect(
+      within(vacancyRow).getByText(/eligible scores;.*unavailable scores/i),
+    ).not.toBeVisible();
+    const evidence = within(vacancyRow).getByRole("group");
+    expect(
+      within(evidence).getByText("Show assignment evidence"),
+    ).toBeInTheDocument();
+    expect(evidence).not.toHaveAttribute("open");
+    await user.click(within(evidence).getByText("Show assignment evidence"));
+    expect(evidence).toHaveAttribute("open");
+    expect(evidence).toHaveTextContent(
+      "0 eligible scores; 2 unavailable scores; 2 joined shortlisted candidates.",
+    );
+    expect(
+      within(vacancyRow).getByText("Coach requirement: Goalkeeping."),
+    ).toBeInTheDocument();
+    await user.click(within(evidence).getByText("Show assignment evidence"));
+    expect(evidence).not.toHaveAttribute("open");
+    expect(
+      within(vacancyRow).getByText(/eligible scores;.*unavailable scores/i),
+    ).not.toBeVisible();
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
+    expect(screen.getByText("Taylor Coach")).toBeInTheDocument();
     expect(screen.getByText(/unsupported Preferred Job/i)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Preferred Job: Coach\. Eligible for this target\./),
+    ).toHaveLength(2);
+
+    const configure = screen.getByRole("button", {
+      name: "Adjust staffing needs",
+    });
+    await user.click(configure);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Review shortlist" }));
+    expect(onReviewShortlist).toHaveBeenCalledOnce();
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
   });
 
-  it("collapses and expands the accepted result without optimizing again", async () => {
+  it("collapses assignment recommendations accessibly without optimizing again", async () => {
     const user = userEvent.setup();
     renderOptimizer();
 
@@ -146,6 +301,7 @@ describe("StaffAssignmentOptimizer", () => {
     const body = bodyId ? document.getElementById(bodyId) : null;
 
     expect(collapse).toHaveAttribute("aria-expanded", "true");
+    expect(within(collapse).getByText("Collapse")).toBeVisible();
     expect(body).toBeVisible();
     expect(body).toHaveTextContent("Alex Coach");
     expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
@@ -156,6 +312,7 @@ describe("StaffAssignmentOptimizer", () => {
       name: "Expand assignment recommendations",
     });
     expect(expand).toHaveAttribute("aria-expanded", "false");
+    expect(within(expand).getByText("Expand")).toBeVisible();
     expect(expand).toHaveAttribute("aria-controls", bodyId);
     expect(body).not.toBeVisible();
     expect(body).toHaveTextContent("Alex Coach");
@@ -279,7 +436,7 @@ describe("StaffAssignmentOptimizer", () => {
     );
 
     const row = await screen.findByRole("row", {
-      name: /First Team.*Assistant Manager.*Slot 1/i,
+      name: /Assistant Manager.*Slot 1/i,
     });
     const person = within(row).getByText("—");
     expect(person).not.toHaveAttribute("title");
@@ -330,10 +487,10 @@ describe("StaffAssignmentOptimizer", () => {
     );
     setStaffAssignmentTargetsIpcMockMode("pending");
     await user.click(
-      screen.getByRole("button", { name: "Configure Club Staff" }),
+      screen.getByRole("button", { name: "Configure staffing needs" }),
     );
     const dialog = await screen.findByRole("dialog", {
-      name: "Configure assignment slots",
+      name: "Configure staffing needs",
     });
     await user.click(
       within(dialog).getByRole("button", { name: "Save slots" }),
@@ -356,7 +513,7 @@ describe("StaffAssignmentOptimizer", () => {
     const { rerenderOptimizer } = renderOptimizer();
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure Club Staff" }),
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     await user.click(screen.getByRole("button", { name: "Save slots" }));
     expect(
@@ -368,10 +525,10 @@ describe("StaffAssignmentOptimizer", () => {
       snapshotContextToken: "snapshot-token-b",
     });
     await user.click(
-      await screen.findByRole("button", { name: "Configure Club Staff" }),
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     const dialog = await screen.findByRole("dialog", {
-      name: "Configure assignment slots",
+      name: "Configure staffing needs",
     });
     await user.click(
       within(dialog).getByRole("button", { name: "Save slots" }),

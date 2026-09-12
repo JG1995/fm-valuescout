@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { Minus, Plus } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
 import { saveStaffAssignmentTargets } from "../api/save-staff-assignment-targets";
@@ -10,6 +11,7 @@ import type {
   StaffAssignmentSection,
   StaffAssignmentTarget,
   StaffAssignmentTargetInput,
+  StaffAssignmentTargets,
 } from "../types/staff-assignment";
 
 type DraftTarget = Pick<StaffAssignmentTarget, "scope" | "jobId"> & {
@@ -23,11 +25,22 @@ type SaveTargetRequest = {
   targets: StaffAssignmentTargetInput[];
 };
 
+export type StaffAssignmentModalStatus = {
+  saved: boolean;
+  error: string | null;
+};
+
 type StaffAssignmentTargetModalProps = {
   context: StaffAssignmentContext;
   contextKey: string;
+  targets?: StaffAssignmentTargets;
+  targetsError?: Error | null;
+  targetsPending?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onSaved?: () => void;
   onPendingChange?: (pending: boolean) => void;
+  onStatusChange?: (status: StaffAssignmentModalStatus) => void;
 };
 
 function draftKey(target: Pick<DraftTarget, "scope" | "jobId">) {
@@ -61,19 +74,46 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function validDraftValue(target: StaffAssignmentTarget, draft: DraftTarget[]) {
+  const value = draft.find(
+    (candidate) => draftKey(candidate) === draftKey(target),
+  )?.slotCount;
+  return value !== undefined &&
+    slotCountError(value, target.maxSlotCount) === undefined
+    ? Number(value)
+    : undefined;
+}
+
 export function StaffAssignmentTargetModal({
   context,
   contextKey,
+  targets,
+  targetsError = null,
+  targetsPending = false,
+  open,
+  onOpenChange,
   onSaved,
   onPendingChange,
+  onStatusChange,
 }: StaffAssignmentTargetModalProps) {
   const queryClient = useQueryClient();
-  const targetsQuery = useQuery(
-    staffAssignmentTargetsQueryOptions(context, contextKey),
-  );
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const fallbackQuery = useQuery({
+    ...staffAssignmentTargetsQueryOptions(context, contextKey),
+    enabled: targets === undefined,
+  });
+  const resolvedTargets = targets ?? fallbackQuery.data;
+  const resolvedError =
+    targetsError ??
+    (fallbackQuery.error instanceof Error ? fallbackQuery.error : null);
+  const resolvedPending =
+    targetsPending ?? (fallbackQuery.isPending || fallbackQuery.isFetching);
+  const resolvedOpen = open ?? internalOpen;
+  const changeOpen = onOpenChange ?? setInternalOpen;
   const [draft, setDraft] = useState<DraftTarget[]>([]);
   const [saved, setSaved] = useState(false);
+  const previousOpen = useRef(resolvedOpen);
+  const controlIdPrefix = useId();
   const currentContextKey = useRef(contextKey);
   const previousContextKey = useRef(contextKey);
   const requestGeneration = useRef(0);
@@ -106,7 +146,7 @@ export function StaffAssignmentTargetModal({
         return;
       }
       setSaved(true);
-      setOpen(false);
+      changeOpen(false);
       setDraft([]);
       onSaved?.();
     },
@@ -124,15 +164,25 @@ export function StaffAssignmentTargetModal({
     previousContextKey.current = contextKey;
     requestGeneration.current += 1;
     onPendingChange?.(false);
-    setOpen(false);
+    changeOpen(false);
     setDraft([]);
     setSaved(false);
     saveTargets.reset();
-  }, [contextKey, onPendingChange, saveTargets.reset]);
+  }, [changeOpen, contextKey, onPendingChange, saveTargets.reset]);
 
   const pending = saveTargets.isPending;
+  const formError = saveTargets.isError
+    ? errorMessage(saveTargets.error)
+    : resolvedError
+      ? errorMessage(resolvedError)
+      : null;
+
+  useEffect(() => {
+    onStatusChange?.({ saved, error: formError });
+  }, [formError, onStatusChange, saved]);
+
   const errors = new Map(
-    (targetsQuery.data?.targets ?? []).map((target) => {
+    (resolvedTargets?.targets ?? []).map((target) => {
       const key = draftKey(target);
       const draftTarget = draft.find(
         (candidate) => draftKey(candidate) === key,
@@ -144,26 +194,40 @@ export function StaffAssignmentTargetModal({
     }),
   );
   const canSave =
-    targetsQuery.isSuccess &&
-    draft.length === targetsQuery.data.targets.length &&
+    resolvedTargets !== undefined &&
+    draft.length === resolvedTargets.targets.length &&
     [...errors.values()].every((error) => error === undefined) &&
     !pending;
 
   const openModal = () => {
-    if (!targetsQuery.data || targetsQuery.isFetching || targetsQuery.isError) {
+    if (!resolvedTargets || resolvedPending || resolvedError) {
       return;
     }
     setSaved(false);
     saveTargets.reset();
-    setDraft(draftFromTargets(targetsQuery.data.targets));
-    setOpen(true);
+    setDraft(draftFromTargets(resolvedTargets.targets));
+    changeOpen(true);
   };
+
+  useEffect(() => {
+    if (
+      resolvedOpen &&
+      !previousOpen.current &&
+      resolvedTargets &&
+      !resolvedPending &&
+      !resolvedError
+    ) {
+      setSaved(false);
+      setDraft(draftFromTargets(resolvedTargets.targets));
+    }
+    previousOpen.current = resolvedOpen;
+  }, [resolvedError, resolvedOpen, resolvedPending, resolvedTargets]);
 
   const closeModal = () => {
     if (pending) {
       return;
     }
-    setOpen(false);
+    changeOpen(false);
     setDraft([]);
     saveTargets.reset();
   };
@@ -197,28 +261,23 @@ export function StaffAssignmentTargetModal({
     });
   };
 
-  const formError = saveTargets.isError
-    ? errorMessage(saveTargets.error)
-    : targetsQuery.isError
-      ? errorMessage(targetsQuery.error)
-      : null;
-  const targetGroups = targetsQuery.data
+  const targetGroups = resolvedTargets
     ? [
-        ...targetsQuery.data.teams.map((team) => ({
+        ...resolvedTargets.teams.map((team) => ({
           scope: team.team,
           title: team.displayName,
-          targets: targetsQuery.data.targets.filter(
+          targets: resolvedTargets.targets.filter(
             (target) =>
               target.scope === team.team ||
               (team.team === "senior" && target.scope === "club"),
           ),
         })),
-        ...(!targetsQuery.data.teams.some(({ team }) => team === "senior")
+        ...(!resolvedTargets.teams.some(({ team }) => team === "senior")
           ? [
               {
                 scope: "club" as const,
                 title: "Club",
-                targets: targetsQuery.data.targets.filter(
+                targets: resolvedTargets.targets.filter(
                   (target) => target.scope === "club",
                 ),
               },
@@ -231,24 +290,24 @@ export function StaffAssignmentTargetModal({
     <>
       <Button
         variant="secondary"
-        disabled={targetsQuery.isFetching || targetsQuery.isError || pending}
+        disabled={resolvedPending || resolvedError !== null || pending}
         onClick={openModal}
       >
-        Configure Club Staff
+        Configure staffing needs
       </Button>
-      {saved ? (
+      {!onStatusChange && saved ? (
         <p role="status" className="text-body-sm text-success">
           Slot counts saved.
         </p>
       ) : null}
-      {targetsQuery.isError && !open ? (
+      {!onStatusChange && resolvedError && !resolvedOpen ? (
         <p role="alert" className="text-body-sm text-error">
           {formError}
         </p>
       ) : null}
       <Modal
-        open={open}
-        title="Configure assignment slots"
+        open={resolvedOpen}
+        title="Configure staffing needs"
         onClose={closeModal}
         footer={
           <>
@@ -276,6 +335,9 @@ export function StaffAssignmentTargetModal({
           <p className="text-body-md text-on-surface-variant">
             Set the required slots for each available staff role.
           </p>
+          <p className="text-body-sm text-on-surface-variant">
+            Zero excludes a role from recommendations.
+          </p>
           {formError ? (
             <p role="alert" className="text-body-sm text-error">
               {formError}
@@ -287,60 +349,147 @@ export function StaffAssignmentTargetModal({
                 <legend className="text-label-lg text-on-surface">
                   {group.title}
                 </legend>
-                {TARGET_SECTIONS.map((section) => {
-                  const sectionTargets = group.targets.filter(
-                    (target) => target.section === section.id,
+                {(() => {
+                  const groupValues = group.targets.map((target) =>
+                    validDraftValue(target, draft),
                   );
-                  if (sectionTargets.length === 0) {
-                    return null;
-                  }
+                  const groupTotal = groupValues.every(
+                    (value) => value !== undefined,
+                  )
+                    ? groupValues.reduce(
+                        (total, value) => total + (value ?? 0),
+                        0,
+                      )
+                    : undefined;
                   return (
-                    <fieldset key={section.id} className="space-y-2">
-                      <legend className="text-label-md text-on-surface-variant">
-                        {section.label}
-                      </legend>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {sectionTargets.map((target) => {
-                          const key = draftKey(target);
-                          const draftTarget = draft.find(
-                            (candidate) => draftKey(candidate) === key,
-                          );
-                          const error = errors.get(key);
-                          const errorId = `${target.scope}-${target.jobId}-error`;
-                          return (
-                            <label key={key} className="space-y-1">
-                              <span className="block text-label-md text-on-surface">
-                                {target.jobLabel} slots
-                              </span>
-                              <input
-                                type="number"
-                                min={0}
-                                max={target.maxSlotCount}
-                                step={1}
-                                value={draftTarget?.slotCount ?? ""}
-                                disabled={pending}
-                                aria-describedby={error ? errorId : undefined}
-                                aria-invalid={error ? true : undefined}
-                                className="w-full rounded-md border border-outline bg-surface px-2 py-1 text-right tabular-nums text-on-surface"
-                                onChange={(event) =>
-                                  updateTarget(key, event.target.value)
-                                }
-                              />
-                              {error ? (
-                                <span
-                                  id={errorId}
-                                  className="block text-body-sm text-error"
-                                >
-                                  {error}
-                                </span>
-                              ) : null}
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </fieldset>
+                    <>
+                      <p className="text-body-sm text-on-surface-variant">
+                        {groupTotal === undefined
+                          ? `${group.title} total unavailable until corrected.`
+                          : `${group.title} total: ${groupTotal}`}
+                      </p>
+                      {TARGET_SECTIONS.map((section) => {
+                        const sectionTargets = group.targets.filter(
+                          (target) => target.section === section.id,
+                        );
+                        if (sectionTargets.length === 0) {
+                          return null;
+                        }
+                        const sectionValues = sectionTargets.map((target) =>
+                          validDraftValue(target, draft),
+                        );
+                        const sectionTotal = sectionValues.every(
+                          (value) => value !== undefined,
+                        )
+                          ? sectionValues.reduce(
+                              (total, value) => total + (value ?? 0),
+                              0,
+                            )
+                          : undefined;
+                        return (
+                          <fieldset key={section.id} className="space-y-2">
+                            <legend className="text-label-md text-on-surface-variant">
+                              {section.label}
+                            </legend>
+                            <p className="text-body-sm text-on-surface-variant">
+                              {sectionTotal === undefined
+                                ? `${section.label} total unavailable until corrected.`
+                                : `${section.label} total: ${sectionTotal}`}
+                            </p>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {sectionTargets.map((target) => {
+                                const key = draftKey(target);
+                                const draftTarget = draft.find(
+                                  (candidate) => draftKey(candidate) === key,
+                                );
+                                const error = errors.get(key);
+                                const inputId = `${controlIdPrefix}-${target.scope}-${target.jobId}`;
+                                const errorId = `${inputId}-error`;
+                                const currentValue = validDraftValue(
+                                  target,
+                                  draft,
+                                );
+                                return (
+                                  <div key={key} className="space-y-1">
+                                    <label
+                                      htmlFor={inputId}
+                                      className="block text-label-md text-on-surface"
+                                    >
+                                      {target.jobLabel} slots
+                                    </label>
+                                    <div className="flex items-center gap-1">
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        icon={Minus}
+                                        aria-label={`Decrease ${target.jobLabel} slots`}
+                                        disabled={
+                                          pending ||
+                                          currentValue === undefined ||
+                                          currentValue <= 0
+                                        }
+                                        className="size-7"
+                                        onClick={() =>
+                                          updateTarget(
+                                            key,
+                                            String((currentValue ?? 0) - 1),
+                                          )
+                                        }
+                                      />
+                                      <input
+                                        id={inputId}
+                                        type="number"
+                                        min={0}
+                                        max={target.maxSlotCount}
+                                        step={1}
+                                        value={draftTarget?.slotCount ?? ""}
+                                        disabled={pending}
+                                        aria-describedby={
+                                          error ? errorId : undefined
+                                        }
+                                        aria-invalid={error ? true : undefined}
+                                        className="w-full rounded-md border border-outline bg-surface px-2 py-1 text-right tabular-nums text-on-surface"
+                                        onChange={(event) =>
+                                          updateTarget(key, event.target.value)
+                                        }
+                                      />
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        icon={Plus}
+                                        aria-label={`Increase ${target.jobLabel} slots`}
+                                        disabled={
+                                          pending ||
+                                          currentValue === undefined ||
+                                          currentValue >= target.maxSlotCount
+                                        }
+                                        className="size-7"
+                                        onClick={() =>
+                                          updateTarget(
+                                            key,
+                                            String((currentValue ?? 0) + 1),
+                                          )
+                                        }
+                                      />
+                                    </div>
+                                    {error ? (
+                                      <span
+                                        id={errorId}
+                                        className="block text-body-sm text-error"
+                                      >
+                                        {error}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </fieldset>
+                        );
+                      })}
+                    </>
                   );
-                })}
+                })()}
               </fieldset>
             ))}
           </div>

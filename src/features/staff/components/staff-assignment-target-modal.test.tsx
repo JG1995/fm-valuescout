@@ -55,11 +55,11 @@ describe("StaffAssignmentTargetModal", () => {
     renderModal();
 
     const trigger = await screen.findByRole("button", {
-      name: "Configure Club Staff",
+      name: "Configure staffing needs",
     });
     await user.click(trigger);
     const dialog = await screen.findByRole("dialog", {
-      name: "Configure assignment slots",
+      name: "Configure staffing needs",
     });
     const senior = within(dialog).getByRole("group", { name: "Senior" });
     const coaching = within(senior).getByRole("group", { name: "Coaching" });
@@ -187,7 +187,7 @@ describe("StaffAssignmentTargetModal", () => {
     renderModal();
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure Club Staff" }),
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     const dialog = await screen.findByRole("dialog");
     const club = within(dialog).getByRole("group", { name: "Club" });
@@ -209,12 +209,75 @@ describe("StaffAssignmentTargetModal", () => {
     ).toHaveLength(1);
   });
 
+  it("provides bounded step controls and truthful valid-draft totals", async () => {
+    const user = userEvent.setup();
+    setStaffAssignmentTargetsIpcMock(
+      fixtureStaffAssignmentTargets({
+        targets: fixtureStaffAssignmentTargets().targets.map((target) =>
+          target.jobId === "assistant_manager" && target.scope === "senior"
+            ? { ...target, slotCount: 2 }
+            : target,
+        ),
+      }),
+    );
+    renderModal();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText("Zero excludes a role from recommendations."),
+    ).toBeInTheDocument();
+    const boundedInput = within(dialog).getByLabelText(
+      "Head of Youth Development slots",
+    );
+    expect(boundedInput).toHaveAttribute("id");
+    expect(boundedInput).not.toHaveAttribute("aria-label");
+    const boundedDecrease = within(dialog).getByRole("button", {
+      name: "Decrease Head of Youth Development slots",
+    });
+    const boundedIncrease = within(dialog).getByRole("button", {
+      name: "Increase Head of Youth Development slots",
+    });
+    expect(boundedIncrease).toBeDisabled();
+    await user.click(boundedDecrease);
+    expect(boundedInput).toHaveValue(0);
+    expect(boundedDecrease).toBeDisabled();
+    await user.click(boundedIncrease);
+    expect(boundedInput).toHaveValue(1);
+    const assistantManager = within(dialog).getAllByRole("spinbutton", {
+      name: "Assistant Manager slots",
+    })[0];
+    expect(
+      within(dialog).getAllByRole("button", {
+        name: "Decrease Assistant Manager slots",
+      })[0],
+    ).toBeInTheDocument();
+    const increase = within(dialog).getAllByRole("button", {
+      name: "Increase Assistant Manager slots",
+    })[0];
+    await user.click(increase);
+    expect(assistantManager).toHaveValue(3);
+    expect(within(dialog).getByText("Senior total: 18")).toBeInTheDocument();
+    expect(within(dialog).getByText("Coaching total: 8")).toBeInTheDocument();
+
+    await user.clear(assistantManager);
+    await user.type(assistantManager, "not-a-number");
+    expect(
+      within(dialog).getByText("Senior total unavailable until corrected."),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Coaching total unavailable until corrected."),
+    ).toBeInTheDocument();
+  });
+
   it("uses each Rust maximum for local validation and shows a Rust save error", async () => {
     const user = userEvent.setup();
     renderModal();
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure Club Staff" }),
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     const dialog = await screen.findByRole("dialog");
     const headOfYouthDevelopment = within(dialog).getByRole("spinbutton", {
@@ -247,7 +310,7 @@ describe("StaffAssignmentTargetModal", () => {
     renderModal();
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure Club Staff" }),
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     const dialog = await screen.findByRole("dialog");
     await user.click(
@@ -261,6 +324,11 @@ describe("StaffAssignmentTargetModal", () => {
       within(dialog).getByRole("button", { name: "Cancel" }),
     ).toBeDisabled();
     expect(within(dialog).getAllByRole("spinbutton")[0]).toBeDisabled();
+    for (const control of within(dialog).getAllByRole("button", {
+      name: /^(Decrease|Increase) .+ slots$/,
+    })) {
+      expect(control).toBeDisabled();
+    }
   });
 
   it("closes and discards a draft when the immutable context changes", async () => {
@@ -268,7 +336,7 @@ describe("StaffAssignmentTargetModal", () => {
     const { rerenderModal } = renderModal();
 
     await user.click(
-      await screen.findByRole("button", { name: "Configure Club Staff" }),
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     const dialog = await screen.findByRole("dialog");
     const assistantManager = within(dialog).getAllByRole("spinbutton", {
@@ -282,10 +350,10 @@ describe("StaffAssignmentTargetModal", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     await user.click(
-      await screen.findByRole("button", { name: "Configure Club Staff" }),
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     expect(
       screen.getAllByRole("spinbutton", { name: "Assistant Manager slots" })[0],
-    ).toHaveValue(0);
+    ).toHaveValue(1);
   });
 });
