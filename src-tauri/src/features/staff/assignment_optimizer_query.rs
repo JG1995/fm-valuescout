@@ -285,7 +285,9 @@ pub(super) fn load_candidates(
         .collect::<Result<Vec<_>, String>>()?
         .join(", ");
     let sql = format!(
-        "SELECT staff.uid, staff.name, staff.club, shortlist.preferred_job, {metric_columns}
+        "SELECT staff.uid, staff.name, staff.club, shortlist.preferred_job,
+                json_extract(staff.staff_attributes_json, '$.WorkingWithYoungsters'),
+                {metric_columns}
          FROM staff
          INNER JOIN staff_shortlist_entries shortlist
              ON shortlist.save_id = ?1 AND shortlist.staff_uid = staff.uid
@@ -303,15 +305,24 @@ pub(super) fn load_candidates(
             let name: Option<String> = row.get(1)?;
             let club: Option<String> = row.get(2)?;
             let preferred_job: String = row.get(3)?;
+            let working_with_youngsters: Option<i64> = row.get(4)?;
             let scores: Vec<Option<i64>> = (0..SCORE_ROLE_IDS.len())
-                .map(|index| row.get::<_, Option<i64>>(4 + index))
+                .map(|index| row.get::<_, Option<i64>>(5 + index))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok((uid, name, club, preferred_job, scores))
+            Ok((
+                uid,
+                name,
+                club,
+                preferred_job,
+                working_with_youngsters,
+                scores,
+            ))
         })
         .map_err(|error| error.to_string())?;
     let mut candidates = Vec::new();
     for row in rows {
-        let (uid, name, club, preferred_job, scores) = row.map_err(|error| error.to_string())?;
+        let (uid, name, club, preferred_job, working_with_youngsters, scores) =
+            row.map_err(|error| error.to_string())?;
         let mut score_set = StaffAssignmentScoreSet::default();
         for (role_id, score) in SCORE_ROLE_IDS.iter().zip(scores) {
             set_score(
@@ -329,6 +340,9 @@ pub(super) fn load_candidates(
             } else {
                 StaffAssignmentClassification::Recruitment
             },
+            working_with_youngsters: working_with_youngsters
+                .and_then(|value| u8::try_from(value).ok())
+                .filter(|value| (1..=20).contains(value)),
             scores: score_set,
         });
     }

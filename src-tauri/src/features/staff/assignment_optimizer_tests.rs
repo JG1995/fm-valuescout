@@ -26,6 +26,7 @@ fn candidate(
         name: Some(format!("Staff {uid}")),
         preferred_job: preferred_job.to_string(),
         classification: StaffAssignmentClassification::Recruitment,
+        working_with_youngsters: Some(10),
         scores,
     }
 }
@@ -209,6 +210,197 @@ fn allocates_by_score_uid_scope_and_slot_order() {
         &result.slots[2],
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.scope == "youth" && recommendation.slot_number == 1
+    ));
+}
+
+#[test]
+fn youth_targets_blend_role_scores_with_working_with_youngsters() {
+    let high_role_score = StaffAssignmentCandidate {
+        working_with_youngsters: Some(2),
+        ..candidate(
+            1,
+            "Assistant Manager",
+            StaffAssignmentScoreSet {
+                assistant_manager: Some(90),
+                ..Default::default()
+            },
+        )
+    };
+    let high_youth_score = StaffAssignmentCandidate {
+        working_with_youngsters: Some(20),
+        ..candidate(
+            2,
+            "Assistant Manager",
+            StaffAssignmentScoreSet {
+                assistant_manager: Some(71),
+                ..Default::default()
+            },
+        )
+    };
+    let missing_youth_attribute = StaffAssignmentCandidate {
+        working_with_youngsters: None,
+        ..candidate(
+            3,
+            "Assistant Manager",
+            StaffAssignmentScoreSet {
+                assistant_manager: Some(100),
+                ..Default::default()
+            },
+        )
+    };
+
+    let result = allocate_staff_assignments(
+        &[target("youth", "assistant_manager", "Assistant Manager", 1)],
+        &[high_role_score, high_youth_score, missing_youth_attribute],
+    );
+
+    assert!(matches!(
+        &result.slots[0],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 2 && recommendation.score == 86
+    ));
+}
+
+#[test]
+fn youth_targets_leave_candidates_without_a_youth_attribute_unavailable() {
+    let result = allocate_staff_assignments(
+        &[target("youth", "assistant_manager", "Assistant Manager", 1)],
+        &[StaffAssignmentCandidate {
+            working_with_youngsters: None,
+            ..candidate(
+                1,
+                "Assistant Manager",
+                StaffAssignmentScoreSet {
+                    assistant_manager: Some(100),
+                    ..Default::default()
+                },
+            )
+        }],
+    );
+
+    assert!(matches!(
+        &result.slots[0],
+        StaffAssignmentSlot::Vacancy(vacancy)
+            if vacancy.evidence.eligible_score_count == 0
+                && vacancy.evidence.unavailable_score_count == 1
+    ));
+}
+
+#[test]
+fn youth_general_coaches_use_the_blended_score() {
+    let high_role_score = StaffAssignmentCandidate {
+        working_with_youngsters: Some(2),
+        ..candidate(
+            1,
+            "Coach",
+            StaffAssignmentScoreSet {
+                coach_attacking_technical: Some(90),
+                ..Default::default()
+            },
+        )
+    };
+    let high_youth_score = StaffAssignmentCandidate {
+        working_with_youngsters: Some(20),
+        ..candidate(
+            2,
+            "Coach",
+            StaffAssignmentScoreSet {
+                coach_attacking_technical: Some(70),
+                ..Default::default()
+            },
+        )
+    };
+
+    let result = allocate_staff_assignments(
+        &[target("youth", "coaches", "Coaches", 1)],
+        &[high_role_score, high_youth_score],
+    );
+
+    assert!(matches!(
+        &result.slots[0],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 2 && recommendation.score == 85
+    ));
+}
+
+#[test]
+fn youth_specialist_coaches_use_the_blended_score() {
+    let high_role_score = StaffAssignmentCandidate {
+        working_with_youngsters: Some(2),
+        ..candidate(
+            1,
+            "Fitness Coach",
+            StaffAssignmentScoreSet {
+                coach_fitness: Some(90),
+                ..Default::default()
+            },
+        )
+    };
+    let high_youth_score = StaffAssignmentCandidate {
+        working_with_youngsters: Some(20),
+        ..candidate(
+            2,
+            "Fitness Coach",
+            StaffAssignmentScoreSet {
+                coach_fitness: Some(70),
+                ..Default::default()
+            },
+        )
+    };
+
+    let result = allocate_staff_assignments(
+        &[target("youth", "coaches", "Coaches", 3)],
+        &[high_role_score, high_youth_score],
+    );
+
+    assert!(matches!(
+        &result.slots[2],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 2
+                && recommendation.score == 85
+                && recommendation.coach_requirement == Some(CoachRequirement::Fitness)
+    ));
+}
+
+#[test]
+fn club_head_of_youth_development_keeps_its_role_score() {
+    let high_role_score = StaffAssignmentCandidate {
+        working_with_youngsters: Some(2),
+        ..candidate(
+            1,
+            "Head of Youth Development",
+            StaffAssignmentScoreSet {
+                head_of_youth_development: Some(90),
+                ..Default::default()
+            },
+        )
+    };
+    let high_youth_attribute = StaffAssignmentCandidate {
+        working_with_youngsters: Some(20),
+        ..candidate(
+            2,
+            "Head of Youth Development",
+            StaffAssignmentScoreSet {
+                head_of_youth_development: Some(70),
+                ..Default::default()
+            },
+        )
+    };
+
+    let result = allocate_staff_assignments(
+        &[target(
+            "club",
+            "head_of_youth_development",
+            "Head of Youth Development",
+            1,
+        )],
+        &[high_role_score, high_youth_attribute],
+    );
+
+    assert!(matches!(
+        &result.slots[0],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 1 && recommendation.score == 90
     ));
 }
 
