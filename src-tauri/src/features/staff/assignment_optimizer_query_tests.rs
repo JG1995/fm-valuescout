@@ -174,6 +174,13 @@ fn loads_fm26_candidate_scores_from_current_shortlist_only() {
     shortlist(&conn, 3, "Recruitment Analyst", "-");
     shortlist(&conn, 5, "Recruitment Analyst", "-");
     shortlist(&conn, 6, "Fitness Coach", "-");
+    conn.execute(
+        "UPDATE staff
+         SET staff_attributes_json = '{\"WorkingWithYoungsters\": 16}'
+         WHERE snapshot_id = 1 AND uid = 1",
+        [],
+    )
+    .expect("set Working with Youngsters");
     conn.execute_batch(
         "INSERT INTO snapshots (
              id, save_id, is_current, schema_version, generated_at_utc,
@@ -200,6 +207,7 @@ fn loads_fm26_candidate_scores_from_current_shortlist_only() {
     assert_eq!(candidates[0].uid, 1);
     assert_eq!(candidates[0].scores.coach_fitness, Some(71));
     assert_eq!(candidates[0].scores.coach_goalkeeping, None);
+    assert_eq!(candidates[0].working_with_youngsters, Some(16));
     assert_eq!(candidates[1].uid, 2);
     assert_eq!(candidates[1].scores.coach_goalkeeping, Some(72));
     assert_eq!(candidates[2].uid, 3);

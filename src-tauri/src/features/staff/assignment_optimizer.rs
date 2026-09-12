@@ -181,6 +181,7 @@ pub(super) struct StaffAssignmentCandidate {
     pub(super) name: Option<String>,
     pub(super) preferred_job: String,
     pub(super) classification: StaffAssignmentClassification,
+    pub(super) working_with_youngsters: Option<u8>,
     pub(super) scores: StaffAssignmentScoreSet,
 }
 
@@ -257,6 +258,40 @@ impl<'a> CandidateGroup<'a> {
             eligible_score_count: self.eligible.len(),
             unavailable_score_count: self.unavailable_score_count,
         }
+    }
+
+    fn evidence_for_scope(&self, job_id: &str, scope: &str) -> StaffAssignmentEvidence {
+        let eligible_score_count = self
+            .eligible
+            .iter()
+            .filter(|eligible| {
+                assignment_score(eligible.candidate, eligible.score, scope).is_some()
+            })
+            .count();
+        StaffAssignmentEvidence {
+            job_id: job_id.to_string(),
+            joined_candidate_count: self.joined_candidate_count,
+            eligible_score_count,
+            unavailable_score_count: self.joined_candidate_count - eligible_score_count,
+        }
+    }
+
+    fn best_youth_candidate(
+        &self,
+        assigned_uids: &HashSet<i64>,
+    ) -> Option<(&StaffAssignmentCandidate, u8)> {
+        self.eligible
+            .iter()
+            .filter(|eligible| !assigned_uids.contains(&eligible.candidate.uid))
+            .filter_map(|eligible| {
+                assignment_score(eligible.candidate, eligible.score, "youth")
+                    .map(|score| (eligible.candidate, score))
+            })
+            .max_by(|(left, left_score), (right, right_score)| {
+                left_score
+                    .cmp(right_score)
+                    .then_with(|| right.uid.cmp(&left.uid))
+            })
     }
 
     fn sort(&mut self) {
@@ -547,6 +582,18 @@ fn allocate_slot(
     next_candidate: &mut usize,
     assigned_uids: &mut HashSet<i64>,
 ) -> StaffAssignmentSlot {
+    if configured_slot.target.scope == "youth" {
+        if let Some((candidate, score)) = group.best_youth_candidate(assigned_uids) {
+            assigned_uids.insert(candidate.uid);
+            return recommendation(configured_slot, candidate, score, None);
+        }
+        return vacancy(
+            configured_slot,
+            None,
+            group.evidence_for_scope(&evidence.job_id, "youth"),
+        );
+    }
+
     while *next_candidate < group.eligible.len()
         && assigned_uids.contains(&group.eligible[*next_candidate].candidate.uid)
     {
@@ -583,9 +630,13 @@ fn allocate_coaches_slots(
             continue;
         }
         let composition = coach_composition(coach_slots.len());
-        let mut general =
-            allocate_general_requirements(composition.general, general_coaches, assigned_uids)
-                .into_iter();
+        let mut general = allocate_general_requirements(
+            composition.general,
+            general_coaches,
+            assigned_uids,
+            scope,
+        )
+        .into_iter();
         let mut next_fitness = 0;
         let mut next_goalkeeping = 0;
         for (slot_index, requirement) in coach_slots
@@ -600,7 +651,7 @@ fn allocate_coaches_slots(
                         Some(assignment) => assignment,
                         None => unreachable!("General count matches composition"),
                     };
-                    let evidence = general_evidence(general_coaches, assignment.requirement);
+                    let evidence = general_evidence(general_coaches, assignment.requirement, scope);
                     match assignment.candidate {
                         Some((candidate, score)) => {
                             assigned_uids.insert(candidate.uid);
@@ -640,6 +691,18 @@ fn allocate_coach_requirement_slot(
     next_candidate: &mut usize,
     assigned_uids: &mut HashSet<i64>,
 ) -> StaffAssignmentSlot {
+    if configured_slot.target.scope == "youth" {
+        if let Some((candidate, score)) = group.best_youth_candidate(assigned_uids) {
+            assigned_uids.insert(candidate.uid);
+            return recommendation(configured_slot, candidate, score, Some(requirement));
+        }
+        return vacancy(
+            configured_slot,
+            Some(requirement),
+            group.evidence_for_scope("coaches", "youth"),
+        );
+    }
+
     while *next_candidate < group.eligible.len()
         && assigned_uids.contains(&group.eligible[*next_candidate].candidate.uid)
     {
@@ -707,13 +770,14 @@ fn allocate_general_requirements<'a>(
     count: usize,
     candidates: &[&'a StaffAssignmentCandidate],
     assigned_uids: &HashSet<i64>,
+    scope: &str,
 ) -> Vec<GeneralAssignment<'a>> {
     let candidates = candidates
         .iter()
         .copied()
         .filter(|candidate| !assigned_uids.contains(&candidate.uid))
         .collect::<Vec<_>>();
-    let matching = match_general_requirements(count, &candidates);
+    let matching = match_general_requirements(count, &candidates, scope);
     matching
         .requirements
         .into_iter()
@@ -728,10 +792,15 @@ fn allocate_general_requirements<'a>(
 fn general_evidence(
     candidates: &[&StaffAssignmentCandidate],
     requirement: CoachRequirement,
+    scope: &str,
 ) -> StaffAssignmentEvidence {
     let eligible_score_count = candidates
         .iter()
-        .filter(|candidate| score_for_requirement(&candidate.scores, requirement).is_some())
+        .filter(|candidate| {
+            score_for_requirement(&candidate.scores, requirement)
+                .and_then(|score| assignment_score(candidate, score, scope))
+                .is_some()
+        })
         .count();
     StaffAssignmentEvidence {
         job_id: "coaches".to_string(),
@@ -988,6 +1057,7 @@ struct GeneralMatch<'a> {
 fn match_general_requirements<'a>(
     count: usize,
     candidates: &[&'a StaffAssignmentCandidate],
+    scope: &str,
 ) -> GeneralMatch<'a> {
     assert!(count <= MAX_GENERAL_COACH_SLOTS);
     let full_requirement_count = count - count % GENERAL_REQUIREMENTS.len();
@@ -1022,7 +1092,9 @@ fn match_general_requirements<'a>(
             }),
         );
         for (candidate_index, candidate) in candidates.iter().enumerate() {
-            let Some(score) = score_for_requirement(&candidate.scores, requirement) else {
+            let Some(score) = score_for_requirement(&candidate.scores, requirement)
+                .and_then(|score| assignment_score(candidate, score, scope))
+            else {
                 continue;
             };
             graph.add_edge(
@@ -1066,7 +1138,9 @@ fn match_general_requirements<'a>(
             }),
         );
         for (candidate_index, candidate) in candidates.iter().enumerate() {
-            let Some(score) = score_for_requirement(&candidate.scores, requirement) else {
+            let Some(score) = score_for_requirement(&candidate.scores, requirement)
+                .and_then(|score| assignment_score(candidate, score, scope))
+            else {
                 continue;
             };
             graph.add_edge(
@@ -1103,10 +1177,10 @@ fn match_general_requirements<'a>(
                 && edge.capacity == 0)
                 .then(|| {
                     let candidate = candidates[edge.to - candidate_start];
-                    (
-                        candidate,
-                        score_for_requirement(&candidate.scores, requirement).expect("edge score"),
-                    )
+                    let score = score_for_requirement(&candidate.scores, requirement)
+                        .and_then(|score| assignment_score(candidate, score, scope))
+                        .expect("edge score");
+                    (candidate, score)
                 })
         })
     };
@@ -1155,6 +1229,18 @@ fn canonical_scope_rank(scope: &str) -> usize {
 
 fn canonical_job_rank(job_id: &str) -> usize {
     canonical_job_index(job_id).unwrap_or(usize::MAX)
+}
+
+fn assignment_score(
+    candidate: &StaffAssignmentCandidate,
+    role_score: u8,
+    scope: &str,
+) -> Option<u8> {
+    if scope != "youth" {
+        return Some(role_score);
+    }
+    let youngster_score = u16::from(candidate.working_with_youngsters?) * 5;
+    u8::try_from((u16::from(role_score) + youngster_score).div_ceil(2)).ok()
 }
 
 fn score_for_job(scores: &StaffAssignmentScoreSet, job_id: &str) -> Option<u8> {
