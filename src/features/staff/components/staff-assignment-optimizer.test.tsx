@@ -195,6 +195,17 @@ describe("StaffAssignmentOptimizer", () => {
       screen.getByRole("img", { name: /Coaches: 82, Excellent/i }),
     ).toBeInTheDocument();
     expect(screen.getByText("Vacancy")).toBeInTheDocument();
+    expect(screen.getByText("Filled slots").parentElement).toHaveTextContent(
+      "2",
+    );
+    expect(screen.getByText("Vacancies").parentElement).toHaveTextContent("1");
+    expect(screen.getByText("Current staff").parentElement).toHaveTextContent(
+      "1",
+    );
+    expect(screen.getByText("Recruits").parentElement).toHaveTextContent("1");
+    expect(
+      screen.getByText("5 joined shortlisted candidates; 4 configured slots."),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         /Coach requirement: Goalkeeping\. 0 eligible scores; 2 unavailable scores/i,

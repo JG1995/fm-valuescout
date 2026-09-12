@@ -297,7 +297,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 #### Commit 4 — Summarize assignment results
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): summarize assignment results`
 
@@ -342,7 +342,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 #### Commit 5 — Make vacancies recoverable
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): make assignment vacancies actionable`
 
@@ -573,19 +573,19 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 **PR:** PR 1 — Improve Staff Optimizer UX
 
-**Commit:** Commit 4 — Summarize assignment results
+**Commit:** Commit 5 — Make vacancies recoverable
 
 ### RED or removal proof
 
-Add focused ready-result proof that fails because the accepted result does not yet expose filled, vacancy, current-staff, and recruit totals together while retaining the exact candidate/configured supporting sentence.
+Add focused component and route proofs that fail because vacancy rows do not yet have warning icon/text semantics, a plain-language reason, or the two approved recovery actions wired to controlled configuration and route-owned shortlist activation.
 
 ### Expected outcome
 
-A ready result presents the four approved display-only metrics from Rust-provided slot tags and keeps joined-candidate/configured-slot counts as supporting text.
+Each vacancy is visibly and accessibly identified, explains why it remains open, and offers Adjust staffing needs and Review shortlist without rerunning optimization or moving route ownership.
 
 ### Explicit exclusions
 
-No vacancy warning/recovery, grouping, sticky headers, evidence disclosure, collapse-label change, Rust response change, or frontend eligibility computation.
+No grouping, sticky headers, optional detailed evidence disclosure, summary-count changes, target validation changes, backend eligibility logic, or allocation changes.
 
 ## Discoveries and replanning
 
@@ -600,7 +600,8 @@ No vacancy warning/recovery, grouping, sticky headers, evidence disclosure, coll
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Improve Staff Optimizer UX | Commit 1 — Record the approved feature plan | `036471db667b0e4cafd6794726c07b0c77fa8e51` | Recorded the accepted schema-2 ledger and TODO Active link after the exact reviewed precursor range. | `ledger_state.py`; `delivery_state.py`; `git diff --cached --check` — passed. | Not applicable | Clear | 0 | None |
 | PR 1 — Improve Staff Optimizer UX | Commit 2 — Add optimizer readiness and stable feedback | `990e47d50dd12251381d386522fec86c873cdbcd` | Added one-query controlled staffing configuration, explicit readiness and recovery, single-primary action hierarchy, and stable full-width feedback while preserving context/reset guards. | Focused component/route tests (74 passed before correction; latest focused optimizer/modal 21 passed); full frontend tests (1,025 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport UI inspection; LSP and diff checks — passed. | Pass | Accepted findings — one MEDIUM standalone fallback-pending advisory retained for feature close-out; no CRITICAL or HIGH findings remain. | 1 | Initial review found three HIGH hierarchy, feedback-placement, and test-value defects; correction review verified all three fixed. |
-| PR 1 — Improve Staff Optimizer UX | Commit 3 — Improve staffing-needs controls | Pending record | Added explicitly labelled bounded step controls, direct numeric entry, pending locks, one zero rule, truthful valid-draft team/section totals, and a durable populated dialog inspection state. | Focused optimizer/modal tests (22 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport modal inspection; LSP and diff checks — passed. | Pass | Clear | 1 | Initial review found invalid label-wrapped step buttons; correction used explicit collision-safe label/input association and added live Chromium step proof. |
+| PR 1 — Improve Staff Optimizer UX | Commit 3 — Improve staffing-needs controls | `34ce800e7fe605aea06b7b15339f01224dc9e653` | Added explicitly labelled bounded step controls, direct numeric entry, pending locks, one zero rule, truthful valid-draft team/section totals, and a durable populated dialog inspection state. | Focused optimizer/modal tests (22 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport modal inspection; LSP and diff checks — passed. | Pass | Clear | 1 | Initial review found invalid label-wrapped step buttons; correction used explicit collision-safe label/input association and added live Chromium step proof. |
+| PR 1 — Improve Staff Optimizer UX | Commit 4 — Summarize assignment results | Pending record | Added compact filled, vacancy, current-staff, and recruit metrics derived only from received slot tags while retaining candidate/configured supporting text. | Focused optimizer tests (16 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed); LSP and diff checks — passed. | Pass | Clear | 0 | None |
 
 ## Final validation
 

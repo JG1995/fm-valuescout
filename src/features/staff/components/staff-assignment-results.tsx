@@ -44,6 +44,20 @@ export function StaffAssignmentResults({
   const [expanded, setExpanded] = useState(true);
   const bodyId = useId();
   const ToggleIcon = expanded ? ChevronUp : ChevronDown;
+  const filledSlotCount = result.slots.filter(
+    (slot) => slot.kind === "recommendation",
+  ).length;
+  const vacancyCount = result.slots.filter(
+    (slot) => slot.kind === "vacancy",
+  ).length;
+  const currentStaffCount = result.slots.filter(
+    (slot) =>
+      slot.kind === "recommendation" && slot.classification === "current_staff",
+  ).length;
+  const recruitCount = result.slots.filter(
+    (slot) =>
+      slot.kind === "recommendation" && slot.classification === "recruitment",
+  ).length;
 
   return (
     <Panel
@@ -62,6 +76,19 @@ export function StaffAssignmentResults({
       className="w-full shrink-0 basis-full"
     >
       <div id={bodyId} hidden={!expanded} className="space-y-3">
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            ["Filled slots", filledSlotCount],
+            ["Vacancies", vacancyCount],
+            ["Current staff", currentStaffCount],
+            ["Recruits", recruitCount],
+          ].map(([label, count]) => (
+            <div key={label}>
+              <dt className="text-label-md text-on-surface-variant">{label}</dt>
+              <dd className="text-headline-sm text-on-surface">{count}</dd>
+            </div>
+          ))}
+        </dl>
         <p className="text-body-sm text-on-surface-variant">
           {result.joinedCandidateCount} joined shortlisted candidate
           {result.joinedCandidateCount === 1 ? "" : "s"};{" "}
