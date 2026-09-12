@@ -52,8 +52,6 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- **[Staff Optimizer UX Improvements](./features/active/staff-optimizer-ux.md)** — continue the reviewed current-branch optimizer tweaks with readiness, staffing controls, feedback, and recommendation presentation.
-
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
@@ -64,6 +62,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Completed
 
+- **[Staff Optimizer UX Improvements](./features/completed/staff-optimizer-ux.md)** — one-primary-action Staff assignment planning with readiness recovery, staffing controls, and compact vacancy-aware results.
 - **[Load Data processing performance](./features/completed/load-data-processing-performance.md)** — removed redundant Load Data processing while preserving captured-dump validation, current-only derived state, retained raw history, and atomic publication (Linear JAY-66).
 - **[Production-scale FM graphics](./features/completed/production-scale-fm-graphics.md)** — scaled local graphics indexing for representative Sortitoutsi facepacks, moved image delivery to a bounded generation/UID custom protocol, and calibrated final production limits from measured representative-pack evidence (Linear JAY-64).
 - **[Local FM graphics](./features/completed/local-fm-graphics.md)** — Rust-owned local FM26 graphics-root indexing, player portraits, and UID-backed club logos without managing graphics packs (Linear JAY-63).

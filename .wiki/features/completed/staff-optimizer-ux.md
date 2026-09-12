@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -142,7 +142,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 **Required checks:** strict required GitHub Actions `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -590,7 +590,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 | PR 1 — Improve Staff Optimizer UX | Commit 6 — Group assignment results by scope | `d6c2c74fb4b71d0ed1f974c48042eae8892a2720` | Grouped adjacent Rust display names in received order, added per-group filled/configured headers, removed Scope, and added durable populated result inspection. | Focused optimizer tests (16 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport result inspection; LSP and diff checks — passed. | Pass | Clear | 0 | None |
 | PR 1 — Improve Staff Optimizer UX | Commit 7 — Disclose assignment evidence on demand | `9aea5b4c7a8735a51d5df7f822fe671df99fc38a` | Kept row reasons concise and moved exact bounded Rust vacancy counts into native accessible disclosures without rerunning optimization. | Focused component/route tests (77 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); LSP and diff checks — passed. | Pass | Accepted findings — one MEDIUM inaccurate collapse-test name retained for Commit 9; no CRITICAL or HIGH findings. | 0 | None |
 | PR 1 — Improve Staff Optimizer UX | Commit 8 — Keep result headers visible | `64bfcce46da8306bb648fa28b1f6b7f49851fd6d` | Kept assignment column headers visible within the existing bounded result scroller using documented sticky surface/layer tokens. | `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport result inspection; LSP and diff checks — passed. | Pass | Clear | 0 | None |
-| PR 1 — Improve Staff Optimizer UX | Commit 9 — Label the result collapse control | Pending record | Added compact visible Collapse/Expand text beside the chevron while preserving ARIA state, result retention, context clearing, new-result expansion, and no rerun. | Focused optimizer tests (16 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); four final UI inspections; LSP and diff checks — passed. | Pass | Clear | 0 | Resolved Commit 7's inaccurate collapse-test name within the owning test. |
+| PR 1 — Improve Staff Optimizer UX | Commit 9 — Label the result collapse control | `cb065374fab331959cbc2e44892f68522f3df50d` | Added compact visible Collapse/Expand text beside the chevron while preserving ARIA state, result retention, context clearing, new-result expansion, and no rerun. | Focused optimizer tests (16 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); four final UI inspections; LSP and diff checks — passed. | Pass | Clear | 0 | Resolved Commit 7's inaccurate collapse-test name within the owning test. |
 
 ## Final validation
 
@@ -612,3 +612,98 @@ Mutation testing is not run because `./scripts/dev mutate` is unsupported.
 ## Documentation impact
 
 Planning changes only the active ledger and TODO. During feature reconciliation, update `.wiki/DESIGN.md` to describe the implemented Staff action hierarchy/readiness, stable status placement, staffing-needs controls/totals/zero rule, grouped warning/disclosed result presentation, sticky headers, and visible collapse label. Update `.wiki/ARCHITECTURE.md` only if implementation changes an implemented data-flow boundary; this plan expects no such change. Move this ledger and reconcile TODO during normal feature close-out. No BACKLOG, ADR, planned spec, release, schema, or migration documentation change is expected.
+
+## Delivered behavior
+
+- Staff Search presents one primary **Optimize assignments** action, secondary **Upload CSV** and **Configure staffing needs** actions, visible readiness and recovery guidance, and a stable status region.
+- Staffing needs use bounded step controls with direct entry, a one-time zero rule, and valid-draft team and section totals.
+- Results show four primary metrics with supporting counts, consecutive Rust-name groups without a Scope column, warning/icon/text vacancy treatment with **Adjust staffing needs** and **Review shortlist**, native evidence disclosure, sticky headers in the bounded scroller, current-staff steel/icon treatment, and visible **Collapse**/**Expand** labels without rerunning optimization.
+
+## Final architecture
+
+- React remains a presentation layer over the existing Rust assignment DTO, target validation, allocation, and evidence. The feature changes no IPC, persistence, or data-flow boundary.
+- No ADR or debug report was needed. Existing boundaries and regression tests explain the implementation.
+
+## Exact implementation refs
+
+**Feature range:** `0312fd1b818435d136df36b1587489a482c239b1..cb065374fab331959cbc2e44892f68522f3df50d`
+
+| Ref | Role |
+| --- | --- |
+| `0312fd1b818435d136df36b1587489a482c239b1` | Base |
+| `bb41169f7a264e1ddf9c08a97d8becfbde2591ef` | Precursor |
+| `0386fa563a34ab968583e38a3f1811e0b468e815` | Precursor |
+| `036471db667b0e4cafd6794726c07b0c77fa8e51` | Planning |
+| `990e47d50dd12251381d386522fec86c873cdbcd` | Content |
+| `34ce800e7fe605aea06b7b15339f01224dc9e653` | Content |
+| `6a762e1776a1f31d7695fbeb5c381cccabb7a792` | Content |
+| `81ed8e1e5c88e36802f76e6f393884d4e3419a09` | Content |
+| `d6c2c74fb4b71d0ed1f974c48042eae8892a2720` | Content |
+| `9aea5b4c7a8735a51d5df7f822fe671df99fc38a` | Content |
+| `64bfcce46da8306bb648fa28b1f6b7f49851fd6d` | Content |
+| `cb065374fab331959cbc2e44892f68522f3df50d` | Content |
+
+Correction ref: none. Close-out documentation ref: Pending record.
+
+## Final publication
+
+```yaml
+status: ready_for_publication
+pr_status: not_published
+merge_status: not_merged
+pr_ref: "Not published"
+merge_ref: "Not merged"
+branch: feature/staff-optimizer-tweaks
+base_branch: main
+base_ref: 0312fd1b818435d136df36b1587489a482c239b1
+provisional_pr_title: "feat(staff): improve optimizer experience"
+publication_provider: GitHub
+pr_template: .github/pull_request_template.md
+merge_method: squash
+required_checks: strict_check
+required_check_name: check
+pr_count: 1
+earlier_prs: none
+feature_close_out: current
+feature_review_blocking: false
+feature_review_recommendation: accept
+feature_review_critical: none
+feature_review_high: none
+feature_review_medium:
+  - standalone StaffAssignmentTargetModal fallback pending state remains an unsupported-path advisory
+  - Adjust staffing needs proof does not assert a seeded draft value
+feature_review_nitpick: none
+feature_review_action: skip
+feature_review_correction_rounds: 0
+ci_repair_rounds: 0
+implementation_range: "0312fd1b818435d136df36b1587489a482c239b1..cb065374fab331959cbc2e44892f68522f3df50d"
+feature_review_scope: "main...HEAD including precursors and all ledger content commits"
+final_pr_commit_set:
+  - bb41169f7a264e1ddf9c08a97d8becfbde2591ef
+  - 0386fa563a34ab968583e38a3f1811e0b468e815
+  - 036471db667b0e4cafd6794726c07b0c77fa8e51
+  - 990e47d50dd12251381d386522fec86c873cdbcd
+  - 34ce800e7fe605aea06b7b15339f01224dc9e653
+  - 6a762e1776a1f31d7695fbeb5c381cccabb7a792
+  - 81ed8e1e5c88e36802f76e6f393884d4e3419a09
+  - d6c2c74fb4b71d0ed1f974c48042eae8892a2720
+  - 9aea5b4c7a8735a51d5df7f822fe671df99fc38a
+  - 64bfcce46da8306bb648fa28b1f6b7f49851fd6d
+  - cb065374fab331959cbc2e44892f68522f3df50d
+correction_ref: none
+close_out_documentation_ref: "Pending record"
+publication_correction_evidence: none
+project_fit: conforms
+
+```
+
+## Feature close-out
+
+**State:** Current. Full frontend validation passed (83 files, 1,027 tests), Rust validation passed (875 tests, 3 ignored), smoke passed (62), check passed, four UI inspection captures were opened at both required viewports, and diff checks passed. Mutation testing was unsupported. Chromium/WSL evidence makes no native-WebView claim.
+
+The feature review found no CRITICAL, HIGH, or NITPICK findings. The two implementation MEDIUM advisories remain non-blocking follow-up risks; the documentation MEDIUM is resolved. Test portfolio: Pass. Architecture and project fit: Conforms. No overengineering and zero feature correction rounds.
+
+## Follow-up
+
+- Consider a supported standalone fallback pending state and stronger seeded-draft proof for the Adjust staffing needs path.
+- Generated `.work/ui-inspection` artifacts are absent; no removal is needed.
