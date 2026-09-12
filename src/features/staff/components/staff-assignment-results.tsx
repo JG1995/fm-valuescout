@@ -119,7 +119,7 @@ export function StaffAssignmentResults({
               <caption className="sr-only">
                 Staff assignment recommendations and vacancies
               </caption>
-              <thead className="bg-surface-container-lowest text-label-md text-on-surface-variant">
+              <thead className="sticky top-0 z-10 bg-surface-container-lowest text-label-md text-on-surface-variant">
                 <tr>
                   <th scope="col" className="px-2 py-2">
                     Target

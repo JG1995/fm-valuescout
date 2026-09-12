@@ -707,6 +707,42 @@ test.describe("application smoke", () => {
     await expect(assignments).toBeVisible();
     await expect(assignments).toContainText("Alex Assistant");
 
+    const resultScroller = assignments.locator(
+      "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' max-h-80 ')]",
+    );
+    await expect(resultScroller).toHaveCount(1);
+    const scrollState = await resultScroller.evaluate((element) => {
+      const scroller = element as unknown as {
+        scrollTop: number;
+        scrollHeight: number;
+        querySelector: (selector: string) => {
+          getBoundingClientRect: () => { top: number; bottom: number };
+        } | null;
+        getBoundingClientRect: () => { top: number; bottom: number };
+      };
+      const header = scroller.querySelector("thead");
+      if (!header) {
+        throw new Error("Expected assignment table header.");
+      }
+      scroller.scrollTop = scroller.scrollHeight;
+      const scrollerBox = scroller.getBoundingClientRect();
+      const headerBox = header.getBoundingClientRect();
+      return {
+        scrollTop: scroller.scrollTop,
+        headerTop: headerBox.top,
+        headerBottom: headerBox.bottom,
+        scrollerTop: scrollerBox.top,
+        scrollerBottom: scrollerBox.bottom,
+      };
+    });
+    expect(scrollState.scrollTop).toBeGreaterThan(0);
+    expect(scrollState.headerTop).toBeGreaterThanOrEqual(
+      scrollState.scrollerTop,
+    );
+    expect(scrollState.headerBottom).toBeLessThanOrEqual(
+      scrollState.scrollerBottom,
+    );
+
     const assignmentPanel = assignments.locator("xpath=ancestor::section[1]");
     for (const [width, height] of [
       [1280, 800],

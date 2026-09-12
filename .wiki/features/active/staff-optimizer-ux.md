@@ -481,7 +481,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 #### Commit 8 — Keep result headers visible
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): keep assignment headers visible`
 
@@ -526,7 +526,7 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 #### Commit 9 — Label the result collapse control
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): label result collapse control`
 
@@ -573,19 +573,19 @@ On the current branch after Commit 1 records this plan, a ready Staff Search use
 
 **PR:** PR 1 — Improve Staff Optimizer UX
 
-**Commit:** Commit 8 — Keep result headers visible
+**Commit:** Commit 9 — Label the result collapse control
 
 ### RED or removal proof
 
-Add a browser proof that fails because scrolling the existing bounded assignment-results container moves the table column header out of its scrollport.
+Update the existing collapse proof so it fails because the panel control has only a chevron/accessibility name and no visible Collapse/Expand text.
 
 ### Expected outcome
 
-Assignment column headers remain visible inside the existing bounded result scroller after vertical scrolling, using documented surface and sticky-layer tokens without changing rows or overflow ownership.
+The result control visibly says Collapse or Expand beside its chevron while preserving `aria-expanded`, stable `aria-controls`, keyboard operation, accepted-result retention, new-result expansion, and no optimizer rerun.
 
 ### Explicit exclusions
 
-No group/column content changes, evidence or collapse changes, Data Table refactor, global CSS, new scroll container, or unbounded result layout.
+No result ownership, grouping, evidence, animation, shared Panel API, persisted expansion, or optimizer mutation change.
 
 ## Discoveries and replanning
 
@@ -606,7 +606,8 @@ No group/column content changes, evidence or collapse changes, Data Table refact
 | PR 1 — Improve Staff Optimizer UX | Commit 4 — Summarize assignment results | `6a762e1776a1f31d7695fbeb5c381cccabb7a792` | Added compact filled, vacancy, current-staff, and recruit metrics derived only from received slot tags while retaining candidate/configured supporting text. | Focused optimizer tests (16 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed); LSP and diff checks — passed. | Pass | Clear | 0 | None |
 | PR 1 — Improve Staff Optimizer UX | Commit 5 — Make vacancies recoverable | `81ed8e1e5c88e36802f76e6f393884d4e3419a09` | Added warning-token vacancy cues and reasons plus controlled staffing and route-owned shortlist recovery without rerunning optimization. | Focused optimizer/route tests (71 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); LSP and diff checks — passed. | Pass | Accepted findings — one MEDIUM Adjust-path draft-content proof advisory retained for feature close-out; no CRITICAL or HIGH findings. | 0 | None |
 | PR 1 — Improve Staff Optimizer UX | Commit 6 — Group assignment results by scope | `d6c2c74fb4b71d0ed1f974c48042eae8892a2720` | Grouped adjacent Rust display names in received order, added per-group filled/configured headers, removed Scope, and added durable populated result inspection. | Focused optimizer tests (16 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport result inspection; LSP and diff checks — passed. | Pass | Clear | 0 | None |
-| PR 1 — Improve Staff Optimizer UX | Commit 7 — Disclose assignment evidence on demand | Pending record | Kept row reasons concise and moved exact bounded Rust vacancy counts into native accessible disclosures without rerunning optimization. | Focused component/route tests (77 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); LSP and diff checks — passed. | Pass | Accepted findings — one MEDIUM inaccurate collapse-test name retained for Commit 9; no CRITICAL or HIGH findings. | 0 | None |
+| PR 1 — Improve Staff Optimizer UX | Commit 7 — Disclose assignment evidence on demand | `9aea5b4c7a8735a51d5df7f822fe671df99fc38a` | Kept row reasons concise and moved exact bounded Rust vacancy counts into native accessible disclosures without rerunning optimization. | Focused component/route tests (77 passed); `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); LSP and diff checks — passed. | Pass | Accepted findings — one MEDIUM inaccurate collapse-test name retained for Commit 9; no CRITICAL or HIGH findings. | 0 | None |
+| PR 1 — Improve Staff Optimizer UX | Commit 8 — Keep result headers visible | Pending record | Kept assignment column headers visible within the existing bounded result scroller using documented sticky surface/layer tokens. | `CI=1 ./scripts/dev smoke` (62 passed); `./scripts/dev check` (875 Rust tests passed, 3 ignored); dual-viewport result inspection; LSP and diff checks — passed. | Pass | Clear | 0 | None |
 
 ## Final validation
 
