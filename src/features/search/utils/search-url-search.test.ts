@@ -81,13 +81,15 @@ describe("search URL search params", () => {
     ]);
   });
 
-  it("parses the shortlist toggle with strict invalid-to-off", () => {
+  it("parses the shortlist toggle as tri-state with deliberate invalid behavior", () => {
     expect(parseShortlistOnly(true)).toBe(true);
     expect(parseShortlistOnly("true")).toBe(true);
     expect(parseShortlistOnly(false)).toBe(false);
-    expect(parseShortlistOnly(undefined)).toBe(false);
-    expect(parseShortlistOnly("yes")).toBe(false);
     expect(parseShortlistOnly("false")).toBe(false);
-    expect(parseShortlistOnly(1)).toBe(false);
+    // Missing and invalid values leave the choice unset so the per-save
+    // Zustand choice / presence default can restore it.
+    expect(parseShortlistOnly(undefined)).toBeUndefined();
+    expect(parseShortlistOnly("yes")).toBeUndefined();
+    expect(parseShortlistOnly(1)).toBeUndefined();
   });
 });

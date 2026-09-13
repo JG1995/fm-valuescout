@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import type { StaffAssignmentContext } from "../types/staff-assignment";
 import type { StaffFilterRule } from "../types/staff-filter-rule";
 import type { StaffSortDir, StaffSortField } from "../types/staff-sort";
 import {
@@ -21,6 +22,7 @@ export function staffSearchQueryOptions(
   shortlistOnly = false,
   preferredJob?: string,
   unemployedOnly = false,
+  context: StaffAssignmentContext | null = null,
 ) {
   return queryOptions({
     queryKey: staffKeys.list(
@@ -35,6 +37,7 @@ export function staffSearchQueryOptions(
       preferredJob,
       unemployedOnly,
       shortlistOnly,
+      context,
     ),
     queryFn: () =>
       fetchStaff(

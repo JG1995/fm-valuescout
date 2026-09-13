@@ -28,6 +28,10 @@ import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import {
+  shortlistFilterKey,
+  useShortlistFilterStore,
+} from "@/stores/use-shortlist-filter-store";
 import { setCsvImportIpcMockResult } from "@/testing/csv-import-ipc-mock";
 import {
   getPlannerTacticIpcMockCalls,
@@ -46,12 +50,14 @@ import {
   getSearchPlayersCallCount,
   rejectPendingSearchPlayersPageIpcMock,
   resolvePendingSearchPlayersPageIpcMock,
+  setPlayerShortlistPresent,
   setSearchPlayersOverride,
   setSearchPlayersPageIpcMockMode,
 } from "@/testing/search-ipc-mock";
 import {
   resolveCreateSaveIpcMock,
   resolveLoadDataIpcMock,
+  resolveSetActiveSaveIpcMock,
 } from "@/testing/snapshot-ipc-mock";
 
 const { openCsvDialog } = vi.hoisted(() => ({
@@ -2921,6 +2927,139 @@ describe("search route", () => {
     );
   });
 
+  it("defaults the player shortlist filter on when the save has a stored shortlist", async () => {
+    await resolveLoadDataIpcMock();
+    setPlayerShortlistPresent(true);
+    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+    renderSearchRoute("/search");
+
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    ).toHaveAttribute("aria-checked", "true");
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "general",
+        shortlistOnly: true,
+      });
+    });
+  });
+
+  it("defaults the player shortlist filter off when the save has no stored shortlist", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+    renderSearchRoute("/search");
+
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "general",
+        shortlistOnly: false,
+      });
+    });
+  });
+
+  it("keeps a manual shortlist toggle across navigation away and back", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlayerShortlistPresent(true);
+    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+    const { router } = renderSearchRoute("/search");
+
+    const toggleOn = await screen.findByRole("switch", {
+      name: "Shortlist: On",
+    });
+    await user.click(toggleOn);
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(
+      useShortlistFilterStore.getState().choices[
+        shortlistFilterKey("player", {
+          saveId: 1,
+          contextToken: "save-token-1",
+        })
+      ],
+    ).toBe(false);
+
+    router.history.push("/staff");
+    expect(
+      await screen.findByRole("heading", { name: "Staff Search" }),
+    ).toBeInTheDocument();
+    router.history.back();
+    expect(
+      await screen.findByRole("heading", { name: "Player Search" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("honors an explicit false shortlist URL override over a present shortlist", async () => {
+    await resolveLoadDataIpcMock();
+    setPlayerShortlistPresent(true);
+    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+    const { router } = renderSearchRoute("/search?shortlistOnly=false");
+
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(router.state.location.search.shortlistOnly).toBe(false);
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "general",
+        shortlistOnly: false,
+      });
+    });
+  });
+
+  it("scopes the shortlist choice to the save context across save switches", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlayerShortlistPresent(true);
+    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+    const { queryClient } = renderSearchRoute("/search");
+
+    const toggleOn = await screen.findByRole("switch", {
+      name: "Shortlist: On",
+    });
+    await user.click(toggleOn);
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(
+      useShortlistFilterStore.getState().choices[
+        shortlistFilterKey("player", {
+          saveId: 1,
+          contextToken: "save-token-1",
+        })
+      ],
+    ).toBe(false);
+
+    // A second save with the same presence re-derives its default instead
+    // of inheriting the first save's manual toggle.
+    await resolveCreateSaveIpcMock({ name: "Save B" });
+    await resolveSetActiveSaveIpcMock({ saveId: 2 });
+    await resolveLoadDataIpcMock();
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
+      await queryClient.invalidateQueries({ queryKey: searchKeys.all });
+    });
+
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    ).toHaveAttribute("aria-checked", "true");
+    expect(
+      useShortlistFilterStore.getState().choices[
+        shortlistFilterKey("player", {
+          saveId: 1,
+          contextToken: "save-token-1",
+        })
+      ],
+    ).toBe(false);
+  });
+
   it("replace-normalizes a legacy shortlist view to General with filtering on", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("General Scout", 160)]);
@@ -2969,33 +3108,41 @@ describe("search route", () => {
     });
     toggleOff.focus();
     await user.keyboard(" ");
-    await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        shortlistOnly: true,
-      });
-    });
+    // The per-save choice records the toggle; normal URLs stay clean.
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    ).toHaveAttribute("aria-checked", "true");
+    expect(router.state.location.search.shortlistOnly).toBeUndefined();
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         searchView: "general",
         shortlistOnly: true,
       });
     });
+
     // Toggling remounts the results panel, so re-query the switch.
     const toggleOn = await screen.findByRole("switch", {
       name: "Shortlist: On",
     });
-    expect(toggleOn).toHaveAttribute("aria-checked", "true");
-
     await user.click(toggleOn);
-    await waitFor(() => {
-      expect(router.state.location.search.shortlistOnly).toBeUndefined();
-    });
-    // Off shows all current General players again.
-    expect(await screen.findByText("High CA")).toBeInTheDocument();
-    expect(await screen.findByText("Low CA")).toBeInTheDocument();
     expect(
       await screen.findByRole("switch", { name: "Shortlist: Off" }),
     ).toHaveAttribute("aria-checked", "false");
+    expect(router.state.location.search.shortlistOnly).toBeUndefined();
+    // Off records the per-save choice; the revisit is cache-served inside
+    // the query client's 60s stale window, so no second page query fires
+    // and last-args still reads the ON refetch above.
+    expect(
+      useShortlistFilterStore.getState().choices[
+        shortlistFilterKey("player", {
+          saveId: 1,
+          contextToken: "save-token-1",
+        })
+      ],
+    ).toBe(false);
+    // Off shows all current General players again.
+    expect(await screen.findByText("High CA")).toBeInTheDocument();
+    expect(await screen.findByText("Low CA")).toBeInTheDocument();
   });
 
   it("turns shortlist filtering on after a successful upload and refetches General", async () => {
@@ -3019,11 +3166,20 @@ describe("search route", () => {
       within(dialog).getByRole("button", { name: "Choose CSV" }),
     );
 
-    await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        shortlistOnly: true,
-      });
-    });
+    // The successful import forces the filter on through the per-save choice
+    // while the URL stays clean.
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    ).toHaveAttribute("aria-checked", "true");
+    expect(router.state.location.search.shortlistOnly).toBeUndefined();
+    expect(
+      useShortlistFilterStore.getState().choices[
+        shortlistFilterKey("player", {
+          saveId: 1,
+          contextToken: "save-token-1",
+        })
+      ],
+    ).toBe(true);
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         searchView: "general",

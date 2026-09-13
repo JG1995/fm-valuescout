@@ -21,6 +21,7 @@ import {
   validateTacticDraft,
 } from "@/features/planner/utils/tactic-editor";
 import { searchKeys } from "@/features/search/api/search-keys";
+import { playerShortlistProbeQueryOptions } from "@/features/search/api/search-players-query-options";
 import { PlayerShortlistImportModal } from "@/features/search/components/player-shortlist-import-modal";
 import { SearchFilterBar } from "@/features/search/components/search-filter-bar";
 import type { TacticLaneLabel } from "@/features/search/components/search-results-panel";
@@ -61,6 +62,10 @@ import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-sna
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import {
+  shortlistFilterKey,
+  useShortlistFilterStore,
+} from "@/stores/use-shortlist-filter-store";
 import {
   isFullTacticGroup,
   isTacticColumnId,
@@ -145,10 +150,9 @@ export const Route = createFileRoute("/search")({
         view === "moneyball"
           ? parseComparisonPool(search.comparisonPool)
           : undefined,
-      shortlistOnly:
-        legacyShortlist || parseShortlistOnly(search.shortlistOnly)
-          ? true
-          : undefined,
+      shortlistOnly: legacyShortlist
+        ? true
+        : parseShortlistOnly(search.shortlistOnly),
     };
   },
   beforeLoad: ({ location, search }) => {
@@ -255,7 +259,60 @@ function SearchPageContent() {
   );
   const view = routeView ?? defaultAnalysisView;
   const comparisonPool = routeComparisonPool ?? "filtered";
-  const shortlistOnly = routeShortlistOnly === true;
+  // The save context that scopes the shortlist choice: only a matching
+  // active-save + current-snapshot pair exposes the shortlist toggle.
+  // Keying by the mounted save/snapshot context prevents a switched save
+  // from initializing its choice from a previous save's data.
+  const shortlistContext =
+    snapshot && activeSave && snapshot.saveId === activeSave.id
+      ? {
+          activeSave: {
+            id: activeSave.id,
+            contextToken: activeSave.contextToken,
+          },
+          currentSnapshot: {
+            id: snapshot.id,
+            saveId: snapshot.saveId,
+          },
+        }
+      : null;
+  const activeSaveId = shortlistContext?.activeSave.id ?? null;
+  const activeSaveContextToken =
+    shortlistContext?.activeSave.contextToken ?? null;
+  const shortlistProbe = useQuery({
+    ...playerShortlistProbeQueryOptions(shortlistContext ?? undefined),
+    enabled: shortlistContext !== null,
+  });
+  const shortlistChoice = useShortlistFilterStore((state) =>
+    activeSaveId === null || activeSaveContextToken === null
+      ? undefined
+      : state.choices[
+          shortlistFilterKey("player", {
+            saveId: activeSaveId,
+            contextToken: activeSaveContextToken,
+          })
+        ],
+  );
+  useEffect(() => {
+    // Unset = uninitialized: derive the default from actual shortlist
+    // presence once. Later probe refreshes stay no-ops, so a manual toggle
+    // is never overwritten by query state.
+    if (
+      activeSaveId === null ||
+      activeSaveContextToken === null ||
+      shortlistProbe.data === undefined
+    ) {
+      return;
+    }
+    useShortlistFilterStore
+      .getState()
+      .initialize(
+        "player",
+        { saveId: activeSaveId, contextToken: activeSaveContextToken },
+        shortlistProbe.data.state === "ready",
+      );
+  }, [activeSaveId, activeSaveContextToken, shortlistProbe.data]);
+  const shortlistOnly = (routeShortlistOnly ?? shortlistChoice) === true;
   const tableId = view === "moneyball" ? "moneyball-search" : "search";
   const layout = usePlayerTableStore((state) => state.layouts[tableId]);
   const navigate = Route.useNavigate();
@@ -341,7 +398,19 @@ function SearchPageContent() {
       role="switch"
       aria-checked={shortlistOnly}
       onClick={() => {
-        updateSearch({ shortlistOnly: !shortlistOnly ? true : undefined });
+        if (activeSaveId === null || activeSaveContextToken === null) {
+          return;
+        }
+        // The per-save Zustand choice owns normal page revisits; the URL
+        // keeps only explicit deep-link overrides after the toggle clears it.
+        useShortlistFilterStore
+          .getState()
+          .set(
+            "player",
+            { saveId: activeSaveId, contextToken: activeSaveContextToken },
+            !shortlistOnly,
+          );
+        updateSearch({ shortlistOnly: undefined });
       }}
       className="inline-flex items-center gap-2 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
@@ -662,7 +731,17 @@ function SearchPageContent() {
           onImported={async (summary) => {
             setLastShortlistImport(summary);
             setShortlistImportOpen(false);
-            await updateSearch({ shortlistOnly: true });
+            if (activeSaveId !== null && activeSaveContextToken !== null) {
+              useShortlistFilterStore.getState().set(
+                "player",
+                {
+                  saveId: activeSaveId,
+                  contextToken: activeSaveContextToken,
+                },
+                true,
+              );
+            }
+            await updateSearch({ shortlistOnly: undefined });
             await queryClient.invalidateQueries({
               queryKey: searchKeys.playerPages(),
             });

@@ -11,7 +11,7 @@ import {
   useLocation,
   useRouter,
 } from "@tanstack/react-router";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
@@ -55,6 +55,10 @@ import {
   staffFiltersForUrl,
 } from "@/features/staff/utils/staff-url-search";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import {
+  shortlistFilterKey,
+  useShortlistFilterStore,
+} from "@/stores/use-shortlist-filter-store";
 
 export type StaffSearch = {
   view: "search" | "my-staff";
@@ -139,10 +143,9 @@ export const Route = createFileRoute("/staff")({
       shortlistDir: shortlistState.dir,
       shortlistContextSort: shortlistContextState?.sort,
       shortlistContextDir: shortlistContextState?.dir,
-      shortlistOnly:
-        legacyShortlist || parseShortlistOnly(search.shortlistOnly)
-          ? true
-          : undefined,
+      shortlistOnly: legacyShortlist
+        ? true
+        : parseShortlistOnly(search.shortlistOnly),
       preferredJob:
         typeof search.preferredJob === "string"
           ? search.preferredJob
@@ -343,7 +346,6 @@ function StaffSearchContent() {
   const depth = depthQuery.data;
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const filters = useMemo(() => parseStaffFilters(filterUrls), [filterUrls]);
-  const shortlistOnly = routeShortlistOnly === true;
   const unemployedOnly = routeUnemployedOnly === true;
 
   const shortlistPresentation = staffShortlistPresentation(routePreferredJob);
@@ -424,8 +426,42 @@ function StaffSearchContent() {
       true,
       undefined,
       false,
+      staffAssignmentContext,
     ),
   );
+  // The shortlist probe reports `state` per active save: `ready` only when
+  // the save stores shortlist entries (stored-but-zero-current-match stays
+  // `ready`); the per-save Zustand choice derives its default from it once
+  // and later staff refreshes never overwrite a manual toggle. Keying the
+  // probe by the mounted save/snapshot context keeps a switched save from
+  // consuming a previous save's cached presence.
+  const staffSaveId = staffAssignmentContext?.saveId ?? null;
+  const staffSaveContextToken =
+    staffAssignmentContext?.saveContextToken ?? null;
+  const shortlistPresent = shortlistOptionsPage.state === "ready";
+  const shortlistChoice = useShortlistFilterStore((state) =>
+    staffSaveId === null || staffSaveContextToken === null
+      ? undefined
+      : state.choices[
+          shortlistFilterKey("staff", {
+            saveId: staffSaveId,
+            contextToken: staffSaveContextToken,
+          })
+        ],
+  );
+  useEffect(() => {
+    if (staffSaveId === null || staffSaveContextToken === null) {
+      return;
+    }
+    useShortlistFilterStore
+      .getState()
+      .initialize(
+        "staff",
+        { saveId: staffSaveId, contextToken: staffSaveContextToken },
+        shortlistPresent,
+      );
+  }, [staffSaveId, staffSaveContextToken, shortlistPresent]);
+  const shortlistOnly = (routeShortlistOnly ?? shortlistChoice) === true;
 
   const updateSearch = (
     patch: Partial<{
@@ -509,10 +545,19 @@ function StaffSearchContent() {
 
   const onShortlistImported = async (summary: StaffShortlistImportSummary) => {
     await queryClient.invalidateQueries({ queryKey: staffKeys.all });
+    if (staffSaveId !== null && staffSaveContextToken !== null) {
+      useShortlistFilterStore
+        .getState()
+        .set(
+          "staff",
+          { saveId: staffSaveId, contextToken: staffSaveContextToken },
+          true,
+        );
+    }
     await updateSearch({
       preferredJob: "",
       unemployedOnly: false,
-      shortlistOnly: true,
+      shortlistOnly: undefined,
     });
     setShortlistImport({ contextKey: shortlistContextKey, summary });
     setShortlistImportRevision((revision) => revision + 1);
@@ -527,13 +572,25 @@ function StaffSearchContent() {
             context={staffAssignmentContext}
             contextKey={staffAssignmentContextKey}
             contextUnavailable={staffAssignmentContextUnavailable}
-            shortlistReady={shortlistOptionsPage.state !== "no_shortlist"}
+            shortlistReady={shortlistPresent}
             uploadAction={
               <Button variant="secondary" onClick={() => setImportOpen(true)}>
                 Upload CSV
               </Button>
             }
-            onReviewShortlist={() => void updateSearch({ shortlistOnly: true })}
+            onReviewShortlist={() => {
+              if (staffSaveId !== null && staffSaveContextToken !== null) {
+                useShortlistFilterStore.getState().set(
+                  "staff",
+                  {
+                    saveId: staffSaveId,
+                    contextToken: staffSaveContextToken,
+                  },
+                  true,
+                );
+              }
+              void updateSearch({ shortlistOnly: undefined });
+            }}
           />
         ) : (
           <div className="flex w-full justify-end">
@@ -585,11 +642,19 @@ function StaffSearchContent() {
                   ),
                 );
               }}
-              onShortlistOnlyChange={(next) =>
-                void updateSearch({
-                  shortlistOnly: next ? true : undefined,
-                })
-              }
+              onShortlistOnlyChange={(next) => {
+                if (staffSaveId !== null && staffSaveContextToken !== null) {
+                  useShortlistFilterStore.getState().set(
+                    "staff",
+                    {
+                      saveId: staffSaveId,
+                      contextToken: staffSaveContextToken,
+                    },
+                    next,
+                  );
+                }
+                void updateSearch({ shortlistOnly: undefined });
+              }}
               onPreferredJobChange={onPreferredJobChange}
               onUnemployedOnlyChange={(value: boolean) =>
                 void updateSearch({ unemployedOnly: value })
@@ -605,7 +670,7 @@ function StaffSearchContent() {
         activeSaveId={snapshot?.saveId}
         snapshotId={snapshot?.id}
         open={importOpen}
-        replacesExisting={shortlistOptionsPage.state !== "no_shortlist"}
+        replacesExisting={shortlistPresent}
         onClose={() => setImportOpen(false)}
         onImported={onShortlistImported}
         onPendingChange={setShortlistImportPending}
