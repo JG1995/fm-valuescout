@@ -74,6 +74,7 @@ const DEFAULT_PLAYERS: PlayerSummary[] = [
 ];
 
 let overridePlayers: PlayerSummary[] | null = null;
+let playerShortlistPresent = false;
 let lastSearchPlayersArgs: Record<string, unknown> | null = null;
 let searchPlayersCallCount = 0;
 let searchPlayersPageMode: SearchPlayersPageIpcMockMode = "success";
@@ -101,12 +102,18 @@ export function setSearchPlayersOverride(players: PlayerSummary[] | null) {
   overridePlayers = players;
 }
 
+/** Controls whether the active save reports a stored player shortlist. */
+export function setPlayerShortlistPresent(present: boolean) {
+  playerShortlistPresent = present;
+}
+
 export function setSuggestPlayersOverride(hits: PlayerSuggestHit[] | null) {
   suggestOverride = hits;
 }
 
 export function resetSearchPlayersOverride() {
   overridePlayers = null;
+  playerShortlistPresent = false;
   lastSearchPlayersArgs = null;
   searchPlayersCallCount = 0;
   searchPlayersPageMode = "success";
@@ -444,11 +451,16 @@ export function resolveSuggestPlayersIpcMock(
 function searchPlayersPage(args: unknown): SearchPlayersPage {
   const snapshot = resolveGetCurrentSnapshotIpcMock();
   if (!snapshot) {
-    return { players: [], total: 0 };
+    return { state: "no_current_snapshot", players: [], total: 0 };
   }
 
   const { offset, limit, sortBy, sortDir, filters, filterCombine } =
     parsePaging(args);
+  const record =
+    typeof args === "object" && args !== null
+      ? (args as Record<string, unknown>)
+      : {};
+  const shortlistOnly = record.shortlistOnly === true;
   const players = applyFilters(
     [...(overridePlayers ?? defaultPlayers())],
     filters,
@@ -456,15 +468,35 @@ function searchPlayersPage(args: unknown): SearchPlayersPage {
   ).sort((a, b) => comparePlayers(a, b, sortBy, sortDir));
 
   return {
+    state: shortlistOnly && !playerShortlistPresent ? "no_shortlist" : "ready",
     players: players.slice(offset, offset + limit),
     total: players.length,
   };
+}
+
+function isPlayerShortlistProbe(args: unknown): boolean {
+  const record =
+    typeof args === "object" && args !== null
+      ? (args as Record<string, unknown>)
+      : {};
+  return (
+    record.offset === 0 &&
+    record.limit === 1 &&
+    record.shortlistOnly === true &&
+    record.searchView === "general"
+  );
 }
 
 /** Builds a paged search response from the active snapshot mock state. */
 export function resolveSearchPlayersIpcMock(
   args: unknown,
 ): SearchPlayersPage | Promise<SearchPlayersPage> {
+  // The route's shortlist-presence probe is infrastructure for deriving the
+  // default toggle state; keep it out of the page-query instrumentation so
+  // last-args/call-count assertions observe actual search page requests.
+  if (isPlayerShortlistProbe(args)) {
+    return searchPlayersPage(args);
+  }
   searchPlayersCallCount += 1;
   lastSearchPlayersArgs =
     typeof args === "object" && args !== null

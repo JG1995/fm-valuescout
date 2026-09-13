@@ -303,6 +303,19 @@ pub struct PlayerSummary {
 pub struct SearchPlayersPage {
     pub players: Vec<PlayerSummary>,
     pub total: i64,
+    /// Response state mirrors `StaffPageState`: the frontend shortlist probe
+    /// needs it to tell a save with no stored shortlist (`NoShortlist`) apart
+    /// from a stored shortlist whose entries match no current-snapshot player
+    /// (both page as empty `Ready`). Only the General+shortlist-only path can
+    /// report `NoShortlist`; other views stay `Ready`.
+    pub state: SearchPlayersPageState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchPlayersPageState {
+    Ready,
+    NoCurrentSnapshot,
+    NoShortlist,
 }
 
 pub struct SearchPlayersRequest<'a> {
@@ -401,8 +414,32 @@ pub fn search_players_in_view(
         return Ok(SearchPlayersPage {
             players: Vec::new(),
             total: 0,
+            state: SearchPlayersPageState::NoCurrentSnapshot,
         });
     };
+
+    // Save-owned shortlist presence is checked before the current-snapshot
+    // join, so a shortlist probe can distinguish `no_shortlist` from a stored
+    // shortlist that happens to match no current player (empty `ready`).
+    if view == SearchView::General && shortlist_only {
+        let has_shortlist: bool = conn
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM player_shortlist_entries
+                    WHERE save_id = (SELECT save_id FROM snapshots WHERE id = ?1)
+                 )",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        if !has_shortlist {
+            return Ok(SearchPlayersPage {
+                players: Vec::new(),
+                total: 0,
+                state: SearchPlayersPageState::NoShortlist,
+            });
+        }
+    }
 
     let limit = limit.clamp(1, MAX_PAGE_LIMIT);
     let offset = i64::try_from(offset).map_err(|_| "search offset out of range".to_string())?;
@@ -667,7 +704,11 @@ pub fn search_players_in_view(
         }
     }
 
-    Ok(SearchPlayersPage { players, total })
+    Ok(SearchPlayersPage {
+        players,
+        total,
+        state: SearchPlayersPageState::Ready,
+    })
 }
 
 fn current_club_dna_definition_version(
@@ -895,6 +936,7 @@ fn search_players_with_roles(
         return Ok(SearchPlayersPage {
             players: Vec::new(),
             total: 0,
+            state: SearchPlayersPageState::NoCurrentSnapshot,
         });
     };
     // Load tactic for Moneyball tactic scoring if needed and extend metric keys
@@ -1206,7 +1248,11 @@ fn search_players_with_roles(
         })
         .collect::<Vec<_>>();
 
-    Ok(SearchPlayersPage { players, total })
+    Ok(SearchPlayersPage {
+        players,
+        total,
+        state: SearchPlayersPageState::Ready,
+    })
 }
 
 fn where_sql_with_filter(base: &str, compiled: Option<&CompiledFilter>) -> String {
@@ -2263,6 +2309,73 @@ mod tests {
         .expect("empty restricted General");
         assert_eq!(empty.total, 0);
         assert!(empty.players.is_empty());
+    }
+
+    #[test]
+    fn shortlist_probe_distinguishes_no_stored_shortlist_from_stored_but_no_current_matches() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("shortlist-probe.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "One", 130),
+                player_template(2, "Two", 140),
+            ],
+        );
+        let save_id: i64 = conn
+            .query_row(
+                "SELECT save_id FROM snapshots WHERE is_current = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("current save");
+
+        let probe = |conn: &Connection| {
+            search_players_in_view(
+                conn,
+                SearchPlayersRequest {
+                    offset: 0,
+                    limit: 1,
+                    sort_by: SortField::Ca,
+                    sort_dir: SortDir::Desc,
+                    filter_ast: None,
+                    requested_fields: &[],
+                    view: SearchView::General,
+                    comparison_pool: ComparisonPool::FullCsv,
+                    shortlist_only: true,
+                },
+            )
+            .expect("shortlist probe")
+        };
+
+        // No stored shortlist at all reports no_shortlist.
+        let none = probe(&conn);
+        assert_eq!(none.state, SearchPlayersPageState::NoShortlist);
+        assert_eq!(none.total, 0);
+        assert!(none.players.is_empty());
+
+        // Stored entries exist but none resolve to a current-snapshot player:
+        // the probe stays ready with an empty page (empty-ready preservation).
+        conn.execute(
+            "INSERT INTO player_shortlist_entries (save_id, player_uid) VALUES (?1, ?2)",
+            rusqlite::params![save_id, 99],
+        )
+        .expect("seed stale shortlist uid");
+        let stale_only = probe(&conn);
+        assert_eq!(stale_only.state, SearchPlayersPageState::Ready);
+        assert_eq!(stale_only.total, 0);
+        assert!(stale_only.players.is_empty());
+
+        // A stored uid that resolves to a current player reports ready with matches.
+        conn.execute(
+            "INSERT INTO player_shortlist_entries (save_id, player_uid) VALUES (?1, ?2)",
+            rusqlite::params![save_id, 1],
+        )
+        .expect("seed current shortlist uid");
+        let matched = probe(&conn);
+        assert_eq!(matched.state, SearchPlayersPageState::Ready);
+        assert_eq!(matched.total, 1);
+        assert_eq!(matched.players[0].uid, 1);
     }
 
     #[test]

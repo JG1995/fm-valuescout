@@ -24,6 +24,7 @@ import {
   defaultPlayerTableLayouts,
   usePlayerTableStore,
 } from "@/stores/use-player-table-store";
+import { useShortlistFilterStore } from "@/stores/use-shortlist-filter-store";
 import {
   resetAcademyIpcMock,
   resolveAssignAcademyMemberIpcMock,
@@ -443,5 +444,6 @@ afterEach(() => {
   resetAcademyIpcMock();
   usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });
   usePlayerTableStore.persist.clearStorage();
+  useShortlistFilterStore.getState().reset();
   registerIpcMocks();
 });

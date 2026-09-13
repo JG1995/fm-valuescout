@@ -17,14 +17,14 @@ describe("staff URL state", () => {
     expect(parseStaffSortDir("sideways")).toBe("desc");
   });
 
-  it("parses the shortlist toggle with strict invalid-to-off", () => {
+  it("parses the shortlist toggle as tri-state with deliberate invalid behavior", () => {
     expect(parseShortlistOnly(true)).toBe(true);
     expect(parseShortlistOnly("true")).toBe(true);
     expect(parseShortlistOnly(false)).toBe(false);
-    expect(parseShortlistOnly(undefined)).toBe(false);
-    expect(parseShortlistOnly("yes")).toBe(false);
+    expect(parseShortlistOnly(undefined)).toBeUndefined();
+    expect(parseShortlistOnly("yes")).toBeUndefined();
     expect(parseShortlistOnly("false")).toBe(false);
-    expect(parseShortlistOnly(1)).toBe(false);
+    expect(parseShortlistOnly(1)).toBeUndefined();
   });
 
   it("serializes only the bounded, complete filter shape", () => {

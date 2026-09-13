@@ -37,8 +37,20 @@ export function parseStaffCombine(value: unknown): "and" | "or" {
   return value === "or" ? "or" : "and";
 }
 
-export function parseShortlistOnly(value: unknown): boolean {
-  return value === true || value === "true";
+/**
+ * Tri-state URL override for the shortlist filter: explicit true/false act
+ * as deep-link overrides, while missing and invalid values leave the choice
+ * unset so the per-save Zustand choice (or the presence-derived default)
+ * restores normal page visits.
+ */
+export function parseShortlistOnly(value: unknown): boolean | undefined {
+  if (value === true || value === "true") {
+    return true;
+  }
+  if (value === false || value === "false") {
+    return false;
+  }
+  return undefined;
 }
 
 export function parseStaffFilters(value: unknown): StaffFilterRule[] {

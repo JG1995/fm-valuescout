@@ -19,7 +19,16 @@ export type PlayerSummary = {
   moneyballPercentiles?: Record<string, number | null>;
 };
 
+export type SearchPlayersPageState =
+  | "ready"
+  | "no_current_snapshot"
+  | "no_shortlist";
+
 export type SearchPlayersPage = {
+  /** Response state mirrors StaffPage: the shortlist probe needs it to tell
+   * a save with no stored shortlist apart from a stored shortlist whose
+   * entries match no current-snapshot player (both page as empty). */
+  state: SearchPlayersPageState;
   players: PlayerSummary[];
   total: number;
 };

@@ -6,8 +6,8 @@ use crate::db::Db;
 use super::filter::{self, FilterRule};
 use super::query::{
     self, ComparisonPool, DynamicValue, PlayerSuggestHit, PlayerSummary, SearchPlayersPage,
-    SearchPlayersRequest, SearchView, SortDir, SortField, DEFAULT_PAGE_LIMIT,
-    DEFAULT_SUGGEST_LIMIT, MAX_PAGE_LIMIT, MAX_SUGGEST_LIMIT,
+    SearchPlayersPageState, SearchPlayersRequest, SearchView, SortDir, SortField,
+    DEFAULT_PAGE_LIMIT, DEFAULT_SUGGEST_LIMIT, MAX_PAGE_LIMIT, MAX_SUGGEST_LIMIT,
 };
 
 #[derive(Deserialize)]
@@ -96,6 +96,7 @@ impl From<PlayerSummary> for PlayerSummaryDto {
 pub struct SearchPlayersPageDto {
     pub players: Vec<PlayerSummaryDto>,
     pub total: i64,
+    pub state: &'static str,
 }
 
 impl From<SearchPlayersPage> for SearchPlayersPageDto {
@@ -107,6 +108,11 @@ impl From<SearchPlayersPage> for SearchPlayersPageDto {
                 .map(PlayerSummaryDto::from)
                 .collect(),
             total: page.total,
+            state: match page.state {
+                SearchPlayersPageState::Ready => "ready",
+                SearchPlayersPageState::NoCurrentSnapshot => "no_current_snapshot",
+                SearchPlayersPageState::NoShortlist => "no_shortlist",
+            },
         }
     }
 }
@@ -309,6 +315,33 @@ mod tests {
             .unwrap_err(),
             role_err
         );
+    }
+
+    #[test]
+    fn serializes_search_page_state_in_camel_case_snake_state_strings() {
+        let ready = serde_json::to_value(SearchPlayersPageDto::from(SearchPlayersPage {
+            players: Vec::new(),
+            total: 0,
+            state: SearchPlayersPageState::Ready,
+        }))
+        .expect("serialize ready page");
+        assert_eq!(ready["state"], "ready");
+
+        let no_shortlist = serde_json::to_value(SearchPlayersPageDto::from(SearchPlayersPage {
+            players: Vec::new(),
+            total: 0,
+            state: SearchPlayersPageState::NoShortlist,
+        }))
+        .expect("serialize no shortlist page");
+        assert_eq!(no_shortlist["state"], "no_shortlist");
+
+        let no_snapshot = serde_json::to_value(SearchPlayersPageDto::from(SearchPlayersPage {
+            players: Vec::new(),
+            total: 0,
+            state: SearchPlayersPageState::NoCurrentSnapshot,
+        }))
+        .expect("serialize no snapshot page");
+        assert_eq!(no_snapshot["state"], "no_current_snapshot");
     }
 
     #[test]
