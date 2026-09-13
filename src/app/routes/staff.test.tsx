@@ -5,6 +5,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -18,11 +19,16 @@ import { playerResultContextMutationKey } from "@/components/player-table/player
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
+import { staffKeys } from "@/features/staff/api/staff-keys";
 import { routeTree } from "@/routeTree.gen";
 import {
   defaultPlayerTableLayouts,
   usePlayerTableStore,
 } from "@/stores/use-player-table-store";
+import {
+  shortlistFilterKey,
+  useShortlistFilterStore,
+} from "@/stores/use-shortlist-filter-store";
 import {
   resolvePendingPlannerTeamSaveIpcMock,
   setManagedClubIpcMock,
@@ -30,7 +36,11 @@ import {
   setPlannerTeamRemovalImpacts,
   setPlannerTeamSavePending,
 } from "@/testing/planner-ipc-mock";
-import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
+import {
+  resolveCreateSaveIpcMock,
+  resolveLoadDataIpcMock,
+  resolveSetActiveSaveIpcMock,
+} from "@/testing/snapshot-ipc-mock";
 import {
   fixtureStaff,
   fixtureStaffAssignmentOptimization,
@@ -686,11 +696,18 @@ describe("staff route", () => {
     await user.click(
       await screen.findByRole("switch", { name: "Shortlist: Off" }),
     );
-    await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        shortlistOnly: true,
-      });
-    });
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    ).toHaveAttribute("aria-checked", "true");
+    expect(router.state.location.search.shortlistOnly).toBeUndefined();
+    expect(
+      useShortlistFilterStore.getState().choices[
+        shortlistFilterKey("staff", {
+          saveId: 1,
+          contextToken: "save-token-1",
+        })
+      ],
+    ).toBe(true);
     expect(
       await screen.findByRole("combobox", { name: "Preferred Job" }),
     ).toBeInTheDocument();
@@ -699,7 +716,86 @@ describe("staff route", () => {
     ).toBeInTheDocument();
   });
 
-  it("round-trips the shortlist toggle through the URL and refetches flagged search", async () => {
+  it("defaults the staff shortlist filter on when the save has a stored staff shortlist", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([fixtureStaff()]);
+    renderStaffRoute("/staff");
+
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    ).toHaveAttribute("aria-checked", "true");
+    expect(
+      await screen.findByRole("table", { name: "Staff Shortlist" }),
+    ).toBeInTheDocument();
+  });
+
+  it("defaults the staff shortlist filter off when the save has no stored staff shortlist", async () => {
+    await resolveLoadDataIpcMock();
+    renderStaffRoute("/staff");
+
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(
+      await screen.findByRole("table", { name: "Staff search results" }),
+    ).toBeInTheDocument();
+  });
+
+  it("scopes the staff shortlist default to the save context across save switches", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([fixtureStaff()]);
+    const { queryClient } = renderStaffRoute("/staff");
+
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    ).toHaveAttribute("aria-checked", "true");
+    expect(
+      useShortlistFilterStore.getState().choices[
+        shortlistFilterKey("staff", {
+          saveId: 1,
+          contextToken: "save-token-1",
+        })
+      ],
+    ).toBe(true);
+
+    // A second save without a stored shortlist derives its own off default
+    // from its own probe response, not the first save's cached one. The
+    // snapshot context lands first; only then is the staff tree refetched,
+    // so a probe keyed without the save context would initialize the new
+    // save from the previous save's cached presence.
+    setStaffShortlistOverride(null);
+    await resolveCreateSaveIpcMock({ name: "Save B" });
+    await resolveSetActiveSaveIpcMock({ saveId: 2 });
+    await resolveLoadDataIpcMock();
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
+    });
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: staffKeys.all });
+    });
+
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(
+      useShortlistFilterStore.getState().choices[
+        shortlistFilterKey("staff", {
+          saveId: 2,
+          contextToken: "save-token-2",
+        })
+      ],
+    ).toBe(false);
+    expect(
+      useShortlistFilterStore.getState().choices[
+        shortlistFilterKey("staff", {
+          saveId: 1,
+          contextToken: "save-token-1",
+        })
+      ],
+    ).toBe(true);
+  });
+
+  it("round-trips the staff shortlist toggle and refetches flagged search", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
     const { router } = renderStaffRoute("/staff");
@@ -707,25 +803,33 @@ describe("staff route", () => {
     await user.click(
       await screen.findByRole("switch", { name: "Shortlist: Off" }),
     );
-    await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        shortlistOnly: true,
-      });
-    });
     expect(
       await screen.findByRole("switch", { name: "Shortlist: On" }),
     ).toHaveAttribute("aria-checked", "true");
+    expect(router.state.location.search.shortlistOnly).toBeUndefined();
     await waitFor(() => {
       expect(getLastStaffArgs()).toMatchObject({ shortlistOnly: true });
     });
 
     await user.click(screen.getByRole("switch", { name: "Shortlist: On" }));
-    await waitFor(() => {
-      expect(router.state.location.search.shortlistOnly).toBeUndefined();
-    });
     expect(
       await screen.findByRole("switch", { name: "Shortlist: Off" }),
     ).toHaveAttribute("aria-checked", "false");
+    expect(router.state.location.search.shortlistOnly).toBeUndefined();
+    // Off restores the plain search-results view; the revisit is
+    // cache-served inside the query client's 60s stale window, so no new
+    // staff query fires and last-args still reads the ON refetch above.
+    expect(
+      await screen.findByRole("table", { name: "Staff search results" }),
+    ).toBeInTheDocument();
+    expect(
+      useShortlistFilterStore.getState().choices[
+        shortlistFilterKey("staff", {
+          saveId: 1,
+          contextToken: "save-token-1",
+        })
+      ],
+    ).toBe(false);
   });
 
   it("treats an invalid shortlist toggle value as off", async () => {
@@ -761,15 +865,22 @@ describe("staff route", () => {
       within(dialog).getByRole("button", { name: "Choose CSV" }),
     );
 
-    await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        shortlistOnly: true,
-      });
-    });
-    await waitFor(() => {
-      expect(router.state.location.search).not.toHaveProperty("preferredJob");
-    });
+    // The successful import forces the filter on through the per-save choice
+    // while the URL stays clean; metadata filters reset as before.
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    ).toHaveAttribute("aria-checked", "true");
+    expect(router.state.location.search).not.toHaveProperty("shortlistOnly");
+    expect(router.state.location.search).not.toHaveProperty("preferredJob");
     expect(router.state.location.search.unemployedOnly).toBe(false);
+    expect(
+      useShortlistFilterStore.getState().choices[
+        shortlistFilterKey("staff", {
+          saveId: 1,
+          contextToken: "save-token-1",
+        })
+      ],
+    ).toBe(true);
     await waitFor(() => {
       expect(getLastStaffArgs()).toMatchObject({ shortlistOnly: true });
     });
@@ -996,6 +1107,13 @@ describe("staff route", () => {
     await resolveLoadDataIpcMock();
     const { router } = renderStaffRoute("/staff");
 
+    // Present save defaults the filter on; switch it off before exercising
+    // Review shortlist so the recovery visibly re-enables it.
+    await user.click(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    );
+    await screen.findByRole("switch", { name: "Shortlist: Off" });
+
     await user.click(
       await screen.findByRole("button", { name: "Optimize assignments" }),
     );
@@ -1003,9 +1121,10 @@ describe("staff route", () => {
       await screen.findByRole("button", { name: "Review shortlist" }),
     );
 
-    await waitFor(() =>
-      expect(router.state.location.search.shortlistOnly).toBe(true),
-    );
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: On" }),
+    ).toHaveAttribute("aria-checked", "true");
+    expect(router.state.location.search.shortlistOnly).toBeUndefined();
     expect(getLastStaffAssignmentOptimizerIpcArgs()).toEqual({
       expectedSaveContextToken: "save-token-1",
       expectedSnapshotContextToken: "snapshot-token-1",

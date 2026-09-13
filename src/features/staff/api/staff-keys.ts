@@ -1,4 +1,5 @@
 import type { QueryKey } from "@tanstack/react-query";
+import type { StaffAssignmentContext } from "../types/staff-assignment";
 import type { StaffFilterRule } from "../types/staff-filter-rule";
 import type { StaffSortDir, StaffSortField } from "../types/staff-sort";
 
@@ -19,6 +20,7 @@ export const staffKeys = {
     preferredJob?: string,
     unemployedOnly?: boolean,
     shortlistOnly?: boolean,
+    context: StaffAssignmentContext | null = null,
   ) =>
     [
       ...staffKeys.all,
@@ -34,5 +36,6 @@ export const staffKeys = {
       preferredJob,
       unemployedOnly,
       shortlistOnly,
+      context,
     ] as const satisfies QueryKey,
 } as const;
