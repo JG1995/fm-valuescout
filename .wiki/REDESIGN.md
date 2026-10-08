@@ -4,7 +4,8 @@
 
 This document records the proposed product-design follow-up to the Signal brand integration.
 It is a comprehensive change inventory, not an accepted delivery ledger or a description of implemented behavior.
-Unchecked items are proposals or verification work; they do not imply approval to implement, commit, or publish.
+Checked items record completed work; unchecked items are proposals or verification work.
+Neither checklist state grants approval to implement, commit, or publish.
 
 [DESIGN.md](DESIGN.md) remains the current design-system authority.
 [CONCEPT.md](CONCEPT.md) owns product purpose and boundaries.
@@ -73,7 +74,7 @@ Do not add a permanent sidebar, global content-width clamp, decorative charts, o
 | P1 | Compact shared navigation and table framing | Largest cross-app opportunity to return attention and space to data |
 | P1 | Moneyball Profile proportions and minimum-height usability | Evidence gets squeezed or falls out of the initial view |
 | P1 | Tactic composition at smaller desktop widths | The XI list displaces the pitch from the initial viewport |
-| P1 | Reconcile stale DESIGN.md statements | The next implementation needs trustworthy guidance |
+| P1 | Reconcile stale DESIGN.md statements — **Done** | Current rules now match Signal and implementation; runtime contrast fixes remain pending |
 | P2 | Simplify surfaces, shapes, and emphasis | Removes inconsistent dashboard-like framing |
 | P2 | Refine profile summaries, Academy, Planner, and Settings | Applies shared rules to feature-specific composition |
 | P3 | Inspect dialogs, long-operation states, and remaining boundaries | Extends verified coherence beyond initial populated screens |
@@ -210,7 +211,8 @@ These values are design candidates, not existing brand-kit requirements.
 
 ### 4.2 Reconcile numeric typography
 
-**Observed:** shared numeric table cells use JetBrains Mono, while DESIGN.md says ordinary table figures use tabular sans.
+**Observed:** shared numeric table cells use JetBrains Mono.
+DESIGN.md now documents that implemented treatment; testing a switch to tabular sans remains a redesign proposal.
 
 - [ ] Choose and document one intentional rule for raw table figures, scores, summary metrics, and literal strings.
 - [ ] Test Archivo tabular figures for ordinary numeric columns, retaining JetBrains Mono for score units, key metrics, paths, and diagnostics as appropriate.
@@ -406,20 +408,24 @@ These are verification tasks and extensions of the proposed shared rules, not fi
 
 ## 15. Reconcile DESIGN.md and implementation
 
-The Signal integration left several documented contradictions.
-Resolve them before treating the next design pass as governed by a complete specification.
+**Documentation reconciliation: done.** DESIGN.md now reflects the implemented Signal identity, current component geometry, and verified token-pair contrast.
+The update did not change application code or adopt pending layout proposals.
 
-- [ ] Replace old gold hexadecimal examples and stale contrast ratios with calculations from the current tokens.
-- [ ] Correct body-family frontmatter that still names IBM Plex Sans when the intended Latin body face is Archivo.
-- [ ] Remove the duplicated Scale principle paragraph.
-- [ ] Resolve the tabular-sans rule versus the implemented monospace numeric-cell treatment.
-- [ ] Resolve the documented 16px navigation icon size versus the implemented 24px icons as part of the navigation decision.
-- [ ] Align the no-nested-panels principle with concrete rules for tables, interactive assignment cells, independent scroll regions, and overlays.
-- [ ] Correct stale section descriptions, including attribute-fit statements that refer to Overview where Attributes is intended.
-- [ ] Verify geometric claims and decorative-border ratios against the actual Signal surface scale.
-- [ ] Reassess the Search table-area target: distinguish the panel's area from actual data rows and define the viewport, filters, and column state used to evaluate it.
+- [x] Replace old gold hexadecimal examples and stale contrast ratios with calculations from the current tokens.
+- [x] Correct body-family frontmatter to Archivo, with IBM Plex Sans retained as the bundled fallback.
+- [x] Remove the duplicated Scale principle paragraph.
+- [x] Resolve the tabular-sans contradiction by documenting the implemented monospace numeric-cell treatment.
+- [x] Correct navigation icons to the implemented 24px size; a smaller size remains a redesign proposal.
+- [x] Align the no-nested-panels principle with concrete rules for tables, interactive assignment cells, independent scroll regions, and overlays.
+- [x] Verify attribute-fit section descriptions against source and tests. Overview does contain the 36 outfield attributes at the tested desktop size, so retain that statement rather than incorrectly changing it to Attributes-only.
+- [x] Recalculate decorative-border and elevation ratios and verify documented shared shape/icon geometry against implementation.
+- [x] Clarify the Search table-area target: measure the table scroller separately from its containing panel and visible data rows, record filter/feedback state, and retain 70% as an unverified target rather than a current compliance claim.
+- [x] Keep unfinished proposals out of current-state DESIGN.md and distinguish brand-kit presentation from desktop UI rules.
+
+### Remaining implementation and documentation work
+
+- [ ] Correct the runtime contrast pairings documented in DESIGN.md: small secondary text on overlays, tier-1 score text on raised/hovered surfaces, and meaningful control boundaries on raised/overlay backgrounds. Verify actual component states, including alpha fills, without weakening the accessibility targets.
 - [ ] Record approved navigation height, radius, emphasis, header, feedback, and responsive composition rules when implemented.
-- [ ] Keep unfinished or rejected proposals out of current-state DESIGN.md.
 
 ## Recommended implementation sequence
 
@@ -428,7 +434,7 @@ Resolve them before treating the next design pass as governed by a complete spec
 3. **Repair the constrained workspaces:** Moneyball Profile and smaller-desktop Tactic composition before secondary polish.
 4. **Apply feature refinements:** profile summaries, Staff, Squad, Planner, Academy, and Settings.
 5. **Inspect interaction states and native rendering:** dialogs, errors, progress, keyboard flow, long content, graphics, and Windows scaling.
-6. **Reconcile documentation and validate:** update DESIGN.md alongside the implementation that makes each rule true.
+6. **Maintain documentation and validate:** initial DESIGN.md reconciliation is complete; update it alongside subsequent implementation that makes each new rule true.
 
 Do not convert this sequence into commits or PR boundaries without an accepted delivery plan.
 

@@ -81,21 +81,21 @@ typography:
         }
     body-lg:
         {
-            fontFamily: "IBM Plex Sans",
+            fontFamily: "Archivo Variable",
             fontSize: 16px,
             fontWeight: "400",
             lineHeight: "1.6",
         }
     body-md:
         {
-            fontFamily: "IBM Plex Sans",
+            fontFamily: "Archivo Variable",
             fontSize: 14px,
             fontWeight: "400",
             lineHeight: "1.5",
         }
     body-sm:
         {
-            fontFamily: "IBM Plex Sans",
+            fontFamily: "Archivo Variable",
             fontSize: 13px,
             fontWeight: "400",
             lineHeight: "1.4",
@@ -186,18 +186,24 @@ spacing:
 
 > **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell, Settings management, My Club managed-club tools, format-specific CSV enrichment, Dashboard, Player Search with General and Moneyball views plus integrated shortlist upload and filtering, Staff Search with integrated shortlist and assignment controls, Staff and Player profiles, and the three-workspace My Club surface are implemented. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
 
+The Signal palette, bundled typefaces, and launcher icon are integrated; that does not mean every design principle or accessibility target below is satisfied.
+[REDESIGN.md](./REDESIGN.md) records proposed structural changes, not current rules: compact navigation, smaller panel/control radii, revised table framing, and Moneyball/Tactic proportions remain unimplemented.
+This document retains the current tokens and component geometry and identifies known contrast gaps below.
+
 ## Brand & Style
 
 **The central concept is a blip on the night pitch: a dark instrument field, and exactly one lit green mark.**
 
-FM ValueScout is an instrument, not a destination. The user already has Football Manager open on the same machine, and probably a second monitor. They alt-tab in with a question — *who fills this role best right now?* — and they want the answer in the first second of looking. Every pixel that is not an answer is in the way. The app is a quiet dark surface holding a lot of numbers, with one lit green mark reserved for two jobs: marking where you are, and marking what is worth looking at. The mark and wordmark are the Signal identity: a top-down pitch — ring, halfway line, one blip off the line — beside **VALUE SCOUT** in wide tracked Archivo capitals. The blip is never on the centerline (the player is found *off* it), and the pitch is never filled in (the mark is a line, not a surface).
+FM ValueScout is an instrument, not a destination. The user already has Football Manager open on the same machine, and probably a second monitor. They alt-tab in with a question — *who fills this role best right now?* — and they want the answer in the first second of looking. The app is a quiet dark surface holding a lot of numbers, with a controlled green accent for location, selection, and primary actions. The mark and wordmark are the Signal identity: a top-down pitch — ring, halfway line, one blip off the line — beside **VALUESCOUT** in wide tracked Archivo capitals. The blip is never on the centerline (the player is found *off* it), and the pitch is never filled in (the mark is a line, not a surface).
 
-The mood is a night-shift control room. Cool near-black surfaces, hairline separations, dense rows, and one lit green. This is deliberately not the friendly pastel dashboard look: the primary user is a single expert reading their own data for an hour at a time, so the design optimizes for sustained scanning over first-run charm. The tension to hold is **dense but not cramped** — 36px rows and 13px text are tight, so the spacing scale and hairline borders must do the separating work that whitespace usually does.
+The intended qualities are **quiet, precise, and alert**. Cool near-black surfaces, hairline separations, dense rows, and one green accent vocabulary support sustained scanning rather than a friendly pastel dashboard. The tension to hold is **dense but not cramped**: shared analysis tables use 40px two-line rows, while the 36px single-line token remains available for other tables. Text cells use 13px type; shared numeric cells use 12px monospace. Spacing and hairlines separate the data without turning every value into a card.
+
+The brand kit demonstrates the identity, not a desktop layout specification. Its light presentation pages, 64px display headings, and hosted-font examples do not override the app's dark-only, compact, offline rules. Keep logo proportions, clear space, and the optically adjusted small symbol; never stretch, recolour arbitrarily, or add an outline to the finished wordmark. Use an appropriate light-on-dark variant on dark ground and a one-colour dark variant on light or green ground. Signal Green alone does not provide 3:1 on a light ground. The utility bar currently displays the 36px launcher tile; replacing it with the outline symbol is a redesign proposal, not completed integration.
 
 Hard stances:
 
 - **Dark only.** There is no light theme and no `prefers-color-scheme` branch. FM runs full-screen and dark; a bright companion window beside it is hostile.
-- **One lit green.** Signal Green is the only saturated hue in the chrome. It appears only in chrome state (active nav, primary action, focus, selection) and in the identity mark. Data stays on the neutral surfaces and the score ramp; success and the top score tier sit at hue 179 (teal-green) so they never *are* the brand green. Nothing else is saturated, except a semantic status where the state itself demands it (error, warning).
+- **One lit green.** This is the identity motif and accent discipline, not a limit of one green element per screen. Signal Green is the brand accent for active nav, primary actions, focus, selection, and the identity mark. It also defines the subject chart-series token. Numeric data uses the score ramp; semantic status, informational annotation, and IP/OOP phase graphics retain their separate hues. Success and the top score tier use hue 179 (teal-green), distinct from the hue-157 brand green. Passive metrics should not acquire brand colour merely as decoration; the existing Academy icon treatment remains a redesign item.
 - **Desktop only.** Minimum window 1280×800, designed at 1600×900. No mobile or narrow breakpoints. ([CONCEPT.md](./CONCEPT.md) excludes mobile and web clients.)
 - **Offline by construction.** No network requests for fonts, icons, images, or analytics. Bundled application assets and exact-UID user-selected local FM graphics are permitted; the app never downloads, copies, or manages graphics packs. This follows the offline-first principle in [CONCEPT.md](./CONCEPT.md), and it is a design constraint, not only an infrastructure one.
 - **Text-first identity.** Club and player names remain the identity facts. Optional local FM graphics can enhance Player Profile, Search, Squad, and My Club when an exact UID mapping exists; they never replace readable text. Player portraits are the only person images, and club logos are decorative beside club text. Fixed portrait and logo slots retain initials or shield fallbacks while images are pending, missing, invalid, or unavailable. Player tables may render a nationality string as a bundled SVG flag only after an explicit FM-name mapping; unknown values stay visible as text, and the app never guesses a flag. This remains a data constraint, not a style preference.
@@ -207,7 +213,7 @@ Hard stances:
 
 The palette is one saturated chrome accent on a cool near-neutral base, plus four semantic status colours and one multi-hue data ramp. Elevation is carried by **tonal layering plus hairline borders**, not by shadows. Dark surfaces swallow shadows, and the app stacks a lot of panels; a tonal step reads reliably at any brightness setting where a drop shadow does not. Shadows appear at one level only — floating overlays.
 
-The neutrals are the Signal Night Slate scale: cool near-blacks at hue ~264 with a whisper of blue (chroma 0.010–0.013). That is barely perceptible on its own, but it keeps the greys from looking dead and it sets up the tension with the Signal Green accent.
+The canvas anchors the palette in **Night Slate `#0F151D`**, represented by `background` at `oklch(0.194 0.019 255.7)`. The elevation surfaces run from `#0D0F14` through `#191C22` and `#282B31` to `#3E4148`, with hue ~264–268 and chroma 0.011–0.013. Text is `#F2F3F5` or muted `#9FA2A6`. These cool near-neutrals support **Signal Green `#45D08A`**, rather than competing with it.
 
 **Primary — Signal Green (hue 157):** `primary` marks **chrome state**: the active nav item, the primary button, the focus ring, the selected row indicator, checked controls, and the subject series in a chart. It answers "where am I, and what is the main action here?" Green also carries the product idea — the blip in the mark is a player found, and a lit green mark on a dark field is what *found* looks like.
 
@@ -233,7 +239,7 @@ Player- and staff-profile attributes use the same colours with FM-scale bands: 1
 | `error`   | `oklch(0.66 0.2 18)`     | Scan failed, ingest failed, FM not running, destructive confirmation         |
 | `info`    | `oklch(0.72 0.11 245)`   | Neutral annotation and explanatory banners                                   |
 
-Success and `score-4` share one hue-179 teal-green: *good* reads as green, but it is deliberately not the brand green (hue 157), so a lit Signal Green always means chrome state or the mark, and a hue-179 green always means data. Warning sits at hue 55 (orange) rather than amber (hue 75) so it never reads as the score ramp's good tier. The data ramp uses separate token names even where its red, grey, and green reuse established system colours; component code still states whether colour carries status or a score band.
+Success and `score-4` share one hue-179 teal-green: *good* reads as green, but it is deliberately not the brand green (hue 157). Signal Green identifies brand/chrome emphasis or the subject chart series; teal-green identifies a successful status or an excellent score. Warning sits at hue 55 (orange) rather than amber (hue 75) so it never reads as the score ramp's good tier. The data ramp uses separate token names even where its red, grey, and green reuse established system colours; component code still states whether colour carries status or a score band.
 
 `primary-hover` and `primary-active` are the Button spec's hover and active mixes resolved once, in oklab, rather than recomputed per component. Both stay in sRGB gamut and hold an `on-primary` label above 8:1. Unfilled variants have no mix — they press to `surface-container-highest`, one tonal step above their hover fill.
 
@@ -242,7 +248,7 @@ The template's `tertiary` role and the fixed tonal pairs (`primary-fixed`, `seco
 Borders come in two roles with different rules:
 
 - `outline` bounds **interactive** components — inputs, selects, secondary buttons, checkboxes. It must clear 3:1 against whatever surface it sits on, because the border is the only thing that shows the control exists.
-- `outline-variant` is the **decorative** hairline for table row separators, card edges, and section rules. It is deliberately near-invisible (1.36:1) so it contains the data without competing with it. It is exempt from the 3:1 rule because it never carries meaning on its own.
+- `outline-variant` is the **decorative** hairline for table row separators, card edges, and section rules. It is subtle (1.67:1 against `surface-container`) so it contains the data without competing with it. The 3:1 boundary requirement does not apply to purely decorative rules; do not use this token as the sole meaningful control boundary. Its value equals `surface-container-highest`, so it provides no contrast against an overlay of that colour.
 
 ### Accessibility of Colour
 
@@ -255,43 +261,49 @@ Borders come in two roles with different rules:
 - **Chart series** differ by colour *and* stroke pattern — solid, dashed, dotted — plus a direct label or legend entry. A radar chart with three overlaid players is unreadable by colour alone at any palette.
 - **Trend arrows** carry direction as shape (up, down, flat), with colour as reinforcement.
 
-**Contrast compliance:** target WCAG 2.2 AA for all text (4.5:1 minimum) and 3:1 for interactive component boundaries and graphical objects. Body and secondary text clear AAA (7:1) on every surface in the stack. Ratios below are computed from the token values in the frontmatter against sRGB.
+**Contrast targets:** WCAG 2.2 AA: at least 4.5:1 for normal text and 3:1 for meaningful control boundaries and graphical objects. Normal body text clears AAA (7:1) on the surface stack, but secondary text does not. The current palette has failing pairings; these targets are not a blanket compliance claim.
 
-| Text Role                 | Foreground                                  | Background                                       | Ratio    |
-| ------------------------- | ------------------------------------------- | ------------------------------------------------ | -------- |
-| Body text                 | `on-surface` (`#edeef1`)                    | `background` (`#090b0f`)                         | 17.0:1 (AAA) |
-| Body text                 | `on-surface` (`#edeef1`)                    | `surface-container` (`#181b1f`)                  | 15.0:1 (AAA) |
-| Body text on overlay      | `on-surface` (`#edeef1`)                    | `surface-container-highest` (`#2b2e33`)          | 11.8:1 (AAA) |
-| Secondary text            | `on-surface-variant` (`#a8abb0`)            | `surface-container` (`#181b1f`)                  | 7.5:1 (AAA) |
-| Secondary text on overlay | `on-surface-variant` (`#a8abb0`)            | `surface-container-highest` (`#2b2e33`)          | 5.9:1 (AA) |
-| Accent text and icons     | `primary` (`#ecb33c`)                       | `surface-container` (`#181b1f`)                  | 9.2:1 (AAA) |
-| Primary button label      | `on-primary` (`#161107`)                    | `primary` (`#ecb33c`)                            | 10.0:1 (AAA) |
-| Destructive button label  | `on-error` (`#180808`)                      | `error` (`#f44f62`)                              | 5.7:1 (AA) |
-| Score tier 1 (weakest)    | `score-1` (`#f44f62`)                       | `surface-container` (`#181b1f`)                  | 5.1:1 (AA) |
-| Score tier 1 on hover     | `score-1` (`#f44f62`)                       | `surface-container-high` (`#222429`)             | 4.5:1 (AA) |
-| Score tier 2              | `score-2` (`#a8abb0`)                       | `surface-container` (`#181b1f`)                  | 7.5:1 (AAA) |
-| Score tier 3              | `score-3` (`#f4af41`)                       | `surface-container` (`#181b1f`)                  | 9.1:1 (AAA) |
-| Score tier 4 (strongest)  | `score-4` (`#58cd78`)                       | `surface-container` (`#181b1f`)                  | 8.6:1 (AAA) |
-| Error text                | `error` (`#f44f62`)                         | `surface-container` (`#181b1f`)                  | 5.1:1 (AA) |
-| Warning text              | `warning` (`#ff9138`)                       | `surface-container` (`#181b1f`)                  | 7.7:1 (AAA) |
-| Success text              | `success` (`#58cd78`)                       | `surface-container` (`#181b1f`)                  | 8.6:1 (AAA) |
-| Banner text               | `on-error-container` (`#fbdcdc`)            | `error-container` (`#661420`)                    | 9.7:1 (AAA) |
-| Control border            | `outline` (`#777a80`)                       | `surface-container` (`#181b1f`)                  | 4.0:1 (3:1 UI) |
-| Control border on overlay | `outline` (`#777a80`)                       | `surface-container-highest` (`#2b2e33`)          | 3.2:1 (3:1 UI) |
+Ratios below use the WCAG relative-luminance formula after converting the frontmatter's OKLCH tokens to sRGB. Hex values are rounded display equivalents; ratios use unrounded channels and are shown to two decimals. Alpha fills, disabled opacity, and composited states require separate calculations.
 
-Every score tier clears 4.5:1 on both the default and the hovered row background, so a score is legible as text at every tier. When a new token or pairing is added, verify it before use — do not assume a value passes because a neighbouring one does.
+| Role | Foreground | Background | Ratio / result |
+| --- | --- | --- | --- |
+| Body text | `on-surface` (`#f2f3f5`) | `background` (`#0f151d`) | 16.50:1 (AAA) |
+| Body text | `on-surface` (`#f2f3f5`) | `surface-container` (`#191c22`) | 15.37:1 (AAA) |
+| Body text on overlay | `on-surface` (`#f2f3f5`) | `surface-container-highest` (`#3e4148`) | 9.21:1 (AAA) |
+| Secondary text | `on-surface-variant` (`#9fa2a6`) | `surface-container` (`#191c22`) | 6.66:1 (AA) |
+| Secondary text on raised surface | `on-surface-variant` (`#9fa2a6`) | `surface-container-high` (`#282b31`) | 5.53:1 (AA) |
+| Secondary text on overlay | `on-surface-variant` (`#9fa2a6`) | `surface-container-highest` (`#3e4148`) | 3.99:1 (**fails normal text**) |
+| Accent text and icons | `primary` (`#45d08a`) | `surface-container` (`#191c22`) | 8.66:1 (AAA) |
+| Primary button label | `on-primary` (`#0d0f14`) | `primary` (`#45d08a`) | 9.72:1 (AAA) |
+| Primary button label on hover | `on-primary` (`#0d0f14`) | `primary-hover` (`#5ad392`) | 10.15:1 (AAA) |
+| Primary button label on press | `on-primary` (`#0d0f14`) | `primary-active` (`#41be80`) | 8.15:1 (AAA) |
+| Destructive button label | `on-error` (`#180808`) | `error` (`#f44f62`) | 5.69:1 (AA) |
+| Score tier 1 (weakest) | `score-1` (`#f44f62`) | `surface-container` (`#191c22`) | 4.98:1 (AA) |
+| Score tier 1 on hover | `score-1` (`#f44f62`) | `surface-container-high` (`#282b31`) | 4.13:1 (**fails normal text**) |
+| Score tier 2 | `score-2` (`#a8abb0`) | `surface-container` (`#191c22`) | 7.40:1 (AAA) |
+| Score tier 3 | `score-3` (`#f4af41`) | `surface-container` (`#191c22`) | 8.96:1 (AAA) |
+| Score tier 4 (strongest) | `score-4` (`#3fc5ae`) | `surface-container` (`#191c22`) | 7.97:1 (AAA) |
+| Error text | `error` (`#f44f62`) | `surface-container` (`#191c22`) | 4.98:1 (AA) |
+| Warning text | `warning` (`#ff9138`) | `surface-container` (`#191c22`) | 7.58:1 (AAA) |
+| Success text | `success` (`#3fc5ae`) | `surface-container` (`#191c22`) | 7.97:1 (AAA) |
+| Banner text | `on-error-container` (`#fbdcdc`) | `error-container` (`#661420`) | 9.68:1 (AAA) |
+| Control border against panel | `outline` (`#707379`) | `surface-container` (`#191c22`) | 3.59:1 (3:1 UI) |
+| Control border against field fill | `outline` (`#707379`) | `surface-container-high` (`#282b31`) | 2.98:1 (**below 3:1**) |
+| Control border on overlay | `outline` (`#707379`) | `surface-container-highest` (`#3e4148`) | 2.15:1 (**below 3:1**) |
+
+**Known gaps:** small secondary text on overlays and tier-1 score text on raised/hovered surfaces fall below 4.5:1. The outline token also falls below 3:1 against raised and overlay surfaces; check both the inner fill and surrounding ground when evaluating a control. The overlay's decorative `outline-variant` edge has 1:1 contrast with its fill. These pairings need a component/token correction before they can be described as compliant; this reconciliation leaves the runtime tokens unchanged. Do not remove the accessibility requirements or round a failing value up to the threshold.
+
+All score tiers pass normal-text AA on the default panel; only tiers 2–4 pass on the current hover surface. When a token, opacity, or pairing changes, calculate the actual result before use. The table is token-pair evidence, not a rendered audit of every component.
 
 ## Typography
 
-Two brands of letter, one voice. **Archivo** is the brand face: it does everything a human reads as language and it carries the wordmark's display weights. **JetBrains Mono** does the numbers that need to line up or be read character by character. **IBM Plex Sans** rides along as the cyrillic/greek fallback only.
+**Archivo** leads the brand and readable UI. **JetBrains Mono** carries aligned numeric cells, scores, metrics, and literal strings. **IBM Plex Sans** is the bundled fallback for glyphs Archivo does not cover, especially Cyrillic and Greek.
 
-- **Archivo (variable, weights 400–800 used):** UI, headings, labels, player names, prose, and the identity wordmark. The headline roles take its display weights (`headline-lg` 800, `headline-md` 700) and the uppercase `label-*` roles take 700, which is the weight of the Signal wordmark's capitals. Its neutral grotesque letterforms and tight, flat terminals suit an instrument, and it is not a friendly geometric sans — that is the choice: this is a tool for one expert user, not a landing page.
-- **IBM Plex Sans (weights 400/500/600):** bundled fallback for cyrillic and greek text only. Archivo has no coverage of those scripts, and FM's playable leagues include Russia and Greece, so names in those scripts are ordinary data, not an edge case. Because each family's `@font-face` rules carry `unicode-range`, Plex Sans is only ever consulted for glyphs Archivo cannot render, and it loads nothing for latin text. It is a neutral grotesque, so the handoff inside a mixed-script name is barely visible.
-- **JetBrains Mono (variable, weights 500/600 used):** score badges, hero metrics, game version strings, file paths, and bridge diagnostics. Its digits are tabular by design, so mono figures never jitter. Monospace is *not* used for in-table figures — those are tabular sans; mono is reserved for values read as single units or as literal text. It covers cyrillic, greek, and latin; it has no vietnamese, and that is fine because mono never renders player names.
+- **Archivo (variable):** UI, headings, labels, player names, and prose. Headline roles use 800/700/600; body roles use 400; label roles use 700/700/600. The identity wordmark uses uppercase ExtraBold 800 with 0.06em tracking. UI headings keep their smaller product sizes and token tracking rather than copying that display treatment.
+- **IBM Plex Sans (weights 400/500/600):** the second family in the sans stack. Archivo's bundled subsets cover Latin, Latin Extended, and Vietnamese, but not Cyrillic or Greek. Plex provides those scripts without a network request; the browser selects fallback glyphs through the font stack and each face's `unicode-range`.
+- **JetBrains Mono (variable):** shared numeric analysis cells and table ScoreBadges use `font-mono text-mono-sm` (12px, weight 500). Larger score badges, headline metrics, version strings, paths, and diagnostics use the appropriate mono role. Names and prose stay sans. The installed package includes Latin, Latin Extended, Cyrillic, Cyrillic Extended, Greek, and Vietnamese subsets.
 
-**Scale principle:** headlines are rare — a page title and at most one section title per screen. Most of the app is `body-sm` (13px) in table cells, `body-md` (14px) in prose and controls, and the three `label-*` roles for uppercase micro-labels above values. The micro-label pattern is the workhorse: an 11px uppercase letterspaced label in `on-surface-variant` sitting above a 13–14px value in `on-surface`. It packs a labelled field into two tight lines without a colon or a box. The wordmark's wide tracked capitals (`label-*` at the token letterspacing, 700–800 weight) are the one place the brand display voice speaks outside a page title.
-
-**Scale principle:** headlines are rare — a page title and at most one section title per screen. Most of the app is `body-sm` (13px) in table cells, `body-md` (14px) in prose and controls, and the three `label-*` roles for uppercase micro-labels above values. The micro-label pattern is the workhorse: an 11px uppercase letterspaced label in `on-surface-variant` sitting above a 13–14px value in `on-surface`. It packs a labelled field into two tight lines without a colon or a box.
+**Scale principle:** keep display emphasis limited. Shared text cells use `body-sm` (13px), numeric cells use `mono-sm` (12px), and ordinary prose and controls use `body-md` (14px) or the applicable label role. Short structural labels can use tracked capitals; applying a `label-*` token does not itself uppercase the text. The 11px micro-label above a 13–14px value remains a compact alternative to extra boxes. Any future switch from monospace to tabular sans in numeric cells is a redesign decision, not current behavior.
 
 Numeric rules:
 
@@ -301,7 +313,7 @@ Numeric rules:
 
 **Loading:** self-host everything in the bundle via `@fontsource-variable/archivo`, `@fontsource-variable/jetbrains-mono`, and `@fontsource/ibm-plex-sans` (per-weight `400.css`, `500.css`, `600.css` entrypoints). No Google Fonts link, no CDN — the app must render identically with no network, per the offline stance above.
 
-Ship the **full script range the league data needs**: latin, latin-ext, cyrillic, cyrillic-ext, greek, and vietnamese. FM's playable leagues include Russia, Ukraine, Greece, Serbia, and Bulgaria, and vietnamese names appear in south-eastern leagues, so non-latin names are ordinary data, and a missing glyph in a scouting database is a data error the user cannot distinguish from a bug (`Magalhães`, `Håland`, `Şahin`, `Дзюба`, `Παυλίδης`, `Phạm`). Archivo ships latin, latin-ext, and vietnamese; IBM Plex Sans ships the remaining cyrillic and greek scripts. The variable families' `index.css` entrypoints already carry `unicode-range` per script, and the per-weight Plex Sans entrypoints are used rather than the per-subset ones (`latin-400.css`): only the per-weight files carry `unicode-range`, so combining per-subset files leaves two identical `@font-face` descriptors and the browser silently keeps one. Bundle weight is not a constraint for a local desktop app.
+Bundle Latin, Latin Extended, Cyrillic, Cyrillic Extended, Greek, and Vietnamese support. Names such as `Magalhães`, `Håland`, `Şahin`, `Дзюба`, `Παυλίδης`, and `Phạm` are ordinary data. Archivo covers the Latin/Vietnamese range; Plex supplies the Cyrillic/Greek fallback. The variable families' `index.css` and the per-weight Plex entrypoints declare `unicode-range` per subset. Use those entrypoints rather than combining per-subset Plex files that omit range declarations. Test mixed-script names offline; font-stack declarations alone do not prove the rendering of every glyph.
 
 Font stacks:
 
@@ -326,7 +338,7 @@ The app is mostly formatted numbers, so formatting is a design decision, not a p
 
 **Other values:**
 
-- **Role and position scores:** integer 0–100, no unit, no percent sign. `mono-md` in a badge, tabular sans in a table column.
+- **Role and position scores:** integer 0–100, no unit, no percent sign. Shared table badges use `font-mono text-mono-sm`; card and hero variants use `mono-md` and `mono-lg`. All use tabular figures.
 - **Linear position order:** list positions from the goalkeeper band toward the striker band and from the player's right to left within each band. Familiarity-ranked lists keep the strongest value first and use this pitch order for ties. Tactical XI rows use the IP position as their primary order. The normalized tactic canvas uses portrait attack-up geometry below 2100px and landscape attack-right geometry at or above 2100px; DOM and tab order follow the current visual order in either orientation.
 - **FM attributes:** integer 1–20. **CA and PA:** integer 1–200. Both as raw integers — never rescaled to 0–100, because the user knows the FM scale.
 - **Age:** integer. Where both are shown, birth date first and age in parentheses: `21/03/2001 (25)`.
@@ -339,10 +351,10 @@ The app is mostly formatted numbers, so formatting is a design decision, not a p
 
 ## Design Principles
 
-Seven constraints. Every component and screen satisfies all of them.
+Seven governing constraints. These are design requirements, not a claim that every current screen passes. Existing framing and proportion gaps are recorded in [REDESIGN.md](./REDESIGN.md).
 
-1. **Data outranks chrome.** No decorative element may take space a data column could use. *Test:* on the player search screen at 1600×900 with the filter editor closed, the results table covers at least 70% of the window area.
-2. **Separate with hairlines, not boxes.** Rows, fields, and sections are divided by a 1px `outline-variant` rule or a tonal step. *Test:* no nested card inside a card, and no vertical rules between table columns.
+1. **Data outranks chrome.** Decorative framing must not displace useful data. *Target, not a verified current measurement:* at 1600×900 with the Search filter editor closed, aim for the table-owned scroll viewport to cover at least 70% of the window area. Measure the scroller, including its sticky headers, not the containing panel or toolbar; report visible data-row height separately. Record filter-chip and Load Data feedback state with the measurement.
+2. **Separate with hairlines, not redundant boxes.** Prefer a 1px `outline-variant` rule or a tonal step between rows, fields, and sections. Independent scrollers, interactive assignment cells, and overlays can need their own boundaries; they are not permission for repeated decorative card layers. *Review:* every inner container has a distinct purpose, and analysis tables have no decorative vertical rules between columns.
 3. **Snapshot provenance is always visible.** Every screen that shows player data states which save is active and its current snapshot's in-game date, without scrolling. *Test:* screenshot any data view and you can name the save and in-game date from the image alone. This follows the explicit-refresh principle in [CONCEPT.md](./CONCEPT.md) — the user must never mistake one save's data for another.
 4. **Brightness carries value; the number carries the fact.** Score meaning comes from the ramp, and the number is always present. *Test:* convert a screenshot to greyscale — the ranking still reads.
 5. **Every mutation reports its phase.** Long operations name what they are doing and which stage failed. Load Data distinguishes a scan failure from an ingest failure, because the fixes differ: start FM versus retry the ingest. *Test:* every mutation has a pending label, a success state, and a phase-specific error message.
@@ -373,7 +385,7 @@ Hard dimensions: shared analysis tables use fixed 40px two-line rows and two 32p
 
 ## Elevation & Depth
 
-Depth is tonal. Each level is a lighter surface than the one below it, and **every level boundary that matters also carries a 1px `outline-variant` border**. This second part is not optional: adjacent steps in the dark end of the ramp are only 1.05:1 to 1.14:1 apart, which is a real but subtle difference. The tonal step gives the impression of depth; the hairline makes the boundary unambiguous.
+Depth is tonal. The recessed surface is darker than the canvas; subsequent levels become lighter. The canvas-to-panel step is 1.07:1, panel-to-raised is 1.20:1, and raised-to-overlay is 1.39:1. Hairlines support grouping without heavy boxes, but they are not proof of an accessible boundary. In particular, `outline-variant` equals the overlay fill and cannot separate content inside that surface; meaningful boundaries must be evaluated against their actual adjacent colours.
 
 - **Level 0 (Canvas):** `background` — the window itself. Nothing sits directly on it except panels.
 - **Level 1 (Recessed):** `surface-container-lowest` — sticky table headers, diagnostic and log wells. Darker than the canvas, so it reads as behind it.
@@ -398,12 +410,12 @@ Every component that creates a stacking context declares its `z-index` from this
 
 ## Shapes
 
-The shape language is **Rounded-Instrument**: containers are softly rounded rectangles, and chrome controls are full pills. The split is the rule — if it holds data, it is a rounded rectangle; if you click it to change state, it is a pill.
+The current shape language is **Rounded-Instrument**: rounded data containers, pill action buttons, and smaller rounded controls. This geometry predates the Signal integration; the brand change did not replace the radius scale. The proposed 8px panels and 4–6px ordinary controls remain in REDESIGN.md, not in these tokens.
 
 - **Panels, cards, tables:** `lg` (0.75rem / 12px).
 - **Modals, inspector panel, overlays:** `xl` (1rem / 16px).
-- **Inputs, selects, secondary buttons, menu items, checkboxes:** `md` (0.5rem / 8px). `DEFAULT` is set to the same 0.5rem so a bare `rounded` cannot land off-scale.
-- **Pills — global search, segmented toggles, chips, filter tags, primary action buttons:** `full`.
+- **Inputs, selects, icon-only buttons, top-navigation links, menu items, checkboxes:** `md` (0.5rem / 8px). `DEFAULT` is set to the same 0.5rem so a bare `rounded` cannot land off-scale.
+- **Pills — global search, segmented toggles, chips, filter tags, shared text action buttons:** `full`. The shared Button's default and large sizes use this radius for primary, secondary, ghost, and destructive variants.
 - **Square score badges and small tags inside a cell:** `sm` (0.25rem / 4px). Circular score badges use `full`.
 - **Table rows:** `none`. Rows are separated by hairlines, not individually rounded; rounding is on the table container only.
 - **Focus rings:** 2px solid `primary` at 2px offset, matching the element's own radius. `:focus-visible` only, never `:focus`. Never removed and never replaced by a colour change alone.
@@ -460,7 +472,7 @@ The core surface. Player and staff search results, squad lists, and comparison s
 - **Container:** `surface-container` with `lg` radius and 1px `outline-variant` border; the table is full-bleed with no inner padding. Shared analysis tables use fixed 40px two-line rows, bounded pixel column widths, and one table-owned scroller for both horizontal and vertical overflow. At 1280×800, minimum widths produce table-local horizontal overflow while the sticky identity and both header rows remain visible; at 3440×1440, the table reveals more columns without stretching cells without bound. Search and Squad panels are `flex` columns with `min-h-0`; their route roots use `h-full` so the document does not grow with the virtual spacer. The two 32px header rows use `surface-container-lowest` and remain sticky at `z-10` (64px total). Body rows carry a 1px `outline-variant` bottom border. Cell padding is `stack-sm` horizontal.
 - **States:** row hover fills `surface-container-high`; row `:focus-visible` shows the primary ring inset; selected row fills `primary-container` with a 2px `primary` left indicator and `aria-selected`; sorted leaf headers show `primary` label text plus a direction caret. Row height never changes on any state.
 - **Identity:** every shared analysis table has a required, caller-owned, non-removable sticky identity region before analysis columns. Player identity uses the name with available club and division context and reserves stable portrait and club-logo slots for optional exact-UID local graphics; staff supplies its own identity content without person images. Identity is separate from configurable analysis columns, so Club and Division are not configurable identity metrics and cannot be duplicated.
-- **Content / Anatomy:** grouped headers use the same group metadata as the keyboard-operable **Columns** control. Header cells use `label-md` uppercase `on-surface-variant`; text cells use `body-sm` `on-surface`; secondary identity lines use 11px regular `on-surface-variant`. Compact tactic headers show the placement identifier with smaller role context; the full tactic definition is the accessible name and a visible disclosure on keyboard focus, never hover-only. Numeric cells are right-aligned with tabular figures. Score cells use the current unfilled `ScoreBadge` table variant and tier ramp; missing values use a neutral `—`.
+- **Content / Anatomy:** grouped headers use the same group metadata as the keyboard-operable **Columns** control. Header cells use `label-md` uppercase `on-surface-variant`; text cells use `body-sm` `on-surface`; secondary identity lines use 11px regular `on-surface-variant`. Compact tactic headers show the placement identifier with smaller role context; the full tactic definition is the accessible name and a visible disclosure on keyboard focus, never hover-only. Shared numeric cells are right-aligned with `font-mono text-mono-sm tabular-nums`. Score cells use the current unfilled `ScoreBadge` table variant and tier ramp; missing values use a neutral `—`.
 - **Behaviour:** a real `<table>` with `<caption class="sr-only">`, `<thead>`, and `<th scope="col">`. Sortable leaf headers set `aria-sort`. Header menus expose column movement, grouped analysis-column management, and bounded keyboard or pointer resizing; identity has resize only. A table-associated toolbar owns the dataset summary, filters, grouped **Columns**, and view-specific dataset controls. Page actions remain in the page header or feature-owned controls. Up and Down arrows move row focus across bounded 50-row virtual pages, Enter or a row click opens the player, and the sticky header never covers the focused row. No Previous or Next controls or unbounded client collection exist. Empty, loading, and error states replace the body with the states below — never blank space.
 
 ### Score Badge
@@ -468,7 +480,7 @@ The core surface. Player and staff search results, squad lists, and comparison s
 A role or position fit score. The most repeated element in the app.
 
 - **Container:** in a table, no fill and no border — the number sits directly on the row in its tier colour. Elsewhere, a 28px circle with `full` radius, `surface-container-high` fill, and a 1px border in the tier colour at 40% alpha. The table variant is unfilled on purpose: a filled badge would match the hovered row background and vanish, and 500 filled chips in a column is exactly the boxing that principle 2 forbids.
-- **States:** static inside a row; the tier colour is verified against both the default and the hovered row background. In an interactive context — a clickable role chip — hover raises the surrounding fill, never the number's colour.
+- **States:** static inside a row. The current tier-1 colour passes on the default panel but fails normal-text AA on the raised/hovered surface; see the contrast table. In an interactive context — a clickable role chip — hover raises the surrounding fill, never the number's colour. Check the actual pairing before adding another badge context.
 - **Variants:** `table` (`mono-sm`, unfilled, right-aligned), `card` (28px filled circle, `mono-md`), `hero` (48px, `mono-lg`, unfilled, used for the current and potential best-role summaries on a player profile). A `muted` variant renders the number in `on-surface-variant` instead of a tier colour, for roles outside the player's positional familiarity — the score is still shown, but it does not compete for attention.
 - **Content / Anatomy:** the integer score, nothing else. No unit, no percent sign, no trailing zero. Colour comes from the `score-1` to `score-4` ramp by the tier table in Colors.
 - **Behaviour:** the accessible name is the full statement — `"Deep-lying playmaker: 82, Excellent"` — not just the digits. The tier label also appears in `title`. Missing scores render the neutral `—` instead of a badge. Never render a badge without its number.
@@ -500,7 +512,7 @@ The default container for a titled block of content.
 - **Container:** `surface-container`, `lg` radius, 1px `outline-variant` border, `stack-md` padding.
 - **States:** static. A panel is not interactive.
 - **Variants:** `default` and `flush` (no padding, for a panel whose only child is a full-bleed table).
-- **Content / Anatomy:** optional header row with a `headline-sm` title on the left and actions on the right, then the content with `stack-md` above it. Do not nest a panel inside a panel — use a `stack-lg` gap and a hairline rule instead.
+- **Content / Anatomy:** optional header row with a `headline-sm` title on the left and actions on the right, then the content with `stack-md` above it. Avoid a nested Panel used only as decoration; prefer spacing and a hairline rule. A distinct interactive or scrolling region can require its own boundary. Existing nested feature containers are subject to the framing review in REDESIGN.md.
 - **Behaviour:** the panel title is the section heading and must keep the document's heading order correct.
 
 ### Compact Filter Strip, Filter Tag, and Filter Editor
@@ -566,7 +578,7 @@ Radar for role and attribute profiles; line or area for value and score trends.
 Cross-cutting rules rather than components.
 
 - **Scrollbars:** 10px, transparent track, `outline-variant` thumb with `full` radius, brightening to `outline` on hover. Applied via `scrollbar-color` and `scrollbar-width`. Never hide a scrollbar on a scrollable region — a dense table needs a visible position cue.
-- **Icons:** [Lucide](https://lucide.dev) via `lucide-react`, bundled. 16px in tables and chips, 16px in top-navigation links, 20px in the utility bar, and 24px in empty states. Use `strokeWidth` 1.5 by default and 2 for active top-navigation links; use `currentColor` always, so an icon inherits its context. One icon set only, and no emoji as an icon anywhere.
+- **Icons:** [Lucide](https://lucide.dev) via `lucide-react`, bundled. Shared Button icons are 16px, status-chip icons are 12px, current top-navigation icons are 24px, and empty-state icons are 24px. Other feature icons use the appropriate 16/20/24px size. Use `strokeWidth` 1.5 by default and 2 for active top-navigation links; use `currentColor` always, so an icon inherits its context. One icon set only, and no emoji as an icon anywhere.
 - **Motion:** 150ms ease-out for colour and opacity on hover, focus, and active. 200ms ease-out for overlay entrance; 150ms for exit. Nothing animates longer than 200ms, and layout, size, and position never animate on hover. Under `prefers-reduced-motion: reduce`, drop every transform and entrance animation and keep colour changes instant.
 
 ### Player profile layout
@@ -649,17 +661,17 @@ Verify before delivering any UI code.
 ### Visual Quality
 
 - [ ] No emojis used as icons — Lucide only; `strokeWidth` 1.5 by default and 2 for active top-navigation links; `currentColor`
-- [ ] All icons from Lucide at 16 / 20 / 24px; no mixed icon sets
+- [ ] UI icons use Lucide at the component's documented size (12 / 16 / 20 / 24px); identity marks, graphics, and nationality flags follow their separate asset rules
 - [ ] No raw colour values in components — every colour comes from a token
 - [ ] Colour is never the sole indicator of meaning — paired with text, icon, or shape
 - [ ] All text-on-background combinations meet the contrast minimum (verify against the table in Colors; compute new pairings before use)
 - [ ] Score badges always render their number, and their accessible name includes the role and tier
-- [ ] Every surface boundary has a tonal step *and* a hairline border
-- [ ] `primary` appears only on chrome; the score ramp appears only in data
+- [ ] Grouping uses restrained tonal steps and hairlines; meaningful control and graphical boundaries meet 3:1 against their actual adjacent colours
+- [ ] Signal Green marks brand/chrome emphasis or the subject chart series; numeric score tiers use the separate data ramp
 
 ### Typography & Numbers
 
-- [ ] Numeric columns, scores, and metrics use `tabular-nums` and are right-aligned
+- [ ] Numeric columns use `tabular-nums` and right alignment; standalone score circles can be centered; shared numeric analysis cells use `font-mono text-mono-sm`
 - [ ] Money, scores, attributes, ages, and dates go through the shared formatter — no inline formatting
 - [ ] Missing values render as `—`, never `null`, `N/A`, `0`, or an empty cell
 - [ ] Names that can overflow use `truncate` plus a `title`; table cells never wrap
