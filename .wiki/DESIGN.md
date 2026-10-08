@@ -187,8 +187,96 @@ spacing:
 > **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell, Settings management, My Club managed-club tools, format-specific CSV enrichment, Dashboard, Player Search with General and Moneyball views plus integrated shortlist upload and filtering, Staff Search with integrated shortlist and assignment controls, Staff and Player profiles, and the three-workspace My Club surface are implemented. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
 
 The Signal palette, bundled typefaces, and launcher icon are integrated; that does not mean every design principle or accessibility target below is satisfied.
-[REDESIGN.md](./REDESIGN.md) records proposed structural changes, not current rules: compact navigation, smaller panel/control radii, revised table framing, and Moneyball/Tactic proportions remain unimplemented.
-This document retains the current tokens and component geometry and identifies known contrast gaps below.
+[REDESIGN.md](./REDESIGN.md) tracks the redesign inventory and completed decisions.
+The [settled shared rules](#settled-shared-rules-step-2-targets) below define the next implementation target; compact navigation, revised radii, table framing, raw-value typography, and Moneyball/Tactic proportions remain unimplemented.
+The frontmatter and existing component descriptions retain the current tokens and geometry; known contrast gaps remain documented below.
+
+## Settled shared rules (step 2 targets)
+
+**Status: decisions complete; production rollout not started.** These six rules resolve step 1 of [REDESIGN.md](./REDESIGN.md#recommended-implementation-sequence).
+They are the selected direction for subsequent implementation, not a claim that current components already follow them.
+Do not change the current token frontmatter merely to make it resemble the target.
+
+### Navigation treatment
+
+- Keep the **56px utility bar** and all its global controls. Use a **48px destination band**, including its bottom border, below it; no second caption row.
+- Keep all ten direct destinations, existing group membership, labels, URLs, history behavior, and route-state transitions. Use **16px icons beside sentence-case 12px labels**, with 6px icon/label gaps and 36px-high links. Do not replace direct destinations with menus.
+- Keep fine group separators. Put the Players, Staff, and Club captions inline before their links; use label-sm (11px, weight 600) in readable muted text without reduced opacity. Home and Settings need no duplicate caption.
+- Active links use a **10% primary tint mixed over the panel surface in OKLab**, on-surface text, a primary icon, a reinforced label, and a persistent **2px bottom indicator**. Reserve strong solid green fills for primary actions. Keep the indicator present without hover; focus is a separate visible 2px primary outline, contained within the link so it cannot be clipped by the band.
+- Retain exactly one `aria-current="page"` for direct destinations. Profiles keep only their Players or Staff group at `aria-current="location"`; unknown routes keep neither. Group context remains visibly reinforced without pretending a child destination is selected.
+- The outline symbol in the utility bar remains a separate asset task. Settling navigation does not claim that the launcher tile has been replaced.
+
+### Heading hierarchy and spacing
+
+- Use one workspace header: destination title or equivalent visible destination context, optional secondary facts, and feature-owned actions. Maintain **one semantic h1** per workspace. If the active destination already supplies sufficient visible context, as in Staff Search, the h1 may be visually hidden; do not add a title-only row merely for uniformity.
+- Visible workspace titles use **headline-md: 22px, weight 700**. A profile's player or staff name may retain **headline-lg: 28px, weight 800** as the persistent identity heading. Modal titles remain headline-md.
+- Meaningful panel sections use **h2, headline-sm: 18px, weight 600**. Nested sections use **h3, 14px sans, weight 600**. Keep heading levels in order; choose semantics independently from visual size.
+- Remove generic Results headings and repeated Staff, Graphics, or Graduates headings when destination/section context already names that content. Keep meaningful headings, accessible table captions, and dialog labels. An action row must survive removal of its generic panel title.
+- Use **8px between related controls**, **16px between workspace regions**, and **16px page padding**. Within a dataset host, use one feature-action row, its local feedback region when needed, then the dataset toolbar and table. Do not accumulate header margins, panel padding, and an extra generic-title gap for the same separation.
+- Keep controls at 32–36px and retain all table/profile row heights. Use tracked capitals only for short structural/group labels; headings, ordinary controls, names, and explanatory sentences stay sentence case.
+
+### Radius roles
+
+The selected roles replace the current pill-first control treatment only when shared tokens and primitives are implemented together.
+
+| Purpose | Target radius |
+| --- | --- |
+| Panels, cards, table hosts, independent scrolling regions | **8px** |
+| Ordinary text/icon buttons, fields, search inputs, navigation links, segmented-control group | **6px** |
+| Segmented items, checkboxes, compact rectangular value tags | **4px** |
+| Dialogs and floating overlays | **12px** |
+| Filter tags, status chips, genuine circular scores and position pickers | **Full** |
+| Table rows | **None** |
+
+- Bridge these roles centrally through the existing radius tokens and shared primitives before feature rollout; do not scatter local pixel overrides. The intended scale is sm 4px, DEFAULT/md 6px, lg 8px, xl 12px, with none/full unchanged.
+- Apply the ordinary-button role across primary, secondary, ghost, and destructive variants without changing their action meaning, pending-width reservation, or 32/36px height.
+- Focus geometry follows the component shape. Keep at least 44px position-selection targets and meaningful circles; a tactic marker with a wrapped role label need not become circular. Flush tables share their host's outside corners rather than adding a second rounded card.
+- Overlay contrast and boundary problems remain separate correction work. A new radius does not fix or waive them.
+
+### Dataset toolbar
+
+- Retain the existing ownership boundary: `TableToolbar` accepts only summary, filter chips, Clear all/Edit filters, Columns, and caller-owned dataset toggles. Upload, Add Tactic, boosts, configuration, and optimization stay in feature/workspace action rows. Do not add a generic page-action slot or feature imports.
+- First row: **count and committed sort context on the left; filter state/Edit filters, Columns, and dataset toggles on the right**, in that order. Squad and My Staff omit inapplicable filter controls instead of reserving empty slots. Use one shared alignment pattern for Search, Moneyball, Squad, Staff Search, and My Staff.
+- Active rules occupy a full-width second row below those controls, with the AND/OR context, removable chips, and Clear all. Keep all rules reachable; wrap rather than collapse them into an unexplained count. Use neutral, quiet chips with explicit removal names.
+- Use **8px vertical padding, 16px horizontal padding, and 8px control/chip gaps**. The toolbar has no independent rounded card; one hairline separates it from the recessed table headers.
+- With no rules, use concise **No filters** copy beside Edit filters; retain OR context when that setting is active. Setup/no-shortlist/no-import states retain their specific next-step guidance, rather than losing instructions indiscriminately.
+- Let a long sort summary wrap in its own flexible slot and controls wrap as a group when required. Never clip controls or focus rings, hide filter/remove actions, or introduce page-level horizontal overflow. Staff's conditional Preferred Job and Only unemployed controls belong with dataset toggles and may occupy another wrapped control row.
+- Keep committed versus requested sort feedback, current rows during replacement, table captions, sticky headers/identity, saved widths, and virtual paging unchanged. Typography or framing must not change query ownership or displayed facts.
+
+### Feedback footprint
+
+- **Local mutation feedback:** retain one mounted, programmatically focusable region below the feature action row, outside the dataset toolbar. Reserve a **24px minimum**, with a 4px preceding gap, instead of a permanent 64px empty slot. Staff's existing 24px region is the starting analogue, not a region to delete.
+- Keep the action header's position and button widths stable. One-line pending/success copy fits the slot; longer messages expand below it, reducing the data workspace rather than moving actions or causing document overflow. Do not promise that the table's top edge never moves.
+- Keep the latest truthful outcome, processed/updated/skipped/failed counts, phase names, and error/recovery instructions. Do not replace required inline outcomes with transient toasts or silently dismiss them.
+- Keep the essential error/recovery summary and next action visible outside any clipped detail area. Longer supplementary outcomes may use a **96px-max detail scroller** with a visible scrollbar, accessible name, and keyboard access. Never impose that cap on the only copy of a safety instruction.
+- Retain live-region behavior without duplicate nested announcements, recovery focus destinations, Modal focus restoration, context-bound suppression, recovery locks, and draft retention. Squad progress stays in its confirmation Modal; import feedback stays in its import Modal. Expanded Staff recommendations remain a distinct data region, not feedback squeezed into the status slot.
+- **Global Load Data feedback:** retain the mounted polite region with **zero idle footprint**, below the unchanged utility controls. Pending/outcome copy uses a compact 32–48px row when it fits, but wraps or expands for truthful longer content. Keep the native progress element, detailed outcome access, dismissal, and save/snapshot guards; do not force it into the local reserved-slot rule.
+- Setup/readiness guidance is not empty status space. Keep required next steps and `aria-describedby` explanations visible. Implement the smaller reservation without weakening the existing Staff optimizer and Squad recovery contracts.
+
+### Numeric typography
+
+- **Raw table values:** use **Archivo 13px, weight 500, tabular figures, right alignment** for CA/PA, counts, money, heights, and raw performance metrics. Numeric age columns use the same alignment and tabular treatment. Names, labels, and prose remain sans at their existing text sizes.
+- **Scores and compact scored/attribute units:** retain **JetBrains Mono 12px, weight 500** for table scores, percentile badges, and Current → Potential attribute pairs. Standalone score circles retain their existing appropriate mono role and centered alignment.
+- **Summary metrics:** retain JetBrains Mono at the applicable mono-md/lg/xl scale; prominence follows the metric's role, not a green fill or automatic display weight.
+- **Literal strings:** retain JetBrains Mono for paths, versions, identifiers, and diagnostics. Ordinary dates and facts in prose need not become display metrics; keep tabular figures where alignment matters.
+- In mixed raw-value/percentile cells, apply the raw sans and score mono roles separately; do not inherit one family over both. Keep decimal precision, units, missing `—`, concealed information, score tiers, accessible score names, sorting, and persisted column widths unchanged.
+- Current shared numeric cells still use mono-sm. Roll out the new raw-value role through the shared cells and relevant callers rather than changing the mono token or ScoreBadge globally. Do not shrink columns on the assumption that sans is always narrower.
+
+### Decision evidence and rollout boundary
+
+The decision pass used source/tests at `eecbd4e` and disposable Chromium CSS/DOM comparisons on populated Search, Moneyball Search, Squad, normal Staff Search, Player Overview, Tactic, and Academy at **1280×800 and 1600×900**, plus Staff shortlist-control comparisons at both sizes.
+The 48px navigation candidate kept all ten 36px-high links within the minimum-width viewport without page overflow; inline group context remained visible.
+Calculated token-pair contrast for the selected tint is 13.06:1 for on-surface text and 7.36:1 for the primary icon/indicator; muted group captions on the panel remain 6.66:1. Hover, composited states, and actual focus placement still require rollout verification.
+Current and target radii were compared across Search, Profile, Tactic, Academy, and the Staff configuration dialog; the final comparison retained circular position targets.
+Toolbar geometry was stress-tested with longer sort context and added comparison-only chips; feedback geometry used labelled simulated short and long outcomes, not real mutations.
+Raw/percentile cells were inspected in Moneyball, including explicit comparison-only missing-value pairs.
+Tabular DOM widths were 21px for `200` in both tested roles, 35px mono versus 32px sans for `12.34`, and 42px mono versus 44px sans for `€12.5M`; equal-length `11.1` and `88.8` aligned within each family.
+These are bounded specimen measurements, not a universal width advantage or production performance claim.
+
+Existing shell-routing, dataset-toolbar, and Staff optimizer tests passed **45/45**, confirming the contracts retained by these decisions.
+No application code, runtime tokens, tests, persistence, or routing changed during this checkpoint.
+Disposable evidence is removed after review; the rules above are durable, but screenshots are not a runtime dependency.
+Step 2 still requires behavior tests, complete shared-change screen inspection, real wrapping/focus/recovery-state checks, contrast correction, and a separate native Windows rendering pass; the decision comparisons do not prove that rollout.
 
 ## Brand & Style
 
@@ -303,7 +391,7 @@ All score tiers pass normal-text AA on the default panel; only tiers 2–4 pass 
 - **IBM Plex Sans (weights 400/500/600):** the second family in the sans stack. Archivo's bundled subsets cover Latin, Latin Extended, and Vietnamese, but not Cyrillic or Greek. Plex provides those scripts without a network request; the browser selects fallback glyphs through the font stack and each face's `unicode-range`.
 - **JetBrains Mono (variable):** shared numeric analysis cells and table ScoreBadges use `font-mono text-mono-sm` (12px, weight 500). Larger score badges, headline metrics, version strings, paths, and diagnostics use the appropriate mono role. Names and prose stay sans. The installed package includes Latin, Latin Extended, Cyrillic, Cyrillic Extended, Greek, and Vietnamese subsets.
 
-**Scale principle:** keep display emphasis limited. Shared text cells use `body-sm` (13px), numeric cells use `mono-sm` (12px), and ordinary prose and controls use `body-md` (14px) or the applicable label role. Short structural labels can use tracked capitals; applying a `label-*` token does not itself uppercase the text. The 11px micro-label above a 13–14px value remains a compact alternative to extra boxes. Any future switch from monospace to tabular sans in numeric cells is a redesign decision, not current behavior.
+**Scale principle:** keep display emphasis limited. Shared text cells use `body-sm` (13px), numeric cells use `mono-sm` (12px), and ordinary prose and controls use `body-md` (14px) or the applicable label role. Short structural labels can use tracked capitals; applying a `label-*` token does not itself uppercase the text. The 11px micro-label above a 13–14px value remains a compact alternative to extra boxes. The selected raw-value sans/score mono split is documented under [numeric typography](#numeric-typography); it is not current shared-cell behavior.
 
 Numeric rules:
 
@@ -410,7 +498,7 @@ Every component that creates a stacking context declares its `z-index` from this
 
 ## Shapes
 
-The current shape language is **Rounded-Instrument**: rounded data containers, pill action buttons, and smaller rounded controls. This geometry predates the Signal integration; the brand change did not replace the radius scale. The proposed 8px panels and 4–6px ordinary controls remain in REDESIGN.md, not in these tokens.
+The current shape language is **Rounded-Instrument**: rounded data containers, pill action buttons, and smaller rounded controls. This geometry predates the Signal integration; the brand change did not replace the radius scale. The [selected radius roles](#radius-roles) remain step-2 targets, not the current tokens below.
 
 - **Panels, cards, tables:** `lg` (0.75rem / 12px).
 - **Modals, inspector panel, overlays:** `xl` (1rem / 16px).

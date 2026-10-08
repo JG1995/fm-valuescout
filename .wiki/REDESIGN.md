@@ -9,8 +9,20 @@ Neither checklist state grants approval to implement, commit, or publish.
 
 [DESIGN.md](DESIGN.md) remains the current design-system authority.
 [CONCEPT.md](CONCEPT.md) owns product purpose and boundaries.
-Approved rules belong in DESIGN.md when implementation makes them true; accepted multi-commit delivery belongs in a feature ledger.
+Selected targets belong in DESIGN.md, clearly separated from current behavior; update current tokens and component descriptions only when implementation makes them true.
+Accepted multi-commit delivery belongs in a feature ledger.
 Do not maintain competing token definitions here.
+
+**Step 1: done — shared rules settled, not implemented.** The developer selected a decisions-only checkpoint.
+[DESIGN.md's settled shared rules](DESIGN.md#settled-shared-rules-step-2-targets) own the targets and comparison evidence.
+Checked decision/comparison items below do not mean their production rollout or post-change verification is complete.
+
+- [x] Settle navigation treatment.
+- [x] Settle heading hierarchy and shared spacing.
+- [x] Settle radius roles.
+- [x] Settle dataset-toolbar composition and ownership.
+- [x] Settle feedback footprint and safety constraints.
+- [x] Settle numeric typography.
 
 ## Goal
 
@@ -71,6 +83,7 @@ Do not add a permanent sidebar, global content-width clamp, decorative charts, o
 
 | Priority | Work | Reason |
 | --- | --- | --- |
+| P1 | Settle shared rules — **Done** | Six decision targets are documented; production rollout remains pending |
 | P1 | Compact shared navigation and table framing | Largest cross-app opportunity to return attention and space to data |
 | P1 | Moneyball Profile proportions and minimum-height usability | Evidence gets squeezed or falls out of the initial view |
 | P1 | Tactic composition at smaller desktop widths | The XI list displaces the pitch from the initial viewport |
@@ -90,13 +103,14 @@ Resolve shared rules before applying local visual adjustments.
 The destination band stacks 24px icons, labels, and group captions.
 That is a prominent launcher-like treatment for a data-first companion.
 
-- [ ] Keep the 56px utility bar and its global controls.
-- [ ] Test a 44–48px destination band with smaller icons beside labels instead of above them.
+- [x] Retain the existing 56px utility bar and its global controls as the selected rule.
+- [x] Compare a compact inline-icon destination band and select the treatment recorded in DESIGN.md; production implementation follows in step 2.
 - [ ] Preserve direct access to the existing destinations and their logical grouping.
 - [ ] Retain enough group context to distinguish player, staff, and club destinations without adding another tall caption row.
-- [ ] Make active navigation quieter: test a subtle tint with a persistent indicator and reinforced label instead of a large filled block.
+- [x] Select quieter active navigation after comparing a subtle tint, persistent indicator, and reinforced label; applying that treatment remains step-2 work.
 - [ ] Preserve non-colour selected cues, `aria-current`, keyboard focus, and profile group-context behavior.
-- [ ] Verify that every destination still fits at 1280px with readable labels and usable targets.
+- [x] Verify that all ten destinations fit in the comparison candidate at 1280px with readable labels and usable targets.
+- [ ] Reverify destination fit, focus, and group-context behavior in the production implementation.
 - [ ] Do not reclaim vertical space by burying frequently used destinations in menus.
 
 **Primary owner:** `src/app/components/app-nav-bar.tsx`.
@@ -131,15 +145,18 @@ It creates a bright block where the identity mechanism calls for a restrained ou
 At 1600×900, its first data row begins around y=362px; Squad begins around y=444px.
 These are observations of the inspected captures, not proposed fixed coordinates.
 
-- [ ] Establish one consistent workspace header with a title or equivalent destination context, secondary context where needed, and feature-owned actions.
+- [x] Define one workspace-header and semantic heading hierarchy in DESIGN.md, including equivalent destination context and feature-owned action ownership.
+- [ ] Apply that hierarchy to workspace headers, preserving meaningful context and actions.
 - [ ] Remove generic headings such as Results when they add no information.
 - [ ] Review repeated titles such as Staff, Graphics, and Graduates where surrounding context already identifies the content.
 - [ ] Do not remove meaningful section headings or accessible table captions merely to reduce visible text.
 - [ ] Keep feature actions outside the generic dataset toolbar, preserving its existing ownership boundary.
-- [ ] Define one spacing pattern from workspace header to controls to table; avoid independently accumulated margins.
+- [x] Define one spacing pattern from workspace header through feature actions/feedback to dataset toolbar/table, without independently accumulated margins.
 
 ### 2.2 Standardize dataset toolbars
 
+- [x] Settle the shared toolbar's slot order, ownership, compact geometry, chip row, concise idle copy, and wrapping policy in DESIGN.md.
+- [x] Compare longer sort labels, added chips, and Staff shortlist controls at both core viewports; this is decision evidence, not proof of production filter behavior.
 - [ ] Align count, sort context, filter state, Columns, and dataset toggles consistently across Search, Squad, and Staff.
 - [ ] Prefer concise state copy to persistent instructional sentences once the user has an obvious Edit filters control.
 - [ ] Preserve first-use guidance where it genuinely explains a required next step.
@@ -154,11 +171,12 @@ These are observations of the inspected captures, not proposed fixed coordinates
 **Observed:** `SquadFeedbackSlot` reserves a minimum 64px even when it contains no feedback.
 Staff also shows substantial space between setup controls and the results panel; inspect its status ownership before changing it.
 
-- [ ] Replace large idle reservations with a compact status treatment.
+- [x] Select the local reserved-slot and global zero-idle-footprint rules, bounded supplementary details, and visible recovery-summary constraints in DESIGN.md.
+- [ ] Replace large idle reservations with the selected compact status treatment.
 - [ ] Preserve stable action headers and truthful pending, success, error, and recovery feedback.
 - [ ] Use bounded expansion or a deliberate feedback region for longer outcomes rather than either permanent empty space or uncontrolled layout jumps.
 - [ ] Retain live-region behavior and focus destinations for recovery states.
-- [ ] Check existing status-region tests and documented mutation contracts before implementation.
+- [x] Check existing status-region tests and documented mutation contracts before implementation; retain Staff's stable region and Squad's recovery focus/lock behavior.
 
 **Primary owner:** `src/features/squad/components/squad-overview-panel.tsx`; Staff route and assignment-optimizer components.
 
@@ -175,14 +193,15 @@ Tactic, Planner, and Academy show this most clearly.
 - [ ] Keep useful boundaries around independent scrollers, dialogs, and interactive assignment targets.
 - [ ] Preserve the recessed table-header treatment and neutral data surfaces.
 
-### 3.2 Test a more restrained radius system
+### 3.2 Adopt the settled radius roles
 
-**Proposed starting direction:** 8px panels, 4–6px ordinary buttons and segmented controls, pills for compact tags and status chips.
-These values are design candidates, not existing brand-kit requirements.
+**Decision complete; rollout pending.** [DESIGN.md](DESIGN.md#radius-roles) owns the selected purpose-based scale.
+It is a product rule derived from comparisons, not a requirement copied from the brand kit.
 
-- [ ] Compare the proposed radii in actual Search, Profile, Tactic, and Academy screens before adopting them globally.
-- [ ] Make radius follow component purpose rather than treating every clickable element as a pill.
-- [ ] Keep dialogs visually distinct without making them excessively soft or oversized.
+- [x] Compare current and target radii in populated Search, Profile, Tactic, and Academy screens using disposable browser overrides.
+- [x] Select radius roles by component purpose rather than treating every clickable element as a pill.
+- [x] Select a distinct dialog/overlay role after inspecting the Staff configuration dialog.
+- [ ] Apply these roles without changing target sizes, action meaning, or meaningful circles.
 - [ ] Update shared primitives and tokens first; avoid scattering local radius overrides.
 - [ ] Match focus geometry to the revised shape.
 - [ ] Retain circles where they carry meaning, particularly pitch-selection targets; do not remove them merely for stylistic uniformity.
@@ -211,15 +230,16 @@ These values are design candidates, not existing brand-kit requirements.
 
 ### 4.2 Reconcile numeric typography
 
-**Observed:** shared numeric table cells use JetBrains Mono.
-DESIGN.md now documents that implemented treatment; testing a switch to tabular sans remains a redesign proposal.
+**Observed:** current shared numeric table cells still use JetBrains Mono.
+[DESIGN.md](DESIGN.md#numeric-typography) now separates that current behavior from the selected raw-value/score roles for step 2.
 
-- [ ] Choose and document one intentional rule for raw table figures, scores, summary metrics, and literal strings.
-- [ ] Test Archivo tabular figures for ordinary numeric columns, retaining JetBrains Mono for score units, key metrics, paths, and diagnostics as appropriate.
-- [ ] Compare readability, occupied width, and mixed raw-value/percentile cells before deciding.
+- [x] Choose and document one intentional rule for raw table figures, scores, summary metrics, and literal strings.
+- [x] Test Archivo tabular figures for ordinary numeric columns while retaining JetBrains Mono for scored units, summary metrics, paths, and diagnostics.
+- [x] Compare readability, occupied width, and mixed raw-value/percentile cells, including missing-value specimens, before deciding.
+- [ ] Apply the chosen numeric roles through shared cells and relevant callers; do not change the mono token or ScoreBadge globally.
 - [ ] Preserve tabular alignment and numeric sorting; typography must not alter displayed facts.
-- [ ] Use tracked capitals for short structural labels, not every control or long explanatory sentence.
-- [ ] Keep heavy display weights limited enough that headings and ordinary controls do not all compete.
+- [x] Settle tracked capitals as short structural labels, not ordinary controls or explanatory sentences.
+- [x] Settle the heading/weight hierarchy so workspace identity, sections, and ordinary controls do not all compete.
 
 **Primary owner:** `src/components/player-table/table-cells.tsx`, shared score/attribute primitives, and `src/styles/global.css`.
 
@@ -425,11 +445,12 @@ The update did not change application code or adopt pending layout proposals.
 ### Remaining implementation and documentation work
 
 - [ ] Correct the runtime contrast pairings documented in DESIGN.md: small secondary text on overlays, tier-1 score text on raised/hovered surfaces, and meaningful control boundaries on raised/overlay backgrounds. Verify actual component states, including alpha fills, without weakening the accessibility targets.
-- [ ] Record approved navigation height, radius, emphasis, header, feedback, and responsive composition rules when implemented.
+- [x] Record the six settled shared-rule targets separately from current tokens and behavior in DESIGN.md.
+- [ ] Reconcile current navigation, radius, emphasis, header, feedback, and responsive composition descriptions as the selected rules are implemented.
 
 ## Recommended implementation sequence
 
-1. **Settle the shared rules:** navigation treatment, heading hierarchy, radius roles, dataset toolbar, feedback footprint, and numeric typography.
+1. **Settle the shared rules — Done:** navigation treatment, heading hierarchy, radius roles, dataset toolbar, feedback footprint, and numeric typography. Targets are owned by [DESIGN.md](DESIGN.md#settled-shared-rules-step-2-targets); production implementation is still pending.
 2. **Implement the shared framing:** shell, headers, table panels, and common primitives; compare the same populated routes before and after.
 3. **Repair the constrained workspaces:** Moneyball Profile and smaller-desktop Tactic composition before secondary polish.
 4. **Apply feature refinements:** profile summaries, Staff, Squad, Planner, Academy, and Settings.
