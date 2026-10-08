@@ -1,39 +1,39 @@
 ---
 name: FM ValueScout
 colors:
-    # Foundation — background & surface elevation layers
-    background: "oklch(0.15 0.008 264)"
-    on-background: "oklch(0.95 0.004 264)"
-    surface-dim: "oklch(0.1 0.008 264)"
-    surface: "oklch(0.22 0.009 264)"
-    surface-bright: "oklch(0.3 0.01 264)"
-    surface-container-lowest: "oklch(0.1 0.008 264)"
-    surface-container-low: "oklch(0.19 0.008 264)"
-    surface-container: "oklch(0.22 0.009 264)"
-    surface-container-high: "oklch(0.26 0.01 264)"
-    surface-container-highest: "oklch(0.3 0.01 264)"
-    on-surface: "oklch(0.95 0.004 264)"
-    on-surface-variant: "oklch(0.74 0.008 264)"
-    inverse-surface: "oklch(0.95 0.004 264)"
-    inverse-on-surface: "oklch(0.22 0.009 264)"
+    # Foundation — background & surface elevation layers (Signal Night Slate)
+    background: "oklch(0.194 0.019 255.7)"
+    on-background: "oklch(0.964 0.003 264.5)"
+    surface-dim: "oklch(0.169 0.011 268)"
+    surface: "oklch(0.226 0.013 264.3)"
+    surface-bright: "oklch(0.375 0.013 267.2)"
+    surface-container-lowest: "oklch(0.169 0.011 268)"
+    surface-container-low: "oklch(0.194 0.019 255.7)"
+    surface-container: "oklch(0.226 0.013 264.3)"
+    surface-container-high: "oklch(0.289 0.012 264.4)"
+    surface-container-highest: "oklch(0.375 0.013 267.2)"
+    on-surface: "oklch(0.964 0.003 264.5)"
+    on-surface-variant: "oklch(0.711 0.007 255.5)"
+    inverse-surface: "oklch(0.964 0.003 264.5)"
+    inverse-on-surface: "oklch(0.226 0.013 264.3)"
     # Borders & outlines
-    outline: "oklch(0.58 0.01 264)"
-    outline-variant: "oklch(0.32 0.01 264)"
-    surface-tint: "oklch(0.8 0.145 82)"
-    # Primary — main interactive and brand colour (floodlight gold)
-    primary: "oklch(0.8 0.145 82)"
-    on-primary: "oklch(0.18 0.02 82)"
-    primary-container: "oklch(0.34 0.07 82)"
-    on-primary-container: "oklch(0.92 0.06 82)"
-    inverse-primary: "oklch(0.52 0.1 82)"
+    outline: "oklch(0.555 0.01 264.5)"
+    outline-variant: "oklch(0.375 0.013 267.2)"
+    surface-tint: "oklch(0.766 0.157 157.1)"
+    # Primary — main interactive and brand colour (Signal Green)
+    primary: "oklch(0.766 0.157 157.1)"
+    on-primary: "oklch(0.169 0.011 268)"
+    primary-container: "oklch(0.456 0.106 157)"
+    on-primary-container: "oklch(0.909 0.098 156.9)"
+    inverse-primary: "oklch(0.523 0.121 157.4)"
     # Filled-button states — the Button spec's 8% mixes, resolved in oklab
-    primary-hover: "oklch(0.812 0.133 82)"
-    primary-active: "oklch(0.748 0.133 82)"
+    primary-hover: "oklch(0.78 0.144 157.1)"
+    primary-active: "oklch(0.718 0.144 157.5)"
     # Semantic — status indicators
-    success: "oklch(0.76 0.16 150)"
-    on-success: "oklch(0.16 0.03 150)"
-    success-container: "oklch(0.34 0.085 150)"
-    on-success-container: "oklch(0.92 0.07 150)"
+    success: "oklch(0.746 0.119 179)"
+    on-success: "oklch(0.16 0.03 179)"
+    success-container: "oklch(0.34 0.085 179)"
+    on-success-container: "oklch(0.92 0.07 179)"
     warning: "oklch(0.76 0.165 55)"
     on-warning: "oklch(0.16 0.03 55)"
     warning-container: "oklch(0.34 0.085 55)"
@@ -46,37 +46,37 @@ colors:
     on-info: "oklch(0.16 0.02 245)"
     info-container: "oklch(0.34 0.08 245)"
     on-info-container: "oklch(0.92 0.035 245)"
-    # FM-style data ramp — red, grey, amber, and green
+    # FM-style data ramp — red, grey, amber, green
     score-1: "oklch(0.66 0.2 18)"
     score-2: "oklch(0.74 0.008 264)"
     score-3: "oklch(0.8 0.145 75)"
-    score-4: "oklch(0.76 0.16 150)"
+    score-4: "oklch(0.746 0.119 179)"
     # Chart series — subject, two comparisons, one reference line
-    chart-1: "oklch(0.8 0.145 82)"
+    chart-1: "oklch(0.766 0.157 157.1)"
     chart-2: "oklch(0.72 0.11 245)"
     chart-3: "oklch(0.68 0.18 340)"
     chart-4: "oklch(0.62 0.01 264)"
 typography:
     headline-lg:
         {
-            fontFamily: "IBM Plex Sans",
+            fontFamily: "Archivo Variable",
             fontSize: 28px,
-            fontWeight: "600",
+            fontWeight: "800",
             lineHeight: "1.25",
             letterSpacing: -0.01em,
         }
     headline-md:
         {
-            fontFamily: "IBM Plex Sans",
+            fontFamily: "Archivo Variable",
             fontSize: 22px,
-            fontWeight: "600",
+            fontWeight: "700",
             lineHeight: "1.3",
         }
     headline-sm:
         {
-            fontFamily: "IBM Plex Sans",
+            fontFamily: "Archivo Variable",
             fontSize: 18px,
-            fontWeight: "500",
+            fontWeight: "600",
             lineHeight: "1.35",
         }
     body-lg:
@@ -102,23 +102,23 @@ typography:
         }
     label-lg:
         {
-            fontFamily: "IBM Plex Sans",
+            fontFamily: "Archivo Variable",
             fontSize: 14px,
-            fontWeight: "600",
+            fontWeight: "700",
             lineHeight: "1.2",
             letterSpacing: 0.02em,
         }
     label-md:
         {
-            fontFamily: "IBM Plex Sans",
+            fontFamily: "Archivo Variable",
             fontSize: 12px,
-            fontWeight: "600",
+            fontWeight: "700",
             lineHeight: "1.2",
             letterSpacing: 0.05em,
         }
     label-sm:
         {
-            fontFamily: "IBM Plex Sans",
+            fontFamily: "Archivo Variable",
             fontSize: 11px,
             fontWeight: "600",
             lineHeight: "1.2",
@@ -127,28 +127,28 @@ typography:
     # Monospace roles for numeric/tabular data
     mono-xl:
         {
-            fontFamily: "IBM Plex Mono",
+            fontFamily: "JetBrains Mono Variable",
             fontSize: 36px,
             fontWeight: "600",
             lineHeight: "1.2",
         }
     mono-lg:
         {
-            fontFamily: "IBM Plex Mono",
+            fontFamily: "JetBrains Mono Variable",
             fontSize: 24px,
             fontWeight: "600",
             lineHeight: "1.2",
         }
     mono-md:
         {
-            fontFamily: "IBM Plex Mono",
+            fontFamily: "JetBrains Mono Variable",
             fontSize: 14px,
             fontWeight: "500",
             lineHeight: "1.4",
         }
     mono-sm:
         {
-            fontFamily: "IBM Plex Mono",
+            fontFamily: "JetBrains Mono Variable",
             fontSize: 12px,
             fontWeight: "500",
             lineHeight: "1.4",
@@ -188,15 +188,16 @@ spacing:
 
 ## Brand & Style
 
-**The central concept is a floodlit pitch at night: a dark field, and gold light on the thing worth looking at.**
+**The central concept is a blip on the night pitch: a dark instrument field, and exactly one lit green mark.**
 
-FM ValueScout is an instrument, not a destination. The user already has Football Manager open on the same machine, and probably a second monitor. They alt-tab in with a question — *who fills this role best right now?* — and they want the answer in the first second of looking. Every pixel that is not an answer is in the way. The app is a quiet dark surface holding a lot of numbers, with gold reserved for two jobs: marking where you are, and marking what is good.
+FM ValueScout is an instrument, not a destination. The user already has Football Manager open on the same machine, and probably a second monitor. They alt-tab in with a question — *who fills this role best right now?* — and they want the answer in the first second of looking. Every pixel that is not an answer is in the way. The app is a quiet dark surface holding a lot of numbers, with one lit green mark reserved for two jobs: marking where you are, and marking what is worth looking at. The mark and wordmark are the Signal identity: a top-down pitch — ring, halfway line, one blip off the line — beside **VALUE SCOUT** in wide tracked Archivo capitals. The blip is never on the centerline (the player is found *off* it), and the pitch is never filled in (the mark is a line, not a surface).
 
-The mood is a night-shift control room. Cool near-black surfaces, hairline separations, dense rows, and one warm accent. This is deliberately not the friendly pastel dashboard look: the primary user is a single expert reading their own data for an hour at a time, so the design optimizes for sustained scanning over first-run charm. The tension to hold is **dense but not cramped** — 36px rows and 13px text are tight, so the spacing scale and hairline borders must do the separating work that whitespace usually does.
+The mood is a night-shift control room. Cool near-black surfaces, hairline separations, dense rows, and one lit green. This is deliberately not the friendly pastel dashboard look: the primary user is a single expert reading their own data for an hour at a time, so the design optimizes for sustained scanning over first-run charm. The tension to hold is **dense but not cramped** — 36px rows and 13px text are tight, so the spacing scale and hairline borders must do the separating work that whitespace usually does.
 
 Hard stances:
 
 - **Dark only.** There is no light theme and no `prefers-color-scheme` branch. FM runs full-screen and dark; a bright companion window beside it is hostile.
+- **One lit green.** Signal Green is the only saturated hue in the chrome. It appears only in chrome state (active nav, primary action, focus, selection) and in the identity mark. Data stays on the neutral surfaces and the score ramp; success and the top score tier sit at hue 179 (teal-green) so they never *are* the brand green. Nothing else is saturated, except a semantic status where the state itself demands it (error, warning).
 - **Desktop only.** Minimum window 1280×800, designed at 1600×900. No mobile or narrow breakpoints. ([CONCEPT.md](./CONCEPT.md) excludes mobile and web clients.)
 - **Offline by construction.** No network requests for fonts, icons, images, or analytics. Bundled application assets and exact-UID user-selected local FM graphics are permitted; the app never downloads, copies, or manages graphics packs. This follows the offline-first principle in [CONCEPT.md](./CONCEPT.md), and it is a design constraint, not only an infrastructure one.
 - **Text-first identity.** Club and player names remain the identity facts. Optional local FM graphics can enhance Player Profile, Search, Squad, and My Club when an exact UID mapping exists; they never replace readable text. Player portraits are the only person images, and club logos are decorative beside club text. Fixed portrait and logo slots retain initials or shield fallbacks while images are pending, missing, invalid, or unavailable. Player tables may render a nationality string as a bundled SVG flag only after an explicit FM-name mapping; unknown values stay visible as text, and the app never guesses a flag. This remains a data constraint, not a style preference.
@@ -204,11 +205,11 @@ Hard stances:
 
 ## Colors
 
-The palette is one warm chrome accent on a cool near-neutral base, plus four semantic status colours and one multi-hue data ramp. Elevation is carried by **tonal layering plus hairline borders**, not by shadows. Dark surfaces swallow shadows, and the app stacks a lot of panels; a tonal step reads reliably at any brightness setting where a drop shadow does not. Shadows appear at one level only — floating overlays.
+The palette is one saturated chrome accent on a cool near-neutral base, plus four semantic status colours and one multi-hue data ramp. Elevation is carried by **tonal layering plus hairline borders**, not by shadows. Dark surfaces swallow shadows, and the app stacks a lot of panels; a tonal step reads reliably at any brightness setting where a drop shadow does not. Shadows appear at one level only — floating overlays.
 
-The neutrals carry a whisper of blue (hue 264, chroma 0.008–0.010). That is barely perceptible on its own, but it keeps the greys from looking dead and it sets up the complementary tension with the gold accent.
+The neutrals are the Signal Night Slate scale: cool near-blacks at hue ~264 with a whisper of blue (chroma 0.010–0.013). That is barely perceptible on its own, but it keeps the greys from looking dead and it sets up the tension with the Signal Green accent.
 
-**Primary — floodlight gold (hue 82):** `primary` marks **chrome state**: the active nav item, the primary button, the focus ring, the selected row indicator, checked controls, and the subject series in a chart. It answers "where am I, and what is the main action here?" Gold also carries the product idea — ValueScout is about spotting value, and gold is what value looks like.
+**Primary — Signal Green (hue 157):** `primary` marks **chrome state**: the active nav item, the primary button, the focus ring, the selected row indicator, checked controls, and the subject series in a chart. It answers "where am I, and what is the main action here?" Green also carries the product idea — the blip in the mark is a player found, and a lit green mark on a dark field is what *found* looks like.
 
 **Steel (hue 245):** `info` is the single cool counterpoint. It carries neutral factual annotation that is neither good nor bad: transfer-status tags, "U-21" style qualifiers, informational banners, and the first comparison series in a chart. There is no separate `secondary` token; steel does that work.
 
@@ -219,7 +220,7 @@ The neutrals carry a whisper of blue (hue 264, chroma 0.008–0.010). That is ba
 | `score-1` | 0–40   | Weak      | `oklch(0.66 0.2 18)`     | Does not suit this role         |
 | `score-2` | 41–60  | Average   | `oklch(0.74 0.008 264)`  | Emergency or fringe cover       |
 | `score-3` | 61–80  | Good      | `oklch(0.8 0.145 75)`    | Viable squad or starting option |
-| `score-4` | 81–100 | Excellent | `oklch(0.76 0.16 150)`   | High-confidence role fit        |
+| `score-4` | 81–100 | Excellent | `oklch(0.746 0.119 179)` | High-confidence role fit        |
 
 Player- and staff-profile attributes use the same colours with FM-scale bands: 1–5 Weak, 6–10 Average, 11–15 Good, and 16–20 Excellent. The raw value remains visible, and the colour never replaces it. **`primary` never appears inside a data cell, and the score ramp never appears on chrome.**
 
@@ -227,12 +228,12 @@ Player- and staff-profile attributes use the same colours with FM-scale bands: 1
 
 | Semantic  | oklch                    | Role                                                                        |
 | --------- | ------------------------ | --------------------------------------------------------------------------- |
-| `success` | `oklch(0.76 0.16 150)`   | Load Data completed, bridge plugin installed and current, snapshot is fresh  |
+| `success` | `oklch(0.746 0.119 179)` | Load Data completed, bridge plugin installed and current, snapshot is fresh  |
 | `warning` | `oklch(0.76 0.165 55)`   | Snapshot truncated at the scan cap, snapshot is stale, plugin update pending |
 | `error`   | `oklch(0.66 0.2 18)`     | Scan failed, ingest failed, FM not running, destructive confirmation         |
 | `info`    | `oklch(0.72 0.11 245)`   | Neutral annotation and explanatory banners                                   |
 
-Warning sits at hue 55 (orange) rather than amber so it never reads as the gold accent. The data ramp uses separate token names even where its red, grey, and green reuse established system colours; component code still states whether colour carries status or a score band.
+Success and `score-4` share one hue-179 teal-green: *good* reads as green, but it is deliberately not the brand green (hue 157), so a lit Signal Green always means chrome state or the mark, and a hue-179 green always means data. Warning sits at hue 55 (orange) rather than amber (hue 75) so it never reads as the score ramp's good tier. The data ramp uses separate token names even where its red, grey, and green reuse established system colours; component code still states whether colour carries status or a score band.
 
 `primary-hover` and `primary-active` are the Button spec's hover and active mixes resolved once, in oklab, rather than recomputed per component. Both stay in sRGB gamut and hold an `on-primary` label above 8:1. Unfilled variants have no mix — they press to `surface-container-highest`, one tonal step above their hover fill.
 
@@ -250,7 +251,7 @@ Borders come in two roles with different rules:
 - **Score badges** always render the number. The tier colour is redundant encoding that speeds scanning; the number is the fact. A tier label is available in the badge `title` and in the accessible name.
 - **Status chips and banners** pair colour with an icon and a text label — never a bare coloured dot.
 - **Active nav item** pairs `primary-container`, a `primary` icon, a reinforced label, and `aria-current="page"`; the same Lucide component uses `strokeWidth` 2 when active and 1.5 when inactive.
-- **Selected table row** pairs the tint with a 2px gold left indicator and `aria-selected`.
+- **Selected table row** pairs the tint with a 2px primary left indicator and `aria-selected`.
 - **Chart series** differ by colour *and* stroke pattern — solid, dashed, dotted — plus a direct label or legend entry. A radar chart with three overlaid players is unreadable by colour alone at any palette.
 - **Trend arrows** carry direction as shape (up, down, flat), with colour as reinforcement.
 
@@ -282,10 +283,13 @@ Every score tier clears 4.5:1 on both the default and the hovered row background
 
 ## Typography
 
-Two families, one superfamily. **IBM Plex Sans** does everything a human reads as language; **IBM Plex Mono** does the numbers that need to line up or be read character by character.
+Two brands of letter, one voice. **Archivo** is the brand face: it does everything a human reads as language and it carries the wordmark's display weights. **JetBrains Mono** does the numbers that need to line up or be read character by character. **IBM Plex Sans** rides along as the cyrillic/greek fallback only.
 
-- **IBM Plex Sans (grotesque, weights 400/500/600):** UI, headings, labels, player names, prose. Chosen because it was designed for dense interface use, holds its shape at 11–13px, and ships a metrically related mono, so the two families never fight. Its low-contrast, slightly technical letterforms suit an instrument. It is not a friendly geometric sans, and that is the choice: this is a tool for one expert user, not a landing page.
-- **IBM Plex Mono (weights 500/600):** score badges, hero metrics, game version strings, file paths, and bridge diagnostics. Monospace digits are wide, so mono is *not* used for in-table figures — it is reserved for values read as single units or as literal text.
+- **Archivo (variable, weights 400–800 used):** UI, headings, labels, player names, prose, and the identity wordmark. The headline roles take its display weights (`headline-lg` 800, `headline-md` 700) and the uppercase `label-*` roles take 700, which is the weight of the Signal wordmark's capitals. Its neutral grotesque letterforms and tight, flat terminals suit an instrument, and it is not a friendly geometric sans — that is the choice: this is a tool for one expert user, not a landing page.
+- **IBM Plex Sans (weights 400/500/600):** bundled fallback for cyrillic and greek text only. Archivo has no coverage of those scripts, and FM's playable leagues include Russia and Greece, so names in those scripts are ordinary data, not an edge case. Because each family's `@font-face` rules carry `unicode-range`, Plex Sans is only ever consulted for glyphs Archivo cannot render, and it loads nothing for latin text. It is a neutral grotesque, so the handoff inside a mixed-script name is barely visible.
+- **JetBrains Mono (variable, weights 500/600 used):** score badges, hero metrics, game version strings, file paths, and bridge diagnostics. Its digits are tabular by design, so mono figures never jitter. Monospace is *not* used for in-table figures — those are tabular sans; mono is reserved for values read as single units or as literal text. It covers cyrillic, greek, and latin; it has no vietnamese, and that is fine because mono never renders player names.
+
+**Scale principle:** headlines are rare — a page title and at most one section title per screen. Most of the app is `body-sm` (13px) in table cells, `body-md` (14px) in prose and controls, and the three `label-*` roles for uppercase micro-labels above values. The micro-label pattern is the workhorse: an 11px uppercase letterspaced label in `on-surface-variant` sitting above a 13–14px value in `on-surface`. It packs a labelled field into two tight lines without a colon or a box. The wordmark's wide tracked capitals (`label-*` at the token letterspacing, 700–800 weight) are the one place the brand display voice speaks outside a page title.
 
 **Scale principle:** headlines are rare — a page title and at most one section title per screen. Most of the app is `body-sm` (13px) in table cells, `body-md` (14px) in prose and controls, and the three `label-*` roles for uppercase micro-labels above values. The micro-label pattern is the workhorse: an 11px uppercase letterspaced label in `on-surface-variant` sitting above a 13–14px value in `on-surface`. It packs a labelled field into two tight lines without a colon or a box.
 
@@ -295,15 +299,15 @@ Numeric rules:
 - Never set body copy in all-caps. Uppercase is for `label-*` roles only, at 11–14px, always with the letterspacing from the token.
 - Use `text-wrap: pretty` on prose blocks. Truncate names in fixed-width cells with an ellipsis and a `title` attribute. Text must never wrap inside a table cell — the two-line table variant stacks two separate elements at a fixed row height, which is not the same thing as letting a value wrap.
 
-**Loading:** self-host both families in the bundle via `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono`, importing the per-weight entrypoints (`400.css`, `500.css`, `600.css` for Sans; `500.css`, `600.css` for Mono). No Google Fonts link, no CDN — the app must render identically with no network, per the offline stance above.
+**Loading:** self-host everything in the bundle via `@fontsource-variable/archivo`, `@fontsource-variable/jetbrains-mono`, and `@fontsource/ibm-plex-sans` (per-weight `400.css`, `500.css`, `600.css` entrypoints). No Google Fonts link, no CDN — the app must render identically with no network, per the offline stance above.
 
-Ship **every latin, cyrillic, greek, and vietnamese subset**, not a latin-only cut. FM's playable leagues include Russia, Ukraine, Greece, Serbia, and Bulgaria, so names outside latin are ordinary data, and a missing glyph in a scouting database is a data error the user cannot distinguish from a bug (`Magalhães`, `Håland`, `Şahin`, `Дзюба`, `Παυλίδης`). Bundle weight is not a constraint for a local desktop app. Use the per-weight entrypoints rather than the per-subset ones (`latin-400.css`): only the per-weight files carry `unicode-range`, so combining per-subset files leaves two identical `@font-face` descriptors and the browser silently keeps one.
+Ship the **full script range the league data needs**: latin, latin-ext, cyrillic, cyrillic-ext, greek, and vietnamese. FM's playable leagues include Russia, Ukraine, Greece, Serbia, and Bulgaria, and vietnamese names appear in south-eastern leagues, so non-latin names are ordinary data, and a missing glyph in a scouting database is a data error the user cannot distinguish from a bug (`Magalhães`, `Håland`, `Şahin`, `Дзюба`, `Παυλίδης`, `Phạm`). Archivo ships latin, latin-ext, and vietnamese; IBM Plex Sans ships the remaining cyrillic and greek scripts. The variable families' `index.css` entrypoints already carry `unicode-range` per script, and the per-weight Plex Sans entrypoints are used rather than the per-subset ones (`latin-400.css`): only the per-weight files carry `unicode-range`, so combining per-subset files leaves two identical `@font-face` descriptors and the browser silently keeps one. Bundle weight is not a constraint for a local desktop app.
 
 Font stacks:
 
 ```css
---font-sans: "IBM Plex Sans", system-ui, sans-serif;
---font-mono: "IBM Plex Mono", ui-monospace, monospace;
+--font-sans: "Archivo Variable", "IBM Plex Sans", system-ui, sans-serif;
+--font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
 ```
 
 ### Value & Number Formatting
@@ -413,7 +417,7 @@ Each spec below is the contract for that component. Reference tokens by name; ne
 The action primitive. One primary action per screen region.
 
 - **Container:** `full` radius, `stack-sm` vertical and 16px horizontal padding, 32px height (36px for the top-bar Load Data button), `label-lg` text. Icon-only variant is a 32×32 square with `md` radius.
-- **States:** hover takes `primary-hover` on a filled variant and fills an unfilled variant with `surface-container-high`; active takes `primary-active` on a filled variant and `surface-container-highest` on an unfilled one; `:focus-visible` adds the 2px gold ring; disabled drops opacity to 45% and sets `cursor: not-allowed`; loading disables the button, swaps the label for a phase-specific pending label ("Scanning…", "Saving…"), and shows a spinner in the leading icon slot. Transition `background-color 150ms ease-out`. Width never changes between states — reserve the loading label's width, and keep the inactive label `aria-hidden` so it stays out of the accessible name.
+- **States:** hover takes `primary-hover` on a filled variant and fills an unfilled variant with `surface-container-high`; active takes `primary-active` on a filled variant and `surface-container-highest` on an unfilled one; `:focus-visible` adds the 2px primary ring; disabled drops opacity to 45% and sets `cursor: not-allowed`; loading disables the button, swaps the label for a phase-specific pending label ("Scanning…", "Saving…"), and shows a spinner in the leading icon slot. Transition `background-color 150ms ease-out`. Width never changes between states — reserve the loading label's width, and keep the inactive label `aria-hidden` so it stays out of the accessible name.
 - **Variants:** `primary` — `primary` fill, `on-primary` label; the one main action. `secondary` — transparent fill, `outline` border, `on-surface` label. `ghost` — no fill or border, `on-surface-variant` label, hover fills `surface-container-high`; for toolbar and icon actions. `destructive` — `error` fill, `on-error` label; requires a confirmation modal before it executes. Snapshot and save deletion use this variant only after the target-specific destructive Modal confirms the cascade.
 - **Content / Anatomy:** optional 16px leading icon, label in `label-lg`, optional trailing chevron for menu buttons. Never icon-plus-text in the icon-only variant.
 - **Behaviour:** always a `<button>` with an explicit `type`. Icon-only buttons carry `aria-label` and a tooltip — the props type requires both an icon and an `aria-label` for that size, so an unlabelled icon button does not compile. A button that opens a menu sets `aria-expanded` and `aria-haspopup`.
@@ -423,7 +427,7 @@ The action primitive. One primary action per screen region.
 Primary navigation between the app's main destinations.
 
 - **Container:** `surface-container`, one centered row below the utility bar, with a bottom `outline-variant` border. Groups use fine vertical separators; multi-destination groups have centered low-emphasis captions below their links. The layout fits all destinations at the supported 1280×800 minimum window.
-- **States:** links use Lucide icons and ValueScout tokens. Hover changes colour only. The active link uses `primary-container`, a `primary` icon, and a reinforced label. `:focus-visible` shows the gold ring inside the link bounds.
+- **States:** links use Lucide icons and ValueScout tokens. Hover changes colour only. The active link uses `primary-container`, a `primary` icon, and a reinforced label. `:focus-visible` shows the primary ring inside the link bounds.
 - **Content / Anatomy:** **Home** contains Dashboard; **Players** contains Search and Moneyball; **Staff** contains Staff Search and My Staff; **Club** contains Squad, Planner, Tactic, and Youth; **Settings** contains Settings. Search and Moneyball select `/search?view=general|moneyball`; Staff links select `/staff?view=search|my-staff`; Club links select `/my-club?view=squad|planner|tactic`; Youth selects `/academy`.
 - **Behaviour:** a `<nav>` contains router links. Each supported direct destination sets exactly one link to `aria-current="page"`. Unknown and not-found routes set no destination current. Player and staff profile routes set only the Players or Staff group caption to `aria-current="location"`; no child destination is current. Top-navigation Club destination changes use normal Link navigation, add a browser-history entry, and let browser Back return to the prior destination. Same-route Club changes retain `squadSort` and `squadDir`; route-local sort controls use replace navigation. Search view changes retain only the route's existing shortlist/combine state. Profile analysis tabs and Youth tabs remain local.
 
@@ -454,7 +458,7 @@ The `/settings` route is one vertical page with **Preferences**, **All boosts**,
 The core surface. Player and staff search results, squad lists, and comparison sets.
 
 - **Container:** `surface-container` with `lg` radius and 1px `outline-variant` border; the table is full-bleed with no inner padding. Shared analysis tables use fixed 40px two-line rows, bounded pixel column widths, and one table-owned scroller for both horizontal and vertical overflow. At 1280×800, minimum widths produce table-local horizontal overflow while the sticky identity and both header rows remain visible; at 3440×1440, the table reveals more columns without stretching cells without bound. Search and Squad panels are `flex` columns with `min-h-0`; their route roots use `h-full` so the document does not grow with the virtual spacer. The two 32px header rows use `surface-container-lowest` and remain sticky at `z-10` (64px total). Body rows carry a 1px `outline-variant` bottom border. Cell padding is `stack-sm` horizontal.
-- **States:** row hover fills `surface-container-high`; row `:focus-visible` shows the gold ring inset; selected row fills `primary-container` with a 2px `primary` left indicator and `aria-selected`; sorted leaf headers show `primary` label text plus a direction caret. Row height never changes on any state.
+- **States:** row hover fills `surface-container-high`; row `:focus-visible` shows the primary ring inset; selected row fills `primary-container` with a 2px `primary` left indicator and `aria-selected`; sorted leaf headers show `primary` label text plus a direction caret. Row height never changes on any state.
 - **Identity:** every shared analysis table has a required, caller-owned, non-removable sticky identity region before analysis columns. Player identity uses the name with available club and division context and reserves stable portrait and club-logo slots for optional exact-UID local graphics; staff supplies its own identity content without person images. Identity is separate from configurable analysis columns, so Club and Division are not configurable identity metrics and cannot be duplicated.
 - **Content / Anatomy:** grouped headers use the same group metadata as the keyboard-operable **Columns** control. Header cells use `label-md` uppercase `on-surface-variant`; text cells use `body-sm` `on-surface`; secondary identity lines use 11px regular `on-surface-variant`. Compact tactic headers show the placement identifier with smaller role context; the full tactic definition is the accessible name and a visible disclosure on keyboard focus, never hover-only. Numeric cells are right-aligned with tabular figures. Score cells use the current unfilled `ScoreBadge` table variant and tier ramp; missing values use a neutral `—`.
 - **Behaviour:** a real `<table>` with `<caption class="sr-only">`, `<thead>`, and `<th scope="col">`. Sortable leaf headers set `aria-sort`. Header menus expose column movement, grouped analysis-column management, and bounded keyboard or pointer resizing; identity has resize only. A table-associated toolbar owns the dataset summary, filters, grouped **Columns**, and view-specific dataset controls. Page actions remain in the page header or feature-owned controls. Up and Down arrows move row focus across bounded 50-row virtual pages, Enter or a row click opens the player, and the sticky header never covers the focused row. No Previous or Next controls or unbounded client collection exist. Empty, loading, and error states replace the body with the states below — never blank space.
@@ -554,7 +558,7 @@ Radar for role and attribute profiles; line or area for value and score trends.
 - **Container:** inside a Panel, `surface-container` background, no chart border. Axis lines and grid rings in `outline-variant`; axis labels in `label-sm` `on-surface-variant`.
 - **States:** hover on a series or point raises a tooltip on `surface-container-highest` at `z-20` showing the label and exact value. Keyboard focus steps through series and exposes the same values as text.
 - **Variants:** `radar` (subject plus up to two comparison players, plus one reference), `trend` (line with an optional 20%-alpha area fill), `bar` (single-series comparison).
-- **Content / Anatomy:** series colours in order — `chart-1` gold for the subject, `chart-2` steel and `chart-3` magenta for comparisons, `chart-4` neutral dashed for a league or squad average. Series fills use 20% alpha so overlaps stay readable. Every series also gets a distinct stroke pattern.
+- **Content / Anatomy:** series colours in order — `chart-1` Signal Green for the subject, `chart-2` steel and `chart-3` magenta for comparisons, `chart-4` neutral dashed for a league or squad average. Series fills use 20% alpha so overlaps stay readable. Every series also gets a distinct stroke pattern.
 - **Behaviour:** one subject plus two comparisons, which is why only three player series tokens exist; beyond three overlaid shapes a radar stops informing. A chart is never the only representation of its data — the same values appear in an adjacent table or an `sr-only` table, because a radar chart is not accessible on its own.
 
 ### Scrollbar, Icons, and Motion
@@ -604,7 +608,7 @@ Dedicated route `/my-club`; `/planner` is a replace compatibility redirect to `/
 - **Squad development:** the overview header has a primary **Boost all CA** action, a secondary **Make all Wonderkids** action, and the secondary CSV uploads. The CA confirmation explains the fixed age rule: +5 at age 20 or younger, +10 from age 21 through 28, and no boost from age 29. The Wonderkid confirmation explains that known Ambition, Professionalism, and Determination values at 10 or below receive a random 11–20 value; unknown and higher values stay unchanged. Both actions run sequentially, prevent duplicate or overlapping submission, and report Rust-derived determinate progress as `processed / total` after the cohort is captured and after each terminal player outcome. The confirmation stays open while the command is pending and shows an indeterminate preparing state before the first progress payload. Final feedback appears in one reserved Squad overview region for the latest action, uses compact processed/updated/skipped/failed copy, and does not move the action header. If the app cannot verify a result or preserve the active context, it stops, disables both actions, focuses the shared feedback region, and tells the user to use Load Data before another boost. A newly current snapshot restores the actions and clears prior feedback. Neither action claims that skipped, failed, or recovery-stopped players changed.
 - **CSV uploads:** Search keeps **Upload Moneyball CSV**. My Club Squad offers **Upload Squad CSV** and **Upload Youth Academy CSV**. Each opens the shared format-bound Modal with a clear drop zone and keyboard-reachable **Browse files** action; it accepts exactly one CSV through either path and states the selected format. Pending, success, mismatch, and context feedback stay inside that modal, use text plus status icons, and never display a local path. Moneyball copy says that an upload adds or updates matched players and that omitted enrichment remains; it does not imply whole-cohort replacement. A format mismatch names the required export; changing the save or current snapshot clears feedback and closes the modal, returning focus to its action.
 - **Tactic editor:** one tactic per app save, shared by all teams. One command bar shows the phase view, save status when present, and **Save tactic** action. A single normalized canvas serves IP, OOP, and Both views. Wide visual order is the persistent Tactical XI panel on the left, the pitch in the middle, and the persistent **Selected Slot** inspector on the right at the 320px inspector width, keeping both phase controls available in every view. Below 2xl, the XI panel stacks above the pitch; below the overall `lg` workspace breakpoint, the tactic workspace stacks its major regions. The complete workspace fits the tested desktop viewports without horizontal overflow.
-- **Pitch geometry:** the editor starts from a 4-3-3 DM In-Possession shape linked to a 4-1-4-1 DM Out-of-Possession shape, with compatible general-purpose roles already selected. The normalized canvas uses portrait attack-up orientation below 2100px and a real clockwise 90-degree landscape orientation with attack to the right at or above 2100px. The workspace portrait canvas is centered at a capped width and taller than wide so the vertical pitch reads at 1920×1080; landscape keeps the full-width canvas and the role-reference modal keeps its compact portrait canvas. Marker labels stay upright, and visual tab order matches the current orientation. In Both view, each lane has distinct IP and OOP markers: IP markers carry a steel (`chart-2`) border, OOP markers a magenta (`chart-3`) border that stays dashed, and the dual badge keeps its phase edge under the gold selected treatment while label text stays on-surface; a connector appears only when the canonical full qualified placement identity changes, and the selected lane shows its readable IP role → OOP role transition. Qualified placements (`DCR` / `DC` / `DCL`, `DMCR` / `DM` / `DMCL`, `MCR` / `MC` / `MCL`, `AMCR` / `AMC` / `AMCL`, and `STCR` / `STC` / `STCL`) remain unique within each phase. The tactic workspace alone is centered and capped at 1920px on ultrawide displays; the global `content-max-width: none` contract is unchanged.
+- **Pitch geometry:** the editor starts from a 4-3-3 DM In-Possession shape linked to a 4-1-4-1 DM Out-of-Possession shape, with compatible general-purpose roles already selected. The normalized canvas uses portrait attack-up orientation below 2100px and a real clockwise 90-degree landscape orientation with attack to the right at or above 2100px. The workspace portrait canvas is centered at a capped width and taller than wide so the vertical pitch reads at 1920×1080; landscape keeps the full-width canvas and the role-reference modal keeps its compact portrait canvas. Marker labels stay upright, and visual tab order matches the current orientation. In Both view, each lane has distinct IP and OOP markers: IP markers carry a steel (`chart-2`) border, OOP markers a magenta (`chart-3`) border that stays dashed, and the dual badge keeps its phase edge under the primary selected treatment while label text stays on-surface; a connector appears only when the canonical full qualified placement identity changes, and the selected lane shows its readable IP role → OOP role transition. Qualified placements (`DCR` / `DC` / `DCL`, `DMCR` / `DM` / `DMCL`, `MCR` / `MC` / `MCL`, `AMCR` / `AMC` / `AMCL`, and `STCR` / `STC` / `STCL`) remain unique within each phase. The tactic workspace alone is centered and capped at 1920px on ultrawide displays; the global `content-max-width: none` contract is unchanged.
 - **Selected Slot:** the inspector stretches to the row height and groups its controls into hairline-separated **Phase Influence**, **General Settings**, **In Possession (IP)**, and **Out of Possession (OOP)** sections with a full-width IP/OOP weight slider. It contains IP/OOP weight, optional importance rank from 1 through 11, preferred foot (**Either**, **Left**, **Right**, or **Both**), **Preferred** or **Strict** mode, and both phase position and role controls. Either foot disables the mode control. Selecting an occupied qualified placement swaps the two lanes in the edited phase only. Lane identity, non-placement settings, and compatible roles stay with their lanes; incompatible roles clear for re-selection. Invalid or incomplete role-position pairs cannot be saved. Failed-save draft retention, validation, read-only behavior, and **Save tactic** stay unchanged. The Best role fit Modal remains portrait and single-phase, with its side-by-side table and a widened pitch column of about 330px inside the 720px dialog.
 - **Squad depth board:** one simultaneous board renders every enabled squad under a sticky tactical-slot band. The band shows the IP and OOP role and position context for each of the 11 slots. Each squad uses its configured display name and ordered string names. The board owns horizontal overflow from the 1280×800 minimum through ultrawide displays; the tactical-slot band stays sticky, and fixed-width strings and cards do not stretch. Each occupied cell aligns the player name with a compact, accessible `Current → Potential` combined-score pair. Empty cells show an explicit **Assign** action. Unresolved and outside-pool assignments keep their occupied cell and show a warning; unknown scores render as `—`.
 - **Best role fit reference:** the Planner toolbar opens a read-only **Best role fit reference** Modal with the tactic pitch on the left and independently ranked player results on the right. **In Possession** and **Out of Possession** controls select the tactic phase; **Current** and **Potential** controls select the ranking basis and show both score columns for the selected lane. The right-hand table has sortable **Name**, **Current**, and **Potential** headers, retains the selected tactic lane when a valid result exists, and keeps players without an eligible selected-basis score in a separate section with unavailable values shown as `—`. Opening defaults to In Possession, Current, the first lane, and Current descending; changing phase or basis requests the corresponding read-only reference and never changes assignments or tactic data.
