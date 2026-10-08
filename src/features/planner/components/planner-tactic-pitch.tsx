@@ -63,7 +63,7 @@ function LaneButton({
   // never success/error semantics. Borders are opaque so the edge clears
   // 3:1 against both adjacent surfaces; text stays on-surface so small
   // type keeps its contrast. The dual badge always renders, so phase
-  // identity stays visible under the gold selected treatment.
+  // identity stays visible under the primary selected treatment.
   const phaseBorder = phase === "ip" ? "border-chart-2" : "border-chart-3";
   const phaseBadge = phase === "ip" ? "border-chart-2" : "border-chart-3";
 
@@ -73,7 +73,7 @@ function LaneButton({
       aria-label={`${shortLabel}: ${description}`}
       aria-describedby={linkedHintId}
       aria-pressed={selected}
-      className={`min-h-11 w-full rounded-md border px-1 py-1 text-center transition-[background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+      className={`min-h-11 min-w-0 w-full rounded-md border px-1 py-1 text-center transition-[background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
         selected
           ? "border-primary bg-primary-container text-primary ring-2 ring-primary/60"
           : highlighted
@@ -105,7 +105,10 @@ function LaneButton({
       <span className="block truncate text-label-md" title={description}>
         {position}
       </span>
-      <span className="block truncate text-[11px]" title={description}>
+      <span
+        className="block truncate text-[11px] leading-[1.4]"
+        title={description}
+      >
         {role}
       </span>
     </button>
@@ -361,7 +364,7 @@ export function TacticPitchCanvas({
         ) : null}
         {markers.map((marker) => (
           <div
-            className={`absolute min-w-11 -translate-y-1/2 ${dual ? "w-[6%]" : "w-[12%]"} ${
+            className={`absolute grid min-w-11 -translate-y-1/2 ${dual ? "w-[6%]" : "w-[12%]"} ${
               marker.collides
                 ? marker.phase === "ip"
                   ? "-translate-x-[calc(100%+2px)]"
