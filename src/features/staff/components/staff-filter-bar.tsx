@@ -44,19 +44,14 @@ function StaffFilterStrip({
 }: Pick<StaffFilterBarProps, "rules" | "combine" | "onRulesChange">) {
   const appliedRules = completeStaffFilterRules(rules);
   if (appliedRules.length === 0) {
-    return (
-      <p className="text-body-md text-on-surface-variant">
-        No filters applied. Use Edit filters to narrow the staff list.
-        {combine === "or" ? " Rules combine with OR." : null}
-      </p>
-    );
+    return null;
   }
   return (
-    <div className="space-y-2">
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
       <p className="text-label-md text-on-surface-variant uppercase">
         Combined with {combine}
       </p>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         {appliedRules.map((rule) => {
           const field = getStaffFilterField(rule.field);
           const operator = field?.operators.find(
@@ -227,7 +222,7 @@ function StaffFilterEditorModal({
           <p className="text-body-md text-on-surface-variant">
             Changes apply when you select Done.
           </p>
-          <fieldset className="inline-flex rounded-full border border-outline bg-surface-container-high p-0.5">
+          <fieldset className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5">
             <legend className="sr-only">Combine filters</legend>
             {(["and", "or"] as const).map((mode) => (
               <button
@@ -236,8 +231,8 @@ function StaffFilterEditorModal({
                 aria-pressed={draftCombine === mode}
                 className={
                   draftCombine === mode
-                    ? "rounded-full bg-primary px-3 py-1 text-label-md text-on-primary uppercase"
-                    : "rounded-full px-3 py-1 text-label-md text-on-surface-variant uppercase hover:bg-surface-container-highest"
+                    ? "h-8 rounded-sm bg-primary px-3 text-label-md text-on-primary uppercase"
+                    : "h-8 rounded-sm px-3 text-label-md text-on-surface-variant uppercase hover:bg-surface-container-highest"
                 }
                 onClick={() => setDraftCombine(mode)}
               >
@@ -311,12 +306,21 @@ export function StaffFilterBar({
       <TableToolbar
         toolbarLabel="Staff results toolbar"
         summary={summary}
+        filterSummary={
+          appliedRules.length === 0 ? (
+            <span className="text-body-sm text-on-surface-variant">
+              No filters{combine === "or" ? " · OR" : ""}
+            </span>
+          ) : undefined
+        }
         filterChips={
-          <StaffFilterStrip
-            rules={rules}
-            combine={combine}
-            onRulesChange={onRulesChange}
-          />
+          appliedRules.length > 0 ? (
+            <StaffFilterStrip
+              rules={rules}
+              combine={combine}
+              onRulesChange={onRulesChange}
+            />
+          ) : undefined
         }
         onClearAll={
           appliedRules.length > 0 ? () => onRulesChange([]) : undefined

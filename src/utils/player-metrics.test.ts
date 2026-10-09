@@ -77,6 +77,11 @@ describe("player metric table metadata", () => {
       defaultWidth: 224,
       sortable: true,
     });
+    expect(getPlayerMetric("age")).toMatchObject({
+      align: "right",
+      defaultWidth: 144,
+      sortable: true,
+    });
     expect(getPlayerMetric("attr.Acceleration")).toMatchObject({
       align: "right",
       defaultWidth: 88,

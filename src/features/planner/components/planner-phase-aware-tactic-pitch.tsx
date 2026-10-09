@@ -96,7 +96,10 @@ export function PlannerPhaseAwareTacticPitch({
   return (
     <section className="space-y-2" aria-labelledby={headingId}>
       <div className="flex items-center justify-between gap-3">
-        <h3 id={headingId} className="text-headline-sm text-on-surface">
+        <h3
+          id={headingId}
+          className="text-body-md font-semibold text-on-surface"
+        >
           {label}
         </h3>
       </div>

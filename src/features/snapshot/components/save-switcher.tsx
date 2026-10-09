@@ -179,7 +179,7 @@ export function SaveSwitcher({
 
   return (
     <div ref={panelRef} tabIndex={-1} className="outline-none">
-      <Panel title="Saves">
+      <Panel title="Saves" headingLevel={3}>
         <div className="grid gap-4 sm:grid-cols-2">
           <form
             className="space-y-2"

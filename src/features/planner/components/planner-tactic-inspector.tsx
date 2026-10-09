@@ -136,7 +136,10 @@ export function PlannerTacticInspector({
       aria-labelledby={headingId}
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pb-3">
-        <h3 id={headingId} className="text-label-lg text-on-surface">
+        <h3
+          id={headingId}
+          className="text-body-md font-semibold text-on-surface"
+        >
           Selected Slot
         </h3>
         <p className="whitespace-pre-line text-body-sm text-on-surface-variant">

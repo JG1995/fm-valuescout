@@ -39,7 +39,6 @@ export function BridgeStatusPanel() {
 
   return (
     <Panel
-      title="Bridge"
       actions={
         <Button
           size="icon"

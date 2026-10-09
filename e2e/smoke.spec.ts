@@ -8,6 +8,134 @@ test.describe("application smoke", () => {
     await stubTauriIpc(page);
   });
 
+  for (const [width, height] of [
+    [1280, 800],
+    [1600, 900],
+  ] as const) {
+    test(`shared framing preserves readable controls and dataset space at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height });
+      await stubTauriIpc(page, {
+        playerTableRowCount: 24,
+        squadOverview: true,
+        staffWorkspace: true,
+        snapshotHistory: true,
+      });
+      for (const route of [
+        "/search",
+        "/my-club",
+        "/staff?shortlistOnly=false",
+        "/staff?view=my-staff",
+      ]) {
+        await page.goto(route);
+        await expect(page.getByTestId("app-header").locator("time")).toHaveText(
+          "1st August 2026",
+        );
+        const nav = page.getByRole("navigation", { name: "Primary" });
+        await expect(nav).toHaveCSS("height", "48px");
+        await expect(nav.getByRole("link")).toHaveCount(10);
+        for (const link of await nav.getByRole("link").all()) {
+          const box = await link.boundingBox();
+          expect(box).not.toBeNull();
+          expect(box?.height).toBe(36);
+          expect(box?.x).toBeGreaterThanOrEqual(0);
+          expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width);
+        }
+        const current = nav.locator('[aria-current="page"]');
+        await expect(current).toHaveCount(1);
+        await current.focus();
+        await expect(current).toHaveCSS("outline-width", "2px");
+        await expect(current).toHaveCSS("outline-offset", "-2px");
+        await expect(current).toHaveCSS("border-bottom-width", "2px");
+        await expect(current).toHaveCSS(
+          "border-bottom-color",
+          await current.locator("svg").evaluate((element) => {
+            const browser = globalThis as unknown as {
+              getComputedStyle: (node: unknown) => { color: string };
+            };
+            return browser.getComputedStyle(element).color;
+          }),
+        );
+        const main = page.getByRole("main");
+        await expect(main.getByRole("heading", { level: 1 })).toHaveCount(1);
+        await expect(
+          main.getByRole("heading", {
+            name: /^(Results|Staff|Staff Shortlist|Squad overview)$/,
+          }),
+        ).toHaveCount(0);
+        const toolbar = main.getByRole("toolbar");
+        await expect(
+          toolbar.getByRole("button", { name: "Columns" }),
+        ).toBeVisible();
+        const row = main.locator('tr[data-index="0"]');
+        await expect(row).toBeVisible();
+        const rawAge = row.locator("td").nth(1);
+        await expect(rawAge).toHaveCSS("font-size", "13px");
+        await expect(rawAge).toHaveCSS("font-weight", "500");
+        await expect(rawAge).toHaveCSS("text-align", "right");
+        await expect(rawAge).toHaveCSS("font-family", /Archivo/);
+        await expect(rawAge).toHaveCSS("font-variant-numeric", "tabular-nums");
+        expect((await row.boundingBox())?.height).toBeLessThanOrEqual(41);
+        expect(
+          await main.evaluate((element) => {
+            const region = element as unknown as {
+              scrollWidth: number;
+              clientWidth: number;
+            };
+            return region.scrollWidth <= region.clientWidth;
+          }),
+        ).toBe(true);
+        if (route === "/my-club") {
+          const feedback = page.getByTestId("squad-boost-feedback");
+          await expect(feedback).toHaveCSS("min-height", "24px");
+          expect((await feedback.boundingBox())?.height).toBe(24);
+          await expect(
+            main.getByRole("button", { name: "Boost all CA" }),
+          ).toBeVisible();
+        }
+      }
+    });
+  }
+
+  test("long save names keep the current date and utility controls visible", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stubTauriIpc(page, {
+      snapshotHistory: true,
+      playerTableRowCount: 24,
+    });
+    await page.goto("/settings");
+    const name =
+      "A very long save name — Ελληνικά / Кириллица / José — season 2026/27";
+    await page.getByRole("textbox", { name: "Rename active save" }).fill(name);
+    await page
+      .getByRole("button", { name: "Rename save", exact: true })
+      .click();
+    const header = page.getByTestId("app-header");
+    await expect(
+      header.getByRole("combobox", { name: "Active save" }),
+    ).toHaveAttribute("title", name);
+    await page.getByRole("link", { name: "Search", exact: true }).click();
+    const date = header.locator("time");
+    await expect(date).toHaveText("1st August 2026");
+    await expect(date).toHaveAttribute("datetime", "2026-08-01");
+    const dateBox = await date.boundingBox();
+    const searchBox = await header
+      .getByRole("combobox", { name: "Search players" })
+      .boundingBox();
+    expect(dateBox).not.toBeNull();
+    expect(searchBox).not.toBeNull();
+    if (!dateBox || !searchBox)
+      throw new Error("Expected visible utility context and search.");
+    expect(dateBox.x + dateBox.width).toBeLessThanOrEqual(1280);
+    expect(searchBox.width).toBeGreaterThanOrEqual(200);
+    await expect(
+      header.getByRole("button", { name: "Load Data" }),
+    ).toBeVisible();
+  });
+
   test("Dashboard stays minimal and Settings hosts app management", async ({
     page,
   }) => {

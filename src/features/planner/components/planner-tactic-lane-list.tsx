@@ -29,7 +29,7 @@ export function PlannerTacticLaneList({
       className="w-full shrink-0 space-y-2 rounded-lg border border-outline-variant bg-surface-container-high p-3 2xl:w-84"
       aria-labelledby={headingId}
     >
-      <h3 id={headingId} className="text-headline-sm text-on-surface">
+      <h3 id={headingId} className="text-body-md font-semibold text-on-surface">
         Tactical XI
       </h3>
       <ul className="space-y-1">

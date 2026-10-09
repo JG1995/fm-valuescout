@@ -292,7 +292,7 @@ function MyStaffContent() {
   return (
     <>
       <header className="flex flex-col items-start gap-2">
-        <h1 className="text-headline-lg text-on-surface">My Staff</h1>
+        <h1 className="text-headline-md text-on-surface">My Staff</h1>
         {managedClub?.clubName ? (
           <p className="text-body-sm text-on-surface-variant">
             Managed club: {managedClub.clubName}

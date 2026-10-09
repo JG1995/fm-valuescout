@@ -4,7 +4,7 @@ import { formatMissable, formatMoney } from "@/utils/format";
 export const TABLE_TEXT_CELL_CLASS =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
 export const TABLE_NUMERIC_CELL_CLASS =
-  "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
+  "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-sans text-body-sm font-medium text-on-surface tabular-nums";
 
 type DynamicRow = {
   dynamicValues?: Record<string, unknown> | undefined;
@@ -56,7 +56,10 @@ export function formatPlayerBasicCell(
   key: PlayerBasicCellKey,
 ): { text: string; title?: string; numeric: boolean } {
   if (!player) {
-    return { text: "…", numeric: key !== "name" && key !== "age" };
+    return {
+      text: "…",
+      numeric: key === "age" || key === "ca" || key === "pa" || key === "value",
+    };
   }
   switch (key) {
     case "name":
@@ -66,7 +69,7 @@ export function formatPlayerBasicCell(
       return {
         text: age,
         title: age !== "—" ? age : undefined,
-        numeric: false,
+        numeric: true,
       };
     }
     case "nationality": {
@@ -119,10 +122,14 @@ export function TableScoreContent({
   isLoading = false,
 }: TableScoreContentProps) {
   if (isLoading) {
-    return <span className="text-on-surface-variant">…</span>;
+    return (
+      <span className="font-mono text-mono-sm text-on-surface-variant">…</span>
+    );
   }
   if (typeof score === "number") {
     return <ScoreBadge score={score} roleName={roleName} />;
   }
-  return <span className="text-on-surface-variant">—</span>;
+  return (
+    <span className="font-mono text-mono-sm text-on-surface-variant">—</span>
+  );
 }

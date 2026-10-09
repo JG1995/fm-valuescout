@@ -509,9 +509,9 @@ function MyClubPageContent() {
   };
   const myClubHeader = (
     <header className="flex flex-col items-start gap-2">
-      <div className="flex w-full flex-wrap items-start justify-between gap-3">
+      <div className="flex w-full flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-headline-lg text-on-surface">My Club</h1>
+          <h1 className="text-headline-md text-on-surface">My Club</h1>
           {managedClub.clubName ? (
             <p className="flex items-center gap-2 text-body-sm text-on-surface-variant">
               <ManagedClubLogo
@@ -578,7 +578,7 @@ function MyClubPageContent() {
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-col gap-2">
+    <div className="flex h-full min-w-0 flex-col gap-4">
       {myClubHeader}
       <div
         hidden={activeWorkspace !== "squad"}
@@ -586,7 +586,7 @@ function MyClubPageContent() {
       >
         {managedClub.clubName ? (
           isSquadResultBlocked ? (
-            <Panel title="Squad overview" flush>
+            <Panel flush>
               <p className="p-4 text-body-md text-on-surface-variant">
                 Loading squad overview…
               </p>
@@ -703,7 +703,7 @@ function MyClubPageContent() {
                 <Link
                   to="/my-club"
                   hash="managed-club"
-                  className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
+                  className="inline-flex h-8 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
                 >
                   Open Managed Club
                 </Link>
@@ -840,7 +840,7 @@ function MyClubPage() {
     <Suspense
       fallback={
         <div className="space-y-gutter">
-          <h1 className="text-headline-lg text-on-surface">My Club</h1>
+          <h1 className="text-headline-md text-on-surface">My Club</h1>
           <div className="flex min-h-40 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
             Loading My Club…
           </div>

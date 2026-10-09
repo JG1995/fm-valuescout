@@ -47,7 +47,7 @@ export function AcademyWorkspaceTabs({
     <div
       role="tablist"
       aria-label="Youth Academy workspaces"
-      className="inline-flex rounded-full bg-surface-container-high p-0.5"
+      className="inline-flex rounded-md bg-surface-container-high p-0.5"
       onKeyDown={onKeyDown}
     >
       {ACADEMY_VIEWS.map((id) => {
@@ -62,7 +62,7 @@ export function AcademyWorkspaceTabs({
             aria-controls={`academy-workspace-panel-${id}`}
             tabIndex={selected ? 0 : -1}
             className={cn(
-              "cursor-pointer rounded-full px-4 py-1.5 text-label-lg transition-colors duration-150 ease-out",
+              "h-8 cursor-pointer rounded-sm px-4 text-label-lg transition-colors duration-150 ease-out",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
               selected
                 ? "bg-primary text-on-primary"

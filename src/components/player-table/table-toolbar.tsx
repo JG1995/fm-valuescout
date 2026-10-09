@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button/button";
 export type TableToolbarProps = {
   toolbarLabel: string;
   summary?: ReactNode;
+  filterSummary?: ReactNode;
   filterChips?: ReactNode;
   onClearAll?: () => void;
   onEditFilters?: () => void;
@@ -25,6 +26,7 @@ export type TableToolbarProps = {
 export function TableToolbar({
   toolbarLabel,
   summary,
+  filterSummary,
   filterChips,
   onClearAll,
   onEditFilters,
@@ -35,28 +37,40 @@ export function TableToolbar({
     <div
       role="toolbar"
       aria-label={toolbarLabel}
-      className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-3"
+      className="shrink-0 border-b border-outline-variant px-4 py-2"
     >
-      {summary ? (
-        <div className="text-body-md text-on-surface-variant">{summary}</div>
+      <div className="flex flex-wrap items-center gap-2">
+        {summary ? (
+          <div className="min-w-0 flex-1 basis-64 text-body-md text-on-surface-variant">
+            {summary}
+          </div>
+        ) : null}
+        <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
+          {filterSummary}
+          {onEditFilters ? (
+            <Button
+              variant="secondary"
+              icon={SlidersHorizontal}
+              onClick={onEditFilters}
+            >
+              Edit filters
+            </Button>
+          ) : null}
+          {columnsControl}
+          {datasetToggles}
+        </div>
+      </div>
+      {filterChips || onClearAll ? (
+        <fieldset className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+          <legend className="sr-only">Applied filters</legend>
+          {filterChips}
+          {onClearAll ? (
+            <Button variant="ghost" onClick={onClearAll}>
+              Clear all
+            </Button>
+          ) : null}
+        </fieldset>
       ) : null}
-      {filterChips}
-      {onClearAll ? (
-        <Button variant="ghost" onClick={onClearAll}>
-          Clear all
-        </Button>
-      ) : null}
-      {onEditFilters ? (
-        <Button
-          variant="secondary"
-          icon={SlidersHorizontal}
-          onClick={onEditFilters}
-        >
-          Edit filters
-        </Button>
-      ) : null}
-      {columnsControl}
-      {datasetToggles}
     </div>
   );
 }

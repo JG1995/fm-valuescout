@@ -74,6 +74,12 @@ describe("Settings", () => {
     expect(screen.queryByRole("combobox", { name: "Managed club" })).toBeNull();
     expect(screen.getByRole("region", { name: "Bridge" })).toBeInTheDocument();
     expect(
+      await screen.findByRole("heading", {
+        level: 3,
+        name: "Bridge plugin install",
+      }),
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole("button", { name: "Load Data" }),
     ).toBeInTheDocument();
     expect(

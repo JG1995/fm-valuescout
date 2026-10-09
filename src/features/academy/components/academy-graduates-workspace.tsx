@@ -20,7 +20,7 @@ export function AcademyGraduatesWorkspace({
 }: AcademyGraduatesWorkspaceProps) {
   if (detailsError) {
     return (
-      <Panel title="Graduates">
+      <Panel>
         <p className="text-body-sm text-error" role="alert">
           Could not load graduate data. {errorMessage(detailsError)}
         </p>
@@ -30,7 +30,7 @@ export function AcademyGraduatesWorkspace({
 
   if (detailsPending) {
     return (
-      <Panel title="Graduates">
+      <Panel>
         <p className="text-body-md text-on-surface-variant">
           Loading graduate data…
         </p>
@@ -58,7 +58,7 @@ export function AcademyGraduatesWorkspace({
 
   if (graduates.length === 0) {
     return (
-      <Panel title="Graduates">
+      <Panel>
         <EmptyState icon={GraduationCap} title="No graduates yet">
           A player becomes a graduate after one or more reported career
           appearances.
@@ -68,8 +68,8 @@ export function AcademyGraduatesWorkspace({
   }
 
   return (
-    <Panel title="Graduates">
-      <div className="overflow-x-auto rounded-lg border border-outline-variant">
+    <Panel flush>
+      <div className="overflow-x-auto">
         <table className="min-w-[720px] w-full border-collapse text-left">
           <caption className="sr-only">Youth Academy graduates</caption>
           <thead className="bg-surface-container-lowest">
@@ -106,7 +106,7 @@ export function AcademyGraduatesWorkspace({
 
 function AcademyGraduatesUnavailable() {
   return (
-    <Panel title="Graduates">
+    <Panel>
       <EmptyState icon={GraduationCap} title="Graduate data unavailable">
         Career appearances have not been imported for every tracked player, so
         graduate status and totals remain unavailable.
@@ -130,7 +130,7 @@ function GraduateRow({
       <td className="px-2 text-body-sm text-on-surface-variant">
         Class of {academyClass.classYear}
       </td>
-      <td className="px-2 text-right text-body-sm tabular-nums">
+      <td className="px-2 text-right text-body-sm font-medium tabular-nums">
         {formatMissable(member.reportedCareerAppearances)}
       </td>
       <td className="px-2 text-body-sm text-on-surface-variant">

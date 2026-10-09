@@ -238,11 +238,11 @@ export function PlannerTacticEditor({
     <Panel flush className="min-w-0">
       <div className="grid gap-3 p-3">
         <section
-          className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-high p-3"
+          className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-high p-3"
           aria-label="Tactic controls"
         >
           <fieldset
-            className="mr-auto inline-flex rounded-full bg-surface-container p-0.5"
+            className="mr-auto inline-flex rounded-md bg-surface-container p-0.5"
             onKeyDown={handleViewKeyDown}
           >
             <legend className="sr-only">Tactic phase views</legend>
@@ -257,7 +257,7 @@ export function PlannerTacticEditor({
                   type="button"
                   aria-pressed={selected}
                   tabIndex={selected ? 0 : -1}
-                  className={`cursor-pointer rounded-full px-4 py-1.5 text-label-lg transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                  className={`h-8 cursor-pointer rounded-sm px-4 text-label-lg transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                     selected
                       ? "bg-primary text-on-primary"
                       : "text-on-surface-variant hover:text-on-surface"

@@ -230,15 +230,15 @@ export function StaffAssignmentOptimizer({
       {optimizeDisabledReason ? (
         <p
           id="assignment-readiness"
-          className="mt-2 w-full text-body-sm text-on-surface-variant"
+          className="mt-1 w-full text-body-sm text-on-surface-variant"
         >
           {optimizeDisabledReason}
         </p>
       ) : null}
       <div
         data-testid="assignment-status-region"
-        role={statusError || message || statusSuccess ? "status" : undefined}
-        className="mt-2 w-full min-h-6 text-body-sm"
+        role={!statusError && (message || statusSuccess) ? "status" : undefined}
+        className="mt-1 w-full min-h-6 text-body-sm break-words"
       >
         {!contextUnavailable && statusError ? (
           <p

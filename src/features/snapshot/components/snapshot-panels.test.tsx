@@ -20,6 +20,7 @@ import {
   setSnapshotHistoryIpcMock,
   setSnapshotRenameIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
+import * as snapshotMetadataApi from "../api/fetch-snapshot-metadata";
 import { SnapshotPanelsWithErrorBoundary } from "./snapshot-panels-with-error-boundary";
 
 const HISTORY: SnapshotMetadata[] = [
@@ -96,6 +97,21 @@ describe("snapshot panels", () => {
     resolveBusyLoadDataRequest();
     resolveBusySnapshotDeleteRequest();
     resolveBusySnapshotDateEditRequest();
+  });
+
+  it("keeps snapshot history a nested heading while loading", async () => {
+    const fetchHistory = vi
+      .spyOn(snapshotMetadataApi, "fetchSnapshotMetadata")
+      .mockImplementation(() => new Promise(() => {}));
+    try {
+      renderPanels(vi.fn().mockResolvedValue(undefined));
+      await screen.findByText("Loading snapshot history…");
+      expect(
+        screen.getByRole("heading", { name: "Snapshot history", level: 3 }),
+      ).toBeInTheDocument();
+    } finally {
+      fetchHistory.mockRestore();
+    }
   });
 
   it("shows empty snapshot guidance on open", async () => {

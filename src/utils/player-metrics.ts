@@ -307,7 +307,7 @@ const PLAYER_METRIC_DEFINITIONS: readonly PlayerMetricDefinition[] = [
     label: "Age",
     category: "identity",
     kind: "integer",
-    align: "left",
+    align: "right",
     defaultWidth: 144,
     operators: INTEGER_OPERATORS,
   },

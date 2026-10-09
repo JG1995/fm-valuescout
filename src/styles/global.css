@@ -35,12 +35,12 @@
   --color-surface-container-high: oklch(0.289 0.012 264.4);
   --color-surface-container-highest: oklch(0.375 0.013 267.2);
   --color-on-surface: oklch(0.964 0.003 264.5);
-  --color-on-surface-variant: oklch(0.711 0.007 255.5);
+  --color-on-surface-variant: oklch(0.76 0.007 255.5);
   --color-inverse-surface: oklch(0.964 0.003 264.5);
   --color-inverse-on-surface: oklch(0.226 0.013 264.3);
 
   /* Borders and outlines */
-  --color-outline: oklch(0.555 0.01 264.5);
+  --color-outline: oklch(0.66 0.01 264.5);
   --color-outline-variant: oklch(0.375 0.013 267.2);
   --color-surface-tint: oklch(0.766 0.157 157.1);
 
@@ -64,7 +64,7 @@
   --color-on-warning: oklch(0.16 0.03 55);
   --color-warning-container: oklch(0.34 0.085 55);
   --color-on-warning-container: oklch(0.92 0.04 55);
-  --color-error: oklch(0.66 0.2 18);
+  --color-error: oklch(0.77 0.13 18);
   --color-on-error: oklch(0.16 0.03 18);
   --color-error-container: oklch(0.34 0.115 18);
   --color-on-error-container: oklch(0.92 0.035 18);
@@ -74,8 +74,8 @@
   --color-on-info-container: oklch(0.92 0.035 245);
 
   /* FM-style data ramp — red, grey, amber, green. Data only. */
-  --color-score-1: oklch(0.66 0.2 18);
-  --color-score-2: oklch(0.74 0.008 264);
+  --color-score-1: oklch(0.77 0.13 18);
+  --color-score-2: oklch(0.75 0.008 264);
   --color-score-3: oklch(0.8 0.145 75);
   --color-score-4: oklch(0.746 0.119 179);
 
@@ -141,12 +141,12 @@
   --text-mono-sm--line-height: 1.4;
   --text-mono-sm--font-weight: 500;
 
-  /* Shapes — rounded rectangles hold data, pills change state */
+  /* Shapes — panels, controls, compact items, then floating overlays. */
   --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
-  --radius: 0.5rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius: 0.375rem;
 
   /* Elevation — the only level with a shadow is the floating overlay */
   --shadow-overlay: 0 8px 24px oklch(0 0 0 / 0.6);

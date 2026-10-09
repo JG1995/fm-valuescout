@@ -58,7 +58,7 @@ export const Route = createFileRoute("/academy")({
 function AcademyFallback() {
   return (
     <div className="space-y-gutter" aria-busy="true" aria-live="polite">
-      <h1 className="text-headline-lg text-on-surface">Youth Academy</h1>
+      <h1 className="text-headline-md text-on-surface">Youth Academy</h1>
       <div className="flex min-h-40 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
         Loading academy…
       </div>
@@ -68,7 +68,7 @@ function AcademyFallback() {
 
 function AcademyNoSnapshot() {
   return (
-    <Panel title="Youth Academy" flush>
+    <Panel flush>
       <EmptyState icon={DatabaseZap} title="No data loaded for this save">
         No snapshot loaded for the active save. Use Load Data to scan Football
         Manager and ingest players before creating academy classes.
@@ -87,7 +87,7 @@ function AcademyNoManagedClub() {
           <Link
             to="/my-club"
             hash="managed-club"
-            className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
+            className="inline-flex h-8 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
           >
             Open Managed Club
           </Link>
@@ -184,7 +184,7 @@ function AcademyPageContent() {
   if (!snapshot) {
     return (
       <div className="space-y-gutter">
-        <h1 className="text-headline-lg text-on-surface">Youth Academy</h1>
+        <h1 className="text-headline-md text-on-surface">Youth Academy</h1>
         <AcademyNoSnapshot />
       </div>
     );
@@ -193,17 +193,17 @@ function AcademyPageContent() {
   if (!managedClub.clubName) {
     return (
       <div className="space-y-gutter">
-        <h1 className="text-headline-lg text-on-surface">Youth Academy</h1>
+        <h1 className="text-headline-md text-on-surface">Youth Academy</h1>
         <AcademyNoManagedClub />
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       <header className="flex flex-col items-start gap-2">
         <div>
-          <h1 className="text-headline-lg text-on-surface">Youth Academy</h1>
+          <h1 className="text-headline-md text-on-surface">Youth Academy</h1>
           <p className="text-body-sm text-on-surface-variant">
             {managedClub.clubName} · Managed-club class cohorts
           </p>

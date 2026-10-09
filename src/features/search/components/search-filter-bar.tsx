@@ -50,13 +50,22 @@ export function SearchFilterBar({
       <TableToolbar
         toolbarLabel="Player results toolbar"
         summary={summary}
+        filterSummary={
+          appliedRules.length === 0 ? (
+            <span className="text-body-sm text-on-surface-variant">
+              No filters{combine === "or" ? " · OR" : ""}
+            </span>
+          ) : undefined
+        }
         filterChips={
-          <SearchFilterStrip
-            rules={rules}
-            combine={combine}
-            onRulesChange={onRulesChange}
-            view={view}
-          />
+          appliedRules.length > 0 ? (
+            <SearchFilterStrip
+              rules={rules}
+              combine={combine}
+              onRulesChange={onRulesChange}
+              view={view}
+            />
+          ) : undefined
         }
         onClearAll={
           appliedRules.length > 0 ? () => onRulesChange([]) : undefined

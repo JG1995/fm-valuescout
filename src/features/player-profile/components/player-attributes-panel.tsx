@@ -61,7 +61,7 @@ function AttributeSection({
 
   return (
     <section aria-labelledby={headingId} className="min-h-0 min-w-0 space-y-2">
-      <h3 id={headingId} className="text-label-lg text-on-surface">
+      <h3 id={headingId} className="text-body-md font-semibold text-on-surface">
         {group.title}
       </h3>
       <AttributeRows

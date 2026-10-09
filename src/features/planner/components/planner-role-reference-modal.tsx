@@ -129,7 +129,7 @@ function PhaseToggle({
   }
   return (
     <label
-      className={`relative cursor-pointer rounded-full px-3 py-1.5 text-label-md transition-colors duration-150 ease-out has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary ${
+      className={`relative inline-flex h-8 cursor-pointer items-center rounded-sm px-3 text-label-md transition-colors duration-150 ease-out has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary ${
         selected
           ? "bg-primary text-on-primary"
           : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -162,7 +162,7 @@ function BasisToggle({
   }
   return (
     <label
-      className={`relative cursor-pointer rounded-full px-3 py-1.5 text-label-md transition-colors duration-150 ease-out has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary ${
+      className={`relative inline-flex h-8 cursor-pointer items-center rounded-sm px-3 text-label-md transition-colors duration-150 ease-out has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary ${
         selected
           ? "bg-primary text-on-primary"
           : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -425,7 +425,7 @@ export function PlannerRoleReferenceModal({
               Tactic phase
             </legend>
             <div
-              className="mt-1 inline-flex rounded-full bg-surface-container p-0.5"
+              className="mt-1 inline-flex rounded-md bg-surface-container p-0.5"
               role="radiogroup"
               aria-label="Tactic phase"
             >
@@ -444,7 +444,7 @@ export function PlannerRoleReferenceModal({
               Score basis
             </legend>
             <div
-              className="mt-1 inline-flex rounded-full bg-surface-container p-0.5"
+              className="mt-1 inline-flex rounded-md bg-surface-container p-0.5"
               role="radiogroup"
               aria-label="Score basis"
             >
@@ -488,7 +488,7 @@ export function PlannerRoleReferenceModal({
           >
             <div className="border-b border-outline-variant px-3 py-2">
               <h3
-                className="truncate text-headline-sm text-on-surface"
+                className="truncate text-body-md font-semibold text-on-surface"
                 title={`${positionName} · ${roleName}`}
               >
                 {positionName} · {roleName}
@@ -544,7 +544,7 @@ export function PlannerRoleReferenceModal({
                   className="border-t border-outline-variant py-3"
                   aria-label="No eligible role"
                 >
-                  <h3 className="mb-2 text-label-lg text-on-surface">
+                  <h3 className="mb-2 text-body-md font-semibold text-on-surface">
                     No eligible role
                   </h3>
                   <PlayerTable

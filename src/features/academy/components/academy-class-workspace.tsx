@@ -264,7 +264,7 @@ function AcademyRosterGroup({
 
   return (
     <section aria-labelledby={headingId}>
-      <h3 id={headingId} className="text-title-md text-on-surface">
+      <h3 id={headingId} className="text-body-md font-semibold text-on-surface">
         {title} ({members.length})
       </h3>
       <div className="mt-2 max-h-[min(55vh,560px)] overflow-auto rounded-lg border border-outline-variant">

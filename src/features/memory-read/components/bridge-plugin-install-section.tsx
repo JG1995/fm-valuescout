@@ -60,7 +60,7 @@ export function BridgePluginInstallSection() {
   const actionsDisabled = install.isPending || remove.isPending;
 
   return (
-    <Panel title="Bridge plugin install">
+    <Panel title="Bridge plugin install" headingLevel={3}>
       <div className="flex flex-wrap items-center gap-2">
         <StatusChip
           tone={data.pluginPresent ? "success" : "neutral"}

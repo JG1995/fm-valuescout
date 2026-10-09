@@ -384,7 +384,7 @@ export function SnapshotHistoryPanel({
 
   return (
     <div ref={panelRef} tabIndex={-1} className="outline-none">
-      <Panel title="Snapshot history" flush>
+      <Panel title="Snapshot history" headingLevel={3} flush>
         {snapshots.length === 0 ? (
           <EmptyState icon={DatabaseZap} title="No snapshots stored">
             Load data to store the first dated snapshot for this save.
@@ -444,7 +444,7 @@ export function SnapshotHistoryPanel({
                         </p>
                       ) : null}
                     </td>
-                    <td className="px-2 text-right font-mono text-mono-sm text-on-surface tabular-nums">
+                    <td className="px-2 text-right text-body-sm font-medium text-on-surface tabular-nums">
                       {formatCount(snapshot.playerCount)}
                     </td>
                     <td className="px-2 text-body-sm text-on-surface-variant">

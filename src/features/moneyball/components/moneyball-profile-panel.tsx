@@ -68,7 +68,7 @@ function MoneyballTabs({
     <div
       role="tablist"
       aria-label="Moneyball metric categories"
-      className="inline-flex max-w-full rounded-full bg-surface-container-high p-0.5"
+      className="inline-flex max-w-full rounded-md bg-surface-container-high p-0.5"
       onKeyDown={onKeyDown}
     >
       {MONEYBALL_METRIC_CATEGORIES.map((category) => {
@@ -84,8 +84,8 @@ function MoneyballTabs({
             tabIndex={selected ? 0 : -1}
             className={
               selected
-                ? "cursor-pointer rounded-full bg-primary px-3 py-1.5 text-label-md text-on-primary"
-                : "cursor-pointer rounded-full px-3 py-1.5 text-label-md text-on-surface-variant hover:text-on-surface"
+                ? "h-8 cursor-pointer rounded-sm bg-primary px-3 text-label-md text-on-primary"
+                : "h-8 cursor-pointer rounded-sm px-3 text-label-md text-on-surface-variant hover:text-on-surface"
             }
             onClick={() => onChange(category.id)}
           >

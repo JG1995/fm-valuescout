@@ -77,7 +77,7 @@ export function SnapshotPanelsWithErrorBoundary({
       >
         <Suspense
           fallback={
-            <Panel title="Snapshot history">
+            <Panel title="Snapshot history" headingLevel={3}>
               <p className="text-body-md text-on-surface-variant">
                 Loading snapshot history…
               </p>

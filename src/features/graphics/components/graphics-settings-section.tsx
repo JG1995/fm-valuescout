@@ -97,7 +97,7 @@ export function GraphicsSettingsSection() {
       : "neutral";
 
   return (
-    <Panel title="Graphics">
+    <Panel>
       <div className="flex flex-wrap items-center gap-2">
         <StatusChip
           tone={statusTone}

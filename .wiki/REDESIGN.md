@@ -13,9 +13,11 @@ Selected targets belong in DESIGN.md, clearly separated from current behavior; u
 Accepted multi-commit delivery belongs in a feature ledger.
 Do not maintain competing token definitions here.
 
-**Step 1: done — shared rules settled, not implemented.** The developer selected a decisions-only checkpoint.
-[DESIGN.md's settled shared rules](DESIGN.md#settled-shared-rules-step-2-targets) own the targets and comparison evidence.
-Checked decision/comparison items below do not mean their production rollout or post-change verification is complete.
+**Step 1: done — shared rules settled.** The developer selected a decisions-only checkpoint, followed by step-2 implementation.
+**Step 2: done — shared framing implemented and verified in Chromium.** [DESIGN.md's shared framing rules](DESIGN.md#shared-framing-rules) describe current behavior and comparison evidence.
+Checked preservation items describe the step-2 change, not permission to stop protecting them in later work.
+Moneyball Profile and smaller-desktop Tactic composition, feature-specific refinements, and native Windows verification remain pending.
+Native rendering belongs to step 5, not the step-2 completion gate; completion does not authorize publication.
 
 - [x] Settle navigation treatment.
 - [x] Settle heading hierarchy and shared spacing.
@@ -43,7 +45,13 @@ Scores, warnings, errors, and phase distinctions still need their own truthful s
 
 The audit inspected the Signal kit under `.work/brand-identity/`, DESIGN.md, shared UI components, route composition, and relevant feature components.
 Rendered evidence covered all 19 canonical inspection screens at 1600×900, plus Search, Tactic, and Moneyball Profile at 1280×800.
-The inspected implementation baseline was `36fa5c9`, following the Signal integration commit `e78a011`.
+The original audit baseline was `36fa5c9`, following the Signal integration commit `e78a011`; its observations below describe that baseline unless updated explicitly.
+
+Step 2 compared all 19 canonical populated routes before at `7169c53` and after implementation, at both 1280×800 and 1600×900 (38 matched pairs).
+Shared framing recovers workspace without reducing row heights: Search's first row moves from approximately y=362px to y=284px, and Squad's from y=444px to y=380px.
+Additional runtime checks covered normal/shortlist Staff controls, long mixed-script filters and save names, removal/Clear all, modal focus return, recovery locks, and expanding error copy; lower Settings sections were inspected separately.
+The full unit suite passed 1,044 tests, smoke passed 65 tests, and `./scripts/dev check` passed, including 882 Rust tests.
+The canonical token-pair and actual-state contrast evidence belongs in [DESIGN.md](DESIGN.md#accessibility-of-colour).
 
 The captures used Chromium and synthetic Tauri IPC fixtures.
 They do not prove native WebView2 rendering, live FM integration, or behavior with every production dataset.
@@ -64,18 +72,18 @@ Do not copy their marketing-page scale, light grounds, or generous hero spacing 
 
 These choices already fit the product and Signal identity:
 
-- [ ] Preserve dark-only, offline-first, desktop-only operation and the supported 1280×800 minimum window.
-- [ ] Preserve 40px two-line rows in shared analysis tables, including name and club/division context.
-- [ ] Preserve the 36px single-line table option where its content warrants it; do not force all table types to share one height.
-- [ ] Preserve 32px minimum profile attribute rows and wrapping where long labels need it.
-- [ ] Preserve the 13px table-text and 14px body/control scale unless focused rendered evidence justifies a change.
-- [ ] Preserve 16px page padding and default gutters, with the existing 4px spacing unit.
-- [ ] Preserve 32–36px ordinary desktop controls and 44px pitch-selection targets; compact framing must not shrink usability.
-- [ ] Preserve full-width analysis workspaces, sticky identity, grouped headers, bounded configurable column widths, and table-owned scrolling.
-- [ ] Preserve fixed-width Planner strings instead of stretching sparse boards to fill the display.
-- [ ] Preserve numeric values, missing-value distinctions, score tiers, phase cues, snapshot provenance, and explicit mutation feedback.
-- [ ] Preserve text-first player and club identity, optional local graphics, and stable graphic fallback slots.
-- [ ] Preserve existing URLs, navigation history, selection, drafts, column preferences, and guarded mutation behavior unless a separately approved behavior change requires otherwise.
+- [x] Preserve dark-only, offline-first, desktop-only operation and the supported 1280×800 minimum window.
+- [x] Preserve 40px two-line rows in shared analysis tables, including name and club/division context; measured outer rows remain 41px including the hairline.
+- [x] Preserve the 36px single-line table option where its content warrants it; do not force all table types to share one height.
+- [x] Preserve 32px minimum profile attribute rows and wrapping where long labels need it.
+- [x] Preserve the 13px table-text and 14px body/control scale, with the verified raw-number/score split.
+- [x] Preserve 16px page padding and default gutters, with the existing 4px spacing unit.
+- [x] Preserve 32–36px ordinary desktop controls and 44px pitch-selection targets; compact framing must not shrink usability.
+- [x] Preserve full-width analysis workspaces, sticky identity, grouped headers, bounded configurable column widths, and table-owned scrolling.
+- [x] Preserve fixed-width Planner strings instead of stretching sparse boards to fill the display.
+- [x] Preserve numeric values, missing-value distinctions, score tiers, phase cues, snapshot provenance, and explicit mutation feedback.
+- [x] Preserve text-first player and club identity, optional local graphics, and stable graphic fallback slots; image-stage proportions are unchanged.
+- [x] Preserve existing URLs, navigation history, selection, drafts, column preferences, and guarded mutation behavior.
 
 Do not add a permanent sidebar, global content-width clamp, decorative charts, or dashboard statistics solely to express the brand.
 
@@ -83,11 +91,11 @@ Do not add a permanent sidebar, global content-width clamp, decorative charts, o
 
 | Priority | Work | Reason |
 | --- | --- | --- |
-| P1 | Settle shared rules — **Done** | Six decision targets are documented; production rollout remains pending |
-| P1 | Compact shared navigation and table framing | Largest cross-app opportunity to return attention and space to data |
+| P1 | Settle shared rules — **Done** | Six rules are documented and implemented |
+| P1 | Compact shared navigation and table framing — **Done** | Shared framing returns space to data without shrinking rows |
 | P1 | Moneyball Profile proportions and minimum-height usability | Evidence gets squeezed or falls out of the initial view |
 | P1 | Tactic composition at smaller desktop widths | The XI list displaces the pitch from the initial viewport |
-| P1 | Reconcile stale DESIGN.md statements — **Done** | Current rules now match Signal and implementation; runtime contrast fixes remain pending |
+| P1 | Reconcile stale DESIGN.md statements — **Done** | Current rules, geometry, and corrected contrast tokens match implementation |
 | P2 | Simplify surfaces, shapes, and emphasis | Removes inconsistent dashboard-like framing |
 | P2 | Refine profile summaries, Academy, Planner, and Settings | Applies shared rules to feature-specific composition |
 | P3 | Inspect dialogs, long-operation states, and remaining boundaries | Extends verified coherence beyond initial populated screens |
@@ -104,14 +112,14 @@ The destination band stacks 24px icons, labels, and group captions.
 That is a prominent launcher-like treatment for a data-first companion.
 
 - [x] Retain the existing 56px utility bar and its global controls as the selected rule.
-- [x] Compare a compact inline-icon destination band and select the treatment recorded in DESIGN.md; production implementation follows in step 2.
-- [ ] Preserve direct access to the existing destinations and their logical grouping.
-- [ ] Retain enough group context to distinguish player, staff, and club destinations without adding another tall caption row.
-- [x] Select quieter active navigation after comparing a subtle tint, persistent indicator, and reinforced label; applying that treatment remains step-2 work.
-- [ ] Preserve non-colour selected cues, `aria-current`, keyboard focus, and profile group-context behavior.
+- [x] Compare and implement the compact inline-icon destination band recorded in DESIGN.md.
+- [x] Preserve direct access to the existing destinations and their logical grouping.
+- [x] Retain enough group context to distinguish player, staff, and club destinations without adding another tall caption row.
+- [x] Implement quieter active navigation with a subtle tint, persistent indicator, and reinforced label.
+- [x] Preserve non-colour selected cues, `aria-current`, keyboard focus, and profile group-context behavior.
 - [x] Verify that all ten destinations fit in the comparison candidate at 1280px with readable labels and usable targets.
-- [ ] Reverify destination fit, focus, and group-context behavior in the production implementation.
-- [ ] Do not reclaim vertical space by burying frequently used destinations in menus.
+- [x] Reverify destination fit, focus, and group-context behavior in the production implementation.
+- [x] Do not reclaim vertical space by burying frequently used destinations in menus.
 
 **Primary owner:** `src/app/components/app-nav-bar.tsx`.
 
@@ -120,22 +128,22 @@ That is a prominent launcher-like treatment for a data-first companion.
 **Observed:** the utility bar imports the saturated green launcher tile from the Tauri icon set.
 It creates a bright block where the identity mechanism calls for a restrained outline with a lit blip.
 
-- [ ] Use an appropriate dark-ground outline symbol with its green blip in the utility bar.
-- [ ] Keep the launcher tile for OS app-icon contexts.
-- [ ] Put the chosen runtime SVG in a tracked application asset location; do not import from `.work/`.
-- [ ] Use a finalized coloured SVG, not an unprocessed master whose `data-color` roles still need resolving.
-- [ ] Verify optical size, clear space, and rendering at the actual header size.
-- [ ] Keep an accessible product name without adding a large wordmark that crowds global search or save context.
+- [x] Use an appropriate dark-ground outline symbol with its green blip in the utility bar.
+- [x] Keep the launcher tile for OS app-icon contexts.
+- [x] Put the finished SVG in `src/assets/signal-symbol.svg`; do not import from `.work/`.
+- [x] Use a finalized coloured SVG, not an unprocessed master whose `data-color` roles still need resolving.
+- [x] Verify optical size, clear space, and rendering at the actual 36px header size.
+- [x] Keep an accessible product name without adding a large wordmark that crowds global search or save context.
 
 **Primary owner:** `src/app/components/app-top-bar.tsx`.
 
 ### 1.3 Preserve global-context usability
 
-- [ ] Verify long save names, dates, global search, and pending Load Data labels at the minimum width.
-- [ ] Keep the active save and current snapshot date visible on every data workspace.
-- [ ] Keep Back and Forward recognizable and keyboard-operable.
-- [ ] Verify the reduced workspace height while a Load Data outcome or progress region is visible.
-- [ ] Keep pending, failed, and successful refresh feedback understandable without turning it into a large permanent banner.
+- [x] Verify long save names, dates, global search, and pending Load Data labels at the minimum width.
+- [x] Keep the active save and matching current snapshot date visible on every data workspace; separate the nonshrinking date from the name-only native select.
+- [x] Keep Back and Forward recognizable and keyboard-operable.
+- [x] Verify the reduced workspace height while a Load Data outcome or progress region is visible.
+- [x] Keep pending, failed, and successful refresh feedback understandable without turning it into a large permanent banner.
 
 ## 2. Workspace headers and table framing
 
@@ -146,23 +154,23 @@ At 1600×900, its first data row begins around y=362px; Squad begins around y=44
 These are observations of the inspected captures, not proposed fixed coordinates.
 
 - [x] Define one workspace-header and semantic heading hierarchy in DESIGN.md, including equivalent destination context and feature-owned action ownership.
-- [ ] Apply that hierarchy to workspace headers, preserving meaningful context and actions.
-- [ ] Remove generic headings such as Results when they add no information.
-- [ ] Review repeated titles such as Staff, Graphics, and Graduates where surrounding context already identifies the content.
-- [ ] Do not remove meaningful section headings or accessible table captions merely to reduce visible text.
-- [ ] Keep feature actions outside the generic dataset toolbar, preserving its existing ownership boundary.
+- [x] Apply that hierarchy to workspace headers, preserving meaningful context and actions.
+- [x] Remove generic headings such as Results when they add no information.
+- [x] Remove redundant Staff, Squad overview, Graphics, Bridge, and Graduates titles while retaining meaningful section headings.
+- [x] Do not remove meaningful section headings or accessible table captions merely to reduce visible text.
+- [x] Keep feature actions outside the generic dataset toolbar, preserving its existing ownership boundary.
 - [x] Define one spacing pattern from workspace header through feature actions/feedback to dataset toolbar/table, without independently accumulated margins.
 
 ### 2.2 Standardize dataset toolbars
 
 - [x] Settle the shared toolbar's slot order, ownership, compact geometry, chip row, concise idle copy, and wrapping policy in DESIGN.md.
 - [x] Compare longer sort labels, added chips, and Staff shortlist controls at both core viewports; this is decision evidence, not proof of production filter behavior.
-- [ ] Align count, sort context, filter state, Columns, and dataset toggles consistently across Search, Squad, and Staff.
-- [ ] Prefer concise state copy to persistent instructional sentences once the user has an obvious Edit filters control.
-- [ ] Preserve first-use guidance where it genuinely explains a required next step.
-- [ ] Keep active filter chips and clear/remove actions visible and understandable.
-- [ ] Test wrapping with many filters, longer sort labels, and Staff shortlist controls.
-- [ ] Keep toolbar geometry compact without clipping focus rings or making controls inaccessible.
+- [x] Align count, sort context, filter state, Columns, and dataset toggles consistently across Search, Squad, and Staff.
+- [x] Prefer concise state copy to persistent instructional sentences once the user has an obvious Edit filters control.
+- [x] Preserve first-use guidance where it genuinely explains a required next step.
+- [x] Keep active filter chips and clear/remove actions visible and understandable.
+- [x] Test wrapping with many filters, longer sort labels, and Staff shortlist controls, including eight long mixed-script rules at both core sizes.
+- [x] Keep toolbar geometry compact without clipping focus rings or making controls inaccessible.
 
 **Primary owner:** `src/components/player-table/table-toolbar.tsx` and feature-owned table panels.
 
@@ -172,10 +180,10 @@ These are observations of the inspected captures, not proposed fixed coordinates
 Staff also shows substantial space between setup controls and the results panel; inspect its status ownership before changing it.
 
 - [x] Select the local reserved-slot and global zero-idle-footprint rules, bounded supplementary details, and visible recovery-summary constraints in DESIGN.md.
-- [ ] Replace large idle reservations with the selected compact status treatment.
-- [ ] Preserve stable action headers and truthful pending, success, error, and recovery feedback.
-- [ ] Use bounded expansion or a deliberate feedback region for longer outcomes rather than either permanent empty space or uncontrolled layout jumps.
-- [ ] Retain live-region behavior and focus destinations for recovery states.
+- [x] Replace large idle reservations with the selected compact 24px local status treatment and 4px preceding gap.
+- [x] Preserve stable action headers and truthful pending, success, error, and recovery feedback.
+- [x] Let long essential outcomes expand in the deliberate feedback region rather than clipping safety copy or reserving permanent empty space.
+- [x] Retain live-region behavior and focus destinations for recovery states.
 - [x] Check existing status-region tests and documented mutation contracts before implementation; retain Staff's stable region and Squad's recovery focus/lock behavior.
 
 **Primary owner:** `src/features/squad/components/squad-overview-panel.tsx`; Staff route and assignment-optimizer components.
@@ -187,33 +195,33 @@ Staff also shows substantial space between setup controls and the results panel;
 **Observed:** several workspaces combine rounded outer panels, rounded toolbars, rounded inner tables or cards, and pill controls.
 Tactic, Planner, and Academy show this most clearly.
 
-- [ ] Audit each border and surface: keep it when it marks a meaningful region, interaction, or scroll boundary.
-- [ ] Replace redundant inner containers with spacing and hairline separators.
-- [ ] Make flush tables appear integrated with their host rather than like a second card sitting inside it.
-- [ ] Keep useful boundaries around independent scrollers, dialogs, and interactive assignment targets.
-- [ ] Preserve the recessed table-header treatment and neutral data surfaces.
+- [x] Audit shared table hosts and remove the redundant inner rounded/bordered scroller; retain their meaningful outer boundary.
+- [x] Integrate flush analysis and Graduates tables with their host, using hairline separation instead of a second card.
+- [x] Keep useful boundaries around independent scrollers, dialogs, and interactive assignment targets.
+- [x] Preserve the recessed table-header treatment and neutral data surfaces.
+- [ ] Complete the feature-specific border/surface audit for Tactic, Planner, and Academy's inner regions.
 
 ### 3.2 Adopt the settled radius roles
 
-**Decision complete; rollout pending.** [DESIGN.md](DESIGN.md#radius-roles) owns the selected purpose-based scale.
+**Decision and shared rollout complete.** [DESIGN.md](DESIGN.md#radius-roles) owns the implemented purpose-based scale.
 It is a product rule derived from comparisons, not a requirement copied from the brand kit.
 
 - [x] Compare current and target radii in populated Search, Profile, Tactic, and Academy screens using disposable browser overrides.
 - [x] Select radius roles by component purpose rather than treating every clickable element as a pill.
 - [x] Select a distinct dialog/overlay role after inspecting the Staff configuration dialog.
-- [ ] Apply these roles without changing target sizes, action meaning, or meaningful circles.
-- [ ] Update shared primitives and tokens first; avoid scattering local radius overrides.
-- [ ] Match focus geometry to the revised shape.
-- [ ] Retain circles where they carry meaning, particularly pitch-selection targets; do not remove them merely for stylistic uniformity.
+- [x] Apply these roles without changing target sizes, action meaning, or meaningful circles.
+- [x] Update shared primitives and tokens first; avoid scattering local radius overrides.
+- [x] Match focus geometry to the revised shape.
+- [x] Retain circles where they carry meaning, particularly pitch-selection targets; do not remove them merely for stylistic uniformity.
 
 ### 3.3 Keep density contextual
 
-- [ ] Preserve row heights rather than using smaller rows to compensate for excessive chrome.
-- [ ] Use 8px gaps between related controls, 16px between regions, and larger gaps only for meaningful divisions.
+- [x] Preserve row heights rather than using smaller rows to compensate for excessive chrome.
+- [x] Apply 8px related-control gaps and 16px region spacing in shared workspace framing.
 - [ ] Review 12px gaps and 20px column gaps individually; their existence is not itself a defect, but repeated patterns should be intentional.
-- [ ] Align related control heights, baselines, and padding across feature-owned implementations.
-- [ ] Keep horizontal overflow local to tables and boards.
-- [ ] Do not stretch bounded table columns to eliminate empty space when that would slow scanning or violate saved widths.
+- [x] Align shared header, toolbar, search, Columns, and segmented-control heights, baselines, and padding across consumers.
+- [x] Keep horizontal overflow local to tables and boards.
+- [x] Do not stretch bounded table columns to eliminate empty space when that would slow scanning or violate saved widths.
 
 ## 4. Emphasis, typography, and icon treatment
 
@@ -222,22 +230,23 @@ It is a product rule derived from comparisons, not a requirement copied from the
 - [ ] Make passive Academy metric icons neutral rather than brand green.
 - [ ] Make local section/category selection quieter than primary actions, while retaining an unmistakable selected state.
 - [ ] Keep neutral metrics neutral; do not colour a statistic green simply because it is positive-looking data.
-- [ ] Preserve semantic score colours and the separate data-green/brand-green roles.
-- [ ] Keep IP/OOP phase distinctions readable by label and stroke treatment, not just colour.
-- [ ] Test a lower-emphasis destructive trigger for Clear all, Delete class, and repeated Remove actions; keep strong destructive styling for confirmation.
+- [x] Preserve score-tier meanings and separate data-green/brand-green roles while correcting low-tier contrast.
+- [x] Keep IP/OOP phase distinctions readable by label and stroke treatment, not just colour.
+- [x] Use a quieter Clear all in the dataset filter row; clearing filters is not a destructive data mutation.
+- [ ] Test lower-emphasis Delete class and repeated Remove triggers; keep strong destructive styling for confirmation.
 - [ ] Preserve explicit labels and target-specific confirmations. Reduced visual emphasis must not disguise the consequences.
 - [ ] Review screens with both global Load Data and a local primary action so they have distinct roles rather than competing as equal focal points.
 
 ### 4.2 Reconcile numeric typography
 
-**Observed:** current shared numeric table cells still use JetBrains Mono.
-[DESIGN.md](DESIGN.md#numeric-typography) now separates that current behavior from the selected raw-value/score roles for step 2.
+**Original observation:** shared numeric table cells used JetBrains Mono.
+Step 2 implements the [raw-value/score split in DESIGN.md](DESIGN.md#numeric-typography), including right-aligned numeric ages.
 
 - [x] Choose and document one intentional rule for raw table figures, scores, summary metrics, and literal strings.
 - [x] Test Archivo tabular figures for ordinary numeric columns while retaining JetBrains Mono for scored units, summary metrics, paths, and diagnostics.
 - [x] Compare readability, occupied width, and mixed raw-value/percentile cells, including missing-value specimens, before deciding.
-- [ ] Apply the chosen numeric roles through shared cells and relevant callers; do not change the mono token or ScoreBadge globally.
-- [ ] Preserve tabular alignment and numeric sorting; typography must not alter displayed facts.
+- [x] Apply the chosen numeric roles through shared cells and relevant callers; do not change the mono token or ScoreBadge globally.
+- [x] Preserve tabular alignment and numeric sorting; typography must not alter displayed facts.
 - [x] Settle tracked capitals as short structural labels, not ordinary controls or explanatory sentences.
 - [x] Settle the heading/weight hierarchy so workspace identity, sections, and ordinary controls do not all compete.
 
@@ -247,11 +256,11 @@ It is a product rule derived from comparisons, not a requirement copied from the
 
 ### 5.1 Preserve the persistent identity rail
 
-- [ ] Keep name, club, nationality, age, and supporting identity facts available across sections.
-- [ ] Preserve stable portrait and crest slots and readable fallbacks.
+- [x] Keep name, club, nationality, age, and supporting identity facts available across sections.
+- [x] Preserve stable portrait and crest slots and readable fallbacks.
 - [ ] Verify long names, mixed scripts, missing images, and real local portraits before changing rail width or image-stage height.
 - [ ] Keep Modify Player and hidden-information controls visually secondary but accessible.
-- [ ] Preserve concealed-information behavior and development-action safeguards.
+- [x] Preserve concealed-information behavior and development-action safeguards.
 
 ### 5.2 Strengthen Overview hierarchy
 
@@ -267,10 +276,10 @@ It is a product rule derived from comparisons, not a requirement copied from the
 
 ### 5.3 Keep Attributes and General Role Fit as strong reference surfaces
 
-- [ ] Preserve the dense attribute groups and hairline row rhythm.
-- [ ] Keep General Role Fit's bounded pitch sizing and usable role-name area.
+- [x] Preserve the dense attribute groups and hairline row rhythm.
+- [x] Keep General Role Fit's bounded pitch sizing and usable role-name area.
 - [ ] Review whether score-circle treatment needs simplification only after shared shape rules are settled.
-- [ ] Preserve readable wrapped role names, aligned score columns, and accessible position selection.
+- [x] Preserve readable wrapped role names, aligned score columns, and accessible position selection.
 - [ ] Verify the combined Overview at the minimum height, not only the dedicated Attributes and Role Fit sections.
 
 ### 5.4 Repair Moneyball workspace proportions
@@ -292,12 +301,13 @@ The latter observation does not establish that those rows are unreachable; their
 
 ## 6. Staff workspaces
 
-- [ ] Apply the shared workspace-header and dataset-toolbar rules to Staff Search and My Staff.
-- [ ] Keep upload, staffing configuration, and optimization actions distinct from table filters and columns.
-- [ ] Reduce idle status space only after preserving the existing stable optimizer-feedback contract.
-- [ ] Verify the normal Staff Search state separately from shortlist-on inspection fixtures.
+- [x] Apply the shared workspace-header and dataset-toolbar rules to Staff Search and My Staff, including a semantic hidden Staff Search h1.
+- [x] Keep upload, staffing configuration, and optimization actions distinct from table filters and columns.
+- [x] Retain the compact mounted optimizer-feedback region, readiness guidance, and expanded results contract.
+- [x] Verify the normal Staff Search state separately from shortlist-on inspection fixtures.
 - [ ] Check expanded assignment results, vacancies, long job titles, and evidence disclosures; these were not covered by the initial-page audit.
-- [ ] Give Staff Profile the same section, spacing, numeric, and action vocabulary as Player Profile without forcing the same rail layout onto different content.
+- [x] Apply shared section-heading, radius, and action primitives to Staff Profile without forcing Player Profile's rail layout onto different content.
+- [ ] Refine Staff Profile's feature-specific summary composition and long-label treatment.
 - [ ] Keep long staff attribute labels readable and role-score lists aligned.
 - [ ] Keep boost actions secondary to analysis in the profile's visual hierarchy, preserving their confirmation and outcome behavior.
 
@@ -307,9 +317,9 @@ The latter observation does not establish that those rows are unreachable; their
 - [ ] Test an explicit editing treatment instead of permanently prominent Save managed club controls in every workspace.
 - [ ] Preserve exact-club selection, missing-club warnings, explicit save semantics, and the stable managed-club setup target.
 - [ ] Keep Define DNA discoverable without giving configuration equal prominence to daily analysis.
-- [ ] Apply the compact header, toolbar, and feedback treatment to Squad.
+- [x] Apply the compact header, toolbar, and feedback treatment to Squad.
 - [ ] Keep boosts and CSV uploads available, but order and emphasize them consistently rather than making every action equally loud.
-- [ ] Preserve all upload-format, confirmation, progress, recovery, and cache-refresh behavior.
+- [x] Preserve all upload-format, confirmation, progress, recovery, and cache-refresh behavior.
 
 ## 8. Tactic
 
@@ -321,18 +331,18 @@ The pitch falls below the fold.
 - [ ] Recompose the smaller-desktop layout around pitch visibility.
 - [ ] Test a bounded XI list, compact disclosure, or another deliberate selection surface instead of placing the entire list above the pitch.
 - [ ] Keep selected-slot controls accessible without horizontal page overflow.
-- [ ] Preserve both phase controls, lane selection, draft retention, and Save tactic behavior.
+- [x] Preserve both phase controls, lane selection, draft retention, and Save tactic behavior through shared-framing changes.
 - [ ] Verify every lane is reachable by keyboard and its focused marker stays visible.
 - [ ] Check portrait and landscape orientation on either side of the 2100px switch.
-- [ ] Do not shrink marker targets or role text to force a full pitch into an unsuitable rectangle.
+- [x] Do not shrink marker targets or role text to force a full pitch into an unsuitable rectangle.
 
 ### 8.2 Simplify the editor's framing
 
 - [ ] Reduce repeated borders around outer panel, command bar, XI list, pitch wrapper, and inspector where region meaning is already clear.
-- [ ] Keep command controls compact and aligned with shared control rules.
+- [x] Keep command controls compact and aligned with shared control rules.
 - [ ] Use hairline-separated inspector sections rather than additional card layers.
 - [ ] Make selected lanes clearly identifiable without large competing green surfaces.
-- [ ] Preserve steel IP borders, dashed magenta OOP borders, labels, and meaningful phase connectors.
+- [x] Preserve steel IP borders, dashed magenta OOP borders, labels, and meaningful phase connectors.
 - [ ] Verify long roles, edited dense midfield shapes, and Both view at minimum and wide desktop sizes.
 
 **Primary owners:** `planner-tactic-editor.tsx`, `planner-tactic-lane-list.tsx`, `planner-tactic-inspector.tsx`, and pitch components.
@@ -343,8 +353,8 @@ The pitch falls below the fold.
 - [ ] Reduce repeated box-inside-cell treatment, especially for empty assignment cells.
 - [ ] Keep Assign visibly actionable; empty cells must not become ambiguous blank space.
 - [ ] Keep occupied players, Current → Potential scores, and unresolved/outside-pool warnings easy to distinguish.
-- [ ] Preserve fixed-width strings, team grouping, tactical-slot context, and sticky headers.
-- [ ] Do not fill the unused right-hand space by stretching the board when there are only a few strings.
+- [x] Preserve fixed-width strings, team grouping, tactical-slot context, and sticky headers.
+- [x] Do not fill the unused right-hand space by stretching the board when there are only a few strings.
 - [ ] Review row padding and two-line role context together; do not create irregular rows or clipped labels.
 - [ ] Apply restrained destructive treatment to Clear all while retaining target-specific confirmation.
 - [ ] Inspect multiple strings, renamed teams, long player names, and more populated boards before finalizing.
@@ -383,11 +393,11 @@ The Class workspace repeats this group above its roster.
 
 - [ ] Use a bounded reading/form width for preferences, boost explanation, and graphics controls.
 - [ ] Let genuinely tabular save/snapshot management retain enough width; do not apply one narrow clamp to everything.
-- [ ] Standardize section headings, descriptions, field labels, and action rows.
-- [ ] Remove redundant repeated headings such as the outer Graphics label and inner Graphics panel title when one will suffice.
+- [x] Apply the shared section-heading and control vocabulary, including nested Save data/Bridge management headings and loading states.
+- [x] Remove redundant Graphics and Bridge panel titles while retaining meaningful outer sections and install context.
 - [ ] Keep dangerous actions separated from ordinary configuration and explain their scope.
-- [ ] Inspect the lower Save data and Bridge sections, not only the initial viewport.
-- [ ] Preserve save/snapshot identity, current-state markers, and deletion consequences.
+- [x] Inspect the lower populated Save data and Bridge sections, not only the initial viewport.
+- [x] Preserve save/snapshot identity, current-state markers, and deletion consequences.
 
 **Primary owner:** `src/app/routes/settings.tsx` and its feature-owned sections.
 
@@ -397,61 +407,67 @@ The Class workspace repeats this group above its roster.
 It is unfinished product content, not a colour, spacing, or branding defect.
 
 - [ ] Decide separately whether Dashboard has a useful supported purpose or whether a useful existing workspace should be the entry destination.
-- [ ] Do not invent metrics, charts, onboarding cards, or promotional content solely to fill the page.
-- [ ] Keep any dashboard product decision outside the visual-consistency work until explicitly accepted.
+- [x] Do not invent metrics, charts, onboarding cards, or promotional content solely to fill the page.
+- [x] Keep any dashboard product decision outside the visual-consistency work until explicitly accepted.
 
 ## 13. Dialogs, feedback, and interaction states
 
 These are verification tasks and extensions of the proposed shared rules, not findings from the initial captures.
 
 - [ ] Inspect filter editing, column configuration, shortlist/CSV upload, player assignment, staffing configuration, Club DNA, and team-management dialogs.
-- [ ] Apply consistent title, section, field, footer-action, and radius treatments without rebuilding existing interaction logic.
-- [ ] Verify long labels and error messages, not only successful short-copy states.
+- [x] Apply shared Modal title, field, footer-action, and radius treatments without rebuilding interaction logic.
+- [ ] Complete the dialog-specific section/layout audit alongside the remaining feature refinements.
+- [x] Verify shared filter/save-label wrapping and expanding mutation error/recovery copy, not only successful short-copy states.
+- [ ] Complete long-content verification in the remaining feature-specific dialogs and disclosures.
 - [ ] Check destructive confirmations for exact target names, clear consequences, safe cancellation, and obvious final confirmation.
 - [ ] Check loading, no snapshot, no results, no shortlist, unavailable import, departed player, and recovery-stopped states.
-- [ ] Ensure reduced emphasis does not make disabled controls look enabled or selected controls look inactive.
-- [ ] Preserve phase-specific mutation labels and stable button widths during pending states.
-- [ ] Verify reduced-motion behavior and avoid adding decorative entrance or hover animations.
+- [x] Preserve distinct disabled controls and unmistakable selected state in the revised shared primitives/navigation.
+- [x] Preserve phase-specific mutation labels and stable button widths during pending states.
+- [x] Preserve reduced-motion behavior and add no decorative entrance or hover animations.
 - [ ] Keep scroll cues visible in constrained panels, category strips, and tables.
 
 ## 14. Accessibility and rendering checks
 
-- [ ] Verify keyboard navigation through the shell, tables, tabs, pitches, disclosures, dialogs, and recovery states after layout changes.
-- [ ] Keep visible focus indicators, appropriate accessible names, semantic headers, and focus restoration.
-- [ ] Preserve redundant encoding for scores, phases, selection, warnings, and destructive state.
-- [ ] Recalculate text, control-boundary, focus, and score contrast for actual backgrounds and hover states.
-- [ ] Test longer names and non-Latin text with the bundled Archivo/Plex fallback stack.
-- [ ] Verify that labels are not clipped by fixed-height controls or tightened line heights.
+- [x] Reverify shared-framing keyboard behavior through retained shell, table, tab, pitch, disclosure, dialog, and recovery tests.
+- [x] Keep visible focus indicators, appropriate accessible names, semantic headers, and focus restoration.
+- [x] Preserve redundant encoding for scores, phases, selection, warnings, and destructive state.
+- [x] Recalculate shared text, control-boundary, focus, and score contrast, including raised/overlay pairings and composited active/score fills.
+- [x] Test long mixed-script save names and applied filter labels with the bundled Archivo/Plex fallback stack.
+- [ ] Extend long-name/script checks to real profile and feature-specific datasets in step 5.
+- [x] Verify revised shared header/toolbar/control labels are not clipped at the core viewports.
+- [ ] Complete long-role and feature-specific fixed-height label checks in the constrained workspaces.
 - [ ] Inspect real portraits and club graphics as well as fallbacks before changing image-stage proportions.
 - [ ] Check the native Windows app separately for font rendering, scaling, scrollbars, focus, and available content height.
-- [ ] Use 1280×800 and 1600×900 as core comparison sizes, with 1920×1080, the 2100px tactic boundary, and 3440×1440 for relevant wider layouts.
+- [x] Compare all 19 canonical populated routes at 1280×800 and 1600×900 before and after shared framing.
+- [ ] Extend visual inspection to 1920×1080, the 2100px tactic boundary, and 3440×1440 with the relevant feature-composition work.
 
 ## 15. Reconcile DESIGN.md and implementation
 
-**Documentation reconciliation: done.** DESIGN.md now reflects the implemented Signal identity, current component geometry, and verified token-pair contrast.
-The update did not change application code or adopt pending layout proposals.
+**Documentation reconciliation: current for steps 1–2.** DESIGN.md reflects the implemented Signal identity, shared framing, numeric roles, and corrected contrast tokens.
+Feature-specific composition and native verification remain explicitly pending.
 
 - [x] Replace old gold hexadecimal examples and stale contrast ratios with calculations from the current tokens.
 - [x] Correct body-family frontmatter to Archivo, with IBM Plex Sans retained as the bundled fallback.
 - [x] Remove the duplicated Scale principle paragraph.
-- [x] Resolve the tabular-sans contradiction by documenting the implemented monospace numeric-cell treatment.
-- [x] Correct navigation icons to the implemented 24px size; a smaller size remains a redesign proposal.
+- [x] Resolve numeric typography with the implemented raw-value sans/score mono split.
+- [x] Correct navigation icons and geometry to the implemented compact 16px-icon band.
 - [x] Align the no-nested-panels principle with concrete rules for tables, interactive assignment cells, independent scroll regions, and overlays.
 - [x] Verify attribute-fit section descriptions against source and tests. Overview does contain the 36 outfield attributes at the tested desktop size, so retain that statement rather than incorrectly changing it to Attributes-only.
 - [x] Recalculate decorative-border and elevation ratios and verify documented shared shape/icon geometry against implementation.
-- [x] Clarify the Search table-area target: measure the table scroller separately from its containing panel and visible data rows, record filter/feedback state, and retain 70% as an unverified target rather than a current compliance claim.
+- [x] Measure the Search table-owned viewport separately from its panel/toolbar and data-row height; record idle filter/feedback state and bounded results against the 70% target without claiming universal compliance.
 - [x] Keep unfinished proposals out of current-state DESIGN.md and distinguish brand-kit presentation from desktop UI rules.
 
 ### Remaining implementation and documentation work
 
-- [ ] Correct the runtime contrast pairings documented in DESIGN.md: small secondary text on overlays, tier-1 score text on raised/hovered surfaces, and meaningful control boundaries on raised/overlay backgrounds. Verify actual component states, including alpha fills, without weakening the accessibility targets.
-- [x] Record the six settled shared-rule targets separately from current tokens and behavior in DESIGN.md.
-- [ ] Reconcile current navigation, radius, emphasis, header, feedback, and responsive composition descriptions as the selected rules are implemented.
+- [x] Correct runtime muted, low-tier score/error, and outline pairings; verify raised/overlay and actual composited states without weakening accessibility targets.
+- [x] Record the six shared rules and reconcile their verified rollout with current tokens and behavior in DESIGN.md.
+- [x] Reconcile current shared navigation emphasis, radius, header, toolbar, feedback, numeric, and viewport descriptions.
+- [ ] Reconcile feature-specific composition/emphasis descriptions when later steps implement them.
 
 ## Recommended implementation sequence
 
-1. **Settle the shared rules — Done:** navigation treatment, heading hierarchy, radius roles, dataset toolbar, feedback footprint, and numeric typography. Targets are owned by [DESIGN.md](DESIGN.md#settled-shared-rules-step-2-targets); production implementation is still pending.
-2. **Implement the shared framing:** shell, headers, table panels, and common primitives; compare the same populated routes before and after.
+1. **Settle the shared rules — Done:** navigation treatment, heading hierarchy, radius roles, dataset toolbar, feedback footprint, and numeric typography; [DESIGN.md](DESIGN.md#shared-framing-rules) owns the rules.
+2. **Implement the shared framing — Done:** shell, headers, table panels, and common primitives implemented; all 19 canonical populated routes compared before/after at both core sizes, with focused interaction checks and full validation.
 3. **Repair the constrained workspaces:** Moneyball Profile and smaller-desktop Tactic composition before secondary polish.
 4. **Apply feature refinements:** profile summaries, Staff, Squad, Planner, Academy, and Settings.
 5. **Inspect interaction states and native rendering:** dialogs, errors, progress, keyboard flow, long content, graphics, and Windows scaling.

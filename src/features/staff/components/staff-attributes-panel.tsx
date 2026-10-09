@@ -21,7 +21,7 @@ function AttributeSection({
     >
       <h3
         id={`staff-attribute-${group.id}`}
-        className="text-label-lg text-on-surface"
+        className="text-body-md font-semibold text-on-surface"
       >
         {group.title}
       </h3>

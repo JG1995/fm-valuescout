@@ -205,7 +205,7 @@ export function MoneyballRoleFitPanel({
               <thead className="sticky top-0 z-10 bg-surface-container">
                 <tr className="border-b border-outline-variant">
                   <th scope="col" className="pb-2 text-left font-normal">
-                    <h3 className="text-headline-sm text-on-surface">
+                    <h3 className="text-body-md font-semibold text-on-surface">
                       {selectedPosition}
                     </h3>
                     <p className="text-body-sm text-on-surface-variant">

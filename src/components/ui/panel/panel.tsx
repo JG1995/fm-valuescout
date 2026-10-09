@@ -3,7 +3,8 @@ import { cn } from "@/utils/cn";
 
 type PanelProps = {
   title?: ReactNode;
-  /** Rendered on the header row, right-aligned beside the title. */
+  headingLevel?: 2 | 3;
+  /** Rendered on the header row, including when there is no title. */
   actions?: ReactNode;
   /** Drop the content padding when the only child is a full-bleed table. */
   flush?: boolean;
@@ -15,12 +16,14 @@ type PanelProps = {
 
 export function Panel({
   title,
+  headingLevel = 2,
   actions,
   flush = false,
   className,
   contentClassName,
   children,
 }: PanelProps) {
+  const Heading = headingLevel === 3 ? "h3" : "h2";
   return (
     <section
       className={cn(
@@ -28,19 +31,32 @@ export function Panel({
         className,
       )}
     >
-      {title ? (
-        <div className="flex items-center justify-between gap-4 px-4 pt-4">
+      {title || actions ? (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 pt-4">
           {typeof title === "string" ? (
-            <h2 className="text-headline-sm text-on-surface">{title}</h2>
+            <Heading
+              className={cn(
+                "text-on-surface",
+                headingLevel === 3
+                  ? "text-body-md font-semibold"
+                  : "text-headline-sm",
+              )}
+            >
+              {title}
+            </Heading>
           ) : (
             title
           )}
-          {actions}
+          {actions ? (
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {actions}
+            </div>
+          ) : null}
         </div>
       ) : null}
       <div
         className={cn(
-          flush ? (title ? "mt-4" : undefined) : "p-4",
+          flush ? (title ? "mt-4" : actions ? "mt-1" : undefined) : "p-4",
           contentClassName,
         )}
       >

@@ -17,11 +17,11 @@ export function FilterTag({
   const label = formatFilterTagLabel(rule, view);
 
   return (
-    <span className="inline-flex h-7 max-w-full items-center gap-1 rounded-full bg-primary-container pl-3 text-label-md text-on-primary-container">
+    <span className="inline-flex h-7 max-w-full items-center gap-1 rounded-full border border-outline-variant bg-surface-container-high pl-3 text-label-md text-on-surface">
       <span className="truncate">{label}</span>
       <button
         type="button"
-        className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-on-primary-container hover:bg-surface-container-highest"
+        className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface"
         aria-label={`Remove filter ${label}`}
         onClick={onRemove}
       >
