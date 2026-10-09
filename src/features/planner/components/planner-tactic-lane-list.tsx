@@ -26,13 +26,13 @@ export function PlannerTacticLaneList({
 
   return (
     <section
-      className="w-full shrink-0 space-y-2 rounded-lg border border-outline-variant bg-surface-container-high p-3 2xl:w-84"
+      className="flex min-h-0 min-w-0 flex-col gap-2 border-r border-outline-variant pr-4"
       aria-labelledby={headingId}
     >
       <h3 id={headingId} className="text-body-md font-semibold text-on-surface">
         Tactical XI
       </h3>
-      <ul className="space-y-1">
+      <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-1">
         {orderedTacticLanes(lanes).map((lane) => {
           const selected = lane.laneId === selectedLaneId;
           return (
@@ -41,10 +41,10 @@ export function PlannerTacticLaneList({
                 type="button"
                 aria-pressed={selected}
                 onClick={() => onSelectLane(lane.laneId)}
-                className={`block w-full whitespace-pre-line cursor-pointer rounded-md border px-2 py-1.5 text-left text-body-sm transition-[background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                className={`block w-full scroll-m-1 whitespace-pre-line cursor-pointer rounded-md border px-2 py-1.5 text-left text-body-sm transition-[background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                   selected
-                    ? "border-primary bg-primary-container text-primary ring-2 ring-primary/60"
-                    : "border-outline-variant bg-surface-container text-on-surface hover:bg-surface-container-high"
+                    ? "border-primary bg-surface-container-high text-on-surface"
+                    : "border-transparent text-on-surface hover:bg-surface-container-high"
                 }`}
               >
                 {linkedPositionDescription(lane, lanes, options).replace(

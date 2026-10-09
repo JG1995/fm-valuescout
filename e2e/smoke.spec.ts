@@ -2306,6 +2306,7 @@ test.describe("application smoke", () => {
   test("planner tactic editor saves a linked phase adjustment", async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/my-club");
 
@@ -2838,6 +2839,178 @@ test.describe("application smoke", () => {
     );
   });
 
+  for (const [width, height] of [
+    [1280, 800],
+    [1600, 900],
+  ] as const) {
+    test(`Moneyball exposes metric evidence and every category at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height });
+      await stubTauriIpc(page, { moneyballSearch: true, playerProfile: true });
+      await page.goto("/players/42?section=moneyball");
+      const workspace = page.getByRole("tabpanel", {
+        name: "Moneyball",
+        exact: true,
+      });
+      const primary = workspace.getByTestId("moneyball-primary-column");
+      const roleFit = workspace.getByRole("region", {
+        name: "Moneyball role fit for MC",
+      });
+      const primaryBox = await primary.boundingBox();
+      const roleBox = await roleFit.boundingBox();
+      if (!primaryBox || !roleBox)
+        throw new Error("Expected parallel Moneyball evidence");
+      expect(primaryBox.x + primaryBox.width).toBeLessThanOrEqual(roleBox.x);
+      const categories = workspace.getByRole("tablist", {
+        name: "Moneyball metric categories",
+      });
+      await expect(categories.getByRole("tab")).toHaveCount(8);
+      for (const tab of await categories.getByRole("tab").all()) {
+        const box = await tab.boundingBox();
+        if (!box) throw new Error("Expected a visible metric category");
+        expect(box.x).toBeGreaterThanOrEqual(primaryBox.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(
+          primaryBox.x + primaryBox.width,
+        );
+        expect(box.y + box.height).toBeLessThanOrEqual(height - 16);
+      }
+      const shooting = workspace.getByRole("tabpanel", {
+        name: "Shooting",
+        exact: true,
+      });
+      const rows = shooting.locator("dl > div");
+      let visibleRows = 0;
+      const scrollport = await shooting.locator("..").boundingBox();
+      if (!scrollport) throw new Error("Expected metric scroll workspace");
+      for (const row of await rows.all()) {
+        const box = await row.boundingBox();
+        if (
+          box &&
+          box.y >= scrollport.y &&
+          box.y + box.height <= scrollport.y + scrollport.height
+        )
+          visibleRows++;
+      }
+      expect(visibleRows).toBeGreaterThanOrEqual(4);
+      await expect(
+        shooting.getByRole("img", { name: "Goals: 83, Excellent" }),
+      ).toBeVisible();
+      const nameCell = roleFit
+        .getByRole("row")
+        .filter({ hasText: "Central Midfielder" })
+        .first()
+        .locator("td")
+        .first();
+      expect((await nameCell.boundingBox())?.width).toBeGreaterThanOrEqual(180);
+      const explanation = roleFit.locator("details").first();
+      await explanation.locator("summary").focus();
+      await page.keyboard.press("Space");
+      await expect(explanation).toHaveAttribute("open", "");
+      const contributions = explanation.locator("dl > div");
+      await expect(contributions).toHaveCount(5);
+      for (const contribution of await contributions.all()) {
+        const box = await contribution.boundingBox();
+        if (!box) throw new Error("Expected contribution evidence");
+        const overflow = await contribution.evaluate((element) => {
+          const node = element as unknown as {
+            clientWidth: number;
+            scrollWidth: number;
+          };
+          return node.scrollWidth > node.clientWidth;
+        });
+        expect(overflow).toBe(false);
+      }
+      await page.keyboard.press("End");
+      await expect
+        .poll(async () => {
+          const lastContribution = await contributions.last().boundingBox();
+          const roleScrollport = await roleFit
+            .getByRole("table")
+            .locator("..")
+            .boundingBox();
+          if (!lastContribution || !roleScrollport) return false;
+          return (
+            lastContribution.y >= roleScrollport.y - 1 &&
+            lastContribution.y + lastContribution.height <=
+              roleScrollport.y + roleScrollport.height + 1
+          );
+        })
+        .toBe(true);
+      await categories.getByRole("tab", { name: "Shooting" }).focus();
+      await page.keyboard.press("End");
+      await expect(
+        categories.getByRole("tab", { name: "Results" }),
+      ).toBeFocused();
+      const results = workspace.getByRole("tabpanel", {
+        name: "Results",
+        exact: true,
+      });
+      await expect(
+        results.getByText("Average Rating", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        results.getByRole("img", { name: "Average Rating: 83, Excellent" }),
+      ).toBeVisible();
+      await page.keyboard.press("Home");
+      await expect(
+        categories.getByRole("tab", { name: "Shooting" }),
+      ).toBeFocused();
+    });
+  }
+
+  test("Both keeps both phases of a dense midfield triple disjoint", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/my-club?view=tactic");
+    const main = page.getByRole("main");
+    const pitch = main.getByRole("group", { name: /pitch$/ });
+    await pitch
+      .getByRole("button", { name: "IP: DM · Defensive Midfielder" })
+      .click();
+    await main
+      .getByRole("combobox", { name: "IP DM position" })
+      .selectOption("MC");
+    await main
+      .getByRole("combobox", { name: "IP MC role" })
+      .selectOption("central_midfielder_ip");
+    await main
+      .getByRole("combobox", { name: "OOP DM position" })
+      .selectOption("MC");
+    await main
+      .getByRole("combobox", { name: "OOP MC role" })
+      .selectOption("pressing_central_midfielder_oop");
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+      [2100, 1080],
+      [3440, 1440],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      const markers = pitch.getByRole("button");
+      await expect(markers).toHaveCount(22);
+      const boxes = await Promise.all(
+        (await markers.all()).map((marker) => marker.boundingBox()),
+      );
+      for (const [index, left] of boxes.entries()) {
+        if (!left) throw new Error("Expected phase marker geometry");
+        expect(left.width).toBeGreaterThanOrEqual(44);
+        expect(left.height).toBeGreaterThanOrEqual(44);
+        for (const right of boxes.slice(index + 1)) {
+          if (!right) throw new Error("Expected phase marker geometry");
+          expect(
+            left.x + left.width <= right.x ||
+              right.x + right.width <= left.x ||
+              left.y + left.height <= right.y ||
+              right.y + right.height <= left.y,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
   test("planner tactic workspace fits its supported desktop viewports", async ({
     page,
   }) => {
@@ -2869,6 +3042,19 @@ test.describe("application smoke", () => {
       requireVerticalFit: boolean,
     ) => {
       await page.setViewportSize({ width, height });
+      const commandBox = await main
+        .getByRole("region", { name: "Tactic controls" })
+        .boundingBox();
+      const initialPitchBox = await pitches.first().boundingBox();
+      const initialXiBox = await laneList.boundingBox();
+      if (!commandBox || !initialPitchBox || !initialXiBox)
+        throw new Error("Expected initial Tactic composition");
+      expect(initialPitchBox.y).toBeLessThan(
+        commandBox.y + commandBox.height + 80,
+      );
+      expect(initialXiBox.x + initialXiBox.width).toBeLessThanOrEqual(
+        initialPitchBox.x,
+      );
       for (const [view, pitchCount, visibleRole] of [
         ["Both", 1, "OOP GK role"],
         ["IP", 1, "IP GK role"],
@@ -2876,6 +3062,57 @@ test.describe("application smoke", () => {
       ] as const) {
         await main.getByRole("button", { name: view, exact: true }).click();
         await expect(pitches).toHaveCount(pitchCount);
+        if (width === 1280 && view === "Both") {
+          const pitchScroller = main.getByTestId("tactic-pitch-scroller");
+          const markers = pitches.first().getByRole("button");
+          await expect(markers).toHaveCount(22);
+          await markers.first().focus();
+          for (let index = 0; index < 22; index++) {
+            await expect(markers.nth(index)).toBeFocused();
+            const box = await markers.nth(index).boundingBox();
+            const viewport = await pitchScroller.boundingBox();
+            if (!box || !viewport)
+              throw new Error("Expected visible focused marker");
+            expect(box.width).toBeGreaterThanOrEqual(44);
+            expect(box.height).toBeGreaterThanOrEqual(44);
+            await expect
+              .poll(
+                async () => {
+                  const focused = await markers.nth(index).boundingBox();
+                  const visible = await pitchScroller.boundingBox();
+                  if (!focused || !visible) return false;
+                  return (
+                    focused.x - 2 >= visible.x - 1 &&
+                    focused.x + focused.width + 2 <=
+                      visible.x + visible.width + 1 &&
+                    focused.y - 2 >= visible.y - 1 &&
+                    focused.y + focused.height + 2 <=
+                      visible.y + visible.height + 1
+                  );
+                },
+                {
+                  message: `Focused phase marker ${index} stays inside the pitch scrollport`,
+                },
+              )
+              .toBe(true);
+            await page.keyboard.press("Tab");
+          }
+          const lanes = laneList.getByRole("button");
+          await expect(lanes).toHaveCount(11);
+          await lanes.first().focus();
+          for (let index = 0; index < 11; index++) {
+            await expect(lanes.nth(index)).toBeFocused();
+            const box = await lanes.nth(index).boundingBox();
+            const viewport = await laneList.getByRole("list").boundingBox();
+            if (!box || !viewport)
+              throw new Error("Expected visible focused lane");
+            expect(box.y - 2).toBeGreaterThanOrEqual(viewport.y - 1);
+            expect(box.y + box.height + 2).toBeLessThanOrEqual(
+              viewport.y + viewport.height + 1,
+            );
+            await page.keyboard.press("Tab");
+          }
+        }
         await expect(settings).toBeVisible();
         await expect(
           settings.getByRole("combobox", { name: visibleRole }),

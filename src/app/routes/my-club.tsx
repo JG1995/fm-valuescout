@@ -775,7 +775,7 @@ function MyClubPageContent() {
       </div>
       <div
         hidden={activeWorkspace !== "tactic"}
-        className="mx-auto min-h-0 w-full max-w-[1920px] flex-1 overflow-y-auto"
+        className="mx-auto flex min-h-0 w-full max-w-[1920px] flex-1 flex-col"
       >
         {plannerContext && isMatchedSnapshot ? (
           <TacticContextBoundary context={plannerContext}>

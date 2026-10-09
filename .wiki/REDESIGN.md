@@ -15,9 +15,10 @@ Do not maintain competing token definitions here.
 
 **Step 1: done — shared rules settled.** The developer selected a decisions-only checkpoint, followed by step-2 implementation.
 **Step 2: done — shared framing implemented and verified in Chromium.** [DESIGN.md's shared framing rules](DESIGN.md#shared-framing-rules) describe current behavior and comparison evidence.
-Checked preservation items describe the step-2 change, not permission to stop protecting them in later work.
-Moneyball Profile and smaller-desktop Tactic composition, feature-specific refinements, and native Windows verification remain pending.
-Native rendering belongs to step 5, not the step-2 completion gate; completion does not authorize publication.
+**Step 3: done — constrained Moneyball Profile and Tactic workspaces repaired and verified in Chromium.**
+Checked preservation items describe the implemented changes, not permission to stop protecting them in later work.
+Other feature-specific refinements and native Windows verification remain pending.
+Native rendering belongs to step 5, not the step-3 completion gate; completion does not authorize publication.
 
 - [x] Settle navigation treatment.
 - [x] Settle heading hierarchy and shared spacing.
@@ -52,6 +53,12 @@ Shared framing recovers workspace without reducing row heights: Search's first r
 Additional runtime checks covered normal/shortlist Staff controls, long mixed-script filters and save names, removal/Clear all, modal focus return, recovery locks, and expanding error copy; lower Settings sections were inspected separately.
 The full unit suite passed 1,044 tests, smoke passed 65 tests, and `./scripts/dev check` passed, including 882 Rust tests.
 The canonical token-pair and actual-state contrast evidence belongs in [DESIGN.md](DESIGN.md#accessibility-of-colour).
+
+Step 3 compared Moneyball Profile and Tactic before at `1542724` and after the repair at 1280×800, 1600×900, 1920×1080, 2099×1080, 2100×1080, and 3440×1440.
+At 1280×800, Moneyball shows all eight categories and at least four complete metric entries, with a 190px role-name column; the pitch region now begins around y=260px beside the bounded XI list instead of below it.
+Additional checks covered expanded five-contribution evidence, longer role labels, no-natural-position/no-import/pre-score states, every XI entry and phase marker by keyboard, and dense MCL/MC/MCR shapes in Both view.
+The full unit suite passed 1,044 tests, smoke passed 68 tests, and `./scripts/dev check` passed, including 882 Rust tests.
+[DESIGN.md](DESIGN.md#player-profile-layout) and its [Tactic description](DESIGN.md#squad-workspace-layout) own the implemented composition and sizing rules.
 
 The captures used Chromium and synthetic Tauri IPC fixtures.
 They do not prove native WebView2 rendering, live FM integration, or behavior with every production dataset.
@@ -93,8 +100,8 @@ Do not add a permanent sidebar, global content-width clamp, decorative charts, o
 | --- | --- | --- |
 | P1 | Settle shared rules — **Done** | Six rules are documented and implemented |
 | P1 | Compact shared navigation and table framing — **Done** | Shared framing returns space to data without shrinking rows |
-| P1 | Moneyball Profile proportions and minimum-height usability | Evidence gets squeezed or falls out of the initial view |
-| P1 | Tactic composition at smaller desktop widths | The XI list displaces the pitch from the initial viewport |
+| P1 | Moneyball Profile proportions and minimum-height usability — **Done** | Parallel evidence panels expose metrics and protect role labels |
+| P1 | Tactic composition at smaller desktop widths — **Done** | A bounded XI list stays beside the initially visible pitch |
 | P1 | Reconcile stale DESIGN.md statements — **Done** | Current rules, geometry, and corrected contrast tokens match implementation |
 | P2 | Simplify surfaces, shapes, and emphasis | Removes inconsistent dashboard-like framing |
 | P2 | Refine profile summaries, Academy, Planner, and Settings | Applies shared rules to feature-specific composition |
@@ -199,7 +206,8 @@ Tactic, Planner, and Academy show this most clearly.
 - [x] Integrate flush analysis and Graduates tables with their host, using hairline separation instead of a second card.
 - [x] Keep useful boundaries around independent scrollers, dialogs, and interactive assignment targets.
 - [x] Preserve the recessed table-header treatment and neutral data surfaces.
-- [ ] Complete the feature-specific border/surface audit for Tactic, Planner, and Academy's inner regions.
+- [x] Complete Tactic's border/surface audit: one host and command separator, bounded XI/pitch/inspector regions, neutral selected XI rows, and hairline inspector sections.
+- [ ] Complete the feature-specific border/surface audit for Planner and Academy's inner regions.
 
 ### 3.2 Adopt the settled radius roles
 
@@ -284,18 +292,17 @@ Step 2 implements the [raw-value/score split in DESIGN.md](DESIGN.md#numeric-typ
 
 ### 5.4 Repair Moneyball workspace proportions
 
-**Observed:** at 1600px, the Moneyball pitch occupies most of its right-hand panel and squeezes role names into narrow wrapped columns.
-At 1280×800, the initial capture shows summary/context but no actual metric rows.
-The latter observation does not establish that those rows are unreachable; their scrolling and focus behavior require verification.
+**Original observation:** an oversized pitch squeezed role labels at 1600px, and stacked half-height evidence panels hid the initial metric rows at 1280×800.
+**Step 3 repair:** parallel evidence columns, a bounded position picker, wrapping categories, and independent metric/role scrolling expose useful evidence without changing the identity stage or scoring.
 
-- [ ] Reuse the General Role Fit approach to bounded pitch sizing instead of the current 240–360px allocation in a narrow panel.
-- [ ] Protect useful role-name width alongside the score column.
-- [ ] Revise stacked-height allocation so summary context does not consume the metric evidence workspace.
-- [ ] Ensure metric categories and a useful set of metric rows remain visible or clearly reachable at 1280×800.
-- [ ] Make horizontal category overflow apparent; verify access to all eight categories, including Results.
-- [ ] Keep role-contribution disclosures readable when expanded and reachable with keyboard navigation.
-- [ ] Preserve raw data, cohort context, unavailable-score explanations, and current-only Moneyball semantics.
-- [ ] Avoid creating multiple tiny nested scrollers as a workaround for insufficient space.
+- [x] Reuse General Role Fit's bounded pitch approach: a 176px minimum and 240px cap instead of the former 240–360px allocation.
+- [x] Protect useful role-name width alongside the score column; the tested minimum exposes 190px for role names.
+- [x] Replace stacked-height allocation so summary context does not consume the metric evidence workspace.
+- [x] Keep metric categories and a useful set of metric rows visible and remaining evidence reachable at 1280×800.
+- [x] Remove concealed horizontal category overflow by wrapping all eight categories; verify Results and Home/End keyboard access.
+- [x] Keep expanded role contributions readable, wrapping labels/keys/values and reaching the final contribution with keyboard scrolling.
+- [x] Preserve raw data, cohort context, unavailable-score explanations, and current-only Moneyball semantics.
+- [x] Keep one metric scroller and separate bounded position/role scrollers rather than stacking tiny evidence panels.
 
 **Primary owners:** `src/app/routes/players.$uid.tsx`, `moneyball-profile-panel.tsx`, and `moneyball-role-fit-panel.tsx`.
 
@@ -325,25 +332,25 @@ The latter observation does not establish that those rows are unreachable; their
 
 ### 8.1 Keep the pitch central at smaller desktop sizes
 
-**Observed:** at 1280×800, the Tactical XI stacks above the pitch and dominates the initial viewport beside the inspector.
-The pitch falls below the fold.
+**Original observation:** the complete Tactical XI stacked above the pitch at 1280×800, pushing the pitch below the initial viewport.
+**Step 3 repair:** XI, pitch, and inspector stay beside one another at supported desktop widths, with local scrolling and a fixed command row.
 
-- [ ] Recompose the smaller-desktop layout around pitch visibility.
-- [ ] Test a bounded XI list, compact disclosure, or another deliberate selection surface instead of placing the entire list above the pitch.
-- [ ] Keep selected-slot controls accessible without horizontal page overflow.
-- [x] Preserve both phase controls, lane selection, draft retention, and Save tactic behavior through shared-framing changes.
-- [ ] Verify every lane is reachable by keyboard and its focused marker stays visible.
-- [ ] Check portrait and landscape orientation on either side of the 2100px switch.
+- [x] Recompose the smaller-desktop layout around initial pitch visibility.
+- [x] Use a bounded, locally scrolling XI list beside the pitch rather than placing the entire list above it.
+- [x] Keep selected-slot controls accessible without horizontal page overflow.
+- [x] Preserve both phase controls, lane selection, draft retention, and Save tactic behavior through the composition repair.
+- [x] Verify all 11 XI entries and 22 Both phase markers are keyboard-reachable and focused markers stay within the visible pitch region.
+- [x] Check portrait and landscape orientation at 2099px and 2100px, including dense Both shapes.
 - [x] Do not shrink marker targets or role text to force a full pitch into an unsuitable rectangle.
 
 ### 8.2 Simplify the editor's framing
 
-- [ ] Reduce repeated borders around outer panel, command bar, XI list, pitch wrapper, and inspector where region meaning is already clear.
+- [x] Reduce repeated borders around the command bar, XI list, and inspector; retain the host and meaningful pitch boundary.
 - [x] Keep command controls compact and aligned with shared control rules.
-- [ ] Use hairline-separated inspector sections rather than additional card layers.
-- [ ] Make selected lanes clearly identifiable without large competing green surfaces.
+- [x] Use hairline-separated inspector sections rather than additional card layers.
+- [x] Identify selected XI lanes with a primary border and neutral fill instead of a large competing green surface.
 - [x] Preserve steel IP borders, dashed magenta OOP borders, labels, and meaningful phase connectors.
-- [ ] Verify long roles, edited dense midfield shapes, and Both view at minimum and wide desktop sizes.
+- [x] Verify long roles, edited dense midfield shapes, and Both view at minimum and wide desktop sizes; a 640×680px portrait Both canvas keeps adjacent collided pairs disjoint without shrinking 44px targets.
 
 **Primary owners:** `planner-tactic-editor.tsx`, `planner-tactic-lane-list.tsx`, `planner-tactic-inspector.tsx`, and pitch components.
 
@@ -418,13 +425,15 @@ These are verification tasks and extensions of the proposed shared rules, not fi
 - [x] Apply shared Modal title, field, footer-action, and radius treatments without rebuilding interaction logic.
 - [ ] Complete the dialog-specific section/layout audit alongside the remaining feature refinements.
 - [x] Verify shared filter/save-label wrapping and expanding mutation error/recovery copy, not only successful short-copy states.
+- [x] Verify expanded Moneyball contributions, longer constrained-workspace role labels, and distinct unavailable import/score states.
 - [ ] Complete long-content verification in the remaining feature-specific dialogs and disclosures.
 - [ ] Check destructive confirmations for exact target names, clear consequences, safe cancellation, and obvious final confirmation.
 - [ ] Check loading, no snapshot, no results, no shortlist, unavailable import, departed player, and recovery-stopped states.
 - [x] Preserve distinct disabled controls and unmistakable selected state in the revised shared primitives/navigation.
 - [x] Preserve phase-specific mutation labels and stable button widths during pending states.
 - [x] Preserve reduced-motion behavior and add no decorative entrance or hover animations.
-- [ ] Keep scroll cues visible in constrained panels, category strips, and tables.
+- [x] Retain native scrolling in bounded Moneyball/Tactic regions and replace the concealed Moneyball category strip with fully visible wrapping tabs.
+- [ ] Complete scroll-cue inspection in the remaining feature panels and tables.
 
 ## 14. Accessibility and rendering checks
 
@@ -435,16 +444,17 @@ These are verification tasks and extensions of the proposed shared rules, not fi
 - [x] Test long mixed-script save names and applied filter labels with the bundled Archivo/Plex fallback stack.
 - [ ] Extend long-name/script checks to real profile and feature-specific datasets in step 5.
 - [x] Verify revised shared header/toolbar/control labels are not clipped at the core viewports.
-- [ ] Complete long-role and feature-specific fixed-height label checks in the constrained workspaces.
+- [x] Complete long-role and feature-specific fixed-height label checks in the constrained Moneyball and Tactic workspaces.
 - [ ] Inspect real portraits and club graphics as well as fallbacks before changing image-stage proportions.
 - [ ] Check the native Windows app separately for font rendering, scaling, scrollbars, focus, and available content height.
 - [x] Compare all 19 canonical populated routes at 1280×800 and 1600×900 before and after shared framing.
-- [ ] Extend visual inspection to 1920×1080, the 2100px tactic boundary, and 3440×1440 with the relevant feature-composition work.
+- [x] Inspect Moneyball Profile and Tactic at 1920×1080, both sides of the 2100px tactic boundary, and 3440×1440.
+- [ ] Extend these larger-viewport checks to remaining feature-composition work.
 
 ## 15. Reconcile DESIGN.md and implementation
 
-**Documentation reconciliation: current for steps 1–2.** DESIGN.md reflects the implemented Signal identity, shared framing, numeric roles, and corrected contrast tokens.
-Feature-specific composition and native verification remain explicitly pending.
+**Documentation reconciliation: current for steps 1–3.** DESIGN.md reflects the implemented Signal identity, shared framing, numeric roles, corrected contrast tokens, and repaired Moneyball/Tactic composition.
+Other feature refinements and native verification remain explicitly pending.
 
 - [x] Replace old gold hexadecimal examples and stale contrast ratios with calculations from the current tokens.
 - [x] Correct body-family frontmatter to Archivo, with IBM Plex Sans retained as the bundled fallback.
@@ -462,13 +472,14 @@ Feature-specific composition and native verification remain explicitly pending.
 - [x] Correct runtime muted, low-tier score/error, and outline pairings; verify raised/overlay and actual composited states without weakening accessibility targets.
 - [x] Record the six shared rules and reconcile their verified rollout with current tokens and behavior in DESIGN.md.
 - [x] Reconcile current shared navigation emphasis, radius, header, toolbar, feedback, numeric, and viewport descriptions.
-- [ ] Reconcile feature-specific composition/emphasis descriptions when later steps implement them.
+- [x] Reconcile Moneyball Profile and Tactic composition, independent scrolling, and pitch sizing with the step-3 implementation.
+- [ ] Reconcile remaining feature-specific composition/emphasis descriptions when later steps implement them.
 
 ## Recommended implementation sequence
 
 1. **Settle the shared rules — Done:** navigation treatment, heading hierarchy, radius roles, dataset toolbar, feedback footprint, and numeric typography; [DESIGN.md](DESIGN.md#shared-framing-rules) owns the rules.
 2. **Implement the shared framing — Done:** shell, headers, table panels, and common primitives implemented; all 19 canonical populated routes compared before/after at both core sizes, with focused interaction checks and full validation.
-3. **Repair the constrained workspaces:** Moneyball Profile and smaller-desktop Tactic composition before secondary polish.
+3. **Repair the constrained workspaces — Done:** Moneyball Profile and smaller-desktop Tactic composition repaired, with focused interaction checks, six-size comparisons, and full validation before secondary polish.
 4. **Apply feature refinements:** profile summaries, Staff, Squad, Planner, Academy, and Settings.
 5. **Inspect interaction states and native rendering:** dialogs, errors, progress, keyboard flow, long content, graphics, and Windows scaling.
 6. **Maintain documentation and validate:** initial DESIGN.md reconciliation is complete; update it alongside subsequent implementation that makes each new rule true.

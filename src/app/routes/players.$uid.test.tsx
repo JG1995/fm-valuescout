@@ -743,9 +743,6 @@ describe("player profile route", () => {
     const moneyballRoleFit = screen.getByRole("region", {
       name: /^Moneyball role fit for /,
     });
-    expect(moneyballRoleFit).toHaveClass(
-      "lg:grid-cols-[minmax(240px,360px)_minmax(0,1fr)]",
-    );
     expect(
       within(moneyballRoleFit).getByTestId(
         "moneyball-role-position-picker-scroller",

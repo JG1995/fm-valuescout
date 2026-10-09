@@ -73,7 +73,7 @@ function LaneButton({
       aria-label={`${shortLabel}: ${description}`}
       aria-describedby={linkedHintId}
       aria-pressed={selected}
-      className={`min-h-11 min-w-0 w-full rounded-md border px-1 py-1 text-center transition-[background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+      className={`min-h-11 min-w-0 w-full scroll-m-1 rounded-md border px-1 py-1 text-center transition-[background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
         selected
           ? "border-primary bg-primary-container text-primary ring-2 ring-primary/60"
           : highlighted
@@ -298,7 +298,7 @@ export function TacticPitchCanvas({
   return (
     <fieldset
       aria-describedby={attackDescriptionId}
-      className="rounded-lg border border-outline-variant bg-surface-container-lowest p-3"
+      className="min-w-0 rounded-lg border border-outline-variant bg-surface-container-lowest p-3"
     >
       <legend className="sr-only">{legend}</legend>
       <p

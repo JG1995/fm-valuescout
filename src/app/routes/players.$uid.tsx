@@ -328,7 +328,7 @@ function MoneyballPlayerProfile({
         id="player-analysis-panel"
         role="tabpanel"
         aria-labelledby="player-analysis-tab-moneyball"
-        className={profileWorkspaceClassName()}
+        className="grid min-h-0 min-w-0 flex-1 gap-gutter lg:h-0 lg:grid-cols-[minmax(0,0.95fr)_minmax(500px,1.05fr)] [&>*]:min-h-0"
       >
         <div
           data-testid="moneyball-primary-column"

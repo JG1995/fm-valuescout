@@ -36,19 +36,19 @@ function MetricContribution({
   contribution: MoneyballRoleContribution;
 }) {
   return (
-    <div className="grid gap-1 border-t border-outline-variant/70 py-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-4">
+    <div className="space-y-1 border-t border-outline-variant/70 py-2">
       <dt className="min-w-0 text-body-sm text-on-surface">
-        <span className="block truncate" title={contribution.metricKey}>
+        <span className="block break-words" title={contribution.metricKey}>
           {contribution.sourceLabel}
         </span>
-        <span className="block text-[11px] text-on-surface-variant">
+        <span className="block break-words text-[11px] text-on-surface-variant">
           {contribution.metricKey} ·{" "}
           {contribution.direction === "lower"
             ? "Lower is better"
             : "Higher is better"}
         </span>
       </dt>
-      <dd className="grid grid-cols-2 gap-x-3 gap-y-1 text-right text-[11px] text-on-surface-variant sm:grid-cols-3">
+      <dd className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-on-surface-variant">
         <span>Weight {formatWeight(contribution.weight)}</span>
         <span>
           {contribution.percentile === null
@@ -70,7 +70,7 @@ function RoleExplanation({
 }) {
   return (
     <details className="mt-1 rounded-md bg-surface-container-low px-2">
-      <summary className="cursor-pointer py-2 text-body-sm text-on-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+      <summary className="cursor-pointer py-2 text-body-sm text-on-surface break-words focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary">
         <span className="font-medium">{role.displayName}</span>
         <span className="ml-2 text-[11px] text-on-surface-variant">
           {rolePhaseLabel(role.phase)}
@@ -180,7 +180,7 @@ export function MoneyballRoleFitPanel({
     >
       <section
         aria-label={`Moneyball role fit for ${selectedPosition}`}
-        className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(240px,360px)_minmax(0,1fr)]"
+        className="grid h-full min-h-0 gap-4 lg:grid-cols-[clamp(176px,30%,240px)_minmax(0,1fr)]"
       >
         <div
           data-testid="moneyball-role-position-picker-scroller"
@@ -200,7 +200,7 @@ export function MoneyballRoleFitPanel({
               </caption>
               <colgroup>
                 <col />
-                <col className="w-[110px]" />
+                <col className="w-20" />
               </colgroup>
               <thead className="sticky top-0 z-10 bg-surface-container">
                 <tr className="border-b border-outline-variant">
@@ -219,7 +219,7 @@ export function MoneyballRoleFitPanel({
                   <th
                     scope="col"
                     aria-sort={direction}
-                    className="w-[110px] pb-1 text-center align-bottom"
+                    className="w-20 pb-1 text-center align-bottom"
                   >
                     <button
                       type="button"

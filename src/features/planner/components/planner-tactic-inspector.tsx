@@ -132,10 +132,10 @@ export function PlannerTacticInspector({
 
   return (
     <section
-      className="flex h-full flex-col rounded-lg border border-outline-variant bg-surface-container-high p-3"
+      className="flex h-full min-h-0 flex-col overflow-y-auto border-l border-outline-variant pl-4"
       aria-labelledby={headingId}
     >
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pb-3">
+      <div className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1 pb-2">
         <h3
           id={headingId}
           className="text-body-md font-semibold text-on-surface"
@@ -150,8 +150,8 @@ export function PlannerTacticInspector({
         </p>
       </div>
 
-      <fieldset disabled={disabled} className="flex flex-1 flex-col">
-        <div className="space-y-2 pb-4">
+      <fieldset disabled={disabled} className="flex shrink-0 flex-col">
+        <div className="space-y-2 pb-2">
           <h4 className="text-label-md text-on-surface-variant">
             Phase Influence
           </h4>
@@ -190,7 +190,7 @@ export function PlannerTacticInspector({
           </div>
         </div>
 
-        <div className="space-y-2 border-t border-outline-variant py-4">
+        <div className="space-y-2 border-t border-outline-variant py-2">
           <h4 className="text-label-md text-on-surface-variant">
             General Settings
           </h4>
@@ -244,7 +244,7 @@ export function PlannerTacticInspector({
         {phases.map((phase) => (
           <div
             key={phase}
-            className="space-y-2 border-t border-outline-variant py-4 last:pb-0"
+            className="space-y-2 border-t border-outline-variant py-2 last:pb-0"
           >
             <h4 className="flex items-center gap-2 text-label-md text-on-surface-variant">
               <span
