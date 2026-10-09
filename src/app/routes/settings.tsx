@@ -81,7 +81,10 @@ function SettingsPage() {
     <div className="space-y-gutter">
       <h1 className="text-headline-md text-on-surface">Settings</h1>
 
-      <section aria-labelledby="preferences-heading" className="space-y-3">
+      <section
+        aria-labelledby="preferences-heading"
+        className="w-full max-w-2xl space-y-4"
+      >
         <h2
           className="text-headline-sm text-on-surface"
           id="preferences-heading"
@@ -116,7 +119,10 @@ function SettingsPage() {
         </div>
       </section>
 
-      <section aria-labelledby="all-boosts-heading" className="space-y-3">
+      <section
+        aria-labelledby="all-boosts-heading"
+        className="w-full max-w-2xl space-y-4"
+      >
         <h2
           className="text-headline-sm text-on-surface"
           id="all-boosts-heading"
@@ -141,7 +147,10 @@ function SettingsPage() {
         )}
       </section>
 
-      <section aria-labelledby="graphics-heading" className="space-y-3">
+      <section
+        aria-labelledby="graphics-heading"
+        className="w-full max-w-2xl space-y-4"
+      >
         <h2 className="text-headline-sm text-on-surface" id="graphics-heading">
           Graphics
         </h2>
@@ -152,7 +161,7 @@ function SettingsPage() {
         </Suspense>
       </section>
 
-      <section aria-labelledby="save-data-heading" className="space-y-3">
+      <section aria-labelledby="save-data-heading" className="space-y-4">
         <h2 className="text-headline-sm text-on-surface" id="save-data-heading">
           Save data
         </h2>
@@ -164,7 +173,7 @@ function SettingsPage() {
         </Suspense>
       </section>
 
-      <section aria-labelledby="bridge-heading" className="space-y-3">
+      <section aria-labelledby="bridge-heading" className="space-y-4">
         <h2 className="text-headline-sm text-on-surface" id="bridge-heading">
           Bridge
         </h2>

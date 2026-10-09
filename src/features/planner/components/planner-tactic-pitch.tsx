@@ -75,7 +75,7 @@ function LaneButton({
       aria-pressed={selected}
       className={`min-h-11 min-w-0 w-full scroll-m-1 rounded-md border px-1 py-1 text-center transition-[background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
         selected
-          ? "border-primary bg-primary-container text-primary ring-2 ring-primary/60"
+          ? "border-primary bg-primary-container text-on-primary-container ring-2 ring-primary/60"
           : highlighted
             ? `${phaseBorder} bg-surface-container-high text-on-surface ring-2 ring-primary/60`
             : `${phaseBorder} bg-surface-container text-on-surface hover:bg-surface-container-high`

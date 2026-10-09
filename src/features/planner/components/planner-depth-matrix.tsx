@@ -192,10 +192,10 @@ export function PlannerDepthMatrix({
 
   return (
     <Panel title="Squad depth" flush>
-      <div className="space-y-4 p-4">
+      <div className="flex flex-col gap-4 p-4">
         <fieldset
           aria-label="Squad controls"
-          className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-outline-variant bg-surface-container-low p-3"
+          className="m-0 flex min-w-0 flex-wrap items-center justify-between gap-2 border-0 p-0"
         >
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Button
@@ -204,7 +204,7 @@ export function PlannerDepthMatrix({
                 setRoleReferenceReturnFocus(event.currentTarget);
                 setRoleReferenceOpen(true);
               }}
-              className="!h-7 !px-3 !text-label-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               Best role fit
             </Button>

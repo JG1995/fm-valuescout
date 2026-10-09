@@ -1,4 +1,4 @@
-import { BadgeEuro, FolderOpen, GraduationCap, Plus } from "lucide-react";
+import { FolderOpen, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
@@ -68,7 +68,7 @@ export function AcademyOverview({
             through your club.
           </EmptyState>
         ) : (
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="divide-y divide-outline-variant">
             {classes.map((academyClass) => {
               const detail = classDetails.find(
                 (candidate) => candidate.id === academyClass.id,
@@ -85,39 +85,39 @@ export function AcademyOverview({
                   <button
                     type="button"
                     aria-label={`Open Class of ${academyClass.classYear}`}
-                    className="flex min-h-28 w-full cursor-pointer flex-col justify-between rounded-lg border border-outline-variant bg-surface-container-high p-4 text-left transition-colors duration-150 ease-out hover:bg-surface-container-highest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className="flex min-h-16 w-full cursor-pointer flex-wrap items-center gap-x-4 gap-y-2 rounded-sm px-2 py-2 text-left transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
                     onClick={() => onOpenClass(academyClass)}
                   >
-                    <span className="text-headline-sm text-on-surface">
+                    <span className="w-40 shrink-0 text-body-md font-semibold text-on-surface">
                       Class of {academyClass.classYear}
                     </span>
-                    <span className="text-body-sm text-on-surface-variant">
+                    <span className="min-w-40 text-body-sm text-on-surface-variant">
                       {academyClass.memberCount} tracked player
                       {academyClass.memberCount === 1 ? "" : "s"}
                     </span>
-                    <span className="text-label-sm text-on-surface-variant">
+                    <span className="min-w-40 text-body-sm text-on-surface-variant">
                       Reported senior:{" "}
                       {classStatistics?.reportedSeniorPlayers ?? "—"}
                     </span>
-                    <span className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-outline-variant pt-3 text-label-sm text-on-surface-variant">
-                      <span className="inline-flex items-center gap-1.5">
-                        <GraduationCap
-                          aria-hidden
-                          className="size-3.5 text-primary"
-                        />
+                    <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-body-sm text-on-surface-variant">
+                      <span>
                         {formatClassCount(
                           classStatistics?.graduates,
                           "graduate",
                         )}
                       </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <BadgeEuro
-                          aria-hidden
-                          className="size-3.5 text-success"
-                        />
+                      <span>
                         {formatClassIncome(classStatistics?.saleFeeEur)} sale
                         income
                       </span>
+                    </span>
+                    <span className="ml-auto inline-flex items-center gap-2 text-label-md text-on-surface">
+                      <FolderOpen
+                        aria-hidden
+                        className="size-4"
+                        strokeWidth={1.5}
+                      />
+                      Open
                     </span>
                   </button>
                 </li>

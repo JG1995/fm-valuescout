@@ -433,7 +433,7 @@ export function SnapshotHistoryPanel({
                           {snapshotLabel(snapshot)}
                         </span>
                         {snapshot.isCurrent ? (
-                          <span className="rounded-full bg-primary-container px-2 py-0.5 text-label-sm text-primary">
+                          <span className="rounded-full bg-primary-container px-2 py-0.5 text-label-sm text-on-primary-container">
                             Current
                           </span>
                         ) : null}

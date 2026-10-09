@@ -130,7 +130,7 @@ for (const inspectedPage of pages) {
             plannerSnapshot: false,
             playerProfile: false,
             squadOverview: false,
-            staffWorkspace: false,
+            staffWorkspace: true,
             snapshotHistory: false,
           }
         : populatedOptions,

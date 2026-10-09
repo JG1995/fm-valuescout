@@ -2,6 +2,7 @@
 // Scope: .wiki/ARCHITECTURE.md §6.4 Playwright smoke scope
 import { expect, test } from "@playwright/test";
 import { stubTauriIpc } from "./tauri-ipc-stub";
+import { expectReadableText } from "./text-contrast";
 
 test.describe("application smoke", () => {
   test.beforeEach(async ({ page }) => {
@@ -174,6 +175,207 @@ test.describe("application smoke", () => {
     await expect(main.getByText("Status:")).toHaveCount(0);
     await expect(main.getByText("Stored value:")).toHaveCount(0);
   });
+
+  test("Settings bounds reading sections without narrowing populated save management", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { snapshotHistory: true });
+    await page.goto("/settings");
+    const main = page.getByRole("main");
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+      [1920, 1080],
+      [3440, 1440],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      for (const name of ["Preferences", "All boosts", "Graphics"]) {
+        const section = main.getByRole("region", { name, exact: true });
+        const box = await section.boundingBox();
+        expect(box?.width).toBeLessThanOrEqual(672);
+      }
+      const saveData = main.getByRole("region", {
+        name: "Save data",
+        exact: true,
+      });
+      const history = saveData.getByRole("table", { name: "Snapshot history" });
+      await expect(history).toBeAttached();
+      await expectReadableText(history.getByText("Current", { exact: true }));
+      expect((await saveData.boundingBox())?.width).toBeGreaterThan(900);
+      const bridge = main.getByRole("region", { name: "Bridge", exact: true });
+      await bridge
+        .getByRole("heading", { name: "Bridge plugin install", exact: true })
+        .scrollIntoViewIfNeeded();
+      await expect(bridge.getByText(/FM modules: detected/)).toBeVisible();
+      expect(
+        await main.evaluate((element) => {
+          const node = element as unknown as {
+            scrollWidth: number;
+            clientWidth: number;
+          };
+          return node.scrollWidth <= node.clientWidth;
+        }),
+      ).toBe(true);
+    }
+  });
+
+  for (const [width, height] of [
+    [1280, 800],
+    [1600, 900],
+  ] as const) {
+    test(`Academy keeps a large cohort usable with quiet metrics and labelled actions at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height });
+      await stubTauriIpc(page, {
+        academyWorkspace: true,
+        academyLargeCohort: true,
+        squadOverview: true,
+        snapshotHistory: true,
+      });
+      await page.goto("/academy");
+      const main = page.getByRole("main");
+      const outcomes = main.getByRole("region", { name: "Academy outcomes" });
+      await expect(
+        outcomes.getByTestId("academy-stat-graduates"),
+      ).toContainText("—");
+      await expect(
+        outcomes.getByText(
+          "Graduate data is unavailable until career appearances have been imported for every tracked player.",
+        ),
+      ).toBeVisible();
+      await expect(outcomes.locator("svg").first()).toHaveCSS("width", "16px");
+      const outcomeBox = await outcomes.boundingBox();
+      expect(outcomeBox?.height).toBeLessThanOrEqual(160);
+      const openClass = main.getByRole("button", {
+        name: "Open Class of 2026",
+      });
+      await expect(openClass).toContainText("50 tracked players");
+      expect((await openClass.boundingBox())?.height).toBeLessThanOrEqual(64);
+      await openClass.focus();
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(/view=class&classId=7/);
+      const selected = main.getByRole("tab", { name: "Class", exact: true });
+      await expect(selected).toHaveAttribute("aria-selected", "true");
+      await expect(selected).not.toHaveClass(/bg-primary/);
+      await expect(selected).toHaveCSS("border-bottom-width", "2px");
+      const group = main.getByRole("region", {
+        name: "Still at club (50)",
+        exact: true,
+      });
+      const table = group.getByRole("table");
+      await expect(table.locator("tbody tr")).toHaveCount(50);
+      const scroller = table.locator("..");
+      const initialBox = await scroller.boundingBox();
+      const rows = await table.locator("tbody tr").evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = (
+            element as unknown as {
+              getBoundingClientRect: () => {
+                top: number;
+                bottom: number;
+                height: number;
+              };
+            }
+          ).getBoundingClientRect();
+          return { top: rect.top, bottom: rect.bottom, height: rect.height };
+        }),
+      );
+      if (!initialBox) throw new Error("Expected a visible Academy roster.");
+      expect(
+        rows.filter(
+          (row) => row.top >= initialBox.y + 32 && row.bottom <= height - 16,
+        ).length,
+      ).toBeGreaterThanOrEqual(3);
+      expect(rows.every((row) => row.height >= 40)).toBe(true);
+      const longName = "Alexandros Papadopoulos — Кириллица";
+      await expect(table.getByText(longName, { exact: true })).toHaveAttribute(
+        "title",
+        longName,
+      );
+      await expect(
+        table.getByText(
+          "Club Deportivo Internacional de Desarrollo Juvenil Barcelona",
+          { exact: true },
+        ),
+      ).toHaveAttribute(
+        "title",
+        "Club Deportivo Internacional de Desarrollo Juvenil Barcelona",
+      );
+      for (const name of ["Sold (0)", "Released (0)"]) {
+        const empty = main.getByRole("region", { name, exact: true });
+        await expect(empty.getByRole("table")).toHaveCount(0);
+        await expect(empty).toContainText(
+          "No players are currently in this group.",
+        );
+        expect((await empty.boundingBox())?.height).toBeLessThanOrEqual(32);
+      }
+      const lastRow = table.locator("tbody tr").last();
+      for (const name of ["Sell", "Release", "Remove"]) {
+        const action = lastRow.getByRole("button", { name, exact: true });
+        await expect(action).not.toHaveClass(
+          /bg-error|text-success|text-warning/,
+        );
+        expect((await action.boundingBox())?.height).toBeGreaterThanOrEqual(32);
+      }
+      const remove = lastRow.getByRole("button", {
+        name: "Remove",
+        exact: true,
+      });
+      await remove.focus();
+      await expect(remove).toBeFocused();
+      const scroll = await scroller.evaluate((element) => {
+        const node = element as unknown as {
+          scrollLeft: number;
+          scrollTop: number;
+          scrollWidth: number;
+          clientWidth: number;
+        };
+        return {
+          left: node.scrollLeft,
+          top: node.scrollTop,
+          width: node.scrollWidth,
+          clientWidth: node.clientWidth,
+        };
+      });
+      expect(scroll.top).toBeGreaterThan(0);
+      expect(scroll.width).toBeGreaterThan(scroll.clientWidth);
+      const [focusedBox, scrollerBox] = await Promise.all([
+        remove.boundingBox(),
+        scroller.boundingBox(),
+      ]);
+      if (!focusedBox || !scrollerBox)
+        throw new Error("Expected focused roster action geometry.");
+      expect(focusedBox.y + focusedBox.height).toBeLessThanOrEqual(
+        scrollerBox.y + scrollerBox.height + 1,
+      );
+      expect(focusedBox.x + focusedBox.width).toBeLessThanOrEqual(
+        scrollerBox.x + scrollerBox.width + 1,
+      );
+      await page.keyboard.press("Enter");
+      const confirmation = page.getByRole("dialog", {
+        name: "Remove Academy prospect 050 from Class of 2026?",
+      });
+      await expect(confirmation).toContainText(
+        "deletes any manual sale or release outcome",
+      );
+      await expect(
+        confirmation.getByRole("button", { name: "Remove from class" }),
+      ).toHaveClass(/bg-error/);
+      await confirmation.getByRole("button", { name: "Cancel" }).click();
+      await expect(remove).toBeFocused();
+      await expect(table.locator("tbody tr")).toHaveCount(50);
+      expect(
+        await main.evaluate((element) => {
+          const node = element as unknown as {
+            scrollWidth: number;
+            clientWidth: number;
+          };
+          return node.scrollWidth <= node.clientWidth;
+        }),
+      ).toBe(true);
+    });
+  }
 
   test("My Club creates Club DNA and exposes its Squad column", async ({
     page,
@@ -947,6 +1149,99 @@ test.describe("application smoke", () => {
     ).toHaveAttribute("max", "50");
   });
 
+  for (const [width, height] of [
+    [1280, 800],
+    [1600, 900],
+  ] as const) {
+    test(`Profile summaries leave readable evidence at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height });
+      await stubTauriIpc(page, {
+        playerProfile: true,
+        playerProfileLayout: true,
+      });
+      await page.goto("/players/42?section=overview");
+      const main = page.getByRole("main");
+      const summary = main.getByTestId("player-profile-summary-details");
+      const box = await summary.boundingBox();
+      if (!box) throw new Error("Expected profile summary");
+      expect(box.height).toBeLessThanOrEqual(200);
+      const attributes = main.getByRole("region", {
+        name: "Technical",
+        exact: true,
+      });
+      const viewport = await attributes.locator("../../..").boundingBox();
+      if (!viewport) throw new Error("Expected attribute workspace");
+      let visibleRows = 0;
+      for (const row of await attributes.locator("dl > div").all()) {
+        const bounds = await row.boundingBox();
+        if (
+          bounds &&
+          bounds.y >= viewport.y &&
+          bounds.y + bounds.height <= viewport.y + viewport.height
+        )
+          visibleRows++;
+      }
+      expect(visibleRows).toBeGreaterThanOrEqual(3);
+      const facts = main.getByRole("region", { name: "Ability", exact: true });
+      await expect(facts.getByText("140", { exact: true })).toBeVisible();
+      await expect(facts.getByText("160", { exact: true })).toBeVisible();
+      await expect(facts.getByText("€12.5M", { exact: true })).toBeVisible();
+      for (const phase of ["ip", "oop"]) {
+        const fit = main.getByTestId(`overview-tactical-fit-${phase}`);
+        expect(
+          await fit.evaluate((element) => {
+            const node = element as unknown as {
+              scrollWidth: number;
+              clientWidth: number;
+            };
+            return node.scrollWidth <= node.clientWidth;
+          }),
+        ).toBe(true);
+      }
+      const selected = main.getByRole("tab", {
+        name: "Overview",
+        selected: true,
+      });
+      expect(
+        await selected.evaluate((element) => {
+          const browser = globalThis as unknown as {
+            getComputedStyle: (node: unknown) => { backgroundColor: string };
+          };
+          return browser.getComputedStyle(element).backgroundColor;
+        }),
+      ).not.toBe(
+        await page
+          .getByRole("button", { name: "Load Data", exact: true })
+          .evaluate((element) => {
+            const browser = globalThis as unknown as {
+              getComputedStyle: (node: unknown) => { backgroundColor: string };
+            };
+            return browser.getComputedStyle(element).backgroundColor;
+          }),
+      );
+    });
+  }
+
+  test("selected Tactic markers keep small labels readable on their filled surface", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await stubTauriIpc(page, { plannerSnapshot: true, squadOverview: true });
+    await page.goto("/my-club?view=tactic");
+    for (const phase of ["IP", "OOP"]) {
+      const marker = page
+        .getByRole("main")
+        .getByRole("button", { name: new RegExp(`^${phase}:`), pressed: true })
+        .first();
+      await marker.scrollIntoViewIfNeeded();
+      for (const label of await marker.locator("span[title]").all()) {
+        await expectReadableText(label);
+      }
+    }
+  });
+
   test("Staff Profile keeps role fit inside a virtual scrollport", async ({
     page,
   }) => {
@@ -957,6 +1252,35 @@ test.describe("application smoke", () => {
     const main = page.getByRole("main");
     const scrollport = main.getByTestId("staff-role-fit-scroller");
     await expect(scrollport).toBeVisible();
+    for (const label of [
+      "Goalkeeping Distribution",
+      "Working With Youngsters",
+      "Judging Player Potential",
+    ]) {
+      const attribute = main.getByText(label, { exact: true });
+      await expect(attribute).toBeVisible();
+      expect(
+        await attribute.evaluate((element) => {
+          const node = element as unknown as {
+            scrollWidth: number;
+            clientWidth: number;
+          };
+          return node.scrollWidth <= node.clientWidth;
+        }),
+      ).toBe(true);
+    }
+    const bestRole = main
+      .getByRole("region", { name: "Alex Coach summary" })
+      .getByText("Assistant Manager", { exact: true });
+    expect(
+      await bestRole.evaluate((element) => {
+        const node = element as unknown as {
+          scrollWidth: number;
+          clientWidth: number;
+        };
+        return node.scrollWidth <= node.clientWidth;
+      }),
+    ).toBe(true);
     const before = await main.evaluate((element) => {
       const scrollable = element as unknown as {
         clientHeight: number;
@@ -1168,7 +1492,12 @@ test.describe("application smoke", () => {
       .getByRole("main")
       .getByRole("button", { name: "Save managed club" })
       .click();
-    await expect(managedClub).toHaveValue("Barcelona");
+    await expect(
+      page
+        .getByRole("main")
+        .getByText("Managed club: Barcelona", { exact: true }),
+    ).toBeVisible();
+    await expect(managedClub).toHaveCount(0);
     await expect(
       page.evaluate(async () => {
         const invoke = (
@@ -1181,6 +1510,30 @@ test.describe("application smoke", () => {
         return invoke("get_managed_club");
       }),
     ).resolves.toMatchObject({ clubName: "Barcelona", clubUid: 100 });
+    const edit = page
+      .getByRole("main")
+      .getByRole("button", { name: "Edit managed club" });
+    await expect(edit).toBeFocused();
+    await edit.click();
+    await expect(managedClub).toBeFocused();
+    await managedClub.fill("Bar");
+    await page
+      .getByRole("option", { name: "Barca Athletic", exact: true })
+      .click();
+    await expect(
+      page
+        .getByRole("main")
+        .getByText("Unsaved selection. Analysis still uses Barcelona."),
+    ).toBeVisible();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
+    await expect(managedClub).toHaveCount(0);
+    await expect(edit).toBeFocused();
+    await expect(page).toHaveURL(/\/my-club#managed-club$/);
+    await edit.click();
+    await expect(managedClub).toHaveValue("Barcelona");
   });
 
   test("configured Squad shows its sortable player overview", async ({
@@ -1239,8 +1592,31 @@ test.describe("application smoke", () => {
       const scroller = main.getByTestId("squad-overview-scroller");
       await expect(scroller).toBeVisible();
       await expect(
-        main.getByRole("combobox", { name: "Managed club" }),
+        main.getByRole("button", { name: "Edit managed club" }),
       ).toBeVisible();
+      await expect(
+        main.getByRole("combobox", { name: "Managed club" }),
+      ).toHaveCount(0);
+      const actions = main.getByRole("group", {
+        name: "Squad actions",
+        exact: true,
+      });
+      const upload = actions.getByRole("button", {
+        name: "Upload Squad CSV",
+        exact: true,
+      });
+      const boost = actions.getByRole("button", {
+        name: "Boost all CA",
+        exact: true,
+      });
+      const [uploadBox, boostBox] = await Promise.all([
+        upload.boundingBox(),
+        boost.boundingBox(),
+      ]);
+      if (!uploadBox || !boostBox)
+        throw new Error("Expected visible Squad action groups.");
+      expect(boostBox.x).toBeGreaterThan(uploadBox.x);
+      await expect(boost).not.toHaveClass(/bg-primary/);
 
       const [mainBox, scrollerBox, mainDimensions, dimensions] =
         await Promise.all([
@@ -4246,6 +4622,20 @@ test.describe("application smoke", () => {
       if (!controlsBox || !potentialBox) {
         throw new Error("Expected visible Planner optimization controls.");
       }
+      expect(controlsBox.height).toBeLessThanOrEqual(36);
+      const controlBoxes = await controls
+        .getByRole("button")
+        .evaluateAll((elements) =>
+          elements.map(
+            (element) =>
+              (
+                element as unknown as {
+                  getBoundingClientRect: () => { height: number };
+                }
+              ).getBoundingClientRect().height,
+          ),
+        );
+      expect(controlBoxes.every((height) => height >= 32)).toBe(true);
       expect(potentialBox.x + potentialBox.width).toBeLessThanOrEqual(
         controlsBox.x + controlsBox.width,
       );
@@ -4278,11 +4668,21 @@ test.describe("application smoke", () => {
     );
 
     const clearAll = main.getByRole("button", { name: "Clear all" });
+    await expect(clearAll).not.toHaveClass(/bg-error/);
     await clearAll.click();
     const confirmation = page.getByRole("dialog", {
       name: "Clear all squads?",
     });
     await expect(confirmation).toContainText("Senior, Reserves, and Youth");
+    await expect(
+      confirmation.getByRole("button", { name: "Clear all" }),
+    ).toHaveClass(/bg-error/);
+    await confirmation.getByRole("button", { name: "Cancel" }).click();
+    await expect(clearAll).toBeFocused();
+    await expect(
+      main.getByRole("button", { name: /Optimized Keeper, Resolved/ }).first(),
+    ).toBeVisible();
+    await clearAll.click();
     await confirmation.getByRole("button", { name: "Clear all" }).click();
     await expect(main.getByRole("status")).toHaveText("All squads cleared.");
 
@@ -4456,6 +4856,10 @@ test.describe("application smoke", () => {
     const emptyCard = board.getByRole("button", { name: /, Empty$/ }).first();
     await expect(assignedCard).toBeVisible();
     await expect(emptyCard).toBeVisible();
+    await expect(emptyCard).toHaveText("Assign");
+    await expect(emptyCard).toHaveCSS("border-top-color", "rgba(0, 0, 0, 0)");
+    const emptyBox = await emptyCard.boundingBox();
+    expect(emptyBox?.height).toBeGreaterThanOrEqual(32);
     const assignedCardWidthAt1280 = await assignedCard.evaluate(
       (element) =>
         (
@@ -4917,7 +5321,7 @@ test.describe("application smoke", () => {
     });
     await expect(summary.getByText("140", { exact: true })).toHaveCSS(
       "font-size",
-      "36px",
+      "24px",
     );
     await expect(
       outfield.getByText("Work Rate", { exact: true }),

@@ -62,11 +62,11 @@ export function AcademyWorkspaceTabs({
             aria-controls={`academy-workspace-panel-${id}`}
             tabIndex={selected ? 0 : -1}
             className={cn(
-              "h-8 cursor-pointer rounded-sm px-4 text-label-lg transition-colors duration-150 ease-out",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "h-8 cursor-pointer rounded-sm border-b-2 px-4 text-label-lg transition-colors duration-150 ease-out",
+              "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary",
               selected
-                ? "bg-primary text-on-primary"
-                : "text-on-surface-variant hover:text-on-surface",
+                ? "border-primary bg-surface-container-lowest text-on-surface"
+                : "border-transparent text-on-surface-variant hover:text-on-surface",
             )}
             onClick={() => {
               onViewChange(id);

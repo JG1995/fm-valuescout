@@ -3,6 +3,7 @@ import { VISIBLE_ATTRIBUTE_KEYS } from "../src/utils/player-attributes";
 
 export type SmokeStubOptions = {
   academyWorkspace?: boolean;
+  academyLargeCohort?: boolean;
   csvImportFormat?: "youthTracker" | "moneyball";
   plannerSnapshot?: boolean;
   plannerPotentialScores?: boolean;
@@ -152,6 +153,30 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             },
           ]
         : [];
+      if (academyWorkspace && ${options.academyLargeCohort ? "true" : "false"}) {
+        academyMembers.push(...Array.from({ length: 48 }, (_, index) => {
+          const name = index === 0
+            ? "Alexandros Papadopoulos — Кириллица"
+            : "Academy prospect " + String(index + 3).padStart(3, "0");
+          const unresolved = index === 47;
+          return {
+            ...academyMembers[1],
+            playerUid: index + 100,
+            lastKnownName: name,
+            currentName: unresolved ? null : name,
+            state: unresolved ? "unresolved" : index === 0 ? "departed" : "resolved",
+            currentClub: unresolved ? null : index === 0
+              ? "Club Deportivo Internacional de Desarrollo Juvenil Barcelona"
+              : "Barcelona U19",
+            reportedCareerAppearances: unresolved ? null : 0,
+            goals: unresolved ? null : 0,
+            assists: unresolved ? null : 0,
+            internationalCaps: unresolved ? null : 0,
+            isGraduate: unresolved ? null : false,
+          };
+        }));
+        academyClasses[0].memberCount = academyMembers.length;
+      }
       let staffAssignmentSnapshotToken = "snapshot-token-1";
       const staffAssignmentSnapshot = () => ({
         id: 1,

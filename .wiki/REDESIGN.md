@@ -16,9 +16,10 @@ Do not maintain competing token definitions here.
 **Step 1: done — shared rules settled.** The developer selected a decisions-only checkpoint, followed by step-2 implementation.
 **Step 2: done — shared framing implemented and verified in Chromium.** [DESIGN.md's shared framing rules](DESIGN.md#shared-framing-rules) describe current behavior and comparison evidence.
 **Step 3: done — constrained Moneyball Profile and Tactic workspaces repaired and verified in Chromium.**
+**Step 4: done — profile, Staff, managed-club/Squad, Planner, Academy, and Settings refinements implemented and verified in Chromium.**
 Checked preservation items describe the implemented changes, not permission to stop protecting them in later work.
-Other feature-specific refinements and native Windows verification remain pending.
-Native rendering belongs to step 5, not the step-3 completion gate; completion does not authorize publication.
+The broader interaction-state audit and native Windows verification remain step-5 work; Dashboard's purpose remains a separate product decision.
+Native rendering is not a Chromium-checkpoint completion gate; completion does not authorize publication.
 
 - [x] Settle navigation treatment.
 - [x] Settle heading hierarchy and shared spacing.
@@ -59,6 +60,12 @@ At 1280×800, Moneyball shows all eight categories and at least four complete me
 Additional checks covered expanded five-contribution evidence, longer role labels, no-natural-position/no-import/pre-score states, every XI entry and phase marker by keyboard, and dense MCL/MC/MCR shapes in Both view.
 The full unit suite passed 1,044 tests, smoke passed 68 tests, and `./scripts/dev check` passed, including 882 Rust tests.
 [DESIGN.md](DESIGN.md#player-profile-layout) and its [Tactic description](DESIGN.md#squad-workspace-layout) own the implemented composition and sizing rules.
+
+Step 4 compared all 19 canonical populated routes before at `cf9fdc4` and after refinements at 1280×800 and 1600×900, then inspected all 19 at 1920×1080 and 3440×1440.
+Focused checks covered profile concealment and visible analytical rows, saved-club drafts/cancellation/focus, expanded Staff evidence/vacancies and long labels, renamed Planner teams with nine strings and occupied/warning cells, and a 50-player Academy cohort with unavailable aggregates and keyboard-reachable actions.
+Lower Settings management and revised feature dialogs were inspected separately.
+The full unit suite passed 1,044 tests, smoke passed 74 tests, and `./scripts/dev check` passed, including 882 Rust tests.
+[DESIGN.md](DESIGN.md#implementation-evidence-and-remaining-scope) owns current feature composition, measured geometry, and bounded contrast evidence.
 
 The captures used Chromium and synthetic Tauri IPC fixtures.
 They do not prove native WebView2 rendering, live FM integration, or behavior with every production dataset.
@@ -103,8 +110,8 @@ Do not add a permanent sidebar, global content-width clamp, decorative charts, o
 | P1 | Moneyball Profile proportions and minimum-height usability — **Done** | Parallel evidence panels expose metrics and protect role labels |
 | P1 | Tactic composition at smaller desktop widths — **Done** | A bounded XI list stays beside the initially visible pitch |
 | P1 | Reconcile stale DESIGN.md statements — **Done** | Current rules, geometry, and corrected contrast tokens match implementation |
-| P2 | Simplify surfaces, shapes, and emphasis | Removes inconsistent dashboard-like framing |
-| P2 | Refine profile summaries, Academy, Planner, and Settings | Applies shared rules to feature-specific composition |
+| P2 | Simplify surfaces, shapes, and emphasis — **Done** | Neutral local selection and simpler feature framing retain analytical meaning |
+| P2 | Refine profiles, Staff, Squad, Academy, Planner, and Settings — **Done** | Applies shared rules to feature-specific composition |
 | P3 | Inspect dialogs, long-operation states, and remaining boundaries | Extends verified coherence beyond initial populated screens |
 
 P1 and P2 are recommended order, not delivery commitments.
@@ -207,7 +214,7 @@ Tactic, Planner, and Academy show this most clearly.
 - [x] Keep useful boundaries around independent scrollers, dialogs, and interactive assignment targets.
 - [x] Preserve the recessed table-header treatment and neutral data surfaces.
 - [x] Complete Tactic's border/surface audit: one host and command separator, bounded XI/pitch/inspector regions, neutral selected XI rows, and hairline inspector sections.
-- [ ] Complete the feature-specific border/surface audit for Planner and Academy's inner regions.
+- [x] Complete the feature-specific border/surface audit for Planner and Academy's inner regions.
 
 ### 3.2 Adopt the settled radius roles
 
@@ -226,7 +233,7 @@ It is a product rule derived from comparisons, not a requirement copied from the
 
 - [x] Preserve row heights rather than using smaller rows to compensate for excessive chrome.
 - [x] Apply 8px related-control gaps and 16px region spacing in shared workspace framing.
-- [ ] Review 12px gaps and 20px column gaps individually; their existence is not itself a defect, but repeated patterns should be intentional.
+- [x] Review 12px gaps and 20px column gaps individually; their existence is not itself a defect, but repeated patterns should be intentional.
 - [x] Align shared header, toolbar, search, Columns, and segmented-control heights, baselines, and padding across consumers.
 - [x] Keep horizontal overflow local to tables and boards.
 - [x] Do not stretch bounded table columns to eliminate empty space when that would slow scanning or violate saved widths.
@@ -235,15 +242,15 @@ It is a product rule derived from comparisons, not a requirement copied from the
 
 ### 4.1 Reserve strong emphasis for useful state and actions
 
-- [ ] Make passive Academy metric icons neutral rather than brand green.
-- [ ] Make local section/category selection quieter than primary actions, while retaining an unmistakable selected state.
-- [ ] Keep neutral metrics neutral; do not colour a statistic green simply because it is positive-looking data.
+- [x] Make passive Academy metric icons neutral rather than brand green.
+- [x] Make local section/category selection quieter than primary actions, while retaining an unmistakable selected state.
+- [x] Keep neutral metrics neutral; do not colour a statistic green simply because it is positive-looking data.
 - [x] Preserve score-tier meanings and separate data-green/brand-green roles while correcting low-tier contrast.
 - [x] Keep IP/OOP phase distinctions readable by label and stroke treatment, not just colour.
 - [x] Use a quieter Clear all in the dataset filter row; clearing filters is not a destructive data mutation.
-- [ ] Test lower-emphasis Delete class and repeated Remove triggers; keep strong destructive styling for confirmation.
-- [ ] Preserve explicit labels and target-specific confirmations. Reduced visual emphasis must not disguise the consequences.
-- [ ] Review screens with both global Load Data and a local primary action so they have distinct roles rather than competing as equal focal points.
+- [x] Test lower-emphasis Delete class and repeated Remove triggers; keep strong destructive styling for confirmation.
+- [x] Preserve explicit labels and target-specific confirmations. Reduced visual emphasis must not disguise the consequences.
+- [x] Review screens with both global Load Data and a local primary action so they have distinct roles rather than competing as equal focal points.
 
 ### 4.2 Reconcile numeric typography
 
@@ -267,18 +274,19 @@ Step 2 implements the [raw-value/score split in DESIGN.md](DESIGN.md#numeric-typ
 - [x] Keep name, club, nationality, age, and supporting identity facts available across sections.
 - [x] Preserve stable portrait and crest slots and readable fallbacks.
 - [ ] Verify long names, mixed scripts, missing images, and real local portraits before changing rail width or image-stage height.
-- [ ] Keep Modify Player and hidden-information controls visually secondary but accessible.
+- [x] Keep Modify Player and hidden-information controls visually secondary but accessible.
 - [x] Preserve concealed-information behavior and development-action safeguards.
 
 ### 5.2 Strengthen Overview hierarchy
 
-**Observed:** five similarly framed summary cards give neutral facts and tactical conclusions nearly equal visual weight.
+**Original observation:** five similarly framed summary cards gave neutral facts and tactical conclusions nearly equal visual weight.
+**Step 4 refinement:** grouped neutral facts and restrained tactical conclusions reclaim analytical space without changing the identity stage or concealment.
 
-- [ ] Group Current Ability, Potential Ability, and Market Value more tightly as neutral facts.
-- [ ] Give the two role-fit summaries a distinct but restrained composition so the useful conclusion is easy to find.
-- [ ] Reduce unnecessary card height and empty space without squeezing long role names or misaligning Current → Potential pairs.
-- [ ] Preserve all existing facts and concealment rules; regrouping is not permission to remove information.
-- [ ] Verify the balance of summary area and analytical evidence at both supported minimum and larger desktop sizes.
+- [x] Group Current Ability, Potential Ability, and Market Value more tightly as neutral facts.
+- [x] Give the two role-fit summaries a distinct but restrained composition so the useful conclusion is easy to find.
+- [x] Reduce unnecessary card height and empty space without squeezing long role names or misaligning Current → Potential pairs.
+- [x] Preserve all existing facts and concealment rules; regrouping is not permission to remove information.
+- [x] Verify the balance of summary area and analytical evidence at both supported minimum and larger desktop sizes.
 
 **Primary owner:** `src/features/player-profile/components/player-overview-panel.tsx`.
 
@@ -286,9 +294,9 @@ Step 2 implements the [raw-value/score split in DESIGN.md](DESIGN.md#numeric-typ
 
 - [x] Preserve the dense attribute groups and hairline row rhythm.
 - [x] Keep General Role Fit's bounded pitch sizing and usable role-name area.
-- [ ] Review whether score-circle treatment needs simplification only after shared shape rules are settled.
+- [x] Review whether score-circle treatment needs simplification only after shared shape rules are settled; retain the meaningful aligned score circles.
 - [x] Preserve readable wrapped role names, aligned score columns, and accessible position selection.
-- [ ] Verify the combined Overview at the minimum height, not only the dedicated Attributes and Role Fit sections.
+- [x] Verify the combined Overview at the minimum height, not only the dedicated Attributes and Role Fit sections.
 
 ### 5.4 Repair Moneyball workspace proportions
 
@@ -312,20 +320,20 @@ Step 2 implements the [raw-value/score split in DESIGN.md](DESIGN.md#numeric-typ
 - [x] Keep upload, staffing configuration, and optimization actions distinct from table filters and columns.
 - [x] Retain the compact mounted optimizer-feedback region, readiness guidance, and expanded results contract.
 - [x] Verify the normal Staff Search state separately from shortlist-on inspection fixtures.
-- [ ] Check expanded assignment results, vacancies, long job titles, and evidence disclosures; these were not covered by the initial-page audit.
+- [x] Check expanded assignment results, vacancies, long job titles, and evidence disclosures; these were not covered by the initial-page audit.
 - [x] Apply shared section-heading, radius, and action primitives to Staff Profile without forcing Player Profile's rail layout onto different content.
-- [ ] Refine Staff Profile's feature-specific summary composition and long-label treatment.
-- [ ] Keep long staff attribute labels readable and role-score lists aligned.
-- [ ] Keep boost actions secondary to analysis in the profile's visual hierarchy, preserving their confirmation and outcome behavior.
+- [x] Refine Staff Profile's feature-specific summary composition and long-label treatment.
+- [x] Keep long staff attribute labels readable and role-score lists aligned.
+- [x] Keep boost actions secondary to analysis in the profile's visual hierarchy, preserving their confirmation and outcome behavior.
 
 ## 7. My Club context and Squad
 
-- [ ] Make the saved managed-club context compact and distinguish it from an unsaved selector draft.
-- [ ] Test an explicit editing treatment instead of permanently prominent Save managed club controls in every workspace.
-- [ ] Preserve exact-club selection, missing-club warnings, explicit save semantics, and the stable managed-club setup target.
-- [ ] Keep Define DNA discoverable without giving configuration equal prominence to daily analysis.
+- [x] Make the saved managed-club context compact and distinguish it from an unsaved selector draft.
+- [x] Test an explicit editing treatment instead of permanently prominent Save managed club controls in every workspace.
+- [x] Preserve exact-club selection, missing-club warnings, explicit save semantics, and the stable managed-club setup target.
+- [x] Keep Define DNA discoverable without giving configuration equal prominence to daily analysis.
 - [x] Apply the compact header, toolbar, and feedback treatment to Squad.
-- [ ] Keep boosts and CSV uploads available, but order and emphasize them consistently rather than making every action equally loud.
+- [x] Keep boosts and CSV uploads available, but order and emphasize them consistently rather than making every action equally loud.
 - [x] Preserve all upload-format, confirmation, progress, recovery, and cache-refresh behavior.
 
 ## 8. Tactic
@@ -356,15 +364,15 @@ Step 2 implements the [raw-value/score split in DESIGN.md](DESIGN.md#numeric-typ
 
 ## 9. Planner
 
-- [ ] Remove the redundant boxed toolbar layer within the Squad depth panel where a simple aligned action row will suffice.
-- [ ] Reduce repeated box-inside-cell treatment, especially for empty assignment cells.
-- [ ] Keep Assign visibly actionable; empty cells must not become ambiguous blank space.
-- [ ] Keep occupied players, Current → Potential scores, and unresolved/outside-pool warnings easy to distinguish.
+- [x] Remove the redundant boxed toolbar layer within the Squad depth panel where a simple aligned action row will suffice.
+- [x] Reduce repeated box-inside-cell treatment, especially for empty assignment cells.
+- [x] Keep Assign visibly actionable; empty cells must not become ambiguous blank space.
+- [x] Keep occupied players, Current → Potential scores, and unresolved/outside-pool warnings easy to distinguish.
 - [x] Preserve fixed-width strings, team grouping, tactical-slot context, and sticky headers.
 - [x] Do not fill the unused right-hand space by stretching the board when there are only a few strings.
-- [ ] Review row padding and two-line role context together; do not create irregular rows or clipped labels.
-- [ ] Apply restrained destructive treatment to Clear all while retaining target-specific confirmation.
-- [ ] Inspect multiple strings, renamed teams, long player names, and more populated boards before finalizing.
+- [x] Review row padding and two-line role context together; do not create irregular rows or clipped labels.
+- [x] Apply restrained destructive treatment to Clear all while retaining target-specific confirmation.
+- [x] Inspect multiple strings, renamed teams, long player names, and more populated boards before finalizing.
 
 **Primary owners:** `planner-depth-matrix.tsx` and `planner-squad-board.tsx`.
 
@@ -372,37 +380,37 @@ Step 2 implements the [raw-value/score split in DESIGN.md](DESIGN.md#numeric-typ
 
 ### 10.1 Simplify metric presentation
 
-**Observed:** six repeated raised metric cards contain icon boxes, values, and explanatory paragraphs.
-Several passive icons use brand green.
-The Class workspace repeats this group above its roster.
+**Original observation:** six repeated raised metric cards contained icon boxes, values, and explanatory paragraphs, with several passive icons in brand green.
+**Step 4 refinement:** neutral 16px icons and unboxed outcome values retain visible definitions and unavailable explanations while reducing the repeated Class summary's footprint.
 
-- [ ] Keep outcome metrics more prominent than administrative context, but reduce unnecessary card and icon-box framing.
-- [ ] Make passive icons neutral and smaller where the label already identifies the metric.
-- [ ] Keep metric definitions available in quieter supporting text or an accessible disclosure where appropriate.
-- [ ] Never hide an unavailable-data explanation or convert an unknown value to zero for visual neatness.
-- [ ] Reduce the repeated summary's vertical footprint in the Class workspace so the roster remains useful.
-- [ ] Preserve overview and class-specific meanings; do not accidentally show global outcomes as class outcomes.
+- [x] Keep outcome metrics more prominent than administrative context, but reduce unnecessary card and icon-box framing.
+- [x] Make passive icons neutral and smaller where the label already identifies the metric.
+- [x] Keep metric definitions available in quieter supporting text or an accessible disclosure where appropriate.
+- [x] Never hide an unavailable-data explanation or convert an unknown value to zero for visual neatness.
+- [x] Reduce the repeated summary's vertical footprint in the Class workspace so the roster remains useful.
+- [x] Preserve overview and class-specific meanings; do not accidentally show global outcomes as class outcomes.
 
 ### 10.2 Refine classes and roster actions
 
-- [ ] Replace card-inside-panel class presentation with a simpler selectable list or restrained tile treatment where appropriate.
-- [ ] Keep year, tracked count, supported outcomes, and the opening action clear.
-- [ ] Reduce visual competition from repeated Sell, Release, and Remove controls.
-- [ ] Preserve visible labelled actions and target-specific confirmation; do not hide all actions behind hover.
-- [ ] Make empty Sold and Released groups compact while retaining their meaning.
-- [ ] Verify roster overflow, readable identity, long club names, and larger cohorts at 1280×800.
+- [x] Replace card-inside-panel class presentation with a simpler selectable list or restrained tile treatment where appropriate.
+- [x] Keep year, tracked count, supported outcomes, and the opening action clear.
+- [x] Reduce visual competition from repeated Sell, Release, and Remove controls.
+- [x] Preserve visible labelled actions and target-specific confirmation; do not hide all actions behind hover.
+- [x] Make empty Sold and Released groups compact while retaining their meaning.
+- [x] Verify roster overflow, readable identity, long club names, and larger cohorts at 1280×800.
 
 **Primary owners:** `academy-statistics.tsx`, `academy-overview.tsx`, and `academy-class-workspace.tsx`.
 
 ## 11. Settings
 
-**Observed:** explanatory sections and panels span much more width than their content needs, and section-title treatments are inconsistent.
+**Original observation:** explanatory sections and panels spanned much more width than their content needed, and section-title treatments were inconsistent.
+**Step 4 refinement:** Preferences, All boosts, and Graphics are bounded reading sections; Save data and Bridge retain usable table/diagnostic width.
 
-- [ ] Use a bounded reading/form width for preferences, boost explanation, and graphics controls.
-- [ ] Let genuinely tabular save/snapshot management retain enough width; do not apply one narrow clamp to everything.
+- [x] Use a bounded reading/form width for preferences, boost explanation, and graphics controls.
+- [x] Let genuinely tabular save/snapshot management retain enough width; do not apply one narrow clamp to everything.
 - [x] Apply the shared section-heading and control vocabulary, including nested Save data/Bridge management headings and loading states.
 - [x] Remove redundant Graphics and Bridge panel titles while retaining meaningful outer sections and install context.
-- [ ] Keep dangerous actions separated from ordinary configuration and explain their scope.
+- [x] Keep dangerous actions separated from ordinary configuration and explain their scope.
 - [x] Inspect the lower populated Save data and Bridge sections, not only the initial viewport.
 - [x] Preserve save/snapshot identity, current-state markers, and deletion consequences.
 
@@ -423,17 +431,17 @@ These are verification tasks and extensions of the proposed shared rules, not fi
 
 - [ ] Inspect filter editing, column configuration, shortlist/CSV upload, player assignment, staffing configuration, Club DNA, and team-management dialogs.
 - [x] Apply shared Modal title, field, footer-action, and radius treatments without rebuilding interaction logic.
-- [ ] Complete the dialog-specific section/layout audit alongside the remaining feature refinements.
+- [x] Complete the step-4 feature-dialog section/layout audit: Staff configuration/evidence, Planner team management and confirmations, and Academy roster actions; retain shared dialog safeguards.
 - [x] Verify shared filter/save-label wrapping and expanding mutation error/recovery copy, not only successful short-copy states.
 - [x] Verify expanded Moneyball contributions, longer constrained-workspace role labels, and distinct unavailable import/score states.
-- [ ] Complete long-content verification in the remaining feature-specific dialogs and disclosures.
+- [x] Verify step-4 long feature content: Staff job labels/evidence, renamed Planner teams/strings, and 50-player Academy scrolling, labels, and confirmations.
 - [ ] Check destructive confirmations for exact target names, clear consequences, safe cancellation, and obvious final confirmation.
 - [ ] Check loading, no snapshot, no results, no shortlist, unavailable import, departed player, and recovery-stopped states.
 - [x] Preserve distinct disabled controls and unmistakable selected state in the revised shared primitives/navigation.
 - [x] Preserve phase-specific mutation labels and stable button widths during pending states.
 - [x] Preserve reduced-motion behavior and add no decorative entrance or hover animations.
 - [x] Retain native scrolling in bounded Moneyball/Tactic regions and replace the concealed Moneyball category strip with fully visible wrapping tabs.
-- [ ] Complete scroll-cue inspection in the remaining feature panels and tables.
+- [x] Inspect native local scroll regions in the revised profile, Staff, Planner, Academy, and lower Settings panels; do not conceal overflow controls.
 
 ## 14. Accessibility and rendering checks
 
@@ -449,12 +457,12 @@ These are verification tasks and extensions of the proposed shared rules, not fi
 - [ ] Check the native Windows app separately for font rendering, scaling, scrollbars, focus, and available content height.
 - [x] Compare all 19 canonical populated routes at 1280×800 and 1600×900 before and after shared framing.
 - [x] Inspect Moneyball Profile and Tactic at 1920×1080, both sides of the 2100px tactic boundary, and 3440×1440.
-- [ ] Extend these larger-viewport checks to remaining feature-composition work.
+- [x] Extend these larger-viewport checks to step-4 feature composition at 1920×1080 and 3440×1440.
 
 ## 15. Reconcile DESIGN.md and implementation
 
-**Documentation reconciliation: current for steps 1–3.** DESIGN.md reflects the implemented Signal identity, shared framing, numeric roles, corrected contrast tokens, and repaired Moneyball/Tactic composition.
-Other feature refinements and native verification remain explicitly pending.
+**Documentation reconciliation: current for steps 1–4.** DESIGN.md reflects the implemented Signal identity, shared framing, numeric roles, corrected contrast pairings, repaired Moneyball/Tactic composition, and verified feature refinements.
+The broader interaction-state audit, real datasets/graphics, and native verification remain explicitly pending.
 
 - [x] Replace old gold hexadecimal examples and stale contrast ratios with calculations from the current tokens.
 - [x] Correct body-family frontmatter to Archivo, with IBM Plex Sans retained as the bundled fallback.
@@ -473,14 +481,14 @@ Other feature refinements and native verification remain explicitly pending.
 - [x] Record the six shared rules and reconcile their verified rollout with current tokens and behavior in DESIGN.md.
 - [x] Reconcile current shared navigation emphasis, radius, header, toolbar, feedback, numeric, and viewport descriptions.
 - [x] Reconcile Moneyball Profile and Tactic composition, independent scrolling, and pitch sizing with the step-3 implementation.
-- [ ] Reconcile remaining feature-specific composition/emphasis descriptions when later steps implement them.
+- [x] Reconcile profile, Staff, managed-club/Squad, Planner, Academy, and Settings composition/emphasis descriptions with step-4 implementation.
 
 ## Recommended implementation sequence
 
 1. **Settle the shared rules — Done:** navigation treatment, heading hierarchy, radius roles, dataset toolbar, feedback footprint, and numeric typography; [DESIGN.md](DESIGN.md#shared-framing-rules) owns the rules.
 2. **Implement the shared framing — Done:** shell, headers, table panels, and common primitives implemented; all 19 canonical populated routes compared before/after at both core sizes, with focused interaction checks and full validation.
 3. **Repair the constrained workspaces — Done:** Moneyball Profile and smaller-desktop Tactic composition repaired, with focused interaction checks, six-size comparisons, and full validation before secondary polish.
-4. **Apply feature refinements:** profile summaries, Staff, Squad, Planner, Academy, and Settings.
+4. **Apply feature refinements — Done:** profile summaries, Staff, managed-club/Squad, Planner, Academy, and Settings implemented, compared at core/larger desktop sizes, and validated with focused interaction checks and full gates.
 5. **Inspect interaction states and native rendering:** dialogs, errors, progress, keyboard flow, long content, graphics, and Windows scaling.
 6. **Maintain documentation and validate:** initial DESIGN.md reconciliation is complete; update it alongside subsequent implementation that makes each new rule true.
 

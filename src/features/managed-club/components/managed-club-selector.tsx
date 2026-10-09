@@ -31,6 +31,7 @@ const CLUB_SUGGEST_LIMIT = 10;
 type ManagedClubPickerProps = {
   clubs: ManagedClubOption[];
   value: string;
+  autoFocus: boolean;
   onSelect: (club: ManagedClubOption) => void;
   onSearchChange: (query: string) => void;
 };
@@ -38,6 +39,7 @@ type ManagedClubPickerProps = {
 function ManagedClubPicker({
   clubs,
   value,
+  autoFocus,
   onSelect,
   onSearchChange,
 }: ManagedClubPickerProps) {
@@ -93,6 +95,7 @@ function ManagedClubPicker({
         aria-expanded={showSuggestions}
         aria-haspopup="listbox"
         autoComplete="off"
+        autoFocus={autoFocus}
         label="Managed club"
         placeholder="Search clubs…"
         role="combobox"
@@ -199,6 +202,9 @@ export function ManagedClubSelector({
     clubUid: managedClub.clubUid ?? null,
   });
   const [searchPending, setSearchPending] = useState(false);
+  const [editing, setEditing] = useState(!managedClub.clubName);
+  const controlsRef = useRef<HTMLFieldSetElement>(null);
+  const wasEditing = useRef(editing);
 
   useEffect(() => {
     setSelectedOption({
@@ -206,6 +212,7 @@ export function ManagedClubSelector({
       clubUid: managedClub.clubUid ?? null,
     });
     setSearchPending(false);
+    setEditing(!managedClub.clubName);
   }, [managedClub.clubName, managedClub.clubUid]);
 
   const clubOptions = useMemo(
@@ -233,50 +240,97 @@ export function ManagedClubSelector({
       return setManagedClub(selectedOption.clubName, selectedOption.clubUid);
     },
     onSuccess: () => {
+      setEditing(false);
       void queryClient.invalidateQueries({ queryKey: managedClubKeys.all });
       onSaved?.();
     },
   });
+
+  useEffect(() => {
+    if (save.isPending) return;
+    if (wasEditing.current && !editing) {
+      controlsRef.current?.querySelector("button")?.focus();
+    }
+    wasEditing.current = editing;
+  }, [editing, save.isPending]);
+
+  const selectionChanged =
+    selectedOption.clubName !== (managedClub.clubName ?? "") ||
+    selectedOption.clubUid !== (managedClub.clubUid ?? null);
+  const canSave =
+    selectedOption.clubName.length > 0 && !searchPending && selectionChanged;
 
   return (
     <form
       className="w-full max-w-2xl space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        save.mutate();
+        if (canSave && !save.isPending) save.mutate();
       }}
     >
-      <fieldset className="m-0 flex min-w-0 flex-wrap items-end gap-2 border-0 p-0">
+      <fieldset
+        ref={controlsRef}
+        disabled={save.isPending}
+        className="m-0 flex min-w-0 flex-wrap items-end gap-2 border-0 p-0"
+      >
         <legend className="sr-only">Managed club controls</legend>
-        <div className="min-w-64 flex-1">
-          <ManagedClubPicker
-            clubs={clubOptions}
-            value={selectedOption.clubName}
-            onSearchChange={(query) =>
-              setSearchPending(query !== selectedOption.clubName)
-            }
-            onSelect={(club) => {
-              setSelectedOption(club);
-              setSearchPending(false);
+        {editing ? (
+          <>
+            <div className="min-w-64 flex-1">
+              <ManagedClubPicker
+                autoFocus={managedClub.clubName !== null}
+                clubs={clubOptions}
+                value={selectedOption.clubName}
+                onSearchChange={(query) =>
+                  setSearchPending(query !== selectedOption.clubName)
+                }
+                onSelect={(club) => {
+                  setSelectedOption(club);
+                  setSearchPending(false);
+                }}
+              />
+            </div>
+            <Button disabled={!canSave} loading={save.isPending} type="submit">
+              Save managed club
+            </Button>
+            {managedClub.clubName ? (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setSelectedOption({
+                    clubName: managedClub.clubName ?? "",
+                    clubUid: managedClub.clubUid,
+                  });
+                  setSearchPending(false);
+                  save.reset();
+                  setEditing(false);
+                }}
+              >
+                Cancel
+              </Button>
+            ) : null}
+          </>
+        ) : (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              save.reset();
+              setEditing(true);
             }}
-          />
-        </div>
-        <Button
-          className="shrink-0"
-          disabled={
-            !selectedOption.clubName ||
-            searchPending ||
-            (selectedOption.clubName === managedClub.clubName &&
-              selectedOption.clubUid === (managedClub.clubUid ?? null))
-          }
-          loading={save.isPending}
-          type="submit"
-        >
-          Save managed club
-        </Button>
+          >
+            Edit managed club
+          </Button>
+        )}
         {action}
       </fieldset>
 
+      {editing && (selectionChanged || searchPending) ? (
+        <p className="text-body-sm text-on-surface-variant" role="status">
+          {managedClub.clubName
+            ? `Unsaved selection. Analysis still uses ${managedClub.clubName}.`
+            : "Unsaved selection. Save an exact club to use it for analysis."}
+        </p>
+      ) : null}
       {managedClub.status === "missing" ? (
         <p className="text-body-sm text-warning">
           {managedClub.clubName} is not in the latest snapshot. The saved

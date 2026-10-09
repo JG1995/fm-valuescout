@@ -377,7 +377,7 @@ export function PlannerTeamManagement({
         disabled={disabled || save.isPending || checkingRemovalImpact}
         onClick={() => setOpen(true)}
         data-planner-manage-teams
-        className="!h-7 !px-3 !text-label-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         Manage teams
       </Button>

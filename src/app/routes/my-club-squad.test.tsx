@@ -686,7 +686,7 @@ describe("My Club route", () => {
     ).toBeNull();
   });
 
-  it("places Club DNA beside the managed-club save and appends it on creation", async () => {
+  it("places Club DNA beside saved-club editing and appends it on creation", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
     setManagedClubIpcMock({
@@ -703,13 +703,13 @@ describe("My Club route", () => {
     const controls = await screen.findByRole("group", {
       name: "Managed club controls",
     });
-    const saveButton = within(controls).getByRole("button", {
-      name: "Save managed club",
+    const editButton = within(controls).getByRole("button", {
+      name: "Edit managed club",
     });
     const defineButton = within(controls).getByRole("button", {
       name: "Define DNA",
     });
-    expect(saveButton.compareDocumentPosition(defineButton)).toBe(
+    expect(editButton.compareDocumentPosition(defineButton)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     // The disabled placeholder swaps for the definition trigger once saves
@@ -1008,7 +1008,7 @@ describe("My Club route", () => {
     });
   });
 
-  it("groups managed-club controls above feedback while retaining save states", async () => {
+  it("edits an exact managed-club draft, cancels safely, and saves explicitly", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
     setManagedClubIpcMock({
@@ -1024,42 +1024,80 @@ describe("My Club route", () => {
     setManagedClubSavePending(true);
     renderMyClubRoute({ initialEntry: "/my-club" });
 
-    const picker = await screen.findByRole("combobox", {
-      name: "Managed club",
+    const editButton = await screen.findByRole("button", {
+      name: "Edit managed club",
     });
-    const saveButton = screen.getByRole("button", {
-      name: "Save managed club",
-    });
+    expect(screen.queryByRole("combobox", { name: "Managed club" })).toBeNull();
+    expect(screen.getByText("Managed club: Legacy FC")).toBeInTheDocument();
+    await user.click(editButton);
+    let picker = screen.getByRole("combobox", { name: "Managed club" });
     const warning = screen.getByText(
       "Legacy FC is not in the latest snapshot. The saved selection remains active until you replace it.",
     );
     const controls = screen.getByRole("group", {
       name: "Managed club controls",
     });
-
     expect(controls).toContainElement(picker);
-    expect(controls).toContainElement(saveButton);
-    expect(
-      picker.compareDocumentPosition(saveButton) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(controls).toHaveClass("flex", "flex-wrap");
-    expect(controls.closest("form")).toHaveClass("max-w-2xl");
     expect(controls).not.toContainElement(warning);
     expect(controls.compareDocumentPosition(warning)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect(saveButton).toBeDisabled();
+    expect(picker).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: "Save managed club" }),
+    ).toBeDisabled();
 
+    await user.clear(picker);
+    await user.type(picker, "Not an exact club{Enter}");
+    expect(
+      screen.getByRole("button", { name: "Save managed club" }),
+    ).toBeDisabled();
+    expect(getLastManagedClubSaveArgs()).toBeNull();
     await user.clear(picker);
     await user.type(picker, "Bar");
     await user.click(screen.getByRole("option", { name: "Barcelona" }));
-    expect(saveButton).toBeEnabled();
+    expect(
+      screen.getByText("Unsaved selection. Analysis still uses Legacy FC."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Managed club: Legacy FC")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(getLastManagedClubSaveArgs()).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Managed club" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Edit managed club" }),
+    ).toHaveFocus();
 
+    await user.click(screen.getByRole("button", { name: "Edit managed club" }));
+    picker = screen.getByRole("combobox", { name: "Managed club" });
+    expect(picker).toHaveValue("Legacy FC");
+    await user.clear(picker);
+    await user.type(picker, "Bar");
+    await user.click(screen.getByRole("option", { name: "Barcelona" }));
+    const saveButton = screen.getByRole("button", {
+      name: "Save managed club",
+    });
+    expect(saveButton).toBeEnabled();
     await user.click(saveButton);
     expect(saveButton).toBeDisabled();
-
+    expect(picker).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    setManagedClubIpcMock({
+      clubName: "Barcelona",
+      clubUid: 2,
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
     resolvePendingManagedClubSave();
+    await waitFor(() => {
+      expect(screen.getByText("Managed club: Barcelona")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("combobox", { name: "Managed club" }),
+      ).toBeNull();
+    });
+    expect(getLastManagedClubSaveArgs()).toEqual({
+      clubName: "Barcelona",
+      clubUid: 2,
+    });
   });
 
   it("retains a missing managed club without exposing team-level diagnostics", async () => {
@@ -1074,8 +1112,11 @@ describe("My Club route", () => {
     renderMyClubRoute({ initialEntry: "/my-club" });
 
     expect(
-      await screen.findByRole("combobox", { name: "Managed club" }),
-    ).toHaveValue("Legacy FC");
+      await screen.findByText("Managed club: Legacy FC"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Edit managed club" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         "Legacy FC is not in the latest snapshot. The saved selection remains active until you replace it.",
@@ -1143,10 +1184,13 @@ describe("My Club route", () => {
         await vi.advanceTimersByTimeAsync(0);
         await invalidation;
       });
-      expect(picker).toHaveValue("Second FC");
+      expect(screen.getByText("Managed club: Second FC")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("combobox", { name: "Managed club" }),
+      ).toBeNull();
 
       act(() => vi.advanceTimersByTime(150));
-      expect(picker).toHaveValue("Second FC");
+      expect(screen.getByText("Managed club: Second FC")).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
@@ -1154,7 +1198,7 @@ describe("My Club route", () => {
     resolvePendingManagedClubSave();
 
     await waitFor(() => {
-      expect(picker).toHaveValue("Second FC");
+      expect(screen.getByText("Managed club: Second FC")).toBeInTheDocument();
       expect(queryClient.getQueryData(managedClubKeys.status())).toEqual({
         clubName: "Second FC",
         clubUid: 2,
@@ -4599,7 +4643,7 @@ describe("My Club route", () => {
     expect(slotHeader).toHaveClass("max-w-52");
   });
 
-  it("renders board cards on the container-high surface without primary text", async () => {
+  it("distinguishes occupied board cards from quiet explicit Assign targets", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(withDepthAssignments(resolvePlannerDepthIpcMock()));
@@ -4614,9 +4658,12 @@ describe("My Club route", () => {
     const emptyCard = within(board).getByRole("button", {
       name: /Senior, 2nd string, IP: GK .* Empty/,
     });
+    expect(assignedCard).toHaveClass(
+      "bg-surface-container-high",
+      "border-outline-variant",
+    );
+    expect(emptyCard).toHaveTextContent(/^Assign$/);
     for (const card of [assignedCard, emptyCard]) {
-      expect(card).toHaveClass("bg-surface-container-high");
-      expect(card).toHaveClass("border-outline-variant");
       expect(card).toHaveClass("rounded-md");
     }
     expect(board.querySelector(".text-primary")).toBeNull();
