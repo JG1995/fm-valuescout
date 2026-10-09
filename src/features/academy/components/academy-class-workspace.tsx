@@ -510,7 +510,16 @@ function AcademyMemberActions({
   const released = member.outcome?.status === "released";
 
   return (
-    <div className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
+    <fieldset
+      aria-label={`Actions for ${member.currentName ?? member.lastKnownName}`}
+      className="inline-flex scroll-m-1 items-center justify-end gap-2 whitespace-nowrap"
+      onFocus={(event) =>
+        event.currentTarget.scrollIntoView({
+          block: "nearest",
+          inline: "nearest",
+        })
+      }
+    >
       <Button
         data-academy-member-sell={`${academyClass.id}-${member.playerUid}`}
         disabled={disabled}
@@ -545,7 +554,7 @@ function AcademyMemberActions({
       >
         Remove
       </Button>
-    </div>
+    </fieldset>
   );
 }
 

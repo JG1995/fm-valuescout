@@ -47,7 +47,9 @@ export function AcademyClassCreationModal({
     <Modal
       open={open}
       title="Create academy class"
-      onClose={onClose}
+      onClose={() => {
+        if (!create.isPending) onClose();
+      }}
       footer={
         <>
           <Button
@@ -90,6 +92,7 @@ export function AcademyClassCreationModal({
         </p>
         <TextField
           label="Class year"
+          disabled={create.isPending}
           min={1}
           name="classYear"
           step={1}

@@ -39,6 +39,9 @@
   --color-inverse-surface: oklch(0.964 0.003 264.5);
   --color-inverse-on-surface: oklch(0.226 0.013 264.3);
 
+  /* Overlay backdrop */
+  --color-scrim: oklch(0 0 0);
+
   /* Borders and outlines */
   --color-outline: oklch(0.66 0.01 264.5);
   --color-outline-variant: oklch(0.375 0.013 267.2);

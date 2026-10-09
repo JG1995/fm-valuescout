@@ -257,6 +257,18 @@ export function ConfigurableTableHeader({
       document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [openColumnId]);
 
+  useEffect(() => {
+    if (openColumnId) {
+      menuRef.current
+        ?.querySelector<HTMLButtonElement>(
+          pickingColumnId
+            ? "button"
+            : 'button[role="menuitem"]:not([disabled])',
+        )
+        ?.focus();
+    }
+  }, [openColumnId, pickingColumnId]);
+
   const closeMenu = () => {
     const columnId = openColumnId;
     setOpenColumnId(null);

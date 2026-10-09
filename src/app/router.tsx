@@ -1,5 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
+import { WorkspaceError } from "@/app/components/workspace-error";
 import { routeTree } from "@/routeTree.gen";
 
 export const queryClient = new QueryClient({
@@ -18,6 +19,12 @@ export const router = createRouter({
   context: { queryClient },
   defaultPreloadStaleTime: 0,
   defaultPreload: "intent",
+  defaultPendingComponent: () => (
+    <p role="status" className="p-4 text-body-md text-on-surface-variant">
+      Loading workspace…
+    </p>
+  ),
+  defaultErrorComponent: WorkspaceError,
   scrollRestoration: true,
 });
 

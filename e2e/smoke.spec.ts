@@ -99,6 +99,66 @@ test.describe("application smoke", () => {
     });
   }
 
+  test("shared dialogs dim the workspace and respect reduced motion", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/search");
+    await page.getByRole("button", { name: "Edit filters" }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit filters" });
+    const backdrop = page.getByRole("button", { name: "Close dialog" });
+    await expect(dialog).toHaveCSS("opacity", "1");
+    await expect(backdrop).toHaveCSS("opacity", "1");
+    const rgba = await backdrop.evaluate((element) => {
+      // SAFETY: this callback runs in Chromium; the Node config omits DOM types.
+      const browser = globalThis as unknown as {
+        getComputedStyle: (node: unknown) => { backgroundColor: string };
+        document: {
+          createElement: (tag: string) => {
+            width: number;
+            height: number;
+            getContext: (type: string) => {
+              fillStyle: string;
+              fillRect: (
+                x: number,
+                y: number,
+                width: number,
+                height: number,
+              ) => void;
+              getImageData: (
+                x: number,
+                y: number,
+                width: number,
+                height: number,
+              ) => {
+                data: Uint8ClampedArray;
+              };
+            };
+          };
+        };
+      };
+      const canvas = browser.document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext("2d");
+      context.fillStyle = browser.getComputedStyle(element).backgroundColor;
+      context.fillRect(0, 0, 1, 1);
+      return Array.from(context.getImageData(0, 0, 1, 1).data);
+    });
+    expect(rgba).toEqual([0, 0, 0, 153]);
+    expect(await backdrop.boundingBox()).toEqual({
+      x: 0,
+      y: 0,
+      width: 1280,
+      height: 800,
+    });
+    await expect(dialog).toHaveCSS("transition-property", "none");
+    await expect(backdrop).toHaveCSS("transition-property", "none");
+    await expect(dialog).toHaveCSS("translate", "0px");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+  });
+
   test("long save names keep the current date and utility controls visible", async ({
     page,
   }) => {
@@ -322,6 +382,21 @@ test.describe("application smoke", () => {
         name: "Remove",
         exact: true,
       });
+      await page.evaluate("document.fonts.ready");
+      const [unfocusedBox, portBox] = await Promise.all([
+        remove.boundingBox(),
+        scroller.boundingBox(),
+      ]);
+      if (!unfocusedBox || !portBox)
+        throw new Error("Expected roster action geometry before focus.");
+      // Leave only an edge visible: browser focus alone may not reveal the rest.
+      await scroller.evaluate(
+        (element, delta) => {
+          const node = element as unknown as { scrollLeft: number };
+          node.scrollLeft += delta;
+        },
+        unfocusedBox.x - (portBox.x + portBox.width - 8),
+      );
       await remove.focus();
       await expect(remove).toBeFocused();
       const scroll = await scroller.evaluate((element) => {
@@ -2625,6 +2700,8 @@ test.describe("application smoke", () => {
     const wonderkidButton = main.getByRole("button", {
       name: "Make all Wonderkids",
     });
+    await expect(caButton).toBeVisible();
+    await page.evaluate("document.fonts.ready");
     const caBefore = await caButton.boundingBox();
     const wonderkidBefore = await wonderkidButton.boundingBox();
     if (!caBefore || !wonderkidBefore) {
@@ -5918,6 +5995,105 @@ test.describe("application smoke", () => {
       mainDimensions.clientHeight + 1,
     );
   });
+
+  for (const [destination, command, loadingCopy] of [
+    ["Staff Search", "search_staff", "Loading workspace…"],
+    ["Youth", "list_academy_classes", "Loading workspace…"],
+  ] as const) {
+    test(`slow ${destination} loading retains the shell and shows progress`, async ({
+      page,
+    }) => {
+      await stubTauriIpc(page, {
+        academyWorkspace: true,
+        staffWorkspace: true,
+        plannerSnapshot: true,
+        squadOverview: true,
+      });
+      await page.goto("/");
+      await expect(
+        page.getByText("Placeholder.", { exact: true }),
+      ).toBeVisible();
+      await page.evaluate(`(() => {
+        const original = window.__TAURI_INTERNALS__.invoke;
+        let held = true;
+        const waiting = [];
+        window.__releaseLoader = () => { held = false; waiting.forEach(resolve => resolve()); };
+        window.__TAURI_INTERNALS__.invoke = async (cmd, args) => {
+          if (held && cmd === ${JSON.stringify(command)}) await new Promise(resolve => waiting.push(resolve));
+          return original(cmd, args);
+        };
+      })()`);
+      await page
+        .getByRole("navigation", { name: "Primary" })
+        .getByRole("link", { name: destination, exact: true })
+        .click();
+      await expect(
+        page.getByRole("main").getByText(loadingCopy, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("combobox", { name: "Active save" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Load Data", exact: true }),
+      ).toBeVisible();
+      await page.evaluate("window.__releaseLoader()");
+      await expect(page.getByText(loadingCopy, { exact: true })).toHaveCount(0);
+      await expect(
+        page
+          .getByRole("main")
+          .getByText(destination === "Youth" ? "Class of 2026" : "Alex Coach")
+          .first(),
+      ).toBeVisible();
+    });
+  }
+
+  for (const [destination, command] of [
+    ["Staff Search", "search_staff"],
+    ["Youth", "list_academy_classes"],
+  ] as const) {
+    test(`${destination} loader errors retain recovery controls and retry`, async ({
+      page,
+    }) => {
+      await stubTauriIpc(page, {
+        academyWorkspace: true,
+        staffWorkspace: true,
+        plannerSnapshot: true,
+        squadOverview: true,
+      });
+      await page.addInitScript({
+        content: `
+        const original = window.__TAURI_INTERNALS__.invoke;
+        window.__loaderFails = true;
+        window.__TAURI_INTERNALS__.invoke = async (cmd, args) => {
+          if (window.__loaderFails && cmd === ${JSON.stringify(command)}) throw new Error('The current Football Manager snapshot could not be read. No data was changed. Use Load Data to refresh the snapshot before trying again.');
+          return original(cmd, args);
+        };
+      `,
+      });
+      await page.goto(
+        destination === "Youth" ? "/academy" : "/staff?shortlistOnly=false",
+      );
+      await expect(page.getByText(/No data was changed/)).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Load Data", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("combobox", { name: "Active save" }),
+      ).toBeVisible();
+      await expect(page.getByRole("main").getByRole("alert")).toContainText(
+        "No data was changed",
+      );
+      await page.evaluate("window.__loaderFails = false");
+      await page.getByRole("button", { name: "Retry", exact: true }).click();
+      await expect(
+        page
+          .getByRole("main")
+          .getByText(destination === "Youth" ? "Class of 2026" : "Alex Coach")
+          .first(),
+      ).toBeVisible();
+      await expect(page.getByRole("alert")).toHaveCount(0);
+    });
+  }
 
   test("unknown routes render the not-found page", async ({ page }) => {
     await page.goto("/does-not-exist");

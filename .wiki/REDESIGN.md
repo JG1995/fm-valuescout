@@ -17,8 +17,9 @@ Do not maintain competing token definitions here.
 **Step 2: done — shared framing implemented and verified in Chromium.** [DESIGN.md's shared framing rules](DESIGN.md#shared-framing-rules) describe current behavior and comparison evidence.
 **Step 3: done — constrained Moneyball Profile and Tactic workspaces repaired and verified in Chromium.**
 **Step 4: done — profile, Staff, managed-club/Squad, Planner, Academy, and Settings refinements implemented and verified in Chromium.**
+**Step 5: done — non-native interaction, boundary, identity, and graphics-state inspection completed in Chromium.** Real-local graphics and native Windows verification remain developer-owned follow-up checks; neither is reported as passed.
 Checked preservation items describe the implemented changes, not permission to stop protecting them in later work.
-The broader interaction-state audit and native Windows verification remain step-5 work; Dashboard's purpose remains a separate product decision.
+Dashboard's purpose remains a separate product decision.
 Native rendering is not a Chromium-checkpoint completion gate; completion does not authorize publication.
 
 - [x] Settle navigation treatment.
@@ -67,6 +68,19 @@ Lower Settings management and revised feature dialogs were inspected separately.
 The full unit suite passed 1,044 tests, smoke passed 74 tests, and `./scripts/dev check` passed, including 882 Rust tests.
 [DESIGN.md](DESIGN.md#implementation-evidence-and-remaining-scope) owns current feature composition, measured geometry, and bounded contrast evidence.
 
+Step 5 inspected 116 interaction/boundary states at both 1280×800 and 1600×900 (232 captures), then reran all 19 canonical populated routes at both sizes after restoring the inspection harness.
+The dialog audit covered filters/columns, shortlist/CSV imports, staffing, Club DNA, Planner assignment/team management, Academy outcomes, save/snapshot management, and development confirmations.
+It checked target/consequence copy, cancellation, final controls, local scrolling, pending/error states, keyboard entry/trapping, and return focus; no audited main region or dialog had horizontal overflow.
+Confirmed fixes protect Planner and Academy pending operations, shared Modal return focus and the specified dimming scrim, leaf-column keyboard entry, shell-preserving workspace loading/error recovery, Academy action-focus visibility, and truthful graphics rebuild/clear feedback.
+Sixteen follow-up captures rechecked the corrected scrim in eight form/destructive/reference states at both core sizes, with visible text-contrast checks; its regression verifies full-viewport coverage, actual 60% black alpha, and reduced motion.
+Boundary checks distinguished empty/unavailable/departed/unresolved/recovery states and scan/ingest failures; progress inspection covered indeterminate and truthful determinate phases.
+Identity checks used names from the tracked Monza FM export and real long/mixed-script football names in fixture-backed profile, Search, Academy, and Planner views.
+Offline Chromium font inspection confirmed bundled Archivo for Latin/Vietnamese and IBM Plex Sans for Greek/Cyrillic; this does not establish a live snapshot or session.
+Synthetic decoded portraits/crests, missing/corrupt/pending images, generation refresh, null club UID, and Graphics settings recovery retained fixed slots without changing image-stage proportions.
+Reduced-motion checks verified the browser preference, suppressed dialog transitions, and reset panel translation; keyboard checks also covered skip/global search, tabs, virtual row traversal, and Back/Forward.
+The full unit suite passed 1,051 tests, smoke passed 79 tests, and `./scripts/dev check` passed, including 882 Rust tests (three intentionally ignored).
+Real-local graphics and native Windows fonts, scaling, scrollbars, focus, and available height remain developer-owned checks.
+
 The captures used Chromium and synthetic Tauri IPC fixtures.
 They do not prove native WebView2 rendering, live FM integration, or behavior with every production dataset.
 Developer-tool widgets visible in those captures are not part of the intended product design.
@@ -112,7 +126,7 @@ Do not add a permanent sidebar, global content-width clamp, decorative charts, o
 | P1 | Reconcile stale DESIGN.md statements — **Done** | Current rules, geometry, and corrected contrast tokens match implementation |
 | P2 | Simplify surfaces, shapes, and emphasis — **Done** | Neutral local selection and simpler feature framing retain analytical meaning |
 | P2 | Refine profiles, Staff, Squad, Academy, Planner, and Settings — **Done** | Applies shared rules to feature-specific composition |
-| P3 | Inspect dialogs, long-operation states, and remaining boundaries | Extends verified coherence beyond initial populated screens |
+| P3 | Inspect dialogs, long-operation states, and remaining boundaries — **Done (non-native)** | Confirmed interaction fixes and boundary checks extend coherence beyond populated screens; real graphics/native checks remain developer-owned |
 
 P1 and P2 are recommended order, not delivery commitments.
 Resolve shared rules before applying local visual adjustments.
@@ -273,7 +287,8 @@ Step 2 implements the [raw-value/score split in DESIGN.md](DESIGN.md#numeric-typ
 
 - [x] Keep name, club, nationality, age, and supporting identity facts available across sections.
 - [x] Preserve stable portrait and crest slots and readable fallbacks.
-- [ ] Verify long names, mixed scripts, missing images, and real local portraits before changing rail width or image-stage height.
+- [x] Verify long names, mixed scripts, and pending/missing/corrupt/decoded synthetic images at both core sizes; preserve rail width and image-stage height.
+- [ ] Inspect real local portraits before changing rail width or image-stage height — developer-owned follow-up.
 - [x] Keep Modify Player and hidden-information controls visually secondary but accessible.
 - [x] Preserve concealed-information behavior and development-action safeguards.
 
@@ -427,16 +442,19 @@ It is unfinished product content, not a colour, spacing, or branding defect.
 
 ## 13. Dialogs, feedback, and interaction states
 
-These are verification tasks and extensions of the proposed shared rules, not findings from the initial captures.
+The step-5 non-native audit completed these verification tasks; they were not findings from the initial captures.
 
-- [ ] Inspect filter editing, column configuration, shortlist/CSV upload, player assignment, staffing configuration, Club DNA, and team-management dialogs.
+- [x] Inspect filter editing, column configuration, shortlist/CSV upload, player assignment, staffing configuration, Club DNA, and team-management dialogs.
 - [x] Apply shared Modal title, field, footer-action, and radius treatments without rebuilding interaction logic.
 - [x] Complete the step-4 feature-dialog section/layout audit: Staff configuration/evidence, Planner team management and confirmations, and Academy roster actions; retain shared dialog safeguards.
 - [x] Verify shared filter/save-label wrapping and expanding mutation error/recovery copy, not only successful short-copy states.
 - [x] Verify expanded Moneyball contributions, longer constrained-workspace role labels, and distinct unavailable import/score states.
 - [x] Verify step-4 long feature content: Staff job labels/evidence, renamed Planner teams/strings, and 50-player Academy scrolling, labels, and confirmations.
-- [ ] Check destructive confirmations for exact target names, clear consequences, safe cancellation, and obvious final confirmation.
-- [ ] Check loading, no snapshot, no results, no shortlist, unavailable import, departed player, and recovery-stopped states.
+- [x] Check destructive confirmations for exact target names, clear consequences, safe cancellation, and obvious final confirmation.
+- [x] Check loading, no snapshot, no results, no shortlist, unavailable import/score, unknown/departed/unresolved player, and recovery-stopped states.
+- [x] Keep workspace-loader progress and retryable errors inside the shell instead of showing blank space or the router's developer error view.
+- [x] Lock Planner assign/move/clear dismissal and Academy creation input/dismissal while pending; retain context guards and errors.
+- [x] Verify scan versus ingest failure copy and indeterminate/determinate progress without inventing percentages.
 - [x] Preserve distinct disabled controls and unmistakable selected state in the revised shared primitives/navigation.
 - [x] Preserve phase-specific mutation labels and stable button widths during pending states.
 - [x] Preserve reduced-motion behavior and add no decorative entrance or hover animations.
@@ -450,19 +468,23 @@ These are verification tasks and extensions of the proposed shared rules, not fi
 - [x] Preserve redundant encoding for scores, phases, selection, warnings, and destructive state.
 - [x] Recalculate shared text, control-boundary, focus, and score contrast, including raised/overlay pairings and composited active/score fills.
 - [x] Test long mixed-script save names and applied filter labels with the bundled Archivo/Plex fallback stack.
-- [ ] Extend long-name/script checks to real profile and feature-specific datasets in step 5.
+- [x] Extend long-name/script checks to tracked real-export names and real football identities in fixture-backed profile, Search, Academy, and Planner datasets; verify bundled fonts offline without claiming a live session.
+- [x] Verify leaf-column menu/picker keyboard focus, Modal return focus after conditional unmount and under StrictMode, and fully revealed Academy roster-action focus at both core sizes.
+- [x] Verify reduced-motion dialog transitions and translation reset in Chromium.
+- [x] Verify the full-viewport 60% Modal scrim compiles from a named token under the closed colour namespace and retains readable dialog text.
 - [x] Verify revised shared header/toolbar/control labels are not clipped at the core viewports.
 - [x] Complete long-role and feature-specific fixed-height label checks in the constrained Moneyball and Tactic workspaces.
-- [ ] Inspect real portraits and club graphics as well as fallbacks before changing image-stage proportions.
-- [ ] Check the native Windows app separately for font rendering, scaling, scrollbars, focus, and available content height.
+- [x] Inspect pending/missing/corrupt/decoded synthetic portrait and crest slots, generation refresh, null-UID behavior, Search/Squad images, and Graphics settings cancellation/error/rebuild/clear feedback.
+- [ ] Inspect real portraits and club graphics before changing image-stage proportions — developer-owned follow-up; proportions remain unchanged.
+- [ ] Check the native Windows app separately for font rendering, scaling, scrollbars, focus, and available content height — developer-owned follow-up.
 - [x] Compare all 19 canonical populated routes at 1280×800 and 1600×900 before and after shared framing.
 - [x] Inspect Moneyball Profile and Tactic at 1920×1080, both sides of the 2100px tactic boundary, and 3440×1440.
 - [x] Extend these larger-viewport checks to step-4 feature composition at 1920×1080 and 3440×1440.
 
 ## 15. Reconcile DESIGN.md and implementation
 
-**Documentation reconciliation: current for steps 1–4.** DESIGN.md reflects the implemented Signal identity, shared framing, numeric roles, corrected contrast pairings, repaired Moneyball/Tactic composition, and verified feature refinements.
-The broader interaction-state audit, real datasets/graphics, and native verification remain explicitly pending.
+**Documentation reconciliation: current for steps 1–5 (non-native).** DESIGN.md reflects the implemented Signal identity, shared framing, numeric roles, corrected contrast pairings, repaired Moneyball/Tactic composition, feature refinements, and interaction-state fixes.
+Real-local graphics and native verification remain explicitly developer-owned; fixture-backed identity checks do not claim a live dataset/session.
 
 - [x] Replace old gold hexadecimal examples and stale contrast ratios with calculations from the current tokens.
 - [x] Correct body-family frontmatter to Archivo, with IBM Plex Sans retained as the bundled fallback.
@@ -482,6 +504,7 @@ The broader interaction-state audit, real datasets/graphics, and native verifica
 - [x] Reconcile current shared navigation emphasis, radius, header, toolbar, feedback, numeric, and viewport descriptions.
 - [x] Reconcile Moneyball Profile and Tactic composition, independent scrolling, and pitch sizing with the step-3 implementation.
 - [x] Reconcile profile, Staff, managed-club/Squad, Planner, Academy, and Settings composition/emphasis descriptions with step-4 implementation.
+- [x] Reconcile pending locks, focus lifecycle/visibility, workspace-loader recovery, and graphics feedback with verified step-5 behavior and evidence limits.
 
 ## Recommended implementation sequence
 
@@ -489,7 +512,7 @@ The broader interaction-state audit, real datasets/graphics, and native verifica
 2. **Implement the shared framing — Done:** shell, headers, table panels, and common primitives implemented; all 19 canonical populated routes compared before/after at both core sizes, with focused interaction checks and full validation.
 3. **Repair the constrained workspaces — Done:** Moneyball Profile and smaller-desktop Tactic composition repaired, with focused interaction checks, six-size comparisons, and full validation before secondary polish.
 4. **Apply feature refinements — Done:** profile summaries, Staff, managed-club/Squad, Planner, Academy, and Settings implemented, compared at core/larger desktop sizes, and validated with focused interaction checks and full gates.
-5. **Inspect interaction states and native rendering:** dialogs, errors, progress, keyboard flow, long content, graphics, and Windows scaling.
+5. **Inspect interaction states and native rendering — Done (non-native):** dialogs, errors, progress, keyboard flow, long content, offline fonts, and synthetic graphics states inspected and confirmed defects corrected; real-local graphics and Windows rendering/scaling remain developer-owned follow-up.
 6. **Maintain documentation and validate:** initial DESIGN.md reconciliation is complete; update it alongside subsequent implementation that makes each new rule true.
 
 Do not convert this sequence into commits or PR boundaries without an accepted delivery plan.
