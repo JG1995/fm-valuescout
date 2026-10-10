@@ -72,11 +72,6 @@ describe("app shell routing", () => {
       ["Youth", "/academy"],
       ["Settings", "/settings"],
     ]);
-    expect(
-      [...nav.querySelectorAll("[data-nav-caption]")].map(
-        (caption) => caption.textContent,
-      ),
-    ).toEqual(["Players", "Staff", "Club"]);
     expect(nav.querySelectorAll("[data-nav-separator]")).toHaveLength(4);
   });
 
@@ -115,7 +110,7 @@ describe("app shell routing", () => {
     expect(current[0]).toHaveAccessibleName("Moneyball");
   });
 
-  it("marks only the Players group on a player profile", async () => {
+  it("marks no direct destination current on a player profile", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
     renderWithProviders({ initialEntries: ["/players/42"] });
@@ -126,13 +121,10 @@ describe("app shell routing", () => {
       await screen.findByRole("heading", { level: 1, name: "Alex Scout" }),
     ).toBeInTheDocument();
     expect(within(nav).queryByRole("link", { current: "page" })).toBeNull();
-    expect(nav.querySelectorAll("[aria-current]")).toHaveLength(1);
-    const playersCaption = within(nav).getByText("Players");
-    expect(playersCaption).toHaveAttribute("aria-current", "location");
-    expect(playersCaption).toHaveClass("text-primary", "font-bold");
+    expect(nav.querySelectorAll("[aria-current]")).toHaveLength(0);
   });
 
-  it("marks only the Staff group on a staff profile", async () => {
+  it("marks no direct destination current on a staff profile", async () => {
     await resolveLoadDataIpcMock();
     setStaffDetailOverride(fixtureStaffDetail());
     renderWithProviders({ initialEntries: ["/staff/101"] });
@@ -143,10 +135,7 @@ describe("app shell routing", () => {
       await screen.findByRole("heading", { level: 1, name: "Alex Coach" }),
     ).toBeInTheDocument();
     expect(within(nav).queryByRole("link", { current: "page" })).toBeNull();
-    expect(nav.querySelectorAll("[aria-current]")).toHaveLength(1);
-    const staffCaption = within(nav).getByText("Staff");
-    expect(staffCaption).toHaveAttribute("aria-current", "location");
-    expect(staffCaption).toHaveClass("text-primary", "font-bold");
+    expect(nav.querySelectorAll("[aria-current]")).toHaveLength(0);
   });
 
   it("marks My Staff current on its canonical Staff destination", async () => {

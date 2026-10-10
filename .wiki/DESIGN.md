@@ -205,9 +205,9 @@ See [implementation evidence and remaining scope](#implementation-evidence-and-r
 
 - Keep the **56px utility bar** and all its global controls. Use a **48px destination band**, including its bottom border, below it; no second caption row.
 - Keep all ten direct destinations, existing group membership, labels, URLs, history behavior, and route-state transitions. Use **16px icons beside sentence-case 12px labels**, with 6px icon/label gaps and 36px-high links. Do not replace direct destinations with menus.
-- Keep fine group separators. Put the Players, Staff, and Club captions inline before their links; use label-sm (11px, weight 600) in readable muted text without reduced opacity. Home and Settings need no duplicate caption.
+- Keep fine group separators without Players, Staff, or Club captions; destination labels provide enough context.
 - Active links use a **10% primary tint mixed over the panel surface in OKLab**, on-surface text, a primary icon, a reinforced label, and a persistent **2px bottom indicator**. Reserve strong solid green fills for primary actions. Keep the indicator present without hover; focus is a separate visible 2px primary outline, contained within the link so it cannot be clipped by the band.
-- Retain exactly one `aria-current="page"` for direct destinations. Profiles keep only their Players or Staff group at `aria-current="location"`; unknown routes keep neither. Group context remains visibly reinforced without pretending a child destination is selected.
+- Retain exactly one `aria-current="page"` for direct destinations. Profiles and unknown routes mark no destination current; do not imply that a different page is selected.
 - The utility bar uses the tracked, finished outline symbol at 36px with a green off-center blip and accessible product name. The saturated launcher tile remains an OS icon, not utility chrome.
 
 ### Heading hierarchy and spacing
@@ -270,7 +270,7 @@ Shared radius tokens and consumers use purpose-based rectangles rather than pill
 ### Implementation evidence and remaining scope
 
 Step 2 compared the same **19 canonical populated routes at 1280×800 and 1600×900**, before at `7169c53` and after the shared-framing implementation.
-The 56px utility bar and 48px destination band retain all ten 36px-high links, readable inline group context, a persistent active indicator, and inset keyboard focus without page overflow.
+The 56px utility bar and 48px destination band retain all ten 36px-high links, fine group separators, a persistent active indicator, and inset keyboard focus without page overflow.
 Search's first data row now begins around y=284px rather than y=362px; Squad's begins around y=380px rather than y=444px.
 Nominal 40px two-line rows remain unchanged; measured outer row height is 41px including the hairline.
 With no applied filters or Load Data feedback, General Search's table-owned viewport is **68.63% at 1280×800 and 72.21% at 1600×900**; Moneyball Search is **67.90% and 71.56%**.
@@ -279,7 +279,7 @@ Applied chips and truthful feedback consume additional height rather than hiding
 
 Runtime checks covered normal and shortlist Staff controls, eight long mixed-script filters at both sizes, removal/Clear all, filter-modal focus return, long save names with a separate visible snapshot date, recovery focus/locks, and expanding error copy.
 The full unit, smoke, and repository gates passed; existing routing, persistence, virtualization, concealment, and mutation tests remain in place.
-The selected active tint gives 13.06:1 text and 7.36:1 icon/indicator contrast; the updated muted group captions give 7.95:1 against the panel.
+The selected active tint gives 13.06:1 text and 7.36:1 icon/indicator contrast.
 Composited navigation, raw-cell, and scored-unit foreground samples passed 4.5:1; token-pair checks also cover raised/overlay text, control outlines, and filled-button states.
 This is bounded evidence, not a blanket accessibility claim or proof of native FM operations.
 
@@ -495,7 +495,7 @@ The app is a **single window with a utility bar and grouped top navigation** —
 Regions, in visual order:
 
 1. **Utility bar** (`header-height` 56px). It contains the app logo, Back and Forward, a fixed-width global player search, the active save selector with its current in-game date, and **Load Data**. It stays first so global controls remain separate from destination navigation.
-2. **Top navigation** uses a 48px destination band with 36px inline-icon links: Home (Dashboard), Players (Search and Moneyball), Staff (Staff Search and My Staff), Club (Squad, Planner, Tactic, and Youth), and Settings. Fine separators and inline captions retain group context. Active state combines a subtle tint, primary icon, reinforced label, and persistent 2px indicator.
+2. **Top navigation** uses a 48px destination band with 36px inline-icon links: Home (Dashboard), Players (Search and Moneyball), Staff (Staff Search and My Staff), Club (Squad, Planner, Tactic, and Youth), and Settings. Fine separators retain grouping without redundant captions. Active state combines a subtle tint, primary icon, reinforced label, and persistent 2px indicator.
 3. **Workspace header** (inside the content area). One semantic h1 uses `headline-md`, with optional secondary context and feature-owned controls. Profile identity keeps `headline-lg`; Staff Search retains a visually hidden h1 because active navigation already names it. Use `stack-md` between regions, not an extra generic Results title.
 4. **Content area.** Panels on `surface-container` with `gutter` 16px between them and 16px page padding.
 5. **Inspector** (right, `inspector-width` 320px, optional and dismissible). Comparison and detail controls on a profile. Slides over the content edge; never squeezes the table below its usable width. **Search does not use the inspector for filters** — filters use the compact strip and editor modal below.
@@ -566,10 +566,10 @@ The action primitive. One primary action per screen region.
 
 Primary navigation between the app's main destinations.
 
-- **Container:** `surface-container`, a 48px centered band below the utility bar, with a bottom `outline-variant` border. Links are 36px high with 16px inline icons and 12px labels; fine vertical separators and inline 11px captions retain group context. All ten destinations fit the supported 1280×800 minimum.
+- **Container:** `surface-container`, a 48px centered band below the utility bar, with a bottom `outline-variant` border. Links are 36px high with 16px inline icons and 12px labels; fine vertical separators retain grouping without captions. All ten destinations fit the supported 1280×800 minimum.
 - **States:** hover changes colour only. Active links use a 10% primary tint, a primary icon, a reinforced label, and a persistent 2px primary bottom indicator. `:focus-visible` shows a separate 2px primary ring inset within the link bounds.
 - **Content / Anatomy:** **Home** contains Dashboard; **Players** contains Search and Moneyball; **Staff** contains Staff Search and My Staff; **Club** contains Squad, Planner, Tactic, and Youth; **Settings** contains Settings. Search and Moneyball select `/search?view=general|moneyball`; Staff links select `/staff?view=search|my-staff`; Club links select `/my-club?view=squad|planner|tactic`; Youth selects `/academy`.
-- **Behaviour:** a `<nav>` contains router links. Each supported direct destination sets exactly one link to `aria-current="page"`. Unknown and not-found routes set no destination current. Player and staff profile routes set only the Players or Staff group caption to `aria-current="location"`; no child destination is current. Top-navigation Club destination changes use normal Link navigation, add a browser-history entry, and let browser Back return to the prior destination. Same-route Club changes retain `squadSort` and `squadDir`; route-local sort controls use replace navigation. Search view changes retain only the route's existing shortlist/combine state. Profile analysis tabs and Youth tabs remain local.
+- **Behaviour:** a `<nav>` contains router links. Each supported direct destination sets exactly one link to `aria-current="page"`. Unknown and not-found routes set no destination current. Player and staff profile routes mark no destination current. Top-navigation Club destination changes use normal Link navigation, add a browser-history entry, and let browser Back return to the prior destination. Same-route Club changes retain `squadSort` and `squadDir`; route-local sort controls use replace navigation. Search view changes retain only the route's existing shortlist/combine state. Profile analysis tabs and Youth tabs remain local.
 
 ### Utility Bar
 

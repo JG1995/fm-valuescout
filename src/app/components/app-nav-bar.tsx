@@ -124,12 +124,12 @@ const destinations: Destination[] = [
   { id: "settings", label: "Settings", icon: SettingsIcon, to: "/settings" },
 ];
 
-const groups: { caption: string; ids: DestinationId[] }[] = [
-  { caption: "Home", ids: ["dashboard"] },
-  { caption: "Players", ids: ["search", "moneyball"] },
-  { caption: "Staff", ids: ["staff-search", "my-staff"] },
-  { caption: "Club", ids: ["squad", "planner", "tactic", "youth"] },
-  { caption: "Settings", ids: ["settings"] },
+const groups: DestinationId[][] = [
+  ["dashboard"],
+  ["search", "moneyball"],
+  ["staff-search", "my-staff"],
+  ["squad", "planner", "tactic", "youth"],
+  ["settings"],
 ];
 
 function currentDestinationId(
@@ -157,12 +157,6 @@ function currentDestinationId(
   return null;
 }
 
-function currentGroupCaption(pathname: string): string | null {
-  if (/^\/players\/[^/]+\/?$/.test(pathname)) return "Players";
-  if (/^\/staff\/[^/]+\/?$/.test(pathname)) return "Staff";
-  return null;
-}
-
 export function AppNavBar() {
   const { pathname, search } = useLocation();
   const defaultAnalysisView = useMoneyballPreferences(
@@ -173,7 +167,6 @@ export function AppNavBar() {
     search as Record<string, unknown>,
     defaultAnalysisView,
   );
-  const groupContext = current === null ? currentGroupCaption(pathname) : null;
   const byId = new Map(destinations.map((item) => [item.id, item]));
   // Same-route view transitions keep the old tab contract: inside /search
   // shortlistOnly/combine survive, inside /my-club squadSort/squadDir
@@ -191,7 +184,7 @@ export function AppNavBar() {
     >
       <div className="flex h-full items-center justify-center gap-1 px-4">
         {groups.map((group, groupIndex) => (
-          <div key={group.caption} className="flex items-center">
+          <div key={group[0]} className="flex items-center">
             {groupIndex > 0 ? (
               <div
                 aria-hidden="true"
@@ -200,22 +193,8 @@ export function AppNavBar() {
               />
             ) : null}
             <div className="flex items-center gap-2 px-2">
-              {group.ids.length > 1 ? (
-                <span
-                  data-nav-caption={group.caption}
-                  aria-current={
-                    groupContext === group.caption ? "location" : undefined
-                  }
-                  className={cn(
-                    "text-label-sm text-on-surface-variant",
-                    groupContext === group.caption && "font-bold text-primary",
-                  )}
-                >
-                  {group.caption}
-                </span>
-              ) : null}
               <div className="flex items-center gap-1">
-                {group.ids.map((id) => {
+                {group.map((id) => {
                   const item = byId.get(id);
                   if (!item) return null;
                   const isActive = current === id;

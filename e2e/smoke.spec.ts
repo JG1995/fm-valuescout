@@ -740,9 +740,9 @@ test.describe("application smoke", () => {
     ] as const) {
       await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
     }
-    await expect(
-      nav.locator("[data-nav-caption]").allTextContents(),
-    ).resolves.toEqual(["Players", "Staff", "Club"]);
+    for (const caption of ["Players", "Staff", "Club"]) {
+      await expect(nav.getByText(caption, { exact: true })).toHaveCount(0);
+    }
 
     const navOverflow = await nav.evaluate((element) => {
       const navElement = element as unknown as {
