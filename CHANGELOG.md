@@ -6,6 +6,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-10
+
+### Added
+
+- Workspace loading now keeps the application shell visible and provides retryable error recovery.
+
+### Changed
+
+- Adopted the Signal visual identity with a Night Slate palette, Signal Green accent, bundled Archivo and JetBrains Mono fonts, and new application icons.
+- Refined navigation, tables, profiles, Squad, Planner, Tactic, Youth, and Settings with compact framing, clearer grouping, and quieter selection styling.
+- Managed-club changes now use an explicit edit, save, and cancel flow.
+- Updated compatible Rust dependencies.
+
+### Fixed
+
+- Player and staff shortlist filters now retain each save's session choice across page visits.
+- Moneyball evidence and Tactic controls remain side by side at constrained desktop widths, with readable metric details and non-overlapping pitch targets.
+- Keyboard focus now enters column menus and returns from closed dialogs, and Youth roster actions remain fully visible when focused.
+- Dialogs now dim the workspace with a visible scrim while preserving reduced-motion behavior.
+- Planner assignment and Youth class-creation dialogs prevent dismissal while changes are pending.
+- Graphics settings now distinguish a cleared folder, active rebuilding, and completed updates.
+- Corrected selected pitch-marker and snapshot-label text contrast.
+
 ## [0.20.0] - 2026-09-12
 
 ### Added
