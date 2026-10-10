@@ -1,0 +1,660 @@
+{
+  "schema": "brand-identity/logo-build@1",
+  "set": "B",
+  "type": "symbol+wordmark",
+  "font": {
+    "path": "/home/jonas/.cache/brand-identity/fonts/instances/SofiaSansCondensed-59baa52965b38f78.ttf",
+    "role": "display",
+    "location": {
+      "wght": 800
+    },
+    "license": "OFL-1.1",
+    "family": "Sofia Sans Condensed"
+  },
+  "masters": {
+    "symbol": "master-symbol.svg",
+    "symbol-small": "master-symbol-small.svg",
+    "wordmark": "master-wordmark.svg",
+    "lockup-horizontal": "master-lockup-horizontal.svg",
+    "lockup-stacked": "master-lockup-stacked.svg",
+    "primary": "master-primary.svg"
+  },
+  "versions": {
+    "full-color": {
+      "svg": "full-color.svg",
+      "png": "full-color.png",
+      "size": [
+        1024,
+        308
+      ],
+      "mode": "light",
+      "ground": null,
+      "ground_role": null,
+      "one_color": false,
+      "device": null,
+      "parts": [
+        {
+          "role": "text",
+          "ids": [
+            "pole-stroke"
+          ],
+          "hex": "#151f17",
+          "area": 1495.89
+        },
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#ffd23f",
+          "area": 1791.11
+        },
+        {
+          "role": "text",
+          "ids": [
+            "wordmark"
+          ],
+          "hex": "#151f17",
+          "area": 37512.28
+        }
+      ]
+    },
+    "full-color-dark": {
+      "svg": "full-color-dark.svg",
+      "png": "full-color-dark.png",
+      "size": [
+        1024,
+        308
+      ],
+      "mode": "dark",
+      "ground": null,
+      "ground_role": null,
+      "one_color": false,
+      "device": null,
+      "parts": [
+        {
+          "role": "text",
+          "ids": [
+            "pole-stroke"
+          ],
+          "hex": "#f9fbf9",
+          "area": 1495.89
+        },
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#ffd23f",
+          "area": 1791.11
+        },
+        {
+          "role": "text",
+          "ids": [
+            "wordmark"
+          ],
+          "hex": "#f9fbf9",
+          "area": 37512.28
+        }
+      ]
+    },
+    "one-color-dark": {
+      "svg": "one-color-dark.svg",
+      "png": "one-color-dark.png",
+      "size": [
+        1024,
+        308
+      ],
+      "mode": "light",
+      "ground": null,
+      "ground_role": null,
+      "one_color": true,
+      "device": null,
+      "parts": [
+        {
+          "role": "text",
+          "ids": [
+            "pole-stroke"
+          ],
+          "hex": "#151f17",
+          "area": 1495.89
+        },
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#151f17",
+          "area": 1791.11
+        },
+        {
+          "role": "text",
+          "ids": [
+            "wordmark"
+          ],
+          "hex": "#151f17",
+          "area": 37512.28
+        }
+      ]
+    },
+    "one-color-light": {
+      "svg": "one-color-light.svg",
+      "png": "one-color-light.png",
+      "size": [
+        1024,
+        308
+      ],
+      "mode": "dark",
+      "ground": null,
+      "ground_role": null,
+      "one_color": true,
+      "device": null,
+      "parts": [
+        {
+          "role": "text",
+          "ids": [
+            "pole-stroke"
+          ],
+          "hex": "#f9fbf9",
+          "area": 1265.32
+        },
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#f9fbf9",
+          "area": 1616.49
+        },
+        {
+          "role": "text",
+          "ids": [
+            "wordmark"
+          ],
+          "hex": "#f9fbf9",
+          "area": 37512.28
+        }
+      ]
+    },
+    "on-light-background": {
+      "svg": "on-light-background.svg",
+      "png": "on-light-background.png",
+      "size": [
+        1024,
+        308
+      ],
+      "mode": "light",
+      "ground": "#f4f1e6",
+      "ground_role": "background",
+      "one_color": false,
+      "device": null,
+      "parts": [
+        {
+          "role": "text",
+          "ids": [
+            "pole-stroke"
+          ],
+          "hex": "#151f17",
+          "area": 1495.89
+        },
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#ffd23f",
+          "area": 1791.11
+        },
+        {
+          "role": "text",
+          "ids": [
+            "wordmark"
+          ],
+          "hex": "#151f17",
+          "area": 37512.28
+        }
+      ]
+    },
+    "on-dark-background": {
+      "svg": "on-dark-background.svg",
+      "png": "on-dark-background.png",
+      "size": [
+        1024,
+        308
+      ],
+      "mode": "dark",
+      "ground": "#0e2b1d",
+      "ground_role": "background",
+      "one_color": false,
+      "device": null,
+      "parts": [
+        {
+          "role": "text",
+          "ids": [
+            "pole-stroke"
+          ],
+          "hex": "#f9fbf9",
+          "area": 1265.32
+        },
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#ffd23f",
+          "area": 1616.49
+        },
+        {
+          "role": "text",
+          "ids": [
+            "wordmark"
+          ],
+          "hex": "#f9fbf9",
+          "area": 37512.28
+        }
+      ]
+    },
+    "on-light-primary": {
+      "svg": "on-light-primary.svg",
+      "png": "on-light-primary.png",
+      "size": [
+        1024,
+        308
+      ],
+      "mode": "light",
+      "ground": "#1a5c39",
+      "ground_role": "primary",
+      "one_color": true,
+      "device": null,
+      "parts": [
+        {
+          "role": "text",
+          "ids": [
+            "pole-stroke"
+          ],
+          "hex": "#ffffff",
+          "area": 1495.89
+        },
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#ffffff",
+          "area": 1791.11
+        },
+        {
+          "role": "text",
+          "ids": [
+            "wordmark"
+          ],
+          "hex": "#ffffff",
+          "area": 37512.28
+        }
+      ]
+    },
+    "on-light-accent": {
+      "svg": "on-light-accent.svg",
+      "png": "on-light-accent.png",
+      "size": [
+        1024,
+        308
+      ],
+      "mode": "light",
+      "ground": "#ffd23f",
+      "ground_role": "accent",
+      "one_color": true,
+      "device": null,
+      "parts": [
+        {
+          "role": "text",
+          "ids": [
+            "pole-stroke"
+          ],
+          "hex": "#0a120c",
+          "area": 1495.89
+        },
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#0a120c",
+          "area": 1791.11
+        },
+        {
+          "role": "text",
+          "ids": [
+            "wordmark"
+          ],
+          "hex": "#0a120c",
+          "area": 37512.28
+        }
+      ]
+    },
+    "symbol-only": {
+      "svg": "symbol-only.svg",
+      "png": "symbol-only.png",
+      "size": [
+        844,
+        1024
+      ],
+      "mode": "light",
+      "ground": null,
+      "ground_role": null,
+      "one_color": false,
+      "device": null,
+      "parts": [
+        {
+          "role": "text",
+          "ids": [
+            "pole-stroke"
+          ],
+          "hex": "#151f17",
+          "area": 532.0
+        },
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#151f17",
+          "area": 637.0
+        }
+      ]
+    },
+    "favicon-16": {
+      "svg": "favicon-16.svg",
+      "png": "favicon-16.png",
+      "size": [
+        16,
+        16
+      ],
+      "mode": "light",
+      "ground": null,
+      "ground_role": null,
+      "one_color": false,
+      "device": null,
+      "parts": [
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#151f17",
+          "area": 1088.0
+        }
+      ]
+    },
+    "favicon-32": {
+      "svg": "favicon-32.svg",
+      "png": "favicon-32.png",
+      "size": [
+        32,
+        32
+      ],
+      "mode": "light",
+      "ground": null,
+      "ground_role": null,
+      "one_color": false,
+      "device": null,
+      "parts": [
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#151f17",
+          "area": 1088.0
+        }
+      ]
+    },
+    "favicon-48": {
+      "svg": "favicon-48.svg",
+      "png": "favicon-48.png",
+      "size": [
+        48,
+        48
+      ],
+      "mode": "light",
+      "ground": null,
+      "ground_role": null,
+      "one_color": false,
+      "device": null,
+      "parts": [
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#151f17",
+          "area": 1088.0
+        }
+      ]
+    },
+    "small-16-one-color-dark": {
+      "svg": "small-16-one-color-dark.svg",
+      "png": "small-16-one-color-dark.png",
+      "size": [
+        16,
+        16
+      ],
+      "mode": "light",
+      "ground": null,
+      "ground_role": null,
+      "one_color": true,
+      "device": null,
+      "parts": [
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#151f17",
+          "area": 1088.0
+        }
+      ]
+    },
+    "small-16-one-color-light": {
+      "svg": "small-16-one-color-light.svg",
+      "png": "small-16-one-color-light.png",
+      "size": [
+        16,
+        16
+      ],
+      "mode": "dark",
+      "ground": "#0e2b1d",
+      "ground_role": "background",
+      "one_color": true,
+      "device": null,
+      "parts": [
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#f9fbf9",
+          "area": 1022.3
+        }
+      ]
+    },
+    "small-32-one-color-dark": {
+      "svg": "small-32-one-color-dark.svg",
+      "png": "small-32-one-color-dark.png",
+      "size": [
+        32,
+        32
+      ],
+      "mode": "light",
+      "ground": null,
+      "ground_role": null,
+      "one_color": true,
+      "device": null,
+      "parts": [
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#151f17",
+          "area": 1088.0
+        }
+      ]
+    },
+    "small-32-one-color-light": {
+      "svg": "small-32-one-color-light.svg",
+      "png": "small-32-one-color-light.png",
+      "size": [
+        32,
+        32
+      ],
+      "mode": "dark",
+      "ground": "#0e2b1d",
+      "ground_role": "background",
+      "one_color": true,
+      "device": null,
+      "parts": [
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#f9fbf9",
+          "area": 1022.3
+        }
+      ]
+    },
+    "app-icon-512": {
+      "svg": "app-icon-512.svg",
+      "png": "app-icon-512.png",
+      "size": [
+        512,
+        512
+      ],
+      "mode": "light",
+      "ground": "#1a5c39",
+      "ground_role": "primary",
+      "one_color": true,
+      "device": null,
+      "parts": [
+        {
+          "role": "text",
+          "ids": [
+            "pole-stroke"
+          ],
+          "hex": "#ffffff",
+          "area": 532.0
+        },
+        {
+          "role": "accent",
+          "ids": [
+            "pennant-sail"
+          ],
+          "hex": "#ffffff",
+          "area": 637.0
+        }
+      ]
+    }
+  },
+  "small": {},
+  "sources": {
+    "symbol": {
+      "sha256": "12852f20c8a5eb2a987787a704ac1ff55054e338aa2a75dee552c991ec7bc575"
+    },
+    "symbol_small": {
+      "sha256": "2b69e481ab8b98f4ba5400afc81f4c596085dbe52ef67482aded473965f6f6ca"
+    }
+  },
+  "optics": {
+    "cap_height": 655.0,
+    "x_height": 494.0,
+    "upm": 1000,
+    "overshoot_top": 0.0122,
+    "overshoot_bottom": 0.0122,
+    "x_overshoot_top": 0.0182,
+    "stem": 19.847,
+    "crossbar": 17.557,
+    "crossbar_stem_ratio": 0.885
+  },
+  "glyphs": {
+    "wordmark": "wordmark-glyphs.json"
+  },
+  "primary": "lockup-horizontal",
+  "anchors": {
+    "symbol": 7,
+    "symbol-small": 3
+  },
+  "clear_space": {
+    "unit": "cap-height",
+    "multiple": 1.0,
+    "units": 100.0
+  },
+  "grounds": [
+    {
+      "mode": "light",
+      "ground": "background",
+      "on": "full colour"
+    },
+    {
+      "mode": "dark",
+      "ground": "background",
+      "on": "full colour"
+    },
+    {
+      "mode": "light",
+      "ground": "primary",
+      "on": "onPrimary"
+    },
+    {
+      "mode": "light",
+      "ground": "accent",
+      "on": "onAccent"
+    }
+  ],
+  "light_swaps": [
+    {
+      "version": "symbol-only",
+      "role": "accent",
+      "from": "#ffd23f",
+      "to": "#151f17",
+      "ground": "#f4f1e6",
+      "ratio": 1.28,
+      "colour_lost": false
+    },
+    {
+      "version": "favicon-16",
+      "role": "accent",
+      "from": "#ffd23f",
+      "to": "#151f17",
+      "ground": "#f4f1e6",
+      "ratio": 1.28,
+      "colour_lost": true
+    },
+    {
+      "version": "favicon-32",
+      "role": "accent",
+      "from": "#ffd23f",
+      "to": "#151f17",
+      "ground": "#f4f1e6",
+      "ratio": 1.28,
+      "colour_lost": true
+    },
+    {
+      "version": "favicon-48",
+      "role": "accent",
+      "from": "#ffd23f",
+      "to": "#151f17",
+      "ground": "#f4f1e6",
+      "ratio": 1.28,
+      "colour_lost": true
+    }
+  ],
+  "favicon_source": "symbol-small.svg",
+  "app_icon": {
+    "tile": "primary",
+    "mark": "onPrimary",
+    "content": 0.58,
+    "optical_lift": 0.015,
+    "source": "default"
+  }
+}

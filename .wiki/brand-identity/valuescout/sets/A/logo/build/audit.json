@@ -1,0 +1,53 @@
+{
+  "schema": "brand-identity/audit@1",
+  "findings": [
+    {
+      "id": "logo.contrast",
+      "component": "logo",
+      "severity": "warn",
+      "measured": 1.79,
+      "threshold": ">= 3.0:1 (WCAG 2.2 SC 1.4.11, practice)",
+      "message": "full-color: accent #45d08a on #f2f4f5 is 1.79:1",
+      "suggested_fix": "use a one-colour version on this ground, or declare logo.device tile|outline",
+      "roles": [
+        "accent"
+      ]
+    },
+    {
+      "id": "logo.contrast",
+      "component": "logo",
+      "severity": "warn",
+      "measured": 1.79,
+      "threshold": ">= 3.0:1 (WCAG 2.2 SC 1.4.11, practice)",
+      "message": "on-light-background: accent #45d08a on #f2f4f5 is 1.79:1",
+      "suggested_fix": "use a one-colour version on this ground, or declare logo.device tile|outline",
+      "roles": [
+        "accent"
+      ]
+    },
+    {
+      "id": "logo.contrast",
+      "component": "logo",
+      "severity": "warn",
+      "measured": 1.79,
+      "threshold": ">= 3.0:1 (WCAG 2.2 SC 1.4.11, practice)",
+      "message": "symbol-only: accent #45d08a on #f2f4f5 is 1.79:1",
+      "suggested_fix": "use a one-colour version on this ground, or declare logo.device tile|outline",
+      "roles": [
+        "accent"
+      ]
+    },
+    {
+      "id": "logo.small-size",
+      "component": "logo",
+      "severity": "warn",
+      "measured": {
+        "stroke_px2": 0.04,
+        "gap_px2": 0.82
+      },
+      "threshold": "1 px (raster erosion test, heuristic, uncalibrated)",
+      "message": "symbol-small at 16 px: features narrower than 1 px (lost 0.04 px², clogged 0.82 px²)",
+      "suggested_fix": "add or simplify symbol-small.svg: fewer, bolder parts"
+    }
+  ]
+}

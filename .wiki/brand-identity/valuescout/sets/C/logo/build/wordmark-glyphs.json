@@ -1,0 +1,172 @@
+{
+ "units": "wordmark: cap height 100, cap top y=0, baseline y=100, x from the pen origin; index = data-glyph",
+ "text": "ValueScout",
+ "glyphs": [
+  {
+   "index": 1,
+   "char": "V",
+   "x0": 0.77,
+   "x1": 104.46,
+   "pen_x": 0.0,
+   "advance": 95.08,
+   "cap_top": 0,
+   "baseline": 100,
+   "stems": [
+    [
+     30.65,
+     52.39
+    ],
+    [
+     55.59,
+     74.8
+    ]
+   ]
+  },
+  {
+   "index": 2,
+   "char": "a",
+   "x0": 97.69,
+   "x1": 169.08,
+   "pen_x": 93.54,
+   "advance": 77.85,
+   "cap_top": 0,
+   "baseline": 100,
+   "stems": []
+  },
+  {
+   "index": 3,
+   "char": "l",
+   "x0": 171.85,
+   "x1": 210.92,
+   "pen_x": 169.85,
+   "advance": 43.85,
+   "cap_top": 0,
+   "baseline": 100,
+   "stems": [
+    [
+     181.85,
+     201.69
+    ]
+   ]
+  },
+  {
+   "index": 4,
+   "char": "u",
+   "x0": 214.31,
+   "x1": 300.0,
+   "pen_x": 212.15,
+   "advance": 90.0,
+   "cap_top": 0,
+   "baseline": 100,
+   "stems": [
+    [
+     223.54,
+     243.38
+    ],
+    [
+     270.15,
+     290.0
+    ]
+   ]
+  },
+  {
+   "index": 5,
+   "char": "e",
+   "x0": 303.85,
+   "x1": 371.85,
+   "pen_x": 300.62,
+   "advance": 74.31,
+   "cap_top": 0,
+   "baseline": 100,
+   "stems": []
+  },
+  {
+   "index": 6,
+   "char": "S",
+   "x0": 378.92,
+   "x1": 454.31,
+   "pen_x": 373.38,
+   "advance": 85.69,
+   "cap_top": 0,
+   "baseline": 100,
+   "stems": [
+    [
+     430.65,
+     454.1
+    ]
+   ]
+  },
+  {
+   "index": 7,
+   "char": "c",
+   "x0": 460.77,
+   "x1": 527.54,
+   "pen_x": 457.54,
+   "advance": 72.46,
+   "cap_top": 0,
+   "baseline": 100,
+   "stems": [
+    [
+     460.79,
+     481.39
+    ]
+   ]
+  },
+  {
+   "index": 8,
+   "char": "o",
+   "x0": 531.54,
+   "x1": 605.85,
+   "pen_x": 528.46,
+   "advance": 80.46,
+   "cap_top": 0,
+   "baseline": 100,
+   "stems": [
+    [
+     531.55,
+     552.0
+    ],
+    [
+     585.38,
+     605.84
+    ]
+   ]
+  },
+  {
+   "index": 9,
+   "char": "u",
+   "x0": 609.54,
+   "x1": 695.23,
+   "pen_x": 607.38,
+   "advance": 90.0,
+   "cap_top": 0,
+   "baseline": 100,
+   "stems": [
+    [
+     618.77,
+     638.62
+    ],
+    [
+     665.38,
+     685.23
+    ]
+   ]
+  },
+  {
+   "index": 10,
+   "char": "t",
+   "x0": 696.77,
+   "x1": 758.31,
+   "pen_x": 695.85,
+   "advance": 61.23,
+   "cap_top": 0,
+   "baseline": 100,
+   "stems": [
+    [
+     706.62,
+     726.46
+    ]
+   ]
+  }
+ ]
+}

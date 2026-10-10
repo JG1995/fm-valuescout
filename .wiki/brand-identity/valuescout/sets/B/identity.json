@@ -1,0 +1,566 @@
+{
+  "schema": "brand-identity/identity@1",
+  "brand": {
+    "name": "ValueScout",
+    "tagline": "The lens on your live save.",
+    "languages": [
+      "en"
+    ],
+    "doc_lang": "en",
+    "sector": "sports data analytics · Football Manager companion desktop app",
+    "numbers": true,
+    "copy": {
+      "sentence": {
+        "en": "ValueScout reads your running Football Manager save and tells you who fits your system right now."
+      },
+      "nav": [
+        "Players",
+        "Staff",
+        "Club",
+        "Planner"
+      ],
+      "cta": "Load Data"
+    }
+  },
+  "set": {
+    "id": "B",
+    "name": "Kickoff",
+    "recommended": false,
+    "mechanism": "Chalk lines on turf: a saturated pitch-green ground, condensed wide-shouting capitals in chalk, and one corner-flag yellow.",
+    "expression_move": "The green ground itself is the loud part — type and mark stay plain.",
+    "differs_by": "Forum red and badge-and-crest club identity are the category habit; Kickoff borrows the pitch instead — line and turf, no crest."
+  },
+  "axes": {
+    "quiet_loud": 2,
+    "friend_authority": -1,
+    "warm_cool": 0,
+    "classic_contemporary": 1
+  },
+  "components": {
+    "logo": {
+      "mode": "new",
+      "status": "proposed",
+      "source": null,
+      "sha256": null
+    },
+    "type": {
+      "mode": "new",
+      "status": "proposed",
+      "source": null,
+      "sha256": null
+    },
+    "palette": {
+      "mode": "new",
+      "status": "proposed",
+      "source": null,
+      "sha256": null
+    }
+  },
+  "type": {
+    "pairing_mode": "contrast",
+    "display": {
+      "family": "Sofia Sans Condensed",
+      "source": "google",
+      "license": "OFL-1.1",
+      "weights": [
+        800
+      ],
+      "location": {
+        "wght": 800
+      },
+      "features": [],
+      "case": "upper",
+      "tracking": 0,
+      "fallback": "system-ui, sans-serif",
+      "file": null
+    },
+    "text": {
+      "family": "Barlow",
+      "source": "google",
+      "license": "OFL-1.1",
+      "weights": [
+        400,
+        500,
+        600
+      ],
+      "location": {
+        "wght": 400
+      },
+      "features": [
+        "tnum"
+      ],
+      "case": "as-is",
+      "tracking": 0,
+      "fallback": "system-ui, sans-serif",
+      "file": null
+    },
+    "mono": {
+      "family": "Space Mono",
+      "source": "google",
+      "license": "OFL-1.1",
+      "weights": [
+        400,
+        700
+      ],
+      "location": {
+        "wght": 400
+      },
+      "features": [],
+      "case": "as-is",
+      "tracking": 0,
+      "fallback": "ui-monospace, monospace",
+      "file": null
+    }
+  },
+  "logo": {
+    "type": "symbol+wordmark",
+    "concept": "The corner flag: the one piece of kit that exists in every football ground and nowhere else — a line, not a crest.",
+    "symbol": "logo/symbol.svg",
+    "wordmark": {
+      "text": "ValueScout",
+      "role": "display",
+      "location": null,
+      "tracking": 0,
+      "case": "upper"
+    },
+    "monogram": null,
+    "lockups": [
+      "horizontal",
+      "stacked"
+    ],
+    "colors": {
+      "pole": "text",
+      "pennant": "accent",
+      "wordmark": "text"
+    },
+    "tags": [
+      "literal-object"
+    ],
+    "clear_space": {
+      "unit": "cap-height",
+      "multiple": 1,
+      "inferred": true
+    },
+    "min_size": {
+      "px": 16,
+      "mm": 5
+    }
+  },
+  "palette": "palette.json",
+  "defaults_used": [
+    {
+      "id": "cream-ground",
+      "why": "Chalk #f4f1e6 is a line-white from the turf board, used as paper only; the set's working ground is turf green, not a cream field. Kept because the document side of the pitch needs a non-white paper."
+    },
+    {
+      "id": "logo-literal-object",
+      "why": "The corner flag is football-specific furniture absent from the competitor shelf (forum red + badges), keeps a second reading as a plain triangle at 16 px, and names what the product is for without becoming a club crest."
+    }
+  ],
+  "rationale": [
+    {
+      "claim": "Corner flag over crest: football clubs own crests, a companion tool should borrow the game's neutral furniture instead of imitating a club badge.",
+      "evidence": "judgement",
+      "source": "brief.sector"
+    },
+    {
+      "claim": "Green + yellow is a well-rated pairing direction; the green is the ground (large, quiet chroma) and yellow stays small, so the accent does not fight it.",
+      "evidence": "practice",
+      "source": "references/color.md"
+    },
+    {
+      "claim": "Condensed display is the sports-sector code, which is exactly what this set wants — it is declared as a deliberate fit, and Sofia Sans Condensed is not the usual Anton/Barlow Condensed shelf.",
+      "evidence": "judgement",
+      "source": "brief.audience"
+    }
+  ],
+  "derived": [
+    {
+      "file": "card.png",
+      "requires": [
+        "logo",
+        "type",
+        "palette"
+      ],
+      "inputs_sha256": "4431d6322a102b43ed33dad6597b02f45fa87e801085130ca2567597c0fe768d"
+    }
+  ],
+  "audit": {
+    "schema": "brand-identity/audit@1",
+    "passed": true,
+    "counts": {
+      "gate": 0,
+      "warn": 10,
+      "info": 17
+    },
+    "findings": [
+      {
+        "id": "palette.contrast.light.accent-on-background",
+        "component": "palette",
+        "severity": "warn",
+        "measured": 1.28,
+        "threshold": 3.0,
+        "message": "light: accent #ffd23f on background #f4f1e6 is 1.28:1, below 3.0:1 (accent fill against the page (needs a label or border if lower); WCAG 2, no rounding)",
+        "suggested_fix": {
+          "change": "modes.light.accent",
+          "from": "#ffd23f",
+          "to": "#a66d09",
+          "how": "use accent-600 (same scale)",
+          "ratio_after": 3.86
+        },
+        "roles": [
+          "light.accent",
+          "light.background"
+        ]
+      },
+      {
+        "id": "palette.contrast.light.link-on-text",
+        "component": "palette",
+        "severity": "warn",
+        "measured": 2.12,
+        "threshold": 3.0,
+        "message": "light: link #1a5c39 on text #151f17 is 2.12:1, below 3.0:1 (links distinguishable from body text without underline (WCAG G183); WCAG 2, no rounding)",
+        "suggested_fix": {
+          "change": "modes.light.link",
+          "from": "#1a5c39",
+          "to": "#3f8a5f",
+          "how": "use primary-600 (same scale)",
+          "ratio_after": 4.04
+        },
+        "roles": [
+          "light.link",
+          "light.text"
+        ]
+      },
+      {
+        "id": "palette.dark.surface-too-light",
+        "component": "palette",
+        "severity": "warn",
+        "measured": 15.2,
+        "threshold": 15.8,
+        "message": "dark background #0e2b1d gives white only 15.20:1; Material asks >= 15.8:1 so raised surfaces still keep 4.5:1",
+        "suggested_fix": {
+          "change": "modes.dark.background",
+          "from": "#0e2b1d",
+          "to": "#0a2719",
+          "how": "darken by OKLCH L -0.02, same hue"
+        },
+        "roles": [
+          "dark.background"
+        ]
+      },
+      {
+        "id": "palette.distinct.dark.success-primary",
+        "component": "palette",
+        "severity": "warn",
+        "measured": 8.26,
+        "threshold": 10.0,
+        "message": "dark: success #3fcb77 and primary #71bd8e are only CIEDE2000 8.3 apart; users may read one as the other",
+        "suggested_fix": {
+          "change": "modes.dark.success",
+          "from": "#3fcb77",
+          "to": "#53dc86",
+          "how": "lighten by OKLCH L +0.05, same hue"
+        },
+        "roles": [
+          "dark.success",
+          "dark.primary"
+        ]
+      },
+      {
+        "id": "palette.cvd.light.deutan.success-danger",
+        "component": "palette",
+        "severity": "warn",
+        "measured": 8.03,
+        "threshold": 10.0,
+        "message": "light: success and danger collapse to CIEDE2000 8.0 for deutanopia (#706845 vs #786c26)",
+        "suggested_fix": {
+          "change": "modes.light.danger",
+          "from": "#b4312b",
+          "to": "#c44038",
+          "how": "never carry meaning by colour alone (icon/label); or lighten by OKLCH L +0.05, same hue"
+        },
+        "roles": [
+          "light.success",
+          "light.danger"
+        ]
+      },
+      {
+        "id": "palette.cvd.dark.deutan.success-danger",
+        "component": "palette",
+        "severity": "warn",
+        "measured": 8.49,
+        "threshold": 10.0,
+        "message": "dark: success and danger collapse to CIEDE2000 8.5 for deutanopia (#baae7d vs #d4cba7)",
+        "suggested_fix": {
+          "change": "modes.dark.danger",
+          "from": "#feb2a8",
+          "to": "#ffbcb1",
+          "how": "never carry meaning by colour alone (icon/label); or lighten by OKLCH L +0.03, same hue"
+        },
+        "roles": [
+          "dark.success",
+          "dark.danger"
+        ]
+      },
+      {
+        "id": "palette.contrast.light.border-on-background",
+        "component": "palette",
+        "severity": "info",
+        "measured": 1.36,
+        "threshold": 3.0,
+        "message": "light: border #d5d0c0 on background #f4f1e6 is 1.36:1, below 3.0:1 (borders: dividers are exempt, input outlines need 3:1; WCAG 2, no rounding)",
+        "suggested_fix": {
+          "change": "modes.light.border",
+          "from": "#d5d0c0",
+          "to": "#908b7c",
+          "how": "darken by OKLCH L -0.22, same hue",
+          "ratio_after": 3.01
+        },
+        "roles": [
+          "light.border",
+          "light.background"
+        ]
+      },
+      {
+        "id": "palette.contrast.dark.link-on-text",
+        "component": "palette",
+        "severity": "info",
+        "measured": 2.15,
+        "threshold": 3.0,
+        "message": "dark: link #71bd8e on text #f9fbf9 is 2.15:1, below 3.0:1 (underline links in dark mode (WCAG G183: without underline a link needs 3:1 against body text); WCAG 2, no rounding)",
+        "suggested_fix": {
+          "change": "modes.dark.link",
+          "from": "#71bd8e",
+          "to": "#3f8a5f",
+          "how": "use primary-600 (same scale)",
+          "ratio_after": 4.03
+        },
+        "roles": [
+          "dark.link",
+          "dark.text"
+        ]
+      },
+      {
+        "id": "palette.gamut.brand-3",
+        "component": "palette",
+        "severity": "info",
+        "measured": 1.0,
+        "threshold": 0.9,
+        "message": "#ffd23f sits at the sRGB gamut edge (100% of max chroma); vivid colours like this often fall outside CMYK process gamut: specify Lab D50 + tolerance, check with the printer, consider a spot colour",
+        "suggested_fix": null,
+        "roles": [
+          "brand-3"
+        ]
+      },
+      {
+        "id": "palette.structure.greyscale.brand-3-brand-2",
+        "component": "palette",
+        "severity": "info",
+        "measured": 9.2,
+        "threshold": 15.0,
+        "message": "#ffd23f and #f4f1e6 differ by only Delta L* 9.2; side by side in a logo they merge in greyscale/one-colour print",
+        "suggested_fix": null,
+        "roles": [
+          "brand-3",
+          "brand-2"
+        ]
+      },
+      {
+        "id": "type.display.coverage.en_Latn.extended",
+        "component": "type",
+        "severity": "info",
+        "measured": "93/102",
+        "threshold": "100% auxiliary + punctuation",
+        "message": "Sofia Sans Condensed lacks English auxiliary/punctuation characters: Ĕ Ĭ Ŏ Ŭ ĕ ĭ ŏ ŭ ʻ",
+        "suggested_fix": "fine if the brand never writes them (loanwords, names); else another family"
+      },
+      {
+        "id": "type.display.confusables",
+        "component": "type",
+        "severity": "info",
+        "measured": 0.938,
+        "threshold": "0.9 (heuristic, uncalibrated)",
+        "message": "Sofia Sans Condensed: I/l look alike at small sizes (IoU 0.94 at 48 px)",
+        "suggested_fix": "try ss01, ss02"
+      },
+      {
+        "id": "type.display.web-weight",
+        "component": "type",
+        "severity": "info",
+        "measured": 42,
+        "threshold": null,
+        "message": "Sofia Sans Condensed: ~42 KB WOFF2 for the brief's characters (one variable file, all weights; estimate)",
+        "suggested_fix": null
+      },
+      {
+        "id": "type.text.coverage.en_Latn.extended",
+        "component": "type",
+        "severity": "info",
+        "measured": "98/102",
+        "threshold": "100% auxiliary + punctuation",
+        "message": "Barlow lacks English auxiliary/punctuation characters: Ĕ Ĭ Ŏ ĕ",
+        "suggested_fix": "fine if the brand never writes them (loanwords, names); else another family"
+      },
+      {
+        "id": "type.text.coverage.gf-latin-core",
+        "component": "type",
+        "severity": "info",
+        "measured": "318/319",
+        "threshold": "GF Latin Core",
+        "message": "Barlow misses 1/319 GF Latin Core codepoints (reach beyond the brief's languages)",
+        "suggested_fix": "matters only if the brand may add more Latin-script languages"
+      },
+      {
+        "id": "type.text.confusables",
+        "component": "type",
+        "severity": "warn",
+        "measured": 1.0,
+        "threshold": "0.9 (heuristic, uncalibrated)",
+        "message": "Barlow: I/l look alike at small sizes (IoU 1.00 at 48 px)",
+        "suggested_fix": "no ss/cv alternates; choose another face for small text and data"
+      },
+      {
+        "id": "type.text.web-weight",
+        "component": "type",
+        "severity": "info",
+        "measured": 20,
+        "threshold": null,
+        "message": "Barlow: ~20 KB WOFF2 for the brief's characters (per weight file; estimate)",
+        "suggested_fix": null
+      },
+      {
+        "id": "type.mono.coverage.en_Latn.extended",
+        "component": "type",
+        "severity": "info",
+        "measured": "101/102",
+        "threshold": "100% auxiliary + punctuation",
+        "message": "Space Mono lacks English auxiliary/punctuation characters: ʻ",
+        "suggested_fix": "fine if the brand never writes them (loanwords, names); else another family"
+      },
+      {
+        "id": "type.mono.web-weight",
+        "component": "type",
+        "severity": "info",
+        "measured": 15,
+        "threshold": null,
+        "message": "Space Mono: ~15 KB WOFF2 for the brief's characters (per weight file; estimate)",
+        "suggested_fix": null
+      },
+      {
+        "id": "logo.contrast",
+        "component": "logo",
+        "severity": "warn",
+        "measured": 1.28,
+        "threshold": ">= 3.0:1 (WCAG 2.2 SC 1.4.11, practice)",
+        "message": "full-color: accent #ffd23f on #f4f1e6 is 1.28:1",
+        "suggested_fix": "use a one-colour version on this ground, or declare logo.device tile|outline",
+        "roles": [
+          "accent"
+        ]
+      },
+      {
+        "id": "logo.contrast",
+        "component": "logo",
+        "severity": "warn",
+        "measured": 1.28,
+        "threshold": ">= 3.0:1 (WCAG 2.2 SC 1.4.11, practice)",
+        "message": "on-light-background: accent #ffd23f on #f4f1e6 is 1.28:1",
+        "suggested_fix": "use a one-colour version on this ground, or declare logo.device tile|outline",
+        "roles": [
+          "accent"
+        ]
+      },
+      {
+        "id": "logo.light-swap",
+        "component": "logo",
+        "severity": "info",
+        "measured": 1.28,
+        "threshold": null,
+        "message": "symbol-only: accent #ffd23f is 1.28:1 on #f4f1e6; drawn in the light text colour #151f17 (a colour stays only where it reads)",
+        "suggested_fix": null,
+        "roles": [
+          "accent"
+        ]
+      },
+      {
+        "id": "logo.light-swap",
+        "component": "logo",
+        "severity": "info",
+        "measured": 1.28,
+        "threshold": null,
+        "message": "favicon-16: accent #ffd23f is 1.28:1 on #f4f1e6; drawn in the light text colour #151f17 (a colour stays only where it reads)",
+        "suggested_fix": null,
+        "roles": [
+          "accent"
+        ]
+      },
+      {
+        "id": "logo.light-swap",
+        "component": "logo",
+        "severity": "info",
+        "measured": 1.28,
+        "threshold": null,
+        "message": "favicon-32: accent #ffd23f is 1.28:1 on #f4f1e6; drawn in the light text colour #151f17 (a colour stays only where it reads)",
+        "suggested_fix": null,
+        "roles": [
+          "accent"
+        ]
+      },
+      {
+        "id": "logo.light-swap",
+        "component": "logo",
+        "severity": "info",
+        "measured": 1.28,
+        "threshold": null,
+        "message": "favicon-48: accent #ffd23f is 1.28:1 on #f4f1e6; drawn in the light text colour #151f17 (a colour stays only where it reads)",
+        "suggested_fix": null,
+        "roles": [
+          "accent"
+        ]
+      },
+      {
+        "id": "logo.thin-feature",
+        "component": "logo",
+        "severity": "info",
+        "measured": {
+          "stroke_px2": 0.66,
+          "gap_px2": 0.01
+        },
+        "threshold": ">= 1 px = 6.2 units (heuristic, uncalibrated)",
+        "message": "symbol at 16 px (min size): strokes/gaps thinner than 1 px (lost 0.66 px², clogged 0.01 px²); symbol-small.svg covers small sizes",
+        "suggested_fix": "add symbol_small_svg for small sizes, or raise logo.min_size.px (or thicken the thin part / widen the gap)"
+      },
+      {
+        "id": "logo.small-size",
+        "component": "logo",
+        "severity": "warn",
+        "measured": {
+          "stroke_px2": 0.7,
+          "gap_px2": 0.0
+        },
+        "threshold": "1 px (raster erosion test, heuristic, uncalibrated)",
+        "message": "symbol-small at 16 px: features narrower than 1 px (lost 0.7 px², clogged 0.0 px²)",
+        "suggested_fix": "add or simplify symbol-small.svg: fewer, bolder parts"
+      }
+    ],
+    "defaults": {
+      "matched": [
+        "cream-ground",
+        "logo-literal-object"
+      ]
+    }
+  },
+  "card": {
+    "ground": "brand-1"
+  },
+  "palette_build": {
+    "strategy": null,
+    "accent": "#ffd23f",
+    "light_bg": "#f4f1e6",
+    "dark_bg": "#0e2b1d",
+    "neutral_tint": "#d8e8dc",
+    "neutral_chroma": 0.02,
+    "extra": []
+  }
+}

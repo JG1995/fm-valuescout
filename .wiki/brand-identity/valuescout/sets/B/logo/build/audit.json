@@ -1,0 +1,101 @@
+{
+  "schema": "brand-identity/audit@1",
+  "findings": [
+    {
+      "id": "logo.contrast",
+      "component": "logo",
+      "severity": "warn",
+      "measured": 1.28,
+      "threshold": ">= 3.0:1 (WCAG 2.2 SC 1.4.11, practice)",
+      "message": "full-color: accent #ffd23f on #f4f1e6 is 1.28:1",
+      "suggested_fix": "use a one-colour version on this ground, or declare logo.device tile|outline",
+      "roles": [
+        "accent"
+      ]
+    },
+    {
+      "id": "logo.contrast",
+      "component": "logo",
+      "severity": "warn",
+      "measured": 1.28,
+      "threshold": ">= 3.0:1 (WCAG 2.2 SC 1.4.11, practice)",
+      "message": "on-light-background: accent #ffd23f on #f4f1e6 is 1.28:1",
+      "suggested_fix": "use a one-colour version on this ground, or declare logo.device tile|outline",
+      "roles": [
+        "accent"
+      ]
+    },
+    {
+      "id": "logo.light-swap",
+      "component": "logo",
+      "severity": "info",
+      "measured": 1.28,
+      "threshold": null,
+      "message": "symbol-only: accent #ffd23f is 1.28:1 on #f4f1e6; drawn in the light text colour #151f17 (a colour stays only where it reads)",
+      "suggested_fix": null,
+      "roles": [
+        "accent"
+      ]
+    },
+    {
+      "id": "logo.light-swap",
+      "component": "logo",
+      "severity": "info",
+      "measured": 1.28,
+      "threshold": null,
+      "message": "favicon-16: accent #ffd23f is 1.28:1 on #f4f1e6; drawn in the light text colour #151f17 (a colour stays only where it reads)",
+      "suggested_fix": null,
+      "roles": [
+        "accent"
+      ]
+    },
+    {
+      "id": "logo.light-swap",
+      "component": "logo",
+      "severity": "info",
+      "measured": 1.28,
+      "threshold": null,
+      "message": "favicon-32: accent #ffd23f is 1.28:1 on #f4f1e6; drawn in the light text colour #151f17 (a colour stays only where it reads)",
+      "suggested_fix": null,
+      "roles": [
+        "accent"
+      ]
+    },
+    {
+      "id": "logo.light-swap",
+      "component": "logo",
+      "severity": "info",
+      "measured": 1.28,
+      "threshold": null,
+      "message": "favicon-48: accent #ffd23f is 1.28:1 on #f4f1e6; drawn in the light text colour #151f17 (a colour stays only where it reads)",
+      "suggested_fix": null,
+      "roles": [
+        "accent"
+      ]
+    },
+    {
+      "id": "logo.thin-feature",
+      "component": "logo",
+      "severity": "info",
+      "measured": {
+        "stroke_px2": 0.66,
+        "gap_px2": 0.01
+      },
+      "threshold": ">= 1 px = 6.2 units (heuristic, uncalibrated)",
+      "message": "symbol at 16 px (min size): strokes/gaps thinner than 1 px (lost 0.66 px², clogged 0.01 px²); symbol-small.svg covers small sizes",
+      "suggested_fix": "add symbol_small_svg for small sizes, or raise logo.min_size.px (or thicken the thin part / widen the gap)"
+    },
+    {
+      "id": "logo.small-size",
+      "component": "logo",
+      "severity": "warn",
+      "measured": {
+        "stroke_px2": 0.7,
+        "gap_px2": 0.0
+      },
+      "threshold": "1 px (raster erosion test, heuristic, uncalibrated)",
+      "message": "symbol-small at 16 px: features narrower than 1 px (lost 0.7 px², clogged 0.0 px²)",
+      "suggested_fix": "add or simplify symbol-small.svg: fewer, bolder parts"
+    }
+  ]
+}

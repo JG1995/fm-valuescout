@@ -1,0 +1,374 @@
+{
+  "schema": "brand-identity/identity@1",
+  "brand": {
+    "name": "ValueScout",
+    "tagline": "The lens on your live save.",
+    "languages": [
+      "en"
+    ],
+    "doc_lang": "en",
+    "sector": "sports data analytics · Football Manager companion desktop app",
+    "numbers": true,
+    "copy": {
+      "sentence": {
+        "en": "ValueScout reads your running Football Manager save and tells you who fits your system right now."
+      },
+      "nav": [
+        "Players",
+        "Staff",
+        "Club",
+        "Planner"
+      ],
+      "cta": "Load Data"
+    }
+  },
+  "set": {
+    "id": "C",
+    "name": "Ledger",
+    "recommended": false,
+    "mechanism": "The scouting report: slab capitals on paper, an administrative sans for the small print, scores typed in typewriter mono — and one red stamp square.",
+    "expression_move": "The red stamp square is the only saturated mark; everything else is ink on paper.",
+    "differs_by": "Where the category is dark tool chrome or forum red, the Ledger reads like a printed official report — authority from paper, not from darkness."
+  },
+  "axes": {
+    "quiet_loud": -2,
+    "friend_authority": 2,
+    "warm_cool": 1,
+    "classic_contemporary": -2
+  },
+  "components": {
+    "logo": {
+      "mode": "new",
+      "status": "proposed",
+      "source": null,
+      "sha256": null
+    },
+    "type": {
+      "mode": "new",
+      "status": "proposed",
+      "source": null,
+      "sha256": null
+    },
+    "palette": {
+      "mode": "new",
+      "status": "proposed",
+      "source": null,
+      "sha256": null
+    }
+  },
+  "type": {
+    "pairing_mode": "contrast",
+    "display": {
+      "family": "Zilla Slab",
+      "source": "google",
+      "license": "OFL-1.1",
+      "weights": [
+        700
+      ],
+      "location": {
+        "wght": 700
+      },
+      "features": [],
+      "case": "as-is",
+      "tracking": -10,
+      "fallback": "Rockwell, Georgia, serif",
+      "file": null
+    },
+    "text": {
+      "family": "Public Sans",
+      "source": "google",
+      "license": "OFL-1.1",
+      "weights": [
+        400,
+        500,
+        600
+      ],
+      "location": {
+        "wght": 400
+      },
+      "features": [
+        "tnum"
+      ],
+      "case": "as-is",
+      "tracking": 0,
+      "fallback": "system-ui, sans-serif",
+      "file": null
+    },
+    "mono": {
+      "family": "Courier Prime",
+      "source": "google",
+      "license": "OFL-1.1",
+      "weights": [
+        400,
+        700
+      ],
+      "location": {
+        "wght": 400
+      },
+      "features": [],
+      "case": "as-is",
+      "tracking": 0,
+      "fallback": "ui-monospace, monospace",
+      "file": null
+    }
+  },
+  "logo": {
+    "type": "wordmark",
+    "concept": "The name written into the report, closed with one stamped square — the grade at the end of the line.",
+    "symbol": null,
+    "wordmark": {
+      "text": "ValueScout",
+      "role": "display",
+      "location": null,
+      "tracking": -10,
+      "case": "as-is"
+    },
+    "monogram": null,
+    "lockups": [
+      "horizontal"
+    ],
+    "colors": {
+      "wordmark": "text",
+      "stamp": "accent"
+    },
+    "tags": [],
+    "clear_space": {
+      "unit": "cap-height",
+      "multiple": 1,
+      "inferred": true
+    },
+    "min_size": {
+      "px": 24,
+      "mm": 8
+    }
+  },
+  "palette": "palette.json",
+  "defaults_used": [
+    {
+      "id": "cream-ground",
+      "why": "The scouting report was literally a paper document in this product's history; the paper is low-chroma, the ink is slate, and the accent is a stamp — the set is document, not the cream+terracotta+gold cluster."
+    },
+    {
+      "id": "terracotta-clay",
+      "why": "Stamp red #bf3a2b is a grade stamp drawn as a 30-unit square once per lockup; it never fills a surface or a band, so it carries the stamp's function rather than the terracotta-clay role."
+    }
+  ],
+  "rationale": [
+    {
+      "claim": "Scouting predates software: the scouting report was paper with a typed rating. The set keeps that document's structure — slab name, administrative small print, typewriter figures.",
+      "evidence": "judgement",
+      "source": "brief.sector"
+    },
+    {
+      "claim": "Light ground is the deliberate opposite of the sector's dark-tool default; it stays legible on the desktop next to Football Manager's dark UI because it is low-chroma paper, not white.",
+      "evidence": "judgement",
+      "source": "references/color.md"
+    },
+    {
+      "claim": "Courier Prime gives figures a typed-in, archive feel; monospaced faces are tabular by construction, so the numbers gate is met without a feature.",
+      "evidence": "practice",
+      "source": "references/type.md"
+    }
+  ],
+  "derived": [
+    {
+      "file": "card.png",
+      "requires": [
+        "logo",
+        "type",
+        "palette"
+      ],
+      "inputs_sha256": "674a6e1e027dd0a98c2467ce1283aad5faa3cead95318d60f470836fb1054425"
+    }
+  ],
+  "audit": {
+    "schema": "brand-identity/audit@1",
+    "passed": true,
+    "counts": {
+      "gate": 0,
+      "warn": 2,
+      "info": 12
+    },
+    "findings": [
+      {
+        "id": "palette.contrast.light.border-on-background",
+        "component": "palette",
+        "severity": "info",
+        "measured": 1.36,
+        "threshold": 3.0,
+        "message": "light: border #d8d3c7 on background #f7f4ec is 1.36:1, below 3.0:1 (borders: dividers are exempt, input outlines need 3:1; WCAG 2, no rounding)",
+        "suggested_fix": {
+          "change": "modes.light.border",
+          "from": "#d8d3c7",
+          "to": "#918d81",
+          "how": "darken by OKLCH L -0.22, same hue",
+          "ratio_after": 3.02
+        },
+        "roles": [
+          "light.border",
+          "light.background"
+        ]
+      },
+      {
+        "id": "palette.contrast.dark.link-on-text",
+        "component": "palette",
+        "severity": "info",
+        "measured": 2.53,
+        "threshold": 3.0,
+        "message": "dark: link #e77c6c on text #f4f3f1 is 2.53:1, below 3.0:1 (underline links in dark mode (WCAG G183: without underline a link needs 3:1 against body text); WCAG 2, no rounding)",
+        "suggested_fix": {
+          "change": "modes.dark.link",
+          "from": "#e77c6c",
+          "to": "#df4a39",
+          "how": "use accent-600 (same scale)",
+          "ratio_after": 3.66
+        },
+        "roles": [
+          "dark.link",
+          "dark.text"
+        ]
+      },
+      {
+        "id": "palette.contrast.dark.border-on-background",
+        "component": "palette",
+        "severity": "info",
+        "measured": 2.3,
+        "threshold": 3.0,
+        "message": "dark: border #575550 on background #171c24 is 2.30:1, below 3.0:1 (borders: dividers are exempt, input outlines need 3:1; WCAG 2, no rounding)",
+        "suggested_fix": {
+          "change": "modes.dark.border",
+          "from": "#575550",
+          "to": "#75736e",
+          "how": "use neutral-500 (same scale)",
+          "ratio_after": 3.61
+        },
+        "roles": [
+          "dark.border",
+          "dark.background"
+        ]
+      },
+      {
+        "id": "palette.harmony.primary-accent",
+        "component": "palette",
+        "severity": "info",
+        "measured": -0.58,
+        "threshold": -0.3,
+        "message": "Ou-Luo two-colour model scores #232e3c + #bf3a2b at -0.58 (negative = less harmonious on a grey CRT test, no context): model signal only; the pairing table in references/pairing.md takes precedence",
+        "suggested_fix": null,
+        "roles": [
+          "light.primary",
+          "light.accent"
+        ]
+      },
+      {
+        "id": "type.display.coverage.en_Latn.extended",
+        "component": "type",
+        "severity": "info",
+        "measured": "101/102",
+        "threshold": "100% auxiliary + punctuation",
+        "message": "Zilla Slab lacks English auxiliary/punctuation characters: ʻ",
+        "suggested_fix": "fine if the brand never writes them (loanwords, names); else another family"
+      },
+      {
+        "id": "type.display.coverage.gf-latin-core",
+        "component": "type",
+        "severity": "info",
+        "measured": "304/319",
+        "threshold": "GF Latin Core",
+        "message": "Zilla Slab misses 15/319 GF Latin Core codepoints (reach beyond the brief's languages)",
+        "suggested_fix": "matters only if the brand may add more Latin-script languages"
+      },
+      {
+        "id": "type.display.web-weight",
+        "component": "type",
+        "severity": "info",
+        "measured": 33,
+        "threshold": null,
+        "message": "Zilla Slab: ~33 KB WOFF2 for the brief's characters (per weight file; estimate)",
+        "suggested_fix": null
+      },
+      {
+        "id": "type.text.coverage.gf-latin-core",
+        "component": "type",
+        "severity": "info",
+        "measured": "318/319",
+        "threshold": "GF Latin Core",
+        "message": "Public Sans misses 1/319 GF Latin Core codepoints (reach beyond the brief's languages)",
+        "suggested_fix": "matters only if the brand may add more Latin-script languages"
+      },
+      {
+        "id": "type.text.web-weight",
+        "component": "type",
+        "severity": "info",
+        "measured": 21,
+        "threshold": null,
+        "message": "Public Sans: ~21 KB WOFF2 for the brief's characters (one variable file, all weights; estimate)",
+        "suggested_fix": null
+      },
+      {
+        "id": "type.mono.coverage.en_Latn.extended",
+        "component": "type",
+        "severity": "info",
+        "measured": "101/102",
+        "threshold": "100% auxiliary + punctuation",
+        "message": "Courier Prime lacks English auxiliary/punctuation characters: ʻ",
+        "suggested_fix": "fine if the brand never writes them (loanwords, names); else another family"
+      },
+      {
+        "id": "type.mono.coverage.gf-latin-core",
+        "component": "type",
+        "severity": "info",
+        "measured": "305/319",
+        "threshold": "GF Latin Core",
+        "message": "Courier Prime misses 14/319 GF Latin Core codepoints (reach beyond the brief's languages)",
+        "suggested_fix": "matters only if the brand may add more Latin-script languages"
+      },
+      {
+        "id": "type.mono.web-weight",
+        "component": "type",
+        "severity": "info",
+        "measured": 15,
+        "threshold": null,
+        "message": "Courier Prime: ~15 KB WOFF2 for the brief's characters (per weight file; estimate)",
+        "suggested_fix": null
+      },
+      {
+        "id": "logo.small-size",
+        "component": "logo",
+        "severity": "warn",
+        "measured": {
+          "stroke_px2": 0.54,
+          "gap_px2": 0.07
+        },
+        "threshold": "1 px (raster erosion test, heuristic, uncalibrated)",
+        "message": "symbol-small at 16 px: features narrower than 1 px (lost 0.54 px², clogged 0.07 px²)",
+        "suggested_fix": "add or simplify symbol-small.svg: fewer, bolder parts"
+      },
+      {
+        "id": "cohesion.competitor-colour",
+        "component": "cohesion",
+        "severity": "warn",
+        "measured": 7.2,
+        "threshold": 10,
+        "message": "Stamp Red #bf3a2b is ΔE2000 7.2 from fmscout.com's primary #e3042e",
+        "suggested_fix": "move lightness or hue until ΔE2000 >= 10, or say why sharing it is deliberate"
+      }
+    ],
+    "defaults": {
+      "matched": [
+        "cream-ground",
+        "terracotta-clay"
+      ]
+    }
+  },
+  "card": null,
+  "palette_build": {
+    "strategy": null,
+    "accent": "#bf3a2b",
+    "light_bg": "#f7f4ec",
+    "dark_bg": "#171c24",
+    "neutral_tint": "#e6dfd0",
+    "neutral_chroma": 0.015,
+    "extra": []
+  }
+}
