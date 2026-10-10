@@ -156,7 +156,7 @@ export function AcademyClassWorkspace({
               Add players
             </Button>
             {!academyClass.isAutomatic ? (
-              <Button variant="destructive" icon={Trash2} onClick={onDelete}>
+              <Button variant="ghost" icon={Trash2} onClick={onDelete}>
                 Delete class
               </Button>
             ) : null}
@@ -171,17 +171,17 @@ export function AcademyClassWorkspace({
           status={statisticsStatus}
         />
         {roster.isError ? (
-          <p className="mt-6 text-body-sm text-error" role="alert">
+          <p className="mt-4 text-body-sm text-error" role="alert">
             Could not load the class roster. {roster.error.message}
           </p>
         ) : null}
         {roster.isPending ? (
-          <p className="mt-6 text-body-md text-on-surface-variant">
+          <p className="mt-4 text-body-md text-on-surface-variant">
             Loading roster…
           </p>
         ) : null}
         {!roster.isPending && !roster.isError ? (
-          <div className="mt-6 space-y-6">
+          <div className="mt-4 space-y-4">
             {rosterGroups.map((group) => (
               <AcademyRosterGroup
                 key={group.id}
@@ -263,22 +263,31 @@ function AcademyRosterGroup({
   const headingId = `academy-roster-${groupId}`;
 
   return (
-    <section aria-labelledby={headingId}>
-      <h3 id={headingId} className="text-title-md text-on-surface">
+    <section
+      aria-labelledby={headingId}
+      className={
+        members.length === 0 ? "flex flex-wrap items-center gap-2" : undefined
+      }
+    >
+      <h3 id={headingId} className="text-body-md font-semibold text-on-surface">
         {title} ({members.length})
       </h3>
-      <div className="mt-2 max-h-[min(55vh,560px)] overflow-auto rounded-lg border border-outline-variant">
-        <table
-          aria-labelledby={headingId}
-          className="min-w-[1360px] w-full border-collapse text-left"
-        >
-          <caption className="sr-only">
-            {title} players in Class of {academyClass.classYear}
-          </caption>
-          <AcademyRosterTableHeader />
-          <tbody>
-            {members.length > 0 ? (
-              members.map((member) => (
+      {members.length === 0 ? (
+        <p className="text-body-sm text-on-surface-variant">
+          No players are currently in this group.
+        </p>
+      ) : (
+        <div className="mt-2 max-h-[min(55vh,560px)] overflow-auto rounded-lg border border-outline-variant">
+          <table
+            aria-labelledby={headingId}
+            className="min-w-[1360px] w-full border-collapse text-left"
+          >
+            <caption className="sr-only">
+              {title} players in Class of {academyClass.classYear}
+            </caption>
+            <AcademyRosterTableHeader />
+            <tbody>
+              {members.map((member) => (
                 <AcademyRosterRow
                   key={member.playerUid}
                   academyClass={academyClass}
@@ -287,20 +296,11 @@ function AcademyRosterGroup({
                   onOpenOutcome={onOpenOutcome}
                   onRemove={onRemove}
                 />
-              ))
-            ) : (
-              <tr className="h-table-row border-t border-outline-variant">
-                <td
-                  colSpan={16}
-                  className="px-2 text-body-sm text-on-surface-variant"
-                >
-                  No players are currently in this group.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
@@ -510,13 +510,22 @@ function AcademyMemberActions({
   const released = member.outcome?.status === "released";
 
   return (
-    <div className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
+    <fieldset
+      aria-label={`Actions for ${member.currentName ?? member.lastKnownName}`}
+      className="inline-flex scroll-m-1 items-center justify-end gap-2 whitespace-nowrap"
+      onFocus={(event) =>
+        event.currentTarget.scrollIntoView({
+          block: "nearest",
+          inline: "nearest",
+        })
+      }
+    >
       <Button
         data-academy-member-sell={`${academyClass.id}-${member.playerUid}`}
         disabled={disabled}
         icon={HandCoins}
-        variant="secondary"
-        className="h-7 border-success/60 px-3 text-success hover:bg-success/10 hover:text-success active:bg-success/15"
+        variant="ghost"
+        className="px-3"
         onClick={(event) => onOpenOutcome(member, "sale", event.currentTarget)}
       >
         Sell
@@ -524,12 +533,8 @@ function AcademyMemberActions({
       <Button
         disabled={disabled}
         icon={released ? RotateCcw : UserRoundMinus}
-        variant="secondary"
-        className={
-          released
-            ? "h-7 px-3"
-            : "h-7 border-warning/60 px-3 text-warning hover:bg-warning/10 hover:text-warning active:bg-warning/15"
-        }
+        variant="ghost"
+        className="px-3"
         onClick={(event) =>
           onOpenOutcome(
             member,
@@ -543,13 +548,13 @@ function AcademyMemberActions({
       <Button
         disabled={disabled}
         icon={Trash2}
-        variant="destructive"
-        className="h-7 px-3"
+        variant="ghost"
+        className="px-3"
         onClick={(event) => onRemove(member, event.currentTarget)}
       >
         Remove
       </Button>
-    </div>
+    </fieldset>
   );
 }
 

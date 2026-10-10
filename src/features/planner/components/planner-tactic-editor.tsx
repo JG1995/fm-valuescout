@@ -235,14 +235,18 @@ export function PlannerTacticEditor({
   };
 
   return (
-    <Panel flush className="min-w-0">
-      <div className="grid gap-3 p-3">
+    <Panel
+      flush
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
+      contentClassName="flex min-h-0 flex-1 flex-col"
+    >
+      <div className="flex min-h-0 flex-1 flex-col">
         <section
-          className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-high p-3"
+          className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant px-4 py-2"
           aria-label="Tactic controls"
         >
           <fieldset
-            className="mr-auto inline-flex rounded-full bg-surface-container p-0.5"
+            className="mr-auto inline-flex rounded-md bg-surface-container p-0.5"
             onKeyDown={handleViewKeyDown}
           >
             <legend className="sr-only">Tactic phase views</legend>
@@ -257,7 +261,7 @@ export function PlannerTacticEditor({
                   type="button"
                   aria-pressed={selected}
                   tabIndex={selected ? 0 : -1}
-                  className={`cursor-pointer rounded-full px-4 py-1.5 text-label-lg transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                  className={`h-8 cursor-pointer rounded-sm px-4 text-label-lg transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                     selected
                       ? "bg-primary text-on-primary"
                       : "text-on-surface-variant hover:text-on-surface"
@@ -311,39 +315,36 @@ export function PlannerTacticEditor({
           </Button>
         </section>
 
-        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          {/* XI left, pitch middle, inspector right. Below 2xl the XI/pitch
-              pair stacks so the 1280 pitch keeps full width for disjoint
-              markers; the row returns at 2xl where wider viewports have
-              room for the 336px XI beside the pitch. */}
-          <div className="flex min-w-0 flex-col gap-3 2xl:flex-row 2xl:items-start">
-            <PlannerTacticLaneList
+        <div className="grid min-h-0 min-w-0 flex-1 gap-4 p-4 lg:grid-cols-[12rem_minmax(0,1fr)_20rem] 2xl:grid-cols-[18rem_minmax(0,1fr)_20rem]">
+          <PlannerTacticLaneList
+            lanes={draft.lanes}
+            options={options}
+            selectedLaneId={selectedLaneId}
+            onSelectLane={(laneId) => {
+              setSelectedLaneId(laneId);
+              setHighlightedLaneId(laneId);
+            }}
+          />
+          <div
+            className="min-h-0 min-w-0 overflow-auto"
+            data-testid="tactic-pitch-scroller"
+          >
+            <PlannerPhaseAwareTacticPitch
+              view={view}
               lanes={draft.lanes}
               options={options}
               selectedLaneId={selectedLaneId}
+              highlightedLaneId={highlightedLaneId}
+              onHighlight={setHighlightedLaneId}
               onSelectLane={(laneId) => {
                 setSelectedLaneId(laneId);
                 setHighlightedLaneId(laneId);
               }}
             />
-            <div className="min-w-0 flex-1">
-              <PlannerPhaseAwareTacticPitch
-                view={view}
-                lanes={draft.lanes}
-                options={options}
-                selectedLaneId={selectedLaneId}
-                highlightedLaneId={highlightedLaneId}
-                onHighlight={setHighlightedLaneId}
-                onSelectLane={(laneId) => {
-                  setSelectedLaneId(laneId);
-                  setHighlightedLaneId(laneId);
-                }}
-              />
-            </div>
           </div>
 
           {selectedLane ? (
-            <div className="min-w-0">
+            <div className="min-h-0 min-w-0">
               <PlannerTacticInspector
                 selectedLane={selectedLane}
                 lanes={draft.lanes}

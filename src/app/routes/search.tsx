@@ -195,7 +195,7 @@ export const Route = createFileRoute("/search")({
 function PanelFallback() {
   return (
     <>
-      <h1 className="text-headline-lg text-on-surface">Player Search</h1>
+      <h1 className="text-headline-md text-on-surface">Player Search</h1>
       <div className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
         Loading search results…
       </div>
@@ -412,13 +412,13 @@ function SearchPageContent() {
           );
         updateSearch({ shortlistOnly: undefined });
       }}
-      className="inline-flex items-center gap-2 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      className="inline-flex h-8 items-center gap-2 rounded-md border border-outline px-3 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
       Shortlist: {shortlistOnly ? "On" : "Off"}
     </button>
   );
   const comparisonPoolToggle = (
-    <fieldset className="inline-flex rounded-full border border-outline bg-surface-container-high p-0.5">
+    <fieldset className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5">
       <legend className="sr-only">Comparison pool</legend>
       {(["filtered", "fullCsv"] as const).map((pool) => (
         <button
@@ -427,8 +427,8 @@ function SearchPageContent() {
           aria-pressed={comparisonPool === pool}
           className={
             comparisonPool === pool
-              ? "rounded-full bg-primary px-3 py-1 text-label-md text-on-primary"
-              : "rounded-full px-3 py-1 text-label-md text-on-surface-variant hover:text-on-surface"
+              ? "h-8 rounded-sm bg-primary px-3 text-label-md text-on-primary"
+              : "h-8 rounded-sm px-3 text-label-md text-on-surface-variant hover:text-on-surface"
           }
           onClick={() => updateSearch({ comparisonPool: pool })}
         >
@@ -537,9 +537,9 @@ function SearchPageContent() {
     const pageHeader = (
       <header
         data-testid="search-page-header"
-        className="flex w-full flex-wrap items-start justify-between gap-3"
+        className="flex w-full flex-wrap items-start justify-between gap-2"
       >
-        <h1 className="text-headline-lg text-on-surface">Player Search</h1>
+        <h1 className="text-headline-md text-on-surface">Player Search</h1>
         <div
           className="flex flex-wrap items-center justify-end gap-2"
           data-testid="search-page-actions"
@@ -620,7 +620,7 @@ function SearchPageContent() {
         ) : null}
         <div className="flex min-h-0 flex-1 flex-col">
           {isResultContextChanging ? (
-            <Panel title="Results" flush>
+            <Panel flush>
               <p className="p-4 text-body-md text-on-surface-variant">
                 Loading player results…
               </p>
@@ -661,7 +661,7 @@ function SearchPageContent() {
               datasetToggles={datasetToggles}
             />
           ) : (
-            <Panel title="Results" flush>
+            <Panel flush>
               <EmptyState
                 icon={DatabaseZap}
                 title="No data loaded for this save"

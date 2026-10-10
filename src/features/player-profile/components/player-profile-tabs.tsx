@@ -53,7 +53,7 @@ export function PlayerProfileTabs({
     <div
       role="tablist"
       aria-label="Attribute groups"
-      className="inline-flex max-w-full rounded-full bg-surface-container-high p-0.5"
+      className="inline-flex max-w-full rounded-md bg-surface-container-high p-0.5"
       onKeyDown={onKeyDown}
     >
       {tabs.map((id) => {
@@ -68,10 +68,10 @@ export function PlayerProfileTabs({
             aria-controls={`profile-panel-${id}`}
             tabIndex={selected ? 0 : -1}
             className={cn(
-              "cursor-pointer rounded-full px-3 py-1.5 text-label-md transition-colors duration-150 ease-out",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "h-8 cursor-pointer rounded-sm px-3 text-label-md transition-colors duration-150 ease-out",
+              "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary",
               selected
-                ? "bg-primary text-on-primary"
+                ? "bg-surface-container-lowest text-on-surface"
                 : "text-on-surface-variant hover:text-on-surface",
             )}
             onClick={() => {

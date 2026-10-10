@@ -332,12 +332,15 @@ describe("academy route", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "Class" }));
+    const roster = await screen.findByRole("table", {
+      name: "Still at club (2)",
+    });
     expect(
-      await screen.findAllByRole("columnheader", { name: "Career apps" }),
-    ).toHaveLength(3);
-    expect(screen.getAllByRole("columnheader", { name: "Fee" })).toHaveLength(
-      3,
-    );
+      within(roster).getByRole("columnheader", { name: "Career apps" }),
+    ).toBeInTheDocument();
+    expect(
+      within(roster).getByRole("columnheader", { name: "Fee" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("columnheader", { name: "Reported team" }),
     ).not.toBeInTheDocument();

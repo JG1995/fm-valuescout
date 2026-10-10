@@ -63,7 +63,7 @@ function LaneButton({
   // never success/error semantics. Borders are opaque so the edge clears
   // 3:1 against both adjacent surfaces; text stays on-surface so small
   // type keeps its contrast. The dual badge always renders, so phase
-  // identity stays visible under the gold selected treatment.
+  // identity stays visible under the primary selected treatment.
   const phaseBorder = phase === "ip" ? "border-chart-2" : "border-chart-3";
   const phaseBadge = phase === "ip" ? "border-chart-2" : "border-chart-3";
 
@@ -73,9 +73,9 @@ function LaneButton({
       aria-label={`${shortLabel}: ${description}`}
       aria-describedby={linkedHintId}
       aria-pressed={selected}
-      className={`min-h-11 w-full rounded-md border px-1 py-1 text-center transition-[background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+      className={`min-h-11 min-w-0 w-full scroll-m-1 rounded-md border px-1 py-1 text-center transition-[background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
         selected
-          ? "border-primary bg-primary-container text-primary ring-2 ring-primary/60"
+          ? "border-primary bg-primary-container text-on-primary-container ring-2 ring-primary/60"
           : highlighted
             ? `${phaseBorder} bg-surface-container-high text-on-surface ring-2 ring-primary/60`
             : `${phaseBorder} bg-surface-container text-on-surface hover:bg-surface-container-high`
@@ -105,7 +105,10 @@ function LaneButton({
       <span className="block truncate text-label-md" title={description}>
         {position}
       </span>
-      <span className="block truncate text-[11px]" title={description}>
+      <span
+        className="block truncate text-[11px] leading-[1.4]"
+        title={description}
+      >
         {role}
       </span>
     </button>
@@ -295,7 +298,7 @@ export function TacticPitchCanvas({
   return (
     <fieldset
       aria-describedby={attackDescriptionId}
-      className="rounded-lg border border-outline-variant bg-surface-container-lowest p-3"
+      className="min-w-0 rounded-lg border border-outline-variant bg-surface-container-lowest p-3"
     >
       <legend className="sr-only">{legend}</legend>
       <p
@@ -361,7 +364,7 @@ export function TacticPitchCanvas({
         ) : null}
         {markers.map((marker) => (
           <div
-            className={`absolute min-w-11 -translate-y-1/2 ${dual ? "w-[6%]" : "w-[12%]"} ${
+            className={`absolute grid min-w-11 -translate-y-1/2 ${dual ? "w-[6%]" : "w-[12%]"} ${
               marker.collides
                 ? marker.phase === "ip"
                   ? "-translate-x-[calc(100%+2px)]"
@@ -439,7 +442,10 @@ export function PlannerTacticPitch({
   return (
     <section className="space-y-2" aria-labelledby={headingId}>
       <div className="flex items-center justify-between gap-3">
-        <h3 id={headingId} className="text-headline-sm text-on-surface">
+        <h3
+          id={headingId}
+          className="text-body-md font-semibold text-on-surface"
+        >
           {label}
         </h3>
         <span className="shrink-0 rounded-full bg-surface-container-high px-2 py-1 font-mono text-mono-sm text-on-surface-variant">

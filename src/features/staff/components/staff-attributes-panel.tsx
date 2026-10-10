@@ -21,11 +21,11 @@ function AttributeSection({
     >
       <h3
         id={`staff-attribute-${group.id}`}
-        className="text-label-lg text-on-surface"
+        className="text-body-md font-semibold text-on-surface"
       >
         {group.title}
       </h3>
-      <dl className="grid min-w-0 grid-cols-1 gap-x-5">
+      <dl className="grid min-w-0 grid-cols-1 [&_dt]:overflow-visible [&_dt]:whitespace-normal">
         {group.keys.map((key) => (
           <AttributeRow
             key={key}
@@ -50,7 +50,7 @@ export function StaffAttributesPanel({ staff }: { staff: StaffDetail }) {
       }
       className="flex min-h-0 flex-col [&>div:last-child]:min-h-0 [&>div:last-child]:flex-1"
     >
-      <div className="grid h-full min-h-0 grid-cols-3 gap-5 overflow-y-auto pr-1">
+      <div className="grid h-full min-h-0 grid-cols-3 gap-4 overflow-y-auto pr-1">
         {STAFF_PROFILE_ATTRIBUTE_GROUPS.map((group) => (
           <AttributeSection key={group.id} group={group} staff={staff} />
         ))}

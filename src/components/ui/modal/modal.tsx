@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button/button";
 import { cn } from "@/utils/cn";
@@ -127,8 +127,8 @@ export function Modal({
     };
   }, [mounted]);
 
-  useEffect(() => {
-    if (mounted || !shouldReturnFocusRef.current) {
+  const restoreFocus = useCallback(() => {
+    if (!shouldReturnFocusRef.current) {
       return;
     }
     shouldReturnFocusRef.current = false;
@@ -140,7 +140,13 @@ export function Modal({
       return;
     }
     fallbackFocusToRef.current?.()?.focus();
-  }, [mounted]);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) restoreFocus();
+  }, [mounted, restoreFocus]);
+
+  useEffect(() => restoreFocus, [restoreFocus]);
 
   if (!mounted) {
     return null;
@@ -158,7 +164,7 @@ export function Modal({
         type="button"
         aria-label="Close dialog"
         className={cn(
-          "absolute inset-0 bg-black/60 ease-out motion-reduce:transition-none",
+          "absolute inset-0 bg-scrim/60 ease-out motion-reduce:transition-none",
           entered
             ? "opacity-100 transition-opacity duration-200"
             : "opacity-0 transition-opacity duration-150",

@@ -33,10 +33,10 @@ describe("staff metrics", () => {
     );
   });
 
-  it("labels the Age metric as age-only and aligns it as text", () => {
+  it("labels Age as a right-aligned raw numeric metric", () => {
     expect(getStaffMetric("age")).toMatchObject({
       label: "Age",
-      align: "left",
+      align: "right",
     });
   });
 });

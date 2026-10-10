@@ -597,11 +597,6 @@ describe("player profile route", () => {
         name: "Alexandra Maximilian Scout",
       }),
     ).not.toHaveClass("truncate");
-    expect(generalDetails).toHaveClass(
-      "lg:grid-cols-2",
-      "xl:grid-cols-3",
-      "2xl:grid-cols-[repeat(3,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))]",
-    );
     expect(within(generalDetails).getByText("Current Ability")).toBeVisible();
     expect(within(generalDetails).getByText("Potential Ability")).toBeVisible();
     expect(within(generalDetails).getByText("Market Value")).toBeVisible();
@@ -614,7 +609,6 @@ describe("player profile route", () => {
     const generalTactical = within(generalDetails).getByTestId(
       "overview-tactical-fit",
     );
-    expect(generalTactical).toHaveClass("contents");
     expect(
       within(generalTactical).getByTestId("overview-tactical-fit-ip"),
     ).toBeInTheDocument();
@@ -743,9 +737,6 @@ describe("player profile route", () => {
     const moneyballRoleFit = screen.getByRole("region", {
       name: /^Moneyball role fit for /,
     });
-    expect(moneyballRoleFit).toHaveClass(
-      "lg:grid-cols-[minmax(240px,360px)_minmax(0,1fr)]",
-    );
     expect(
       within(moneyballRoleFit).getByTestId(
         "moneyball-role-position-picker-scroller",

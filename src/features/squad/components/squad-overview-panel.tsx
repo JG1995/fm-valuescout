@@ -79,9 +79,9 @@ function SquadFeedbackSlot({
       ref={feedbackRef}
       data-testid="squad-boost-feedback"
       tabIndex={-1}
-      className="flex min-h-16 items-center px-4 pb-3 text-body-sm focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+      className="flex min-h-6 shrink-0 items-center px-4 text-body-sm break-words focus:outline-2 focus:outline-offset-[-2px] focus:outline-primary"
     >
-      {feedback}
+      <div className="min-w-0 max-w-full">{feedback}</div>
     </div>
   );
 }
@@ -305,7 +305,11 @@ function SquadOverviewTable({
             );
           }
           if (!(SQUAD_SORT_FIELDS as readonly string[]).includes(column.id)) {
-            if (column.id === "club_dna") {
+            if (
+              column.id === "club_dna" ||
+              column.id.startsWith("role.") ||
+              column.id.startsWith("potential_role.")
+            ) {
               const score = player?.dynamicValues?.[column.id];
               return (
                 <td key={column.id} className={NUM_CELL}>
@@ -538,7 +542,7 @@ export function SquadOverviewPanel({
       : undefined;
   if (!page) {
     return (
-      <Panel title="Squad overview" actions={actions} flush>
+      <Panel actions={actions} flush>
         <SquadFeedbackSlot feedback={feedback} feedbackRef={feedbackRef} />
         {renderToolbar()}
         <EmptyState
@@ -567,7 +571,7 @@ export function SquadOverviewPanel({
 
   if (page.total === 0) {
     return (
-      <Panel title="Squad overview" actions={actions} flush>
+      <Panel actions={actions} flush>
         <SquadFeedbackSlot feedback={feedback} feedbackRef={feedbackRef} />
         {renderToolbar(
           <p className="text-body-md text-on-surface-variant">
@@ -602,12 +606,12 @@ export function SquadOverviewPanel({
 
   return (
     <Panel
-      title="Squad overview"
       actions={actions}
       flush
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
+      <SquadFeedbackSlot feedback={feedback} feedbackRef={feedbackRef} />
       {renderToolbar(
         <p className="text-body-md text-on-surface-variant">
           <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
@@ -631,14 +635,13 @@ export function SquadOverviewPanel({
           <span>Could not sort squad. {replacementError.message}</span>
           <button
             type="button"
-            className="shrink-0 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             onClick={() => void requestedQuery.refetch()}
           >
             Retry
           </button>
         </div>
       ) : null}
-      <SquadFeedbackSlot feedback={feedback} feedbackRef={feedbackRef} />
       <SquadOverviewTable
         total={page.total}
         sortBy={committed.sortBy}

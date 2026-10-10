@@ -218,7 +218,9 @@ export function PlannerSlotFitPicker({
             ? `Move ${moveCandidate.name}?`
             : `Find a player for ${target.laneName}`
       }
-      onClose={onClose}
+      onClose={() => {
+        if (!isMutating) onClose();
+      }}
       footer={
         isOccupied ? (
           <>
@@ -294,6 +296,7 @@ export function PlannerSlotFitPicker({
               aria-haspopup="listbox"
               className={`${fieldClasses} w-full`}
               id={searchInputId}
+              disabled={isMutating}
               role="combobox"
               type="text"
               value={search}

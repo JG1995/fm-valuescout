@@ -257,6 +257,18 @@ export function ConfigurableTableHeader({
       document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [openColumnId]);
 
+  useEffect(() => {
+    if (openColumnId) {
+      menuRef.current
+        ?.querySelector<HTMLButtonElement>(
+          pickingColumnId
+            ? "button"
+            : 'button[role="menuitem"]:not([disabled])',
+        )
+        ?.focus();
+    }
+  }, [openColumnId, pickingColumnId]);
+
   const closeMenu = () => {
     const columnId = openColumnId;
     setOpenColumnId(null);
@@ -664,7 +676,7 @@ export function ConfigurableColumnsControl({
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex items-center gap-2 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="inline-flex h-8 items-center gap-2 rounded-md border border-outline px-3 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         Columns
       </button>
@@ -674,7 +686,7 @@ export function ConfigurableColumnsControl({
           ref={panelRef}
           role="dialog"
           aria-label="Columns"
-          className="absolute right-0 top-full z-30 mt-1 max-h-96 w-72 overflow-y-auto rounded-md border border-outline-variant bg-surface-container-highest p-3 text-left shadow-overlay"
+          className="absolute right-0 top-full z-30 mt-1 max-h-96 w-72 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-highest p-3 text-left shadow-overlay"
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();

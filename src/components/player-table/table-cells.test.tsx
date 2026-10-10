@@ -3,21 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   formatPlayerBasicCell,
   formatTableDynamicCell,
-  TABLE_NUMERIC_CELL_CLASS,
-  TABLE_TEXT_CELL_CLASS,
   TableScoreContent,
 } from "./table-cells";
 
 describe("shared table cells", () => {
-  it("keeps text and numeric cell geometry identical to current callers", () => {
-    expect(TABLE_TEXT_CELL_CLASS).toBe(
-      "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm",
-    );
-    expect(TABLE_NUMERIC_CELL_CLASS).toBe(
-      "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums",
-    );
-  });
-
   it("renders loading for missing rows and missing honesty for absent values", () => {
     expect(formatTableDynamicCell(undefined, "ca")).toBe("…");
     expect(formatTableDynamicCell({ dynamicValues: {} }, "ca")).toBe("—");
@@ -67,7 +56,7 @@ describe("shared table cells", () => {
       expect(formatPlayerBasicCell(row, "age")).toEqual({
         text: "25",
         title: "25",
-        numeric: false,
+        numeric: true,
       });
       expect(formatPlayerBasicCell(row, "ca")).toEqual({
         text: "140",
@@ -90,11 +79,11 @@ describe("shared table cells", () => {
       });
       expect(formatPlayerBasicCell(undefined, "age")).toEqual({
         text: "…",
-        numeric: false,
+        numeric: true,
       });
       expect(formatPlayerBasicCell({ ...row, age: null }, "age")).toEqual({
         text: "—",
-        numeric: false,
+        numeric: true,
       });
       expect(
         formatPlayerBasicCell({ ...row, marketValueGbp: null }, "value"),

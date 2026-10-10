@@ -293,7 +293,7 @@ export function ConfigurableVirtualizedTable<
       <div
         ref={parentRef}
         data-testid={testId}
-        className="h-full max-w-full w-fit min-h-0 overflow-auto rounded-lg border border-outline-variant"
+        className="h-full w-full min-h-0 overflow-auto"
       >
         <table
           className="table-fixed border-collapse text-left"
@@ -426,7 +426,7 @@ export function ConfigurableVirtualizedTable<
           <span>Couldn't load this part of the table.</span>
           <button
             type="button"
-            className="shrink-0 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-highest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-highest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             onClick={() => {
               void failedPageQuery.refetch();
             }}

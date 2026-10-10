@@ -68,7 +68,7 @@ function MoneyballTabs({
     <div
       role="tablist"
       aria-label="Moneyball metric categories"
-      className="inline-flex max-w-full rounded-full bg-surface-container-high p-0.5"
+      className="flex flex-wrap rounded-md bg-surface-container-high p-0.5"
       onKeyDown={onKeyDown}
     >
       {MONEYBALL_METRIC_CATEGORIES.map((category) => {
@@ -84,8 +84,8 @@ function MoneyballTabs({
             tabIndex={selected ? 0 : -1}
             className={
               selected
-                ? "cursor-pointer rounded-full bg-primary px-3 py-1.5 text-label-md text-on-primary"
-                : "cursor-pointer rounded-full px-3 py-1.5 text-label-md text-on-surface-variant hover:text-on-surface"
+                ? "h-8 cursor-pointer rounded-sm bg-surface-container-lowest px-3 text-label-md text-on-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+                : "h-8 cursor-pointer rounded-sm px-3 text-label-md text-on-surface-variant hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
             }
             onClick={() => onChange(category.id)}
           >
@@ -144,8 +144,8 @@ export function MoneyballProfilePanel({
       title="Moneyball"
       className="flex min-h-0 w-full flex-col [&>div:last-child]:min-h-0 [&>div:last-child]:flex-1"
     >
-      <div className="flex h-full min-h-0 flex-col gap-4">
-        <dl className="grid grid-cols-2 gap-x-5 gap-y-2 border-b border-outline-variant pb-4 text-body-md sm:grid-cols-4">
+      <div className="flex h-full min-h-0 flex-col gap-2">
+        <dl className="grid shrink-0 grid-cols-[repeat(auto-fit,minmax(144px,1fr))] gap-x-4 gap-y-2 border-b border-outline-variant pb-2 text-body-md">
           <div>
             <dt className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
               Asking price
@@ -180,7 +180,7 @@ export function MoneyballProfilePanel({
           </div>
         </dl>
         {profile.comparisonBasis.kind === "available" ? (
-          <p className="text-body-sm text-on-surface-variant">
+          <p className="shrink-0 text-body-sm text-on-surface-variant">
             Natural positions:{" "}
             {orderedPositions(profile.comparisonBasis.naturalPositions).join(
               ", ",
@@ -191,11 +191,14 @@ export function MoneyballProfilePanel({
               : "players"}
           </p>
         ) : (
-          <p role="status" className="text-body-sm text-on-surface-variant">
+          <p
+            role="status"
+            className="shrink-0 text-body-sm text-on-surface-variant"
+          >
             Percentile scores unavailable: this player has no natural position.
           </p>
         )}
-        <div className="overflow-x-auto pb-0.5">
+        <div className="shrink-0 p-0.5">
           <MoneyballTabs
             activeId={category.id}
             onChange={setCategoryId}
@@ -211,7 +214,7 @@ export function MoneyballProfilePanel({
               aria-labelledby={`${idPrefix}-tab-${candidate.id}`}
               hidden={candidate.id !== category.id}
             >
-              <dl className="grid min-w-0 grid-cols-1 gap-x-5 lg:grid-cols-2">
+              <dl className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-x-4 [&_dt]:whitespace-normal">
                 {candidate.metricIds.map((metricId) => {
                   const metric = MONEYBALL_METRICS_BY_ID.get(metricId);
                   if (!metric) return null;

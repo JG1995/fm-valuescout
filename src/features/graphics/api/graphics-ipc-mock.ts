@@ -75,6 +75,7 @@ export function resolveGraphicsMutationIpcMock(command: string) {
     ...status,
     generation: status.generation + 1,
     selected: command !== "clear_graphics_root",
+    rebuilding: command !== "clear_graphics_root",
   };
   return status;
 }

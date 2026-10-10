@@ -54,6 +54,7 @@ export function ActiveSaveSelect({
           switchSave.isError && "border-error",
         )}
         disabled={!saves || switchSave.isPending}
+        title={activeSave?.name}
         value={activeSave?.id ?? ""}
         onChange={(event) => {
           const saveId = Number(event.target.value);
@@ -66,17 +67,20 @@ export function ActiveSaveSelect({
           saves.map((save) => (
             <option key={save.id} value={save.id}>
               {save.name}
-              {save.id === activeSave?.id &&
-              snapshot?.saveId === save.id &&
-              snapshot.gameDate
-                ? ` - ${formatLongGameDate(snapshot.gameDate)}`
-                : ""}
             </option>
           ))
         ) : (
           <option value="">Loading saves…</option>
         )}
       </select>
+      {snapshot?.saveId === activeSave?.id && snapshot?.gameDate ? (
+        <time
+          dateTime={snapshot.gameDate}
+          className="shrink-0 whitespace-nowrap text-body-sm text-on-surface-variant"
+        >
+          {formatLongGameDate(snapshot.gameDate)}
+        </time>
+      ) : null}
       {/* A failed switch silently snaps the selection back, which reads as the
           click not registering. */}
       {switchSave.isError ? (

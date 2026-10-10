@@ -134,7 +134,7 @@ function SquadPlayerBoost({
       <div className="space-y-2">
         <Button
           icon={isCurrentAbility ? Zap : Sparkles}
-          variant={isCurrentAbility ? "primary" : "secondary"}
+          variant="secondary"
           disabled={pending || disabled}
           loading={pending}
           loadingLabel={loadingLabel}

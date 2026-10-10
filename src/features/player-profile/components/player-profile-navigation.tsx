@@ -62,7 +62,7 @@ export function PlayerSectionTabs({
     <div
       role="tablist"
       aria-label="Player analysis view"
-      className="inline-flex rounded-full bg-surface-container-high p-0.5"
+      className="inline-flex rounded-md bg-surface-container-high p-0.5"
       onKeyDown={onKeyDown}
     >
       {PROFILE_SECTIONS.map((candidate) => {
@@ -78,8 +78,8 @@ export function PlayerSectionTabs({
             tabIndex={selected ? 0 : -1}
             className={
               selected
-                ? "cursor-pointer rounded-full bg-primary px-3 py-1.5 text-label-md text-on-primary"
-                : "cursor-pointer rounded-full px-3 py-1.5 text-label-md text-on-surface-variant hover:text-on-surface"
+                ? "h-8 cursor-pointer rounded-sm bg-surface-container-lowest px-3 text-label-md text-on-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+                : "h-8 cursor-pointer rounded-sm px-3 text-label-md text-on-surface-variant hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
             }
             onClick={() => onSectionChange(candidate, true)}
           >

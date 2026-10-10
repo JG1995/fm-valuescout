@@ -11,7 +11,7 @@ import type { RouterContext } from "@/app/router-context";
 function RootError({ error }: ErrorComponentProps) {
   return (
     <div className="space-y-2 p-4 text-on-surface">
-      <h1 className="text-headline-lg">Something went wrong</h1>
+      <h1 className="text-headline-md">Something went wrong</h1>
       <ErrorComponent error={error} />
     </div>
   );

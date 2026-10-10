@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 import {
   resetGraphicsIpcMock,
   resolveGraphicsMutationIpcMock,
@@ -411,6 +411,8 @@ function registerIpcMocks() {
   });
 }
 
+// jsdom has no layout; Chromium smoke tests verify scrolling geometry.
+HTMLElement.prototype.scrollIntoView = vi.fn();
 registerIpcMocks();
 
 afterEach(() => {

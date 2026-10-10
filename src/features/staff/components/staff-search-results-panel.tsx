@@ -51,9 +51,6 @@ import { staffShortlistPresentation } from "../utils/staff-shortlist-presentatio
 import { MyStaffBoostOutcome, MyStaffCaBoost } from "./my-staff-ca-boost";
 import { StaffFilterBar } from "./staff-filter-bar";
 
-const AGE_CELL =
-  "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-body-sm";
-
 export type StaffWorkspaceScope = "search" | "my-staff";
 type StaffLayoutId = "staff-search" | "my-staff" | "staff-shortlist";
 
@@ -71,7 +68,7 @@ function ShortlistSwitch({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className="inline-flex items-center gap-2 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      className="inline-flex h-8 items-center gap-2 rounded-md border border-outline px-3 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
       Shortlist: {checked ? "On" : "Off"}
     </button>
@@ -112,7 +109,7 @@ function basicCell(
     }
     case "age": {
       const text = String(formatMissable(staff.age));
-      return { text, title: text !== "—" ? text : undefined, numeric: false };
+      return { text, title: text !== "—" ? text : undefined, numeric: true };
     }
     case "birth_year":
       return { text: String(formatMissable(staff.birthYear)), numeric: true };
@@ -483,7 +480,7 @@ function StaffSearchTable({
               className={
                 cell.numeric
                   ? NUM_CELL
-                  : `${column.id === "age" ? AGE_CELL : TEXT_CELL} ${column.id === "age" || column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
+                  : `${TEXT_CELL} ${column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
               }
               title={cell.title}
             >
@@ -801,7 +798,7 @@ export function StaffSearchResultsPanel({
             <label className="flex items-center gap-2 text-body-md text-on-surface">
               Preferred Job
               <select
-                className="rounded-md border border-outline bg-surface px-2 py-1 text-on-surface"
+                className="h-8 rounded-md border border-outline bg-surface-container-high px-2 text-body-md text-on-surface"
                 value={preferredJob ?? ""}
                 onChange={(event) => onPreferredJobChange?.(event.target.value)}
               >
@@ -833,6 +830,7 @@ export function StaffSearchResultsPanel({
   const renderToolbar = (summary?: ReactNode) =>
     scope !== "my-staff" && onRulesChange && onApplyFilters ? (
       <StaffFilterBar
+        key="staff-dataset-toolbar"
         rules={filters}
         combine={filterCombine}
         onRulesChange={onRulesChange}
@@ -843,6 +841,7 @@ export function StaffSearchResultsPanel({
       />
     ) : (
       <TableToolbar
+        key="staff-dataset-toolbar"
         toolbarLabel="Staff results toolbar"
         summary={summary}
         columnsControl={columnsControl}
@@ -853,13 +852,6 @@ export function StaffSearchResultsPanel({
   if (!page) {
     return (
       <Panel
-        title={
-          scope === "my-staff"
-            ? "Staff"
-            : isShortlist
-              ? "Staff Shortlist"
-              : "Results"
-        }
         flush
         className="flex min-h-0 flex-1 flex-col"
         contentClassName="flex min-h-0 flex-1 flex-col"
@@ -891,7 +883,7 @@ export function StaffSearchResultsPanel({
 
   if (page.state === "no_current_snapshot") {
     return (
-      <Panel title={scope === "my-staff" ? "Staff" : "Results"} flush>
+      <Panel flush>
         <EmptyState icon={DatabaseZap} title="No data loaded for this save">
           Use Load Data to scan Football Manager and ingest staff into the
           database.
@@ -901,7 +893,7 @@ export function StaffSearchResultsPanel({
   }
   if (page.state === "no_managed_club") {
     return (
-      <Panel title="Staff" flush>
+      <Panel flush>
         <EmptyState
           icon={UsersRound}
           title="Choose your managed club"
@@ -909,7 +901,7 @@ export function StaffSearchResultsPanel({
             <Link
               to="/my-club"
               hash="managed-club"
-              className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
+              className="inline-flex h-8 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
             >
               Open Managed Club
             </Link>
@@ -923,7 +915,6 @@ export function StaffSearchResultsPanel({
   if (page.state === "no_shortlist") {
     return (
       <Panel
-        title="Staff Shortlist"
         flush
         className="flex min-h-0 flex-1 flex-col"
         contentClassName="flex min-h-0 flex-1 flex-col"
@@ -951,13 +942,6 @@ export function StaffSearchResultsPanel({
       completeStaffFilterRules(filters).length > 0;
     return (
       <Panel
-        title={
-          scope === "my-staff"
-            ? "Staff"
-            : isShortlist
-              ? "Staff Shortlist"
-              : "Results"
-        }
         flush
         className="flex min-h-0 flex-1 flex-col"
         contentClassName="flex min-h-0 flex-1 flex-col"
@@ -1012,13 +996,6 @@ export function StaffSearchResultsPanel({
     );
   return (
     <Panel
-      title={
-        scope === "my-staff"
-          ? "Staff"
-          : isShortlist
-            ? "Staff Shortlist"
-            : "Results"
-      }
       actions={
         scope === "my-staff" ? (
           <MyStaffCaBoost
@@ -1042,6 +1019,20 @@ export function StaffSearchResultsPanel({
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
+      <div
+        ref={boostOutcomeRef}
+        data-testid="staff-boost-outcome"
+        tabIndex={-1}
+        className={
+          scope === "my-staff"
+            ? "min-h-6 shrink-0 rounded-sm px-4 text-body-sm break-words focus:outline-2 focus:outline-offset-[-2px] focus:outline-primary"
+            : undefined
+        }
+      >
+        {scope === "my-staff" && boostContextIsCurrent && !boost.isPending ? (
+          <MyStaffBoostOutcome result={boost.data} error={boost.error} />
+        ) : null}
+      </div>
       {renderToolbar(
         <p className="text-body-md text-on-surface-variant">
           <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
@@ -1065,7 +1056,7 @@ export function StaffSearchResultsPanel({
           <span>Could not sort staff. {replacementError.message}</span>
           <button
             type="button"
-            className="shrink-0 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             onClick={() => void requestedQuery.refetch()}
           >
             Retry
@@ -1082,24 +1073,13 @@ export function StaffSearchResultsPanel({
           </span>
           <button
             type="button"
-            className="shrink-0 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             onClick={() => void requestedQuery.refetch()}
           >
             Retry
           </button>
         </div>
       ) : null}
-      <div
-        ref={boostOutcomeRef}
-        data-testid="staff-boost-outcome"
-        tabIndex={-1}
-        className="rounded-sm px-4 [&:not(:empty)]:pb-3 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
-        aria-live="polite"
-      >
-        {scope === "my-staff" && boostContextIsCurrent && !boost.isPending ? (
-          <MyStaffBoostOutcome result={boost.data} error={boost.error} />
-        ) : null}
-      </div>
       {allScoresUnavailable ? (
         <p
           role="status"

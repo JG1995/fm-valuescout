@@ -3,6 +3,7 @@ import { useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { clearPlayerResultContext } from "@/app/player-result-context";
+import appLogo from "@/assets/signal-symbol.svg";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { academyKeys } from "@/features/academy/api/academy-keys";
@@ -22,7 +23,6 @@ import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { ActiveSaveSelect } from "@/features/snapshot/components/active-save-select";
 import { staffKeys } from "@/features/staff/api/staff-keys";
-import appLogo from "../../../src-tauri/icons/icon.png";
 
 export function AppTopBar() {
   const queryClient = useQueryClient();
@@ -96,12 +96,8 @@ export function AppTopBar() {
       data-testid="app-header"
       className="z-10 shrink-0 border-b border-outline-variant bg-surface-container"
     >
-      <div className="flex h-header-height items-center gap-3 px-4">
-        <img
-          alt="FM ValueScout"
-          className="size-9 shrink-0 rounded-lg"
-          src={appLogo}
-        />
+      <div className="flex h-header-height items-center gap-2 px-4">
+        <img alt="FM ValueScout" className="size-9 shrink-0" src={appLogo} />
         <div className="flex shrink-0 items-center gap-1">
           <Button
             aria-label="Back"
@@ -121,7 +117,7 @@ export function AppTopBar() {
           />
         </div>
         <GlobalPlayerSearch />
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <ActiveSaveSelect
             onBeforeContextChange={clearResults}
             onSwitched={() => {

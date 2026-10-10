@@ -23,7 +23,7 @@ function SummaryFact({
         className={
           numeric
             ? "font-mono text-mono-md text-on-surface tabular-nums"
-            : "truncate text-body-md text-on-surface"
+            : "break-words text-body-md text-on-surface"
         }
       >
         {value}
@@ -74,7 +74,7 @@ export function StaffOverviewPanel({
       aria-label={`${staff.name ?? "Staff"} summary`}
       className="rounded-lg border border-outline-variant bg-surface-container p-4"
     >
-      <div className="grid gap-x-4 gap-y-2 lg:grid-cols-[minmax(260px,1.15fr)_minmax(300px,1fr)_minmax(260px,0.9fr)] lg:items-start">
+      <div className="grid gap-x-4 gap-y-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_10rem] lg:items-start">
         <div className="min-w-0">
           <h1
             className="truncate text-headline-lg text-on-surface"
@@ -82,7 +82,7 @@ export function StaffOverviewPanel({
           >
             {formatMissable(staff.name)}
           </h1>
-          <p className="mt-0.5 truncate text-body-md text-on-surface-variant">
+          <p className="mt-0.5 break-words text-body-md text-on-surface-variant">
             {formatMissable(staff.club)}
             {staff.division ? ` · ${staff.division}` : ""}
           </p>
@@ -128,7 +128,7 @@ export function StaffOverviewPanel({
           </div>
         </div>
 
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 xl:grid-cols-4">
           <SummaryFact label="Age / DOB" value={dob} />
           <SummaryFact
             label="Nationality"
@@ -154,8 +154,8 @@ export function StaffOverviewPanel({
           />
         </dl>
 
-        <div className="grid min-w-0 grid-cols-2 gap-3 border-outline-variant lg:border-x lg:px-4">
-          <div className="flex min-w-0 items-start gap-3">
+        <div className="min-w-0 border-outline-variant lg:border-x lg:px-4">
+          <div className="flex min-w-0 items-center gap-2">
             {bestRole?.score === null || bestRole === undefined ? (
               <span className="inline-flex size-12 items-center justify-center font-mono text-mono-lg text-on-surface-variant tabular-nums">
                 —
@@ -171,14 +171,14 @@ export function StaffOverviewPanel({
               <p className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
                 Best role fit
               </p>
-              <p className="truncate text-body-md text-on-surface">
+              <p className="break-words text-body-md font-semibold text-on-surface">
                 {bestRole?.displayName ?? "—"}
               </p>
             </div>
           </div>
         </div>
 
-        <dl className="grid min-w-0 grid-cols-2 gap-3">
+        <dl className="grid min-w-0 grid-cols-2 gap-4">
           <SummaryFact label="CA" value={staff.ca} numeric />
           {staff.hiddenInformationRevealed ? (
             <SummaryFact label="PA" value={staff.pa} numeric />

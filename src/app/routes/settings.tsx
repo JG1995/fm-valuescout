@@ -79,10 +79,16 @@ function SettingsPage() {
 
   return (
     <div className="space-y-gutter">
-      <h1 className="text-headline-lg text-on-surface">Settings</h1>
+      <h1 className="text-headline-md text-on-surface">Settings</h1>
 
-      <section aria-labelledby="preferences-heading" className="space-y-3">
-        <h2 className="text-title-lg text-on-surface" id="preferences-heading">
+      <section
+        aria-labelledby="preferences-heading"
+        className="w-full max-w-2xl space-y-4"
+      >
+        <h2
+          className="text-headline-sm text-on-surface"
+          id="preferences-heading"
+        >
           Preferences
         </h2>
         <div className="grid max-w-md gap-1 text-body-md text-on-surface">
@@ -91,7 +97,7 @@ function SettingsPage() {
           </label>
           <select
             aria-describedby="default-analysis-view-description"
-            className="rounded-md border border-outline bg-surface-container px-3 py-2 text-on-surface"
+            className="h-9 rounded-md border border-outline bg-surface-container-high px-2 text-body-md text-on-surface"
             id="default-analysis-view"
             value={defaultAnalysisView}
             onChange={(event) =>
@@ -113,8 +119,14 @@ function SettingsPage() {
         </div>
       </section>
 
-      <section aria-labelledby="all-boosts-heading" className="space-y-3">
-        <h2 className="text-title-lg text-on-surface" id="all-boosts-heading">
+      <section
+        aria-labelledby="all-boosts-heading"
+        className="w-full max-w-2xl space-y-4"
+      >
+        <h2
+          className="text-headline-sm text-on-surface"
+          id="all-boosts-heading"
+        >
           All boosts
         </h2>
         {boostContextPending ? (
@@ -135,8 +147,11 @@ function SettingsPage() {
         )}
       </section>
 
-      <section aria-labelledby="graphics-heading" className="space-y-3">
-        <h2 className="text-title-lg text-on-surface" id="graphics-heading">
+      <section
+        aria-labelledby="graphics-heading"
+        className="w-full max-w-2xl space-y-4"
+      >
+        <h2 className="text-headline-sm text-on-surface" id="graphics-heading">
           Graphics
         </h2>
         <Suspense
@@ -146,8 +161,8 @@ function SettingsPage() {
         </Suspense>
       </section>
 
-      <section aria-labelledby="save-data-heading" className="space-y-3">
-        <h2 className="text-title-lg text-on-surface" id="save-data-heading">
+      <section aria-labelledby="save-data-heading" className="space-y-4">
+        <h2 className="text-headline-sm text-on-surface" id="save-data-heading">
           Save data
         </h2>
         <Suspense fallback={<SectionFallback label="Loading save data…" />}>
@@ -158,8 +173,8 @@ function SettingsPage() {
         </Suspense>
       </section>
 
-      <section aria-labelledby="bridge-heading" className="space-y-3">
-        <h2 className="text-title-lg text-on-surface" id="bridge-heading">
+      <section aria-labelledby="bridge-heading" className="space-y-4">
+        <h2 className="text-headline-sm text-on-surface" id="bridge-heading">
           Bridge
         </h2>
         <Suspense fallback={<SectionFallback label="Loading bridge status…" />}>

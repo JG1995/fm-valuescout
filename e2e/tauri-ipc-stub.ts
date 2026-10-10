@@ -3,6 +3,7 @@ import { VISIBLE_ATTRIBUTE_KEYS } from "../src/utils/player-attributes";
 
 export type SmokeStubOptions = {
   academyWorkspace?: boolean;
+  academyLargeCohort?: boolean;
   csvImportFormat?: "youthTracker" | "moneyball";
   plannerSnapshot?: boolean;
   plannerPotentialScores?: boolean;
@@ -152,6 +153,30 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             },
           ]
         : [];
+      if (academyWorkspace && ${options.academyLargeCohort ? "true" : "false"}) {
+        academyMembers.push(...Array.from({ length: 48 }, (_, index) => {
+          const name = index === 0
+            ? "Alexandros Papadopoulos — Кириллица"
+            : "Academy prospect " + String(index + 3).padStart(3, "0");
+          const unresolved = index === 47;
+          return {
+            ...academyMembers[1],
+            playerUid: index + 100,
+            lastKnownName: name,
+            currentName: unresolved ? null : name,
+            state: unresolved ? "unresolved" : index === 0 ? "departed" : "resolved",
+            currentClub: unresolved ? null : index === 0
+              ? "Club Deportivo Internacional de Desarrollo Juvenil Barcelona"
+              : "Barcelona U19",
+            reportedCareerAppearances: unresolved ? null : 0,
+            goals: unresolved ? null : 0,
+            assists: unresolved ? null : 0,
+            internationalCaps: unresolved ? null : 0,
+            isGraduate: unresolved ? null : false,
+          };
+        }));
+        academyClasses[0].memberCount = academyMembers.length;
+      }
       let staffAssignmentSnapshotToken = "snapshot-token-1";
       const staffAssignmentSnapshot = () => ({
         id: 1,
@@ -1472,18 +1497,20 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               substituteAppearances: 4,
               minutes: 1200,
               statistics: {
-                "moneyball.average_rating": 7.2,
-                "moneyball.goals_per_90": 0.5,
-                "moneyball.assists_per_90": 0.3,
-                "moneyball.xg_per_90": 0.4,
-                "moneyball.xa_per_90": 0.2,
+                goals: 10,
+                average_rating: 7.2,
+                goals_per_90: 0.5,
+                assists_per_90: 0.3,
+                xg_per_90: 0.4,
+                xa_per_90: 0.2,
               },
               percentiles: {
-                "moneyball.average_rating": 83,
-                "moneyball.goals_per_90": 76,
-                "moneyball.assists_per_90": 68,
-                "moneyball.xg_per_90": 72,
-                "moneyball.xa_per_90": 65,
+                goals: 83,
+                average_rating: 83,
+                goals_per_90: 76,
+                assists_per_90: 68,
+                xg_per_90: 72,
+                xa_per_90: 65,
               },
               comparisonBasis: {
                 kind: "available",
@@ -1503,18 +1530,42 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                     {
                       metricKey: "progressive_passes_per_90",
                       sourceLabel: "Progressive Passes per 90",
-                      weight: 0.6,
+                      weight: 0.2,
                       direction: "higher",
                       percentile: 90,
-                      weightedContribution: 54,
+                      weightedContribution: 18,
                     },
                     {
                       metricKey: "pass_completion_ratio",
                       sourceLabel: "Pass Completion Ratio",
-                      weight: 0.4,
+                      weight: 0.25,
                       direction: "higher",
                       percentile: 80,
-                      weightedContribution: 32,
+                      weightedContribution: 20,
+                    },
+                    {
+                      metricKey: "distance_covered_per_90",
+                      sourceLabel: "Distance Covered per 90",
+                      weight: 0.2,
+                      direction: "higher",
+                      percentile: 90,
+                      weightedContribution: 18,
+                    },
+                    {
+                      metricKey: "tackles_completed_per_90",
+                      sourceLabel: "Tackles Completed per 90",
+                      weight: 0.2,
+                      direction: "higher",
+                      percentile: 80,
+                      weightedContribution: 16,
+                    },
+                    {
+                      metricKey: "interceptions_per_90",
+                      sourceLabel: "Interceptions per 90",
+                      weight: 0.15,
+                      direction: "higher",
+                      percentile: 90,
+                      weightedContribution: 13.5,
                     },
                   ],
                 },

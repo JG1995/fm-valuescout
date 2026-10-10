@@ -97,7 +97,7 @@ export function GraphicsSettingsSection() {
       : "neutral";
 
   return (
-    <Panel title="Graphics">
+    <Panel>
       <div className="flex flex-wrap items-center gap-2">
         <StatusChip
           tone={statusTone}
@@ -195,7 +195,11 @@ export function GraphicsSettingsSection() {
         </p>
       ) : activeMutation?.isSuccess ? (
         <p className="mt-3 text-body-sm text-success">
-          Graphics settings updated. The index is rebuilding in the background.
+          {activeAction === "clear"
+            ? "Graphics folder selection cleared. Portrait and crest fallbacks are active."
+            : data.rebuilding
+              ? "Graphics settings updated. The index is rebuilding in the background."
+              : "Graphics settings updated."}
         </p>
       ) : null}
     </Panel>

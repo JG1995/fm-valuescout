@@ -143,7 +143,7 @@ export function PlayerRolesPanel({
         </div>
         <div className="flex min-h-0 min-w-0 flex-col">
           <div className="mb-2 shrink-0">
-            <h3 className="text-headline-sm text-on-surface">
+            <h3 className="text-body-md font-semibold text-on-surface">
               {selectedPosition}
             </h3>
             <p className="text-body-sm text-on-surface-variant">

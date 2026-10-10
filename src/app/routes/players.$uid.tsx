@@ -182,7 +182,7 @@ function ProfileFallback() {
 function profileWorkspaceClassName() {
   return cn(
     "grid min-h-0 gap-gutter [&>*]:min-h-0 lg:h-0 lg:flex-1",
-    "grid-rows-[repeat(2,minmax(0,1fr))] 2xl:grid-rows-[minmax(0,1fr)]",
+    "grid-rows-[minmax(0,1.2fr)_minmax(0,1fr)] 2xl:grid-rows-[minmax(0,1fr)]",
     "2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]",
   );
 }
@@ -328,7 +328,7 @@ function MoneyballPlayerProfile({
         id="player-analysis-panel"
         role="tabpanel"
         aria-labelledby="player-analysis-tab-moneyball"
-        className={profileWorkspaceClassName()}
+        className="grid min-h-0 min-w-0 flex-1 gap-gutter lg:h-0 lg:grid-cols-[minmax(0,0.95fr)_minmax(500px,1.05fr)] [&>*]:min-h-0"
       >
         <div
           data-testid="moneyball-primary-column"

@@ -130,7 +130,7 @@ for (const inspectedPage of pages) {
             plannerSnapshot: false,
             playerProfile: false,
             squadOverview: false,
-            staffWorkspace: false,
+            staffWorkspace: true,
             snapshotHistory: false,
           }
         : populatedOptions,
@@ -141,7 +141,10 @@ for (const inspectedPage of pages) {
       page
         .getByRole("combobox", { name: "Active save" })
         .locator("option:checked"),
-    ).toHaveText("Default save - 1st August 2026");
+    ).toHaveText("Default save");
+    await expect(page.getByTestId("app-header").locator("time")).toHaveText(
+      "1st August 2026",
+    );
     await expect(page.getByRole("main")).toBeVisible();
     await expect
       .poll(() => page.locator('[aria-busy="true"]:visible').count())
@@ -150,7 +153,7 @@ for (const inspectedPage of pages) {
       await expect(
         page.getByText(inspectedPage.readyText).first(),
       ).toBeVisible();
-    } else if (inspectedPage.name === "settings") {
+    } else if (inspectedPage.route.split(/[?#]/)[0] === "/settings") {
       await expect(
         page.getByRole("table", { name: "Snapshot history" }),
       ).toBeVisible();

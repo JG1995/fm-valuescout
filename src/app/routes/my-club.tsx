@@ -509,20 +509,22 @@ function MyClubPageContent() {
   };
   const myClubHeader = (
     <header className="flex flex-col items-start gap-2">
-      <div className="flex w-full flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-headline-lg text-on-surface">My Club</h1>
+      <div className="flex w-full flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 flex-wrap items-center gap-4">
+          <h1 className="text-headline-md text-on-surface">My Club</h1>
           {managedClub.clubName ? (
-            <p className="flex items-center gap-2 text-body-sm text-on-surface-variant">
+            <p className="flex min-w-0 items-center gap-2 text-body-sm text-on-surface-variant">
               <ManagedClubLogo
                 clubUid={managedClub.clubUid}
                 managedClubStatus={managedClub.status}
               />
-              <span>Managed club: {managedClub.clubName}</span>
+              <span className="break-words">
+                Managed club: {managedClub.clubName}
+              </span>
             </p>
           ) : null}
         </div>
-        <div className="min-w-64 flex-1" id="managed-club">
+        <div className="min-w-0" id="managed-club">
           {snapshot ? (
             <ErrorBoundary
               fallback={({ error, reset }) => (
@@ -578,7 +580,7 @@ function MyClubPageContent() {
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-col gap-2">
+    <div className="flex h-full min-w-0 flex-col gap-4">
       {myClubHeader}
       <div
         hidden={activeWorkspace !== "squad"}
@@ -586,7 +588,7 @@ function MyClubPageContent() {
       >
         {managedClub.clubName ? (
           isSquadResultBlocked ? (
-            <Panel title="Squad overview" flush>
+            <Panel flush>
               <p className="p-4 text-body-md text-on-surface-variant">
                 Loading squad overview…
               </p>
@@ -613,63 +615,8 @@ function MyClubPageContent() {
               feedback={squadBoostFeedback}
               feedbackRef={squadBoostFeedbackRef}
               actions={
-                <div className="flex flex-wrap justify-end gap-2">
-                  <SquadCurrentAbilityBoost
-                    key={`current-ability-${snapshot.id}`}
-                    pending={
-                      squadCurrentAbilityBoostContextIsCurrent &&
-                      squadCurrentAbilityBoost.isPending
-                    }
-                    disabled={squadBoostPending || squadBoostRecoveryRequired}
-                    error={
-                      squadCurrentAbilityBoostContextIsCurrent
-                        ? (squadCurrentAbilityBoost.error ?? null)
-                        : null
-                    }
-                    onBoost={(onProgress) =>
-                      squadCurrentAbilityBoost.mutateAsync({
-                        snapshotId: snapshot.id,
-                        onProgress,
-                      })
-                    }
-                    onOpenConfirmation={() => {
-                      squadCurrentAbilityBoost.reset();
-                      setLatestSquadBoostAction("currentAbility");
-                    }}
-                    onConfirmationChange={(open) =>
-                      setOpenSquadBoostAction(open ? "currentAbility" : null)
-                    }
-                    fallbackFocusTo={() => squadBoostFeedbackRef.current}
-                  />
-                  <SquadWonderkidMentalityBoost
-                    key={`wonderkid-mentality-${snapshot.id}`}
-                    pending={
-                      squadWonderkidMentalityBoostContextIsCurrent &&
-                      squadWonderkidMentalityBoost.isPending
-                    }
-                    disabled={squadBoostPending || squadBoostRecoveryRequired}
-                    error={
-                      squadWonderkidMentalityBoostContextIsCurrent
-                        ? (squadWonderkidMentalityBoost.error ?? null)
-                        : null
-                    }
-                    onBoost={(onProgress) =>
-                      squadWonderkidMentalityBoost.mutateAsync({
-                        snapshotId: snapshot.id,
-                        onProgress,
-                      })
-                    }
-                    onOpenConfirmation={() => {
-                      squadWonderkidMentalityBoost.reset();
-                      setLatestSquadBoostAction("wonderkidMentality");
-                    }}
-                    onConfirmationChange={(open) =>
-                      setOpenSquadBoostAction(
-                        open ? "wonderkidMentality" : null,
-                      )
-                    }
-                    fallbackFocusTo={() => squadBoostFeedbackRef.current}
-                  />
+                <fieldset className="m-0 flex min-w-0 flex-wrap justify-end gap-4 border-0 p-0">
+                  <legend className="sr-only">Squad actions</legend>
                   <SquadCsvImportActions
                     activeSaveId={snapshot.saveId}
                     snapshotId={snapshot.id}
@@ -687,7 +634,66 @@ function MyClubPageContent() {
                       });
                     }}
                   />
-                </div>
+                  <fieldset className="m-0 flex min-w-0 flex-wrap justify-end gap-2 border-0 p-0">
+                    <legend className="sr-only">Squad development</legend>
+                    <SquadCurrentAbilityBoost
+                      key={`current-ability-${snapshot.id}`}
+                      pending={
+                        squadCurrentAbilityBoostContextIsCurrent &&
+                        squadCurrentAbilityBoost.isPending
+                      }
+                      disabled={squadBoostPending || squadBoostRecoveryRequired}
+                      error={
+                        squadCurrentAbilityBoostContextIsCurrent
+                          ? (squadCurrentAbilityBoost.error ?? null)
+                          : null
+                      }
+                      onBoost={(onProgress) =>
+                        squadCurrentAbilityBoost.mutateAsync({
+                          snapshotId: snapshot.id,
+                          onProgress,
+                        })
+                      }
+                      onOpenConfirmation={() => {
+                        squadCurrentAbilityBoost.reset();
+                        setLatestSquadBoostAction("currentAbility");
+                      }}
+                      onConfirmationChange={(open) =>
+                        setOpenSquadBoostAction(open ? "currentAbility" : null)
+                      }
+                      fallbackFocusTo={() => squadBoostFeedbackRef.current}
+                    />
+                    <SquadWonderkidMentalityBoost
+                      key={`wonderkid-mentality-${snapshot.id}`}
+                      pending={
+                        squadWonderkidMentalityBoostContextIsCurrent &&
+                        squadWonderkidMentalityBoost.isPending
+                      }
+                      disabled={squadBoostPending || squadBoostRecoveryRequired}
+                      error={
+                        squadWonderkidMentalityBoostContextIsCurrent
+                          ? (squadWonderkidMentalityBoost.error ?? null)
+                          : null
+                      }
+                      onBoost={(onProgress) =>
+                        squadWonderkidMentalityBoost.mutateAsync({
+                          snapshotId: snapshot.id,
+                          onProgress,
+                        })
+                      }
+                      onOpenConfirmation={() => {
+                        squadWonderkidMentalityBoost.reset();
+                        setLatestSquadBoostAction("wonderkidMentality");
+                      }}
+                      onConfirmationChange={(open) =>
+                        setOpenSquadBoostAction(
+                          open ? "wonderkidMentality" : null,
+                        )
+                      }
+                      fallbackFocusTo={() => squadBoostFeedbackRef.current}
+                    />
+                  </fieldset>
+                </fieldset>
               }
               sortBy={squadSort}
               sortDir={squadDir}
@@ -703,7 +709,7 @@ function MyClubPageContent() {
                 <Link
                   to="/my-club"
                   hash="managed-club"
-                  className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
+                  className="inline-flex h-8 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
                 >
                   Open Managed Club
                 </Link>
@@ -775,7 +781,7 @@ function MyClubPageContent() {
       </div>
       <div
         hidden={activeWorkspace !== "tactic"}
-        className="mx-auto min-h-0 w-full max-w-[1920px] flex-1 overflow-y-auto"
+        className="mx-auto flex min-h-0 w-full max-w-[1920px] flex-1 flex-col"
       >
         {plannerContext && isMatchedSnapshot ? (
           <TacticContextBoundary context={plannerContext}>
@@ -840,7 +846,7 @@ function MyClubPage() {
     <Suspense
       fallback={
         <div className="space-y-gutter">
-          <h1 className="text-headline-lg text-on-surface">My Club</h1>
+          <h1 className="text-headline-md text-on-surface">My Club</h1>
           <div className="flex min-h-40 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
             Loading My Club…
           </div>

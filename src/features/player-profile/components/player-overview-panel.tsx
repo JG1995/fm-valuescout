@@ -8,18 +8,13 @@ import {
 } from "../utils/position-families";
 import { rolePhaseLabel } from "../utils/role-phase";
 
-type OverviewFactCardProps = {
-  label: string;
-  value: ReactNode;
-};
-
-function OverviewFactCard({ label, value }: OverviewFactCardProps) {
+function OverviewFact({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="min-w-0 rounded-lg border border-outline-variant bg-surface-container p-4">
-      <h2 className="text-body-md text-on-surface-variant">{label}</h2>
-      <p className="mt-3 font-mono text-mono-xl text-on-surface tabular-nums">
+    <div className="min-w-0">
+      <dt className="text-body-sm text-on-surface-variant">{label}</dt>
+      <dd className="mt-1 font-mono text-mono-lg text-on-surface tabular-nums">
         {value}
-      </p>
+      </dd>
     </div>
   );
 }
@@ -45,8 +40,7 @@ function TacticalFitPair({ phase, pair, concealed }: TacticalFitPairProps) {
   const currentScore = pair?.score ?? null;
   const potentialScore = concealed ? null : (pair?.potentialScore ?? null);
   const labelBase = roleName ?? fullPhase;
-  const unavailableTextClass =
-    "font-mono text-headline-lg text-on-surface-variant";
+  const unavailableTextClass = "font-mono text-mono-lg text-on-surface-variant";
   const currentText =
     currentScore === null ? "unavailable" : formatMissable(currentScore);
   const potentialText = concealed
@@ -60,13 +54,10 @@ function TacticalFitPair({ phase, pair, concealed }: TacticalFitPairProps) {
       : `${labelBase}, ${fullPhase}: Current ${currentText}, Potential ${potentialText}`;
 
   return (
-    <div
-      data-testid={testId}
-      className="flex min-w-0 flex-col rounded-lg border border-outline-variant bg-surface-container p-4 tabular-nums"
-    >
+    <div data-testid={testId} className="flex min-w-0 flex-col tabular-nums">
       <p className="text-body-md text-on-surface-variant">{summaryLabel}</p>
       <p
-        className="mt-1 mb-2 text-body-lg font-semibold leading-snug text-on-surface"
+        className="mt-1 break-words text-body-md font-semibold leading-snug text-on-surface"
         title={roleName ?? undefined}
       >
         {roleName ?? formatMissable(null)}
@@ -79,7 +70,7 @@ function TacticalFitPair({ phase, pair, concealed }: TacticalFitPairProps) {
             score={currentScore}
             roleName={`${labelBase} (Current)`}
             variant="hero"
-            className="size-auto! text-headline-lg!"
+            className="size-auto! text-mono-lg!"
           />
         )}
         <span className="text-on-surface-variant">→</span>
@@ -90,11 +81,11 @@ function TacticalFitPair({ phase, pair, concealed }: TacticalFitPairProps) {
             score={potentialScore}
             roleName={`${labelBase} (Potential)`}
             variant="hero"
-            className="size-auto! text-headline-lg!"
+            className="size-auto! text-mono-lg!"
           />
         )}
       </div>
-      <p className="mt-1 text-body-sm text-on-surface-variant">
+      <p className="text-body-sm text-on-surface-variant">
         {`${rolePhaseLabel(phase)} · Current → Potential`}
       </p>
       <span className="sr-only">{accessibleDescription}</span>
@@ -129,7 +120,7 @@ export function PlayerOverviewPanel({
       {showTacticalFitSummary || showAbility ? (
         <div
           data-testid="player-profile-summary-details"
-          className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[repeat(3,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))]"
+          className="grid gap-4 lg:grid-cols-[minmax(320px,1fr)_minmax(0,1.5fr)]"
         >
           {showAbility ? (
             <div
@@ -139,23 +130,25 @@ export function PlayerOverviewPanel({
               <section
                 aria-label="Ability"
                 data-testid="overview-ability"
-                className="contents"
+                className="rounded-lg border border-outline-variant bg-surface-container p-4"
               >
-                <OverviewFactCard label="Current Ability" value={player.ca} />
-                {player.hiddenInformationRevealed ? (
-                  <OverviewFactCard
-                    label="Potential Ability"
-                    value={formatMissable(player.pa)}
+                <dl className="grid grid-cols-3 gap-4">
+                  <OverviewFact label="Current Ability" value={player.ca} />
+                  {player.hiddenInformationRevealed ? (
+                    <OverviewFact
+                      label="Potential Ability"
+                      value={formatMissable(player.pa)}
+                    />
+                  ) : null}
+                  <OverviewFact
+                    label="Market Value"
+                    value={
+                      player.marketValueGbp === null
+                        ? formatMissable(null)
+                        : formatMoney(player.marketValueGbp)
+                    }
                   />
-                ) : null}
-                <OverviewFactCard
-                  label="Market Value"
-                  value={
-                    player.marketValueGbp === null
-                      ? formatMissable(null)
-                      : formatMoney(player.marketValueGbp)
-                  }
-                />
+                </dl>
               </section>
             </div>
           ) : null}
@@ -164,7 +157,7 @@ export function PlayerOverviewPanel({
             <section
               aria-label="Tactical fit"
               data-testid="overview-tactical-fit"
-              className="contents"
+              className="grid grid-cols-2 gap-4 rounded-lg border border-outline-variant bg-surface-container-low px-4 py-2"
             >
               <TacticalFitPair
                 phase="in_possession"

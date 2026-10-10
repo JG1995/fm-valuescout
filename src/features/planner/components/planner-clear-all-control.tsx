@@ -28,12 +28,12 @@ export function PlannerClearAllControl({
   return (
     <>
       <Button
-        variant="destructive"
+        variant="secondary"
         disabled={disabled}
         onClick={onRequest}
         onFocus={onFocus}
         data-planner-clear-all
-        className="!h-7 !px-3 !text-label-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         Clear all
       </Button>

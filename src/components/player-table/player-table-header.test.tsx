@@ -114,15 +114,27 @@ describe("player table header per-column sortability", () => {
     expect(onSortChange).toHaveBeenCalledWith("ca");
   });
 
-  it("lists a valid non-sortable metric in the Add column menu", async () => {
+  it("keeps the leaf menu and non-sortable column picker keyboard reachable", async () => {
     const user = userEvent.setup();
     const { onAddColumn } = renderHeader({ columns: [COLUMNS[0]] });
 
-    fireEvent.contextMenu(screen.getByRole("columnheader", { name: "CA" }));
-    await user.click(screen.getByRole("menuitem", { name: "Add column" }));
-    await user.click(
-      screen.getByRole("button", { name: "Column: Choose a metric" }),
-    );
+    const trigger = within(
+      screen.getByRole("columnheader", { name: "CA" }),
+    ).getByRole("button", { name: "CA" });
+    trigger.focus();
+    await user.keyboard("{Shift>}{F10}{/Shift}");
+    expect(screen.getByRole("menuitem", { name: "Add column" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    const picker = screen.getByRole("button", {
+      name: "Column: Choose a metric",
+    });
+    expect(picker).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(
+      screen.queryByRole("dialog", { name: "Add a column" }),
+    ).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    await user.keyboard("{Shift>}{F10}{/Shift}{Enter}{Enter}");
     await user.type(
       screen.getByRole("combobox", { name: "Search columns" }),
       "training",

@@ -64,14 +64,15 @@ export function PlannerPhaseAwareTacticPitch({
   }, []);
 
   const orientation: PitchOrientation = landscape ? "landscape" : "portrait";
-  // Workspace-only portrait geometry: a centered, visibly vertical canvas
-  // so portrait attack-up reads as a vertical pitch at 1920x1080 instead
-  // of unrotated positions on a wide horizontal rectangle. Landscape keeps
-  // the full-width canvas; the role-reference modal never passes this and
-  // stays on the shared default.
+  // Both needs 640px for three adjacent collided pairs: 15% anchor gaps
+  // must fit two 44px targets plus their 4px split. The workspace scroller
+  // owns any overflow; keep the canvas vertical instead of shrinking targets.
+  // Single-phase and role-reference sizing remain independent.
   const workspaceCanvasClassName =
     orientation === "portrait"
-      ? "mx-auto h-[560px] w-full max-w-[520px]"
+      ? view === "both"
+        ? "mx-auto h-[680px] w-full min-w-[640px] max-w-[640px]"
+        : "mx-auto h-[560px] w-full max-w-[520px]"
       : undefined;
 
   if (view !== "both") {
@@ -96,7 +97,10 @@ export function PlannerPhaseAwareTacticPitch({
   return (
     <section className="space-y-2" aria-labelledby={headingId}>
       <div className="flex items-center justify-between gap-3">
-        <h3 id={headingId} className="text-headline-sm text-on-surface">
+        <h3
+          id={headingId}
+          className="text-body-md font-semibold text-on-surface"
+        >
           {label}
         </h3>
       </div>

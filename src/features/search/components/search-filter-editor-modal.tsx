@@ -251,11 +251,11 @@ export function SearchFilterEditorModal({
       }
     >
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-body-md text-on-surface-variant">
             Changes apply when you select Done.
           </p>
-          <fieldset className="inline-flex rounded-full border border-outline bg-surface-container-high p-0.5">
+          <fieldset className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5">
             <legend className="sr-only">Combine filters</legend>
             {(["and", "or"] as const).map((mode) => (
               <button
@@ -264,8 +264,8 @@ export function SearchFilterEditorModal({
                 aria-pressed={draftCombine === mode}
                 className={
                   draftCombine === mode
-                    ? "rounded-full bg-primary px-3 py-1 text-label-md text-on-primary uppercase"
-                    : "rounded-full px-3 py-1 text-label-md text-on-surface-variant uppercase hover:bg-surface-container-highest"
+                    ? "h-8 rounded-sm bg-primary px-3 text-label-md text-on-primary uppercase"
+                    : "h-8 rounded-sm px-3 text-label-md text-on-surface-variant uppercase hover:bg-surface-container-highest"
                 }
                 onClick={() => setDraftCombine(mode)}
               >

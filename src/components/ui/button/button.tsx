@@ -41,8 +41,8 @@ const variantClasses: Record<ButtonVariant, string> = {
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
-  default: "h-8 rounded-full px-4",
-  lg: "h-9 rounded-full px-4",
+  default: "h-8 rounded-md px-4",
+  lg: "h-9 rounded-md px-4",
   icon: "size-8 rounded-md",
 };
 
@@ -69,7 +69,7 @@ export function Button({
       // already requires, so no call site can ship an unexplained glyph.
       title={title ?? (size === "icon" ? props["aria-label"] : undefined)}
       className={cn(
-        "inline-flex cursor-pointer items-center justify-center gap-2 text-label-lg",
+        "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 text-label-lg",
         "transition-colors duration-150 ease-out",
         "disabled:cursor-not-allowed disabled:opacity-45",
         variantClasses[variant],

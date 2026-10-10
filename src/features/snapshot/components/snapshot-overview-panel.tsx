@@ -15,7 +15,7 @@ export function SnapshotOverviewPanel() {
 
   if (!snapshot) {
     return (
-      <Panel title="Snapshot" flush>
+      <Panel title="Snapshot" headingLevel={3} flush>
         <EmptyState icon={DatabaseZap} title="No data loaded for this save">
           No snapshot loaded for the active save. Use Load Data to scan Football
           Manager and ingest players into the database.
@@ -25,7 +25,7 @@ export function SnapshotOverviewPanel() {
   }
 
   return (
-    <Panel title="Snapshot" flush>
+    <Panel title="Snapshot" headingLevel={3} flush>
       <p className="px-4 text-body-md text-on-surface-variant">
         <span className="text-on-surface">In database:</span>{" "}
         {formatCount(snapshot.playerCount)} players ·{" "}

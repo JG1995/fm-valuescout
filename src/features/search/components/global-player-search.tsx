@@ -9,10 +9,9 @@ import { suggestPlayersQueryOptions } from "../api/suggest-players-query-options
 
 export const SUGGEST_DEBOUNCE_MS = 200;
 
-/** Pill search chrome — same tokens as `fieldClasses`, without `rounded-md` / `px-2`
- *  that would fight `rounded-full` / horizontal icon padding when `cn` concatenates. */
+/** Field geometry with horizontal padding for the search and clear icons. */
 const searchFieldClasses = [
-  "h-8 w-full rounded-full border border-outline bg-surface-container-high py-0 pr-8 pl-8",
+  "h-8 w-full rounded-md border border-outline bg-surface-container-high py-0 pr-8 pl-8",
   "text-body-md text-on-surface placeholder:text-on-surface-variant",
   "hover:border-on-surface-variant",
   "focus-visible:outline-offset-0",
@@ -94,7 +93,7 @@ export function GlobalPlayerSearch() {
   };
 
   return (
-    <div className="relative w-120 shrink-0">
+    <div className="relative w-120 min-w-0">
       <div ref={anchorRef} className="relative">
         <Search
           aria-hidden
@@ -178,7 +177,7 @@ export function GlobalPlayerSearch() {
         {value.length > 0 ? (
           <button
             aria-label="Clear search"
-            className="absolute top-1/2 right-1.5 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface"
+            className="absolute top-1/2 right-1.5 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-sm text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface"
             type="button"
             onClick={clearField}
           >
@@ -190,7 +189,7 @@ export function GlobalPlayerSearch() {
         <div
           ref={popoverRef}
           aria-label="Player suggestions"
-          className="absolute z-20 m-0 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-outline-variant bg-surface-container-highest py-1 shadow-overlay"
+          className="absolute z-20 m-0 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-outline-variant bg-surface-container-highest py-1 shadow-overlay"
           id={listboxId}
           popover={popover}
           role="listbox"

@@ -30,20 +30,15 @@ export function SearchFilterStrip({
   };
 
   if (appliedRules.length === 0) {
-    return (
-      <p className="text-body-md text-on-surface-variant">
-        No filters applied. Use Edit filters to narrow the player list.
-        {combine === "or" ? " Rules combine with OR." : null}
-      </p>
-    );
+    return null;
   }
 
   return (
-    <div className="space-y-2">
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
       <p className="text-label-md text-on-surface-variant uppercase">
         Combined with {combine}
       </p>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         {appliedRules.map((rule) => (
           <FilterTag
             key={rule.id}

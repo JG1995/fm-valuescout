@@ -748,7 +748,7 @@ export function SearchResultsPanel({
   );
   if (!page) {
     return (
-      <Panel title="Results" flush>
+      <Panel flush>
         {renderToolbar()}
         <EmptyState
           icon={SearchX}
@@ -808,7 +808,6 @@ export function SearchResultsPanel({
 
     return (
       <Panel
-        title="Results"
         flush
         className="flex min-h-0 flex-1 flex-col"
         contentClassName="flex min-h-0 flex-1 flex-col"
@@ -887,7 +886,6 @@ export function SearchResultsPanel({
 
   return (
     <Panel
-      title="Results"
       flush
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
@@ -914,7 +912,7 @@ export function SearchResultsPanel({
           <span>Could not sort players. {replacementError.message}</span>
           <button
             type="button"
-            className="shrink-0 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             onClick={() => void requestedQuery.refetch()}
           >
             Retry

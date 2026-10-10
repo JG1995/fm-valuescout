@@ -138,7 +138,7 @@ function AssignmentCell({
       <button
         type="button"
         data-planner-team={team}
-        className="block w-full rounded-md border border-outline-variant bg-surface-container-high px-2 py-1.5 text-left transition-colors duration-150 ease-out hover:bg-surface-container-highest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className={`block min-h-8 w-full rounded-md border px-2 py-1.5 text-left transition-colors duration-150 ease-out hover:bg-surface-container-highest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${assignment ? "border-outline-variant bg-surface-container-high" : "border-transparent"}`}
         aria-label={ariaLabel}
         onClick={() =>
           onOpen({
@@ -154,21 +154,21 @@ function AssignmentCell({
         <span className="block">
           <span className="flex min-w-0 items-center justify-between gap-2">
             <span
-              className="min-w-0 flex-1 truncate text-body-sm text-on-surface"
-              title={name}
+              className={
+                assignment
+                  ? "min-w-0 flex-1 truncate text-body-sm text-on-surface"
+                  : "text-body-sm font-medium text-on-surface underline decoration-outline underline-offset-4"
+              }
+              title={assignment ? name : undefined}
             >
-              {name}
+              {assignment ? name : "Assign"}
             </span>
             {assignment ? (
               <AssignmentScores
                 currentScore={score}
                 potentialScore={potentialScore}
               />
-            ) : (
-              <span className="shrink-0 text-body-sm font-medium text-on-surface">
-                Assign
-              </span>
-            )}
+            ) : null}
           </span>
           {assignment?.state === "outside_pool" ? (
             <span className="block text-label-sm text-warning">

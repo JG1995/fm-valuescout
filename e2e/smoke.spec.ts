@@ -2,10 +2,195 @@
 // Scope: .wiki/ARCHITECTURE.md §6.4 Playwright smoke scope
 import { expect, test } from "@playwright/test";
 import { stubTauriIpc } from "./tauri-ipc-stub";
+import { expectReadableText } from "./text-contrast";
 
 test.describe("application smoke", () => {
   test.beforeEach(async ({ page }) => {
     await stubTauriIpc(page);
+  });
+
+  for (const [width, height] of [
+    [1280, 800],
+    [1600, 900],
+  ] as const) {
+    test(`shared framing preserves readable controls and dataset space at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height });
+      await stubTauriIpc(page, {
+        playerTableRowCount: 24,
+        squadOverview: true,
+        staffWorkspace: true,
+        snapshotHistory: true,
+      });
+      for (const route of [
+        "/search",
+        "/my-club",
+        "/staff?shortlistOnly=false",
+        "/staff?view=my-staff",
+      ]) {
+        await page.goto(route);
+        await expect(page.getByTestId("app-header").locator("time")).toHaveText(
+          "1st August 2026",
+        );
+        const nav = page.getByRole("navigation", { name: "Primary" });
+        await expect(nav).toHaveCSS("height", "48px");
+        await expect(nav.getByRole("link")).toHaveCount(10);
+        for (const link of await nav.getByRole("link").all()) {
+          const box = await link.boundingBox();
+          expect(box).not.toBeNull();
+          expect(box?.height).toBe(36);
+          expect(box?.x).toBeGreaterThanOrEqual(0);
+          expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width);
+        }
+        const current = nav.locator('[aria-current="page"]');
+        await expect(current).toHaveCount(1);
+        await current.focus();
+        await expect(current).toHaveCSS("outline-width", "2px");
+        await expect(current).toHaveCSS("outline-offset", "-2px");
+        await expect(current).toHaveCSS("border-bottom-width", "0px");
+        await expect(current.locator("span")).toHaveCSS("font-weight", "700");
+        await expect(current).not.toHaveCSS(
+          "background-color",
+          "rgba(0, 0, 0, 0)",
+        );
+        const main = page.getByRole("main");
+        await expect(main.getByRole("heading", { level: 1 })).toHaveCount(1);
+        await expect(
+          main.getByRole("heading", {
+            name: /^(Results|Staff|Staff Shortlist|Squad overview)$/,
+          }),
+        ).toHaveCount(0);
+        const toolbar = main.getByRole("toolbar");
+        await expect(
+          toolbar.getByRole("button", { name: "Columns" }),
+        ).toBeVisible();
+        const row = main.locator('tr[data-index="0"]');
+        await expect(row).toBeVisible();
+        const rawAge = row.locator("td").nth(1);
+        await expect(rawAge).toHaveCSS("font-size", "13px");
+        await expect(rawAge).toHaveCSS("font-weight", "500");
+        await expect(rawAge).toHaveCSS("text-align", "right");
+        await expect(rawAge).toHaveCSS("font-family", /Archivo/);
+        await expect(rawAge).toHaveCSS("font-variant-numeric", "tabular-nums");
+        expect((await row.boundingBox())?.height).toBeLessThanOrEqual(41);
+        expect(
+          await main.evaluate((element) => {
+            const region = element as unknown as {
+              scrollWidth: number;
+              clientWidth: number;
+            };
+            return region.scrollWidth <= region.clientWidth;
+          }),
+        ).toBe(true);
+        if (route === "/my-club") {
+          const feedback = page.getByTestId("squad-boost-feedback");
+          await expect(feedback).toHaveCSS("min-height", "24px");
+          expect((await feedback.boundingBox())?.height).toBe(24);
+          await expect(
+            main.getByRole("button", { name: "Boost all CA" }),
+          ).toBeVisible();
+        }
+      }
+    });
+  }
+
+  test("shared dialogs dim the workspace and respect reduced motion", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/search");
+    await page.getByRole("button", { name: "Edit filters" }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit filters" });
+    const backdrop = page.getByRole("button", { name: "Close dialog" });
+    await expect(dialog).toHaveCSS("opacity", "1");
+    await expect(backdrop).toHaveCSS("opacity", "1");
+    const rgba = await backdrop.evaluate((element) => {
+      // SAFETY: this callback runs in Chromium; the Node config omits DOM types.
+      const browser = globalThis as unknown as {
+        getComputedStyle: (node: unknown) => { backgroundColor: string };
+        document: {
+          createElement: (tag: string) => {
+            width: number;
+            height: number;
+            getContext: (type: string) => {
+              fillStyle: string;
+              fillRect: (
+                x: number,
+                y: number,
+                width: number,
+                height: number,
+              ) => void;
+              getImageData: (
+                x: number,
+                y: number,
+                width: number,
+                height: number,
+              ) => {
+                data: Uint8ClampedArray;
+              };
+            };
+          };
+        };
+      };
+      const canvas = browser.document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext("2d");
+      context.fillStyle = browser.getComputedStyle(element).backgroundColor;
+      context.fillRect(0, 0, 1, 1);
+      return Array.from(context.getImageData(0, 0, 1, 1).data);
+    });
+    expect(rgba).toEqual([0, 0, 0, 153]);
+    expect(await backdrop.boundingBox()).toEqual({
+      x: 0,
+      y: 0,
+      width: 1280,
+      height: 800,
+    });
+    await expect(dialog).toHaveCSS("transition-property", "none");
+    await expect(backdrop).toHaveCSS("transition-property", "none");
+    await expect(dialog).toHaveCSS("translate", "0px");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+  });
+
+  test("long save names keep the current date and utility controls visible", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stubTauriIpc(page, {
+      snapshotHistory: true,
+      playerTableRowCount: 24,
+    });
+    await page.goto("/settings");
+    const name =
+      "A very long save name — Ελληνικά / Кириллица / José — season 2026/27";
+    await page.getByRole("textbox", { name: "Rename active save" }).fill(name);
+    await page
+      .getByRole("button", { name: "Rename save", exact: true })
+      .click();
+    const header = page.getByTestId("app-header");
+    await expect(
+      header.getByRole("combobox", { name: "Active save" }),
+    ).toHaveAttribute("title", name);
+    await page.getByRole("link", { name: "Search", exact: true }).click();
+    const date = header.locator("time");
+    await expect(date).toHaveText("1st August 2026");
+    await expect(date).toHaveAttribute("datetime", "2026-08-01");
+    const dateBox = await date.boundingBox();
+    const searchBox = await header
+      .getByRole("combobox", { name: "Search players" })
+      .boundingBox();
+    expect(dateBox).not.toBeNull();
+    expect(searchBox).not.toBeNull();
+    if (!dateBox || !searchBox)
+      throw new Error("Expected visible utility context and search.");
+    expect(dateBox.x + dateBox.width).toBeLessThanOrEqual(1280);
+    expect(searchBox.width).toBeGreaterThanOrEqual(200);
+    await expect(
+      header.getByRole("button", { name: "Load Data" }),
+    ).toBeVisible();
   });
 
   test("Dashboard stays minimal and Settings hosts app management", async ({
@@ -46,6 +231,228 @@ test.describe("application smoke", () => {
     await expect(main.getByText("Status:")).toHaveCount(0);
     await expect(main.getByText("Stored value:")).toHaveCount(0);
   });
+
+  test("Settings bounds reading sections without narrowing populated save management", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { snapshotHistory: true });
+    await page.goto("/settings");
+    const main = page.getByRole("main");
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+      [1920, 1080],
+      [3440, 1440],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      for (const name of ["Preferences", "All boosts", "Graphics"]) {
+        const section = main.getByRole("region", { name, exact: true });
+        const box = await section.boundingBox();
+        expect(box?.width).toBeLessThanOrEqual(672);
+      }
+      const saveData = main.getByRole("region", {
+        name: "Save data",
+        exact: true,
+      });
+      const history = saveData.getByRole("table", { name: "Snapshot history" });
+      await expect(history).toBeAttached();
+      await expectReadableText(history.getByText("Current", { exact: true }));
+      expect((await saveData.boundingBox())?.width).toBeGreaterThan(900);
+      const bridge = main.getByRole("region", { name: "Bridge", exact: true });
+      await bridge
+        .getByRole("heading", { name: "Bridge plugin install", exact: true })
+        .scrollIntoViewIfNeeded();
+      await expect(bridge.getByText(/FM modules: detected/)).toBeVisible();
+      expect(
+        await main.evaluate((element) => {
+          const node = element as unknown as {
+            scrollWidth: number;
+            clientWidth: number;
+          };
+          return node.scrollWidth <= node.clientWidth;
+        }),
+      ).toBe(true);
+    }
+  });
+
+  for (const [width, height] of [
+    [1280, 800],
+    [1600, 900],
+  ] as const) {
+    test(`Academy keeps a large cohort usable with quiet metrics and labelled actions at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height });
+      await stubTauriIpc(page, {
+        academyWorkspace: true,
+        academyLargeCohort: true,
+        squadOverview: true,
+        snapshotHistory: true,
+      });
+      await page.goto("/academy");
+      const main = page.getByRole("main");
+      const outcomes = main.getByRole("region", { name: "Academy outcomes" });
+      await expect(
+        outcomes.getByTestId("academy-stat-graduates"),
+      ).toContainText("—");
+      await expect(
+        outcomes.getByText(
+          "Graduate data is unavailable until career appearances have been imported for every tracked player.",
+        ),
+      ).toBeVisible();
+      await expect(outcomes.locator("svg").first()).toHaveCSS("width", "16px");
+      const outcomeBox = await outcomes.boundingBox();
+      expect(outcomeBox?.height).toBeLessThanOrEqual(160);
+      const openClass = main.getByRole("button", {
+        name: "Open Class of 2026",
+      });
+      await expect(openClass).toContainText("50 tracked players");
+      expect((await openClass.boundingBox())?.height).toBeLessThanOrEqual(64);
+      await openClass.focus();
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(/view=class&classId=7/);
+      const selected = main.getByRole("tab", { name: "Class", exact: true });
+      await expect(selected).toHaveAttribute("aria-selected", "true");
+      await expect(selected).not.toHaveClass(/bg-primary/);
+      await expect(selected).toHaveCSS("border-bottom-width", "0px");
+      await expect(selected).not.toHaveCSS(
+        "background-color",
+        "rgba(0, 0, 0, 0)",
+      );
+      await selected.focus();
+      await expect(selected).toHaveCSS("outline-width", "2px");
+      const group = main.getByRole("region", {
+        name: "Still at club (50)",
+        exact: true,
+      });
+      const table = group.getByRole("table");
+      await expect(table.locator("tbody tr")).toHaveCount(50);
+      const scroller = table.locator("..");
+      const initialBox = await scroller.boundingBox();
+      const rows = await table.locator("tbody tr").evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = (
+            element as unknown as {
+              getBoundingClientRect: () => {
+                top: number;
+                bottom: number;
+                height: number;
+              };
+            }
+          ).getBoundingClientRect();
+          return { top: rect.top, bottom: rect.bottom, height: rect.height };
+        }),
+      );
+      if (!initialBox) throw new Error("Expected a visible Academy roster.");
+      expect(
+        rows.filter(
+          (row) => row.top >= initialBox.y + 32 && row.bottom <= height - 16,
+        ).length,
+      ).toBeGreaterThanOrEqual(3);
+      expect(rows.every((row) => row.height >= 40)).toBe(true);
+      const longName = "Alexandros Papadopoulos — Кириллица";
+      await expect(table.getByText(longName, { exact: true })).toHaveAttribute(
+        "title",
+        longName,
+      );
+      await expect(
+        table.getByText(
+          "Club Deportivo Internacional de Desarrollo Juvenil Barcelona",
+          { exact: true },
+        ),
+      ).toHaveAttribute(
+        "title",
+        "Club Deportivo Internacional de Desarrollo Juvenil Barcelona",
+      );
+      for (const name of ["Sold (0)", "Released (0)"]) {
+        const empty = main.getByRole("region", { name, exact: true });
+        await expect(empty.getByRole("table")).toHaveCount(0);
+        await expect(empty).toContainText(
+          "No players are currently in this group.",
+        );
+        expect((await empty.boundingBox())?.height).toBeLessThanOrEqual(32);
+      }
+      const lastRow = table.locator("tbody tr").last();
+      for (const name of ["Sell", "Release", "Remove"]) {
+        const action = lastRow.getByRole("button", { name, exact: true });
+        await expect(action).not.toHaveClass(
+          /bg-error|text-success|text-warning/,
+        );
+        expect((await action.boundingBox())?.height).toBeGreaterThanOrEqual(32);
+      }
+      const remove = lastRow.getByRole("button", {
+        name: "Remove",
+        exact: true,
+      });
+      await page.evaluate("document.fonts.ready");
+      const [unfocusedBox, portBox] = await Promise.all([
+        remove.boundingBox(),
+        scroller.boundingBox(),
+      ]);
+      if (!unfocusedBox || !portBox)
+        throw new Error("Expected roster action geometry before focus.");
+      // Leave only an edge visible: browser focus alone may not reveal the rest.
+      await scroller.evaluate(
+        (element, delta) => {
+          const node = element as unknown as { scrollLeft: number };
+          node.scrollLeft += delta;
+        },
+        unfocusedBox.x - (portBox.x + portBox.width - 8),
+      );
+      await remove.focus();
+      await expect(remove).toBeFocused();
+      const scroll = await scroller.evaluate((element) => {
+        const node = element as unknown as {
+          scrollLeft: number;
+          scrollTop: number;
+          scrollWidth: number;
+          clientWidth: number;
+        };
+        return {
+          left: node.scrollLeft,
+          top: node.scrollTop,
+          width: node.scrollWidth,
+          clientWidth: node.clientWidth,
+        };
+      });
+      expect(scroll.top).toBeGreaterThan(0);
+      expect(scroll.width).toBeGreaterThan(scroll.clientWidth);
+      const [focusedBox, scrollerBox] = await Promise.all([
+        remove.boundingBox(),
+        scroller.boundingBox(),
+      ]);
+      if (!focusedBox || !scrollerBox)
+        throw new Error("Expected focused roster action geometry.");
+      expect(focusedBox.y + focusedBox.height).toBeLessThanOrEqual(
+        scrollerBox.y + scrollerBox.height + 1,
+      );
+      expect(focusedBox.x + focusedBox.width).toBeLessThanOrEqual(
+        scrollerBox.x + scrollerBox.width + 1,
+      );
+      await page.keyboard.press("Enter");
+      const confirmation = page.getByRole("dialog", {
+        name: "Remove Academy prospect 050 from Class of 2026?",
+      });
+      await expect(confirmation).toContainText(
+        "deletes any manual sale or release outcome",
+      );
+      await expect(
+        confirmation.getByRole("button", { name: "Remove from class" }),
+      ).toHaveClass(/bg-error/);
+      await confirmation.getByRole("button", { name: "Cancel" }).click();
+      await expect(remove).toBeFocused();
+      await expect(table.locator("tbody tr")).toHaveCount(50);
+      expect(
+        await main.evaluate((element) => {
+          const node = element as unknown as {
+            scrollWidth: number;
+            clientWidth: number;
+          };
+          return node.scrollWidth <= node.clientWidth;
+        }),
+      ).toBe(true);
+    });
+  }
 
   test("My Club creates Club DNA and exposes its Squad column", async ({
     page,
@@ -335,9 +742,9 @@ test.describe("application smoke", () => {
     ] as const) {
       await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
     }
-    await expect(
-      nav.locator("[data-nav-caption]").allTextContents(),
-    ).resolves.toEqual(["Players", "Staff", "Club"]);
+    for (const caption of ["Players", "Staff", "Club"]) {
+      await expect(nav.getByText(caption, { exact: true })).toHaveCount(0);
+    }
 
     const navOverflow = await nav.evaluate((element) => {
       const navElement = element as unknown as {
@@ -819,6 +1226,105 @@ test.describe("application smoke", () => {
     ).toHaveAttribute("max", "50");
   });
 
+  for (const [width, height] of [
+    [1280, 800],
+    [1600, 900],
+  ] as const) {
+    test(`Profile summaries leave readable evidence at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height });
+      await stubTauriIpc(page, {
+        playerProfile: true,
+        playerProfileLayout: true,
+      });
+      await page.goto("/players/42?section=overview");
+      const main = page.getByRole("main");
+      const summary = main.getByTestId("player-profile-summary-details");
+      const box = await summary.boundingBox();
+      if (!box) throw new Error("Expected profile summary");
+      expect(box.height).toBeLessThanOrEqual(200);
+      const attributes = main.getByRole("region", {
+        name: "Technical",
+        exact: true,
+      });
+      const viewport = await attributes.locator("../../..").boundingBox();
+      if (!viewport) throw new Error("Expected attribute workspace");
+      let visibleRows = 0;
+      for (const row of await attributes.locator("dl > div").all()) {
+        const bounds = await row.boundingBox();
+        if (
+          bounds &&
+          bounds.y >= viewport.y &&
+          bounds.y + bounds.height <= viewport.y + viewport.height
+        )
+          visibleRows++;
+      }
+      expect(visibleRows).toBeGreaterThanOrEqual(3);
+      const facts = main.getByRole("region", { name: "Ability", exact: true });
+      await expect(facts.getByText("140", { exact: true })).toBeVisible();
+      await expect(facts.getByText("160", { exact: true })).toBeVisible();
+      await expect(facts.getByText("€12.5M", { exact: true })).toBeVisible();
+      for (const phase of ["ip", "oop"]) {
+        const fit = main.getByTestId(`overview-tactical-fit-${phase}`);
+        expect(
+          await fit.evaluate((element) => {
+            const node = element as unknown as {
+              scrollWidth: number;
+              clientWidth: number;
+            };
+            return node.scrollWidth <= node.clientWidth;
+          }),
+        ).toBe(true);
+      }
+      const selected = main.getByRole("tab", {
+        name: "Overview",
+        selected: true,
+      });
+      for (const tab of await main.getByRole("tab", { selected: true }).all()) {
+        await expect(tab).toHaveCSS("border-bottom-width", "0px");
+        await expect(tab).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+        await tab.focus();
+        await expect(tab).toHaveCSS("outline-width", "2px");
+      }
+      expect(
+        await selected.evaluate((element) => {
+          const browser = globalThis as unknown as {
+            getComputedStyle: (node: unknown) => { backgroundColor: string };
+          };
+          return browser.getComputedStyle(element).backgroundColor;
+        }),
+      ).not.toBe(
+        await page
+          .getByRole("button", { name: "Load Data", exact: true })
+          .evaluate((element) => {
+            const browser = globalThis as unknown as {
+              getComputedStyle: (node: unknown) => { backgroundColor: string };
+            };
+            return browser.getComputedStyle(element).backgroundColor;
+          }),
+      );
+    });
+  }
+
+  test("selected Tactic markers keep small labels readable on their filled surface", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await stubTauriIpc(page, { plannerSnapshot: true, squadOverview: true });
+    await page.goto("/my-club?view=tactic");
+    for (const phase of ["IP", "OOP"]) {
+      const marker = page
+        .getByRole("main")
+        .getByRole("button", { name: new RegExp(`^${phase}:`), pressed: true })
+        .first();
+      await marker.scrollIntoViewIfNeeded();
+      for (const label of await marker.locator("span[title]").all()) {
+        await expectReadableText(label);
+      }
+    }
+  });
+
   test("Staff Profile keeps role fit inside a virtual scrollport", async ({
     page,
   }) => {
@@ -829,6 +1335,35 @@ test.describe("application smoke", () => {
     const main = page.getByRole("main");
     const scrollport = main.getByTestId("staff-role-fit-scroller");
     await expect(scrollport).toBeVisible();
+    for (const label of [
+      "Goalkeeping Distribution",
+      "Working With Youngsters",
+      "Judging Player Potential",
+    ]) {
+      const attribute = main.getByText(label, { exact: true });
+      await expect(attribute).toBeVisible();
+      expect(
+        await attribute.evaluate((element) => {
+          const node = element as unknown as {
+            scrollWidth: number;
+            clientWidth: number;
+          };
+          return node.scrollWidth <= node.clientWidth;
+        }),
+      ).toBe(true);
+    }
+    const bestRole = main
+      .getByRole("region", { name: "Alex Coach summary" })
+      .getByText("Assistant Manager", { exact: true });
+    expect(
+      await bestRole.evaluate((element) => {
+        const node = element as unknown as {
+          scrollWidth: number;
+          clientWidth: number;
+        };
+        return node.scrollWidth <= node.clientWidth;
+      }),
+    ).toBe(true);
     const before = await main.evaluate((element) => {
       const scrollable = element as unknown as {
         clientHeight: number;
@@ -1040,7 +1575,12 @@ test.describe("application smoke", () => {
       .getByRole("main")
       .getByRole("button", { name: "Save managed club" })
       .click();
-    await expect(managedClub).toHaveValue("Barcelona");
+    await expect(
+      page
+        .getByRole("main")
+        .getByText("Managed club: Barcelona", { exact: true }),
+    ).toBeVisible();
+    await expect(managedClub).toHaveCount(0);
     await expect(
       page.evaluate(async () => {
         const invoke = (
@@ -1053,6 +1593,30 @@ test.describe("application smoke", () => {
         return invoke("get_managed_club");
       }),
     ).resolves.toMatchObject({ clubName: "Barcelona", clubUid: 100 });
+    const edit = page
+      .getByRole("main")
+      .getByRole("button", { name: "Edit managed club" });
+    await expect(edit).toBeFocused();
+    await edit.click();
+    await expect(managedClub).toBeFocused();
+    await managedClub.fill("Bar");
+    await page
+      .getByRole("option", { name: "Barca Athletic", exact: true })
+      .click();
+    await expect(
+      page
+        .getByRole("main")
+        .getByText("Unsaved selection. Analysis still uses Barcelona."),
+    ).toBeVisible();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
+    await expect(managedClub).toHaveCount(0);
+    await expect(edit).toBeFocused();
+    await expect(page).toHaveURL(/\/my-club#managed-club$/);
+    await edit.click();
+    await expect(managedClub).toHaveValue("Barcelona");
   });
 
   test("configured Squad shows its sortable player overview", async ({
@@ -1111,8 +1675,31 @@ test.describe("application smoke", () => {
       const scroller = main.getByTestId("squad-overview-scroller");
       await expect(scroller).toBeVisible();
       await expect(
-        main.getByRole("combobox", { name: "Managed club" }),
+        main.getByRole("button", { name: "Edit managed club" }),
       ).toBeVisible();
+      await expect(
+        main.getByRole("combobox", { name: "Managed club" }),
+      ).toHaveCount(0);
+      const actions = main.getByRole("group", {
+        name: "Squad actions",
+        exact: true,
+      });
+      const upload = actions.getByRole("button", {
+        name: "Upload Squad CSV",
+        exact: true,
+      });
+      const boost = actions.getByRole("button", {
+        name: "Boost all CA",
+        exact: true,
+      });
+      const [uploadBox, boostBox] = await Promise.all([
+        upload.boundingBox(),
+        boost.boundingBox(),
+      ]);
+      if (!uploadBox || !boostBox)
+        throw new Error("Expected visible Squad action groups.");
+      expect(boostBox.x).toBeGreaterThan(uploadBox.x);
+      await expect(boost).not.toHaveClass(/bg-primary/);
 
       const [mainBox, scrollerBox, mainDimensions, dimensions] =
         await Promise.all([
@@ -2024,9 +2611,24 @@ test.describe("application smoke", () => {
     await expect(
       page.getByRole("heading", { name: "Moneyball", exact: true }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("tab", { name: "Shooting", selected: true }),
-    ).toBeVisible();
+    const category = page.getByRole("tab", {
+      name: "Shooting",
+      selected: true,
+    });
+    await expect(category).toBeVisible();
+    await expect(category).toHaveCSS("border-bottom-width", "0px");
+    await expect(category).not.toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
+    await category.press("End");
+    const keyboardCategory = page.getByRole("tab", {
+      name: "Results",
+      selected: true,
+    });
+    await expect(keyboardCategory).toBeFocused();
+    await expect(keyboardCategory).toHaveCSS("border-bottom-width", "0px");
+    await expect(keyboardCategory).toHaveCSS("outline-width", "2px");
     const summary = page.getByRole("region", {
       name: "Moneyball tactical summaries",
     });
@@ -2121,6 +2723,8 @@ test.describe("application smoke", () => {
     const wonderkidButton = main.getByRole("button", {
       name: "Make all Wonderkids",
     });
+    await expect(caButton).toBeVisible();
+    await page.evaluate("document.fonts.ready");
     const caBefore = await caButton.boundingBox();
     const wonderkidBefore = await wonderkidButton.boundingBox();
     if (!caBefore || !wonderkidBefore) {
@@ -2178,6 +2782,7 @@ test.describe("application smoke", () => {
   test("planner tactic editor saves a linked phase adjustment", async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/my-club");
 
@@ -2710,6 +3315,178 @@ test.describe("application smoke", () => {
     );
   });
 
+  for (const [width, height] of [
+    [1280, 800],
+    [1600, 900],
+  ] as const) {
+    test(`Moneyball exposes metric evidence and every category at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height });
+      await stubTauriIpc(page, { moneyballSearch: true, playerProfile: true });
+      await page.goto("/players/42?section=moneyball");
+      const workspace = page.getByRole("tabpanel", {
+        name: "Moneyball",
+        exact: true,
+      });
+      const primary = workspace.getByTestId("moneyball-primary-column");
+      const roleFit = workspace.getByRole("region", {
+        name: "Moneyball role fit for MC",
+      });
+      const primaryBox = await primary.boundingBox();
+      const roleBox = await roleFit.boundingBox();
+      if (!primaryBox || !roleBox)
+        throw new Error("Expected parallel Moneyball evidence");
+      expect(primaryBox.x + primaryBox.width).toBeLessThanOrEqual(roleBox.x);
+      const categories = workspace.getByRole("tablist", {
+        name: "Moneyball metric categories",
+      });
+      await expect(categories.getByRole("tab")).toHaveCount(8);
+      for (const tab of await categories.getByRole("tab").all()) {
+        const box = await tab.boundingBox();
+        if (!box) throw new Error("Expected a visible metric category");
+        expect(box.x).toBeGreaterThanOrEqual(primaryBox.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(
+          primaryBox.x + primaryBox.width,
+        );
+        expect(box.y + box.height).toBeLessThanOrEqual(height - 16);
+      }
+      const shooting = workspace.getByRole("tabpanel", {
+        name: "Shooting",
+        exact: true,
+      });
+      const rows = shooting.locator("dl > div");
+      let visibleRows = 0;
+      const scrollport = await shooting.locator("..").boundingBox();
+      if (!scrollport) throw new Error("Expected metric scroll workspace");
+      for (const row of await rows.all()) {
+        const box = await row.boundingBox();
+        if (
+          box &&
+          box.y >= scrollport.y &&
+          box.y + box.height <= scrollport.y + scrollport.height
+        )
+          visibleRows++;
+      }
+      expect(visibleRows).toBeGreaterThanOrEqual(4);
+      await expect(
+        shooting.getByRole("img", { name: "Goals: 83, Excellent" }),
+      ).toBeVisible();
+      const nameCell = roleFit
+        .getByRole("row")
+        .filter({ hasText: "Central Midfielder" })
+        .first()
+        .locator("td")
+        .first();
+      expect((await nameCell.boundingBox())?.width).toBeGreaterThanOrEqual(180);
+      const explanation = roleFit.locator("details").first();
+      await explanation.locator("summary").focus();
+      await page.keyboard.press("Space");
+      await expect(explanation).toHaveAttribute("open", "");
+      const contributions = explanation.locator("dl > div");
+      await expect(contributions).toHaveCount(5);
+      for (const contribution of await contributions.all()) {
+        const box = await contribution.boundingBox();
+        if (!box) throw new Error("Expected contribution evidence");
+        const overflow = await contribution.evaluate((element) => {
+          const node = element as unknown as {
+            clientWidth: number;
+            scrollWidth: number;
+          };
+          return node.scrollWidth > node.clientWidth;
+        });
+        expect(overflow).toBe(false);
+      }
+      await page.keyboard.press("End");
+      await expect
+        .poll(async () => {
+          const lastContribution = await contributions.last().boundingBox();
+          const roleScrollport = await roleFit
+            .getByRole("table")
+            .locator("..")
+            .boundingBox();
+          if (!lastContribution || !roleScrollport) return false;
+          return (
+            lastContribution.y >= roleScrollport.y - 1 &&
+            lastContribution.y + lastContribution.height <=
+              roleScrollport.y + roleScrollport.height + 1
+          );
+        })
+        .toBe(true);
+      await categories.getByRole("tab", { name: "Shooting" }).focus();
+      await page.keyboard.press("End");
+      await expect(
+        categories.getByRole("tab", { name: "Results" }),
+      ).toBeFocused();
+      const results = workspace.getByRole("tabpanel", {
+        name: "Results",
+        exact: true,
+      });
+      await expect(
+        results.getByText("Average Rating", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        results.getByRole("img", { name: "Average Rating: 83, Excellent" }),
+      ).toBeVisible();
+      await page.keyboard.press("Home");
+      await expect(
+        categories.getByRole("tab", { name: "Shooting" }),
+      ).toBeFocused();
+    });
+  }
+
+  test("Both keeps both phases of a dense midfield triple disjoint", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/my-club?view=tactic");
+    const main = page.getByRole("main");
+    const pitch = main.getByRole("group", { name: /pitch$/ });
+    await pitch
+      .getByRole("button", { name: "IP: DM · Defensive Midfielder" })
+      .click();
+    await main
+      .getByRole("combobox", { name: "IP DM position" })
+      .selectOption("MC");
+    await main
+      .getByRole("combobox", { name: "IP MC role" })
+      .selectOption("central_midfielder_ip");
+    await main
+      .getByRole("combobox", { name: "OOP DM position" })
+      .selectOption("MC");
+    await main
+      .getByRole("combobox", { name: "OOP MC role" })
+      .selectOption("pressing_central_midfielder_oop");
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+      [2100, 1080],
+      [3440, 1440],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      const markers = pitch.getByRole("button");
+      await expect(markers).toHaveCount(22);
+      const boxes = await Promise.all(
+        (await markers.all()).map((marker) => marker.boundingBox()),
+      );
+      for (const [index, left] of boxes.entries()) {
+        if (!left) throw new Error("Expected phase marker geometry");
+        expect(left.width).toBeGreaterThanOrEqual(44);
+        expect(left.height).toBeGreaterThanOrEqual(44);
+        for (const right of boxes.slice(index + 1)) {
+          if (!right) throw new Error("Expected phase marker geometry");
+          expect(
+            left.x + left.width <= right.x ||
+              right.x + right.width <= left.x ||
+              left.y + left.height <= right.y ||
+              right.y + right.height <= left.y,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
   test("planner tactic workspace fits its supported desktop viewports", async ({
     page,
   }) => {
@@ -2741,6 +3518,19 @@ test.describe("application smoke", () => {
       requireVerticalFit: boolean,
     ) => {
       await page.setViewportSize({ width, height });
+      const commandBox = await main
+        .getByRole("region", { name: "Tactic controls" })
+        .boundingBox();
+      const initialPitchBox = await pitches.first().boundingBox();
+      const initialXiBox = await laneList.boundingBox();
+      if (!commandBox || !initialPitchBox || !initialXiBox)
+        throw new Error("Expected initial Tactic composition");
+      expect(initialPitchBox.y).toBeLessThan(
+        commandBox.y + commandBox.height + 80,
+      );
+      expect(initialXiBox.x + initialXiBox.width).toBeLessThanOrEqual(
+        initialPitchBox.x,
+      );
       for (const [view, pitchCount, visibleRole] of [
         ["Both", 1, "OOP GK role"],
         ["IP", 1, "IP GK role"],
@@ -2748,6 +3538,57 @@ test.describe("application smoke", () => {
       ] as const) {
         await main.getByRole("button", { name: view, exact: true }).click();
         await expect(pitches).toHaveCount(pitchCount);
+        if (width === 1280 && view === "Both") {
+          const pitchScroller = main.getByTestId("tactic-pitch-scroller");
+          const markers = pitches.first().getByRole("button");
+          await expect(markers).toHaveCount(22);
+          await markers.first().focus();
+          for (let index = 0; index < 22; index++) {
+            await expect(markers.nth(index)).toBeFocused();
+            const box = await markers.nth(index).boundingBox();
+            const viewport = await pitchScroller.boundingBox();
+            if (!box || !viewport)
+              throw new Error("Expected visible focused marker");
+            expect(box.width).toBeGreaterThanOrEqual(44);
+            expect(box.height).toBeGreaterThanOrEqual(44);
+            await expect
+              .poll(
+                async () => {
+                  const focused = await markers.nth(index).boundingBox();
+                  const visible = await pitchScroller.boundingBox();
+                  if (!focused || !visible) return false;
+                  return (
+                    focused.x - 2 >= visible.x - 1 &&
+                    focused.x + focused.width + 2 <=
+                      visible.x + visible.width + 1 &&
+                    focused.y - 2 >= visible.y - 1 &&
+                    focused.y + focused.height + 2 <=
+                      visible.y + visible.height + 1
+                  );
+                },
+                {
+                  message: `Focused phase marker ${index} stays inside the pitch scrollport`,
+                },
+              )
+              .toBe(true);
+            await page.keyboard.press("Tab");
+          }
+          const lanes = laneList.getByRole("button");
+          await expect(lanes).toHaveCount(11);
+          await lanes.first().focus();
+          for (let index = 0; index < 11; index++) {
+            await expect(lanes.nth(index)).toBeFocused();
+            const box = await lanes.nth(index).boundingBox();
+            const viewport = await laneList.getByRole("list").boundingBox();
+            if (!box || !viewport)
+              throw new Error("Expected visible focused lane");
+            expect(box.y - 2).toBeGreaterThanOrEqual(viewport.y - 1);
+            expect(box.y + box.height + 2).toBeLessThanOrEqual(
+              viewport.y + viewport.height + 1,
+            );
+            await page.keyboard.press("Tab");
+          }
+        }
         await expect(settings).toBeVisible();
         await expect(
           settings.getByRole("combobox", { name: visibleRole }),
@@ -3881,6 +4722,20 @@ test.describe("application smoke", () => {
       if (!controlsBox || !potentialBox) {
         throw new Error("Expected visible Planner optimization controls.");
       }
+      expect(controlsBox.height).toBeLessThanOrEqual(36);
+      const controlBoxes = await controls
+        .getByRole("button")
+        .evaluateAll((elements) =>
+          elements.map(
+            (element) =>
+              (
+                element as unknown as {
+                  getBoundingClientRect: () => { height: number };
+                }
+              ).getBoundingClientRect().height,
+          ),
+        );
+      expect(controlBoxes.every((height) => height >= 32)).toBe(true);
       expect(potentialBox.x + potentialBox.width).toBeLessThanOrEqual(
         controlsBox.x + controlsBox.width,
       );
@@ -3913,11 +4768,21 @@ test.describe("application smoke", () => {
     );
 
     const clearAll = main.getByRole("button", { name: "Clear all" });
+    await expect(clearAll).not.toHaveClass(/bg-error/);
     await clearAll.click();
     const confirmation = page.getByRole("dialog", {
       name: "Clear all squads?",
     });
     await expect(confirmation).toContainText("Senior, Reserves, and Youth");
+    await expect(
+      confirmation.getByRole("button", { name: "Clear all" }),
+    ).toHaveClass(/bg-error/);
+    await confirmation.getByRole("button", { name: "Cancel" }).click();
+    await expect(clearAll).toBeFocused();
+    await expect(
+      main.getByRole("button", { name: /Optimized Keeper, Resolved/ }).first(),
+    ).toBeVisible();
+    await clearAll.click();
     await confirmation.getByRole("button", { name: "Clear all" }).click();
     await expect(main.getByRole("status")).toHaveText("All squads cleared.");
 
@@ -4091,6 +4956,10 @@ test.describe("application smoke", () => {
     const emptyCard = board.getByRole("button", { name: /, Empty$/ }).first();
     await expect(assignedCard).toBeVisible();
     await expect(emptyCard).toBeVisible();
+    await expect(emptyCard).toHaveText("Assign");
+    await expect(emptyCard).toHaveCSS("border-top-color", "rgba(0, 0, 0, 0)");
+    const emptyBox = await emptyCard.boundingBox();
+    expect(emptyBox?.height).toBeGreaterThanOrEqual(32);
     const assignedCardWidthAt1280 = await assignedCard.evaluate(
       (element) =>
         (
@@ -4552,7 +5421,7 @@ test.describe("application smoke", () => {
     });
     await expect(summary.getByText("140", { exact: true })).toHaveCSS(
       "font-size",
-      "36px",
+      "24px",
     );
     await expect(
       outfield.getByText("Work Rate", { exact: true }),
@@ -5149,6 +6018,105 @@ test.describe("application smoke", () => {
       mainDimensions.clientHeight + 1,
     );
   });
+
+  for (const [destination, command, loadingCopy] of [
+    ["Staff Search", "search_staff", "Loading workspace…"],
+    ["Youth", "list_academy_classes", "Loading workspace…"],
+  ] as const) {
+    test(`slow ${destination} loading retains the shell and shows progress`, async ({
+      page,
+    }) => {
+      await stubTauriIpc(page, {
+        academyWorkspace: true,
+        staffWorkspace: true,
+        plannerSnapshot: true,
+        squadOverview: true,
+      });
+      await page.goto("/");
+      await expect(
+        page.getByText("Placeholder.", { exact: true }),
+      ).toBeVisible();
+      await page.evaluate(`(() => {
+        const original = window.__TAURI_INTERNALS__.invoke;
+        let held = true;
+        const waiting = [];
+        window.__releaseLoader = () => { held = false; waiting.forEach(resolve => resolve()); };
+        window.__TAURI_INTERNALS__.invoke = async (cmd, args) => {
+          if (held && cmd === ${JSON.stringify(command)}) await new Promise(resolve => waiting.push(resolve));
+          return original(cmd, args);
+        };
+      })()`);
+      await page
+        .getByRole("navigation", { name: "Primary" })
+        .getByRole("link", { name: destination, exact: true })
+        .click();
+      await expect(
+        page.getByRole("main").getByText(loadingCopy, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("combobox", { name: "Active save" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Load Data", exact: true }),
+      ).toBeVisible();
+      await page.evaluate("window.__releaseLoader()");
+      await expect(page.getByText(loadingCopy, { exact: true })).toHaveCount(0);
+      await expect(
+        page
+          .getByRole("main")
+          .getByText(destination === "Youth" ? "Class of 2026" : "Alex Coach")
+          .first(),
+      ).toBeVisible();
+    });
+  }
+
+  for (const [destination, command] of [
+    ["Staff Search", "search_staff"],
+    ["Youth", "list_academy_classes"],
+  ] as const) {
+    test(`${destination} loader errors retain recovery controls and retry`, async ({
+      page,
+    }) => {
+      await stubTauriIpc(page, {
+        academyWorkspace: true,
+        staffWorkspace: true,
+        plannerSnapshot: true,
+        squadOverview: true,
+      });
+      await page.addInitScript({
+        content: `
+        const original = window.__TAURI_INTERNALS__.invoke;
+        window.__loaderFails = true;
+        window.__TAURI_INTERNALS__.invoke = async (cmd, args) => {
+          if (window.__loaderFails && cmd === ${JSON.stringify(command)}) throw new Error('The current Football Manager snapshot could not be read. No data was changed. Use Load Data to refresh the snapshot before trying again.');
+          return original(cmd, args);
+        };
+      `,
+      });
+      await page.goto(
+        destination === "Youth" ? "/academy" : "/staff?shortlistOnly=false",
+      );
+      await expect(page.getByText(/No data was changed/)).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Load Data", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("combobox", { name: "Active save" }),
+      ).toBeVisible();
+      await expect(page.getByRole("main").getByRole("alert")).toContainText(
+        "No data was changed",
+      );
+      await page.evaluate("window.__loaderFails = false");
+      await page.getByRole("button", { name: "Retry", exact: true }).click();
+      await expect(
+        page
+          .getByRole("main")
+          .getByText(destination === "Youth" ? "Class of 2026" : "Alex Coach")
+          .first(),
+      ).toBeVisible();
+      await expect(page.getByRole("alert")).toHaveCount(0);
+    });
+  }
 
   test("unknown routes render the not-found page", async ({ page }) => {
     await page.goto("/does-not-exist");

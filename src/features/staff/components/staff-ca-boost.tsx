@@ -97,6 +97,7 @@ export function StaffCaBoost({
     <div className="flex min-w-28 items-center gap-2 px-2">
       <Button
         icon={Zap}
+        variant="secondary"
         disabled={!eligible || pending}
         loading={pending}
         loadingLabel="Boosting…"

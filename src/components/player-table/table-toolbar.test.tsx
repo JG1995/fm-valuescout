@@ -46,6 +46,36 @@ describe("table toolbar contract", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps dataset controls before the applied-filter row in reading and tab order", () => {
+    renderToolbar();
+    const toolbar = screen.getByRole("toolbar", {
+      name: "Player results toolbar",
+    });
+    expect(
+      within(toolbar)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Edit filters", "Columns", "Shortlist: Off", "Clear all"]);
+    expect(
+      within(toolbar).getByRole("group", { name: "Applied filters" }),
+    ).toContainElement(within(toolbar).getByText("Age 16–30"));
+  });
+
+  it("shows idle filter context without reserving an applied-filter row", () => {
+    renderToolbar({
+      filterChips: undefined,
+      onClearAll: undefined,
+      filterSummary: "No filters · OR",
+    });
+    const toolbar = screen.getByRole("toolbar", {
+      name: "Player results toolbar",
+    });
+    expect(within(toolbar).getByText("No filters · OR")).toBeInTheDocument();
+    expect(
+      within(toolbar).queryByRole("group", { name: "Applied filters" }),
+    ).toBeNull();
+  });
+
   it("clears and edits through caller callbacks", async () => {
     const user = userEvent.setup();
     const { onClearAll, onEditFilters } = renderToolbar();

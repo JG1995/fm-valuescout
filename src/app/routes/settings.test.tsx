@@ -74,6 +74,12 @@ describe("Settings", () => {
     expect(screen.queryByRole("combobox", { name: "Managed club" })).toBeNull();
     expect(screen.getByRole("region", { name: "Bridge" })).toBeInTheDocument();
     expect(
+      await screen.findByRole("heading", {
+        level: 3,
+        name: "Bridge plugin install",
+      }),
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole("button", { name: "Load Data" }),
     ).toBeInTheDocument();
     expect(
@@ -197,9 +203,11 @@ describe("Settings", () => {
     });
   });
 
-  it("renders safe graphics status and pathless controls", async () => {
+  it("renders safe graphics controls and updates feedback when indexing finishes", async () => {
     const user = userEvent.setup();
-    renderWithProviders({ initialEntries: ["/settings"] });
+    const { queryClient } = renderWithProviders({
+      initialEntries: ["/settings"],
+    });
 
     const graphics = await screen.findByRole("region", { name: "Graphics" });
     expect(graphics).toHaveTextContent("No root selected");
@@ -218,6 +226,39 @@ describe("Settings", () => {
       within(graphics).getByRole("button", { name: "Choose graphics folder" }),
     );
     expect(await screen.findByText(/index is rebuilding/)).toBeInTheDocument();
+
+    setGraphicsStatusIpcMock({
+      ...DEFAULT_GRAPHICS_STATUS,
+      selected: true,
+      generation: 1,
+      rebuilding: false,
+    });
+    await queryClient.invalidateQueries({ queryKey: graphicsKeys.status() });
+    expect(
+      await within(graphics).findByText("Graphics settings updated."),
+    ).toBeInTheDocument();
+    expect(graphics).not.toHaveTextContent("index is rebuilding");
+  });
+
+  it("reports cleared graphics selection without claiming a rebuild", async () => {
+    setGraphicsStatusIpcMock({ ...DEFAULT_GRAPHICS_STATUS, selected: true });
+    const user = userEvent.setup();
+    renderWithProviders({ initialEntries: ["/settings"] });
+    const graphics = await screen.findByRole("region", { name: "Graphics" });
+
+    await user.click(
+      within(graphics).getByRole("button", { name: "Clear graphics folder" }),
+    );
+    expect(
+      await within(graphics).findByText(
+        "Graphics folder selection cleared. Portrait and crest fallbacks are active.",
+      ),
+    ).toBeInTheDocument();
+    expect(graphics).toHaveTextContent("No root selected");
+    expect(graphics).not.toHaveTextContent("index is rebuilding");
+    expect(
+      within(graphics).getByRole("button", { name: "Rescan graphics" }),
+    ).toBeDisabled();
   });
 
   it("shows bounded nonzero scan diagnostics, including configured limits", async () => {
