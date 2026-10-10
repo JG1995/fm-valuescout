@@ -210,11 +210,11 @@ export function AppNavBar() {
                       activeOptions={{ exact: true }}
                       aria-current={isActive ? "page" : undefined}
                       className={cn(
-                        "flex h-9 items-center justify-center gap-1.5 rounded-md border-b-2 px-2 text-label-md font-normal tracking-normal",
+                        "flex h-9 items-center justify-center gap-1.5 rounded-md px-2 text-label-md font-normal tracking-normal",
                         "transition-colors duration-150 ease-out hover:text-on-surface focus-visible:outline-offset-[-2px]",
                         isActive
-                          ? "border-primary bg-[color-mix(in_oklab,var(--color-primary)_10%,var(--color-surface-container))] text-on-surface"
-                          : "border-transparent text-on-surface-variant hover:bg-surface-container-high",
+                          ? "bg-[color-mix(in_oklab,var(--color-primary)_10%,var(--color-surface-container))] text-on-surface"
+                          : "text-on-surface-variant hover:bg-surface-container-high",
                       )}
                     >
                       <item.icon

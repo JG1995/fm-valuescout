@@ -57,7 +57,7 @@ export function ProfilePositionPicker({
                 data-tier={tier}
                 className={`size-11 rounded-full border text-center transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                   selected
-                    ? "border-2 border-primary bg-primary-container text-on-primary-container ring-2 ring-primary/50"
+                    ? "border-2 border-primary bg-primary-container text-on-primary-container"
                     : unfamiliar
                       ? "border-outline-variant bg-surface-container/85 text-on-surface-variant hover:bg-surface-container-high"
                       : "border-outline bg-surface-container-high hover:bg-surface-container-highest data-[tier=1]:text-score-1 data-[tier=2]:text-score-2 data-[tier=3]:text-score-3 data-[tier=4]:text-score-4"

@@ -41,10 +41,10 @@ export function PlannerTacticLaneList({
                 type="button"
                 aria-pressed={selected}
                 onClick={() => onSelectLane(lane.laneId)}
-                className={`block w-full scroll-m-1 whitespace-pre-line cursor-pointer rounded-md border px-2 py-1.5 text-left text-body-sm transition-[background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                className={`block w-full scroll-m-1 whitespace-pre-line cursor-pointer rounded-md border border-transparent px-2 py-1.5 text-left text-body-sm transition-[background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                   selected
-                    ? "border-primary bg-surface-container-high text-on-surface"
-                    : "border-transparent text-on-surface hover:bg-surface-container-high"
+                    ? "bg-surface-container-high font-semibold text-on-surface"
+                    : "text-on-surface hover:bg-surface-container-high"
                 }`}
               >
                 {linkedPositionDescription(lane, lanes, options).replace(

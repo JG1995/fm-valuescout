@@ -3664,6 +3664,11 @@ describe("My Club route", () => {
     );
     expect(initiallyPressed).toHaveLength(1);
     expect(initiallyPressed[0]).toHaveTextContent("IP: DL · Full-Back");
+    expect(initiallyPressed[0]).toHaveClass(
+      "border-transparent",
+      "bg-surface-container-high",
+      "font-semibold",
+    );
 
     // Panel to pitch and inspector: activating the goalkeeper row selects
     // it everywhere.
@@ -3675,6 +3680,7 @@ describe("My Club route", () => {
       ),
     ).toHaveLength(1);
     expect(afterPanelSelect[0]).toHaveAttribute("aria-pressed", "true");
+    expect(afterPanelSelect[0]).toHaveClass("font-semibold");
     expect(
       screen.getByRole("button", { name: "IP: GK · Goalkeeper" }),
     ).toHaveAttribute("aria-pressed", "true");

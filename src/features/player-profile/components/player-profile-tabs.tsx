@@ -68,11 +68,11 @@ export function PlayerProfileTabs({
             aria-controls={`profile-panel-${id}`}
             tabIndex={selected ? 0 : -1}
             className={cn(
-              "h-8 cursor-pointer rounded-sm border-b-2 px-3 text-label-md transition-colors duration-150 ease-out",
+              "h-8 cursor-pointer rounded-sm px-3 text-label-md transition-colors duration-150 ease-out",
               "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary",
               selected
-                ? "border-primary bg-surface-container-lowest text-on-surface"
-                : "border-transparent text-on-surface-variant hover:text-on-surface",
+                ? "bg-surface-container-lowest text-on-surface"
+                : "text-on-surface-variant hover:text-on-surface",
             )}
             onClick={() => {
               onTabChange(id);

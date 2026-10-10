@@ -48,15 +48,11 @@ test.describe("application smoke", () => {
         await current.focus();
         await expect(current).toHaveCSS("outline-width", "2px");
         await expect(current).toHaveCSS("outline-offset", "-2px");
-        await expect(current).toHaveCSS("border-bottom-width", "2px");
-        await expect(current).toHaveCSS(
-          "border-bottom-color",
-          await current.locator("svg").evaluate((element) => {
-            const browser = globalThis as unknown as {
-              getComputedStyle: (node: unknown) => { color: string };
-            };
-            return browser.getComputedStyle(element).color;
-          }),
+        await expect(current).toHaveCSS("border-bottom-width", "0px");
+        await expect(current.locator("span")).toHaveCSS("font-weight", "700");
+        await expect(current).not.toHaveCSS(
+          "background-color",
+          "rgba(0, 0, 0, 0)",
         );
         const main = page.getByRole("main");
         await expect(main.getByRole("heading", { level: 1 })).toHaveCount(1);
@@ -318,7 +314,13 @@ test.describe("application smoke", () => {
       const selected = main.getByRole("tab", { name: "Class", exact: true });
       await expect(selected).toHaveAttribute("aria-selected", "true");
       await expect(selected).not.toHaveClass(/bg-primary/);
-      await expect(selected).toHaveCSS("border-bottom-width", "2px");
+      await expect(selected).toHaveCSS("border-bottom-width", "0px");
+      await expect(selected).not.toHaveCSS(
+        "background-color",
+        "rgba(0, 0, 0, 0)",
+      );
+      await selected.focus();
+      await expect(selected).toHaveCSS("outline-width", "2px");
       const group = main.getByRole("region", {
         name: "Still at club (50)",
         exact: true,
@@ -1279,6 +1281,12 @@ test.describe("application smoke", () => {
         name: "Overview",
         selected: true,
       });
+      for (const tab of await main.getByRole("tab", { selected: true }).all()) {
+        await expect(tab).toHaveCSS("border-bottom-width", "0px");
+        await expect(tab).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+        await tab.focus();
+        await expect(tab).toHaveCSS("outline-width", "2px");
+      }
       expect(
         await selected.evaluate((element) => {
           const browser = globalThis as unknown as {
@@ -2603,9 +2611,24 @@ test.describe("application smoke", () => {
     await expect(
       page.getByRole("heading", { name: "Moneyball", exact: true }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("tab", { name: "Shooting", selected: true }),
-    ).toBeVisible();
+    const category = page.getByRole("tab", {
+      name: "Shooting",
+      selected: true,
+    });
+    await expect(category).toBeVisible();
+    await expect(category).toHaveCSS("border-bottom-width", "0px");
+    await expect(category).not.toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
+    await category.press("End");
+    const keyboardCategory = page.getByRole("tab", {
+      name: "Results",
+      selected: true,
+    });
+    await expect(keyboardCategory).toBeFocused();
+    await expect(keyboardCategory).toHaveCSS("border-bottom-width", "0px");
+    await expect(keyboardCategory).toHaveCSS("outline-width", "2px");
     const summary = page.getByRole("region", {
       name: "Moneyball tactical summaries",
     });

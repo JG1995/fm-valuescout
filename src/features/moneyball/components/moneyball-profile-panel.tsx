@@ -84,8 +84,8 @@ function MoneyballTabs({
             tabIndex={selected ? 0 : -1}
             className={
               selected
-                ? "h-8 cursor-pointer rounded-sm border-b-2 border-primary bg-surface-container-lowest px-3 text-label-md text-on-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-                : "h-8 cursor-pointer rounded-sm border-b-2 border-transparent px-3 text-label-md text-on-surface-variant hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+                ? "h-8 cursor-pointer rounded-sm bg-surface-container-lowest px-3 text-label-md text-on-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+                : "h-8 cursor-pointer rounded-sm px-3 text-label-md text-on-surface-variant hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
             }
             onClick={() => onChange(category.id)}
           >
