@@ -1,0 +1,11 @@
+:root {
+  --font-display: "Archivo", system-ui, sans-serif;
+  --font-display-weight: 800;
+  --font-display-tracking: 0.060em;
+  --font-text: "Archivo", system-ui, sans-serif;
+  --font-text-weight: 400;
+  --font-text-tracking: 0.000em;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-mono-weight: 500;
+  --font-mono-tracking: 0.000em;
+}

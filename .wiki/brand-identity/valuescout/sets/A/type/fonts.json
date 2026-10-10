@@ -1,0 +1,38 @@
+{
+  "display": {
+    "family": "Archivo",
+    "file": "/home/jonas/.cache/brand-identity/fonts/instances/Archivo-0c29fcc8fc071391.ttf",
+    "location": {
+      "wght": 800
+    },
+    "weights": [
+      800
+    ],
+    "features": []
+  },
+  "text": {
+    "family": "Archivo",
+    "file": "/home/jonas/.cache/brand-identity/fonts/instances/Archivo-e064a79a7c6d5d28.ttf",
+    "location": {
+      "wght": 400
+    },
+    "weights": [
+      400,
+      500
+    ],
+    "features": [
+      "tnum"
+    ]
+  },
+  "mono": {
+    "family": "JetBrains Mono",
+    "file": "/home/jonas/.cache/brand-identity/fonts/instances/JetBrainsMono-fe79520512555f66.ttf",
+    "location": {
+      "wght": 500
+    },
+    "weights": [
+      500
+    ],
+    "features": []
+  }
+}

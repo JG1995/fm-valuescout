@@ -299,6 +299,8 @@ The template ships IPC commands as the frontend/backend contract. Forked project
 6. **Playwright smoke** — `./scripts/dev smoke`; CI installs Chromium and runs it when frontend or CI files change. Requires `pnpm exec playwright install chromium` once after install locally.
 7. **Bridge tests** — `./scripts/dev bridge-test`; CI runs the C# unit suite on Windows when bridge or CI files change. Full FM attach tests remain manual on Windows.
 
+The generated brand archive in `.wiki/brand-identity/` is excluded from Biome; secretlint still scans it.
+
 `mutate` remains unconfigured until mutation targets exist.
 
 ### 3.3 Git hooks

@@ -1,0 +1,213 @@
+{
+  "schema": "brand-identity/competitors@1",
+  "measuredAt": "2026-10-08T17:17:07.070Z",
+  "note": "Measured hex values approximate public websites; roles are unconfirmed proposals.",
+  "sites": [
+    {
+      "url": "https://geniescout.com/",
+      "host": "geniescout.com",
+      "status": "ok",
+      "title": "FM Genie Scout",
+      "siteName": null,
+      "description": "Football Manager Genie Scout is the world's favourite scouting companion tailored to your own Football Manager saved games. A free app for Windows by Eugene Tarabanovsky.",
+      "lang": "en",
+      "themeColor": null,
+      "darkModeSupport": false,
+      "roles": {
+        "background": "#ffffff",
+        "text": "#000000",
+        "primary": "#0000ee"
+      },
+      "confidence": {
+        "background": 0.97,
+        "text": 0.69,
+        "primary": 0.15
+      },
+      "notes": [],
+      "brandColors": [
+        "#0000ee"
+      ],
+      "topColors": [
+        {
+          "hex": "#ffffff",
+          "oklch": "oklch(100.0% 0.000 90)",
+          "score": 100,
+          "areaShare": 1,
+          "roles": [
+            "background"
+          ]
+        },
+        {
+          "hex": "#000000",
+          "oklch": "oklch(0.0% 0.000 0)",
+          "score": 16.7,
+          "areaShare": 0,
+          "roles": [
+            "text"
+          ]
+        },
+        {
+          "hex": "#0000ee",
+          "oklch": "oklch(42.9% 0.297 264)",
+          "score": 12.19,
+          "areaShare": 0,
+          "roles": [
+            "primary"
+          ]
+        }
+      ],
+      "nHues": 1,
+      "hues": [
+        264
+      ],
+      "lightnessRange": [
+        0,
+        1
+      ],
+      "strategy": "computed",
+      "fonts": {
+        "heading": "arial, sans-serif",
+        "body": "arial, sans-serif",
+        "paragraph": "arial, sans-serif",
+        "loaded": []
+      },
+      "screenshot": "competitors/geniescout-com.png"
+    },
+    {
+      "url": "https://www.fmscout.com/",
+      "host": "fmscout.com",
+      "status": "ok",
+      "title": "FM Scout - Football Manager Finest Community",
+      "siteName": "FM Scout",
+      "description": "Home of Football Manager tools (Genie Scout, FMSE, MacAssistant) and FM scouting. Your resource for Football Manager wonderkids, tactics, guides and graphics.",
+      "lang": "en",
+      "themeColor": null,
+      "darkModeSupport": false,
+      "roles": {
+        "background": "#ffffff",
+        "surface": "#eeeeee",
+        "surfaceAlt": "#d9d9d9",
+        "border": "#cacaca",
+        "text": "#888888",
+        "textMuted": "#aaaaaa",
+        "primary": "#e3042e",
+        "onPrimary": "#ffffff",
+        "accent": "#99cc33",
+        "link": "#000000"
+      },
+      "confidence": {
+        "background": 0.71,
+        "surface": 0.9,
+        "surfaceAlt": 0.4,
+        "border": 0.81,
+        "text": 0.85,
+        "textMuted": 0.69,
+        "primary": 0.4,
+        "onPrimary": 0.74,
+        "accent": 0.32,
+        "link": 0.74
+      },
+      "notes": [],
+      "brandColors": [
+        "#e3042e",
+        "#99cc33"
+      ],
+      "topColors": [
+        {
+          "hex": "#ffffff",
+          "oklch": "oklch(100.0% 0.000 90)",
+          "score": 166.58,
+          "areaShare": 0.426,
+          "roles": [
+            "background",
+            "onPrimary"
+          ]
+        },
+        {
+          "hex": "#eeeeee",
+          "oklch": "oklch(94.9% 0.000 90)",
+          "score": 139.56,
+          "areaShare": 0.3766,
+          "roles": [
+            "surface"
+          ]
+        },
+        {
+          "hex": "#000000",
+          "oklch": "oklch(0.0% 0.000 0)",
+          "score": 99.62,
+          "areaShare": 0,
+          "roles": [
+            "link"
+          ]
+        },
+        {
+          "hex": "#d9d9d9",
+          "oklch": "oklch(88.5% 0.000 90)",
+          "score": 26.91,
+          "areaShare": 0.0756,
+          "roles": [
+            "surfaceAlt"
+          ]
+        },
+        {
+          "hex": "#4e5667",
+          "oklch": "oklch(45.3% 0.030 265)",
+          "score": 24.97,
+          "areaShare": 0.0561,
+          "roles": []
+        },
+        {
+          "hex": "#cacaca",
+          "oklch": "oklch(83.9% 0.000 90)",
+          "score": 24.1,
+          "areaShare": 0,
+          "roles": [
+            "border"
+          ]
+        },
+        {
+          "hex": "#888888",
+          "oklch": "oklch(62.7% 0.000 90)",
+          "score": 16.56,
+          "areaShare": 0,
+          "roles": [
+            "text"
+          ]
+        },
+        {
+          "hex": "#444444",
+          "oklch": "oklch(38.7% 0.000 90)",
+          "score": 15.46,
+          "areaShare": 0.0148,
+          "roles": []
+        }
+      ],
+      "nHues": 5,
+      "hues": [
+        108,
+        218,
+        170,
+        23,
+        276
+      ],
+      "lightnessRange": [
+        0,
+        1
+      ],
+      "strategy": "computed",
+      "fonts": {
+        "heading": "\"Helvetica Neue\", Helvetica, Roboto, Arial, sans-serif",
+        "body": "Arial, sans-serif",
+        "paragraph": "Arial, sans-serif",
+        "loaded": [
+          "Open Sans 400 normal",
+          "Open Sans 600 normal",
+          "Open Sans 700 normal"
+        ]
+      },
+      "screenshot": "competitors/fmscout-com.png"
+    }
+  ],
+  "errors": []
+}

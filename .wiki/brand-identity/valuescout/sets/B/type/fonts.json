@@ -1,0 +1,40 @@
+{
+  "display": {
+    "family": "Sofia Sans Condensed",
+    "file": "/home/jonas/.cache/brand-identity/fonts/instances/SofiaSansCondensed-59baa52965b38f78.ttf",
+    "location": {
+      "wght": 800
+    },
+    "weights": [
+      800
+    ],
+    "features": []
+  },
+  "text": {
+    "family": "Barlow",
+    "file": "/home/jonas/.cache/brand-identity/fonts/google/ofl/barlow/Barlow-Regular.ttf",
+    "location": {
+      "wght": 400
+    },
+    "weights": [
+      400,
+      500,
+      600
+    ],
+    "features": [
+      "tnum"
+    ]
+  },
+  "mono": {
+    "family": "Space Mono",
+    "file": "/home/jonas/.cache/brand-identity/fonts/google/ofl/spacemono/SpaceMono-Regular.ttf",
+    "location": {
+      "wght": 400
+    },
+    "weights": [
+      400,
+      700
+    ],
+    "features": []
+  }
+}

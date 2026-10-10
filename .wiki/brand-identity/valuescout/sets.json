@@ -1,0 +1,441 @@
+{
+  "schema": "brand-identity/sets@1",
+  "sets": [
+    {
+      "identity": {
+        "set": {
+          "id": "A",
+          "name": "Signal",
+          "recommended": true,
+          "mechanism": "A blip on the night pitch: a dark instrument field, wide tracked capitals set like scoreboard fine print, and exactly one lit green mark.",
+          "expression_move": "The signal-green blip is the only saturated colour anywhere.",
+          "differs_by": "The competitor shelf is community-forum red and unstyled Arial; Signal reads as an instrument — dark, quiet, one lit mark — not as a website theme."
+        },
+        "axes": {
+          "quiet_loud": -1,
+          "friend_authority": 1,
+          "warm_cool": -2,
+          "classic_contemporary": 1
+        },
+        "type": {
+          "pairing_mode": "data-face",
+          "display": {
+            "family": "Archivo",
+            "source": "google",
+            "license": "OFL-1.1",
+            "weights": [800],
+            "location": { "wght": 800 },
+            "features": [],
+            "case": "upper",
+            "tracking": 60,
+            "fallback": "system-ui, sans-serif",
+            "file": null
+          },
+          "text": {
+            "family": "Archivo",
+            "source": "google",
+            "license": "OFL-1.1",
+            "weights": [400, 500],
+            "location": { "wght": 400 },
+            "features": ["tnum"],
+            "case": "as-is",
+            "tracking": 0,
+            "fallback": "system-ui, sans-serif",
+            "file": null
+          },
+          "mono": {
+            "family": "JetBrains Mono",
+            "source": "google",
+            "license": "OFL-1.1",
+            "weights": [500],
+            "location": { "wght": 500 },
+            "features": [],
+            "case": "as-is",
+            "tracking": 0,
+            "fallback": "ui-monospace, monospace",
+            "file": null
+          }
+        },
+        "logo": {
+          "type": "symbol+wordmark",
+          "concept": "The pitch seen from above at night: the ring, the halfway line, and one lit dot — the player worth your time.",
+          "symbol": "logo/symbol.svg",
+          "wordmark": {
+            "text": "ValueScout",
+            "role": "display",
+            "location": null,
+            "tracking": 60,
+            "case": "upper"
+          },
+          "monogram": null,
+          "lockups": ["horizontal", "stacked"],
+          "colors": {
+            "pitch": "text",
+            "centerline": "text",
+            "blip": "accent",
+            "wordmark": "text"
+          },
+          "tags": ["abstract-geometric"],
+          "misuse": [
+            { "do": "stretch" },
+            { "do": "recolour" },
+            { "do": "low-contrast" },
+            { "do": "outline" },
+            { "svg": "logo/misuse-1.svg", "label": "The blip never sits on the centerline — the player is found off it" },
+            { "svg": "logo/misuse-2.svg", "label": "Never fill the pitch: the mark is a line, not a surface" }
+          ],
+          "clear_space": { "unit": "cap-height", "multiple": 1, "inferred": true },
+          "min_size": { "px": 16, "mm": 5 }
+        },
+        "card": { "ground": "dark" },
+        "palette_build": {
+          "strategy": null,
+          "accent": "#45d08a",
+          "light_bg": "#f2f4f5",
+          "dark_bg": "#0f151d",
+          "neutral_tint": "#232b3a",
+          "neutral_chroma": 0.012,
+          "extra": []
+        },
+        "defaults_used": [],
+        "rationale": [
+          {
+            "claim": "The product is a night-shift data instrument: dark ground with one warm-lit mark matches a companion window read at night beside Football Manager.",
+            "evidence": "judgement",
+            "source": "brief.audience"
+          },
+          {
+            "claim": "Green marks 'found value' in this brand; it doubles as the best-fit tier, so brand accent and product semantics point the same way.",
+            "evidence": "judgement",
+            "source": "wiki/DESIGN.md score ramp"
+          },
+          {
+            "claim": "Competitor primaries measured: geniescout.com unstyled #0000ee on Arial, fmscout.com #e3042e on Helvetica — the dark/cool region with a green accent is empty on the shelf.",
+            "evidence": "measured",
+            "source": "site/competitors.json"
+          }
+        ]
+      },
+      "palette": {
+        "schema": "brand-identity/palette@1",
+        "name": "Signal",
+        "direction": "Night-slate ground with one signal-green blip.",
+        "brand": [
+          {
+            "id": "brand-1",
+            "name": "Night Slate",
+            "hex": "#0f151d",
+            "source": "chosen",
+            "locked": true,
+            "usage": "dark ground, app icon, print covers"
+          },
+          {
+            "id": "brand-2",
+            "name": "Signal Green",
+            "hex": "#45d08a",
+            "source": "chosen",
+            "locked": true,
+            "usage": "the blip; highlights and the best-fit score on dark grounds"
+          }
+        ],
+        "feels": ["quiet", "precise", "alert"]
+      },
+      "symbol_svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><g id=\"pitch\" data-color=\"text\"><rect id=\"pitch-outer\" x=\"6\" y=\"28\" width=\"88\" height=\"44\" rx=\"12\"/><rect id=\"pitch-inner\" data-op=\"subtract\" x=\"14\" y=\"36\" width=\"72\" height=\"28\" rx=\"6\"/></g><g id=\"centerline\" data-color=\"text\"><rect id=\"centerline-stroke\" x=\"47\" y=\"36\" width=\"6\" height=\"28\"/></g><g id=\"blip\" data-color=\"accent\"><circle id=\"blip-dot\" cx=\"67\" cy=\"50\" r=\"7.5\"/></g></svg>\n",
+      "symbol_small_svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><g id=\"pitch\" data-color=\"text\"><rect id=\"pitch-outer\" x=\"8\" y=\"26\" width=\"84\" height=\"48\" rx=\"14\"/><rect id=\"pitch-inner\" data-op=\"subtract\" x=\"18\" y=\"36\" width=\"64\" height=\"28\" rx=\"7\"/></g><g id=\"centerline\" data-color=\"text\"><rect id=\"centerline-stroke\" x=\"47\" y=\"36\" width=\"6\" height=\"28\"/></g><g id=\"blip\" data-color=\"accent\"><circle id=\"blip-dot\" cx=\"64\" cy=\"50\" r=\"9\"/></g></svg>\n",
+      "wordmark_detail_svg": null
+    },
+    {
+      "identity": {
+        "set": {
+          "id": "B",
+          "name": "Kickoff",
+          "recommended": false,
+          "mechanism": "Chalk lines on turf: a saturated pitch-green ground, condensed wide-shouting capitals in chalk, and one corner-flag yellow.",
+          "expression_move": "The green ground itself is the loud part — type and mark stay plain.",
+          "differs_by": "Forum red and badge-and-crest club identity are the category habit; Kickoff borrows the pitch instead — line and turf, no crest."
+        },
+        "axes": {
+          "quiet_loud": 2,
+          "friend_authority": -1,
+          "warm_cool": 0,
+          "classic_contemporary": 1
+        },
+        "type": {
+          "pairing_mode": "contrast",
+          "display": {
+            "family": "Sofia Sans Condensed",
+            "source": "google",
+            "license": "OFL-1.1",
+            "weights": [800],
+            "location": { "wght": 800 },
+            "features": [],
+            "case": "upper",
+            "tracking": 0,
+            "fallback": "system-ui, sans-serif",
+            "file": null
+          },
+          "text": {
+            "family": "Barlow",
+            "source": "google",
+            "license": "OFL-1.1",
+            "weights": [400, 500, 600],
+            "location": { "wght": 400 },
+            "features": ["tnum"],
+            "case": "as-is",
+            "tracking": 0,
+            "fallback": "system-ui, sans-serif",
+            "file": null
+          },
+          "mono": {
+            "family": "Space Mono",
+            "source": "google",
+            "license": "OFL-1.1",
+            "weights": [400, 700],
+            "location": { "wght": 400 },
+            "features": [],
+            "case": "as-is",
+            "tracking": 0,
+            "fallback": "ui-monospace, monospace",
+            "file": null
+          }
+        },
+        "logo": {
+          "type": "symbol+wordmark",
+          "concept": "The corner flag: the one piece of kit that exists in every football ground and nowhere else — a line, not a crest.",
+          "symbol": "logo/symbol.svg",
+          "wordmark": {
+            "text": "ValueScout",
+            "role": "display",
+            "location": null,
+            "tracking": 0,
+            "case": "upper"
+          },
+          "monogram": null,
+          "lockups": ["horizontal", "stacked"],
+          "colors": {
+            "pole": "text",
+            "pennant": "accent",
+            "wordmark": "text"
+          },
+          "tags": ["literal-object"],
+          "clear_space": { "unit": "cap-height", "multiple": 1, "inferred": true },
+          "min_size": { "px": 16, "mm": 5 }
+        },
+        "card": { "ground": "brand-1" },
+        "palette_build": {
+          "strategy": null,
+          "accent": "#ffd23f",
+          "light_bg": "#f4f1e6",
+          "dark_bg": "#0e2b1d",
+          "neutral_tint": "#d8e8dc",
+          "neutral_chroma": 0.02,
+          "extra": []
+        },
+        "defaults_used": [
+          {
+            "id": "cream-ground",
+            "why": "Chalk #f4f1e6 is a line-white from the turf board, used as paper only; the set's working ground is turf green, not a cream field. Kept because the document side of the pitch needs a non-white paper."
+          },
+          {
+            "id": "logo-literal-object",
+            "why": "The corner flag is football-specific furniture absent from the competitor shelf (forum red + badges), keeps a second reading as a plain triangle at 16 px, and names what the product is for without becoming a club crest."
+          }
+        ],
+        "rationale": [
+          {
+            "claim": "Corner flag over crest: football clubs own crests, a companion tool should borrow the game's neutral furniture instead of imitating a club badge.",
+            "evidence": "judgement",
+            "source": "brief.sector"
+          },
+          {
+            "claim": "Green + yellow is a well-rated pairing direction; the green is the ground (large, quiet chroma) and yellow stays small, so the accent does not fight it.",
+            "evidence": "practice",
+            "source": "references/color.md"
+          },
+          {
+            "claim": "Condensed display is the sports-sector code, which is exactly what this set wants — it is declared as a deliberate fit, and Sofia Sans Condensed is not the usual Anton/Barlow Condensed shelf.",
+            "evidence": "judgement",
+            "source": "brief.audience"
+          }
+        ]
+      },
+      "palette": {
+        "schema": "brand-identity/palette@1",
+        "name": "Kickoff",
+        "direction": "Turf green ground, chalk white, one corner-flag yellow.",
+        "brand": [
+          {
+            "id": "brand-1",
+            "name": "Turf Green",
+            "hex": "#1a5c39",
+            "source": "chosen",
+            "locked": true,
+            "usage": "primary surfaces, dark ground"
+          },
+          {
+            "id": "brand-2",
+            "name": "Chalk",
+            "hex": "#f4f1e6",
+            "source": "chosen",
+            "locked": true,
+            "usage": "type and lines on green"
+          },
+          {
+            "id": "brand-3",
+            "name": "Corner Yellow",
+            "hex": "#ffd23f",
+            "source": "chosen",
+            "locked": true,
+            "usage": "the pennant; highlights only"
+          }
+        ],
+        "feels": ["matchday", "fresh", "direct"]
+      },
+      "symbol_svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><g id=\"pole\" data-color=\"text\"><rect id=\"pole-stroke\" x=\"28\" y=\"12\" width=\"7\" height=\"76\"/></g><g id=\"pennant\" data-color=\"accent\"><polygon id=\"pennant-sail\" points=\"35,12 84,25 35,38\"/></g></svg>\n",
+      "symbol_small_svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><g id=\"pennant\" data-color=\"accent\"><polygon id=\"pennant-sail\" points=\"16,26 84,42 16,58\"/></g></svg>\n",
+      "wordmark_detail_svg": null
+    },
+    {
+      "identity": {
+        "set": {
+          "id": "C",
+          "name": "Ledger",
+          "recommended": false,
+          "mechanism": "The scouting report: slab capitals on paper, an administrative sans for the small print, scores typed in typewriter mono — and one red stamp square.",
+          "expression_move": "The red stamp square is the only saturated mark; everything else is ink on paper.",
+          "differs_by": "Where the category is dark tool chrome or forum red, the Ledger reads like a printed official report — authority from paper, not from darkness."
+        },
+        "axes": {
+          "quiet_loud": -2,
+          "friend_authority": 2,
+          "warm_cool": 1,
+          "classic_contemporary": -2
+        },
+        "type": {
+          "pairing_mode": "contrast",
+          "display": {
+            "family": "Zilla Slab",
+            "source": "google",
+            "license": "OFL-1.1",
+            "weights": [700],
+            "location": { "wght": 700 },
+            "features": [],
+            "case": "as-is",
+            "tracking": -10,
+            "fallback": "Rockwell, Georgia, serif",
+            "file": null
+          },
+          "text": {
+            "family": "Public Sans",
+            "source": "google",
+            "license": "OFL-1.1",
+            "weights": [400, 500, 600],
+            "location": { "wght": 400 },
+            "features": ["tnum"],
+            "case": "as-is",
+            "tracking": 0,
+            "fallback": "system-ui, sans-serif",
+            "file": null
+          },
+          "mono": {
+            "family": "Courier Prime",
+            "source": "google",
+            "license": "OFL-1.1",
+            "weights": [400, 700],
+            "location": { "wght": 400 },
+            "features": [],
+            "case": "as-is",
+            "tracking": 0,
+            "fallback": "ui-monospace, monospace",
+            "file": null
+          }
+        },
+        "logo": {
+          "type": "wordmark",
+          "concept": "The name written into the report, closed with one stamped square — the grade at the end of the line.",
+          "symbol": null,
+          "wordmark": {
+            "text": "ValueScout",
+            "role": "display",
+            "location": null,
+            "tracking": -10,
+            "case": "as-is"
+          },
+          "monogram": null,
+          "lockups": ["horizontal"],
+          "colors": {
+            "wordmark": "text",
+            "stamp": "accent"
+          },
+          "tags": [],
+          "clear_space": { "unit": "cap-height", "multiple": 1, "inferred": true },
+          "min_size": { "px": 24, "mm": 8 }
+        },
+        "card": null,
+        "palette_build": {
+          "strategy": null,
+          "accent": "#bf3a2b",
+          "light_bg": "#f7f4ec",
+          "dark_bg": "#171c24",
+          "neutral_tint": "#e6dfd0",
+          "neutral_chroma": 0.015,
+          "extra": []
+        },
+        "defaults_used": [
+          {
+            "id": "cream-ground",
+            "why": "The scouting report was literally a paper document in this product's history; the paper is low-chroma, the ink is slate, and the accent is a stamp — the set is document, not the cream+terracotta+gold cluster."
+          },
+          {
+            "id": "terracotta-clay",
+            "why": "Stamp red #bf3a2b is a grade stamp drawn as a 30-unit square once per lockup; it never fills a surface or a band, so it carries the stamp's function rather than the terracotta-clay role."
+          }
+        ],
+        "rationale": [
+          {
+            "claim": "Scouting predates software: the scouting report was paper with a typed rating. The set keeps that document's structure — slab name, administrative small print, typewriter figures.",
+            "evidence": "judgement",
+            "source": "brief.sector"
+          },
+          {
+            "claim": "Light ground is the deliberate opposite of the sector's dark-tool default; it stays legible on the desktop next to Football Manager's dark UI because it is low-chroma paper, not white.",
+            "evidence": "judgement",
+            "source": "references/color.md"
+          },
+          {
+            "claim": "Courier Prime gives figures a typed-in, archive feel; monospaced faces are tabular by construction, so the numbers gate is met without a feature.",
+            "evidence": "practice",
+            "source": "references/type.md"
+          }
+        ]
+      },
+      "palette": {
+        "schema": "brand-identity/palette@1",
+        "name": "Ledger",
+        "direction": "Ink on report paper, one red stamp.",
+        "brand": [
+          {
+            "id": "brand-1",
+            "name": "Report Ink",
+            "hex": "#232e3c",
+            "source": "chosen",
+            "locked": true,
+            "usage": "wordmark, headings, text"
+          },
+          {
+            "id": "brand-2",
+            "name": "Stamp Red",
+            "hex": "#bf3a2b",
+            "source": "chosen",
+            "locked": true,
+            "usage": "the stamp square; emphasis only"
+          }
+        ],
+        "feels": ["official", "sturdy", "archival"]
+      },
+      "symbol_svg": null,
+      "symbol_small_svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><g id=\"stamp-tile\" data-color=\"primary\"><rect id=\"tile\" x=\"10\" y=\"10\" width=\"80\" height=\"80\" rx=\"12\"/><polygon id=\"v-cut\" data-op=\"subtract\" points=\"28,28 42,28 50,56 58,28 72,28 57,74 43,74\"/></g></svg>\n",
+      "wordmark_detail_svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect id=\"stamp\" x=\"770\" y=\"70\" width=\"30\" height=\"30\" data-color=\"accent\"/></svg>\n"
+    }
+  ]
+}

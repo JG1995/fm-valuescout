@@ -1,0 +1,17 @@
+[
+  {
+    "sha256": "a15c2690781fa8e9e6f5801509c290e156dab240340385c118ba6606c8501309",
+    "anchors": 7,
+    "defect": ""
+  },
+  {
+    "sha256": "e58a7e8a7d8cd24cead00ad05d8a5a1ff143fa202c77f12007238eeadbdd3238",
+    "anchors": 7,
+    "defect": ""
+  },
+  {
+    "sha256": "12852f20c8a5eb2a987787a704ac1ff55054e338aa2a75dee552c991ec7bc575",
+    "anchors": 7,
+    "defect": ""
+  }
+]

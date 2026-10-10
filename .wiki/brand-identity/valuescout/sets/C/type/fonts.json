@@ -1,0 +1,40 @@
+{
+  "display": {
+    "family": "Zilla Slab",
+    "file": "/home/jonas/.cache/brand-identity/fonts/google/ofl/zillaslab/ZillaSlab-Bold.ttf",
+    "location": {
+      "wght": 700
+    },
+    "weights": [
+      700
+    ],
+    "features": []
+  },
+  "text": {
+    "family": "Public Sans",
+    "file": "/home/jonas/.cache/brand-identity/fonts/instances/PublicSans-62f9605ba2a8f4d0.ttf",
+    "location": {
+      "wght": 400
+    },
+    "weights": [
+      400,
+      500,
+      600
+    ],
+    "features": [
+      "tnum"
+    ]
+  },
+  "mono": {
+    "family": "Courier Prime",
+    "file": "/home/jonas/.cache/brand-identity/fonts/google/ofl/courierprime/CourierPrime-Regular.ttf",
+    "location": {
+      "wght": 400
+    },
+    "weights": [
+      400,
+      700
+    ],
+    "features": []
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "schema": "brand-identity/brief@1",
+  "brand": "ValueScout",
+  "tagline": "The lens on your live save.",
+  "site": null,
+  "languages": [
+    "en"
+  ],
+  "doc_lang": "en",
+  "numbers": true,
+  "components": {
+    "logo": "new",
+    "type": "new",
+    "palette": "new"
+  },
+  "sources": {},
+  "sets": 3,
+  "sector": "sports data analytics · Football Manager companion desktop app",
+  "audience": "analytical Football Manager players; solo managers who scout, plan squads and run tactics from dense data tables at night",
+  "attributes": [
+    "instrument-precise",
+    "scout's-eye",
+    "quietly confident"
+  ],
+  "competitors": [
+    "FM Genie Scout",
+    "FM SuperScout"
+  ],
+  "axes": [],
+  "copy": {
+    "sentence": {
+      "en": "ValueScout reads your running Football Manager save and tells you who fits your system right now."
+    },
+    "nav": [
+      "Players",
+      "Staff",
+      "Club",
+      "Planner"
+    ],
+    "cta": "Load Data"
+  }
+}
