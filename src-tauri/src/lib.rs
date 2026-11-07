@@ -70,6 +70,7 @@ pub fn run() {
             features::memory_read::commands::remove_bridge_plugin,
             features::snapshot::commands::list_saves,
             features::snapshot::commands::create_save,
+            features::snapshot::commands::set_save_file_link,
             features::snapshot::commands::rename_save,
             features::snapshot::commands::set_active_save,
             features::snapshot::commands::list_snapshots,

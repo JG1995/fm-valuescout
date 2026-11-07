@@ -202,6 +202,7 @@ describe("Settings", () => {
         isActive: true,
         createdAtUtc: "2026-07-29T00:00:00.000Z",
         updatedAtUtc: "2026-07-29T00:00:00.000Z",
+        linkedSaveFileName: null,
       },
     ]);
 

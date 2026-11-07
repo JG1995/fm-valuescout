@@ -77,6 +77,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         isActive: true,
         createdAtUtc: "2026-07-28T12:00:00.000Z",
         updatedAtUtc: "2026-07-28T12:00:00.000Z",
+        linkedSaveFileName: null,
       }];
       let snapshots = snapshotHistoryEnabled ? [
         {
@@ -750,10 +751,27 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               isActive: false,
               createdAtUtc: "2026-07-28T16:00:00.000Z",
               updatedAtUtc: "2026-07-28T16:00:00.000Z",
+              linkedSaveFileName: args?.saveFilePath
+                ? args.saveFilePath.split(/[\\\\/]/).pop()
+                : null,
             };
             nextSaveId += 1;
             saves.push(created);
             return created;
+          }
+
+          if (cmd === "set_save_file_link") {
+            const index = saves.findIndex((save) =>
+              save.id === args?.saveId && save.contextToken === args?.contextToken
+            );
+            if (index < 0) throw "Save changed or no longer exists";
+            const updated = {
+              ...saves[index],
+              linkedSaveFileName: args?.path ? args.path.split(/[\\\\/]/).pop() : null,
+              updatedAtUtc: "2026-07-28T16:06:00.000Z",
+            };
+            saves[index] = updated;
+            return updated;
           }
 
           if (cmd === "rename_save") {
@@ -876,6 +894,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   isActive: true,
                   createdAtUtc: "2026-07-28T16:20:00.000Z",
                   updatedAtUtc: "2026-07-28T16:20:00.000Z",
+                  linkedSaveFileName: null,
                 }];
               } else {
                 saves = saves.map((save, index) => ({
