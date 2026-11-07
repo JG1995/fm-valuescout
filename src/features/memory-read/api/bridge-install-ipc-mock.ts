@@ -7,7 +7,7 @@ export type BridgeInstallIpcMockMode =
   | "bepinexMissing";
 
 const DEFAULT_PLUGINS_PATH =
-  "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\BepInEx\\plugins";
+  "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 27\\BepInEx\\plugins";
 
 const DEFAULT_INSTALL_STATUS: BridgeInstallStatus = {
   pluginsPath: DEFAULT_PLUGINS_PATH,
@@ -57,7 +57,7 @@ export function resolveBridgeInstallStatusIpcMock(): BridgeInstallStatus {
   if (installMockMode === "unsupportedPlatform") {
     throw {
       kind: "unsupportedPlatform",
-      message: "FM26 bridge plugin install requires Windows",
+      message: "FM27 bridge plugin install requires Windows",
     };
   }
 
@@ -68,14 +68,14 @@ export function resolveInstallBridgePluginIpcMock(): BridgeInstallStatus {
   if (installMockMode === "unsupportedPlatform") {
     throw {
       kind: "unsupportedPlatform",
-      message: "FM26 bridge plugin install requires Windows",
+      message: "FM27 bridge plugin install requires Windows",
     };
   }
 
   if (installMockMode === "bepinexMissing") {
     throw {
       kind: "bepinexMissing",
-      message: "BepInEx not found at C:\\Steam\\Football Manager 26\\BepInEx",
+      message: "BepInEx not found at C:\\Steam\\Football Manager 27\\BepInEx",
     };
   }
 
@@ -91,7 +91,7 @@ export function resolveRemoveBridgePluginIpcMock(): BridgeInstallStatus {
   if (installMockMode === "unsupportedPlatform") {
     throw {
       kind: "unsupportedPlatform",
-      message: "FM26 bridge plugin install requires Windows",
+      message: "FM27 bridge plugin install requires Windows",
     };
   }
 

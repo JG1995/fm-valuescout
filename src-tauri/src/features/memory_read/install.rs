@@ -1,4 +1,4 @@
-//! Steam FM26 BepInEx plugin path resolution and install-status inspection.
+//! Steam FM27 BepInEx plugin path resolution and install-status inspection.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,7 +10,7 @@ pub const PLUGIN_DLL_FILE_NAME: &str = "FmDataBridge.dll";
 /// Path under `bundle.resources` — must match `tauri.conf.json` entry.
 pub const BUNDLED_PLUGIN_DLL_RESOURCE: &str = "resources/FmDataBridge.dll";
 #[cfg_attr(not(windows), allow(dead_code))]
-pub const FM26_STEAM_FOLDER_NAME: &str = "Football Manager 26";
+pub const FM_STEAM_FOLDER_NAME: &str = "Football Manager 27";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,11 +47,11 @@ impl std::fmt::Display for BridgeInstallError {
 
 impl std::error::Error for BridgeInstallError {}
 
-/// Join `…/steamapps/common/Football Manager 26/BepInEx/plugins`.
+/// Join `…/steamapps/common/Football Manager 27/BepInEx/plugins`.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn plugins_path_from_steam_common(steam_common: &Path) -> PathBuf {
     steam_common
-        .join(FM26_STEAM_FOLDER_NAME)
+        .join(FM_STEAM_FOLDER_NAME)
         .join("BepInEx")
         .join("plugins")
 }
@@ -61,7 +61,7 @@ fn default_steam_common_dir() -> PathBuf {
     PathBuf::from(r"C:\Program Files (x86)\Steam\steamapps\common")
 }
 
-/// Resolves the FM26 BepInEx plugins directory (Windows only).
+/// Resolves the FM27 BepInEx plugins directory (Windows only).
 ///
 /// Resolution order mirrors `./scripts/dev bridge-install`:
 /// `FM_BRIDGE_PLUGINS`, then `FM_STEAM_ROOT/BepInEx/plugins`, then the default Steam path.
@@ -86,7 +86,7 @@ pub fn resolve_steam_plugins_path() -> Result<PathBuf, BridgeInstallError> {
     #[cfg(not(windows))]
     {
         Err(BridgeInstallError::UnsupportedPlatform(
-            "FM26 bridge plugin install requires Windows".to_string(),
+            "FM27 bridge plugin install requires Windows".to_string(),
         ))
     }
 }
@@ -205,11 +205,11 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn plugins_path_joins_steam_common_to_fm26_bepinex_plugins() {
+    fn plugins_path_joins_steam_common_to_fm27_bepinex_plugins() {
         let steam_common = PathBuf::from("C:/Steam/steamapps/common");
         assert_eq!(
             plugins_path_from_steam_common(&steam_common),
-            PathBuf::from("C:/Steam/steamapps/common/Football Manager 26/BepInEx/plugins")
+            PathBuf::from("C:/Steam/steamapps/common/Football Manager 27/BepInEx/plugins")
         );
     }
 
@@ -232,7 +232,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let plugins = temp_dir
             .path()
-            .join("Football Manager 26")
+            .join("Football Manager 27")
             .join("BepInEx")
             .join("plugins");
 
@@ -264,7 +264,7 @@ mod tests {
         let actual = resolve_steam_plugins_path().expect("resolve on Windows");
         assert_eq!(actual, expected);
         assert!(actual.ends_with("BepInEx\\plugins"));
-        assert!(actual.to_string_lossy().contains(FM26_STEAM_FOLDER_NAME));
+        assert!(actual.to_string_lossy().contains(FM_STEAM_FOLDER_NAME));
     }
 
     #[cfg(not(windows))]
@@ -335,7 +335,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let plugins = temp_dir
             .path()
-            .join("Football Manager 26")
+            .join("Football Manager 27")
             .join("BepInEx")
             .join("plugins");
         let source = write_fixture_dll(temp_dir.path(), b"fixture");

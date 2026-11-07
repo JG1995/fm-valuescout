@@ -598,9 +598,9 @@ pub fn candidate_paths(app: &AppHandle) -> CandidatePaths {
             .path()
             .document_dir()
             .ok()
-            .map(|p| p.join("Sports Interactive/Football Manager 2026/graphics")),
+            .map(|p| p.join("Sports Interactive/Football Manager 2027/graphics")),
         onedrive: app.path().home_dir().ok().map(|p| {
-            p.join("OneDrive/Documents/Sports Interactive/Football Manager 2026/graphics")
+            p.join("OneDrive/Documents/Sports Interactive/Football Manager 2027/graphics")
         }),
     }
 }
@@ -1120,8 +1120,8 @@ mod tests {
         std::fs::create_dir_all(&d).unwrap();
         std::fs::create_dir_all(&o).unwrap();
         let p = CandidatePaths {
-            documents: Some(d.join("Sports Interactive/Football Manager 2026/graphics")),
-            onedrive: Some(o.join("Football Manager 2026/graphics")),
+            documents: Some(d.join("Sports Interactive/Football Manager 2027/graphics")),
+            onedrive: Some(o.join("Football Manager 2027/graphics")),
         };
         assert_eq!(candidate_start_from(&p), Some(d));
     }

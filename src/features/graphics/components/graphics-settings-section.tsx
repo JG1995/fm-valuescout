@@ -126,7 +126,7 @@ export function GraphicsSettingsSection() {
         >{`Generation ${data.generation}`}</StatusChip>
       </div>
       <p className="mt-3 max-w-prose text-body-sm text-on-surface-variant">
-        Local FM26 graphics are used for portraits and club logos. The app keeps
+        Local FM27 graphics are used for portraits and club logos. The app keeps
         the selected root private and never displays its path.
       </p>
       <p className="mt-2 text-body-sm text-on-surface-variant">

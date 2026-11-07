@@ -161,7 +161,7 @@ fn rejects_stale_tokens_including_a_reused_numeric_snapshot_id() {
 }
 
 #[test]
-fn loads_fm26_candidate_scores_from_current_shortlist_only() {
+fn loads_fm27_candidate_scores_from_current_shortlist_only() {
     let (_temp_dir, conn, _save_token) = open();
     insert_current_snapshot(&conn, 1);
     insert_staff(&conn, 1, "Fitness", Some("Club A"));

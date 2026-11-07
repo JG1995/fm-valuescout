@@ -29,7 +29,7 @@ Commands:
   mutate <target...>  Run configured mutation checks (not configured yet).
   bridge-install    Build bridge/ with dotnet and copy FmDataBridge.dll into FM BepInEx/plugins.
                     Path: FM_BRIDGE_PLUGINS, or FM_STEAM_ROOT/BepInEx/plugins, or the default
-                    Steam FM26 path under /mnt/c (WSL).
+                    Steam FM27 path under /mnt/c (WSL).
   package-windows   Build the locked bridge and one unsigned Windows x64 NSIS installer locally.
                     Write the installer and SHA-256 sidecar under .release/windows/ without publishing.
   release-metadata [latest-tag|none] [release-intent]
@@ -346,16 +346,16 @@ resolve_bridge_plugins_dir() {
   fi
 
   local default_wsl
-  default_wsl="/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 26/BepInEx/plugins"
+  default_wsl="/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 27/BepInEx/plugins"
   if [[ -d "$default_wsl" ]]; then
     printf '%s\n' "$default_wsl"
     return 0
   fi
 
   printf 'Could not resolve BepInEx plugins directory.\n' >&2
-  printf 'Set FM_BRIDGE_PLUGINS to the plugins folder, or FM_STEAM_ROOT to the FM26 install.\n' >&2
+  printf 'Set FM_BRIDGE_PLUGINS to the plugins folder, or FM_STEAM_ROOT to the FM27 install.\n' >&2
   printf 'Example (WSL):\n' >&2
-  printf '  export FM_STEAM_ROOT="/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 26"\n' >&2
+  printf '  export FM_STEAM_ROOT="/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 27"\n' >&2
   exit 66
 }
 

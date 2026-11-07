@@ -72,7 +72,7 @@ export function BridgeStatusPanel() {
         </span>
       </p>
       <p className="mt-2 max-w-prose text-body-sm text-on-surface-variant">
-        Keep Football Manager 26 running with the bridge plugin installed. Use
+        Keep Football Manager 27 running with the bridge plugin installed. Use
         the plugin install controls in this section or see{" "}
         <code className="font-mono text-mono-sm">bridge/README.md</code> for
         manual steps.

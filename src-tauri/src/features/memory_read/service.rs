@@ -333,7 +333,7 @@ fn local_app_data_dir() -> Result<PathBuf, BridgeStatusError> {
     #[cfg(not(windows))]
     {
         Err(BridgeStatusError::UnsupportedPlatform(
-            "FM26 memory read requires Windows".to_string(),
+            "FM27 memory read requires Windows".to_string(),
         ))
     }
 }

@@ -10,7 +10,7 @@ use super::{
     compact::{player_current_column, player_potential_column, PLAYER_METRICS_ALIAS},
 };
 
-/// FM26 dump position keys (bridge `PositionEntries`).
+/// FM27 dump position keys (bridge `PositionEntries`).
 pub const POSITION_KEYS: &[&str] = &[
     "GK", "SW", "DL", "DC", "DR", "DM", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST", "WBL", "WBR",
 ];

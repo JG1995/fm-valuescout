@@ -79,7 +79,7 @@ export function resolveBridgeStatusIpcMock() {
     },
     unsupportedPlatform: {
       kind: "unsupportedPlatform",
-      message: "FM26 memory read requires Windows",
+      message: "FM27 memory read requires Windows",
     },
     unsupportedVersion: {
       kind: "unsupportedVersion",
