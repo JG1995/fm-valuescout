@@ -26,7 +26,7 @@ type InspectionPage = {
 };
 
 const canonicalPages: readonly InspectionPage[] = [
-  { name: "dashboard", route: "/", readyText: "Placeholder." },
+  { name: "dashboard", route: "/", readyText: "Dashboard is not built yet" },
   { name: "search", route: "/search", readyText: "Player 001" },
   {
     name: "moneyball-search",

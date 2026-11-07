@@ -204,7 +204,7 @@ test.describe("application smoke", () => {
     await expect(
       main.getByRole("heading", { level: 1, name: "Dashboard" }),
     ).toBeVisible();
-    await expect(main.getByText("Placeholder.")).toBeVisible();
+    await expect(main.getByText("Dashboard is not built yet")).toBeVisible();
     await expect(main.getByRole("heading", { name: "Saves" })).toHaveCount(0);
     await expect(
       header.getByRole("combobox", { name: "Active save" }),
@@ -6034,7 +6034,7 @@ test.describe("application smoke", () => {
       });
       await page.goto("/");
       await expect(
-        page.getByText("Placeholder.", { exact: true }),
+        page.getByText("Dashboard is not built yet", { exact: true }),
       ).toBeVisible();
       await page.evaluate(`(() => {
         const original = window.__TAURI_INTERNALS__.invoke;
