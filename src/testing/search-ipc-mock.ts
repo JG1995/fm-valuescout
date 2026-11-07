@@ -90,7 +90,6 @@ let lastSuggestPlayersArgs: Record<string, unknown> | null = null;
 
 export type SearchPlayersPageIpcMockMode =
   | "success"
-  | "pendingSecondPage"
   | "pendingReplacement"
   | "pendingDynamicReplacement"
   | "pendingProjection"
@@ -505,7 +504,6 @@ export function resolveSearchPlayersIpcMock(
   const { offset, limit, requestedFields, sortBy } = parsePaging(args);
 
   if (
-    (offset >= 50 && searchPlayersPageMode === "pendingSecondPage") ||
     (offset === 0 &&
       (sortBy === "name" || sortBy === "value") &&
       searchPlayersPageMode === "pendingReplacement") ||

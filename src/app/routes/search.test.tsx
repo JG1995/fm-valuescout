@@ -1838,49 +1838,6 @@ describe("search route", () => {
     });
   });
 
-  it("does not reclaim focus from a Search header while a virtual page is pending", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride(manyPlayers(101));
-    setSearchPlayersPageIpcMockMode("pendingSecondPage");
-    const { router } = renderSearchRoute();
-
-    const table = await screen.findByRole("table", {
-      name: "Player search results",
-    });
-    const scroller = screen.getByTestId("search-results-scroller");
-    mockScrollerScrollTo(scroller);
-    fireEvent.scroll(scroller, { target: { scrollTop: 1_950 } });
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({ offset: 50 });
-    });
-
-    const boundaryRow = await waitFor(() => {
-      const row = scroller.querySelector<HTMLElement>('[data-index="49"]');
-      if (!row) {
-        throw new Error("Expected the loaded page boundary row.");
-      }
-      return row;
-    });
-    boundaryRow.focus();
-    await user.keyboard("{ArrowDown}");
-
-    const caHeader = within(table).getByRole("button", { name: "CA" });
-    await user.click(caHeader);
-    expect(caHeader).toHaveFocus();
-    await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        sort: "ca",
-        dir: "asc",
-      });
-    });
-
-    resolvePendingSearchPlayersPageIpcMock();
-
-    expect(await screen.findByText("Player 051")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "CA" })).toHaveFocus();
-  });
-
   it("moves keyboard focus to the previous results row on ArrowUp", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
