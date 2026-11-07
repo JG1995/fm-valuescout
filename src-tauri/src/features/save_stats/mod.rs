@@ -1,9 +1,12 @@
-//! Reads FM27 save files: identification, build support, and the in-game date.
+//! Reads FM27 save files: identification, build support, the in-game date, and each player's
+//! current-season statistics.
 //!
 //! The metadata decoding here is ported from fmsave 0.10.0 (commit
 //! a71abe9b7b38e35affa05c49c3619ff05eb21795, MIT License, Copyright (c) 2026 Randal S.
 //! Olson): `_version.py` (`read_save_info`, `find_game_version`, `read_summary_clock`, and
-//! the `game_info` checks) and `decode_date` from `_scan.py`. See `THIRD_PARTY_NOTICES.md`.
+//! the `game_info` checks), `decode_date` from `_scan.py`, the section schemas of
+//! `_version.py`, and the season-statistics fields of `models/season_stats.py`. See
+//! `THIRD_PARTY_NOTICES.md`.
 //!
 //! The module is pure: a path goes in, and save facts or a path-free error come out.
 
@@ -13,6 +16,10 @@
 
 mod container;
 mod layouts;
+mod players;
+#[cfg(test)]
+mod reference;
+mod season_stats;
 #[cfg(test)]
 mod test_support;
 
@@ -25,11 +32,13 @@ use container::{
 };
 use layouts::{
     find_fm27_layout, is_registered_fm27_build, GameInfoLayout, SaveSummaryLayout,
-    GAME_INFO_LAYOUTS, SAVE_SUMMARY, SAVE_SUMMARY_LAYOUTS,
+    GAME_INFO_LAYOUTS, GATE_BOUNDS_LAYOUTS, NAME_POOL_LAYOUTS, PLAYER_RECORD_LAYOUTS, SAVE_SUMMARY,
+    SAVE_SUMMARY_LAYOUTS, SEASON_STATS_LAYOUTS,
 };
 
 const GAME_INFO_SECTION: &str = "game_info";
 const SAVE_SUMMARY_SECTION: &str = "save_game_summary";
+const GAME_DB_SECTION: &str = "game_db";
 const SUPPORTED_GAME_MAJOR: u32 = 27;
 const SECTION_MAGIC_PREFIX: &[u8] = b"\x03\x01";
 const SECTION_HEAD_BYTES: usize = 8;
@@ -110,6 +119,163 @@ pub(crate) fn read_save_info(path: &Path) -> Result<SaveInfo, SaveStatsError> {
         let index = container::read_index(file, file_size)?;
         save_info_from(file, &index)
     })
+}
+
+/// Defines `SeasonStat` with each statistic's fmsave `PlayerSeasonStats` field name.
+macro_rules! season_stats {
+    ($($stat:ident => $name:literal,)+) => {
+        /// A season statistic fmsave's `PlayerSeasonStats` exposes as a raw total. Starts,
+        /// substitute appearances, minutes, rated appearances, and ratings are fields of
+        /// `SavePlayerSeasonStats` instead.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub(crate) enum SeasonStat {
+            $($stat,)+
+        }
+
+        impl SeasonStat {
+            pub(crate) const ALL: [SeasonStat; [$($name),+].len()] = [$(SeasonStat::$stat),+];
+            pub(crate) const COUNT: usize = Self::ALL.len();
+
+            /// The fmsave field name.
+            pub(crate) fn name(self) -> &'static str {
+                match self {
+                    $(Self::$stat => $name,)+
+                }
+            }
+        }
+    };
+}
+
+season_stats! {
+    PlayerOfTheMatch => "player_of_the_match",
+    Goals => "goals",
+    Assists => "assists",
+    ExpectedGoals => "expected_goals",
+    NonPenaltyExpectedGoals => "non_penalty_expected_goals",
+    ExpectedAssists => "expected_assists",
+    Shots => "shots",
+    ShotsOnTarget => "shots_on_target",
+    ShotsOutsideBox => "shots_outside_box",
+    GoalsOutsideBox => "goals_outside_box",
+    FreeKickShots => "free_kick_shots",
+    PenaltiesTaken => "penalties_taken",
+    PenaltiesScored => "penalties_scored",
+    PassesAttempted => "passes_attempted",
+    PassesCompleted => "passes_completed",
+    ProgressivePasses => "progressive_passes",
+    KeyPasses => "key_passes",
+    OpenPlayKeyPasses => "open_play_key_passes",
+    ClearCutChancesCreated => "clear_cut_chances_created",
+    CrossesAttempted => "crosses_attempted",
+    CrossesCompleted => "crosses_completed",
+    OpenPlayCrossesAttempted => "open_play_crosses_attempted",
+    OpenPlayCrossesCompleted => "open_play_crosses_completed",
+    Dribbles => "dribbles",
+    Offsides => "offsides",
+    DistanceKm => "distance_km",
+    HighIntensitySprints => "high_intensity_sprints",
+    AerialChallengesAttempted => "aerial_challenges_attempted",
+    HeadersWon => "headers_won",
+    KeyHeaders => "key_headers",
+    TacklesAttempted => "tackles_attempted",
+    TacklesCompleted => "tackles_completed",
+    KeyTackles => "key_tackles",
+    Interceptions => "interceptions",
+    PossessionWon => "possession_won",
+    PossessionLost => "possession_lost",
+    PressuresAttempted => "pressures_attempted",
+    PressuresCompleted => "pressures_completed",
+    Blocks => "blocks",
+    ShotsBlocked => "shots_blocked",
+    Clearances => "clearances",
+    FoulsMade => "fouls_made",
+    FoulsAgainst => "fouls_against",
+    YellowCards => "yellow_cards",
+    RedCards => "red_cards",
+    MistakesLeadingToGoal => "mistakes_leading_to_goal",
+    CleanSheets => "clean_sheets",
+    GoalsAllowed => "goals_allowed",
+    SavesHeld => "saves_held",
+    SavesParried => "saves_parried",
+    SavesTipped => "saves_tipped",
+    ShotsOnTargetFaced => "shots_on_target_faced",
+    ExpectedGoalsPrevented => "expected_goals_prevented",
+}
+
+/// One player's current-season totals over league, cup, and continental lines for every team
+/// they played for.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SavePlayerSeasonStats {
+    /// The game's Unique ID for the player.
+    pub unique_id: u32,
+    pub starts: u32,
+    pub substitute_appearances: u32,
+    pub minutes: u32,
+    pub rated_appearances: u32,
+    /// The sum of the player's match ratings, so that an average weights each rated
+    /// appearance equally.
+    pub rating_sum: f64,
+    totals: [Option<f64>; SeasonStat::COUNT],
+}
+
+impl SavePlayerSeasonStats {
+    /// The summed total in public units (kilometres, expected goals), or `None` when the save
+    /// stores no value for this player: a goalkeeper's outfield words, an outfield player's
+    /// goalkeeping words, or a statistic the save does not support.
+    pub(crate) fn total(&self, stat: SeasonStat) -> Option<f64> {
+        self.totals[stat as usize]
+    }
+}
+
+/// The save's facts and the statistics of every player with a Unique ID and competitive
+/// minutes this season.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SaveSeasonStats {
+    pub info: SaveInfo,
+    pub players: Vec<SavePlayerSeasonStats>,
+}
+
+/// Reads the whole save once, then the players' current-season statistics.
+///
+/// Every structural check must pass first: a failure returns an error and no statistics.
+/// Section schemas must match the registered layouts' on every build.
+pub(crate) fn read_season_stats(path: &Path) -> Result<SaveSeasonStats, SaveStatsError> {
+    let save = container::read_save_bytes(path)?;
+    let mut source: &[u8] = &save;
+    let index = container::read_index(&mut source, save.len() as u64)?;
+    let info = save_info_from(&mut source, &index)?;
+    let game_db = container::read_section(&mut source, &index, GAME_DB_SECTION)?;
+    let schema = section_schema(&game_db, &index.section(GAME_DB_SECTION)?.extension)?;
+    // Every layout is chosen, and the season-statistics frame found by its schema, before any
+    // record is decoded.
+    let player_layout = find_fm27_layout(PLAYER_RECORD_LAYOUTS, Some(schema), &info.build)?;
+    let name_pool_layout = find_fm27_layout(NAME_POOL_LAYOUTS, Some(schema), &info.build)?;
+    let bounds = find_fm27_layout(GATE_BOUNDS_LAYOUTS, Some(schema), &info.build)?;
+    let season_layout = find_fm27_layout(SEASON_STATS_LAYOUTS, None, &info.build)?;
+    let season_frames = season_stats::read_section_frames(&mut source, &index, season_layout)?;
+    drop(save);
+
+    let fit = |error| layout_fit(error, info.known_build);
+    let players =
+        players::read_players(&game_db, name_pool_layout, player_layout, bounds).map_err(fit)?;
+    let players = season_stats::season_totals(
+        &season_frames,
+        &players,
+        season_layout,
+        bounds,
+        game_db.len(),
+    )
+    .map_err(fit)?;
+    Ok(SaveSeasonStats { info, players })
+}
+
+/// Damage under a registered build's own layout is damage; under a borrowed layout it means
+/// the layout does not fit.
+fn layout_fit(error: SaveStatsError, known_build: bool) -> SaveStatsError {
+    match error {
+        SaveStatsError::Corrupt if !known_build => SaveStatsError::UnsupportedBuild,
+        error => error,
+    }
 }
 
 struct GameVersion {

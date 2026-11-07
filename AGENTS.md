@@ -94,6 +94,7 @@ Use the stable `./scripts/dev` surface instead of stack-native commands:
 ./scripts/dev package-windows
 ./scripts/dev release-metadata [latest-tag|none] [release-intent]
 ./scripts/dev graphics-calibration
+./scripts/dev save-stats-reference
 ```
 
 `check` is the full commit gate: Biome, TypeScript, secretlint, Rust format, Clippy, and Rust tests. `check-fast` is the pre-commit frontend and staged-secret path; it does not replace `check`. `check-app` runs the frontend CI gate. `check-rust` runs the Rust gate; optional filters limit its tests to matching names. `bridge-test` requires the .NET 6 SDK. Install Chromium once with `pnpm exec playwright install chromium`, then use `smoke` for the Playwright product suite.
@@ -105,6 +106,8 @@ For material UI work, read the project `ui-inspection` skill in `.claude/skills/
 CI selects frontend, browser, Rust, bridge, and CI checks from changed paths. The required `check` status aggregates applicable results. It does not validate release metadata or package Windows installers. The Release workflow starts only after an explicit release-preparation change reaches `main`; it waits for that exact `check` before packaging and publishing.
 
 Every pull request completes `.github/pull_request_template.md`; its title and body become the squash commit. Ordinary pull requests never edit release version owners, dated `CHANGELOG.md` sections, or `release-preparation.json`, and never run `release-metadata` as a classification step. Use the project `create-release` skill only when the developer explicitly requests a release. `release-metadata` validates prepared version and changelog state without writing files or calling GitHub. `graphics-calibration` is a private local command. Set `FM_VALUESCOUT_GRAPHICS_ROOT` to a readable graphics root before running it. The command runs one ignored Rust test with `--nocapture` and emits one path-free JSON report. It does not use PowerShell and works from WSL against a mounted Windows filesystem. Reports label WSL execution as WSL and mounted Windows storage as a mounted Windows filesystem; they do not describe WSL measurements as native Windows performance. Missing or unreadable roots fail without printing the supplied value.
+
+`save-stats-reference` is a private local command for checking the FM27 save-file reader against fmsave outside the repository. Set `FM_VALUESCOUT_SAVE_FILE` to a readable FM27 save before running it. The command runs one ignored Rust test in a release build with `--nocapture` and emits one path-free JSON report: the build, its known status, the in-game date, the read time, the cohort size, and each player's season totals keyed by Unique ID with fmsave's field names. Its environment labels follow `graphics-calibration` and add the build profile. A missing or unreadable file fails without printing the supplied value. Never commit a save file or a report.
 
 For changed behavior:
 
