@@ -181,6 +181,33 @@
     outline-offset: 2px;
   }
 
+  /* Preflight leaves buttons on the arrow cursor, so every enabled control
+     declares its affordance here once instead of per component. Utilities
+     such as `cursor-col-resize` still win because they sit in a later layer. */
+  :is(
+    a[href],
+    button,
+    summary,
+    select,
+    label[for],
+    label:has(input[type="checkbox"], input[type="radio"]),
+    input[type="checkbox"],
+    input[type="radio"],
+    input[type="range"],
+    [role="button"],
+    [role="tab"],
+    [role="switch"]
+  ):not(:disabled, [aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  :is(button, select, input, [role="button"], [role="tab"], [role="switch"]):is(
+    :disabled,
+    [aria-disabled="true"]
+  ) {
+    cursor: not-allowed;
+  }
+
   ::selection {
     background-color: var(--color-primary-container);
     color: var(--color-on-primary-container);
