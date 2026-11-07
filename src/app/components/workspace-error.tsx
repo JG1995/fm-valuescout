@@ -20,7 +20,7 @@ export function WorkspaceError({ error }: ErrorComponentProps) {
         role="alert"
         className="max-w-prose break-words text-body-md text-on-surface-variant"
       >
-        {error.message}
+        {error instanceof Error ? error.message : String(error)}
       </p>
       <Button variant="secondary" onClick={() => router.invalidate()}>
         Retry

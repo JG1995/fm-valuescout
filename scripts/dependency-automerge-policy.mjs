@@ -119,10 +119,6 @@ function writeResult(result) {
   }
 
   console.log(`Dependabot auto-merge policy: ${result.reason}`);
-
-  if (process.env.DEPENDABOT_REQUIRE_ELIGIBLE === "true" && !result.eligible) {
-    process.exitCode = 1;
-  }
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {

@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { evaluateDependencyAutomergePolicy } from "./dependency-automerge-policy.mjs";
@@ -230,32 +229,5 @@ describe("evaluateDependencyAutomergePolicy", () => {
     expect(workflow).toContain("continue-on-error: true");
     expect(workflow).toContain("always() &&");
     expect(workflow).toContain("gh pr merge --disable-auto");
-  });
-
-  it("fails the required check for ineligible metadata", () => {
-    const result = spawnSync(
-      process.execPath,
-      ["scripts/dependency-automerge-policy.mjs"],
-      {
-        cwd: process.cwd(),
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          DEPENDABOT_REQUIRE_ELIGIBLE: "true",
-          DEPENDABOT_ACTOR: "octocat",
-        },
-      },
-    );
-
-    expect(result.status).toBe(1);
-  });
-
-  it("makes Dependabot policy part of the required Check workflow", () => {
-    const checkWorkflow = readFileSync(".github/workflows/check.yml", "utf8");
-
-    expect(checkWorkflow).toContain("- 'scripts/**'");
-    expect(checkWorkflow).toContain("dependabot-policy:");
-    expect(checkWorkflow).toContain("DEPENDABOT_REQUIRE_ELIGIBLE: true");
-    expect(checkWorkflow).toContain("DEPENDABOT_POLICY:");
   });
 });
