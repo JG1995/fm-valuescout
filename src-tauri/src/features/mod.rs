@@ -9,6 +9,7 @@ pub mod moneyball;
 pub mod planner;
 pub mod player;
 pub mod player_metrics;
+pub mod save_stats;
 pub mod scoring;
 pub mod search;
 pub mod snapshot;

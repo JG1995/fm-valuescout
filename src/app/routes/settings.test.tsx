@@ -87,6 +87,16 @@ describe("Settings", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the fmsave license in the open-source notices", async () => {
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    const notices = await screen.findByRole("region", {
+      name: "Open-source notices",
+    });
+    expect(notices).toHaveTextContent("Copyright (c) 2026 Randal S. Olson");
+    expect(notices).toHaveTextContent("fmsave 0.10.0");
+  });
+
   it("confirms and applies every managed-club boost in one action", async () => {
     const user = userEvent.setup();
     renderWithProviders({ initialEntries: ["/settings"] });
