@@ -26,27 +26,25 @@ pnpm exec playwright install chromium
 
 Then use `./scripts/dev smoke` for the Playwright product suite.
 
-## Use the Pi workflow
+## Use the jay-claude workflow
 
-[AGENTS.md](AGENTS.md) owns standing repository rules. Installed PI_SETUP skills own reusable workflow procedures and launch globally installed roles as direct subagents. Repository-owned Pi resources are tracked under `.pi/`:
+[AGENTS.md](AGENTS.md) owns standing repository rules. The globally installed jay-claude Claude Code plugin owns reusable workflow procedures and registers its roles as subagents. This repository does not copy or override them. Repository-owned agent resources are:
 
-- `.pi/settings.json` intentionally leaves machine package and preference settings global;
-- `.pi/skills/create-pr/SKILL.md` owns this repository's ordinary pull-request preparation procedure; and
-- `.pi/skills/create-release/SKILL.md` owns explicit release preparation and verification.
+- `.claude/skills/create-release/SKILL.md`, which owns explicit release preparation and verification;
+- `.claude/skills/ui-inspection/SKILL.md`, which owns populated Chromium captures for UI work; and
+- `scripts/*.py`, jay-claude's project-owned ledger and delivery validators.
 
-PI_SETUP installs its role definitions globally. This repository does not override those roles or configure a project orchestration runtime. Generated Pi package data under `.pi/npm/` and `.pi/git/` is ignored. `.pi/sessions/` is also ignored if a maintainer later opts into project-local session storage; by default, session history remains in Pi's global user directory.
-
-Pi loads trusted project resources at startup. Run `/reload` after pulling or editing project context, settings, extensions, skills, prompts, themes, or PI_SETUP itself.
+The maintainer's project wiki, `.wiki/`, is ignored by Git and exists only in the maintainer's checkout. jay-claude run state under `.work/` and worker worktrees under `.claude/worktrees/` are ignored too.
 
 Workflow skills are explicit opt-ins; an ordinary natural-language request does not activate one.
 
 ### Feature delivery
 
-1. Invoke `/skill:workflow-plan-feature` to create and independently review one schema 2 active ledger.
-2. Accept its Delivery fingerprint.
-3. Invoke `/skill:workflow-deliver-feature <ledger>` once to execute the recorded commits, PRs, and close-out.
+1. Invoke `/jay-claude:design-feature <feature>` and accept the feature DESIGN.
+2. Invoke `/jay-claude:plan <feature>` to create and independently review its schema 4 IMPLEMENTATION ledger, then accept it with `scripts/local_delivery.py accept`.
+3. Invoke `/jay-claude:deliver-feature <ledger>` once to run the planned packages, PRs, merges, and close-out.
 
-The delivery workflow stops when authority changes, a decision or replan is required, validation fails, correction limits are exhausted, or a PR head is stale. Use `/skill:create-release` only when the maintainer explicitly requests a release. Narrower workflow skills remain available for manual recovery; they are not required between normal delivery phases.
+Delivery stops only when the feature's core functionality proves impractical or an operational blocker, such as a missing credential or failed check, needs the maintainer. Use `/create-release` only when the maintainer explicitly requests a release. The narrower jay-claude skills remain available for manual recovery; they are not required between normal delivery phases.
 
 For a focused documentation edit or trivial fix, follow the applicable rules directly without creating a feature ledger.
 
@@ -61,10 +59,10 @@ Every commit and pull-request title follows [Conventional Commits 1.0.0](https:/
 
 Stage exact paths or hunks. Never use `git add .` or `git commit -a`. Inspect the complete staged diff and run `git diff --cached --check` before requesting commit approval.
 
-Every human-authored pull request uses [.pi/skills/create-pr/SKILL.md](.pi/skills/create-pr/SKILL.md) and [.github/pull_request_template.md](.github/pull_request_template.md). Ordinary PRs do not prepare a release. Use [.pi/skills/create-release/SKILL.md](.pi/skills/create-release/SKILL.md) only when the maintainer explicitly requests one.
+Every pull request completes [.github/pull_request_template.md](.github/pull_request_template.md) and is squash-merged. Ordinary PRs do not prepare a release. Use [.claude/skills/create-release/SKILL.md](.claude/skills/create-release/SKILL.md) only when the maintainer explicitly requests one.
 
 Do not commit, push, create or update a PR, merge, synchronize a remote, or create a release without the explicit authority described in `AGENTS.md`.
 
 ## Escalate before assuming
 
-Ask for developer input before choosing persistence, schema, migrations, authentication, concurrency, public APIs, security controls, or a safety-critical boundary. First inspect `.wiki/ARCHITECTURE.md`, the active feature ledger, relevant completed records, ADRs, debug reports, implementation, tests, and focused Git history.
+Ask for developer input before choosing persistence, schema, migrations, authentication, concurrency, public APIs, security controls, or a safety-critical boundary. First inspect `.wiki/ARCHITECTURE.md`, the relevant feature DESIGN and IMPLEMENTATION documents, ADRs, debug reports, implementation, tests, and focused Git history.

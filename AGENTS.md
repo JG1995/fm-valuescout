@@ -1,6 +1,6 @@
 # Development contract
 
-This file contains FM ValueScout's standing repository contract. Detailed procedures belong in installed skills. Project facts belong in `.wiki/`. Repository commands, tests, and CI own hard validation.
+This file contains FM ValueScout's standing repository contract. Reusable procedures belong in the globally installed jay-claude plugin; project-specific procedures belong in `.claude/skills/`. Project facts belong in the local-only `.wiki/`. Repository commands, tests, and CI own hard validation.
 
 ## Project scope
 
@@ -10,7 +10,7 @@ Apply these calibrations:
 
 - **Correctness.** Code must satisfy its stated contract. It does not need to survive every conceivable input.
 - **Tests.** Protect critical paths, trust boundaries, data-loss risks, and realistic regressions. Skip duplicate tests for straightforward behavior already proved at a stronger seam.
-- **Review.** Give every non-trivial change a fresh reviewer pass. Use review to find structural mistakes, not to add ceremony.
+- **Review.** Independent review is mandatory inside an explicitly invoked jay-claude workflow. Outside one, inspect your own diff and launch a reviewer only when the developer asks; that request must also cover any re-review after fixes. Use review to find structural mistakes, not to add ceremony.
 - **Abstraction.** Prefer direct code until a current need justifies an abstraction.
 - **Documentation.** Write what a maintainer needs after a long break, not a development diary.
 - **Ceremony.** Keep a practice when it improves structure or protects a demonstrated risk. Drop it when it only guards against a theoretical failure.
@@ -19,12 +19,14 @@ Calibrate reusable prompts and skills to this scope. Safety, security, accessibi
 
 ## Repository memory
 
-Use the repository as the complete source of project knowledge. Do not depend on chat history, an external memory service, or an untracked index for unique facts.
+Use this checkout, its tracked files plus the local-only `.wiki/`, as the complete source of project knowledge. Do not depend on chat history or an external memory service for unique facts.
+
+`.wiki/` is excluded from Git and exists only in this checkout; a fresh clone has none, and Git history holds only the copy from before it was untracked. Never force-add it or `.work/` (`git add -f`). Tracked files may point local readers at wiki paths, but builds, tests, and CI must not depend on the wiki. jay-claude's `scripts/local_delivery.py` backs up the wiki outside the repository whenever it saves delivery state.
 
 For broad, architectural, risky, or multi-commit work:
 
 1. Read `.wiki/INDEX.md` for document ownership.
-2. Read the relevant current-state document and active feature ledger.
+2. Read the relevant current-state document and, for feature work, the feature's DESIGN and IMPLEMENTATION documents.
 3. Inspect implementation, tests, validation configuration, and focused Git history when needed.
 
 For ordinary work, inspect the relevant code and tests before changing them. Read the installed `project-context` skill before a non-obvious decision, when resuming work, or when deciding where durable knowledge belongs. Use the installed `code-intelligence` skill when architecture, symbol relationships, impact, diagnostics, or review evidence can materially change the work; verify its results against source and deterministic checks.
@@ -35,10 +37,11 @@ Keep guidance in the narrowest owner:
 - `.wiki/ARCHITECTURE.md` owns implemented structure, data flow, persistence, trust boundaries, and operational constraints.
 - `.wiki/DESIGN.md` owns visual and interaction conventions.
 - `.wiki/TODO.md` owns committed or imminent feature work; `.wiki/BACKLOG.md` owns deferred work.
-- `.wiki/features/active/` owns current multi-commit intent, delivery plans, discoveries, and deviations.
-- Installed `workflow-*` skills own reusable procedures; `workflow-core` owns their shared lifecycle and authority rules.
-- Installed non-workflow skills own reusable task, stack, writing, and security guidance.
-- `.work/` holds temporary evidence only and is not project truth.
+- `.wiki/features/<feature>/` holds each feature's `<FEATURE>-DESIGN.md` (requirements) and `<FEATURE>-IMPLEMENTATION.md` (PR and package plan, minimal progress, and discoveries). `.wiki/features/completed/` keeps historical records from earlier workflows only.
+- The jay-claude plugin's workflow skills (`/jay-claude:<skill>`) own reusable delivery procedures; its `core` skill owns their shared lifecycle, authority, and review rules.
+- The plugin's other skills own reusable task, stack, writing, and security guidance.
+- Project skills in `.claude/skills/` own project-specific procedures: `create-release` and `ui-inspection`.
+- `.work/` holds temporary evidence and jay-claude run state and is not project truth. Keep jay-claude snapshots, journals, and unintegrated worker results until their delivery is reconciled.
 
 Project documents govern project facts and constraints. Skills govern procedure and provide defaults where project guidance is silent. Code, tests, and configuration describe executable behavior. Current-state documents take precedence over plans and historical records; ADRs explain accepted rationale but do not override current behavior.
 
@@ -48,38 +51,28 @@ Update the narrowest owner in the change that makes the information true. Create
 
 - **Trivial:** make one focused change, run the fast gate, review the diff, and ask before committing.
 - **Behavioral:** state a concise work contract and impact map, use RED → GREEN → REFACTOR for changed behavior or contract-removal proof for deletion, and run affected validation.
-- **Feature:** explicitly invoke `/skill:workflow-plan-feature`, accept one schema 2 ledger, then run `/skill:workflow-deliver-feature <ledger>`.
+- **Feature:** explicitly invoke `/jay-claude:design-feature <feature>` and accept the DESIGN, then `/jay-claude:plan <feature>` and accept the reviewed schema 4 ledger, then run `/jay-claude:deliver-feature .wiki/features/<feature>/<FEATURE>-IMPLEMENTATION.md`.
 
-Workflow skills are explicit opt-ins. Never invoke one only because an ordinary request resembles its task. Plans are provisional; reassess remaining work as repository facts change.
+Workflow skills are explicit opt-ins. Never invoke one only because an ordinary request resembles its task. An IMPLEMENTATION file's presence does not activate one. Plans are provisional; reassess remaining work as repository facts change.
 
-For unresolved persistence, schema, migration, authentication, concurrency, security, public API, safety-critical, or architecture decisions, inspect `.wiki/ARCHITECTURE.md`, relevant ADRs and debug reports, active and completed feature records, implementation, tests, matching skills, and focused Git history. If evidence remains insufficient, ask the developer. Do not guess and do not implement.
+For unresolved persistence, schema, migration, authentication, concurrency, security, public API, safety-critical, or architecture decisions, inspect `.wiki/ARCHITECTURE.md`, relevant ADRs and debug reports, relevant feature documents, implementation, tests, matching skills, and focused Git history. If evidence remains insufficient, ask the developer. Do not guess and do not implement.
 
 ## Feature delivery
 
-One accepted ledger owns feature intent, PRs, commit packets, validation, publication, and close-out. Releases are separate, explicit work.
+A feature's accepted DESIGN and IMPLEMENTATION ledger own its requirements, PR and package plan, and minimal progress. Releases are separate, explicit work.
 
-`/skill:workflow-deliver-feature` is the normal execution path. One explicit invocation uses the ledger's validated Delivery fingerprint to:
+`/jay-claude:deliver-feature <ledger>` is the normal execution path. One explicit invocation runs the accepted plan's waves, packages, reviews, PRs, CI repairs, and merges, continuing across PR boundaries without waiting for the developer. The plugin's `core` and `deliver-feature` skills own the procedure, authority, review points, correction limits, and stop conditions. The narrower `build`, `checkpoint`, `fix`, `finish-feature`, `sync-docs`, and `publish-pr` skills are recovery tools.
 
-1. activate each recorded branch;
-2. implement, validate, independently review, and commit every packet;
-3. publish, monitor, repair, and merge every PR;
-4. synchronize the base before dependent work;
-5. run feature validation and documentation close-out before the final merge.
+Plans for this repository record these project facts:
 
-The workflow stops for changed authority, replanning, a developer decision, exhausted correction limits, failed required validation, missing approval, conflicts, or a stale PR head. It does not stop at ordinary commit, PR, or close-out boundaries.
-
-The narrower workflow skills remain available for manual recovery and isolated review. Do not require them between normal delivery phases.
+- **Ignored wiki.** Because `.wiki/` is excluded from Git, an accepted plan is frozen with `python3 scripts/local_delivery.py accept <ledger> <repository-root> --approved` instead of a commit, and delivery follows the plugin's ignored-wiki reference. No package write scope may include `.wiki/` or `.work/`.
+- **Publication.** GitHub, `.github/pull_request_template.md`, squash merge, and the required `check` status.
+- **Worker setup.** Worker worktrees contain only tracked files, and `./scripts/dev` refuses to run without `node_modules`. Each package's Validation starts with `pnpm install --frozen-lockfile --prefer-offline` as approved setup. Rust packages rebuild `src-tauri/target` in each worktree. Bridge packages that reference FM types also need the untracked `bridge/Directory.Build.user.props`.
+- **Shared resources.** `smoke` and `inspect-ui` start Vite on fixed port 5173, and Playwright reuses any server already listening there outside CI. Never run them in two checkouts at once; run them serially in the integration checkout.
 
 ## Specialists
 
-The main Pi session is the supervisor. Workflow skills launch the exact globally installed PI_SETUP roles as direct subagents.
-
-- One writer may edit the active worktree.
-- Workers cannot stage, commit, switch branches, push, or mutate GitHub.
-- Every non-trivial implementation and correction receives a fresh read-only reviewer pass.
-- Any subagent may delegate a bounded subtask. The delegating agent verifies the result and cannot widen workflow authority.
-- Role boundaries are prompt instructions, not a sandbox.
-- The `documentation-steward` may edit only explicitly approved documentation paths. It must not change implementation, tests, executable scripts, CI, agent definitions, command templates, or Git state.
+The main Claude Code session is the coordinator. jay-claude workflows launch the plugin's roles (`jay-claude:worker`, `jay-claude:reviewer`, `jay-claude:researcher`) as subagents, and the `security-audit` skill launches `jay-claude:security-auditor`. Each role's contract owns its boundaries. Role boundaries are prompt instructions, not a sandbox.
 
 ## Commands and validation
 
@@ -105,13 +98,13 @@ Use the stable `./scripts/dev` surface instead of stack-native commands:
 
 `check` is the full commit gate: Biome, TypeScript, secretlint, Rust format, Clippy, and Rust tests. `check-fast` is the pre-commit frontend and staged-secret path; it does not replace `check`. `check-app` runs the frontend CI gate. `check-rust` runs the Rust gate. `bridge-test` requires the .NET 6 SDK. Install Chromium once with `pnpm exec playwright install chromium`, then use `smoke` for the Playwright product suite.
 
-For material UI work, read the project-local `ui-inspection` skill, capture the affected route, and inspect the reported image. Use its complete page set only for cross-page changes. Treat every capture as disposable Chromium-stub evidence, not native application proof.
+For material UI work, read the project `ui-inspection` skill in `.claude/skills/` rather than the generic `jay-claude:ui-inspection`, capture the affected route, and inspect the reported image. Use its complete page set only for cross-page changes. Treat every capture as disposable Chromium-stub evidence, not native application proof.
 
 `format` applies Biome fixes and `cargo fmt` before staging. `mutate` is unsupported until mutation tooling is configured and must never be reported as passed. `bridge-install` builds and installs `FmDataBridge.dll` using `FM_BRIDGE_PLUGINS`, `FM_STEAM_ROOT`, or the WSL Steam default. `package-windows` runs only on Windows, creates one unsigned x64 NSIS validation artifact plus checksum under `.release/windows/<version>/`, and does not publish.
 
 CI selects frontend, browser, Rust, bridge, and CI checks from changed paths. The required `check` status aggregates applicable results. It does not validate release metadata or package Windows installers. The Release workflow starts only after an explicit release-preparation change reaches `main`; it waits for that exact `check` before packaging and publishing.
 
-For every human-authored pull request, use `.pi/skills/create-pr/SKILL.md` with `.github/pull_request_template.md`. Ordinary pull requests do not classify or prepare a release. Use `.pi/skills/create-release/SKILL.md` only when the developer explicitly requests a release. `release-metadata` validates prepared version and changelog state without writing files or calling GitHub. `graphics-calibration` is a private local command. Set `FM_VALUESCOUT_GRAPHICS_ROOT` to a readable graphics root before running it. The command runs one ignored Rust test with `--nocapture` and emits one path-free JSON report. It does not use PowerShell and works from WSL against a mounted Windows filesystem. Reports label WSL execution as WSL and mounted Windows storage as a mounted Windows filesystem; they do not describe WSL measurements as native Windows performance. Missing or unreadable roots fail without printing the supplied value.
+Every pull request completes `.github/pull_request_template.md`; its title and body become the squash commit. Ordinary pull requests never edit release version owners, dated `CHANGELOG.md` sections, or `release-preparation.json`, and never run `release-metadata` as a classification step. Use the project `create-release` skill only when the developer explicitly requests a release. `release-metadata` validates prepared version and changelog state without writing files or calling GitHub. `graphics-calibration` is a private local command. Set `FM_VALUESCOUT_GRAPHICS_ROOT` to a readable graphics root before running it. The command runs one ignored Rust test with `--nocapture` and emits one path-free JSON report. It does not use PowerShell and works from WSL against a mounted Windows filesystem. Reports label WSL execution as WSL and mounted Windows storage as a mounted Windows filesystem; they do not describe WSL measurements as native Windows performance. Missing or unreadable roots fail without printing the supplied value.
 
 For changed behavior:
 
@@ -189,20 +182,22 @@ Commit and PR titles use Conventional Commits: `type(scope): imperative descript
 
 Do not commit, push, create or update PRs, merge, create branches, synchronize remotes, rewrite history, or create releases without explicit authority.
 
-The normal exception is an explicit `/skill:workflow-deliver-feature` invocation with a valid recorded Delivery fingerprint. That fingerprint covers exact PR authority fields and commit packets. It grants only the recorded branches, reviewed local commits, non-force pushes, exact PRs, bounded reviewed CI repairs, verified-head merges with the recorded method, and fast-forward-only base synchronization. It does not authorize a release.
+The normal exception is an explicit `/jay-claude:deliver-feature` invocation for one accepted ledger, within the grant the plugin's `core` skill defines: the planned branches, reviewed package commits, non-force pushes, the planned PRs, bounded reviewed CI repairs, exact-head merges with the recorded method, and fast-forward-only base synchronization. It does not authorize a release.
 
-Any authority or packet change invalidates the grant. It never permits amend, rebase, force-push, protection bypass, self-approval, branch deletion, unrelated work, another ledger, or a second release.
+Merging to `main` publishes nothing; only a merged `release-preparation.json` change starts the Release workflow. Delivery may therefore merge reviewed PRs without waiting for the developer. If merges ever deploy or publish, replace this rule with one that requires developer approval for each merge.
+
+An accepted-plan change without reviewed renewal ends the grant. It never permits amend, rebase, force-push, protection bypass, self-approval, branch deletion, unrelated work, another ledger, or a release.
 
 Stage exact files or hunks. Never use `git add .` or `git commit -a`. Before every commit, inspect status, the complete staged diff and stat, and run `git diff --cached --check` plus recorded validation. Report documentation impact, reviewer findings, risks, and the proposed commit message. Manual work waits for explicit developer approval before committing.
 
 ## Project-owned releases
 
-PI_SETUP delivery ends after the final PR merges and the base is synchronized. A feature merge never publishes by default.
+jay-claude delivery ends after the final PR merges and the base is synchronized. A feature merge never publishes.
 
-Only an explicit `/skill:create-release` invocation can prepare a release. It inspects all changes since the latest published tag, proposes the SemVer scope, updates the version owners and changelog, increments `release-preparation.json`, and opens a dedicated release PR. The Release workflow creates the tag and GitHub release only after that PR merges and the exact `main` Check passes. Do not infer a version, tag, provider action, or deployment.
+Only an explicit `/create-release` invocation of the project skill can prepare a release. It inspects all changes since the latest published tag, proposes the SemVer scope, updates the version owners and changelog, increments `release-preparation.json`, and opens a dedicated release PR. The Release workflow creates the tag and GitHub release only after that PR merges and the exact `main` Check passes. Do not infer a version, tag, provider action, or deployment.
 
 ## Security
 
-Pi packages and tools execute with the user's operating-system privileges. Project trust and role prompts are controls, not an operating-system sandbox.
+Claude Code, its plugins, and their tools execute with the user's operating-system privileges. Project trust and role prompts are controls, not an operating-system sandbox.
 
 Do not read or print secret values, private keys, production dumps, local authentication stores, or unrelated personal data. Keep credentials out of repository files, ledgers, templates, prompts, and logs.
