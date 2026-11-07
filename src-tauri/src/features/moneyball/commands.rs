@@ -5,6 +5,7 @@ use tauri::State;
 
 use crate::db::Db;
 
+use super::catalog::is_save_unavailable_statistic_key;
 use super::query::{
     self, MoneyballComparisonBasis, MoneyballProfile, MoneyballProfileState,
     MoneyballRoleContribution, MoneyballRoleScore,
@@ -97,11 +98,13 @@ pub struct MoneyballRoleContributionDto {
     pub direction: String,
     pub percentile: Option<u8>,
     pub weighted_contribution: Option<f64>,
+    pub available_from_source: bool,
 }
 
 impl From<MoneyballRoleContribution> for MoneyballRoleContributionDto {
     fn from(contribution: MoneyballRoleContribution) -> Self {
         Self {
+            available_from_source: !is_save_unavailable_statistic_key(&contribution.metric_key),
             metric_key: contribution.metric_key,
             source_label: contribution.source_label,
             weight: contribution.weight,
@@ -160,6 +163,7 @@ mod tests {
     use super::MoneyballProfileDto;
     use crate::features::moneyball::query::{
         MoneyballComparisonBasis, MoneyballProfile, MoneyballProfileState,
+        MoneyballRoleContribution, MoneyballRoleScore,
     };
 
     fn ready_profile(comparison_basis: MoneyballComparisonBasis) -> MoneyballProfile {
@@ -219,5 +223,42 @@ mod tests {
         assert_eq!(value["percentiles"], serde_json::Value::Null);
         assert_eq!(value["roleCatalogVersion"], serde_json::Value::Null);
         assert_eq!(value["roleScores"], serde_json::Value::Null);
+    }
+
+    fn contribution(metric_key: &str, percentile: Option<u8>) -> MoneyballRoleContribution {
+        MoneyballRoleContribution {
+            metric_key: metric_key.to_owned(),
+            source_label: metric_key.to_owned(),
+            weight: 0.5,
+            direction: "higher".to_owned(),
+            percentile,
+            weighted_contribution: percentile.map(f64::from),
+        }
+    }
+
+    #[test]
+    fn marks_contributions_that_save_files_cannot_provide() {
+        let mut profile = ready_profile(MoneyballComparisonBasis::Available {
+            natural_positions: vec!["MC".to_owned()],
+            comparison_player_count: 12,
+        });
+        profile.role_scores = Some(vec![MoneyballRoleScore {
+            role_id: "mc_pressing_central_midfielder_oop".to_owned(),
+            display_name: "Pressing Central Midfielder".to_owned(),
+            phase: "out_of_possession".to_owned(),
+            position_family: "central_midfielder".to_owned(),
+            position_tags: vec!["MC".to_owned()],
+            score: Some(60),
+            contributions: vec![
+                contribution("pressures_completed_per_90", None),
+                contribution("tackles_completed_per_90", Some(60)),
+            ],
+        }]);
+
+        let value = serde_json::to_value(MoneyballProfileDto::from(profile)).expect("serialize");
+        let contributions = &value["roleScores"][0]["contributions"];
+
+        assert_eq!(contributions[0]["availableFromSource"], json!(false));
+        assert_eq!(contributions[1]["availableFromSource"], json!(true));
     }
 }

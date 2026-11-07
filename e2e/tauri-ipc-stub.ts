@@ -1553,6 +1553,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                       direction: "higher",
                       percentile: 90,
                       weightedContribution: 18,
+                      availableFromSource: true,
                     },
                     {
                       metricKey: "pass_completion_ratio",
@@ -1561,6 +1562,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                       direction: "higher",
                       percentile: 80,
                       weightedContribution: 20,
+                      availableFromSource: true,
                     },
                     {
                       metricKey: "distance_covered_per_90",
@@ -1569,6 +1571,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                       direction: "higher",
                       percentile: 90,
                       weightedContribution: 18,
+                      availableFromSource: true,
                     },
                     {
                       metricKey: "tackles_completed_per_90",
@@ -1577,6 +1580,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                       direction: "higher",
                       percentile: 80,
                       weightedContribution: 16,
+                      availableFromSource: true,
                     },
                     {
                       metricKey: "interceptions_per_90",
@@ -1585,6 +1589,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                       direction: "higher",
                       percentile: 90,
                       weightedContribution: 13.5,
+                      availableFromSource: true,
                     },
                   ],
                 },
@@ -1603,6 +1608,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                       direction: "higher",
                       percentile: 70,
                       weightedContribution: 35,
+                      availableFromSource: true,
                     },
                     {
                       metricKey: "possession_lost_per_90",
@@ -1611,6 +1617,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                       direction: "lower",
                       percentile: 58,
                       weightedContribution: 29,
+                      availableFromSource: true,
                     },
                   ],
                 },
