@@ -248,7 +248,7 @@ export function PlannerSquadBoard({
                 key={plannerString.id}
                 id={`${idPrefix}-${team}-string-${plannerString.id}`}
                 scope="col"
-                className={`${index === 0 || allStrings[index - 1]?.team !== team ? "border-l-2" : ""} h-table-header-height w-52 max-w-52 min-w-52 border-b border-outline-variant bg-surface-container-high px-3 text-left font-mono text-mono-sm text-on-surface tabular-nums`}
+                className={`${index === 0 || allStrings[index - 1]?.team !== team ? "border-l-2" : ""} h-table-header-height w-52 max-w-52 min-w-52 border-b border-outline-variant bg-surface-container-high px-3 text-left text-body-sm font-medium text-on-surface`}
               >
                 {plannerString.displayName}
               </th>
