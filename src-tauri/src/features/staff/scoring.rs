@@ -32,7 +32,7 @@ const STAFF_ROLES: &[StaffRoleDefinition] = &[
     },
     StaffRoleDefinition {
         role_id: "coach_attacking_technical",
-        display_name: "Coach — Attacking Technical",
+        display_name: "Coach: Attacking Technical",
         attributes: &[
             "Authority",
             "Determination",
@@ -43,7 +43,7 @@ const STAFF_ROLES: &[StaffRoleDefinition] = &[
     },
     StaffRoleDefinition {
         role_id: "coach_attacking_tactical",
-        display_name: "Coach — Attacking Tactical",
+        display_name: "Coach: Attacking Tactical",
         attributes: &[
             "Authority",
             "Determination",
@@ -54,7 +54,7 @@ const STAFF_ROLES: &[StaffRoleDefinition] = &[
     },
     StaffRoleDefinition {
         role_id: "coach_defending_technical",
-        display_name: "Coach — Defending Technical",
+        display_name: "Coach: Defending Technical",
         attributes: &[
             "Authority",
             "Determination",
@@ -65,7 +65,7 @@ const STAFF_ROLES: &[StaffRoleDefinition] = &[
     },
     StaffRoleDefinition {
         role_id: "coach_defending_tactical",
-        display_name: "Coach — Defending Tactical",
+        display_name: "Coach: Defending Tactical",
         attributes: &[
             "Authority",
             "Determination",
@@ -76,7 +76,7 @@ const STAFF_ROLES: &[StaffRoleDefinition] = &[
     },
     StaffRoleDefinition {
         role_id: "coach_possession_technical",
-        display_name: "Coach — Possession Technical",
+        display_name: "Coach: Possession Technical",
         attributes: &[
             "Authority",
             "Determination",
@@ -87,7 +87,7 @@ const STAFF_ROLES: &[StaffRoleDefinition] = &[
     },
     StaffRoleDefinition {
         role_id: "coach_possession_tactical",
-        display_name: "Coach — Possession Tactical",
+        display_name: "Coach: Possession Tactical",
         attributes: &[
             "Authority",
             "Determination",
@@ -98,12 +98,12 @@ const STAFF_ROLES: &[StaffRoleDefinition] = &[
     },
     StaffRoleDefinition {
         role_id: "coach_fitness",
-        display_name: "Coach — Fitness",
+        display_name: "Coach: Fitness",
         attributes: &["Authority", "Determination", "Motivating", "Fitness"],
     },
     StaffRoleDefinition {
         role_id: "coach_goalkeeping",
-        display_name: "Coach — Goalkeeping",
+        display_name: "Coach: Goalkeeping",
         attributes: &[
             "Authority",
             "Determination",

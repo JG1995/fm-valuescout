@@ -108,7 +108,7 @@ describe("Settings", () => {
 
     expect(
       await within(section).findByText(
-        "Completed — 7 updated, 2 skipped, 0 failed.",
+        "Completed: 7 updated, 2 skipped, 0 failed.",
       ),
     ).toBeInTheDocument();
     expect(getManagedClubBoostIpcMockCalls()).toHaveLength(1);
@@ -132,7 +132,7 @@ describe("Settings", () => {
       ).getByRole("button", { name: "Apply all boosts" }),
     );
 
-    expect(await within(section).findByText(/Stopped —/)).toBeInTheDocument();
+    expect(await within(section).findByText(/Stopped:/)).toBeInTheDocument();
     expect(action).toBeDisabled();
 
     setSnapshotHistoryIpcMock([
@@ -154,7 +154,7 @@ describe("Settings", () => {
           name: "Apply all boosts",
         }),
       ).toBeEnabled();
-      expect(within(currentSection).queryByText(/Stopped —/)).toBeNull();
+      expect(within(currentSection).queryByText(/Stopped:/)).toBeNull();
     });
   });
 

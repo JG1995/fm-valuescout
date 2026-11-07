@@ -25,7 +25,7 @@ describe("staff metrics", () => {
     expect(STAFF_ROLE_METRICS).toHaveLength(21);
     expect(getStaffMetric("role.manager")?.label).toBe("Manager");
     expect(getStaffMetric("role.coach_goalkeeping")?.label).toBe(
-      "Coach — Goalkeeping",
+      "Coach: Goalkeeping",
     );
     expect(getStaffMetric("role.unknown")).toBeUndefined();
     expect(STAFF_METRICS.some((metric) => metric.id === "attr.Authority")).toBe(

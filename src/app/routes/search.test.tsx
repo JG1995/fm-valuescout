@@ -287,9 +287,7 @@ describe("search route", () => {
     expect(
       screen.getByRole("button", { name: "Add Tactic (Potential)" }),
     ).toBeDisabled();
-    expect(
-      screen.getByText("No snapshot loaded — use Load Data"),
-    ).toBeVisible();
+    expect(screen.getByText("No snapshot loaded: use Load Data")).toBeVisible();
     expect(
       screen.getByText("No data loaded for this save"),
     ).toBeInTheDocument();

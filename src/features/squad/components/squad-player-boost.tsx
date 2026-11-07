@@ -27,7 +27,7 @@ type SquadWonderkidMentalityBoostProps = Omit<SquadPlayerBoostProps, "action">;
 
 function resultSummary(result: SquadPlayerBoostResult) {
   const processed = result.updated + result.skipped + result.failed;
-  return `${processed} processed — ${result.updated} updated, ${result.skipped} skipped, ${result.failed} failed.`;
+  return `${processed} processed: ${result.updated} updated, ${result.skipped} skipped, ${result.failed} failed.`;
 }
 
 export function SquadBoostOutcome({

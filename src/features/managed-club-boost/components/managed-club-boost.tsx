@@ -83,7 +83,7 @@ export function ManagedClubBoost({
             role="status"
           >
             <p>
-              {summary.recoveryRequired ? "Stopped" : "Completed"} —{" "}
+              {summary.recoveryRequired ? "Stopped" : "Completed"}:{" "}
               {summary.updated} updated, {summary.skipped} skipped,{" "}
               {summary.failed} failed.
             </p>
@@ -144,7 +144,7 @@ export function ManagedClubBoost({
               ) : null}
               <p>
                 {currentProgress
-                  ? `${phaseLabels[currentProgress.phase]} — ${currentProgress.processed} of ${currentProgress.total} processed.`
+                  ? `${phaseLabels[currentProgress.phase]}: ${currentProgress.processed} of ${currentProgress.total} processed.`
                   : "Preparing managed club boosts…"}
               </p>
             </div>

@@ -1676,7 +1676,7 @@ describe("My Club route", () => {
     resolvePendingSquadCurrentAbilityBoostIpcMock();
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "2 processed — 2 updated, 0 skipped, 0 failed.",
+      "2 processed: 2 updated, 0 skipped, 0 failed.",
     );
     expect(getLastSquadCurrentAbilityBoostProgress()).toEqual({
       processed: 2,
@@ -1734,7 +1734,7 @@ describe("My Club route", () => {
 
     resolvePendingSquadCurrentAbilityBoostIpcMock();
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "0 processed — 0 updated, 0 skipped, 0 failed.",
+      "0 processed: 0 updated, 0 skipped, 0 failed.",
     );
   });
 
@@ -1756,7 +1756,7 @@ describe("My Club route", () => {
       ).getByRole("button", { name: "Boost all CA" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "2 processed — 2 updated, 0 skipped, 0 failed.",
+      "2 processed: 2 updated, 0 skipped, 0 failed.",
     );
 
     await user.click(
@@ -1781,7 +1781,7 @@ describe("My Club route", () => {
       ).getByRole("button", { name: "Make all Wonderkids" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "2 processed — 2 updated, 0 skipped, 0 failed.",
+      "2 processed: 2 updated, 0 skipped, 0 failed.",
     );
     expect(screen.getAllByRole("status")).toHaveLength(1);
   });
@@ -1836,7 +1836,7 @@ describe("My Club route", () => {
       ).getByRole("button", { name: "Boost all CA" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "2 processed — 2 updated, 0 skipped, 0 failed.",
+      "2 processed: 2 updated, 0 skipped, 0 failed.",
     );
 
     const snapshot = queryClient.getQueryData<SnapshotSummary>(
@@ -1913,7 +1913,7 @@ describe("My Club route", () => {
     );
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "4 processed — 1 updated, 2 skipped, 1 failed.",
+      "4 processed: 1 updated, 2 skipped, 1 failed.",
     );
     expect(screen.getByRole("status")).toHaveTextContent(
       "Stopped before all players were processed. Load Data is required before another boost.",
@@ -1996,7 +1996,7 @@ describe("My Club route", () => {
 
     resolvePendingSquadWonderkidMentalityBoostIpcMock();
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "2 processed — 2 updated, 0 skipped, 0 failed.",
+      "2 processed: 2 updated, 0 skipped, 0 failed.",
     );
     expect(getLastSquadWonderkidMentalityBoostProgress()).toEqual({
       processed: 2,
@@ -2029,7 +2029,7 @@ describe("My Club route", () => {
     );
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "4 processed — 1 updated, 2 skipped, 1 failed.",
+      "4 processed: 1 updated, 2 skipped, 1 failed.",
     );
     expect(screen.getByRole("status")).toHaveTextContent(
       "Stopped before all players were processed. Load Data is required before another boost.",

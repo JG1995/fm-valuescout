@@ -489,7 +489,7 @@ export function fixtureStaffDetail(
     attributes,
     hiddenInformationRevealed: getPlayerHiddenInformationRevealedIpcMock(),
     roleScores: [
-      { roleId: "coach_fitness", displayName: "Coach — Fitness", score: 85 },
+      { roleId: "coach_fitness", displayName: "Coach: Fitness", score: 85 },
       { roleId: "scout", displayName: "Scout", score: 80 },
       { roleId: "physio", displayName: "Physio", score: null },
     ],

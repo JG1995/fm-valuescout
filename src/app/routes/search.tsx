@@ -467,9 +467,9 @@ function SearchPageContent() {
     let retryTactic: (() => void) | null = null;
     if (!activeSave) {
       tacticMessage =
-        "No active save — configure a save before adding tactic columns";
+        "No active save: configure a save before adding tactic columns";
     } else if (!resultContext) {
-      tacticMessage = "No snapshot loaded — use Load Data";
+      tacticMessage = "No snapshot loaded: use Load Data";
     } else if (isResultContextChanging || tacticState?.isPending) {
       tacticMessage = "Loading tactic…";
     } else if (tacticState?.initialError) {

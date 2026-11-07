@@ -797,7 +797,7 @@ test.describe("application smoke", () => {
       table.locator('thead th[scope="colgroup"]').first(),
     ).toBeVisible();
     await expect(
-      table.getByRole("columnheader", { name: "Coach — Goalkeeping" }),
+      table.getByRole("columnheader", { name: "Coach: Goalkeeping" }),
     ).toBeVisible();
     await expect(table.getByText("Alex Coach")).toBeVisible();
     await page.goto("/staff?view=my-staff");
@@ -870,10 +870,10 @@ test.describe("application smoke", () => {
 
     await preferredJob.selectOption("Coach");
     await expect(
-      table.getByRole("columnheader", { name: "Coach — Attacking Technical" }),
+      table.getByRole("columnheader", { name: "Coach: Attacking Technical" }),
     ).toBeVisible();
     await expect(
-      table.getByRole("columnheader", { name: "Coach — Fitness" }),
+      table.getByRole("columnheader", { name: "Coach: Fitness" }),
     ).toHaveCount(0);
 
     await preferredJob.selectOption("Manager");
@@ -1036,14 +1036,14 @@ test.describe("application smoke", () => {
     await expect(assignments.getByRole("row")).toHaveCount(8);
     await expect(
       assignments.getByRole("rowheader", {
-        name: "First Team — 2 of 2 filled",
+        name: "First Team: 2 of 2 filled",
       }),
     ).toBeVisible();
     await expect(
-      assignments.getByRole("rowheader", { name: "Club — 1 of 1 filled" }),
+      assignments.getByRole("rowheader", { name: "Club: 1 of 1 filled" }),
     ).toBeVisible();
     await expect(
-      assignments.getByRole("rowheader", { name: "Reserves — 0 of 1 filled" }),
+      assignments.getByRole("rowheader", { name: "Reserves: 0 of 1 filled" }),
     ).toBeVisible();
     const assignmentRows = assignments.locator("tbody tr");
     await expect(assignmentRows.nth(1)).toContainText("Alex Assistant");
@@ -1485,7 +1485,7 @@ test.describe("application smoke", () => {
     await expect(dialog).toContainText("at your managed club");
     await dialog.getByRole("button", { name: "Boost all CA" }).click();
     await expect(main.getByTestId("staff-boost-outcome")).toContainText(
-      "1 processed — 1 updated, 0 skipped, 0 failed.",
+      "1 processed: 1 updated, 0 skipped, 0 failed.",
     );
   });
 
@@ -2744,7 +2744,7 @@ test.describe("application smoke", () => {
     await expect(dialog).toContainText("0 of 2 players processed.");
     await expect(
       main.getByTestId("squad-boost-feedback").getByRole("status"),
-    ).toContainText("2 processed — 2 updated, 0 skipped, 0 failed.");
+    ).toContainText("2 processed: 2 updated, 0 skipped, 0 failed.");
     await expect(
       main.getByTestId("squad-boost-feedback").getByRole("status"),
     ).toHaveCount(1);
@@ -2776,7 +2776,7 @@ test.describe("application smoke", () => {
 
     await expect(
       main.getByTestId("squad-boost-feedback").getByRole("status"),
-    ).toContainText("2 processed — 2 updated, 0 skipped, 0 failed.");
+    ).toContainText("2 processed: 2 updated, 0 skipped, 0 failed.");
   });
 
   test("planner tactic editor saves a linked phase adjustment", async ({

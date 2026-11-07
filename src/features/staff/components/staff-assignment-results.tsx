@@ -148,7 +148,7 @@ export function StaffAssignmentResults({
                         colSpan={4}
                         className="bg-surface-container-high px-2 py-2 text-label-md text-on-surface"
                       >
-                        {group.displayName} —{" "}
+                        {group.displayName}:{" "}
                         {
                           group.slots.filter(
                             (slot) => slot.kind === "recommendation",
