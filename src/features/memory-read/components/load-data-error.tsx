@@ -7,12 +7,12 @@ export function loadDataErrorCopy(error: Error) {
         case "unsupportedPlatform":
           return {
             title: "Windows required",
-            body: "FM26 memory read is only supported on Windows. Run the app on your Windows host to load data.",
+            body: "FM27 memory read is only supported on Windows. Run the app on your Windows host to load data.",
           };
         case "missing":
           return {
             title: "Bridge not detected",
-            body: "Football Manager 26 must be running on Windows with the FmDataBridge plugin installed before Load Data can scan players.",
+            body: "Football Manager 27 must be running on Windows with the FmDataBridge plugin installed before Load Data can scan players.",
           };
         case "timeout":
           return {

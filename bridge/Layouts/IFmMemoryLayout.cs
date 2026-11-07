@@ -5,7 +5,7 @@ namespace FmDataBridge.Layouts;
 /// </summary>
 public interface IFmMemoryLayout
 {
-    /// <summary>Major.minor key, e.g. <c>26.3</c>.</summary>
+    /// <summary>Major.minor key, e.g. <c>27.0</c>.</summary>
     string VersionKey { get; }
 
     /// <summary>
@@ -14,7 +14,7 @@ public interface IFmMemoryLayout
     /// </summary>
     bool SupportsPlayerBoosts(string gameVersion);
 
-    /// <summary>True only after this exact FM build passes the controlled staff CA write proof.</summary>
+    /// <summary>True only for an exact FM build approved for the bounded staff CA write.</summary>
     bool SupportsStaffBoosts(string gameVersion);
 
     string DisplayName { get; }

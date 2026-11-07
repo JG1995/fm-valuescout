@@ -450,7 +450,7 @@ mod tests {
     }
 
     #[test]
-    fn returns_the_exact_fm26_catalog_and_compacts_zeroes() {
+    fn returns_the_exact_fm27_catalog_and_compacts_zeroes() {
         let (_temp_dir, conn, save_id, token) = connection();
         let before = get_targets(&conn, &token).expect("expanded targets");
         assert_eq!(

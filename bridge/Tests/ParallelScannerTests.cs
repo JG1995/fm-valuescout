@@ -35,7 +35,7 @@ public sealed class ParallelScannerTests
     [MultiCoreFact]
     public void Person_scanner_overlaps_independent_region_reads()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var inner = new FakeMemoryReader();
         PlacePlayer(inner, layout, FirstRegionBase, uid: 101, slot: 1);
         PlacePlayer(inner, layout, SecondRegionBase, uid: 102, slot: 2);
@@ -79,7 +79,7 @@ public sealed class ParallelScannerTests
     [MultiCoreFact]
     public void Person_scanner_parallel_matches_serial_values_and_semantic_diagnostics()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         var regions = new[]
         {
@@ -151,7 +151,7 @@ public sealed class ParallelScannerTests
     [MultiCoreFact]
     public void Person_scanner_parallel_preserves_candidates_at_scan_block_boundaries()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new BoundaryMemoryReader();
         var regions = new[]
         {
@@ -193,7 +193,7 @@ public sealed class ParallelScannerTests
     [MultiCoreFact]
     public void Person_scanner_cancellation_stops_parallel_workers()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var inner = new FakeMemoryReader();
         PlacePlayer(inner, layout, FirstRegionBase, uid: 101, slot: 1);
         PlacePlayer(inner, layout, SecondRegionBase, uid: 102, slot: 2);
@@ -222,7 +222,7 @@ public sealed class ParallelScannerTests
     [MultiCoreFact]
     public void Person_scanner_propagates_worker_scalar_read_exceptions()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var inner = new FakeMemoryReader();
         PlacePlayer(inner, layout, FirstRegionBase, uid: 101, slot: 1);
         PlacePlayer(inner, layout, SecondRegionBase, uid: 102, slot: 2);

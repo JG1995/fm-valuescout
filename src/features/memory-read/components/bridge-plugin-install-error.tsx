@@ -15,7 +15,7 @@ function bridgePluginInstallErrorCopy(error: Error) {
       case "unsupportedPlatform":
         return {
           title: "Windows required for plugin install",
-          body: "Installing the FM26 bridge plugin is only supported on Windows. Run the app on your Windows host to install or update the plugin.",
+          body: "Installing the FM27 bridge plugin is only supported on Windows. Run the app on your Windows host to install or update the plugin.",
         };
       default:
         break;

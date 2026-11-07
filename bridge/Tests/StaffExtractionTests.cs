@@ -56,7 +56,7 @@ public sealed class StaffExtractionTests
         const ulong team = 0x420000UL;
         const ulong club = 0x430000UL;
         const ulong competition = 0x440000UL;
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
 
         PlaceIdentity(reader, layout, person, "Staff Reader", 1984, 200, nationUid: 208);
@@ -132,7 +132,7 @@ public sealed class StaffExtractionTests
     public void Staff_attribute_reader_nulls_corrupt_attribute_bytes()
     {
         const ulong staffBlock = 0x400000UL;
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
 
         var corruptAttributes = new FakeMemoryReader();
         corruptAttributes.AddBytes(
@@ -149,7 +149,7 @@ public sealed class StaffExtractionTests
     {
         const ulong person = 0x410000UL;
         const ulong contract = 0x420000UL;
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
 
         var impossibleExpiry = new FakeMemoryReader();
         impossibleExpiry.AddBytes(
@@ -168,7 +168,7 @@ public sealed class StaffExtractionTests
     [Fact]
     public void Squad_index_reads_positive_and_null_club_object_uids()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         const ulong person = 0x5000;
         const ulong club = 0x6000;
         const ulong team = 0x7000;
@@ -208,7 +208,7 @@ public sealed class StaffExtractionTests
     [Fact]
     public void Human_manager_selector_binds_uid_to_graph_club_even_when_unread()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         const ulong person = 0x5000;
         const ulong club = 0x6000;
         const ulong team = 0x7000;
@@ -243,7 +243,7 @@ public sealed class StaffExtractionTests
             var result = new CapADumpPipeline().Run(
                 BuildPipelineReader(),
                 bridgeDirectory,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -335,7 +335,7 @@ public sealed class StaffExtractionTests
 
     private static FakeMemoryReader BuildPipelineReader()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         reader.AddRegion(
             new MemoryRegion(

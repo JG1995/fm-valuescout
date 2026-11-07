@@ -1,6 +1,6 @@
-# FM26 BepInEx bridge
+# FM27 BepInEx bridge
 
-C# plugin that runs inside Football Manager 26 (Windows Steam) via BepInEx 6 IL2CPP. It owns memory layouts and dump files. The Tauri Rust backend talks to it through a LocalAppData file protocol ([ADR-0016](../.wiki/adr/0016-csharp-bepinex-fm26-bridge.md)).
+C# plugin that runs inside Football Manager 27 (Windows Steam) via BepInEx 6 IL2CPP. It owns memory layouts and dump files. The Tauri Rust backend talks to it through a LocalAppData file protocol ([ADR-0016](../.wiki/adr/0016-csharp-bepinex-fm26-bridge.md)).
 
 This is early-alpha bridge and maintainer documentation. Start with the root [README](../README.md) for supported-environment, installer, backup, and public-reporting guidance. Do not share `dump.json`, bridge diagnostics, or the app database in a public issue: those files can contain local FM data.
 
@@ -25,15 +25,15 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
 
 ### Layouts, identity extraction, and dump
 
-- `Layouts/` — versioned pins keyed by FM major.minor (`26.3`). Unsupported versions fail closed and write diagnostics without touching a prior good `dump.json`.
-- `Fm263Layout` ports FMSuperScout’s 26.3 field pins (author permission — see `.wiki/notes/superscout-permission.md`). Confirm identity fields against known players after first live dump; still marked provisional until then.
+- `Layouts/` — versioned pins keyed by FM major.minor (`27.0`). Unsupported versions fail closed and write diagnostics without touching a prior good `dump.json`.
+- `Fm27Layout` ports FMSuperScout’s 26.3 field pins (author permission — see `.wiki/notes/superscout-permission.md`). FM 27.0 kept every one: on 2026-11-07, a live FM27 save matched the in-game player and staff data. The layout stays marked provisional.
 - `Scanning/PersonScanner` — heap walk via bounded `TryReadBlock` regions (32 MiB blocks, local aligned-word inspection, in-buffer UID, cached vtable→class-offset), Il2Cpp dynamic class offset, UID/CA/PA sanity (`1..200`), UID dedupe. Full-dump requests always run the complete candidate scan. See [bridge scan performance](../.wiki/features/completed/bridge-scan-performance.md) for live budgets and phase diagnostics.
 - `Extraction/` — dedicated readers for nested/indirect UTF-8 names, FM packed DOB, nationality, height, preferred foot (from foot attrs ÷5), complete raw position familiarity, attribute groups (visible/hidden ÷5; personality raw 1–20), contract/value/reputation (person→contract pointer; wages and market value in GBP as stored), and club/loan resolution (contract→team→club parent; squad walk for current club with deterministic multi-hit rules; schedule date-votes for in-game date). Contiguous attribute, position, personality, and bounded string ranges are read with coverage-aware block reads into rented buffers and decoded locally; pointer-chain hops stay scalar and nullable. Empty names or impossible DOBs are skipped and counted in diagnostics. Age is computed from DOB against the resolved game date.
 - Dump schema **v9** retains the schema-v7 player payload and adds the fixed staff `Authority` and `Adaptability` keys required for role scoring. Attribute keys are stable PascalCase names (for example, `Acceleration`, `Authority`, and `Adaptability`); unread values are JSON `null`, never sentinel zero. `DumpWriter` streams compact schema-v9 JSON to a temp file and atomically replaces `dump.json` only on non-empty success. Unknown FM builds, including an undetectable `game_plugin.dll` version, fail closed with no layout fallback. The exact field, null, and identity rules live in [DUMP_SCHEMA.md](./DUMP_SCHEMA.md). Existing snapshots remain readable, but complete staff scoring requires a new v9 scan.
 
 ### In-app request protocol
 
-1. Build and install the plugin; launch FM26 and load a save.
+1. Build and install the plugin; launch FM27 and load a save.
 2. In the Tauri app, click **Load Data** in the top bar.
 3. Rust writes `request.json` (`protocolVersion`, `requestId`, `createdAtUtc`, `operation: "full-dump"`). The bridge runs this request as an unconditional full scan; unknown properties from older app versions are ignored.
 4. The plugin polls at a fixed 250 ms interval, rejects requests older than **30 seconds**, runs the dump off the Unity main thread, and updates `status.json` (`idle` → `scanning` → `ready` / `failed`). Transient status does not carry scan-cap or truncation signals; historical cap metadata remains in persisted dumps.
@@ -51,13 +51,15 @@ The bridge retains separate player and staff candidate locations only in memory 
 
 On 2026-08-16, the exact FM 26.3.2 build completed the controlled staff-write proof on an accepted save. One staff CA changed from `59` to `69`; another changed from `83` to its PA cap of `85`. Both operation responses reported verified readback with no rollback, and a separate full bridge scan independently returned `69/112` and `85/85`. No names, UIDs, addresses, or save contents are retained in this record.
 
+FM 27.0 player and staff boosts rely on this FM 26.3.2 proof. They were enabled for exact build `27.0` on 2026-11-07 without repeating the controlled write proof on FM27; back up the save before the first FM27 boost.
+
 ### Manual force-scan fallback
 
-1. With FM26 running and a save loaded, create an empty file:
+1. With FM27 running and a save loaded, create an empty file:
    `%LOCALAPPDATA%\fm-valuescout\fm-bridge\force-scan`
 2. The plugin creates a unique `force-scan-*` request ID (reported in `status.json`), treats it as an unlimited request, then deletes the file. A later manual scan has a different source ID and replaces the prior live candidate index.
 3. Inspect `dump.json` / `diagnostics.txt` and `status.json` (`scanning` → `ready` / `failed`).
-4. Record player and staff counts, then spot-check representative player fields, staff identity/attributes/contracts, manager club metadata, scope, and date basis against FM. If wrong or empty, use diagnostics (class-offset histogram, sample UIDs, `sampleAttributes`, `sampleContracts`, `sampleClubs`, `multiClubSamples`, identity skip counts, `clubUnresolved`) to adjust `Fm263Layout`.
+4. Record player and staff counts, then spot-check representative player fields, staff identity/attributes/contracts, manager club metadata, scope, and date basis against FM. If wrong or empty, use diagnostics (class-offset histogram, sample UIDs, `sampleAttributes`, `sampleContracts`, `sampleClubs`, `multiClubSamples`, identity skip counts, `clubUnresolved`) to adjust `Fm27Layout`.
 
 ### Live schema-v6 baseline
 
@@ -102,8 +104,8 @@ The developer also compared a representative player's fields and club link, a st
 | --- | --- |
 | **.NET 6 SDK** | Feature band pinned in [`global.json`](./global.json). Install from [dotnet.microsoft.com](https://dotnet.microsoft.com/download/dotnet/6.0). |
 | **Windows host** | Build and run the plugin on Windows for FM attach. Unit tests (`dotnet test`) can run on Linux/WSL with the SDK. |
-| **Football Manager 26 (Steam)** | Memory reading targets Windows Steam FM26 only. |
-| **BepInEx 6 IL2CPP** | Install into the FM26 game folder per [BepInEx docs](https://docs.bepinex.dev/). Use a known-compatible Unity IL2CPP build (bleeding-edge / `be` line). |
+| **Football Manager 27 (Steam)** | Memory reading targets Windows Steam FM27 only. |
+| **BepInEx 6 IL2CPP** | Install into the FM27 game folder per [BepInEx docs](https://docs.bepinex.dev/). Use a known-compatible Unity IL2CPP build (bleeding-edge / `be` line). |
 
 ## Build
 
@@ -129,11 +131,11 @@ Copy-Item Directory.Build.props.example Directory.Build.user.props
 
 ## Manual install and first status check
 
-1. Install BepInEx 6 IL2CPP into the FM26 Steam folder.
+1. Install BepInEx 6 IL2CPP into the FM27 Steam folder.
 2. Launch FM once so BepInEx generates interop under `BepInEx/interop/` (needed for later scan work; status writer does not require those DLLs at build time).
 3. Build this project (`dotnet build`).
-4. Copy `FmDataBridge.dll` into `Football Manager 26/BepInEx/plugins/`.
-5. Launch FM26. Check the BepInEx log for `FM Data Bridge ... loaded`.
+4. Copy `FmDataBridge.dll` into `Football Manager 27/BepInEx/plugins/`.
+5. Launch FM27. Check the BepInEx log for `FM Data Bridge ... loaded`.
 6. Confirm `%LOCALAPPDATA%\fm-valuescout\fm-bridge\status.json` exists and looks like:
 
 ```json
@@ -151,11 +153,11 @@ Copy-Item Directory.Build.props.example Directory.Build.user.props
 
 ## In-app install (Tauri)
 
-The desktop app can install, update, or remove `FmDataBridge.dll` into the default Steam FM26 `BepInEx/plugins` folder from the **Bridge plugin install** section in Settings.
+The desktop app can install, update, or remove `FmDataBridge.dll` into the default Steam FM27 `BepInEx/plugins` folder from the **Bridge plugin install** section in Settings.
 
-1. Ensure BepInEx 6 IL2CPP is already installed in the FM26 Steam folder (the app does **not** install BepInEx itself).
+1. Ensure BepInEx 6 IL2CPP is already installed in the FM27 Steam folder (the app does **not** install BepInEx itself).
 2. Click **Install plugin** (or **Update plugin** when a copy is already present).
-3. Restart Football Manager 26 so BepInEx loads the new DLL.
+3. Restart Football Manager 27 so BepInEx loads the new DLL.
 4. Use **Remove plugin** to delete only `FmDataBridge.dll` — other plugins and BepInEx core are left untouched.
 
 Path resolution matches `./scripts/dev bridge-install`: `FM_BRIDGE_PLUGINS`, then `FM_STEAM_ROOT/BepInEx/plugins`, then the default Windows Steam path.
@@ -205,13 +207,13 @@ Builds `FmDataBridge.dll` and copies it to `BepInEx/plugins`. Path resolution:
 
 1. `FM_BRIDGE_PLUGINS` — explicit plugins directory
 2. `FM_STEAM_ROOT/BepInEx/plugins` — if `FM_STEAM_ROOT` is set
-3. Default WSL Steam path: `/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 26/BepInEx/plugins`
+3. Default WSL Steam path: `/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 27/BepInEx/plugins`
 
 Example override:
 
 ```bash
-export FM_STEAM_ROOT="/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 26"
+export FM_STEAM_ROOT="/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 27"
 ./scripts/dev bridge-install
 ```
 
-Then restart FM26 so BepInEx loads the new DLL.
+Then restart FM27 so BepInEx loads the new DLL.

@@ -1,6 +1,6 @@
 # Dump schema v9 (frozen)
 
-Contract between the FM26 BepInEx bridge (`dump.json`) and Rust snapshot ingest. File protocol details: [README.md](./README.md). Architecture: [ADR-0016](../.wiki/adr/0016-csharp-bepinex-fm26-bridge.md).
+Contract between the FM27 BepInEx bridge (`dump.json`) and Rust snapshot ingest. File protocol details: [README.md](./README.md). Architecture: [ADR-0016](../.wiki/adr/0016-csharp-bepinex-fm26-bridge.md).
 
 **Schema version:** `9` (`BridgeProtocol.DumpSchemaVersion` / Rust `DUMP_SCHEMA_VERSION`). Schema v8 and older dumps are rejected with an instruction to update the bridge plugin and rescan.
 
@@ -47,7 +47,7 @@ For Wonderkid Mentality, a `null` expected field means the source snapshot did n
 
 `sourceRequestId` binds the action to the plugin's separate in-memory player or staff candidate index. The indexes are replaced only after a successful live dump and are absent after a snapshot-backed scan or plugin restart. Manual force scans receive a distinct source request ID each time. Requests never carry memory addresses, field selectors, or arbitrary target values.
 
-`status.json` may add `playerBoostsSupported` and `playerBoost`, plus `staffBoostsSupported` and `staffBoost`. Results report only verified CA/PA or mentality values plus rollback state. They contain no UID, address, raw bytes, or process path. `staffBoostsSupported` is true only for a live candidate index on the proved exact FM 26.3.2 build. Existing full-dump readers can ignore these optional fields.
+`status.json` may add `playerBoostsSupported` and `playerBoost`, plus `staffBoostsSupported` and `staffBoost`. Results report only verified CA/PA or mentality values plus rollback state. They contain no UID, address, raw bytes, or process path. `staffBoostsSupported` is true only for a live candidate index on the exact FM 27.0 build. Existing full-dump readers can ignore these optional fields.
 
 ## Player object
 
@@ -98,7 +98,7 @@ Each staff record is snapshot-owned and has this shape:
 
 The fixed keys are `Attacking`, `Defending`, `Fitness`, `Possession`, `Technical`, `Tactical`, `SetPieces`, `Determination`, `ManManagement`, `Motivating`, `JudgingPlayerAbility`, `JudgingPlayerPotential`, `JudgingStaffAbility`, `Negotiating`, `TacticalKnowledge`, `Physiotherapy`, `SportsScience`, `Authority`, `Adaptability`, `DataAnalysis`, `WorkingWithYoungsters`, `GoalkeepingDistribution`, `GoalkeepingHandling`, and `GoalkeepingReflexes`.
 
-`Authority` is the FM26 name for the former Level of Discipline concept. The FM26.3 layout reads its scaled byte from `StaffAttrsOffset + 0x30`. `Adaptability` is a raw 1–20 person personality byte at `person + 0x70`; staff extraction publishes it in the staff attribute map because staff scoring consumes it. Either value is `null` when the read fails or the decoded value is outside 1–20.
+`Authority` is the current FM name for the former Level of Discipline concept. The FM 27.0 layout reads its scaled byte from `StaffAttrsOffset + 0x30`. `Adaptability` is a raw 1–20 person personality byte at `person + 0x70`; staff extraction publishes it in the staff attribute map because staff scoring consumes it. Either value is `null` when the read fails or the decoded value is outside 1–20.
 
 The dump contract defines no query, UI, per-attribute SQL-column, or search-index semantics.
 

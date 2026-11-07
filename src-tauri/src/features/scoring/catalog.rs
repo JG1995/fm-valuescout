@@ -1,4 +1,4 @@
-//! Static FM26 role catalog for role scoring.
+//! Static FM27 role catalog for role scoring.
 //!
 //! Primary/secondary from SortItOutSI Key/Preferred; inventory cross-checked
 //! against FM Sidekick IP/OOP details. Keys are dump PascalCase only.
@@ -1570,7 +1570,7 @@ const ROLES: &[RoleDefinition] = &[
     },
 ];
 
-/// All catalogued FM26 roles (IP and OOP).
+/// All catalogued FM27 roles (IP and OOP).
 pub fn all_roles() -> &'static [RoleDefinition] {
     ROLES
 }

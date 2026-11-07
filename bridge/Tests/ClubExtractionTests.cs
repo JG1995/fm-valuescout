@@ -69,7 +69,7 @@ public sealed class ClubExtractionTests
     [Fact]
     public void Contract_club_reader_resolves_parent_club_and_division()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlaceClubObject(reader, layout, ParentClub, "Parent FC");
         PlaceTeamObject(
@@ -164,14 +164,14 @@ public sealed class ClubExtractionTests
         Directory.CreateDirectory(bridgeDir);
         try
         {
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var reader = new FakeMemoryReader();
             PlaceLoanScenario(reader, layout);
 
             var result = new CapADumpPipeline().Run(
                 reader,
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -216,14 +216,14 @@ public sealed class ClubExtractionTests
         Directory.CreateDirectory(bridgeDir);
         try
         {
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var reader = new FakeMemoryReader();
             PlaceLoanScenario(reader, layout, includeGlobalClub: true);
 
             var result = new CapADumpPipeline().Run(
                 reader,
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -243,7 +243,7 @@ public sealed class ClubExtractionTests
     [Fact]
     public void Reordered_discovered_clubs_keep_the_same_squad_selection()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlaceLoanScenario(reader, layout);
 
@@ -281,7 +281,7 @@ public sealed class ClubExtractionTests
     [Fact]
     public void Squad_assignment_carries_raw_type_and_reputation_from_the_selected_team()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlaceLoanScenario(
             reader,

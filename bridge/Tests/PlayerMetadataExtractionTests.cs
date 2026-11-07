@@ -14,7 +14,7 @@ public sealed class PlayerMetadataExtractionTests
     [Fact]
     public void Gender_reader_distinguishes_male_female_and_unread_values()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var unreadReader = new FakeMemoryReader();
         var maleReader = new FakeMemoryReader();
         var femaleReader = new FakeMemoryReader();

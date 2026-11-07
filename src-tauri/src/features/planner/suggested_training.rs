@@ -1,4 +1,4 @@
-//! Ranked FM26 individual-training focuses for an assigned tactic lane.
+//! Ranked FM27 individual-training focuses for an assigned tactic lane.
 //!
 //! Pure ranking engine: no SQL, no I/O, no side effects.
 

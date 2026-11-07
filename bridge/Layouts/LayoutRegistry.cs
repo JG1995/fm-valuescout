@@ -15,7 +15,7 @@ public sealed class LayoutRegistry
     }
 
     public static LayoutRegistry CreateDefault() =>
-        new(new IFmMemoryLayout[] { Fm263Layout.Instance });
+        new(new IFmMemoryLayout[] { Fm27Layout.Instance });
 
     public bool TryResolve(string versionKey, out IFmMemoryLayout layout)
     {
@@ -33,7 +33,7 @@ public sealed class LayoutRegistry
         TryResolve(NormalizeVersionKey(gameVersion), out layout);
 
     /// <summary>
-    /// Maps <c>26.3.2.2329565</c> or <c>26.3</c> to the major.minor key <c>26.3</c>.
+    /// Maps <c>27.0.0.2329565</c> or <c>27.0</c> to the major.minor key <c>27.0</c>.
     /// </summary>
     public static string NormalizeVersionKey(string gameVersion)
     {

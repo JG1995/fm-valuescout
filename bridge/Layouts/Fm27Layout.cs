@@ -1,22 +1,25 @@
 namespace FmDataBridge.Layouts;
 
 /// <summary>
-/// FM 26.3 layout pin.
+/// FM 27.0 layout pin.
 /// </summary>
 /// <remarks>
 /// Offsets ported from FMSuperScout <c>plugin/Fields.cs</c> (pinned to game_plugin 26.3.0/26.3.2)
 /// with author permission — see <c>.wiki/notes/superscout-permission.md</c>.
+/// FM 27.0 kept every FM 26.3 offset: a live FM27 save matched the in-game data on 2026-11-07.
 /// Structure and scanner are independent; values are research provenance, not a vendored plugin.
 /// </remarks>
-public sealed class Fm263Layout : IFmMemoryLayout
+public sealed class Fm27Layout : IFmMemoryLayout
 {
-    private const string PlayerBoostBuild = "26.3.2";
+    // ponytail: FM 27.0 boosts rely on the FM 26.3.2 controlled write proof, not a new FM27 one.
+    // Upgrade to a recorded FM 27.0 write proof if any FM27 boost reports an unverified readback.
+    private const string PlayerBoostBuild = "27.0";
 
-    private const string StaffBoostBuild = "26.3.2";
+    private const string StaffBoostBuild = "27.0";
 
-    public static Fm263Layout Instance { get; } = new();
+    public static Fm27Layout Instance { get; } = new();
 
-    public string VersionKey => "26.3";
+    public string VersionKey => "27.0";
 
     public bool SupportsPlayerBoosts(string gameVersion) =>
         string.Equals(gameVersion?.Trim(), PlayerBoostBuild, StringComparison.Ordinal);
@@ -24,7 +27,7 @@ public sealed class Fm263Layout : IFmMemoryLayout
     public bool SupportsStaffBoosts(string gameVersion) =>
         string.Equals(gameVersion?.Trim(), StaffBoostBuild, StringComparison.Ordinal);
 
-    public string DisplayName => "FM 26.3";
+    public string DisplayName => "FM 27.0";
 
     public int ObjectUidOffset => 0x0C;
 

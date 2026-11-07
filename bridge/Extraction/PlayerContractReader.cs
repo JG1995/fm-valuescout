@@ -69,7 +69,7 @@ public static class PlayerContractReader
         if (reader.TryReadUInt32(contractPtr + (ulong)layout.ContractExpiryOffset, out var expiryRaw))
         {
             var (year, doy) = FmDateDecoder.Decode(expiryRaw);
-            // Contract dates in FM26 are 2000+; earlier packed years are unset/sentinel.
+            // Contract dates are 2000+; earlier packed years are unset/sentinel.
             if (year >= 2000 && FmDateDecoder.IsPlausible(year, doy))
             {
                 expiryYear = year;

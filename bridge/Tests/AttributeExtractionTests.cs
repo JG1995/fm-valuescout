@@ -59,7 +59,7 @@ public sealed class AttributeExtractionTests
     [Fact]
     public void Attribute_reader_uses_null_for_unread_and_invalid_values()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         // Only write one visible attr; others unread → null
         WriteScaledAttr(reader, layout, "Acceleration", 13);
@@ -79,7 +79,7 @@ public sealed class AttributeExtractionTests
     [Fact]
     public void Attribute_reader_decodes_visible_hidden_and_personality_groups()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
 
         // Visible: Acceleration=13, Pace=14, Passing=11 (stored ×5)
@@ -123,7 +123,7 @@ public sealed class AttributeExtractionTests
         Directory.CreateDirectory(bridgeDir);
         try
         {
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var reader = new FakeMemoryReader();
             PlaceFullPlayerWithAttrs(
                 reader,
@@ -140,7 +140,7 @@ public sealed class AttributeExtractionTests
             var result = new CapADumpPipeline().Run(
                 reader,
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 

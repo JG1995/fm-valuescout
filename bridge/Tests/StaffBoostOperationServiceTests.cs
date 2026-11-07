@@ -14,9 +14,9 @@ public sealed class StaffBoostOperationServiceTests
     private const ulong StaffBlockAddress = 0x40000;
     private const uint StaffUid = 4321;
     private const string SourceRequestId = "R1";
-    private const string GameVersion = "26.3.2";
+    private const string GameVersion = "27.0";
 
-    private static readonly IFmMemoryLayout Layout = Fm263Layout.Instance;
+    private static readonly IFmMemoryLayout Layout = Fm27Layout.Instance;
 
     [Fact]
     public void Staff_boost_adds_ten_and_reports_verified_values()
@@ -131,11 +131,11 @@ public sealed class StaffBoostOperationServiceTests
         index.Replace(SourceRequestId, GameVersion, new[] { candidate });
         var service = new StaffBoostOperationService(new LayoutRegistry(new[] { Layout }), index);
 
-        var result = service.Execute(Request(120, 150), "26.3.1", reader, reader);
+        var result = service.Execute(Request(120, 150), "27.0.1", reader, reader);
 
         Assert.True(service.SupportsExactGameBuild(GameVersion));
         Assert.True(service.HasSupportedLiveIndex(GameVersion));
-        Assert.False(service.SupportsExactGameBuild("26.3.1"));
+        Assert.False(service.SupportsExactGameBuild("27.0.1"));
         Assert.False(result.Succeeded);
         Assert.Equal(StaffBoostFailure.UnsupportedGameBuild, result.Failure);
         Assert.Equal(120, ReadUInt16(reader, StaffBlockAddress + (ulong)Layout.StaffCurrentAbilityOffset));

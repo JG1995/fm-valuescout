@@ -17,7 +17,7 @@ dist-ssr/
 # Rust (Tauri)
 src-tauri/target/
 
-# C# BepInEx bridge (FM26 plugin)
+# C# BepInEx bridge (FM27 plugin)
 bridge/**/bin/
 bridge/**/obj/
 bridge/Directory.Build.user.props

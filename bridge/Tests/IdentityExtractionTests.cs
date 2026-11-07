@@ -49,7 +49,7 @@ public sealed class IdentityExtractionTests
     [Fact]
     public void Name_reader_prefers_common_name_and_decodes_utf8()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlaceNestedString(reader, 0x3000, "Søren");
         PlaceNestedString(reader, 0x3100, "Anders");
@@ -66,7 +66,7 @@ public sealed class IdentityExtractionTests
     [Fact]
     public void Name_reader_falls_back_to_first_and_second_when_common_missing()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlaceNestedString(reader, 0x3100, "José");
         PlaceNestedString(reader, 0x3200, "García");
@@ -79,7 +79,7 @@ public sealed class IdentityExtractionTests
     [Fact]
     public void Nation_reader_returns_short_name_from_nation_pointer()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         const ulong nationObj = 0x4000;
         PlaceIndirectString(reader, 0x4100, "DEN");
@@ -93,7 +93,7 @@ public sealed class IdentityExtractionTests
     [Fact]
     public void Nation_reader_reads_uid_from_the_nation_object_header()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         const ulong nationObj = 0x4000;
         reader.AddBytes(PersonAddress + (ulong)layout.NationPtrOffset, BitConverter.GetBytes(nationObj));
@@ -107,7 +107,7 @@ public sealed class IdentityExtractionTests
     [InlineData(uint.MaxValue)]
     public void Nation_reader_rejects_invalid_object_header_uids(uint uid)
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         const ulong nationObj = 0x4000;
         reader.AddBytes(PersonAddress + (ulong)layout.NationPtrOffset, BitConverter.GetBytes(nationObj));
@@ -119,7 +119,7 @@ public sealed class IdentityExtractionTests
     [Fact]
     public void Identity_reader_rejects_empty_name()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlacePlayerIdentity(
             reader,
@@ -146,7 +146,7 @@ public sealed class IdentityExtractionTests
     [Fact]
     public void Identity_reader_rejects_impossible_dob()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlacePlayerIdentity(
             reader,
@@ -173,7 +173,7 @@ public sealed class IdentityExtractionTests
     [Fact]
     public void Identity_reader_extracts_name_dob_nation_height_foot_and_all_positions()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlacePlayerIdentity(
             reader,
@@ -220,7 +220,7 @@ public sealed class IdentityExtractionTests
     [Fact]
     public void Identity_reader_preserves_zero_and_unread_positions_and_rejects_invalid_bytes()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlacePlayerIdentity(
             reader,
@@ -268,7 +268,7 @@ public sealed class IdentityExtractionTests
         Directory.CreateDirectory(bridgeDir);
         try
         {
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var reader = new FakeMemoryReader();
 
             // Good player
@@ -312,7 +312,7 @@ public sealed class IdentityExtractionTests
             var result = new CapADumpPipeline().Run(
                 reader,
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 

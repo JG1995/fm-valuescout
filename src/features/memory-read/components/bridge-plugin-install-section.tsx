@@ -16,7 +16,7 @@ function installErrorCopy(error: Error): string {
   if (error instanceof TauriCommandError) {
     switch (error.kind) {
       case "bepinexMissing":
-        return "BepInEx is not installed in your FM26 folder. Install BepInEx 6 IL2CPP first, then try again.";
+        return "BepInEx is not installed in your FM27 folder. Install BepInEx 6 IL2CPP first, then try again.";
       case "writeFailed":
         return "Could not write the plugin DLL. Check folder permissions or antivirus settings.";
       case "sourceMissing":
@@ -83,7 +83,7 @@ export function BridgePluginInstallSection() {
       <p className="mt-2 max-w-prose text-body-sm text-on-surface-variant">
         Installs or updates{" "}
         <code className="font-mono text-mono-sm">FmDataBridge.dll</code> in your
-        Steam FM26{" "}
+        Steam FM27{" "}
         <code className="font-mono text-mono-sm">BepInEx/plugins</code> folder.
         Restart Football Manager after install so BepInEx loads the new DLL.
         Windows may prompt for permission or antivirus approval when writing
@@ -113,7 +113,7 @@ export function BridgePluginInstallSection() {
 
       {install.isSuccess && (
         <p className="mt-3 text-body-sm text-on-surface">
-          Plugin installed. Restart Football Manager 26 to load it.
+          Plugin installed. Restart Football Manager 27 to load it.
         </p>
       )}
       {remove.isSuccess && (

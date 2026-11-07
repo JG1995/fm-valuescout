@@ -17,9 +17,9 @@ function bridgeStatusErrorCopy(error: Error) {
           title: "Bridge not detected",
           body: (
             <>
-              Football Manager 26 must be running on Windows with the
+              Football Manager 27 must be running on Windows with the
               FmDataBridge plugin installed. Use <strong>Install plugin</strong>{" "}
-              above, or copy <code>FmDataBridge.dll</code> into your FM26{" "}
+              above, or copy <code>FmDataBridge.dll</code> into your FM27{" "}
               <code>BepInEx/plugins/</code> folder — see{" "}
               <code>bridge/README.md</code> for manual steps.
             </>
@@ -28,7 +28,7 @@ function bridgeStatusErrorCopy(error: Error) {
       case "unsupportedPlatform":
         return {
           title: "Windows required",
-          body: "FM26 memory read is only supported on Windows. Run the app on your Windows host to connect to the bridge.",
+          body: "FM27 memory read is only supported on Windows. Run the app on your Windows host to connect to the bridge.",
         };
       case "unsupportedVersion":
         return {

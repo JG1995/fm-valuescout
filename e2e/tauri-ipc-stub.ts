@@ -2116,7 +2116,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           if (cmd === "get_bridge_install_status") {
             return {
               pluginsPath:
-                "C:\\\\Program Files (x86)\\\\Steam\\\\steamapps\\\\common\\\\Football Manager 26\\\\BepInEx\\\\plugins",
+                "C:\\\\Program Files (x86)\\\\Steam\\\\steamapps\\\\common\\\\Football Manager 27\\\\BepInEx\\\\plugins",
               pluginPresent: false,
               bepinexPresent: true,
               pluginsDirPresent: true,
@@ -2126,7 +2126,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           if (cmd === "install_bridge_plugin") {
             return {
               pluginsPath:
-                "C:\\\\Program Files (x86)\\\\Steam\\\\steamapps\\\\common\\\\Football Manager 26\\\\BepInEx\\\\plugins",
+                "C:\\\\Program Files (x86)\\\\Steam\\\\steamapps\\\\common\\\\Football Manager 27\\\\BepInEx\\\\plugins",
               pluginPresent: true,
               bepinexPresent: true,
               pluginsDirPresent: true,
@@ -2136,7 +2136,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           if (cmd === "remove_bridge_plugin") {
             return {
               pluginsPath:
-                "C:\\\\Program Files (x86)\\\\Steam\\\\steamapps\\\\common\\\\Football Manager 26\\\\BepInEx\\\\plugins",
+                "C:\\\\Program Files (x86)\\\\Steam\\\\steamapps\\\\common\\\\Football Manager 27\\\\BepInEx\\\\plugins",
               pluginPresent: false,
               bepinexPresent: true,
               pluginsDirPresent: true,

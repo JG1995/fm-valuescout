@@ -21,7 +21,7 @@ public sealed class PersonScannerTypedResultTests
     [Fact]
     public void Person_scanner_returns_deterministic_typed_people_and_keeps_player_facets()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         reader.AddRegion(
             new MemoryRegion(
@@ -69,7 +69,7 @@ public sealed class PersonScannerTypedResultTests
     [Fact]
     public void Person_scanner_orders_by_uid_and_keeps_the_lowest_same_facet_address()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlacePlayer(reader, layout, 0x310000, PurePlayerClassOffset, uid: 20, ca: 120, pa: 160, slot: 1);
         PlacePlayer(reader, layout, 0x210000, PurePlayerClassOffset, uid: 10, ca: 120, pa: 160, slot: 2);
@@ -95,7 +95,7 @@ public sealed class PersonScannerTypedResultTests
     [Fact]
     public void Person_scanner_rejects_wrapped_dynamic_metadata_address()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         reader.AddRegion(CandidateRegion(RegionBase));
         PlacePlayer(
@@ -126,7 +126,7 @@ public sealed class PersonScannerTypedResultTests
     [Fact]
     public void Person_scanner_filters_only_players_by_the_requested_database_scope()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         reader.AddRegion(
             new MemoryRegion(
