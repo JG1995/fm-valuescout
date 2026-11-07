@@ -11,8 +11,6 @@ import { playerResultContextMutationKey } from "@/components/player-table/player
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
-import { SquadCsvImportModal } from "@/features/csv-import/components/squad-csv-import-modal";
-import type { CsvImportSummary } from "@/features/csv-import/types/csv-import-summary";
 import { GraphicsImage } from "@/features/graphics/components/graphics-image";
 import {
   type RefreshSeasonStatsResult,
@@ -351,9 +349,6 @@ function SearchPageContent() {
     () => parseSearchFilters(filterUrls, view),
     [filterUrls, view],
   );
-  const [importOpen, setImportOpen] = useState(false);
-  const [lastMoneyballImport, setLastMoneyballImport] =
-    useState<CsvImportSummary | null>(null);
   const isLoadDataRunning =
     useIsMutating({ mutationKey: loadDataMutationKey }) > 0;
   const refreshStats = useMutation({
@@ -396,7 +391,6 @@ function SearchPageContent() {
     ? `${resultContext.activeSave.id}:${resultContext.activeSave.contextToken}:${resultContext.snapshot.id}:${resultContext.snapshot.contextToken}`
     : null;
   useEffect(() => {
-    setLastMoneyballImport(null);
     setLastShortlistImport(null);
     if (shortlistUiContextKey === null) {
       setShortlistImportOpen(false);
@@ -498,7 +492,7 @@ function SearchPageContent() {
             }
             onClick={() => updateSearch({ comparisonPool: pool })}
           >
-            {pool === "filtered" ? "Filtered cohort" : "Full CSV"}
+            {pool === "filtered" ? "Filtered cohort" : "All players"}
           </button>
         ))}
       </fieldset>
@@ -599,7 +593,7 @@ function SearchPageContent() {
     };
 
     // Page-header owns the title and every page action (Add Tactic groups,
-    // General Upload Shortlist, Moneyball upload): the generic table toolbar
+    // General Upload Shortlist, Moneyball Refresh stats): the generic table toolbar
     // below owns only dataset slots and never hosts these controls.
     const pageHeader = (
       <header
@@ -638,19 +632,6 @@ function SearchPageContent() {
           ) : null}
           {view === "moneyball" ? (
             <>
-              <Button
-                variant="secondary"
-                icon={FileUp}
-                onClick={() => setImportOpen(true)}
-              >
-                Upload Moneyball CSV
-              </Button>
-              {lastMoneyballImport ? (
-                <p className="text-body-sm text-on-surface-variant">
-                  Last import: {lastMoneyballImport.storedPlayers} stored,{" "}
-                  {lastMoneyballImport.skippedPlayers} skipped.
-                </p>
-              ) : null}
               <Button
                 variant="secondary"
                 icon={RefreshCw}
@@ -786,36 +767,6 @@ function SearchPageContent() {
       ) : (
         renderSearchBody(null)
       )}
-      {resultContext ? (
-        <SquadCsvImportModal
-          activeSaveId={resultContext.snapshot.saveId}
-          snapshotId={resultContext.snapshot.id}
-          format="moneyball"
-          open={importOpen}
-          onClose={() => setImportOpen(false)}
-          onYouthImported={() => undefined}
-          onMoneyballImported={(summary) => {
-            setLastMoneyballImport(summary);
-            // Moneyball imports never change player shortlist membership,
-            // so shortlist-filtered General queries keep their results.
-            // Moneyball pages always refresh, even under retained
-            // shortlistOnly URL state: Moneyball stays membership-independent.
-            void queryClient.invalidateQueries({
-              queryKey: searchKeys.playerPages(),
-              predicate: (query) => {
-                const params = query.queryKey[2] as
-                  | { shortlistOnly?: boolean; searchView?: SearchView }
-                  | undefined;
-                return (
-                  params?.shortlistOnly !== true ||
-                  params?.searchView === "moneyball"
-                );
-              },
-            });
-            void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
-          }}
-        />
-      ) : null}
       {resultContext ? (
         <PlayerShortlistImportModal
           activeSaveId={resultContext.snapshot.saveId}

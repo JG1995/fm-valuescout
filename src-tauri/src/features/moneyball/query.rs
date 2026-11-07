@@ -29,9 +29,6 @@ pub enum MoneyballComparisonBasis {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MoneyballProfile {
     pub state: MoneyballProfileState,
-    pub asking_price_kind: Option<String>,
-    pub asking_price_lower_eur: Option<i64>,
-    pub asking_price_upper_eur: Option<i64>,
     pub starts: Option<i64>,
     pub substitute_appearances: Option<i64>,
     pub minutes: Option<i64>,
@@ -67,9 +64,6 @@ impl MoneyballProfile {
     fn no_data() -> Self {
         Self {
             state: MoneyballProfileState::NoData,
-            asking_price_kind: None,
-            asking_price_lower_eur: None,
-            asking_price_upper_eur: None,
             starts: None,
             substitute_appearances: None,
             minutes: None,
@@ -126,9 +120,7 @@ pub fn get_player_moneyball(
 
     let row = conn
         .query_row(
-            "SELECT moneyball.asking_price_kind, moneyball.asking_price_lower_eur,
-                    moneyball.asking_price_upper_eur, moneyball.starts,
-                    moneyball.substitute_appearances, moneyball.minutes,
+            "SELECT moneyball.starts, moneyball.substitute_appearances, moneyball.minutes,
                     moneyball.statistics_json, moneyball.percentiles_json, players.positions_json
              FROM player_moneyball_stats moneyball
              INNER JOIN players ON players.snapshot_id = moneyball.snapshot_id
@@ -137,24 +129,18 @@ pub fn get_player_moneyball(
             params![snapshot_id, uid],
             |row| {
                 Ok((
-                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<i64>>(0)?,
                     row.get::<_, Option<i64>>(1)?,
                     row.get::<_, Option<i64>>(2)?,
-                    row.get::<_, Option<i64>>(3)?,
-                    row.get::<_, Option<i64>>(4)?,
-                    row.get::<_, Option<i64>>(5)?,
-                    row.get::<_, String>(6)?,
-                    row.get::<_, Option<String>>(7)?,
-                    row.get::<_, String>(8)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, String>(5)?,
                 ))
             },
         )
         .optional()
         .map_err(|error| error.to_string())?;
     let Some((
-        asking_price_kind,
-        asking_price_lower_eur,
-        asking_price_upper_eur,
         starts,
         substitute_appearances,
         minutes,
@@ -175,9 +161,6 @@ pub fn get_player_moneyball(
     if natural_positions.is_empty() {
         return Ok(Some(MoneyballProfile {
             state: MoneyballProfileState::Ready,
-            asking_price_kind,
-            asking_price_lower_eur,
-            asking_price_upper_eur,
             starts,
             substitute_appearances,
             minutes,
@@ -200,9 +183,6 @@ pub fn get_player_moneyball(
 
     Ok(Some(MoneyballProfile {
         state: MoneyballProfileState::Ready,
-        asking_price_kind,
-        asking_price_lower_eur,
-        asking_price_upper_eur,
         starts,
         substitute_appearances,
         minutes,

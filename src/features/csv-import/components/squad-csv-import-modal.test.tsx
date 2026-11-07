@@ -32,7 +32,6 @@ function renderModal(
       <SquadCsvImportModal
         activeSaveId={1}
         snapshotId={1}
-        format="moneyball"
         open={true}
         onClose={onClose}
         onYouthImported={onYouthImported}
@@ -49,19 +48,19 @@ describe("SquadCsvImportModal", () => {
     onDragDropEvent.mockResolvedValue(vi.fn());
   });
 
-  it("browses one CSV and binds the Moneyball format before importing", async () => {
+  it("browses one Youth Academy CSV and imports it", async () => {
     const user = userEvent.setup();
-    open.mockResolvedValue("C:\\exports\\moneyball.csv");
+    open.mockResolvedValue("C:\\exports\\youth.csv");
     setCsvImportIpcMockResult({
-      format: "moneyball",
+      format: "youthTracker",
       totalPlayers: 75,
       storedPlayers: 74,
       skippedPlayers: 1,
     });
-    renderModal();
+    const { onYouthImported } = renderModal();
 
     expect(
-      screen.getByRole("dialog", { name: "Upload Moneyball CSV" }),
+      screen.getByRole("dialog", { name: "Upload Youth Academy CSV" }),
     ).toHaveTextContent("Drop one CSV file here, or browse your files.");
     expect(
       screen.getByText(/Matching player rows add or update CSV enrichment/i),
@@ -75,11 +74,13 @@ describe("SquadCsvImportModal", () => {
     });
     await waitFor(() => {
       expect(getLastCsvImportIpcArgs()).toEqual({
-        path: "C:\\exports\\moneyball.csv",
-        expectedFormat: "moneyball",
+        path: "C:\\exports\\youth.csv",
       });
     });
-    expect(await screen.findByText(/Moneyball imported/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Youth Academy imported/i),
+    ).toBeInTheDocument();
+    expect(onYouthImported).toHaveBeenCalledOnce();
   });
 
   it("stays idle when the native picker is cancelled", async () => {
@@ -91,13 +92,13 @@ describe("SquadCsvImportModal", () => {
 
     expect(getLastCsvImportIpcArgs()).toBeUndefined();
     expect(
-      screen.getByText(/Choose a Moneyball CSV export to import/i),
+      screen.getByText(/Choose a Youth Academy CSV export to import/i),
     ).toBeInTheDocument();
   });
 
   it("keeps the modal open while an import is pending", async () => {
     const user = userEvent.setup();
-    open.mockResolvedValue("C:\\exports\\moneyball.csv");
+    open.mockResolvedValue("C:\\exports\\youth.csv");
     setCsvImportIpcMockBusy();
     const { onClose } = renderModal();
 
@@ -135,7 +136,6 @@ describe("SquadCsvImportModal", () => {
     await waitFor(() => {
       expect(getLastCsvImportIpcArgs()).toEqual({
         path: "C:\\exports\\first.csv",
-        expectedFormat: "moneyball",
       });
     });
   });
@@ -167,7 +167,6 @@ describe("SquadCsvImportModal", () => {
     await waitFor(() => {
       expect(getLastCsvImportIpcArgs()).toEqual({
         path: "C:\\exports\\first.csv",
-        expectedFormat: "moneyball",
       });
     });
     expect(screen.getByRole("status")).toHaveTextContent("Importing CSV");
@@ -190,9 +189,7 @@ describe("SquadCsvImportModal", () => {
       storedPlayers: 3,
       skippedPlayers: 0,
     });
-    const { onYouthImported, rerender } = renderModal({
-      format: "youthTracker",
-    });
+    const { onYouthImported, rerender } = renderModal();
 
     await waitFor(() => expect(onDrop).toBeDefined());
     act(() => {
@@ -204,7 +201,6 @@ describe("SquadCsvImportModal", () => {
     await waitFor(() => {
       expect(getLastCsvImportIpcArgs()).toEqual({
         path: "C:\\exports\\youth.csv",
-        expectedFormat: "youthTracker",
       });
     });
     expect(onYouthImported).toHaveBeenCalledOnce();
@@ -213,7 +209,6 @@ describe("SquadCsvImportModal", () => {
       <SquadCsvImportModal
         activeSaveId={1}
         snapshotId={1}
-        format="youthTracker"
         open={false}
         onClose={vi.fn()}
         onYouthImported={onYouthImported}
@@ -222,28 +217,30 @@ describe("SquadCsvImportModal", () => {
     await waitFor(() => expect(unlisten).toHaveBeenCalledOnce());
   });
 
-  it("rejects a selected-format mismatch without exposing the local path", async () => {
+  it("explains a rejected Moneyball export without exposing the local path", async () => {
     const user = userEvent.setup();
-    const privatePath = "C:\\Users\\Jonas\\private-youth.csv";
+    const privatePath = "C:\\Users\\Jonas\\private-moneyball.csv";
     open.mockResolvedValue(privatePath);
     setCsvImportIpcMockError(
-      new Error("CSV does not match the selected upload format"),
+      new Error(
+        "Moneyball stats now come from the linked FM save file, not a CSV export",
+      ),
     );
     renderModal();
 
     await user.click(screen.getByRole("button", { name: "Browse files" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Choose a Moneyball CSV export.",
+      "Moneyball stats now come from the FM save file linked in Settings.",
     );
     expect(screen.queryByText(privatePath)).not.toBeInTheDocument();
   });
 
   it("clears import feedback and closes when its save context changes", async () => {
     const user = userEvent.setup();
-    open.mockResolvedValue("C:\\exports\\moneyball.csv");
+    open.mockResolvedValue("C:\\exports\\youth.csv");
     setCsvImportIpcMockResult({
-      format: "moneyball",
+      format: "youthTracker",
       totalPlayers: 75,
       storedPlayers: 74,
       skippedPlayers: 1,
@@ -251,13 +248,14 @@ describe("SquadCsvImportModal", () => {
     const { onClose, onYouthImported, rerender } = renderModal();
 
     await user.click(screen.getByRole("button", { name: "Browse files" }));
-    expect(await screen.findByText(/Moneyball imported/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Youth Academy imported/i),
+    ).toBeInTheDocument();
 
     rerender(
       <SquadCsvImportModal
         activeSaveId={1}
         snapshotId={2}
-        format="moneyball"
         open={true}
         onClose={onClose}
         onYouthImported={onYouthImported}
@@ -266,7 +264,7 @@ describe("SquadCsvImportModal", () => {
 
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
     expect(
-      screen.getByText(/Choose a Moneyball CSV export to import/i),
+      screen.getByText(/Choose a Youth Academy CSV export to import/i),
     ).toBeInTheDocument();
   });
 
@@ -285,7 +283,6 @@ describe("SquadCsvImportModal", () => {
       <SquadCsvImportModal
         activeSaveId={1}
         snapshotId={2}
-        format="moneyball"
         open={true}
         onClose={onClose}
         onYouthImported={onYouthImported}

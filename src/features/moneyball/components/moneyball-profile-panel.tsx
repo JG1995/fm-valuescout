@@ -16,19 +16,6 @@ function formattedNumber(value: number | null) {
   return value === null ? "—" : value.toLocaleString("en-GB");
 }
 
-function contextPrice(profile: Extract<MoneyballProfile, { state: "ready" }>) {
-  if (profile.askingPriceKind === "not_for_sale") return "Not for sale";
-  if (profile.askingPriceLowerEur === null) return "—";
-  const lower = `€${profile.askingPriceLowerEur.toLocaleString("en-GB")}`;
-  if (
-    profile.askingPriceKind !== "range" ||
-    profile.askingPriceUpperEur === null
-  ) {
-    return lower;
-  }
-  return `${lower}–€${profile.askingPriceUpperEur.toLocaleString("en-GB")}`;
-}
-
 function MoneyballTabs({
   activeId,
   onChange,
@@ -140,9 +127,9 @@ export function MoneyballProfilePanel({
           icon={DatabaseZap}
           title="No Moneyball data for this player"
         >
-          This player was not included in the current Moneyball import. Import a
-          Moneyball CSV from Player Search or My Club Squad to analyse the
-          current snapshot.
+          This player has no Moneyball stats in the current snapshot. Moneyball
+          stats come from the FM save file linked in Settings. Use Refresh stats
+          in Moneyball Search to read the latest save.
         </EmptyState>
       </Panel>
     );
@@ -151,10 +138,10 @@ export function MoneyballProfilePanel({
   if (profile.state === "needsReimport") {
     return (
       <Panel title="Moneyball">
-        <EmptyState icon={DatabaseZap} title="Re-import Moneyball data">
-          This import was saved before percentile scores were available.
-          Re-import the Moneyball CSV from Player Search or My Club Squad to
-          analyse it.
+        <EmptyState icon={DatabaseZap} title="Refresh Moneyball stats">
+          These stats were saved before percentile scores were available. Use
+          Refresh stats in Moneyball Search to read the linked FM save file
+          again.
         </EmptyState>
       </Panel>
     );
@@ -172,14 +159,6 @@ export function MoneyballProfilePanel({
     >
       <div className="flex h-full min-h-0 flex-col gap-2">
         <dl className="grid shrink-0 grid-cols-[repeat(auto-fit,minmax(144px,1fr))] gap-x-4 gap-y-2 border-b border-outline-variant pb-2 text-body-md">
-          <div>
-            <dt className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
-              Asking price
-            </dt>
-            <dd className="font-mono text-mono-md text-on-surface tabular-nums">
-              {contextPrice(profile)}
-            </dd>
-          </div>
           <div>
             <dt className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
               Starts

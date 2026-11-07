@@ -1,18 +1,12 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { importCsv } from "../api/import-csv";
-import type {
-  CsvImportFormat,
-  CsvImportSummary,
-} from "../types/csv-import-summary";
 import { type CsvImportState, importStateForContext } from "./import-state";
 
 type UseCsvImportOptions = {
   activeSaveId: number | undefined;
   snapshotId: number | undefined;
-  expectedFormat?: CsvImportFormat;
   onYouthImported: () => void;
-  onMoneyballImported?: (summary: CsvImportSummary) => void;
 };
 
 export type CsvImportSelection = {
@@ -23,9 +17,7 @@ export type CsvImportSelection = {
 export function useCsvImport({
   activeSaveId,
   snapshotId,
-  expectedFormat,
   onYouthImported,
-  onMoneyballImported,
 }: UseCsvImportOptions) {
   const contextKey = `${activeSaveId ?? "none"}:${snapshotId ?? "none"}`;
   const currentContext = useRef(contextKey);
@@ -79,18 +71,14 @@ export function useCsvImport({
     activeImport.current = importId;
     setState({ status: "pending", contextKey: selection.contextKey });
     try {
-      const summary = await importCsv(path, expectedFormat);
+      const summary = await importCsv(path);
       if (isCurrentSelection(selection)) {
         setState({
           status: "success",
           contextKey: selection.contextKey,
           summary,
         });
-        if (summary.format === "youthTracker") {
-          onYouthImported();
-        } else {
-          onMoneyballImported?.(summary);
-        }
+        onYouthImported();
       }
     } catch (error) {
       if (isCurrentSelection(selection)) {

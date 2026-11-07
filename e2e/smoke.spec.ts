@@ -1685,7 +1685,7 @@ test.describe("application smoke", () => {
         exact: true,
       });
       const upload = actions.getByRole("button", {
-        name: "Upload Squad CSV",
+        name: "Upload Youth Academy CSV",
         exact: true,
       });
       const boost = actions.getByRole("button", {
@@ -2438,58 +2438,44 @@ test.describe("application smoke", () => {
     await expect(menu).toHaveCount(0);
   });
 
-  test("Moneyball Search and Squad expose Moneyball uploads while Squad keeps Youth Academy", async ({
+  test("Moneyball Search and Squad offer no Moneyball upload while Squad keeps Youth Academy", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
       plannerSnapshot: true,
       squadOverview: true,
-      csvImportFormat: "moneyball",
+      csvImportFormat: "youthTracker",
     });
     await page.goto("/search?view=moneyball");
 
     const main = page.getByRole("main");
     await expect(
-      main.getByRole("button", { name: "Upload Moneyball CSV" }),
+      main.getByRole("button", { name: "Refresh stats" }),
     ).toBeVisible();
-
-    await main.getByRole("button", { name: "Upload Moneyball CSV" }).click();
-    const moneyballDialog = page.getByRole("dialog", {
-      name: /(?:Upload|Replace) Moneyball CSV/,
-    });
-    await expect(moneyballDialog).toContainText(
-      "Drop one CSV file here, or browse your files.",
-    );
-    await moneyballDialog.getByRole("button", { name: "Browse files" }).click();
     await expect(
-      moneyballDialog.getByText(/Moneyball imported/i),
-    ).toBeVisible();
-    expect(await moneyballDialog.textContent()).not.toContain(
-      "/tmp/smoke-import.csv",
-    );
-    await moneyballDialog.getByRole("button", { name: "Close" }).click();
+      main.getByRole("button", { name: "Upload Moneyball CSV" }),
+    ).toHaveCount(0);
 
     await page.goto("/my-club");
-    await main.getByRole("button", { name: "Upload Squad CSV" }).click();
-    const squadDialog = page.getByRole("dialog", {
-      name: "Upload Moneyball CSV",
-    });
-    await expect(squadDialog).toContainText(
-      "Only a Moneyball export can be imported",
-    );
-    await squadDialog.getByRole("button", { name: "Browse files" }).click();
-    await expect(squadDialog.getByText(/Moneyball imported/i)).toBeVisible();
-    expect(await squadDialog.textContent()).not.toContain(
-      "/tmp/smoke-import.csv",
-    );
-    await squadDialog.getByRole("button", { name: "Close" }).click();
-
     await main
       .getByRole("button", { name: "Upload Youth Academy CSV" })
       .click();
     await expect(
-      page.getByRole("dialog", { name: "Upload Youth Academy CSV" }),
-    ).toContainText("Only a Youth Academy export can be imported");
+      main.getByRole("button", { name: "Upload Squad CSV" }),
+    ).toHaveCount(0);
+    const youthDialog = page.getByRole("dialog", {
+      name: "Upload Youth Academy CSV",
+    });
+    await expect(youthDialog).toContainText(
+      "Only a Youth Academy export can be imported",
+    );
+    await youthDialog.getByRole("button", { name: "Browse files" }).click();
+    await expect(
+      youthDialog.getByText(/Youth Academy imported/i),
+    ).toBeVisible();
+    expect(await youthDialog.textContent()).not.toContain(
+      "/tmp/smoke-import.csv",
+    );
   });
 
   test("Moneyball Search refreshes save stats and both views show their as-of date", async ({
@@ -2589,7 +2575,7 @@ test.describe("application smoke", () => {
     });
     await expect(table.getByText("Moneyball player 051")).toBeVisible();
 
-    await main.getByRole("button", { name: "Full CSV" }).click();
+    await main.getByRole("button", { name: "All players" }).click();
     await expect(
       table.getByRole("img", { name: /average rating: 71/i }).first(),
     ).toBeVisible();
@@ -2684,7 +2670,7 @@ test.describe("application smoke", () => {
     await page.goBack();
     await expect(page).toHaveURL(/\/search\?.*view=moneyball/);
     await expect(
-      main.getByRole("button", { name: "Full CSV" }),
+      main.getByRole("button", { name: "All players" }),
     ).toHaveAttribute("aria-pressed", "true");
     await expect(
       main.getByRole("columnheader", {

@@ -2,6 +2,7 @@
 pub enum CsvImportError {
     EmptyInput,
     UnsupportedDialect,
+    MoneyballExport,
     MissingRequiredHeader(&'static str),
     DuplicateHeader(&'static str),
     MalformedCsv {
@@ -26,6 +27,7 @@ impl std::fmt::Display for CsvImportError {
         match self {
             Self::EmptyInput => write!(f, "CSV input is empty"),
             Self::UnsupportedDialect => write!(f, "CSV must use comma or semicolon delimiters"),
+            Self::MoneyballExport => write!(f, "CSV is a Moneyball export"),
             Self::MissingRequiredHeader(header) => {
                 write!(f, "CSV is missing required {header} header")
             }

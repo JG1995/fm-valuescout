@@ -1570,14 +1570,14 @@ describe("My Club route", () => {
     ).toHaveAttribute("aria-sort", "descending");
   });
 
-  it("uploads a Moneyball CSV from Squad and refreshes its consumers", async () => {
+  it("uploads a Youth Academy CSV from Squad and offers no Moneyball upload", async () => {
     const user = userEvent.setup();
-    openCsvDialog.mockResolvedValue("C:\\Users\\Jonas\\private-squad.csv");
+    openCsvDialog.mockResolvedValue("C:\\Users\\Jonas\\private-youth.csv");
     setCsvImportIpcMockResult({
-      format: "moneyball",
-      totalPlayers: 75,
-      storedPlayers: 74,
-      skippedPlayers: 1,
+      format: "youthTracker",
+      totalPlayers: 3,
+      storedPlayers: 3,
+      skippedPlayers: 0,
     });
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
@@ -1590,38 +1590,38 @@ describe("My Club route", () => {
     await screen.findByRole("table", { name: "Squad overview" });
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
     expect(
-      screen.getByRole("button", { name: "Upload Squad CSV" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Upload Youth Academy CSV" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Upload Squad CSV" }),
+    ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Upload Squad CSV" }));
+    await user.click(
+      screen.getByRole("button", { name: "Upload Youth Academy CSV" }),
+    );
     const dialog = await screen.findByRole("dialog", {
-      name: "Upload Moneyball CSV",
+      name: "Upload Youth Academy CSV",
     });
-    expect(dialog).toHaveTextContent("Only a Moneyball export can be imported");
+    expect(dialog).toHaveTextContent(
+      "Only a Youth Academy export can be imported",
+    );
     await user.click(
       within(dialog).getByRole("button", { name: "Browse files" }),
     );
 
     await waitFor(() => {
       expect(getLastCsvImportIpcArgs()).toEqual({
-        path: "C:\\Users\\Jonas\\private-squad.csv",
-        expectedFormat: "moneyball",
+        path: "C:\\Users\\Jonas\\private-youth.csv",
       });
     });
     expect(
-      await within(dialog).findByText(/Moneyball imported/i),
+      await within(dialog).findByText(/Youth Academy imported/i),
     ).toBeInTheDocument();
-    expect(dialog).not.toHaveTextContent("C:\\Users\\Jonas\\private-squad.csv");
+    expect(dialog).not.toHaveTextContent("C:\\Users\\Jonas\\private-youth.csv");
     await waitFor(() => {
       expect(invalidateQueries).toHaveBeenCalledWith({
-        queryKey: searchKeys.all,
+        queryKey: academyKeys.all,
       });
-      expect(invalidateQueries).toHaveBeenCalledWith({
-        queryKey: moneyballKeys.all,
-      });
+    });
+    expect(invalidateQueries).not.toHaveBeenCalledWith({
+      queryKey: moneyballKeys.all,
     });
     expect(invalidateQueries).not.toHaveBeenCalledWith({
       queryKey: squadKeys.all,

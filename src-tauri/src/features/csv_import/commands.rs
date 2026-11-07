@@ -9,8 +9,8 @@ use super::player_shortlist::{
     prepare_player_shortlist_import, PlayerShortlistImportError, PlayerShortlistImportSummary,
 };
 use super::service::{
-    capture_import_context, persist_csv_import, prepare_csv_import_for_expected_format,
-    CsvImportFormat, CsvImportSummary, CsvPersistenceError,
+    capture_import_context, persist_csv_import, prepare_csv_import, CsvImportSummary,
+    CsvPersistenceError,
 };
 use super::staff_shortlist::{
     capture_staff_shortlist_import_context, persist_staff_shortlist_import,
@@ -18,13 +18,8 @@ use super::staff_shortlist::{
 };
 
 #[tauri::command]
-pub fn import_csv(
-    path: String,
-    expected_format: Option<CsvImportFormat>,
-    db: State<'_, Db>,
-) -> Result<CsvImportSummary, String> {
-    import_csv_for_path_with_expected_format(Path::new(&path), &db, expected_format)
-        .map_err(|error| error.to_string())
+pub fn import_csv(path: String, db: State<'_, Db>) -> Result<CsvImportSummary, String> {
+    import_csv_for_path(Path::new(&path), &db).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -43,16 +38,15 @@ pub fn import_staff_shortlist_csv(
     import_staff_shortlist_csv_for_path(Path::new(&path), &db).map_err(|error| error.to_string())
 }
 
-pub(crate) fn import_csv_for_path_with_expected_format(
+pub(crate) fn import_csv_for_path(
     path: &Path,
     db: &Db,
-    expected_format: Option<CsvImportFormat>,
 ) -> Result<CsvImportSummary, CsvPersistenceError> {
     let context = {
         let conn = db.0.lock().map_err(|_| CsvPersistenceError::Database)?;
         capture_import_context(&conn)?
     };
-    let import = prepare_csv_import_for_expected_format(path, &context, expected_format)?;
+    let import = prepare_csv_import(path)?;
     let mut conn = db.0.lock().map_err(|_| CsvPersistenceError::Database)?;
     persist_csv_import(&mut conn, &context, import)
 }
@@ -97,7 +91,7 @@ mod tests {
     use serde_json::json;
 
     use crate::db;
-    use crate::features::csv_import::service::{CsvImportFormat, CsvImportServiceError};
+    use crate::features::csv_import::service::CsvImportFormat;
     use crate::features::snapshot::ingest::ingest_dump_file;
 
     use super::*;
@@ -119,8 +113,7 @@ mod tests {
         )
         .expect("write CSV");
 
-        let summary =
-            import_csv_for_path_with_expected_format(&csv_path, &db, None).expect("import CSV");
+        let summary = import_csv_for_path(&csv_path, &db).expect("import CSV");
 
         assert_eq!(
             summary,
@@ -158,45 +151,6 @@ mod tests {
             )
             .expect("read stored career values"),
             (12, 3, 4, 5)
-        );
-    }
-
-    #[test]
-    fn command_helper_rejects_a_selected_format_mismatch_before_writing() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let db = db::open(&temp_dir.path().join("format-mismatch.db")).expect("open database");
-        let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/features/memory_read/fixtures/golden_dump_v9.json");
-        {
-            let mut conn = db.0.lock().expect("lock database");
-            ingest_dump_file(&mut conn, &dump_path).expect("ingest fixture snapshot");
-        }
-        let csv_path = temp_dir.path().join("player.csv");
-        std::fs::write(
-            &csv_path,
-            "Unique ID;Player;AT Apps\n77;CSV name does not matter;12\n",
-        )
-        .expect("write Youth Tracker CSV");
-
-        assert_eq!(
-            import_csv_for_path_with_expected_format(
-                &csv_path,
-                &db,
-                Some(CsvImportFormat::Moneyball),
-            )
-            .expect_err("reject a Youth Tracker CSV selected as Moneyball"),
-            CsvPersistenceError::Import(CsvImportServiceError::FormatMismatch)
-        );
-
-        let conn = db.0.lock().expect("lock database");
-        assert_eq!(
-            conn.query_row(
-                "SELECT COUNT(*) FROM player_youth_career_stats",
-                [],
-                |row| row.get::<_, i64>(0),
-            )
-            .expect("count enrichment rows"),
-            0
         );
     }
 
