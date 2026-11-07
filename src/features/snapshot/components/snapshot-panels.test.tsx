@@ -23,6 +23,9 @@ import {
 import * as snapshotMetadataApi from "../api/fetch-snapshot-metadata";
 import { SnapshotPanelsWithErrorBoundary } from "./snapshot-panels-with-error-boundary";
 
+const { openFileDialog } = vi.hoisted(() => ({ openFileDialog: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openFileDialog }));
+
 const HISTORY: SnapshotMetadata[] = [
   {
     id: 11,
@@ -91,6 +94,7 @@ describe("snapshot panels", () => {
   beforeEach(() => {
     setCurrentSnapshotCapIpcMock(null);
     setLoadDataIpcMockMode("success");
+    openFileDialog.mockReset();
   });
 
   afterEach(() => {
@@ -184,6 +188,103 @@ describe("snapshot panels", () => {
     ).toBeInTheDocument();
     await user.selectOptions(select, "2");
     expect(select).toHaveValue("2");
+  });
+
+  it("creates a save linked to a chosen FM save file and shows only its name", async () => {
+    const user = userEvent.setup();
+    openFileDialog.mockResolvedValueOnce(
+      "C:\\Users\\Manager\\Documents\\Saves\\Career One.fm",
+    );
+    renderWithProviders();
+
+    await user.type(await screen.findByLabelText("New save"), "Linked career");
+    await user.click(screen.getByRole("button", { name: "Choose file" }));
+    expect(openFileDialog).toHaveBeenCalledWith({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "FM save", extensions: ["fm"] }],
+    });
+    expect(await screen.findByText("Career One.fm")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+
+    const savesList = await screen.findByRole("list", { name: "Saves" });
+    await waitFor(() => {
+      expect(savesList).toHaveTextContent("Linked career");
+    });
+    expect(savesList).toHaveTextContent("FM save file: Career One.fm");
+    expect(savesList).toHaveTextContent("No FM save file linked");
+    expect(document.body).not.toHaveTextContent("Manager\\Documents");
+    expect(screen.getByText("No file chosen")).toBeInTheDocument();
+  });
+
+  it("links, changes, and removes the FM save file of a save", async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    const linkTrigger = await screen.findByRole("button", {
+      name: "Link file to Default save (save 1)",
+    });
+    openFileDialog.mockResolvedValueOnce(null);
+    await user.click(linkTrigger);
+    expect(screen.getByText("No FM save file linked")).toBeInTheDocument();
+
+    openFileDialog.mockResolvedValueOnce("/home/manager/Saves/First.fm");
+    await user.click(linkTrigger);
+    expect(
+      await screen.findByText("FM save file: First.fm"),
+    ).toBeInTheDocument();
+
+    openFileDialog.mockResolvedValueOnce("/home/manager/Saves/Second.fm");
+    await user.click(
+      screen.getByRole("button", {
+        name: "Change file of Default save (save 1)",
+      }),
+    );
+    expect(
+      await screen.findByText("FM save file: Second.fm"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Remove file from Default save (save 1)",
+      }),
+    );
+    expect(
+      await screen.findByText("No FM save file linked"),
+    ).toBeInTheDocument();
+    expect(openFileDialog).toHaveBeenCalledTimes(3);
+  });
+
+  it("shows rejected FM save files inline without creating or linking", async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await user.type(await screen.findByLabelText("New save"), "Notes career");
+    openFileDialog.mockResolvedValueOnce("/home/manager/notes.txt");
+    await user.click(screen.getByRole("button", { name: "Choose file" }));
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+
+    expect(
+      await screen.findByText("The file is not a Football Manager save"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("New save")).not.toHaveAttribute(
+      "aria-invalid",
+    );
+    expect(screen.getByRole("list", { name: "Saves" })).not.toHaveTextContent(
+      "Notes career",
+    );
+
+    openFileDialog.mockResolvedValueOnce("/home/manager/notes.txt");
+    await user.click(
+      screen.getByRole("button", {
+        name: "Link file to Default save (save 1)",
+      }),
+    );
+    const savesList = screen.getByRole("list", { name: "Saves" });
+    expect(await within(savesList).findByRole("alert")).toHaveTextContent(
+      "The file is not a Football Manager save",
+    );
+    expect(savesList).toHaveTextContent("No FM save file linked");
   });
 
   it("clears and restores snapshot overview when switching saves", async () => {

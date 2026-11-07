@@ -108,6 +108,7 @@ import {
   resolveRenameSaveIpcMock,
   resolveRenameSnapshotIpcMock,
   resolveSetActiveSaveIpcMock,
+  resolveSetSaveFileLinkIpcMock,
   resolveUpdateSnapshotDateIpcMock,
   setLoadDataIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
@@ -165,6 +166,10 @@ function registerIpcMocks() {
 
     if (cmd === "create_save") {
       return resolveCreateSaveIpcMock(args);
+    }
+
+    if (cmd === "set_save_file_link") {
+      return resolveSetSaveFileLinkIpcMock(args);
     }
 
     if (cmd === "rename_save") {

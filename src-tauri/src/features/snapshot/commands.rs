@@ -8,11 +8,14 @@ use tempfile::TempPath;
 use crate::db::Db;
 use crate::features::memory_read::service::{DumpRequestResult, DumpWaitConfig};
 use crate::features::player::boost_gate;
+use crate::features::save_stats::SaveStatsError;
 
 use super::ingest::{self, SnapshotSummary};
 use super::load_data::{self, LoadDataError, LoadDataResult};
 use super::query;
-use super::service::{self, SaveDeleteResult, SaveSummary, SnapshotDeleteResult, SnapshotMetadata};
+use super::service::{
+    self, LinkedSaveFile, SaveDeleteResult, SaveSummary, SnapshotDeleteResult, SnapshotMetadata,
+};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +26,7 @@ pub struct SaveSummaryDto {
     pub is_active: bool,
     pub created_at_utc: String,
     pub updated_at_utc: String,
+    pub linked_save_file_name: Option<String>,
 }
 
 impl From<SaveSummary> for SaveSummaryDto {
@@ -34,8 +38,37 @@ impl From<SaveSummary> for SaveSummaryDto {
             is_active: save.is_active,
             created_at_utc: save.created_at_utc,
             updated_at_utc: save.updated_at_utc,
+            linked_save_file_name: save.linked_save_file_name,
         }
     }
+}
+
+/// A save-management failure. A rejected save file serializes as its path-free kind and
+/// message; every other failure keeps the plain message these commands always returned.
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum SaveCommandError {
+    SaveFile { kind: &'static str, message: String },
+    Message(String),
+}
+
+impl From<SaveStatsError> for SaveCommandError {
+    fn from(error: SaveStatsError) -> Self {
+        Self::SaveFile {
+            kind: error.kind(),
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<String> for SaveCommandError {
+    fn from(message: String) -> Self {
+        Self::Message(message)
+    }
+}
+
+fn validate_save_file_path(path: Option<&str>) -> Result<Option<LinkedSaveFile>, SaveStatsError> {
+    path.map(LinkedSaveFile::validate).transpose()
 }
 
 #[derive(Serialize)]
@@ -132,12 +165,60 @@ pub fn list_saves(db: State<'_, Db>) -> Result<Vec<SaveSummaryDto>, String> {
 }
 
 #[tauri::command]
-pub fn create_save(name: String, db: State<'_, Db>) -> Result<SaveSummaryDto, String> {
+pub fn create_save(
+    name: String,
+    save_file_path: Option<String>,
+    db: State<'_, Db>,
+) -> Result<SaveSummaryDto, SaveCommandError> {
+    create_save_for_command(db.inner(), &name, save_file_path.as_deref()).map(SaveSummaryDto::from)
+}
+
+/// Validates the save file before taking the database lock, so a rejected file creates no
+/// save and a slow read never blocks other commands.
+pub(crate) fn create_save_for_command(
+    db: &Db,
+    name: &str,
+    save_file_path: Option<&str>,
+) -> Result<SaveSummary, SaveCommandError> {
+    let linked_save_file = validate_save_file_path(save_file_path)?;
     let conn =
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
-    let save = service::create_save(&conn, &name)?;
-    Ok(SaveSummaryDto::from(save))
+    Ok(service::create_save_with_link(
+        &conn,
+        name,
+        linked_save_file.as_ref(),
+    )?)
+}
+
+#[tauri::command]
+pub fn set_save_file_link(
+    save_id: i64,
+    context_token: String,
+    path: Option<String>,
+    db: State<'_, Db>,
+) -> Result<SaveSummaryDto, SaveCommandError> {
+    set_save_file_link_for_command(db.inner(), save_id, &context_token, path.as_deref())
+        .map(SaveSummaryDto::from)
+}
+
+/// Validates a new file before taking the database lock; `None` removes the link.
+pub(crate) fn set_save_file_link_for_command(
+    db: &Db,
+    save_id: i64,
+    context_token: &str,
+    path: Option<&str>,
+) -> Result<SaveSummary, SaveCommandError> {
+    let linked_save_file = validate_save_file_path(path)?;
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    Ok(service::set_save_file_link(
+        &conn,
+        save_id,
+        context_token,
+        linked_save_file.as_ref(),
+    )?)
 }
 
 #[tauri::command]
@@ -1858,6 +1939,7 @@ mod tests {
                 is_active: true,
                 created_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
                 updated_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
+                linked_save_file_name: Some("Career.fm".to_string()),
             },
         });
         let deleted_save_value =
@@ -1865,6 +1947,74 @@ mod tests {
         assert_eq!(deleted_save_value["deletedSaveId"], 3);
         assert_eq!(deleted_save_value["deletedWasActive"], true);
         assert_eq!(deleted_save_value["activeSave"]["id"], 4);
+        assert_eq!(
+            deleted_save_value["activeSave"]["linkedSaveFileName"],
+            "Career.fm"
+        );
+    }
+
+    fn save_rows(db: &Db) -> Vec<(i64, Option<String>)> {
+        let guard = db.0.lock().expect("lock db");
+        let mut statement = guard
+            .prepare("SELECT id, linked_save_file_path FROM saves ORDER BY id")
+            .expect("prepare saves");
+        let rows = statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("query saves")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read saves");
+        rows
+    }
+
+    #[test]
+    fn rejected_save_files_create_or_change_nothing_and_report_path_free_errors() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = migrated_db(&temp_dir.path().join("save-file-link.db"));
+        let save = {
+            let conn = db.0.lock().expect("lock db");
+            service::list_saves(&conn).expect("list saves").remove(0)
+        };
+        let save_directory = temp_dir.path().join("Private Folder");
+        std::fs::create_dir(&save_directory).expect("create save directory");
+        let not_a_save = save_directory.join("Notes.fm");
+        std::fs::write(&not_a_save, "not a Football Manager save").expect("write file");
+        let not_a_save = not_a_save.to_str().expect("utf-8 path");
+        let before = save_rows(&db);
+
+        let rejections = [
+            (
+                create_save_for_command(&db, "Career", Some(not_a_save)).map(|_| ()),
+                "not_fm_save",
+            ),
+            (
+                create_save_for_command(&db, "Career", Some("Career.fm")).map(|_| ()),
+                "not_found",
+            ),
+            (
+                set_save_file_link_for_command(&db, save.id, &save.context_token, Some(not_a_save))
+                    .map(|_| ()),
+                "not_fm_save",
+            ),
+        ];
+
+        for (result, expected_kind) in rejections {
+            let error = result.expect_err("file is rejected");
+            let serialized = serde_json::to_string(&error).expect("serialize error");
+            assert!(
+                matches!(error, SaveCommandError::SaveFile { kind, .. } if kind == expected_kind),
+                "{serialized}"
+            );
+            assert!(!serialized.contains("Private Folder"), "{serialized}");
+            assert!(!serialized.contains("Notes.fm"), "{serialized}");
+        }
+        assert_eq!(save_rows(&db), before);
+
+        let stale = set_save_file_link_for_command(&db, save.id, "stale-token", None)
+            .expect_err("stale token is rejected");
+        assert_eq!(
+            serde_json::to_value(stale).expect("serialize error"),
+            "Save changed or no longer exists"
+        );
     }
 
     fn insert_date_edit_snapshot(db: &Db, save_id: i64, game_date: Option<&str>) -> (i64, String) {

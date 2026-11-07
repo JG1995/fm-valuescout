@@ -1,8 +1,13 @@
+use std::path::Path;
+
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 
 use crate::features::{
-    academy::service as academy_service, memory_read::dump_validation::canonical_game_date,
-    player_metrics::potential_scores, staff::scoring as staff_scoring,
+    academy::service as academy_service,
+    memory_read::dump_validation::canonical_game_date,
+    player_metrics::potential_scores,
+    save_stats::{self, SaveStatsError},
+    staff::scoring as staff_scoring,
 };
 
 use super::query::get_snapshot_metadata;
@@ -21,6 +26,31 @@ pub struct SaveSummary {
     pub is_active: bool,
     pub created_at_utc: String,
     pub updated_at_utc: String,
+    /// The linked FM save's file name. The stored path's directory never leaves the database.
+    pub linked_save_file_name: Option<String>,
+}
+
+/// A WebView-supplied path that read as a supported FM27 save when it was validated.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LinkedSaveFile(String);
+
+impl LinkedSaveFile {
+    /// Reads the file's header and metadata, so call it before taking the database lock.
+    /// A relative path cannot name a picked file and is reported as not found.
+    pub(crate) fn validate(path: &str) -> Result<Self, SaveStatsError> {
+        if !Path::new(path).is_absolute() {
+            return Err(SaveStatsError::NotFound);
+        }
+        save_stats::read_save_info(Path::new(path))?;
+        Ok(Self(path.to_string()))
+    }
+
+    /// Stands in for a validated file in tests outside `save_stats`, which cannot build a
+    /// readable synthetic save.
+    #[cfg(test)]
+    pub(crate) fn assume_valid(path: &str) -> Self {
+        Self(path.to_string())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -200,7 +230,8 @@ pub fn list_saves(conn: &Connection) -> Result<Vec<SaveSummary>, String> {
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, context_token, name, is_active, created_at_utc, updated_at_utc
+            "SELECT id, context_token, name, is_active, created_at_utc, updated_at_utc,
+                    linked_save_file_path
              FROM saves
              ORDER BY id",
         )
@@ -222,7 +253,18 @@ pub fn list_snapshot_metadata(
     super::query::list_snapshot_metadata(conn, requested_save_id)
 }
 
+/// Creates an unlinked save for tests; the `create_save` command always goes through
+/// `create_save_with_link`.
+#[cfg(test)]
 pub fn create_save(conn: &Connection, name: &str) -> Result<SaveSummary, String> {
+    create_save_with_link(conn, name, None)
+}
+
+pub(crate) fn create_save_with_link(
+    conn: &Connection,
+    name: &str,
+    linked_save_file: Option<&LinkedSaveFile>,
+) -> Result<SaveSummary, String> {
     let name = validate_save_name(name)?;
     ensure_default_save(conn)?;
 
@@ -230,8 +272,8 @@ pub fn create_save(conn: &Connection, name: &str) -> Result<SaveSummary, String>
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
     tx.execute(
-        "INSERT INTO saves (name, is_active) VALUES (?1, 0)",
-        params![name],
+        "INSERT INTO saves (name, is_active, linked_save_file_path) VALUES (?1, 0, ?2)",
+        params![name, linked_save_file.map(|file| file.0.as_str())],
     )
     .map_err(|error| error.to_string())?;
 
@@ -256,6 +298,33 @@ pub fn rename_save(conn: &Connection, save_id: i64, name: &str) -> Result<SaveSu
 
     if rows == 0 {
         return Err(format!("Save {save_id} not found"));
+    }
+
+    get_save_by_id(conn, save_id)
+}
+
+/// Stores or clears the save's linked FM save file. Stored statistics are left untouched.
+pub(crate) fn set_save_file_link(
+    conn: &Connection,
+    save_id: i64,
+    context_token: &str,
+    linked_save_file: Option<&LinkedSaveFile>,
+) -> Result<SaveSummary, String> {
+    let rows = conn
+        .execute(
+            "UPDATE saves
+             SET linked_save_file_path = ?1,
+                 updated_at_utc = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE id = ?2 AND context_token = ?3",
+            params![
+                linked_save_file.map(|file| file.0.as_str()),
+                save_id,
+                context_token
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    if rows == 0 {
+        return Err("Save changed or no longer exists".to_string());
     }
 
     get_save_by_id(conn, save_id)
@@ -545,7 +614,8 @@ fn set_active_save_in_transaction(tx: &Transaction<'_>, save_id: i64) -> Result<
 
 fn get_save_by_id(conn: &Connection, save_id: i64) -> Result<SaveSummary, String> {
     conn.query_row(
-        "SELECT id, context_token, name, is_active, created_at_utc, updated_at_utc
+        "SELECT id, context_token, name, is_active, created_at_utc, updated_at_utc,
+                linked_save_file_path
          FROM saves
          WHERE id = ?1",
         params![save_id],
@@ -562,6 +632,11 @@ fn map_save_row(row: &Row<'_>) -> rusqlite::Result<SaveSummary> {
         is_active: row.get::<_, i32>(3)? == 1,
         created_at_utc: row.get(4)?,
         updated_at_utc: row.get(5)?,
+        linked_save_file_name: row
+            .get::<_, Option<String>>(6)?
+            .as_deref()
+            .and_then(|path| Path::new(path).file_name())
+            .map(|name| name.to_string_lossy().into_owned()),
     })
 }
 
@@ -789,6 +864,94 @@ mod tests {
             .find(|save| save.name == DEFAULT_SAVE_NAME)
             .expect("default save");
         assert!(default_save.is_active);
+    }
+
+    fn stored_link(conn: &Connection, save_id: i64) -> Option<String> {
+        conn.query_row(
+            "SELECT linked_save_file_path FROM saves WHERE id = ?1",
+            [save_id],
+            |row| row.get(0),
+        )
+        .expect("read stored link")
+    }
+
+    #[test]
+    fn creating_with_a_linked_file_stores_the_path_and_shows_only_the_file_name() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("create-linked.db"));
+        let path = "/home/manager/Saves/Career One.fm";
+
+        let created = create_save_with_link(
+            &conn,
+            "Linked career",
+            Some(&LinkedSaveFile::assume_valid(path)),
+        )
+        .expect("create linked save");
+
+        assert_eq!(
+            created.linked_save_file_name.as_deref(),
+            Some("Career One.fm")
+        );
+        assert_eq!(stored_link(&conn, created.id).as_deref(), Some(path));
+        let listed = list_saves(&conn).expect("list saves");
+        assert_eq!(
+            listed[0].linked_save_file_name, None,
+            "default save has no link"
+        );
+        assert_eq!(
+            listed[1].linked_save_file_name.as_deref(),
+            Some("Career One.fm")
+        );
+    }
+
+    #[test]
+    fn save_file_link_is_token_bound_and_leaves_moneyball_rows_unchanged() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("set-link.db"));
+        let save = list_saves(&conn).expect("list saves").remove(0);
+        let token = save_token(&conn, save.id);
+        let snapshot = insert_snapshot(&conn, save.id, Some("2026-02-01"), "2026-08-11T11:00:00Z");
+        insert_player(&conn, snapshot, 77);
+        conn.execute(
+            "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, statistics_json)
+             VALUES (?1, 77, '{\"goals\":3}')",
+            [snapshot],
+        )
+        .expect("insert Moneyball row");
+        let first = LinkedSaveFile::assume_valid("/saves/First.fm");
+        let second = LinkedSaveFile::assume_valid("/saves/Second.fm");
+
+        let linked = set_save_file_link(&conn, save.id, &token, Some(&first)).expect("link file");
+        assert_eq!(linked.linked_save_file_name.as_deref(), Some("First.fm"));
+
+        assert_eq!(
+            set_save_file_link(&conn, save.id, "stale-token", Some(&second)),
+            Err("Save changed or no longer exists".to_string())
+        );
+        assert_eq!(
+            set_save_file_link(&conn, save.id, "stale-token", None),
+            Err("Save changed or no longer exists".to_string())
+        );
+        assert_eq!(
+            stored_link(&conn, save.id).as_deref(),
+            Some("/saves/First.fm")
+        );
+
+        let changed =
+            set_save_file_link(&conn, save.id, &token, Some(&second)).expect("change file");
+        assert_eq!(changed.linked_save_file_name.as_deref(), Some("Second.fm"));
+        let cleared = set_save_file_link(&conn, save.id, &token, None).expect("clear link");
+        assert_eq!(cleared.linked_save_file_name, None);
+        assert_eq!(stored_link(&conn, save.id), None);
+
+        let statistics: String = conn
+            .query_row(
+                "SELECT statistics_json FROM player_moneyball_stats WHERE snapshot_id = ?1",
+                [snapshot],
+                |row| row.get(0),
+            )
+            .expect("Moneyball row survives");
+        assert_eq!(statistics, "{\"goals\":3}");
     }
 
     #[test]

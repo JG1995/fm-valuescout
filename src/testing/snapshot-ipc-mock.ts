@@ -44,6 +44,7 @@ const DEFAULT_SAVE: SaveSummary = {
   isActive: true,
   createdAtUtc: "2026-07-28T12:00:00.000Z",
   updatedAtUtc: "2026-07-28T12:00:00.000Z",
+  linkedSaveFileName: null,
 };
 
 const SAMPLE_PLAYER_COUNT = 3;
@@ -578,6 +579,51 @@ export function resolveGetCurrentSnapshotIpcMock() {
   return state ? { ...state.snapshot } : null;
 }
 
+function argString(args: unknown, key: string): string | null {
+  if (typeof args !== "object" || args === null) return null;
+  const value = (args as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : null;
+}
+
+/** Mirrors the Rust link validation: a file that is not an `.fm` save is
+ *  rejected with the path-free kind and message, and only the name returns. */
+function validatedSaveFileName(path: string | null) {
+  if (path === null) return null;
+  if (!path.endsWith(".fm")) {
+    throw {
+      kind: "not_fm_save",
+      message: "The file is not a Football Manager save",
+    };
+  }
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
+export function resolveSetSaveFileLinkIpcMock(args: unknown) {
+  const saveId =
+    typeof args === "object" && args !== null && "saveId" in args
+      ? Number(args.saveId)
+      : NaN;
+  const linkedSaveFileName = validatedSaveFileName(argString(args, "path"));
+  const index = saves.findIndex(
+    (save) =>
+      save.id === saveId &&
+      save.contextToken === argString(args, "contextToken"),
+  );
+  if (index < 0) {
+    throw "Save changed or no longer exists";
+  }
+
+  const updated = {
+    ...saves[index],
+    linkedSaveFileName,
+    updatedAtUtc: "2026-07-28T16:06:00.000Z",
+  };
+  saves = saves.map((save, currentIndex) =>
+    currentIndex === index ? updated : save,
+  );
+  return updated;
+}
+
 export function resolveCreateSaveIpcMock(args: unknown) {
   const name =
     typeof args === "object" &&
@@ -598,6 +644,7 @@ export function resolveCreateSaveIpcMock(args: unknown) {
     isActive: false,
     createdAtUtc: "2026-07-28T16:00:00.000Z",
     updatedAtUtc: "2026-07-28T16:00:00.000Z",
+    linkedSaveFileName: validatedSaveFileName(argString(args, "saveFilePath")),
   };
   nextSaveId += 1;
   saves = [...saves, created];
@@ -785,6 +832,7 @@ export function resolveDeleteSaveIpcMock(args: unknown): SaveDeleteResult {
         isActive: true,
         createdAtUtc: "2026-07-28T16:20:00.000Z",
         updatedAtUtc: "2026-07-28T16:20:00.000Z",
+        linkedSaveFileName: null,
       };
       saves = [replacement];
     }
@@ -866,6 +914,7 @@ export function resolveLoadDataIpcMock(
             isActive: true,
             createdAtUtc: "2026-07-28T12:00:00.000Z",
             updatedAtUtc: "2026-07-28T12:00:00.000Z",
+            linkedSaveFileName: null,
           };
       busyDeferred = {
         promise,
