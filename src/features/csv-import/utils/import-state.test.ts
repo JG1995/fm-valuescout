@@ -7,7 +7,7 @@ describe("importStateForContext", () => {
       status: "success",
       contextKey: "1:1",
       summary: {
-        format: "moneyball",
+        format: "youthTracker",
         totalPlayers: 75,
         storedPlayers: 74,
         skippedPlayers: 1,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MONEYBALL_METRIC_CATEGORIES,
   MONEYBALL_METRICS,
+  moneyballMetric,
 } from "@/utils/moneyball-metrics";
 
 const CANONICAL_MONEYBALL_METRIC_IDS = [
@@ -145,23 +146,57 @@ const CANONICAL_MONEYBALL_METRIC_IDS = [
   "team_goals_per_90",
 ] as const;
 
+// The 21 canonical metrics the linked FM save cannot provide.
+const SAVE_UNAVAILABLE_IDS = new Set<string>([
+  "goals_from_outside_the_box",
+  "goals_from_outside_the_box_per_90",
+  "xg-op",
+  "xg-op_per_90",
+  "expected_save_percentage",
+  "penalties_faced",
+  "penalties_faced_per_90",
+  "penalties_saved",
+  "penalties_saved_per_90",
+  "penalties_saved_ratio",
+  "games_won",
+  "games_drawn",
+  "games_lost",
+  "game_win_ratio",
+  "team_goals",
+  "team_goals_per_90",
+  "pressures_attempted",
+  "pressures_attempted_per_90",
+  "pressures_completed",
+  "pressures_completed_per_90",
+  "pressure_success_ratio",
+]);
+
 describe("Moneyball metric presentation catalogue", () => {
-  it("covers the canonical 138 performance IDs across eight non-empty categories", () => {
-    expect(MONEYBALL_METRICS).toHaveLength(
-      CANONICAL_MONEYBALL_METRIC_IDS.length,
+  it("lists every canonical ID the save provides across eight non-empty categories", () => {
+    const browsableIds = CANONICAL_MONEYBALL_METRIC_IDS.filter(
+      (id) => !SAVE_UNAVAILABLE_IDS.has(id),
     );
-    expect(new Set(MONEYBALL_METRICS.map((metric) => metric.id)).size).toBe(
-      CANONICAL_MONEYBALL_METRIC_IDS.length,
-    );
+
+    expect(CANONICAL_MONEYBALL_METRIC_IDS).toHaveLength(138);
+    expect(SAVE_UNAVAILABLE_IDS.size).toBe(21);
     expect(MONEYBALL_METRIC_CATEGORIES).toHaveLength(8);
     expect(
       MONEYBALL_METRIC_CATEGORIES.every(
         (category) => category.metricIds.length > 0,
       ),
     ).toBe(true);
-    expect(MONEYBALL_METRICS.map((metric) => metric.id)).toEqual(
-      CANONICAL_MONEYBALL_METRIC_IDS,
-    );
+    expect(
+      MONEYBALL_METRIC_CATEGORIES.flatMap((category) => category.metricIds),
+    ).toEqual(browsableIds);
+    expect(MONEYBALL_METRICS.map((metric) => metric.id)).toEqual(browsableIds);
+    expect(MONEYBALL_METRICS.map((metric) => metric.id)).toContain("xgp");
+  });
+
+  it("keeps label metadata for metrics the save cannot provide", () => {
+    expect(moneyballMetric("pressures_completed_per_90")).toMatchObject({
+      label: "Pressures Completed / 90",
+      kind: "decimal",
+    });
   });
 
   it("declares raw presentation metadata without colliding with General attribute IDs", () => {

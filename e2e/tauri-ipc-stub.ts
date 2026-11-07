@@ -4,7 +4,7 @@ import { VISIBLE_ATTRIBUTE_KEYS } from "../src/utils/player-attributes";
 export type SmokeStubOptions = {
   academyWorkspace?: boolean;
   academyLargeCohort?: boolean;
-  csvImportFormat?: "youthTracker" | "moneyball";
+  csvImportFormat?: "youthTracker";
   plannerSnapshot?: boolean;
   plannerPotentialScores?: boolean;
   playerTableRowCount?: number;
@@ -968,9 +968,9 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           if (cmd === "import_csv") {
             return {
               format: csvImportFormat,
-              totalPlayers: csvImportFormat === "moneyball" ? 75 : 3,
-              storedPlayers: csvImportFormat === "moneyball" ? 74 : 3,
-              skippedPlayers: csvImportFormat === "moneyball" ? 1 : 0,
+              totalPlayers: 3,
+              storedPlayers: 3,
+              skippedPlayers: 0,
             };
           }
 
@@ -1523,9 +1523,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           if (cmd === "get_player_moneyball") {
             return moneyballSearch ? {
               state: "ready",
-              askingPriceKind: "single",
-              askingPriceLowerEur: 1000000,
-              askingPriceUpperEur: null,
               starts: 20,
               substituteAppearances: 4,
               minutes: 1200,

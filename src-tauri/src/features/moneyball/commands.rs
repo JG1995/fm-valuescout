@@ -18,9 +18,6 @@ use super::save_stats_import::{attach_season_stats, SeasonStatsOutcome};
 #[serde(rename_all = "camelCase")]
 pub struct MoneyballProfileDto {
     pub state: &'static str,
-    pub asking_price_kind: Option<String>,
-    pub asking_price_lower_eur: Option<i64>,
-    pub asking_price_upper_eur: Option<i64>,
     pub starts: Option<i64>,
     pub substitute_appearances: Option<i64>,
     pub minutes: Option<i64>,
@@ -126,9 +123,6 @@ impl From<MoneyballProfile> for MoneyballProfileDto {
                 MoneyballProfileState::NeedsReimport => "needsReimport",
                 MoneyballProfileState::Ready => "ready",
             },
-            asking_price_kind: profile.asking_price_kind,
-            asking_price_lower_eur: profile.asking_price_lower_eur,
-            asking_price_upper_eur: profile.asking_price_upper_eur,
             starts: profile.starts,
             substitute_appearances: profile.substitute_appearances,
             minutes: profile.minutes,
@@ -225,9 +219,6 @@ mod tests {
     fn ready_profile(comparison_basis: MoneyballComparisonBasis) -> MoneyballProfile {
         MoneyballProfile {
             state: MoneyballProfileState::Ready,
-            asking_price_kind: Some("single".to_owned()),
-            asking_price_lower_eur: Some(12_000_000),
-            asking_price_upper_eur: None,
             starts: Some(18),
             substitute_appearances: Some(3),
             minutes: Some(1_500),

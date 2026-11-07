@@ -3,26 +3,16 @@ import { FileUp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
-import type {
-  CsvImportFormat,
-  CsvImportSummary,
-} from "../types/csv-import-summary";
 import { type CsvImportSelection, useCsvImport } from "../utils/use-csv-import";
 import { CsvImportOutcome } from "./csv-import-outcome";
 
 type SquadCsvImportModalProps = {
   activeSaveId: number | undefined;
   snapshotId: number | undefined;
-  format: CsvImportFormat;
   open: boolean;
   onClose: () => void;
   onYouthImported: () => void;
-  onMoneyballImported?: (summary: CsvImportSummary) => void;
 };
-
-function formatName(format: CsvImportFormat) {
-  return format === "moneyball" ? "Moneyball" : "Youth Academy";
-}
 
 function useNativeCsvDrop(
   open: boolean,
@@ -80,11 +70,9 @@ function useNativeCsvDrop(
 export function SquadCsvImportModal({
   activeSaveId,
   snapshotId,
-  format,
   open,
   onClose,
   onYouthImported,
-  onMoneyballImported,
 }: SquadCsvImportModalProps) {
   const {
     captureSelection,
@@ -97,9 +85,7 @@ export function SquadCsvImportModal({
   } = useCsvImport({
     activeSaveId,
     snapshotId,
-    expectedFormat: format,
     onYouthImported,
-    onMoneyballImported,
   });
   const previousContextKey = useRef(contextKey);
   const wasOpen = useRef(false);
@@ -131,7 +117,6 @@ export function SquadCsvImportModal({
     }
   }, [contextKey, onClose, open]);
 
-  const label = formatName(format);
   const isPending = state.status === "pending";
   const close = () => {
     if (!isPending) {
@@ -142,7 +127,7 @@ export function SquadCsvImportModal({
   return (
     <Modal
       open={open}
-      title={`Upload ${label} CSV`}
+      title="Upload Youth Academy CSV"
       onClose={close}
       footer={
         <>
@@ -179,15 +164,11 @@ export function SquadCsvImportModal({
           Drop one CSV file here, or browse your files.
         </p>
         <p className="mt-1 text-body-sm text-on-surface-variant">
-          Only a {label} export can be imported from this dialog.
+          Only a Youth Academy export can be imported from this dialog.
         </p>
       </div>
       <div className="mt-4">
-        <CsvImportOutcome
-          state={state}
-          expectedFormat={format}
-          youthLabel="Youth Academy"
-        />
+        <CsvImportOutcome state={state} />
       </div>
     </Modal>
   );

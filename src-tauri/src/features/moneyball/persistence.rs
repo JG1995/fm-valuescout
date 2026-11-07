@@ -1,15 +1,11 @@
 //! Writes snapshot-owned Moneyball cohorts: the 138-key statistics and percentile JSON, whole
 //! cohort replacement with its as-of date, and current-only retention.
 
-use std::collections::BTreeMap;
-
 use rusqlite::{params, Transaction};
 use serde_json::{Map, Number, Value};
 
-use super::percentile::{
-    calculate_percentiles, numeric_statistics, MoneyballNumericStatistics, MoneyballPercentiles,
-};
-use super::{MoneyballMetricValue, MoneyballStatistics, MONEYBALL_STATISTIC_KEYS};
+use super::percentile::{calculate_percentiles, numeric_statistics, MoneyballPercentiles};
+use super::{MoneyballMetricValue, MoneyballStatistics};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MoneyballPersistenceError {
@@ -61,93 +57,6 @@ pub(crate) fn serialize_moneyball_percentiles(
 
     serde_json::to_string(&Value::Object(serialized))
         .map_err(|_| MoneyballPersistenceError::InvalidStatistics)
-}
-
-pub(crate) fn load_moneyball_statistics(
-    tx: &Transaction<'_>,
-    snapshot_id: i64,
-) -> Result<BTreeMap<i64, MoneyballNumericStatistics>, MoneyballPersistenceError> {
-    let mut statement = tx
-        .prepare(
-            "SELECT player_uid, statistics_json
-             FROM player_moneyball_stats
-             WHERE snapshot_id = ?1",
-        )
-        .map_err(|_| MoneyballPersistenceError::Database)?;
-    let rows = statement
-        .query_map([snapshot_id], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(|_| MoneyballPersistenceError::Database)?;
-
-    let mut statistics = BTreeMap::new();
-    for row in rows {
-        let (player_uid, statistics_json) = row.map_err(|_| MoneyballPersistenceError::Database)?;
-        statistics.insert(
-            player_uid,
-            numeric_statistics(&deserialize_moneyball_statistics(&statistics_json)?),
-        );
-    }
-    Ok(statistics)
-}
-
-fn deserialize_moneyball_statistics(
-    json: &str,
-) -> Result<MoneyballStatistics, MoneyballPersistenceError> {
-    let value: Value =
-        serde_json::from_str(json).map_err(|_| MoneyballPersistenceError::InvalidStatistics)?;
-    let object = value
-        .as_object()
-        .ok_or(MoneyballPersistenceError::InvalidStatistics)?;
-    if object.len() != MONEYBALL_STATISTIC_KEYS.len()
-        || !MONEYBALL_STATISTIC_KEYS
-            .iter()
-            .all(|key| object.contains_key(*key))
-    {
-        return Err(MoneyballPersistenceError::InvalidStatistics);
-    }
-
-    MONEYBALL_STATISTIC_KEYS
-        .iter()
-        .map(|key| {
-            let value = object
-                .get(*key)
-                .ok_or(MoneyballPersistenceError::InvalidStatistics)?;
-            let value = match value {
-                Value::Null => None,
-                Value::Number(number) => number
-                    .as_f64()
-                    .filter(|value| value.is_finite())
-                    .map(MoneyballMetricValue::Decimal)
-                    .map(Some)
-                    .ok_or(MoneyballPersistenceError::InvalidStatistics)?,
-                _ => return Err(MoneyballPersistenceError::InvalidStatistics),
-            };
-            Ok(((*key).to_string(), value))
-        })
-        .collect()
-}
-
-pub(crate) fn update_moneyball_percentiles(
-    tx: &Transaction<'_>,
-    snapshot_id: i64,
-    percentiles: &BTreeMap<i64, MoneyballPercentiles>,
-) -> Result<(), MoneyballPersistenceError> {
-    for (player_uid, player_percentiles) in percentiles {
-        let percentiles_json = serialize_moneyball_percentiles(player_percentiles)?;
-        let changed = tx
-            .execute(
-                "UPDATE player_moneyball_stats
-                 SET percentiles_json = ?1
-                 WHERE snapshot_id = ?2 AND player_uid = ?3",
-                params![percentiles_json, snapshot_id, player_uid],
-            )
-            .map_err(|_| MoneyballPersistenceError::Database)?;
-        if changed != 1 {
-            return Err(MoneyballPersistenceError::Database);
-        }
-    }
-    Ok(())
 }
 
 /// Replaces the snapshot's whole cohort with `rows`, scores full-cohort percentiles, and
@@ -239,7 +148,7 @@ pub(crate) mod test_support {
     /// Gives `snapshot_id` a one-player cohort with every statistic null and `as_of` as its
     /// as-of date. The player must belong to the snapshot.
     pub(crate) fn seed_cohort(conn: &Connection, snapshot_id: i64, player_uid: i64, as_of: &str) {
-        let statistics = super::MONEYBALL_STATISTIC_KEYS
+        let statistics = crate::features::moneyball::MONEYBALL_STATISTIC_KEYS
             .iter()
             .map(|key| ((*key).to_string(), serde_json::Value::Null))
             .collect::<serde_json::Map<_, _>>();

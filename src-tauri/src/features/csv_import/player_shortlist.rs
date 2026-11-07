@@ -441,38 +441,30 @@ mod tests {
     }
 
     #[test]
-    fn moneyball_import_leaves_the_player_shortlist_unchanged() {
+    fn rejected_moneyball_export_writes_nothing_and_leaves_the_player_shortlist_unchanged() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db = crate::db::open(&temp_dir.path().join("player-shortlist-moneyball.db"))
             .expect("open database");
         let moneyball_uid: i64 = 2_002_402_173;
         {
             let mut conn = db.0.lock().expect("lock database");
-            let (save_id, snapshot_id) = seed_current_player_snapshot(&mut conn, &[moneyball_uid]);
+            let (save_id, _) = seed_current_player_snapshot(&mut conn, &[moneyball_uid]);
             seed_shortlist(&conn, save_id, &[moneyball_uid]);
-            conn.execute(
-                "INSERT INTO players (
-                    snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year,
-                    nationalities_json, preferred_foot, positions_json, attributes_json,
-                    hidden_attributes_json, personality_json
-                 ) VALUES (?1, 2002188319, 100, 100, 'Moneyball other', 2000, 1, '[]',
-                    'Right', '{}', '{}', '{}', '{}')",
-                [snapshot_id],
-            )
-            .expect("insert second Moneyball player");
         }
         let csv_path = temp_dir.path().join("moneyball.csv");
-        std::fs::write(&csv_path, include_str!("fixtures/moneyball_stats.csv"))
-            .expect("write Moneyball CSV");
+        std::fs::write(
+            &csv_path,
+            "Unique ID;Player;Transfer Value;Wage;Appearances;Goals;xG;Team Goals\n\
+             2002402173;Moneyball player;€1M;€1K p/w;10;2;1.5;20\n",
+        )
+        .expect("write Moneyball-shaped CSV");
 
-        let summary =
-            crate::features::csv_import::commands::import_csv_for_path_with_expected_format(
-                &csv_path,
-                &db,
-                Some(crate::features::csv_import::service::CsvImportFormat::Moneyball),
-            )
-            .expect("import Moneyball enrichment");
-        assert!(summary.stored_players > 0);
+        let error = crate::features::csv_import::commands::import_csv_for_path(&csv_path, &db)
+            .expect_err("reject a Moneyball export");
+        assert_eq!(
+            error.to_string(),
+            "Moneyball stats now come from the linked FM save file, not a CSV export"
+        );
 
         let conn = db.0.lock().expect("lock database");
         let save_id: i64 = conn
@@ -481,6 +473,17 @@ mod tests {
             })
             .expect("read active save");
         assert_eq!(shortlist_uids(&conn, save_id), vec![moneyball_uid]);
+        assert_eq!(
+            conn.query_row(
+                "SELECT
+                     (SELECT COUNT(*) FROM player_moneyball_stats)
+                   + (SELECT COUNT(*) FROM player_youth_career_stats)",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("count enrichment rows"),
+            0
+        );
     }
 
     fn open_migrated(path: &Path) -> Connection {

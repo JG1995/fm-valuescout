@@ -794,7 +794,7 @@ export function SearchResultsPanel({
       : appliedFilters.length > 0
         ? "No players match these filters"
         : view === "moneyball"
-          ? "No players in this Moneyball import"
+          ? "No Moneyball stats for this snapshot"
           : "No players in snapshot";
     const emptyBody = shortlistEmpty
       ? appliedFilters.length > 0
@@ -803,7 +803,7 @@ export function SearchResultsPanel({
       : appliedFilters.length > 0
         ? "Adjust or clear filters in the toolbar above to widen the result set."
         : view === "moneyball"
-          ? "Upload a Moneyball CSV for the current snapshot to analyse its matched players."
+          ? "Moneyball stats come from the FM save file linked to this save. Use Refresh stats to read it, or link a save file in Settings."
           : "The snapshot exists but holds no player rows. Run Load Data again with Football Manager in an active save.";
 
     return (

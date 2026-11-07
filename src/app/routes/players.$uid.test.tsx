@@ -484,7 +484,9 @@ describe("player profile route", () => {
     const first = renderProfileRoute("/players/42?view=moneyball");
 
     expect(
-      await screen.findByText(/not included in the current Moneyball import/i),
+      await screen.findByText(
+        /has no Moneyball stats in the current snapshot/i,
+      ),
     ).toBeInTheDocument();
     const noDataSummary = screen.getByRole("region", {
       name: "Moneyball tactical summaries",

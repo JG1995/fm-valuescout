@@ -121,6 +121,40 @@ describe("usePlayerTableStore", () => {
     });
   });
 
+  it("drops Moneyball columns the save cannot provide from a persisted layout", async () => {
+    localStorage.setItem(
+      PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          layouts: {
+            "moneyball-search": {
+              columnIds: [
+                "age",
+                "moneyball.pressures_completed_per_90",
+                "moneyball.xgp",
+                "moneyball.team_goals",
+              ],
+              widths: {
+                "moneyball.pressures_completed_per_90": 140,
+                "moneyball.xgp": 120,
+              },
+              identityWidth: 300,
+            },
+          },
+        },
+        version: 8,
+      }),
+    );
+
+    await usePlayerTableStore.persist.rehydrate();
+
+    expect(usePlayerTableStore.getState().layouts["moneyball-search"]).toEqual({
+      columnIds: ["age", "moneyball.xgp"],
+      widths: { "moneyball.xgp": 120 },
+      identityWidth: 300,
+    });
+  });
+
   it("migrates v4 default-like player layouts without changing unrelated preferences", async () => {
     localStorage.setItem(
       PLAYER_TABLE_LAYOUT_STORAGE_KEY,

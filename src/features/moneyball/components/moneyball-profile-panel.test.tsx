@@ -30,11 +30,21 @@ describe("MoneyballProfilePanel", () => {
     expect(screen.getByText("18")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
     expect(screen.getByText("1,500")).toBeInTheDocument();
+    expect(screen.queryByText("Asking price")).not.toBeInTheDocument();
     expect(
       screen.getByText(
         "Natural positions: DR, DL, AMR, AMC · 24 comparison players",
       ),
     ).toBeInTheDocument();
+    expect(screen.getByText("xGP")).toBeInTheDocument();
+    for (const hiddenLabel of [
+      "Expected Save %",
+      "Pressures Completed / 90",
+      "Games Won",
+      "Team Goals",
+    ]) {
+      expect(screen.queryByText(hiddenLabel)).not.toBeInTheDocument();
+    }
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((tab) => tab.textContent)).toEqual([
       "Shooting",
@@ -136,13 +146,15 @@ describe("MoneyballProfilePanel", () => {
     expect(screen.queryByText(/Stats as of/)).not.toBeInTheDocument();
   });
 
-  it("keeps missing and pre-score import states distinct", () => {
+  it("points missing and pre-score stats at the linked save and Refresh stats", () => {
     const { rerender } = render(
       <MoneyballProfilePanel {...undatedStats} profile={{ state: "noData" }} />,
     );
     expect(
-      screen.getByText(/not included in the current Moneyball import/i),
-    ).toBeInTheDocument();
+      screen.getByText(/has no Moneyball stats in the current snapshot/i),
+    ).toHaveTextContent(
+      "Moneyball stats come from the FM save file linked in Settings. Use Refresh stats in Moneyball Search to read the latest save.",
+    );
 
     rerender(
       <MoneyballProfilePanel
@@ -152,6 +164,8 @@ describe("MoneyballProfilePanel", () => {
     );
     expect(
       screen.getByText(/before percentile scores were available/i),
-    ).toBeInTheDocument();
+    ).toHaveTextContent(
+      "Use Refresh stats in Moneyball Search to read the linked FM save file again.",
+    );
   });
 });

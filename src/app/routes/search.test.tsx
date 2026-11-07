@@ -34,7 +34,6 @@ import {
   shortlistFilterKey,
   useShortlistFilterStore,
 } from "@/stores/use-shortlist-filter-store";
-import { setCsvImportIpcMockResult } from "@/testing/csv-import-ipc-mock";
 import {
   getLastRefreshSeasonStatsIpcArgs,
   resolvePendingRefreshSeasonStats,
@@ -824,8 +823,11 @@ describe("search route", () => {
     expect(moneyballLink).toHaveAttribute("aria-current", "page");
     expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
+      screen.getByRole("button", { name: "Refresh stats" }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
+    ).not.toBeInTheDocument();
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         searchView: "moneyball",
@@ -955,7 +957,7 @@ describe("search route", () => {
       });
     });
 
-    await user.click(screen.getByRole("button", { name: "Full CSV" }));
+    await user.click(screen.getByRole("button", { name: "All players" }));
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         comparisonPool: "fullCsv",
@@ -1016,24 +1018,6 @@ describe("search route", () => {
     });
   });
 
-  it("keeps the Moneyball upload label when a cohort exists", async () => {
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([
-      {
-        ...playerNamed("Existing cohort", 160),
-        dynamicValues: { "moneyball.average_rating": 7.25 },
-      },
-    ]);
-    renderSearchRoute("/search?view=moneyball");
-
-    expect(
-      await screen.findByRole("button", { name: "Upload Moneyball CSV" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Replace Moneyball CSV" }),
-    ).toBeNull();
-  });
-
   it("renders Search views without a local view tablist", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -1060,7 +1044,7 @@ describe("search route", () => {
     ).toBeInTheDocument();
     expect(
       await screen.findByRole("button", {
-        name: "Upload Moneyball CSV",
+        name: "Refresh stats",
       }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
@@ -2539,10 +2523,25 @@ describe("search route", () => {
       await screen.findByText("No players match these filters"),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText("No players in this Moneyball import"),
+      screen.queryByText("No Moneyball stats for this snapshot"),
     ).not.toBeInTheDocument();
     expect(
       screen.getByText(/Adjust or clear filters in the toolbar above/),
+    ).toBeInTheDocument();
+  });
+
+  it("points an empty Moneyball cohort at the linked save and Refresh stats", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([]);
+    renderSearchRoute("/search?view=moneyball");
+
+    expect(
+      await screen.findByText("No Moneyball stats for this snapshot"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Moneyball stats come from the FM save file linked to this save. Use Refresh stats to read it, or link a save file in Settings.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -3213,92 +3212,6 @@ describe("search route", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps shortlist filtering on after a Moneyball CSV import", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([playerNamed("High CA", 180)]);
-    openCsvDialog.mockResolvedValue("C:\\exports\\moneyball.csv");
-    setCsvImportIpcMockResult({
-      format: "moneyball",
-      totalPlayers: 75,
-      storedPlayers: 74,
-      skippedPlayers: 1,
-    });
-    const { router } = renderSearchRoute("/search?shortlistOnly=true");
-    await screen.findByText("High CA");
-
-    await user.click(screen.getByRole("link", { name: "Moneyball" }));
-    await user.click(
-      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Upload Moneyball CSV",
-    });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Browse files" }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText(/Last import: 74 stored/)).toBeInTheDocument();
-    });
-    expect(router.state.location.search).toMatchObject({
-      shortlistOnly: true,
-    });
-    expect(getLastPlayerShortlistImportIpcArgs()).toBeUndefined();
-  });
-
-  it("refreshes the visible Moneyball page after a Moneyball CSV import under retained shortlist URL state", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([playerNamed("High CA", 180)]);
-    openCsvDialog.mockResolvedValue("C:\\exports\\moneyball.csv");
-    setCsvImportIpcMockResult({
-      format: "moneyball",
-      totalPlayers: 75,
-      storedPlayers: 74,
-      skippedPlayers: 1,
-    });
-    const { router } = renderSearchRoute(
-      "/search?view=moneyball&shortlistOnly=true",
-    );
-    await screen.findByText("High CA");
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "moneyball",
-        shortlistOnly: true,
-      });
-    });
-    const callsBeforeImport = getSearchPlayersCallCount();
-
-    await user.click(
-      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Upload Moneyball CSV",
-    });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Browse files" }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText(/Last import: 74 stored/)).toBeInTheDocument();
-    });
-    // The shortlist filter stays on in the URL, but the visible Moneyball
-    // page still refetches: Moneyball is membership-independent.
-    expect(router.state.location.search).toMatchObject({
-      view: "moneyball",
-      shortlistOnly: true,
-    });
-    await waitFor(() => {
-      expect(getSearchPlayersCallCount()).toBeGreaterThan(callsBeforeImport);
-    });
-    expect(getLastSearchPlayersArgs()).toMatchObject({
-      searchView: "moneyball",
-      shortlistOnly: true,
-    });
-    expect(getLastPlayerShortlistImportIpcArgs()).toBeUndefined();
-  });
-
   it("refreshes Moneyball stats for the save context and reloads their as-of date", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -3594,19 +3507,11 @@ describe("search route", () => {
         within(toolbar).getByRole("button", { name: "Filtered cohort" }),
       ).toBeInTheDocument();
       expect(
-        within(toolbar).getByRole("button", { name: "Full CSV" }),
+        within(toolbar).getByRole("button", { name: "All players" }),
       ).toBeInTheDocument();
       expect(
         within(toolbar).getByRole("button", { name: "Edit filters" }),
       ).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Upload Moneyball CSV" }),
-      ).toBeInTheDocument();
-      expect(
-        within(toolbar).queryByRole("button", {
-          name: "Upload Moneyball CSV",
-        }),
-      ).toBeNull();
       const header = screen.getByTestId("search-page-header");
       expect(
         within(header).getByRole("heading", {
@@ -3617,7 +3522,7 @@ describe("search route", () => {
       for (const name of [
         "Add Tactic (Current)",
         "Add Tactic (Potential)",
-        "Upload Moneyball CSV",
+        "Refresh stats",
       ]) {
         expect(
           within(header).getByRole("button", { name }),
@@ -3626,7 +3531,7 @@ describe("search route", () => {
       }
 
       await user.click(
-        within(toolbar).getByRole("button", { name: "Full CSV" }),
+        within(toolbar).getByRole("button", { name: "All players" }),
       );
       await waitFor(() => {
         expect(getLastSearchPlayersArgs()).toMatchObject({

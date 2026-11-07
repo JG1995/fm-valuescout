@@ -94,9 +94,6 @@ export function fixturePlayerMoneyball(
 ): Extract<MoneyballProfile, { state: "ready" }> {
   return {
     state: "ready",
-    askingPriceKind: "single",
-    askingPriceLowerEur: 12_000_000,
-    askingPriceUpperEur: null,
     starts: 18,
     substituteAppearances: 3,
     minutes: 1500,

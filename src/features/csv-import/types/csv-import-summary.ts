@@ -1,4 +1,4 @@
-export type CsvImportFormat = "youthTracker" | "moneyball";
+export type CsvImportFormat = "youthTracker";
 
 export type CsvImportSummary = {
   format: CsvImportFormat;

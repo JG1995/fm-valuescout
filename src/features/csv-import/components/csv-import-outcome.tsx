@@ -1,25 +1,15 @@
 import { CircleAlert, CircleCheck, FileUp, TriangleAlert } from "lucide-react";
 import { StatusChip } from "@/components/ui/status-chip/status-chip";
 import { formatCount } from "@/utils/format";
-import type { CsvImportFormat } from "../types/csv-import-summary";
 import type { CsvImportState } from "../utils/import-state";
 
 type CsvImportOutcomeProps = {
   state: CsvImportState;
-  expectedFormat?: CsvImportFormat;
-  youthLabel?: "Youth Academy" | "Youth Tracker";
 };
 
 const invalidCsvErrorPrefix = "CSV file is invalid: ";
 
-function formatName(
-  format: CsvImportFormat,
-  youthLabel: "Youth Academy" | "Youth Tracker",
-) {
-  return format === "youthTracker" ? youthLabel : "Moneyball";
-}
-
-function errorCopy(error: Error, expectedFormat?: CsvImportFormat) {
+function errorCopy(error: Error) {
   if (
     error.message ===
     "The current save or snapshot changed while the CSV was imported"
@@ -37,13 +27,13 @@ function errorCopy(error: Error, expectedFormat?: CsvImportFormat) {
     };
   }
 
-  if (error.message === "CSV does not match the selected upload format") {
+  if (
+    error.message ===
+    "Moneyball stats now come from the linked FM save file, not a CSV export"
+  ) {
     return {
-      title: "CSV format does not match",
-      body:
-        expectedFormat === "moneyball"
-          ? "Choose a Moneyball CSV export."
-          : "Choose a Youth Academy CSV export.",
+      title: "Moneyball CSV not supported",
+      body: "Moneyball stats now come from the FM save file linked in Settings. Choose a Youth Academy CSV export.",
     };
   }
 
@@ -57,12 +47,7 @@ function errorCopy(error: Error, expectedFormat?: CsvImportFormat) {
   if (error.message === "CSV format is not supported") {
     return {
       title: "CSV format not supported",
-      body:
-        expectedFormat === "moneyball"
-          ? "Choose a Moneyball CSV export."
-          : expectedFormat === "youthTracker"
-            ? "Choose a Youth Academy CSV export."
-            : "Choose a Youth Tracker or Moneyball CSV export.",
+      body: "Choose a Youth Academy CSV export.",
     };
   }
 
@@ -79,21 +64,13 @@ function errorCopy(error: Error, expectedFormat?: CsvImportFormat) {
   };
 }
 
-export function CsvImportOutcome({
-  state,
-  expectedFormat,
-  youthLabel = "Youth Tracker",
-}: CsvImportOutcomeProps) {
+export function CsvImportOutcome({ state }: CsvImportOutcomeProps) {
   if (state.status === "idle") {
-    const prompt = expectedFormat
-      ? `Choose a ${formatName(expectedFormat, youthLabel)} CSV export to import.`
-      : "Choose a Youth Tracker or Moneyball export to import.";
-
     return (
       <p className="text-body-md text-on-surface-variant">
-        {prompt} Matching player rows add or update CSV enrichment. Omitted
-        players keep their earlier enrichment; player IDs outside the current
-        snapshot are skipped.
+        Choose a Youth Academy CSV export to import. Matching player rows add or
+        update CSV enrichment. Omitted players keep their earlier enrichment;
+        player IDs outside the current snapshot are skipped.
       </p>
     );
   }
@@ -112,7 +89,7 @@ export function CsvImportOutcome({
   }
 
   if (state.status === "error") {
-    const copy = errorCopy(state.error, expectedFormat);
+    const copy = errorCopy(state.error);
 
     return (
       <div
@@ -140,7 +117,7 @@ export function CsvImportOutcome({
     <div aria-live="polite" role="status" className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <StatusChip icon={CircleCheck} tone="success">
-          {`${formatName(summary.format, youthLabel)} imported`}
+          Youth Academy imported
         </StatusChip>
         <span className="text-body-md text-on-surface">
           {formatCount(summary.storedPlayers)} of{" "}

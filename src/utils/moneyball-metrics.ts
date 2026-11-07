@@ -23,7 +23,36 @@ export type MoneyballMetricCategory = {
   metricIds: readonly string[];
 };
 
-export const MONEYBALL_METRIC_CATEGORIES: readonly MoneyballMetricCategory[] = [
+/**
+ * The canonical metrics the linked FM save provides no source for. Mirrors
+ * `SAVE_UNAVAILABLE_STATISTIC_KEYS` in `src-tauri/src/features/moneyball/catalog.rs`.
+ */
+const SAVE_UNAVAILABLE_METRIC_IDS: ReadonlySet<string> = new Set([
+  "goals_from_outside_the_box",
+  "goals_from_outside_the_box_per_90",
+  "xg-op",
+  "xg-op_per_90",
+  "expected_save_percentage",
+  "penalties_faced",
+  "penalties_faced_per_90",
+  "penalties_saved",
+  "penalties_saved_per_90",
+  "penalties_saved_ratio",
+  "games_won",
+  "games_drawn",
+  "games_lost",
+  "game_win_ratio",
+  "team_goals",
+  "team_goals_per_90",
+  "pressures_attempted",
+  "pressures_attempted_per_90",
+  "pressures_completed",
+  "pressures_completed_per_90",
+  "pressure_success_ratio",
+]);
+
+/** Every canonical metric, including those the save cannot provide. */
+const CANONICAL_METRIC_CATEGORIES: readonly MoneyballMetricCategory[] = [
   {
     id: "shooting",
     title: "Shooting",
@@ -212,6 +241,15 @@ export const MONEYBALL_METRIC_CATEGORIES: readonly MoneyballMetricCategory[] = [
   },
 ];
 
+/** The browsable categories: only metrics the save provides. */
+export const MONEYBALL_METRIC_CATEGORIES: readonly MoneyballMetricCategory[] =
+  CANONICAL_METRIC_CATEGORIES.map((category) => ({
+    ...category,
+    metricIds: category.metricIds.filter(
+      (id) => !SAVE_UNAVAILABLE_METRIC_IDS.has(id),
+    ),
+  }));
+
 const DECIMAL_IDS = new Set([
   "xg",
   "np-xg",
@@ -309,13 +347,20 @@ function definition(categoryId: string, id: string): MoneyballMetric {
   };
 }
 
-export const MONEYBALL_METRICS: readonly MoneyballMetric[] =
-  MONEYBALL_METRIC_CATEGORIES.flatMap((category) =>
+const CANONICAL_METRICS: readonly MoneyballMetric[] =
+  CANONICAL_METRIC_CATEGORIES.flatMap((category) =>
     category.metricIds.map((id) => definition(category.id, id)),
   );
 
+/** The browsable metrics: only those the save provides. */
+export const MONEYBALL_METRICS: readonly MoneyballMetric[] =
+  CANONICAL_METRICS.filter(
+    (metric) => !SAVE_UNAVAILABLE_METRIC_IDS.has(metric.id),
+  );
+
+/** Presentation metadata for any canonical metric, including hidden ones. */
 export function moneyballMetric(id: string): MoneyballMetric {
-  const metric = MONEYBALL_METRICS.find((candidate) => candidate.id === id);
+  const metric = CANONICAL_METRICS.find((candidate) => candidate.id === id);
   if (!metric) throw new Error(`Unknown Moneyball metric: ${id}`);
   return metric;
 }
