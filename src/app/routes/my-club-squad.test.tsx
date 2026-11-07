@@ -1676,7 +1676,7 @@ describe("My Club route", () => {
     resolvePendingSquadCurrentAbilityBoostIpcMock();
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "2 processed — 2 updated, 0 skipped, 0 failed.",
+      "2 processed: 2 updated, 0 skipped, 0 failed.",
     );
     expect(getLastSquadCurrentAbilityBoostProgress()).toEqual({
       processed: 2,
@@ -1734,7 +1734,7 @@ describe("My Club route", () => {
 
     resolvePendingSquadCurrentAbilityBoostIpcMock();
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "0 processed — 0 updated, 0 skipped, 0 failed.",
+      "0 processed: 0 updated, 0 skipped, 0 failed.",
     );
   });
 
@@ -1756,7 +1756,7 @@ describe("My Club route", () => {
       ).getByRole("button", { name: "Boost all CA" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "2 processed — 2 updated, 0 skipped, 0 failed.",
+      "2 processed: 2 updated, 0 skipped, 0 failed.",
     );
 
     await user.click(
@@ -1781,7 +1781,7 @@ describe("My Club route", () => {
       ).getByRole("button", { name: "Make all Wonderkids" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "2 processed — 2 updated, 0 skipped, 0 failed.",
+      "2 processed: 2 updated, 0 skipped, 0 failed.",
     );
     expect(screen.getAllByRole("status")).toHaveLength(1);
   });
@@ -1836,7 +1836,7 @@ describe("My Club route", () => {
       ).getByRole("button", { name: "Boost all CA" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "2 processed — 2 updated, 0 skipped, 0 failed.",
+      "2 processed: 2 updated, 0 skipped, 0 failed.",
     );
 
     const snapshot = queryClient.getQueryData<SnapshotSummary>(
@@ -1913,7 +1913,7 @@ describe("My Club route", () => {
     );
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "4 processed — 1 updated, 2 skipped, 1 failed.",
+      "4 processed: 1 updated, 2 skipped, 1 failed.",
     );
     expect(screen.getByRole("status")).toHaveTextContent(
       "Stopped before all players were processed. Load Data is required before another boost.",
@@ -1996,7 +1996,7 @@ describe("My Club route", () => {
 
     resolvePendingSquadWonderkidMentalityBoostIpcMock();
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "2 processed — 2 updated, 0 skipped, 0 failed.",
+      "2 processed: 2 updated, 0 skipped, 0 failed.",
     );
     expect(getLastSquadWonderkidMentalityBoostProgress()).toEqual({
       processed: 2,
@@ -2029,7 +2029,7 @@ describe("My Club route", () => {
     );
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "4 processed — 1 updated, 2 skipped, 1 failed.",
+      "4 processed: 1 updated, 2 skipped, 1 failed.",
     );
     expect(screen.getByRole("status")).toHaveTextContent(
       "Stopped before all players were processed. Load Data is required before another boost.",
@@ -2939,6 +2939,19 @@ describe("My Club route", () => {
     });
     const bothView = within(viewGroup).getByRole("button", { name: "Both" });
     expect(bothView).toHaveAttribute("aria-pressed", "true");
+    // The workspace h1 leads straight into these regions, so none may skip h2.
+    for (const name of [
+      "Tactical XI",
+      "In-Possession and Out-of-Possession",
+      "Selected Slot",
+    ]) {
+      expect(
+        screen.getByRole("heading", { level: 2, name }),
+      ).toBeInTheDocument();
+    }
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Phase Influence" }),
+    ).toBeInTheDocument();
     const inspectors = screen.getAllByRole("region", {
       name: "Selected Slot",
     });
@@ -2960,8 +2973,11 @@ describe("My Club route", () => {
       within(viewGroup).getByRole("button", { name: "OOP" }),
     ).toHaveAttribute("aria-pressed", "true");
     expect(
-      screen.queryByRole("heading", { level: 3, name: "In-Possession" }),
+      screen.queryByRole("heading", { level: 2, name: "In-Possession" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Out-of-Possession" }),
+    ).toBeInTheDocument();
     await user.click(bothView);
 
     const firstIpLane = screen.getByRole("button", {

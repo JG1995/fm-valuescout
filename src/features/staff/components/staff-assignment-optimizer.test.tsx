@@ -206,18 +206,18 @@ describe("StaffAssignmentOptimizer", () => {
     expect(
       screen.getAllByRole("rowheader", { name: /Alpha Unit/ }),
     ).toHaveLength(2);
-    expect(screen.getByText("Alpha Unit — 2 of 2 filled")).toBeInTheDocument();
+    expect(screen.getByText("Alpha Unit: 2 of 2 filled")).toBeInTheDocument();
     expect(
-      screen.getByText("Club Services — 0 of 1 filled"),
+      screen.getByText("Club Services: 0 of 1 filled"),
     ).toBeInTheDocument();
     const resultRows = screen.getByRole("table").querySelectorAll("tbody tr");
     expect(Array.from(resultRows).map((row) => row.textContent)).toEqual([
-      "Alpha Unit — 2 of 2 filled",
+      "Alpha Unit: 2 of 2 filled",
       expect.stringContaining("Alex Coach"),
       expect.stringContaining("Riley Recruit"),
-      "Club Services — 0 of 1 filled",
+      "Club Services: 0 of 1 filled",
       expect.stringContaining("Vacancy"),
-      "Alpha Unit — 1 of 1 filled",
+      "Alpha Unit: 1 of 1 filled",
       expect.stringContaining("Taylor Coach"),
     ]);
     expect(screen.queryByText("senior")).not.toBeInTheDocument();

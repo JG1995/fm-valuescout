@@ -20,7 +20,7 @@ function bridgeStatusErrorCopy(error: Error) {
               Football Manager 27 must be running on Windows with the
               FmDataBridge plugin installed. Use <strong>Install plugin</strong>{" "}
               above, or copy <code>FmDataBridge.dll</code> into your FM27{" "}
-              <code>BepInEx/plugins/</code> folder — see{" "}
+              <code>BepInEx/plugins/</code> folder. See{" "}
               <code>bridge/README.md</code> for manual steps.
             </>
           ),

@@ -29,9 +29,9 @@ export function PlannerTacticLaneList({
       className="flex min-h-0 min-w-0 flex-col gap-2 border-r border-outline-variant pr-4"
       aria-labelledby={headingId}
     >
-      <h3 id={headingId} className="text-body-md font-semibold text-on-surface">
+      <h2 id={headingId} className="text-body-md font-semibold text-on-surface">
         Tactical XI
-      </h3>
+      </h2>
       <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-1">
         {orderedTacticLanes(lanes).map((lane) => {
           const selected = lane.laneId === selectedLaneId;

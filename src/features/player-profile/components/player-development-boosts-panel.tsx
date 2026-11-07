@@ -1,4 +1,4 @@
-import { Pencil, Sparkles, Zap } from "lucide-react";
+import { ChevronsUp, Pencil, Sprout } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 import { cloneElement, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
@@ -333,7 +333,7 @@ export function PlayerDevelopmentActions({
             }
           >
             <Button
-              icon={Zap}
+              icon={ChevronsUp}
               disabled={!currentAbilityEligible || pending}
               loading={pending && confirmationAction === "currentAbility"}
               loadingLabel="Boosting…"
@@ -362,7 +362,7 @@ export function PlayerDevelopmentActions({
             }
           >
             <Button
-              icon={Sparkles}
+              icon={Sprout}
               disabled={!mentalityEligible || pending}
               loading={pending && confirmationAction === "wonderkidMentality"}
               loadingLabel="Applying…"

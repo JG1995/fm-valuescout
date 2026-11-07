@@ -1,6 +1,8 @@
-# Local agent state: project wiki, jay-claude run state, and worker worktrees
+# Local agent state: project wiki, jay-claude run state, worker worktrees,
+# and antislop audit reports
 .wiki/
 .work/
+anti-slop/
 .claude/worktrees/
 .repowise/
 .release/

@@ -1,4 +1,4 @@
-import { Zap } from "lucide-react";
+import { ChevronsUp } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
@@ -39,7 +39,7 @@ export function MyStaffBoostOutcome({
         role="status"
       >
         <p>
-          {processed} processed — {result.updated} updated, {result.skipped}{" "}
+          {processed} processed: {result.updated} updated, {result.skipped}{" "}
           skipped, {result.failed} failed.
         </p>
         {result.recoveryRequired ? (
@@ -56,7 +56,7 @@ export function MyStaffBoostOutcome({
       <p>Could not boost Staff. {error.message}</p>
       {progress && progress.processed > 0 ? (
         <p>
-          {progress.processed} processed — {progress.updated} updated,{" "}
+          {progress.processed} processed: {progress.updated} updated,{" "}
           {progress.skipped} skipped, {progress.failed} failed. Changes already
           applied remain in FM.
         </p>
@@ -79,7 +79,7 @@ export function MyStaffCaBoost({
   return (
     <>
       <Button
-        icon={Zap}
+        icon={ChevronsUp}
         disabled={pending || disabled}
         loading={pending}
         loadingLabel="Boosting…"

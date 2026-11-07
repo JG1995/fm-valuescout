@@ -1,4 +1,4 @@
-import { Sparkles, Zap } from "lucide-react";
+import { ChevronsUp, Sprout } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
@@ -27,7 +27,7 @@ type SquadWonderkidMentalityBoostProps = Omit<SquadPlayerBoostProps, "action">;
 
 function resultSummary(result: SquadPlayerBoostResult) {
   const processed = result.updated + result.skipped + result.failed;
-  return `${processed} processed — ${result.updated} updated, ${result.skipped} skipped, ${result.failed} failed.`;
+  return `${processed} processed: ${result.updated} updated, ${result.skipped} skipped, ${result.failed} failed.`;
 }
 
 export function SquadBoostOutcome({
@@ -133,7 +133,7 @@ function SquadPlayerBoost({
     <>
       <div className="space-y-2">
         <Button
-          icon={isCurrentAbility ? Zap : Sparkles}
+          icon={isCurrentAbility ? ChevronsUp : Sprout}
           variant="secondary"
           disabled={pending || disabled}
           loading={pending}

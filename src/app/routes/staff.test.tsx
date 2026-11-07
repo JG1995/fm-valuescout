@@ -118,7 +118,7 @@ describe("staff route", () => {
         .filter((header) => header.getAttribute("scope") === "col"),
     ).toHaveLength(26);
     expect(
-      within(table).getByRole("columnheader", { name: "Coach — Goalkeeping" }),
+      within(table).getByRole("columnheader", { name: "Coach: Goalkeeping" }),
     ).toBeInTheDocument();
     expect(within(table).getByText("Alex Coach")).toBeInTheDocument();
   });
@@ -438,17 +438,17 @@ describe("staff route", () => {
     ).toHaveClass("text-score-1");
     expect(
       within(staffTable).getByRole("img", {
-        name: "Coach — Attacking Technical role score: 50, Average",
+        name: "Coach: Attacking Technical role score: 50, Average",
       }),
     ).toHaveClass("text-score-2");
     expect(
       within(staffTable).getByRole("img", {
-        name: "Coach — Attacking Tactical role score: 70, Good",
+        name: "Coach: Attacking Tactical role score: 70, Good",
       }),
     ).toHaveClass("text-score-3");
     expect(
       within(staffTable).getByRole("img", {
-        name: "Coach — Defending Technical role score: 90, Excellent",
+        name: "Coach: Defending Technical role score: 90, Excellent",
       }),
     ).toHaveClass("text-score-4");
   });
@@ -599,7 +599,7 @@ describe("staff route", () => {
     resolvePendingMyStaffBoostIpcMock();
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "2 processed — 2 updated, 0 skipped, 0 failed.",
+      "2 processed: 2 updated, 0 skipped, 0 failed.",
     );
     expect(queryClient.getQueryState(["staff", "probe"])?.isInvalidated).toBe(
       true,
@@ -667,7 +667,7 @@ describe("staff route", () => {
       "Could not boost Staff. Bridge is unavailable.",
     );
     expect(within(dialog).getByRole("alert")).toHaveTextContent(
-      "1 processed — 1 updated, 0 skipped, 0 failed.",
+      "1 processed: 1 updated, 0 skipped, 0 failed.",
     );
     expect(dialog).toBeInTheDocument();
   });
@@ -1724,14 +1724,14 @@ describe("staff route", () => {
       const dropDialog = screen.getByRole("dialog", { name: "Columns" });
       await user.click(
         within(dropDialog).getByRole("checkbox", {
-          name: "Coach — Goalkeeping",
+          name: "Coach: Goalkeeping",
         }),
       );
       await user.keyboard("{Escape}");
       await waitFor(() => {
         expect(
           within(table).queryByRole("columnheader", {
-            name: "Coach — Goalkeeping",
+            name: "Coach: Goalkeeping",
           }),
         ).toBeNull();
       });
@@ -1744,7 +1744,7 @@ describe("staff route", () => {
       );
       await user.click(
         within(dialog).getByRole("checkbox", {
-          name: "Coach — Goalkeeping",
+          name: "Coach: Goalkeeping",
         }),
       );
       await user.keyboard("{Escape}");
@@ -1754,7 +1754,7 @@ describe("staff route", () => {
       ).toBeInTheDocument();
       expect(
         within(table).getByRole("columnheader", {
-          name: "Coach — Goalkeeping",
+          name: "Coach: Goalkeeping",
         }),
       ).toBeInTheDocument();
       const alert = await screen.findByRole("alert");
@@ -1773,7 +1773,7 @@ describe("staff route", () => {
       // of showing a stale ScoreBadge while the replacement is unresolved.
       expect(
         within(table).queryAllByRole("img", {
-          name: "Coach — Goalkeeping role score: 72, Good",
+          name: "Coach: Goalkeeping role score: 72, Good",
         }),
       ).toHaveLength(0);
 
@@ -1785,7 +1785,7 @@ describe("staff route", () => {
       expect(within(table).getAllByText("15")).not.toHaveLength(0);
       expect(
         within(table).getAllByRole("img", {
-          name: "Coach — Goalkeeping role score: 72, Good",
+          name: "Coach: Goalkeeping role score: 72, Good",
         }),
       ).toHaveLength(2);
     });

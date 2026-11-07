@@ -1,4 +1,4 @@
-import { Zap } from "lucide-react";
+import { ChevronsUp } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
@@ -96,7 +96,7 @@ export function StaffCaBoost({
   return (
     <div className="flex min-w-28 items-center gap-2 px-2">
       <Button
-        icon={Zap}
+        icon={ChevronsUp}
         variant="secondary"
         disabled={!eligible || pending}
         loading={pending}

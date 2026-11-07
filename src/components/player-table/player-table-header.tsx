@@ -292,7 +292,7 @@ export function ConfigurableTableHeader({
       rowSpan={2}
       className="relative sticky left-0 z-20 h-table-header-height bg-surface-container-lowest px-2 text-left"
     >
-      <span className="block truncate pr-1 text-label-md text-on-surface-variant uppercase">
+      <span className="block truncate pr-1 text-label-md tracking-normal text-on-surface-variant">
         {identity.label}
       </span>
       <ColumnResizeHandle
@@ -330,7 +330,7 @@ export function ConfigurableTableHeader({
                 column.align === "right" ? "text-right" : "text-left"
               }`}
             >
-              <span className="text-label-md text-on-surface-variant uppercase">
+              <span className="text-label-md tracking-normal text-on-surface-variant">
                 {column.label}
               </span>
             </th>
@@ -410,7 +410,7 @@ export function ConfigurableTableHeader({
                       ? `${accessibleName}: click to sort; right-click or press Shift+F10 for column options`
                       : accessibleName
                   }
-                  className={`inline-flex w-full min-w-0 items-center gap-1 truncate text-label-md uppercase ${
+                  className={`inline-flex w-full min-w-0 items-center gap-1 truncate text-label-md tracking-normal ${
                     column.align === "right" ? "justify-end" : "justify-start"
                   } ${active ? "text-primary" : "text-on-surface-variant"}`}
                   onClick={
@@ -580,7 +580,7 @@ export function ConfigurableTableHeader({
                   column.align === "right" ? "text-right" : "text-left"
                 }`}
               >
-                <span className="text-label-md text-on-surface-variant uppercase">
+                <span className="text-label-md tracking-normal text-on-surface-variant">
                   {column.label}
                 </span>
               </th>
