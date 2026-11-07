@@ -182,7 +182,10 @@ export function AppNavBar() {
       data-testid="app-nav-bar"
       className="z-10 h-12 shrink-0 border-b border-outline-variant bg-surface-container"
     >
-      <div className="flex h-full items-center justify-center gap-1 px-4">
+      {/* Safe centring start-aligns the row when it overflows, so OS display
+          scaling below the window minimum can never push the first
+          destination out of reach; the band scrolls instead of clipping. */}
+      <div className="flex h-full items-center justify-center-safe gap-1 overflow-x-auto px-4">
         {groups.map((group, groupIndex) => (
           <div key={group[0]} className="flex items-center">
             {groupIndex > 0 ? (
