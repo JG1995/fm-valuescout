@@ -106,7 +106,7 @@ For a security problem, follow [SECURITY.md](SECURITY.md) and do not open a publ
 
 ## Develop from source
 
-For development rather than use of a published release, install Node 24, pnpm, Rust, and the platform prerequisites in [Architecture §11](.wiki/ARCHITECTURE.md#11-operational-notes). Then run:
+For development rather than use of a published release, install Node 24, pnpm, Rust, and the Tauri platform prerequisites. On Linux and WSL these are `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, and `patchelf`; WSL also needs WSLg or an X server for the native window. Then run:
 
 ```bash
 pnpm install
@@ -119,7 +119,7 @@ Bridge development requires the .NET 6 SDK; attaching it to FM still requires a 
 
 ## Maintainers and contributors
 
-The repository-local [`create-release` skill](.pi/skills/create-release/SKILL.md) owns explicit release preparation and the boundary between a local Windows validation artifact and automated publication. Repository development commands, tests, and architecture are documented in [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and the [project wiki](.wiki/INDEX.md).
+The repository-local [`create-release` skill](.claude/skills/create-release/SKILL.md) owns explicit release preparation and the boundary between a local Windows validation artifact and automated publication. Repository development commands and tests are documented in [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md). The maintainer's architecture and design wiki is kept locally and is not part of the repository.
 
 ## License
 

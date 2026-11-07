@@ -13,4 +13,4 @@
 
 <!-- Breaking changes, follow-ups, intentional deferrals. Write "None" when nothing applies. -->
 
-<!-- An explicit /skill:create-release invocation prepares the separate release PR. Ordinary PRs do not carry release metadata. -->
+<!-- An explicit /create-release invocation prepares the separate release PR. Ordinary PRs do not carry release metadata. -->

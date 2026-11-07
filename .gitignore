@@ -1,12 +1,10 @@
-# Disposable agent scratch
+# Local agent state: project wiki, jay-claude run state, and worker worktrees
+.wiki/
 .work/
+.claude/worktrees/
 .repowise/
 .release/
-
-# Pi generated and local state
-.pi/npm/
-.pi/git/
-.pi/sessions/
+__pycache__/
 
 # Dependencies (pnpm)
 node_modules/

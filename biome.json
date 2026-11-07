@@ -7,12 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": [
-      "**",
-      "!src/routeTree.gen.ts",
-      "!bridge",
-      "!.wiki/brand-identity"
-    ]
+    "includes": ["**", "!src/routeTree.gen.ts", "!bridge"]
   },
   "css": {
     "parser": {

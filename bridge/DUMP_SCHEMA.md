@@ -1,6 +1,6 @@
 # Dump schema v9 (frozen)
 
-Contract between the FM26 BepInEx bridge (`dump.json`) and Rust snapshot ingest. File protocol details: [README.md](./README.md). Architecture: [ADR-0016](../.wiki/decisions/0016-csharp-bepinex-fm26-bridge.md).
+Contract between the FM26 BepInEx bridge (`dump.json`) and Rust snapshot ingest. File protocol details: [README.md](./README.md). Architecture: [ADR-0016](../.wiki/adr/0016-csharp-bepinex-fm26-bridge.md).
 
 **Schema version:** `9` (`BridgeProtocol.DumpSchemaVersion` / Rust `DUMP_SCHEMA_VERSION`). Schema v8 and older dumps are rejected with an instruction to update the bridge plugin and rescan.
 
