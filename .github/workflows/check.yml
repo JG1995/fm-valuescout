@@ -42,15 +42,16 @@ jobs:
               - 'tsconfig*.json'
               - 'vite.config.ts'
               - 'playwright.config.ts'
+              - 'scripts/**'
+              - '.github/workflows/**'
             rust:
               - 'src-tauri/**'
               - 'src-tauri/Cargo.lock'
             bridge:
               - 'bridge/**'
             ci:
-              - '.github/workflows/**'
-              - '.github/actions/**'
-              - 'scripts/**'
+              - '.github/workflows/check.yml'
+              - 'scripts/dev'
 
   dependabot-policy:
     if: >-
@@ -173,9 +174,11 @@ jobs:
         with:
           workspaces: |
             src-tauri -> target
-      - name: Run Rust quality checks
+      # ponytail: Windows tests only the modules with Windows-specific paths; the Linux job runs the full suite.
+      # Upgrade to the full suite here if a cfg(windows) item lands outside features::graphics or features::memory_read.
+      - name: Run Rust quality checks with Windows-specific tests
         shell: bash
-        run: ./scripts/dev check-rust
+        run: ./scripts/dev check-rust features::graphics features::memory_read
 
   bridge-tests:
     needs: changes

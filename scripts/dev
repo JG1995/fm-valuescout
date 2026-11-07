@@ -14,7 +14,9 @@ Commands:
   check             Run Biome, TypeScript, secretlint, and Rust (fmt/clippy/test).
   check-app         Run Biome, TypeScript, and full-tree secretlint.
   check-fast        Run Biome, TypeScript, and secretlint on staged files (pre-commit fast path).
-  check-rust        Run cargo fmt --check, clippy, and test in src-tauri/.
+  check-rust [test-filter...]
+                    Run cargo fmt --check, clippy, and test in src-tauri/.
+                    Optional filters limit cargo test to matching test names.
   graphics-calibration
                     Run the ignored private graphics calibration harness. Requires
                     FM_VALUESCOUT_GRAPHICS_ROOT; output is one path-free JSON report.
@@ -115,7 +117,7 @@ run_rust_quality_gates() {
     export CARGO_TARGET_DIR="$repo_root/src-tauri/target"
     cargo fmt --check
     cargo clippy --all-targets --all-features -- -D warnings
-    cargo test
+    cargo test -- "$@"
   )
 }
 
@@ -173,10 +175,8 @@ run_check_fast() {
 }
 
 run_check_rust() {
-  require_no_arguments check-rust "$@"
-
   DEV_COMMAND_LABEL=check-rust
-  run_rust_quality_gates
+  run_rust_quality_gates "$@"
 
   printf 'Rust quality checks passed.\n'
 }

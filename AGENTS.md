@@ -83,7 +83,7 @@ Use the stable `./scripts/dev` surface instead of stack-native commands:
 ./scripts/dev check-fast
 ./scripts/dev check
 ./scripts/dev check-app
-./scripts/dev check-rust
+./scripts/dev check-rust [test-filter...]
 ./scripts/dev bridge-test
 ./scripts/dev format [paths...]
 ./scripts/dev secrets [--staged]
@@ -96,7 +96,7 @@ Use the stable `./scripts/dev` surface instead of stack-native commands:
 ./scripts/dev graphics-calibration
 ```
 
-`check` is the full commit gate: Biome, TypeScript, secretlint, Rust format, Clippy, and Rust tests. `check-fast` is the pre-commit frontend and staged-secret path; it does not replace `check`. `check-app` runs the frontend CI gate. `check-rust` runs the Rust gate. `bridge-test` requires the .NET 6 SDK. Install Chromium once with `pnpm exec playwright install chromium`, then use `smoke` for the Playwright product suite.
+`check` is the full commit gate: Biome, TypeScript, secretlint, Rust format, Clippy, and Rust tests. `check-fast` is the pre-commit frontend and staged-secret path; it does not replace `check`. `check-app` runs the frontend CI gate. `check-rust` runs the Rust gate; optional filters limit its tests to matching names. `bridge-test` requires the .NET 6 SDK. Install Chromium once with `pnpm exec playwright install chromium`, then use `smoke` for the Playwright product suite.
 
 For material UI work, read the project `ui-inspection` skill in `.claude/skills/` rather than the generic `jay-claude:ui-inspection`, capture the affected route, and inspect the reported image. Use its complete page set only for cross-page changes. Treat every capture as disposable Chromium-stub evidence, not native application proof.
 
