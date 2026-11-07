@@ -136,12 +136,12 @@ export function PlannerTacticInspector({
       aria-labelledby={headingId}
     >
       <div className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1 pb-2">
-        <h3
+        <h2
           id={headingId}
           className="text-body-md font-semibold text-on-surface"
         >
           Selected Slot
-        </h3>
+        </h2>
         <p className="whitespace-pre-line text-body-sm text-on-surface-variant">
           {linkedPositionDescription(selectedLane, lanes, options).replace(
             " / ",
@@ -152,9 +152,9 @@ export function PlannerTacticInspector({
 
       <fieldset disabled={disabled} className="flex shrink-0 flex-col">
         <div className="space-y-2 pb-2">
-          <h4 className="text-label-md text-on-surface-variant">
+          <h3 className="text-label-md text-on-surface-variant">
             Phase Influence
-          </h4>
+          </h3>
           <div className="space-y-1">
             <label
               className="block text-label-md text-on-surface-variant"
@@ -191,9 +191,9 @@ export function PlannerTacticInspector({
         </div>
 
         <div className="space-y-2 border-t border-outline-variant py-2">
-          <h4 className="text-label-md text-on-surface-variant">
+          <h3 className="text-label-md text-on-surface-variant">
             General Settings
-          </h4>
+          </h3>
           <div className="grid gap-3 sm:grid-cols-2">
             <SelectField
               label="Importance rank"
@@ -246,7 +246,7 @@ export function PlannerTacticInspector({
             key={phase}
             className="space-y-2 border-t border-outline-variant py-2 last:pb-0"
           >
-            <h4 className="flex items-center gap-2 text-label-md text-on-surface-variant">
+            <h3 className="flex items-center gap-2 text-label-md text-on-surface-variant">
               <span
                 aria-hidden="true"
                 className={`inline-block size-2 rounded-full ${phase === "ip" ? "bg-chart-2" : "bg-chart-3"}`}
@@ -254,7 +254,7 @@ export function PlannerTacticInspector({
               {phase === "ip"
                 ? "In Possession (IP)"
                 : "Out of Possession (OOP)"}
-            </h4>
+            </h3>
             <PhaseControls
               phase={phase}
               lane={selectedLane}

@@ -432,22 +432,28 @@ export function PlannerTacticPitch({
   onHighlight,
   onSelectLane,
   canvasClassName,
-}: PlannerTacticPitchProps & { canvasClassName?: string }) {
+  headingLevel = 3,
+}: PlannerTacticPitchProps & {
+  canvasClassName?: string;
+  /** 2 directly under a workspace h1; 3 inside a dialog titled by an h2. */
+  headingLevel?: 2 | 3;
+}) {
   const { label } = TACTIC_PHASES[phase];
   const selectedLane = lanes.find((lane) => lane.laneId === selectedLaneId);
   const headingId = useId();
   const linkedHintId = useId();
   const markers = pitchMarkers(phase, lanes, orientation);
+  const Heading = headingLevel === 2 ? "h2" : "h3";
 
   return (
     <section className="space-y-2" aria-labelledby={headingId}>
       <div className="flex items-center justify-between gap-3">
-        <h3
+        <Heading
           id={headingId}
           className="text-body-md font-semibold text-on-surface"
         >
           {label}
-        </h3>
+        </Heading>
         <span className="shrink-0 rounded-full bg-surface-container-high px-2 py-1 font-mono text-mono-sm text-on-surface-variant">
           {selectedLane
             ? phaseDescription(selectedLane, phase, lanes, options)

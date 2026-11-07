@@ -2939,6 +2939,19 @@ describe("My Club route", () => {
     });
     const bothView = within(viewGroup).getByRole("button", { name: "Both" });
     expect(bothView).toHaveAttribute("aria-pressed", "true");
+    // The workspace h1 leads straight into these regions, so none may skip h2.
+    for (const name of [
+      "Tactical XI",
+      "In-Possession and Out-of-Possession",
+      "Selected Slot",
+    ]) {
+      expect(
+        screen.getByRole("heading", { level: 2, name }),
+      ).toBeInTheDocument();
+    }
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Phase Influence" }),
+    ).toBeInTheDocument();
     const inspectors = screen.getAllByRole("region", {
       name: "Selected Slot",
     });
@@ -2960,8 +2973,11 @@ describe("My Club route", () => {
       within(viewGroup).getByRole("button", { name: "OOP" }),
     ).toHaveAttribute("aria-pressed", "true");
     expect(
-      screen.queryByRole("heading", { level: 3, name: "In-Possession" }),
+      screen.queryByRole("heading", { level: 2, name: "In-Possession" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Out-of-Possession" }),
+    ).toBeInTheDocument();
     await user.click(bothView);
 
     const firstIpLane = screen.getByRole("button", {
