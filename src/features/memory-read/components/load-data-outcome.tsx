@@ -36,7 +36,7 @@ const seasonStatsReadFailureReasons: Record<
 };
 
 /** One sentence for the stats step, and whether it left the snapshot without new stats. */
-function seasonStatsCopy(stats: SeasonStatsOutcome): {
+export function seasonStatsCopy(stats: SeasonStatsOutcome): {
   text: string;
   isProblem: boolean;
 } {
@@ -53,7 +53,7 @@ function seasonStatsCopy(stats: SeasonStatsOutcome): {
       };
     case "noMatches":
       return {
-        text: `No players in the save dated ${formatLongGameDate(stats.gameDate)} matched this snapshot, so season stats were not changed.`,
+        text: `No players in the save dated ${formatLongGameDate(stats.gameDate)} matched the current snapshot, so season stats were not changed.`,
         isProblem: true,
       };
     case "staleContext":

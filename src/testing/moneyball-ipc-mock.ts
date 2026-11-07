@@ -1,10 +1,63 @@
+import type { SeasonStatsOutcome } from "@/features/memory-read/types/load-data";
 import type { MoneyballProfile } from "@/features/moneyball/types/moneyball-profile";
+import { setMoneyballStatsGameDateIpcMock } from "./snapshot-ipc-mock";
 
 let profileOverride: MoneyballProfile | null | undefined;
 let pendingProfile: {
   promise: Promise<MoneyballProfile | null>;
   resolve: (profile: MoneyballProfile | null) => void;
 } | null = null;
+
+type RefreshSeasonStatsMockResult = SeasonStatsOutcome | "loadDataRunning";
+
+let refreshResult: RefreshSeasonStatsMockResult = {
+  status: "notLinked",
+  elapsedMs: 0,
+};
+let refreshArgs: unknown;
+let pendingRefresh: (() => void) | null = null;
+
+export function setRefreshSeasonStatsIpcMockResult(
+  result: RefreshSeasonStatsMockResult,
+) {
+  refreshResult = result;
+}
+
+/** Holds the next refresh until `resolvePendingRefreshSeasonStats` runs. */
+export function setRefreshSeasonStatsIpcMockPending() {
+  pendingRefresh = () => undefined;
+}
+
+export function resolvePendingRefreshSeasonStats() {
+  pendingRefresh?.();
+  pendingRefresh = null;
+}
+
+export function getLastRefreshSeasonStatsIpcArgs() {
+  return refreshArgs;
+}
+
+/** Mirrors the Rust command: an attached read sets the current snapshot's as-of date. */
+export async function resolveRefreshSeasonStatsIpcMock(
+  args: unknown,
+): Promise<SeasonStatsOutcome> {
+  refreshArgs = args;
+  if (pendingRefresh) {
+    await new Promise<void>((resolve) => {
+      pendingRefresh = resolve;
+    });
+  }
+  if (refreshResult === "loadDataRunning") {
+    throw {
+      kind: "loadDataRunning",
+      message: "Load Data is running. Refresh stats after it finishes.",
+    };
+  }
+  if (refreshResult.status === "attached") {
+    setMoneyballStatsGameDateIpcMock(refreshResult.gameDate);
+  }
+  return refreshResult;
+}
 
 export function setPlayerMoneyballOverride(
   profile: MoneyballProfile | null | undefined,
@@ -15,6 +68,9 @@ export function setPlayerMoneyballOverride(
 export function resetPlayerMoneyballOverride() {
   profileOverride = undefined;
   pendingProfile = null;
+  refreshResult = { status: "notLinked", elapsedMs: 0 };
+  refreshArgs = undefined;
+  pendingRefresh = null;
 }
 
 export function setPlayerMoneyballPending() {

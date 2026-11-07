@@ -60,6 +60,14 @@ pub(crate) fn acquire_load_gate() -> Result<LoadGuard, String> {
     Ok(LoadGuard { _load: load })
 }
 
+/// Reports whether a Load Data operation holds the load gate, without waiting and without
+/// keeping the gate. A boost also holds the load gate, so contention while a boost runs is
+/// not reported as Load Data.
+pub(crate) fn is_load_data_running() -> bool {
+    let load_free = LOAD_GATE.try_lock().is_ok();
+    !load_free && BOOST_GATE.try_lock().is_ok()
+}
+
 pub(crate) fn acquire_context_gate() -> Result<ContextGuard, String> {
     let context = CONTEXT_GATE.try_lock().map_err(|_| {
         // CONTEXT contention is due to an active boost (which holds CONTEXT) or another switch.
@@ -119,6 +127,18 @@ mod tests {
         let _boost = acquire_boost_gate().expect("acquire boost");
         let load = acquire_load_gate();
         assert!(load.is_err(), "load must fail while boost held");
+    }
+
+    #[test]
+    fn load_data_is_running_only_while_load_data_holds_the_load_gate() {
+        let _guard = BOOST_TEST_GATE.lock().unwrap_or_else(|e| e.into_inner());
+        assert!(!is_load_data_running(), "idle gates");
+        {
+            let _load = acquire_load_gate().expect("acquire load");
+            assert!(is_load_data_running(), "Load Data holds the gate");
+        }
+        let _boost = acquire_boost_gate().expect("acquire boost");
+        assert!(!is_load_data_running(), "a boost is not Load Data");
     }
 
     #[test]

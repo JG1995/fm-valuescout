@@ -3,6 +3,7 @@ import type { KeyboardEvent } from "react";
 import { useId, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { formatLongGameDate } from "@/utils/format";
 import {
   MONEYBALL_METRIC_CATEGORIES,
   MONEYBALL_METRICS,
@@ -97,10 +98,35 @@ function MoneyballTabs({
   );
 }
 
+/** The in-game date of the save the Moneyball stats came from, noting a different snapshot date. */
+export function MoneyballStatsAsOf({
+  moneyballStatsGameDate,
+  snapshotGameDate,
+}: {
+  moneyballStatsGameDate: string | null;
+  snapshotGameDate: string | null;
+}) {
+  if (moneyballStatsGameDate === null) return null;
+  const snapshotDateDiffers =
+    snapshotGameDate !== null && snapshotGameDate !== moneyballStatsGameDate;
+  return (
+    <p className="shrink-0 text-body-sm text-on-surface-variant">
+      Stats as of {formatLongGameDate(moneyballStatsGameDate)}
+      {snapshotDateDiffers
+        ? ` · Snapshot dated ${formatLongGameDate(snapshotGameDate)}`
+        : null}
+    </p>
+  );
+}
+
 export function MoneyballProfilePanel({
   profile,
+  moneyballStatsGameDate,
+  snapshotGameDate,
 }: {
   profile: MoneyballProfile;
+  moneyballStatsGameDate: string | null;
+  snapshotGameDate: string | null;
 }) {
   const idPrefix = `moneyball-${useId().replaceAll(":", "")}`;
   const [categoryId, setCategoryId] = useState(
@@ -198,6 +224,10 @@ export function MoneyballProfilePanel({
             Percentile scores unavailable: this player has no natural position.
           </p>
         )}
+        <MoneyballStatsAsOf
+          moneyballStatsGameDate={moneyballStatsGameDate}
+          snapshotGameDate={snapshotGameDate}
+        />
         <div className="shrink-0 p-0.5">
           <MoneyballTabs
             activeId={category.id}

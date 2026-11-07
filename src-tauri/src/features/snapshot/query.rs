@@ -22,7 +22,8 @@ pub fn get_current_snapshot(conn: &Connection) -> Result<Option<SnapshotSummary>
             s.scan_truncated,
             s.max_accepted,
             s.player_count,
-            s.loaded_at_utc
+            s.loaded_at_utc,
+            s.moneyball_stats_game_date
          FROM snapshots s
          INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
          WHERE s.is_current = 1
@@ -129,6 +130,7 @@ fn map_snapshot_row(row: &Row<'_>) -> rusqlite::Result<SnapshotSummary> {
         max_accepted: row.get(12)?,
         player_count: row.get(13)?,
         loaded_at_utc: row.get(14)?,
+        moneyball_stats_game_date: row.get(15)?,
     })
 }
 
@@ -187,6 +189,20 @@ mod tests {
 
         assert!(snapshot.player_count > 0);
         assert!(!snapshot.context_token.is_empty());
+        assert_eq!(snapshot.moneyball_stats_game_date, None);
+
+        conn.execute(
+            "UPDATE snapshots SET moneyball_stats_game_date = '2031-03-02' WHERE id = ?1",
+            [snapshot.id],
+        )
+        .expect("set as-of date");
+        let snapshot = get_current_snapshot(&conn)
+            .expect("query snapshot")
+            .expect("current snapshot");
+        assert_eq!(
+            snapshot.moneyball_stats_game_date.as_deref(),
+            Some("2031-03-02")
+        );
     }
 
     #[test]

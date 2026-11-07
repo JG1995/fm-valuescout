@@ -46,6 +46,7 @@ import {
 import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { staffKeys } from "@/features/staff/api/staff-keys";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { cn } from "@/utils/cn";
@@ -298,12 +299,14 @@ function GeneralPlayerProfile({
 function MoneyballPlayerProfile({
   uid,
   player,
+  snapshot,
   onSectionChange,
   restoreAnalysisFocus,
   onAnalysisFocusRestored,
 }: {
   uid: number;
   player: PlayerDetail;
+  snapshot: Pick<SnapshotSummary, "gameDate" | "moneyballStatsGameDate">;
   onSectionChange: (section: ProfileSection, restoreFocus?: boolean) => void;
   restoreAnalysisFocus: boolean;
   onAnalysisFocusRestored: () => void;
@@ -342,7 +345,11 @@ function MoneyballPlayerProfile({
                 : null
             }
           />
-          <MoneyballProfilePanel profile={profile} />
+          <MoneyballProfilePanel
+            profile={profile}
+            moneyballStatsGameDate={snapshot.moneyballStatsGameDate}
+            snapshotGameDate={snapshot.gameDate}
+          />
         </div>
         {readyProfile ? (
           <MoneyballRoleFitPanel
@@ -532,6 +539,7 @@ function PlayerProfileContent({
           <MoneyballPlayerProfile
             uid={uid}
             player={player}
+            snapshot={snapshot}
             onSectionChange={onSectionChange}
             restoreAnalysisFocus={restoreAnalysisFocus}
             onAnalysisFocusRestored={onAnalysisFocusRestored}

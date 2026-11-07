@@ -37,7 +37,10 @@ import {
   setPlayerHiddenInformationRevealedIpcMockMode,
   setWonderkidMentalityBoostIpcMockMode,
 } from "@/testing/player-ipc-mock";
-import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
+import {
+  resolveLoadDataIpcMock,
+  setMoneyballStatsGameDateIpcMock,
+} from "@/testing/snapshot-ipc-mock";
 
 function renderProfileRoute(initialEntry: string) {
   const queryClient = new QueryClient({
@@ -196,6 +199,21 @@ describe("player profile route", () => {
 
     expect(
       await screen.findByRole("tab", { name: "Moneyball", selected: true }),
+    ).toBeInTheDocument();
+  });
+
+  it("labels Moneyball stats with the current snapshot's as-of date", async () => {
+    await resolveLoadDataIpcMock();
+    setMoneyballStatsGameDateIpcMock("2026-06-30");
+    setGetPlayerOverride(fixturePlayerDetail());
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+
+    renderProfileRoute("/players/42?section=moneyball");
+
+    expect(
+      await screen.findByText(
+        "Stats as of 30th June 2026 · Snapshot dated 1st July 2026",
+      ),
     ).toBeInTheDocument();
   });
 

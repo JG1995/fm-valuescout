@@ -2492,6 +2492,36 @@ test.describe("application smoke", () => {
     ).toContainText("Only a Youth Academy export can be imported");
   });
 
+  test("Moneyball Search refreshes save stats and both views show their as-of date", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      moneyballSearch: true,
+      plannerSnapshot: true,
+      playerProfile: true,
+    });
+    const main = page.getByRole("main");
+
+    await page.goto("/players/42?section=moneyball");
+    await expect(main.getByText("Stats as of 30th July 2026")).toBeVisible();
+
+    await page.goto("/search?view=moneyball");
+    const toolbar = main.getByRole("toolbar", {
+      name: "Player results toolbar",
+    });
+    await expect(toolbar.getByText("Stats as of 30th July 2026")).toBeVisible();
+
+    await main.getByRole("button", { name: "Refresh stats" }).click();
+    await expect(
+      main.getByText(
+        "Attached season stats for 3 players from the save dated 1st January 2027.",
+      ),
+    ).toBeVisible();
+    await expect(
+      toolbar.getByText("Stats as of 1st January 2027"),
+    ).toBeVisible();
+  });
+
   test("Moneyball Search exposes role scores and restores its analysis state", async ({
     page,
   }) => {

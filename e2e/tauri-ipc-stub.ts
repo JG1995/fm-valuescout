@@ -70,6 +70,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const shortlistSearchEnabled = ${shortlistSearch ? "true" : "false"};
       let nextSaveId = 2;
       let clubDnaDefinition = null;
+      let moneyballStatsGameDate = moneyballSearch ? "2026-07-30" : null;
       let saves = [{
         id: 1,
         contextToken: "save-token-1",
@@ -307,6 +308,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         maxAccepted: null,
         playerCount: snapshot.playerCount,
         loadedAtUtc: snapshot.loadedAtUtc,
+        moneyballStatsGameDate,
       });
       const plannerTactic = {
         lanes: [
@@ -931,6 +933,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   maxAccepted: null,
                   playerCount: 3,
                   loadedAtUtc: "2026-07-28T15:05:00.000Z",
+                  moneyballStatsGameDate,
                 }
               : null;
           }
@@ -1504,6 +1507,17 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 },
               ],
             } : null;
+          }
+
+          if (cmd === "refresh_season_stats") {
+            moneyballStatsGameDate = "2027-01-01";
+            return {
+              status: "attached",
+              matchedPlayers: 3,
+              unmatchedPlayers: 0,
+              gameDate: "2027-01-01",
+              elapsedMs: 12,
+            };
           }
 
           if (cmd === "get_player_moneyball") {

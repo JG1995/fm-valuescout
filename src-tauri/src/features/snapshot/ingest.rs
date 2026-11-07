@@ -224,6 +224,8 @@ pub struct SnapshotSummary {
     pub max_accepted: Option<i64>,
     pub player_count: i64,
     pub loaded_at_utc: String,
+    /// The in-game date of the save whose season stats this snapshot's Moneyball cohort holds.
+    pub moneyball_stats_game_date: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1047,7 +1049,8 @@ fn get_snapshot_by_id(tx: &Transaction<'_>, snapshot_id: i64) -> Result<Snapshot
             scan_truncated,
             max_accepted,
             player_count,
-            loaded_at_utc
+            loaded_at_utc,
+            moneyball_stats_game_date
          FROM snapshots
          WHERE id = ?1",
         params![snapshot_id],
@@ -1068,6 +1071,7 @@ fn get_snapshot_by_id(tx: &Transaction<'_>, snapshot_id: i64) -> Result<Snapshot
                 max_accepted: row.get(12)?,
                 player_count: row.get(13)?,
                 loaded_at_utc: row.get(14)?,
+                moneyball_stats_game_date: row.get(15)?,
             })
         },
     )

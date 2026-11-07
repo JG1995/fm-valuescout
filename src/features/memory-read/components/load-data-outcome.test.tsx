@@ -487,7 +487,7 @@ describe("LoadDataOutcome", () => {
         gameDate: "2026-07-01",
         elapsedMs: 900,
       },
-      "No players in the save dated 1st July 2026 matched this snapshot, so season stats were not changed.",
+      "No players in the save dated 1st July 2026 matched the current snapshot, so season stats were not changed.",
     ],
     [
       "a discarded stale read",

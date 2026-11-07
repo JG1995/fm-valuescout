@@ -6,6 +6,9 @@ import type { LoadDataProgress, LoadDataResult } from "../types/load-data";
 
 export type ActiveSaveContext = { id: number; contextToken: string };
 
+/** Lets other views observe a running Load Data with `useIsMutating`. */
+export const loadDataMutationKey = ["loadData"] as const;
+
 type UseLoadDataOptions = {
   activeSaveContext: ActiveSaveContext | null;
   clearExactRoots: (guard?: () => boolean) => Promise<void>;
@@ -66,6 +69,7 @@ export function useLoadData(options: UseLoadDataOptions) {
   };
 
   const mutation = useMutation<LoadDataResult, Error, void, MutationContext>({
+    mutationKey: loadDataMutationKey,
     onMutate: () => {
       const generation = ++generationRef.current;
       const revision = contextRevisionRef.current;

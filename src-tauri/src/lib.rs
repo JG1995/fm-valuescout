@@ -102,6 +102,7 @@ pub fn run() {
             features::staff::commands::boost_my_staff_current_ability,
             features::player::commands::get_player,
             features::moneyball::commands::get_player_moneyball,
+            features::moneyball::commands::refresh_season_stats,
             features::player::commands::set_hidden_information_revealed,
             features::player::commands::boost_current_ability,
             features::player::commands::boost_wonderkid_mentality,

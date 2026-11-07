@@ -349,6 +349,7 @@ pub struct SnapshotSummaryDto {
     pub max_accepted: Option<i64>,
     pub player_count: i64,
     pub loaded_at_utc: String,
+    pub moneyball_stats_game_date: Option<String>,
 }
 
 impl From<SnapshotSummary> for SnapshotSummaryDto {
@@ -369,6 +370,7 @@ impl From<SnapshotSummary> for SnapshotSummaryDto {
             max_accepted: snapshot.max_accepted,
             player_count: snapshot.player_count,
             loaded_at_utc: snapshot.loaded_at_utc,
+            moneyball_stats_game_date: snapshot.moneyball_stats_game_date,
         }
     }
 }
@@ -1731,10 +1733,12 @@ mod tests {
             max_accepted: None,
             player_count: 25,
             loaded_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
+            moneyball_stats_game_date: Some("2026-07-30".to_string()),
         };
         let current = serde_json::to_value(summary("current-token")).expect("serialize current");
         assert_eq!(current["id"], 7);
         assert_eq!(current["contextToken"], "current-token");
+        assert_eq!(current["moneyballStatsGameDate"], "2026-07-30");
         let load_data = serde_json::to_value(LoadDataResultDto {
             request_id: "request".to_string(),
             players_found: Some(25),
