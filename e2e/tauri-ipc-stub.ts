@@ -2136,6 +2136,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               timings: { scanMs: 0, ingestMs: 0, totalMs: 0 },
               storedSnapshot: loadedSnapshot,
               effectiveSnapshot: loadedSnapshot,
+              stats: { status: "notLinked", elapsedMs: 0 },
             };
           }
 

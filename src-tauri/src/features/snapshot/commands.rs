@@ -7,6 +7,7 @@ use tempfile::TempPath;
 
 use crate::db::Db;
 use crate::features::memory_read::service::{DumpRequestResult, DumpWaitConfig};
+use crate::features::moneyball::save_stats_import::{self, SeasonStatsOutcome};
 use crate::features::player::boost_gate;
 use crate::features::save_stats::SaveStatsError;
 
@@ -377,7 +378,8 @@ impl From<SnapshotSummary> for SnapshotSummaryDto {
 /// (validation + raw normalization, determinate counts) -> scoring
 /// (projection + compact scores, determinate) -> saving (raw DB inserts,
 /// determinate) -> finalizing (selection, derived persistence,
-/// Club DNA, academy, determinate). No overall percent is reported.
+/// Club DNA, academy, determinate) -> seasonStats (linked save file read
+/// after publication, indeterminate). No overall percent is reported.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LoadDataPhase {
@@ -386,6 +388,7 @@ pub enum LoadDataPhase {
     Scoring,
     Saving,
     Finalizing,
+    SeasonStats,
 }
 
 /// Progress event for command-scoped best-effort delivery. Carries the
@@ -443,6 +446,7 @@ pub struct LoadDataTimingsDto {
     pub scoring_ms: u64,
     pub save_ms: u64,
     pub finalize_ms: u64,
+    pub stats_ms: u64,
     pub total_ms: u64,
     pub ingest_ms: u64,
 }
@@ -455,6 +459,8 @@ pub struct LoadDataResultDto {
     pub stored_snapshot: SnapshotSummaryDto,
     pub effective_snapshot: SnapshotSummaryDto,
     pub timings: LoadDataTimingsDto,
+    /// The season stats step, which never fails Load Data.
+    pub stats: SeasonStatsOutcome,
 }
 
 impl From<load_data::LoadDataTimings> for LoadDataTimingsDto {
@@ -465,20 +471,22 @@ impl From<load_data::LoadDataTimings> for LoadDataTimingsDto {
             scoring_ms: timings.scoring_ms,
             save_ms: timings.save_ms,
             finalize_ms: timings.finalize_ms,
+            stats_ms: timings.stats_ms,
             total_ms: timings.total_ms,
             ingest_ms: timings.ingest_ms,
         }
     }
 }
 
-impl From<LoadDataResult> for LoadDataResultDto {
-    fn from(result: LoadDataResult) -> Self {
+impl LoadDataResultDto {
+    fn new(result: LoadDataResult, stats: SeasonStatsOutcome) -> Self {
         Self {
             request_id: result.request_id,
             players_found: result.players_found,
             stored_snapshot: SnapshotSummaryDto::from(result.stored_snapshot),
             effective_snapshot: SnapshotSummaryDto::from(result.effective_snapshot),
             timings: LoadDataTimingsDto::from(result.timings),
+            stats,
         }
     }
 }
@@ -662,6 +670,20 @@ where
         1,
         1,
     ));
+    // The stats step takes its own brief locks and reads the file without one. It still
+    // runs under the load gate, and its outcome never turns a published load into an error.
+    drop(conn);
+    let _ = on_progress(LoadDataProgressDto::indeterminate(
+        save_context.id,
+        save_context.context_token.clone(),
+        LoadDataPhase::SeasonStats,
+    ));
+    let stats = save_stats_import::attach_season_stats(
+        db,
+        save_context.id,
+        &save_context.context_token,
+        now_ms,
+    );
     let total_ms = now_ms().saturating_sub(total_started);
     let ingest_ms = save_ms.saturating_add(finalize_ms);
     result.timings = load_data::LoadDataTimings {
@@ -670,10 +692,11 @@ where
         scoring_ms,
         save_ms,
         finalize_ms,
+        stats_ms: stats.elapsed_ms,
         total_ms,
         ingest_ms,
     };
-    Ok(LoadDataResultDto::from(result))
+    Ok(LoadDataResultDto::new(result, stats))
 }
 
 #[tauri::command]
@@ -816,6 +839,10 @@ mod tests {
             LoadDataProgressDto::indeterminate(1, "t".to_string(), LoadDataPhase::Preparing);
         let v = serde_json::to_value(&indeterminate).expect("serialize preparing start");
         assert!(v.get("completed").is_none() && v.get("total").is_none());
+        let stats =
+            LoadDataProgressDto::indeterminate(1, "t".to_string(), LoadDataPhase::SeasonStats);
+        let v = serde_json::to_value(&stats).expect("serialize season stats");
+        assert_eq!(v["phase"], "seasonStats");
     }
 
     #[test]
@@ -826,6 +853,7 @@ mod tests {
             scoring_ms: 5,
             save_ms: 7,
             finalize_ms: 3,
+            stats_ms: 4,
             total_ms: 50,
             ingest_ms: 10,
         };
@@ -836,6 +864,7 @@ mod tests {
                     + timings.scoring_ms
                     + timings.save_ms
                     + timings.finalize_ms
+                    + timings.stats_ms
         );
         assert_eq!(timings.ingest_ms, timings.save_ms + timings.finalize_ms);
         let dto = LoadDataTimingsDto::from(timings);
@@ -845,6 +874,7 @@ mod tests {
         assert_eq!(v["scoringMs"], 5);
         assert_eq!(v["saveMs"], 7);
         assert_eq!(v["finalizeMs"], 3);
+        assert_eq!(v["statsMs"], 4);
         assert_eq!(v["totalMs"], 50);
         assert_eq!(v["ingestMs"], 10);
     }
@@ -870,9 +900,9 @@ mod tests {
                 .unwrap();
             (save.id, save.context_token)
         };
-        // distinct nonuniform boundaries: total 1000, scan 1010-1055 (45), prepare 1060-1090 (30), scoring 1095-1155 (60), save 1160-1230 (70), finalize 1240-1275 (35), total 1350 (350)
+        // distinct nonuniform boundaries: total 1000, scan 1010-1055 (45), prepare 1060-1090 (30), scoring 1095-1155 (60), save 1160-1230 (70), finalize 1240-1275 (35), stats 1280-1300 (20), total 1350 (350)
         let ticks = Rc::new(RefCell::new(VecDeque::from([
-            1000u64, 1010, 1055, 1060, 1090, 1095, 1155, 1160, 1230, 1240, 1275, 1350,
+            1000u64, 1010, 1055, 1060, 1090, 1095, 1155, 1160, 1230, 1240, 1275, 1280, 1300, 1350,
         ])));
         let mut now_ms = {
             let ticks = Rc::clone(&ticks);
@@ -941,6 +971,13 @@ mod tests {
         assert_eq!(result.timings.scoring_ms, 60, "scoring_ms must be exact");
         assert_eq!(result.timings.save_ms, 70, "save_ms must be exact");
         assert_eq!(result.timings.finalize_ms, 35, "finalize_ms must be exact");
+        assert_eq!(result.timings.stats_ms, 20, "stats_ms must be exact");
+        assert_eq!(result.stats.elapsed_ms, 20);
+        assert_eq!(
+            result.stats.result,
+            save_stats_import::SeasonStatsResult::NotLinked,
+            "an unlinked save still publishes"
+        );
         assert_eq!(
             result.timings.total_ms, 350,
             "total_ms must be exact wall-clock"
@@ -960,9 +997,10 @@ mod tests {
                     + result.timings.scoring_ms
                     + result.timings.save_ms
                     + result.timings.finalize_ms
+                    + result.timings.stats_ms
         );
-        // Bounded max 9 events, ordered, truthful counts
-        assert!(events.len() <= 9, "max 9 events, got {}", events.len());
+        // Bounded max 10 events, ordered, truthful counts
+        assert!(events.len() <= 10, "max 10 events, got {}", events.len());
         let phases: Vec<_> = events.iter().map(|e| format!("{:?}", e.phase)).collect();
         assert_eq!(
             phases,
@@ -975,7 +1013,8 @@ mod tests {
                 "Saving",
                 "Saving",
                 "Finalizing",
-                "Finalizing"
+                "Finalizing",
+                "SeasonStats"
             ]
         );
         // Scan and Preparing start indeterminate
@@ -1002,6 +1041,8 @@ mod tests {
         // Finalizing complete 1/1 only after commit
         assert_eq!(events[8].completed, Some(1));
         assert_eq!(events[8].total, Some(1));
+        // Season stats after publication, indeterminate
+        assert!(events[9].completed.is_none() && events[9].total.is_none());
         // Captured context on all events
         for ev in &events {
             assert_eq!(ev.save_id, save_id);
@@ -1149,9 +1190,82 @@ mod tests {
         assert_eq!(result.request_id, "req-fail-sender");
         assert_eq!(
             attempts.get(),
-            9,
+            10,
             "always-failing sender must be attempted for every bounded event but success unchanged"
         );
+    }
+
+    #[test]
+    fn a_corrupt_linked_save_reports_its_error_kind_and_the_snapshot_still_publishes() {
+        let _guard = crate::features::player::boost_gate::BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = migrated_db(&temp_dir.path().join("corrupt-link.db"));
+        let requested = active_save_context(&db);
+        let save_path = crate::features::save_stats::synthetic::write_season_stats_save(
+            temp_dir.path(),
+            &[(77, &[("minutes", 90.0), ("starts", 1.0)])],
+        );
+        let save = std::fs::read(&save_path).expect("read synthetic save");
+        std::fs::write(&save_path, &save[..save.len() - 3]).expect("truncate save");
+        db.0.lock()
+            .expect("lock")
+            .execute(
+                "UPDATE saves SET linked_save_file_path = ?1 WHERE id = ?2",
+                rusqlite::params![save_path.to_str().expect("UTF-8 path"), requested.id],
+            )
+            .expect("link corrupt save");
+        let scan = || {
+            let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
+            tmp.write_all(GOLDEN_FIXTURE.as_bytes()).expect("write");
+            let dump_result = DumpRequestResult {
+                request_id: "req-corrupt-link".to_string(),
+                state: "ready".to_string(),
+                players_found: Some(1),
+                dump_present: true,
+                error: None,
+            };
+            Ok((tmp.into_temp_path(), dump_result))
+        };
+        let publish = |c: &mut Connection,
+                       ctx: &service::SaveContext,
+                       p: ingest::PreparedSnapshot,
+                       d: &DumpRequestResult,
+                       n: &mut dyn FnMut() -> u64,
+                       b: &mut dyn FnMut()| {
+            load_data::publish_prepared_with_progress(c, ctx, p, d, n, b)
+        };
+
+        let result = execute_load_data_with(
+            &db,
+            requested.clone(),
+            scan,
+            |p: &Path| load_data::prepare_raw_for_publish(p),
+            load_data::score_raw_for_publish,
+            publish,
+            &mut || 0,
+            |_: LoadDataProgressDto| Ok(()),
+        )
+        .expect("Load Data succeeds despite the stats failure");
+
+        assert_eq!(
+            result.stats.result,
+            save_stats_import::SeasonStatsResult::Failed {
+                kind: "corrupt",
+                file_name: Some("Example Career.fm".to_string()),
+            }
+        );
+        let current: i64 =
+            db.0.lock()
+                .expect("lock")
+                .query_row(
+                    "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+                    [requested.id],
+                    |row| row.get(0),
+                )
+                .expect("published snapshot is current");
+        assert_eq!(current, result.effective_snapshot.id);
     }
 
     #[test]
@@ -1632,8 +1746,13 @@ mod tests {
                 scoring_ms: 1,
                 save_ms: 1,
                 finalize_ms: 1,
-                total_ms: 6,
+                stats_ms: 1,
+                total_ms: 7,
                 ingest_ms: 2,
+            },
+            stats: SeasonStatsOutcome {
+                result: save_stats_import::SeasonStatsResult::NotLinked,
+                elapsed_ms: 1,
             },
         })
         .expect("serialize Load Data result");
@@ -1648,7 +1767,10 @@ mod tests {
         assert_eq!(load_data["timings"]["scoringMs"], 1);
         assert_eq!(load_data["timings"]["saveMs"], 1);
         assert_eq!(load_data["timings"]["finalizeMs"], 1);
-        assert_eq!(load_data["timings"]["totalMs"], 6);
+        assert_eq!(load_data["timings"]["statsMs"], 1);
+        assert_eq!(load_data["timings"]["totalMs"], 7);
+        assert_eq!(load_data["stats"]["status"], "notLinked");
+        assert_eq!(load_data["stats"]["elapsedMs"], 1);
         assert_eq!(load_data["timings"]["ingestMs"], 2);
     }
 

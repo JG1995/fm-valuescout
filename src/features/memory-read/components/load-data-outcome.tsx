@@ -2,8 +2,13 @@ import type { LucideIcon } from "lucide-react";
 import { CircleAlert, CircleCheck, LoaderCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button/button";
 import { cn } from "@/utils/cn";
-import { formatCount } from "@/utils/format";
-import type { LoadDataProgress, LoadDataResult } from "../types/load-data";
+import { formatCount, formatLongGameDate } from "@/utils/format";
+import type {
+  LoadDataProgress,
+  LoadDataResult,
+  SeasonStatsErrorKind,
+  SeasonStatsOutcome,
+} from "../types/load-data";
 import { loadDataErrorCopy } from "./load-data-error";
 
 export const loadDataPhaseLabels: Record<LoadDataProgress["phase"], string> = {
@@ -12,7 +17,65 @@ export const loadDataPhaseLabels: Record<LoadDataProgress["phase"], string> = {
   scoring: "Scoring…",
   saving: "Saving…",
   finalizing: "Finalizing…",
+  seasonStats: "Reading stats…",
 };
+
+const seasonStatsReadFailureReasons: Record<
+  Exclude<SeasonStatsErrorKind, "database">,
+  (fileName: string) => string
+> = {
+  not_found: (fileName) => `${fileName} could not be found`,
+  unreadable: (fileName) => `${fileName} could not be opened`,
+  not_fm_save: (fileName) => `${fileName} is not a supported FM27 save`,
+  unsupported_game: (fileName) => `${fileName} is not a supported FM27 save`,
+  unsupported_build: () => "this FM27 build is not supported yet",
+  corrupt: () => "the save could not be read safely",
+  out_of_bounds: () => "the save could not be read safely",
+  changed_during_read: () =>
+    "the save changed while it was read. Wait for FM to finish saving, then try again",
+};
+
+/** One sentence for the stats step, and whether it left the snapshot without new stats. */
+function seasonStatsCopy(stats: SeasonStatsOutcome): {
+  text: string;
+  isProblem: boolean;
+} {
+  switch (stats.status) {
+    case "attached":
+      return {
+        text: `Attached season stats for ${formatCount(stats.matchedPlayers)} players from the save dated ${formatLongGameDate(stats.gameDate)}.`,
+        isProblem: false,
+      };
+    case "notLinked":
+      return {
+        text: "No FM save file is linked, so no season stats were read. Link one in Settings.",
+        isProblem: false,
+      };
+    case "noMatches":
+      return {
+        text: `No players in the save dated ${formatLongGameDate(stats.gameDate)} matched this snapshot, so season stats were not changed.`,
+        isProblem: true,
+      };
+    case "staleContext":
+      return {
+        text: "The save or snapshot changed while season stats were read, so they were not attached.",
+        isProblem: true,
+      };
+    case "noSnapshot":
+      return {
+        text: "There is no current snapshot to attach season stats to.",
+        isProblem: true,
+      };
+    case "failed":
+      return {
+        text:
+          stats.kind === "database"
+            ? "Season stats could not be stored, so the previous stats are unchanged."
+            : `Season stats were not read: ${seasonStatsReadFailureReasons[stats.kind](stats.fileName ?? "the linked save file")}.`,
+        isProblem: true,
+      };
+  }
+}
 
 function formatDurationMs(ms: number): string {
   if (ms < 1000) {
@@ -25,7 +88,7 @@ function formatLoadTimings(timings: LoadDataResult["timings"]): string {
   if (timings.totalMs === 0) {
     return "";
   }
-  return ` Scan ${formatDurationMs(timings.scanMs)}, preparation ${formatDurationMs(timings.prepareMs)}, scoring ${formatDurationMs(timings.scoringMs)}, save ${formatDurationMs(timings.saveMs)}, finalization ${formatDurationMs(timings.finalizeMs)}, total ${formatDurationMs(timings.totalMs)}.`;
+  return ` Scan ${formatDurationMs(timings.scanMs)}, preparation ${formatDurationMs(timings.prepareMs)}, scoring ${formatDurationMs(timings.scoringMs)}, save ${formatDurationMs(timings.saveMs)}, finalization ${formatDurationMs(timings.finalizeMs)}, season stats ${formatDurationMs(timings.statsMs)}, total ${formatDurationMs(timings.totalMs)}.`;
 }
 
 type LoadDataOutcomeProps = {
@@ -74,10 +137,11 @@ function resolveBanner({ error, result }: LoadDataOutcomeProps): Banner | null {
   const latestMessage = storedBecameLatest
     ? " This snapshot is now the latest."
     : ` Stored this snapshot in history; the latest remains ${formatSnapshotDate(latestSnapshot.gameDate)}.`;
+  const stats = seasonStatsCopy(result.stats);
   return {
-    icon: CircleCheck,
-    tone: toneClasses.success,
-    body: `${loaded}${latestMessage}`,
+    icon: stats.isProblem ? CircleAlert : CircleCheck,
+    tone: stats.isProblem ? toneClasses.warning : toneClasses.success,
+    body: `${loaded}${latestMessage} ${stats.text}`,
   };
 }
 

@@ -9,6 +9,7 @@ use serde_json::Value;
 
 use crate::features::academy::service as academy_service;
 use crate::features::memory_read::dump_validation::parse_and_validate_dump;
+use crate::features::moneyball::persistence as moneyball_persistence;
 use crate::features::player_metrics::club_dna as club_dna_scores;
 use crate::features::player_metrics::compact as player_compact;
 use crate::features::player_metrics::potential_scores;
@@ -664,6 +665,7 @@ pub(crate) fn publish_prepared_snapshot_canonical(
             .map_err(|e| e.to_string())?;
         }
         player_compact::clear_non_current_snapshots(&tx, save_id)?;
+        moneyball_persistence::clear_non_current_snapshots(&tx, save_id)?;
         tx.execute(
             "UPDATE players SET potential_attributes_json = NULL, potential_projection_model_version = NULL WHERE snapshot_id IN (SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0) AND (potential_attributes_json IS NOT NULL OR potential_projection_model_version IS NOT NULL)",
             rusqlite::params![save_id],
@@ -1175,6 +1177,7 @@ fn reputation_field(
 mod tests {
     use super::*;
     use crate::db::migrations;
+    use crate::features::moneyball::persistence::test_support::{cohort_state, seed_cohort};
     use crate::features::snapshot::service::{list_saves, save_context_for_id};
     use rusqlite::OptionalExtension;
     use std::path::Path;
@@ -2240,10 +2243,16 @@ mod tests {
         let first_path = write_dump(&temp_dir, "later.json", &later_json);
         let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
         assert_complete_potential_state(&conn, first.id);
+        seed_cohort(&conn, first.id, 77, "2027-08-01");
 
         let earlier_json = dump_with_game_date(Some("2026-08-14"), "Earlier player");
         let second_path = write_dump(&temp_dir, "earlier.json", &earlier_json);
         let second = ingest_dump_file(&mut conn, &second_path).expect("second ingest");
+        // The retained current snapshot keeps its Moneyball cohort.
+        assert_eq!(
+            cohort_state(&conn, first.id),
+            (1, Some("2027-08-01".to_string()))
+        );
 
         assert_ne!(second.id, first.id);
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
@@ -2299,6 +2308,7 @@ mod tests {
         );
         let earlier = ingest_dump_file(&mut conn, &earlier_path).expect("earlier ingest");
         assert_complete_potential_state(&conn, earlier.id);
+        seed_cohort(&conn, earlier.id, 77, "2026-08-01");
         let later_path = write_dump(
             &temp_dir,
             "later.json",
@@ -2307,6 +2317,7 @@ mod tests {
         let later = ingest_dump_file(&mut conn, &later_path).expect("later ingest");
 
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(later.id));
+        assert_eq!(cohort_state(&conn, earlier.id), (0, None));
         assert_empty_potential_state(&conn, earlier.id);
         assert_complete_potential_state(&conn, later.id);
         assert_eq!(compact_row_count(&conn, earlier.id), 0);

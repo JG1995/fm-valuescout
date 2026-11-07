@@ -26,7 +26,9 @@ pub struct LoadDataTimings {
     pub save_ms: u64,
     /// Finalization (selection, derived rows, Club DNA, academy, summaries, commit) inside same transaction.
     pub finalize_ms: u64,
-    /// Wall-clock total. Disjoint: total >= scan+prepare+scoring+save+finalize.
+    /// Season stats read from the linked save file and cohort replacement, after publication.
+    pub stats_ms: u64,
+    /// Wall-clock total. Disjoint: total >= scan+prepare+scoring+save+finalize+stats.
     pub total_ms: u64,
     /// Overlapping aggregate DB time for backwards compat: save_ms + finalize_ms.
     pub ingest_ms: u64,

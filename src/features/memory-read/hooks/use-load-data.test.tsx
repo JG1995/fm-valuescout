@@ -894,9 +894,11 @@ describe("useLoadData", () => {
           scoringMs: 400,
           saveMs: 200,
           finalizeMs: 200,
+          statsMs: 0,
           totalMs: 2100,
           ingestMs: 400,
         },
+        stats: { status: "notLinked", elapsedMs: 0 },
       } as never);
     });
 
@@ -1070,9 +1072,11 @@ describe("useLoadData", () => {
           scoringMs: 400,
           saveMs: 200,
           finalizeMs: 200,
+          statsMs: 0,
           totalMs: 2100,
           ingestMs: 400,
         },
+        stats: { status: "notLinked", elapsedMs: 0 },
       } as never);
     });
     await act(async () => {
@@ -1194,9 +1198,11 @@ describe("useLoadData", () => {
           scoringMs: 400,
           saveMs: 200,
           finalizeMs: 200,
+          statsMs: 0,
           totalMs: 2100,
           ingestMs: 400,
         },
+        stats: { status: "notLinked", elapsedMs: 0 },
       } as never);
     });
     await act(async () => {
@@ -1333,9 +1339,11 @@ describe("useLoadData", () => {
           scoringMs: 400,
           saveMs: 200,
           finalizeMs: 200,
+          statsMs: 0,
           totalMs: 2100,
           ingestMs: 400,
         },
+        stats: { status: "notLinked", elapsedMs: 0 },
       } as never);
     });
     await act(async () => {
