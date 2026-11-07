@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-07
+
+### Changed
+
+- FM ValueScout now supports Football Manager 27 (build 27.0) instead of FM26. Load Data, player boosts, and staff boosts run against FM27, and the bridge plugin installs into the Steam `Football Manager 27` folder.
+- Local graphics detection now looks for the `Football Manager 2027` user-data folder. Choose the FM27 graphics folder again in Settings if you previously chose an FM26 one.
+- Updated compatible Rust and frontend dependencies.
+
+### Removed
+
+- FM26 support. The bridge plugin no longer loads data from, or boosts, an FM26 save. Existing FM26 snapshots remain available in the app.
+
 ## [0.21.0] - 2026-10-10
 
 ### Added
