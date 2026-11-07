@@ -21,6 +21,7 @@ import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { SnapshotPanelsWithErrorBoundary } from "@/features/snapshot/components/snapshot-panels-with-error-boundary";
 import { staffKeys } from "@/features/staff/api/staff-keys";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
+import thirdPartyNotices from "../../../THIRD_PARTY_NOTICES.md?raw";
 
 export const Route = createFileRoute("/settings")({
   beforeLoad: ({ location }) => {
@@ -180,6 +181,21 @@ function SettingsPage() {
         <Suspense fallback={<SectionFallback label="Loading bridge status…" />}>
           <BridgeStatusPanelWithErrorBoundary />
         </Suspense>
+      </section>
+
+      <section
+        aria-labelledby="open-source-notices-heading"
+        className="w-full max-w-2xl space-y-4"
+      >
+        <h2
+          className="text-headline-sm text-on-surface"
+          id="open-source-notices-heading"
+        >
+          Open-source notices
+        </h2>
+        <pre className="whitespace-pre-wrap rounded-lg border border-outline-variant bg-surface-container p-4 text-body-sm text-on-surface-variant">
+          {thirdPartyNotices}
+        </pre>
       </section>
     </div>
   );

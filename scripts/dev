@@ -7,7 +7,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|graphics-calibration|bridge-test|format|secrets|smoke|inspect-ui|mutate|bridge-install|package-windows|release-metadata|dependency-automerge-policy} [args...]
+Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|graphics-calibration|save-stats-reference|bridge-test|format|secrets|smoke|inspect-ui|mutate|bridge-install|package-windows|release-metadata|dependency-automerge-policy} [args...]
 
 Commands:
   test [args...]    Run vitest run (full suite or forwarded file patterns and flags).
@@ -20,6 +20,9 @@ Commands:
   graphics-calibration
                     Run the ignored private graphics calibration harness. Requires
                     FM_VALUESCOUT_GRAPHICS_ROOT; output is one path-free JSON report.
+  save-stats-reference
+                    Run the ignored private save-statistics reference harness in a release
+                    build. Requires FM_VALUESCOUT_SAVE_FILE; output is one path-free JSON report.
   bridge-test       Run the C# bridge unit tests (requires the .NET 6 SDK).
   format [paths...] Apply Biome lint/format fixes, then cargo fmt in src-tauri/.
                     Optional paths forward to Biome only; cargo fmt always runs.
@@ -197,6 +200,27 @@ run_graphics_calibration() {
   report="$(printf '%s\n' "$output" | awk '/^\{/{line=$0} END{print line}')"
   if [[ -z "$report" ]]; then
     printf 'graphics-calibration did not produce a report.\n' >&2
+    exit 66
+  fi
+  printf '%s\n' "$report"
+}
+
+run_save_stats_reference() {
+  require_no_arguments save-stats-reference "$@"
+  DEV_COMMAND_LABEL=save-stats-reference
+
+  local save_file="${FM_VALUESCOUT_SAVE_FILE:-}"
+  if [[ -z "$save_file" || ! -f "$save_file" || ! -r "$save_file" ]]; then
+    printf 'save-stats-reference requires a readable private FM27 save file.\n' >&2
+    exit 66
+  fi
+
+  local output report
+  output="$(cd "$repo_root/src-tauri" && CARGO_TARGET_DIR="$repo_root/src-tauri/target" \
+    cargo test --release --quiet features::save_stats::reference::save_stats_reference_harness -- --ignored --exact --nocapture 2>/dev/null)" || true
+  report="$(printf '%s\n' "$output" | awk '/^\{/{line=$0} END{print line}')"
+  if [[ -z "$report" ]]; then
+    printf 'save-stats-reference did not produce a report.\n' >&2
     exit 66
   fi
   printf '%s\n' "$report"
@@ -520,6 +544,9 @@ case "$command" in
     ;;
   graphics-calibration)
     run_graphics_calibration "$@"
+    ;;
+  save-stats-reference)
+    run_save_stats_reference "$@"
     ;;
   bridge-test)
     run_bridge_test "$@"
