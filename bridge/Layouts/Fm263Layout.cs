@@ -14,9 +14,20 @@ public sealed class Fm263Layout : IFmMemoryLayout
 
     private const string StaffBoostBuild = "26.3.2";
 
-    public static Fm263Layout Instance { get; } = new();
+    public static Fm263Layout Instance { get; } = new("26.3", "FM 26.3");
 
-    public string VersionKey => "26.3";
+    // ponytail: FM 27.0 reuses the FM 26.3 offsets without a live comparison; boosts stay off.
+    // Upgrade to a dedicated FM 27 layout if a live FM27 spot check disproves any offset.
+    public static Fm263Layout Fm270Trial { get; } =
+        new("27.0", "FM 27.0 (FM 26.3 offsets, unverified)");
+
+    private Fm263Layout(string versionKey, string displayName)
+    {
+        VersionKey = versionKey;
+        DisplayName = displayName;
+    }
+
+    public string VersionKey { get; }
 
     public bool SupportsPlayerBoosts(string gameVersion) =>
         string.Equals(gameVersion?.Trim(), PlayerBoostBuild, StringComparison.Ordinal);
@@ -24,7 +35,7 @@ public sealed class Fm263Layout : IFmMemoryLayout
     public bool SupportsStaffBoosts(string gameVersion) =>
         string.Equals(gameVersion?.Trim(), StaffBoostBuild, StringComparison.Ordinal);
 
-    public string DisplayName => "FM 26.3";
+    public string DisplayName { get; }
 
     public int ObjectUidOffset => 0x0C;
 

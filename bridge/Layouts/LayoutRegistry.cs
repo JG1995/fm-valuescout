@@ -15,7 +15,7 @@ public sealed class LayoutRegistry
     }
 
     public static LayoutRegistry CreateDefault() =>
-        new(new IFmMemoryLayout[] { Fm263Layout.Instance });
+        new(new IFmMemoryLayout[] { Fm263Layout.Instance, Fm263Layout.Fm270Trial });
 
     public bool TryResolve(string versionKey, out IFmMemoryLayout layout)
     {

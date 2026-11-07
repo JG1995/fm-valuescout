@@ -53,6 +53,22 @@ public sealed class CapADumpTests
     }
 
     [Fact]
+    public void Layout_registry_resolves_fm27_0_to_the_26_3_offsets_without_boosts()
+    {
+        var registry = LayoutRegistry.CreateDefault();
+
+        Assert.True(registry.TryResolveFromGameVersion("27.0", out var layout));
+        Assert.Equal("27.0", layout.VersionKey);
+        Assert.Equal(Fm263Layout.Instance.PlayerClassOffsets, layout.PlayerClassOffsets);
+        Assert.Equal(Fm263Layout.Instance.StaffClassOffsets, layout.StaffClassOffsets);
+        Assert.Equal(Fm263Layout.Instance.CurrentAbilityOffset, layout.CurrentAbilityOffset);
+        Assert.Equal(Fm263Layout.Instance.AttrsOffset, layout.AttrsOffset);
+        Assert.True(layout.IsProvisional);
+        Assert.False(layout.SupportsPlayerBoosts("27.0"));
+        Assert.False(layout.SupportsStaffBoosts("27.0"));
+    }
+
+    [Fact]
     public void Layout_registry_rejects_unsupported_version()
     {
         var registry = LayoutRegistry.CreateDefault();
