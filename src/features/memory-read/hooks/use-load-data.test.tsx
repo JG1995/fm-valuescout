@@ -30,6 +30,58 @@ function wrapper(queryClient: QueryClient) {
   };
 }
 
+type BusyLoadDataResult = NonNullable<
+  Parameters<typeof resolveBusyLoadDataRequest>[0]
+>;
+
+/** An older snapshot stored in history while stats attach to the save's current snapshot. */
+function historicalResultWithAttachedStats(saveId: number): BusyLoadDataResult {
+  const snapshot = (
+    id: number,
+    gameDate: string,
+  ): BusyLoadDataResult["storedSnapshot"] => ({
+    id,
+    contextToken: `snapshot-token-${id}`,
+    saveId,
+    schemaVersion: 6,
+    generatedAtUtc: "2026-07-28T15:00:00.000Z",
+    gameVersion: "26.0.0",
+    supportedGameVersion: "26.0.0",
+    bridgeVersion: "0.1.0",
+    protocolVersion: 1,
+    gameDate,
+    gameDateSource: "inGame",
+    scanTruncated: false,
+    maxAccepted: null,
+    playerCount: 3,
+    loadedAtUtc: "2026-07-28T15:05:00.000Z",
+    moneyballStatsGameDate: null,
+  });
+  return {
+    requestId: "req-mock",
+    playersFound: 3,
+    storedSnapshot: snapshot(2, "2026-07-01"),
+    effectiveSnapshot: snapshot(1, "2027-08-16"),
+    timings: {
+      scanMs: 1200,
+      prepareMs: 300,
+      scoringMs: 400,
+      saveMs: 200,
+      finalizeMs: 200,
+      statsMs: 900,
+      totalMs: 3000,
+      ingestMs: 400,
+    },
+    stats: {
+      status: "attached",
+      matchedPlayers: 3,
+      unmatchedPlayers: 0,
+      gameDate: "2027-08-16",
+      elapsedMs: 900,
+    },
+  };
+}
+
 describe("useLoadData", () => {
   beforeEach(() => {
     resetSnapshotIpcMock();
@@ -325,7 +377,7 @@ describe("useLoadData", () => {
     expect(queryClient.getQueryState(bridgeKey)?.isInvalidated).toBe(true);
   });
 
-  it("historical non-winner does not clear current roots and only refreshes exact history and bridge", async () => {
+  it("historical non-winner without attached stats does not clear current roots and only refreshes exact history and bridge", async () => {
     const queryClient = createQueryClient();
     const searchPage = ["search", "players", { offset: 0, limit: 50 }] as const;
     const squadPage = [
@@ -392,6 +444,80 @@ describe("useLoadData", () => {
     expect(queryClient.getQueryState(currentKey)?.isInvalidated).not.toBe(true);
     expect(queryClient.getQueryState(savesKey)?.isInvalidated).not.toBe(true);
     expect(queryClient.getQueryState(bridgeKey)?.isInvalidated).toBe(true);
+  });
+
+  it("historical result with attached stats on the active save refreshes current owners without clearing roots", async () => {
+    const clearExactRoots = vi.fn(async () => undefined);
+    const invalidateCurrent = vi.fn();
+    const invalidateHistory = vi.fn();
+
+    const { result } = renderHook(
+      () =>
+        useLoadData({
+          activeSaveContext: { id: 1, contextToken: "save-token-1" },
+          clearExactRoots,
+          invalidateCurrentOwners: invalidateCurrent,
+          invalidateHistoryOwners: invalidateHistory,
+        }),
+      { wrapper: wrapper(createQueryClient()) },
+    );
+
+    setLoadDataIpcMockMode("busy");
+    act(() => {
+      result.current.mutate();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await act(async () => {
+      resolveBusyLoadDataRequest(historicalResultWithAttachedStats(1));
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(clearExactRoots).not.toHaveBeenCalled();
+    expect(invalidateCurrent).toHaveBeenCalledOnce();
+    expect(invalidateHistory).toHaveBeenCalledOnce();
+    expect(invalidateHistory).toHaveBeenCalledWith(1);
+  });
+
+  it("historical result with attached stats settling after a save switch refreshes only history", async () => {
+    const clearExactRoots = vi.fn(async () => undefined);
+    const invalidateCurrent = vi.fn();
+    const invalidateHistory = vi.fn();
+
+    const { result, rerender } = renderHook(
+      ({ ctx }: { ctx: ActiveSaveContext }) =>
+        useLoadData({
+          activeSaveContext: ctx,
+          clearExactRoots,
+          invalidateCurrentOwners: invalidateCurrent,
+          invalidateHistoryOwners: invalidateHistory,
+        }),
+      {
+        initialProps: { ctx: { id: 1, contextToken: "save-token-1" } },
+        wrapper: wrapper(createQueryClient()),
+      },
+    );
+
+    setLoadDataIpcMockMode("busy");
+    act(() => {
+      result.current.mutate();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    rerender({ ctx: { id: 2, contextToken: "save-token-2" } });
+
+    await act(async () => {
+      resolveBusyLoadDataRequest(historicalResultWithAttachedStats(1));
+    });
+    await waitFor(() => expect(invalidateHistory).toHaveBeenCalledWith(1));
+
+    expect(clearExactRoots).not.toHaveBeenCalled();
+    expect(invalidateCurrent).not.toHaveBeenCalled();
+    expect(invalidateHistory).toHaveBeenCalledOnce();
   });
 
   it("save switch uses ref: late progress and stale success hide progress and are marked terminal", async () => {

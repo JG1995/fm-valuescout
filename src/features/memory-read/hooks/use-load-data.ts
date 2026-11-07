@@ -143,6 +143,14 @@ export function useLoadData(options: UseLoadDataOptions) {
           return;
         }
         options.invalidateHistoryOwners(captured.id);
+        // Stats attach to the save's current snapshot even when the loaded one is older.
+        // Its roots stay valid, so refresh current views without clearing them.
+        if (
+          data.stats.status === "attached" &&
+          sameContext(captured, activeSaveContextRef.current)
+        ) {
+          options.invalidateCurrentOwners();
+        }
         if (generation === generationRef.current) setProgress(null);
         return;
       }
