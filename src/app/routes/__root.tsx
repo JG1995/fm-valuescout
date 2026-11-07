@@ -1,21 +1,9 @@
-import type { ErrorComponentProps } from "@tanstack/react-router";
-import {
-  createRootRouteWithContext,
-  ErrorComponent,
-} from "@tanstack/react-router";
+import { createRootRouteWithContext } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { AppShellLayout } from "@/app/components/app-shell-layout";
 import { NotFoundPage } from "@/app/components/not-found-page";
+import { RootError } from "@/app/components/root-error";
 import type { RouterContext } from "@/app/router-context";
-
-function RootError({ error }: ErrorComponentProps) {
-  return (
-    <div className="space-y-2 p-4 text-on-surface">
-      <h1 className="text-headline-md">Something went wrong</h1>
-      <ErrorComponent error={error} />
-    </div>
-  );
-}
 
 function RootComponent() {
   return (
