@@ -1,4 +1,4 @@
-import { Zap } from "lucide-react";
+import { ChevronsUp } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
@@ -79,7 +79,7 @@ export function MyStaffCaBoost({
   return (
     <>
       <Button
-        icon={Zap}
+        icon={ChevronsUp}
         disabled={pending || disabled}
         loading={pending}
         loadingLabel="Boosting…"

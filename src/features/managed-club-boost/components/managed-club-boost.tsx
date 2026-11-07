@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Zap } from "lucide-react";
+import { ChevronsUp } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
@@ -60,7 +60,7 @@ export function ManagedClubBoost({
       </p>
       <Button
         id="apply-all-boosts"
-        icon={Zap}
+        icon={ChevronsUp}
         disabled={summary?.recoveryRequired}
         loading={boost.isPending}
         loadingLabel="Applying…"

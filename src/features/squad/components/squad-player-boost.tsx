@@ -1,4 +1,4 @@
-import { Sparkles, Zap } from "lucide-react";
+import { ChevronsUp, Sprout } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
@@ -133,7 +133,7 @@ function SquadPlayerBoost({
     <>
       <div className="space-y-2">
         <Button
-          icon={isCurrentAbility ? Zap : Sparkles}
+          icon={isCurrentAbility ? ChevronsUp : Sprout}
           variant="secondary"
           disabled={pending || disabled}
           loading={pending}
