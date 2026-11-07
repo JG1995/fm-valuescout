@@ -16,7 +16,7 @@ public sealed class ExtractionBatchingTests
     [Fact]
     public void Attribute_reader_batches_contiguous_attr_and_personality_reads()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var inner = new FakeMemoryReader();
         WriteContiguousAttrs(inner, layout, acceleration: 13, pace: 14, consistency: 12);
         WriteContiguousPersonality(inner, layout, ambition: 16, loyalty: 10);
@@ -45,7 +45,7 @@ public sealed class ExtractionBatchingTests
     [Fact]
     public void Identity_reader_batches_contiguous_position_reads()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var inner = new FakeMemoryReader();
         PlaceIdentityScaffold(inner, layout, name: "Batch Pos");
         WriteContiguousPositions(inner, layout, ("ST", 20), ("AMC", 18), ("MC", 10));

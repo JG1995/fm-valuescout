@@ -43,7 +43,7 @@ public sealed class ContractExtractionTests
     [Fact]
     public void Contract_reader_reads_positive_and_null_club_object_uids()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         const ulong contract = 0x4100;
         const ulong team = 0x4200;
@@ -65,7 +65,7 @@ public sealed class ContractExtractionTests
     [Fact]
     public void Contract_reader_decodes_wage_expiry_flags_value_and_reputation()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
 
         PlaceContract(
@@ -94,7 +94,7 @@ public sealed class ContractExtractionTests
     [Fact]
     public void Contract_reader_nulls_contract_fields_for_free_agent()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         // No contract pointer written
         PlacePlayerValues(reader, layout, marketValue: 1_000_000, curRep: 100, worldRep: 50);
@@ -116,7 +116,7 @@ public sealed class ContractExtractionTests
     [Fact]
     public void Contract_reader_treats_listed_by_request_as_transfer_listed()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlaceContract(
             reader,
@@ -137,7 +137,7 @@ public sealed class ContractExtractionTests
     [Fact]
     public void Contract_reader_nulls_impossible_expiry_and_money_sentinels()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlaceContract(
             reader,
@@ -164,7 +164,7 @@ public sealed class ContractExtractionTests
         Directory.CreateDirectory(bridgeDir);
         try
         {
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var reader = new FakeMemoryReader();
             PlaceFullPlayerWithContract(
                 reader,
@@ -184,7 +184,7 @@ public sealed class ContractExtractionTests
             var result = new CapADumpPipeline().Run(
                 reader,
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 

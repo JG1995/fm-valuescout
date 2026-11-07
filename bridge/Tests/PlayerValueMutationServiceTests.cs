@@ -13,7 +13,7 @@ public sealed class PlayerValueMutationServiceTests
     private const ulong PlayerBlockAddress = 0x40000;
     private const uint PlayerUid = 1234;
 
-    private static readonly IFmMemoryLayout Layout = Fm263Layout.Instance;
+    private static readonly IFmMemoryLayout Layout = Fm27Layout.Instance;
 
     [Fact]
     public void Memory_writer_exposes_only_typed_scalar_operations()

@@ -22,7 +22,7 @@ public sealed class ClubDiscoveryTests
     [Fact]
     public void Person_scanner_discovers_only_structurally_valid_clubs()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         var region = new MemoryRegion(
             RegionBase,
@@ -77,7 +77,7 @@ public sealed class ClubDiscoveryTests
     [Fact]
     public void Club_name_reader_rejects_wrapped_field_address()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         var wrappedNameSlot = unchecked(ulong.MaxValue + (ulong)layout.ClubNameOffset);
         const ulong nameObject = 0x170000UL;

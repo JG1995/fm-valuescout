@@ -14,9 +14,9 @@ public sealed class PlayerBoostOperationServiceTests
     private const ulong PlayerBlockAddress = 0x40000;
     private const uint PlayerUid = 1234;
     private const string SourceRequestId = "R1";
-    private const string SupportedGameVersion = "26.3.2";
+    private const string SupportedGameVersion = "27.0";
 
-    private static readonly IFmMemoryLayout Layout = Fm263Layout.Instance;
+    private static readonly IFmMemoryLayout Layout = Fm27Layout.Instance;
 
     [Fact]
     public void Boost_current_ability_caps_to_live_potential_and_reports_verified_values()
@@ -103,7 +103,7 @@ public sealed class PlayerBoostOperationServiceTests
 
         var result = service.Execute(
             CurrentAbilityRequest(expectedCa: 120, expectedPa: 150, increment: 5),
-            gameVersion: "26.3.1",
+            gameVersion: "27.0.1",
             reader,
             reader);
 

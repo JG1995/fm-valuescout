@@ -21,8 +21,8 @@ public sealed class DumpWriterStreamingTests
         var root = parsed.RootElement;
         Assert.Equal(9, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("2026-07-30T00:00:00+00:00", root.GetProperty("generatedAtUtc").GetString());
-        Assert.Equal("26.3.2", root.GetProperty("gameVersion").GetString());
-        Assert.Equal("26.3", root.GetProperty("supportedGameVersion").GetString());
+        Assert.Equal("27.0", root.GetProperty("gameVersion").GetString());
+        Assert.Equal("27.0", root.GetProperty("supportedGameVersion").GetString());
         Assert.Equal("0.1.0", root.GetProperty("bridgeVersion").GetString());
         Assert.Equal(BridgeProtocol.ProtocolVersion, root.GetProperty("protocolVersion").GetInt32());
         Assert.Equal(JsonValueKind.Null, root.GetProperty("gameDate").ValueKind);
@@ -164,8 +164,8 @@ public sealed class DumpWriterStreamingTests
         {
             SchemaVersion = BridgeProtocol.DumpSchemaVersion,
             GeneratedAtUtc = "2026-07-30T00:00:00+00:00",
-            GameVersion = "26.3.2",
-            SupportedGameVersion = "26.3",
+            GameVersion = "27.0",
+            SupportedGameVersion = "27.0",
             BridgeVersion = "0.1.0",
             ProtocolVersion = BridgeProtocol.ProtocolVersion,
             GameDateSource = "unknown",

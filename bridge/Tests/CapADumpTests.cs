@@ -33,12 +33,12 @@ public sealed class CapADumpTests
     }
 
     [Fact]
-    public void Layout_registry_resolves_26_3_from_full_game_version()
+    public void Layout_registry_resolves_27_0_from_full_game_version()
     {
         var registry = LayoutRegistry.CreateDefault();
 
-        Assert.True(registry.TryResolveFromGameVersion("26.3.2.2329565", out var layout));
-        Assert.Equal("26.3", layout.VersionKey);
+        Assert.True(registry.TryResolveFromGameVersion("27.0.0.2329565", out var layout));
+        Assert.Equal("27.0", layout.VersionKey);
         Assert.Equal(0x0C, layout.ObjectUidOffset);
         Assert.Contains(0x288, layout.PlayerClassOffsets);
         Assert.Contains(0x100, layout.StaffClassOffsets);
@@ -53,27 +53,11 @@ public sealed class CapADumpTests
     }
 
     [Fact]
-    public void Layout_registry_resolves_fm27_0_to_the_26_3_offsets_without_boosts()
-    {
-        var registry = LayoutRegistry.CreateDefault();
-
-        Assert.True(registry.TryResolveFromGameVersion("27.0", out var layout));
-        Assert.Equal("27.0", layout.VersionKey);
-        Assert.Equal(Fm263Layout.Instance.PlayerClassOffsets, layout.PlayerClassOffsets);
-        Assert.Equal(Fm263Layout.Instance.StaffClassOffsets, layout.StaffClassOffsets);
-        Assert.Equal(Fm263Layout.Instance.CurrentAbilityOffset, layout.CurrentAbilityOffset);
-        Assert.Equal(Fm263Layout.Instance.AttrsOffset, layout.AttrsOffset);
-        Assert.True(layout.IsProvisional);
-        Assert.False(layout.SupportsPlayerBoosts("27.0"));
-        Assert.False(layout.SupportsStaffBoosts("27.0"));
-    }
-
-    [Fact]
     public void Layout_registry_rejects_unsupported_version()
     {
         var registry = LayoutRegistry.CreateDefault();
 
-        Assert.False(registry.TryResolveFromGameVersion("25.4.0", out _));
+        Assert.False(registry.TryResolveFromGameVersion("26.3.2", out _));
     }
 
     [Fact]
@@ -86,8 +70,8 @@ public sealed class CapADumpTests
             {
                 SchemaVersion = 2,
                 GeneratedAtUtc = "2026-07-28T00:00:00Z",
-                GameVersion = "26.3.0",
-                SupportedGameVersion = "26.3",
+                GameVersion = "27.0.0",
+                SupportedGameVersion = "27.0",
                 BridgeVersion = "0.1.0",
                 ProtocolVersion = 1,
                 PlayerCount = 1,
@@ -144,8 +128,8 @@ public sealed class CapADumpTests
             {
                 SchemaVersion = 2,
                 GeneratedAtUtc = "2026-07-28T00:00:00Z",
-                GameVersion = "26.3.0",
-                SupportedGameVersion = "26.3",
+                GameVersion = "27.0.0",
+                SupportedGameVersion = "27.0",
                 BridgeVersion = "0.1.0",
                 ProtocolVersion = 1,
                 PlayerCount = 1,
@@ -169,8 +153,8 @@ public sealed class CapADumpTests
             {
                 SchemaVersion = 2,
                 GeneratedAtUtc = "2026-07-28T01:00:00Z",
-                GameVersion = "26.3.0",
-                SupportedGameVersion = "26.3",
+                GameVersion = "27.0.0",
+                SupportedGameVersion = "27.0",
                 BridgeVersion = "0.1.0",
                 ProtocolVersion = 1,
                 PlayerCount = 0,
@@ -195,8 +179,8 @@ public sealed class CapADumpTests
         {
             SchemaVersion = BridgeProtocol.DumpSchemaVersion,
             GeneratedAtUtc = "2026-07-28T15:00:00+00:00",
-            GameVersion = "26.3.2.2329565",
-            SupportedGameVersion = "26.3",
+            GameVersion = "27.0.0.2329565",
+            SupportedGameVersion = "27.0",
             BridgeVersion = "0.1.0",
             ProtocolVersion = BridgeProtocol.ProtocolVersion,
             GameDate = "2026-08-14",
@@ -291,8 +275,8 @@ public sealed class CapADumpTests
             root.GetProperty("maxAccepted").GetInt32());
         Assert.Equal("Example FC", root.GetProperty("players")[0].GetProperty("currentClub").GetString());
         Assert.Equal(25, root.GetProperty("players")[0].GetProperty("age").GetInt32());
-        Assert.Equal("26.3.2.2329565", root.GetProperty("gameVersion").GetString());
-        Assert.Equal("26.3", root.GetProperty("supportedGameVersion").GetString());
+        Assert.Equal("27.0.0.2329565", root.GetProperty("gameVersion").GetString());
+        Assert.Equal("27.0", root.GetProperty("supportedGameVersion").GetString());
         Assert.Equal("0.1.0", root.GetProperty("bridgeVersion").GetString());
         Assert.Equal(1, root.GetProperty("protocolVersion").GetInt32());
         Assert.Equal(1, root.GetProperty("playerCount").GetInt32());
@@ -313,7 +297,7 @@ public sealed class CapADumpTests
         Assert.Equal(8u, root.GetProperty("staff")[0].GetProperty("uid").GetUInt32());
         Assert.Equal("female", root.GetProperty("staff")[0].GetProperty("gender").GetString());
         Assert.Equal(
-            Fm263Layout.Instance.StaffAttributeEntries.Count + 1,
+            Fm27Layout.Instance.StaffAttributeEntries.Count + 1,
             root.GetProperty("staff")[0].GetProperty("attributes").EnumerateObject().Count());
         Assert.Equal(15, root.GetProperty("staff")[0].GetProperty("attributes").GetProperty("Attacking").GetInt32());
         Assert.Equal(15, root.GetProperty("staff")[0].GetProperty("attributes").GetProperty("Authority").GetInt32());
@@ -332,7 +316,7 @@ public sealed class CapADumpTests
     [Fact]
     public void Person_scanner_accepts_valid_uid_ca_pa_and_dedupes()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = BuildReaderWithTwoIdenticalPlayers(layout);
         var regions = RegionEnumerator.GetCandidateRegions(reader);
         var diagnostics = new ScanDiagnostics();
@@ -357,7 +341,7 @@ public sealed class CapADumpTests
     [Fact]
     public void Person_scanner_discovery_scales_with_blocks_not_per_word_reads()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         const ulong regionBase = 0x300000UL;
         const ulong regionSize = 128UL * 1024;
         var inner = new FakeMemoryReader();
@@ -401,7 +385,7 @@ public sealed class CapADumpTests
     [Fact]
     public void Person_scanner_caches_vtable_class_offset_across_hits()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         const ulong regionBase = 0x400000UL;
         const int hitCount = 40;
         // One region large enough for hitCount aligned person headers (invalid UID → reject after resolve).
@@ -448,7 +432,7 @@ public sealed class CapADumpTests
     [Fact]
     public void Person_scanner_accepts_candidates_above_int_max_address()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         // Live FM heaps sit well above int.MaxValue; the underflow guard must not cast to int.
         const ulong highPlayerBase = 0x1_0000_1000UL;
         var highPerson = highPlayerBase + (ulong)PlayerClassOffset;
@@ -480,7 +464,7 @@ public sealed class CapADumpTests
     [Fact]
     public void Person_scanner_rejects_out_of_range_abilities()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlacePlayerFixture(reader, layout, PersonAddress, uid: 99, ca: 0, pa: 170);
 
@@ -504,7 +488,7 @@ public sealed class CapADumpTests
         var bridgeDir = CreateTempBridgeDir();
         try
         {
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var reader = new FakeMemoryReader();
             const int candidateCount = 501;
             const ulong candidateSpacing = 0x20000;
@@ -526,7 +510,7 @@ public sealed class CapADumpTests
             var result = new CapADumpPipeline().Run(
                 reader,
                 bridgeDir,
-                gameVersion: "26.3.1",
+                gameVersion: "27.0.1",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -571,7 +555,7 @@ public sealed class CapADumpTests
                     out _));
             Assert.Equal("old-app-cap", request.RequestId);
 
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var reader = new FakeMemoryReader();
             PlacePlayerFixture(reader, layout, PersonAddress, uid: 301, ca: 150, pa: 170, name: "Player One");
             PlacePlayerFixture(
@@ -605,7 +589,7 @@ public sealed class CapADumpTests
                     result = new CapADumpPipeline().Run(
                         reader,
                         directory,
-                        gameVersion: "26.3.1",
+                        gameVersion: "27.0.1",
                         bridgeVersion: "0.1.0",
                         gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
                         playerDatabaseScope: scope,
@@ -626,7 +610,7 @@ public sealed class CapADumpTests
     [Fact]
     public void Person_scanner_sets_cancelled_when_token_already_cancelled()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         PlacePlayerFixture(reader, layout, PersonAddress, uid: 101, ca: 100, pa: 110);
 
@@ -662,8 +646,8 @@ public sealed class CapADumpTests
             {
                 SchemaVersion = 5,
                 GeneratedAtUtc = "2026-07-28T00:00:00Z",
-                GameVersion = "26.3.0",
-                SupportedGameVersion = "26.3",
+                GameVersion = "27.0.0",
+                SupportedGameVersion = "27.0",
                 BridgeVersion = "0.1.0",
                 ProtocolVersion = 1,
                 ScanTruncated = false,
@@ -685,7 +669,7 @@ public sealed class CapADumpTests
             };
             Assert.True(DumpWriter.TryWriteReplaceOnSuccess(bridgeDir, prior));
 
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var reader = new FakeMemoryReader();
             PlacePlayerFixture(reader, layout, PersonAddress, uid: 201, ca: 150, pa: 170);
 
@@ -696,7 +680,7 @@ public sealed class CapADumpTests
             var result = pipeline.Run(
                 reader,
                 bridgeDir,
-                gameVersion: "26.3.1",
+                gameVersion: "27.0.1",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
                 cancellationToken: cts.Token);
@@ -725,8 +709,8 @@ public sealed class CapADumpTests
             {
                 SchemaVersion = BridgeProtocol.DumpSchemaVersion,
                 GeneratedAtUtc = "2026-08-08T00:00:00Z",
-                GameVersion = "26.3.2",
-                SupportedGameVersion = "26.3",
+                GameVersion = "27.0",
+                SupportedGameVersion = "27.0",
                 BridgeVersion = "0.1.0",
                 ProtocolVersion = BridgeProtocol.ProtocolVersion,
                 PlayerCount = 1,
@@ -746,7 +730,7 @@ public sealed class CapADumpTests
             };
             Assert.True(DumpWriter.TryWriteReplaceOnSuccess(bridgeDir, prior));
 
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var reader = new FakeMemoryReader();
             PlacePlayerFixture(reader, layout, PersonAddress, uid: 201, ca: 150, pa: 170);
             AddCandidateRegion(reader, 0x300000, 0x20000);
@@ -757,7 +741,7 @@ public sealed class CapADumpTests
             var result = CreateSnapshotPipeline(factory, new SystemMemoryStatus(0, 0, 0)).Run(
                 reader,
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -786,9 +770,9 @@ public sealed class CapADumpTests
         try
         {
             var result = new CapADumpPipeline().Run(
-                BuildReaderWithTwoIdenticalPlayers(Fm263Layout.Instance, uid: 101),
+                BuildReaderWithTwoIdenticalPlayers(Fm27Layout.Instance, uid: 101),
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -811,9 +795,9 @@ public sealed class CapADumpTests
         {
             var factory = new FakeProcessSnapshotFactory(() => throw new InvalidOperationException("unexpected snapshot"));
             var result = CreateSnapshotPipeline(factory).Run(
-                BuildReaderWithTwoIdenticalPlayers(Fm263Layout.Instance),
+                BuildReaderWithTwoIdenticalPlayers(Fm27Layout.Instance),
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -834,15 +818,15 @@ public sealed class CapADumpTests
         {
             var snapshot = new TrackingSnapshot(
                 new ReadSourceMemoryReader(
-                    BuildReaderWithTwoIdenticalPlayers(Fm263Layout.Instance, uid: 202),
+                    BuildReaderWithTwoIdenticalPlayers(Fm27Layout.Instance, uid: 202),
                     "snapshot-va-clone"));
             var factory = new FakeProcessSnapshotFactory(
                 () => ProcessSnapshotCaptureResult.Succeeded(snapshot));
 
             var result = CreateSnapshotPipeline(factory).Run(
-                BuildMateriallyIncompleteReader(Fm263Layout.Instance, uid: 101),
+                BuildMateriallyIncompleteReader(Fm27Layout.Instance, uid: 101),
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -876,9 +860,9 @@ public sealed class CapADumpTests
                 () => ProcessSnapshotCaptureResult.Failed("synthetic snapshot creation failure"));
 
             var result = CreateSnapshotPipeline(factory).Run(
-                BuildMateriallyIncompleteReader(Fm263Layout.Instance),
+                BuildMateriallyIncompleteReader(Fm27Layout.Instance),
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -913,9 +897,9 @@ public sealed class CapADumpTests
                 MemoryLoadPercent: 90);
 
             var result = CreateSnapshotPipeline(factory, lowMemory).Run(
-                BuildMateriallyIncompleteReader(Fm263Layout.Instance),
+                BuildMateriallyIncompleteReader(Fm27Layout.Instance),
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -946,14 +930,14 @@ public sealed class CapADumpTests
         {
             WritePriorDump(bridgeDir);
             var snapshot = new TrackingSnapshot(
-                new ReadSourceMemoryReader(BuildMateriallyIncompleteReader(Fm263Layout.Instance), "snapshot-va-clone"));
+                new ReadSourceMemoryReader(BuildMateriallyIncompleteReader(Fm27Layout.Instance), "snapshot-va-clone"));
             var factory = new FakeProcessSnapshotFactory(
                 () => ProcessSnapshotCaptureResult.Succeeded(snapshot));
 
             var result = CreateSnapshotPipeline(factory).Run(
-                BuildMateriallyIncompleteReader(Fm263Layout.Instance),
+                BuildMateriallyIncompleteReader(Fm27Layout.Instance),
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -981,9 +965,9 @@ public sealed class CapADumpTests
             cancellation.Cancel();
 
             var result = CreateSnapshotPipeline(factory).Run(
-                BuildMateriallyIncompleteReader(Fm263Layout.Instance),
+                BuildMateriallyIncompleteReader(Fm27Layout.Instance),
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
                 cancellationToken: cancellation.Token);
@@ -1007,7 +991,7 @@ public sealed class CapADumpTests
             WritePriorDump(bridgeDir);
             using var cancellation = new CancellationTokenSource();
             var snapshot = new TrackingSnapshot(
-                new ReadSourceMemoryReader(BuildReaderWithTwoIdenticalPlayers(Fm263Layout.Instance), "snapshot-va-clone"));
+                new ReadSourceMemoryReader(BuildReaderWithTwoIdenticalPlayers(Fm27Layout.Instance), "snapshot-va-clone"));
             var factory = new FakeProcessSnapshotFactory(() =>
             {
                 cancellation.Cancel();
@@ -1015,9 +999,9 @@ public sealed class CapADumpTests
             });
 
             var result = CreateSnapshotPipeline(factory).Run(
-                BuildMateriallyIncompleteReader(Fm263Layout.Instance),
+                BuildMateriallyIncompleteReader(Fm27Layout.Instance),
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
                 cancellationToken: cancellation.Token);
@@ -1043,7 +1027,7 @@ public sealed class CapADumpTests
         {
             WritePriorDump(bridgeDir);
             using var cancellation = new CancellationTokenSource();
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var snapshot = new TrackingSnapshot(
                 new CancelAtAddressReader(
                     new ReadSourceMemoryReader(
@@ -1057,7 +1041,7 @@ public sealed class CapADumpTests
             var result = CreateSnapshotPipeline(factory).Run(
                 BuildMateriallyIncompleteReader(layout),
                 bridgeDir,
-                gameVersion: "26.3.2",
+                gameVersion: "27.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
                 cancellationToken: cancellation.Token);
@@ -1085,7 +1069,7 @@ public sealed class CapADumpTests
             var snapshot = new TrackingSnapshot(
                 new ThrowingAtAddressReader(
                     new ReadSourceMemoryReader(
-                        BuildReaderWithTwoIdenticalPlayers(Fm263Layout.Instance),
+                        BuildReaderWithTwoIdenticalPlayers(Fm27Layout.Instance),
                         "snapshot-va-clone"),
                     VtableInAssembly - sizeof(ulong)));
             var factory = new FakeProcessSnapshotFactory(
@@ -1096,9 +1080,9 @@ public sealed class CapADumpTests
 
             var exception = Assert.Throws<InvalidOperationException>(() =>
                 CreateSnapshotPipeline(factory).Run(
-                    BuildMateriallyIncompleteReader(Fm263Layout.Instance),
+                    BuildMateriallyIncompleteReader(Fm27Layout.Instance),
                     bridgeDir,
-                    gameVersion: "26.3.2",
+                    gameVersion: "27.0",
                     bridgeVersion: "0.1.0",
                     gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd)));
 
@@ -1120,7 +1104,7 @@ public sealed class CapADumpTests
         try
         {
             WritePriorDump(bridgeDir);
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var snapshot = new TrackingSnapshot(
                 new ThrowingAtAddressReader(
                     new ReadSourceMemoryReader(BuildReaderWithTwoIdenticalPlayers(layout), "snapshot-va-clone"),
@@ -1132,7 +1116,7 @@ public sealed class CapADumpTests
                 CreateSnapshotPipeline(factory).Run(
                     BuildMateriallyIncompleteReader(layout),
                     bridgeDir,
-                    gameVersion: "26.3.2",
+                    gameVersion: "27.0",
                     bridgeVersion: "0.1.0",
                     gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd)));
 
@@ -1149,7 +1133,7 @@ public sealed class CapADumpTests
     [Fact]
     public void Person_scanner_records_recovered_readable_and_unread_region_bytes()
     {
-        var layout = Fm263Layout.Instance;
+        var layout = Fm27Layout.Instance;
         var reader = new FakeMemoryReader();
         var regionSize = MemoryConstants.MinBlockReadSize * 3;
         AddCandidateRegion(reader, PlayerBlockBase, (ulong)regionSize);
@@ -1184,7 +1168,7 @@ public sealed class CapADumpTests
         var diagnostics = new ScanDiagnostics();
         var scan = PersonScanner.Scan(
             new ThrowingBlockReader(reader),
-            Fm263Layout.Instance,
+            Fm27Layout.Instance,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
             gamePlugin: null,
             RegionEnumerator.GetCandidateRegions(reader),
@@ -1213,14 +1197,14 @@ public sealed class CapADumpTests
         var bridgeDir = CreateTempBridgeDir();
         try
         {
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var reader = BuildReaderWithTwoIdenticalPlayers(layout);
             var pipeline = new CapADumpPipeline();
 
             var result = pipeline.Run(
                 reader,
                 bridgeDir,
-                gameVersion: "26.3.1",
+                gameVersion: "27.0.1",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -1246,7 +1230,7 @@ public sealed class CapADumpTests
         var bridgeDir = CreateTempBridgeDir();
         try
         {
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var reader = new FakeMemoryReader();
             const ulong contract = 0x410000;
             const ulong team = 0x420000;
@@ -1286,7 +1270,7 @@ public sealed class CapADumpTests
             var result = new CapADumpPipeline().Run(
                 reader,
                 bridgeDir,
-                gameVersion: "26.3.1",
+                gameVersion: "27.0.1",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -1310,12 +1294,12 @@ public sealed class CapADumpTests
         var bridgeDir = CreateTempBridgeDir();
         try
         {
-            var layout = Fm263Layout.Instance;
+            var layout = Fm27Layout.Instance;
             var reader = BuildReaderWithTwoIdenticalPlayers(layout);
             var result = new CapADumpPipeline().Run(
                 reader,
                 bridgeDir,
-                gameVersion: "26.3.1",
+                gameVersion: "27.0.1",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
                 gamePlugin: new ModuleBounds("game_plugin.dll", 0x190000000UL, 0x190100000UL));
@@ -1375,8 +1359,8 @@ public sealed class CapADumpTests
             {
                 SchemaVersion = 2,
                 GeneratedAtUtc = "2026-07-28T00:00:00Z",
-                GameVersion = "26.3.0",
-                SupportedGameVersion = "26.3",
+                GameVersion = "27.0.0",
+                SupportedGameVersion = "27.0",
                 BridgeVersion = "0.1.0",
                 ProtocolVersion = 1,
                 PlayerCount = 1,
@@ -1401,7 +1385,7 @@ public sealed class CapADumpTests
             var result = new CapADumpPipeline().Run(
                 reader,
                 bridgeDir,
-                gameVersion: "26.3.0",
+                gameVersion: "27.0.0",
                 bridgeVersion: "0.1.0",
                 gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
 
@@ -1479,8 +1463,8 @@ public sealed class CapADumpTests
         {
             SchemaVersion = BridgeProtocol.DumpSchemaVersion,
             GeneratedAtUtc = "2026-08-08T00:00:00Z",
-            GameVersion = "26.3.2",
-            SupportedGameVersion = "26.3",
+            GameVersion = "27.0",
+            SupportedGameVersion = "27.0",
             BridgeVersion = "0.1.0",
             ProtocolVersion = BridgeProtocol.ProtocolVersion,
             PlayerCount = 1,
@@ -1791,7 +1775,7 @@ public sealed class CapADumpTests
 
     private static IReadOnlyDictionary<string, int?> CompleteStaffAttributes(int value)
     {
-        var attributes = Fm263Layout.Instance.StaffAttributeEntries.ToDictionary(
+        var attributes = Fm27Layout.Instance.StaffAttributeEntries.ToDictionary(
             entry => entry.Key,
             _ => (int?)value);
         attributes["Adaptability"] = value;

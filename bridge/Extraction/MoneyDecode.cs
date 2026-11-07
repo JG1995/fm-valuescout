@@ -2,7 +2,7 @@ namespace FmDataBridge.Extraction;
 
 /// <summary>
 /// FM money fields: unset sentinels become null (never −1 or 0 as a stand-in for missing).
-/// Values are GBP as stored in memory for the 26.3 pin.
+/// Values are GBP as stored in memory for the FM 27.0 pin.
 /// </summary>
 public static class MoneyDecode
 {
