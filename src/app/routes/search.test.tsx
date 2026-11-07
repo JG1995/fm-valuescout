@@ -19,7 +19,9 @@ import {
   DEFAULT_GRAPHICS_STATUS,
   setGraphicsStatusIpcMock,
 } from "@/features/graphics/api/graphics-ipc-mock";
+import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
+import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import type { PlayerSummary } from "@/features/search/types/player-summary";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
@@ -33,6 +35,12 @@ import {
   useShortlistFilterStore,
 } from "@/stores/use-shortlist-filter-store";
 import { setCsvImportIpcMockResult } from "@/testing/csv-import-ipc-mock";
+import {
+  getLastRefreshSeasonStatsIpcArgs,
+  resolvePendingRefreshSeasonStats,
+  setRefreshSeasonStatsIpcMockPending,
+  setRefreshSeasonStatsIpcMockResult,
+} from "@/testing/moneyball-ipc-mock";
 import {
   getPlannerTacticIpcMockCalls,
   getPlannerTacticOptionsIpcMockCalls,
@@ -55,9 +63,11 @@ import {
   setSearchPlayersPageIpcMockMode,
 } from "@/testing/search-ipc-mock";
 import {
+  resolveBusyLoadDataRequest,
   resolveCreateSaveIpcMock,
   resolveLoadDataIpcMock,
   resolveSetActiveSaveIpcMock,
+  setLoadDataIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
 
 const { openCsvDialog } = vi.hoisted(() => ({
@@ -3287,6 +3297,108 @@ describe("search route", () => {
       shortlistOnly: true,
     });
     expect(getLastPlayerShortlistImportIpcArgs()).toBeUndefined();
+  });
+
+  it("refreshes Moneyball stats for the save context and reloads their as-of date", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
+    setRefreshSeasonStatsIpcMockResult({
+      status: "attached",
+      matchedPlayers: 1_200,
+      unmatchedPlayers: 3,
+      gameDate: "2026-06-30",
+      elapsedMs: 40,
+    });
+    const { queryClient } = renderSearchRoute("/search?view=moneyball");
+    await screen.findByText("Moneyball Scout");
+    const toolbar = screen.getByRole("toolbar", {
+      name: "Player results toolbar",
+    });
+    expect(within(toolbar).queryByText(/Stats as of/)).toBeNull();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    await user.click(screen.getByRole("button", { name: "Refresh stats" }));
+
+    expect(
+      await screen.findByText(
+        "Attached season stats for 1,200 players from the save dated 30th June 2026.",
+      ),
+    ).toBeInTheDocument();
+    expect(getLastRefreshSeasonStatsIpcArgs()).toEqual({
+      saveId: 1,
+      contextToken: "save-token-1",
+    });
+    for (const queryKey of [
+      snapshotKeys.all,
+      searchKeys.all,
+      moneyballKeys.all,
+      playerKeys.all,
+    ]) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey });
+    }
+    expect(
+      await within(
+        screen.getByRole("toolbar", { name: "Player results toolbar" }),
+      ).findByText("Stats as of 30th June 2026 · Snapshot dated 1st July 2026"),
+    ).toBeInTheDocument();
+
+    const second = resolveCreateSaveIpcMock({ name: "Second save" });
+    await queryClient.invalidateQueries({ queryKey: snapshotKeys.saves() });
+    await screen.findByRole("option", { name: "Second save" });
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Active save" }),
+      String(second.id),
+    );
+    await screen.findByText("No data loaded for this save");
+    expect(
+      screen.queryByText(/Attached season stats for 1,200 players/),
+    ).toBeNull();
+  });
+
+  it("keeps Refresh stats unavailable while a refresh or Load Data runs", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
+    renderSearchRoute("/search?view=moneyball");
+    await screen.findByText("Moneyball Scout");
+    const refresh = screen.getByRole("button", { name: "Refresh stats" });
+
+    setRefreshSeasonStatsIpcMockPending();
+    await user.click(refresh);
+    await waitFor(() => expect(refresh).toBeDisabled());
+    resolvePendingRefreshSeasonStats();
+    expect(
+      await screen.findByText(
+        "No FM save file is linked, so no season stats were read. Link one in Settings.",
+      ),
+    ).toBeInTheDocument();
+    expect(refresh).toBeEnabled();
+
+    setLoadDataIpcMockMode("busy");
+    await user.click(screen.getByRole("button", { name: "Load Data" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Refresh stats" }),
+      ).toBeDisabled(),
+    );
+    await act(async () => {
+      await resolveBusyLoadDataRequest();
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Refresh stats" }),
+      ).toBeEnabled(),
+    );
+
+    // Load Data started elsewhere, such as in another window, is reported by the command.
+    setRefreshSeasonStatsIpcMockResult("loadDataRunning");
+    await user.click(screen.getByRole("button", { name: "Refresh stats" }));
+    expect(
+      await screen.findByText(
+        "Load Data is running. Refresh stats after it finishes.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("clears shortlist import feedback and never arms a delayed dialog across a null snapshot", async () => {

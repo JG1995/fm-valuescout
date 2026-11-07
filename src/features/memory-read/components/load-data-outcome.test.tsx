@@ -1,6 +1,10 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { LoadDataProgress, LoadDataResult } from "../types/load-data";
+import type {
+  LoadDataProgress,
+  LoadDataResult,
+  SeasonStatsOutcome,
+} from "../types/load-data";
 import { LoadDataOutcome, loadDataPhaseLabels } from "./load-data-outcome";
 
 function resultWithHistoricalStoredSnapshot(): LoadDataResult {
@@ -47,9 +51,11 @@ function resultWithHistoricalStoredSnapshot(): LoadDataResult {
       scoringMs: 400,
       saveMs: 200,
       finalizeMs: 200,
-      totalMs: 2100,
+      statsMs: 100,
+      totalMs: 2200,
       ingestMs: 400,
     },
+    stats: { status: "notLinked", elapsedMs: 100 },
   };
 }
 
@@ -97,9 +103,11 @@ function successResult(): LoadDataResult {
       scoringMs: 400,
       saveMs: 200,
       finalizeMs: 200,
-      totalMs: 2100,
+      statsMs: 100,
+      totalMs: 2200,
       ingestMs: 400,
     },
+    stats: { status: "notLinked", elapsedMs: 100 },
   };
 }
 
@@ -388,13 +396,14 @@ describe("LoadDataOutcome", () => {
       />,
     );
 
-    // scan 1.2s, preparation 300ms, scoring 400ms, save 200ms, finalization 200ms, total 2.1s
+    // scan 1.2s, preparation 300ms, scoring 400ms, save 200ms, finalization 200ms, season stats 100ms, total 2.2s
     expect(screen.getByText(/Scan 1\.2s/i)).toBeInTheDocument();
     expect(screen.getByText(/preparation 300ms/i)).toBeInTheDocument();
     expect(screen.getByText(/scoring 400ms/i)).toBeInTheDocument();
     expect(screen.getByText(/save 200ms/i)).toBeInTheDocument();
     expect(screen.getByText(/finalization 200ms/i)).toBeInTheDocument();
-    expect(screen.getByText(/total 2\.1s/i)).toBeInTheDocument();
+    expect(screen.getByText(/season stats 100ms/i)).toBeInTheDocument();
+    expect(screen.getByText(/total 2\.2s/i)).toBeInTheDocument();
     // ingestMs is aggregate, must not appear as primary bucket
     expect(screen.queryByText(/ingest 400ms/i)).toBeNull();
     expect(screen.queryByText(/%/)).toBeNull();
@@ -424,6 +433,7 @@ describe("LoadDataOutcome", () => {
         scoringMs: 0,
         saveMs: 0,
         finalizeMs: 0,
+        statsMs: 0,
         totalMs: 0,
         ingestMs: 0,
       },
@@ -449,6 +459,109 @@ describe("LoadDataOutcome", () => {
     expect(loadDataPhaseLabels.scoring).toBe("Scoring…");
     expect(loadDataPhaseLabels.saving).toBe("Saving…");
     expect(loadDataPhaseLabels.finalizing).toBe("Finalizing…");
+    expect(loadDataPhaseLabels.seasonStats).toBe("Reading stats…");
+  });
+
+  it.each<[string, SeasonStatsOutcome, string]>([
+    [
+      "attached stats with the save's date",
+      {
+        status: "attached",
+        matchedPlayers: 35903,
+        unmatchedPlayers: 12,
+        gameDate: "2027-01-01",
+        elapsedMs: 1300,
+      },
+      "Attached season stats for 35,903 players from the save dated 1st January 2027.",
+    ],
+    [
+      "link guidance",
+      { status: "notLinked", elapsedMs: 0 },
+      "No FM save file is linked, so no season stats were read. Link one in Settings.",
+    ],
+    [
+      "a read that matched no player",
+      {
+        status: "noMatches",
+        unmatchedPlayers: 4,
+        gameDate: "2026-07-01",
+        elapsedMs: 900,
+      },
+      "No players in the save dated 1st July 2026 matched the current snapshot, so season stats were not changed.",
+    ],
+    [
+      "a discarded stale read",
+      { status: "staleContext", elapsedMs: 10 },
+      "The save or snapshot changed while season stats were read, so they were not attached.",
+    ],
+    [
+      "a missing file by name",
+      {
+        status: "failed",
+        kind: "not_found",
+        fileName: "Career.fm",
+        elapsedMs: 1,
+      },
+      "Season stats were not read: Career.fm could not be found.",
+    ],
+    [
+      "a file that is not an FM27 save",
+      {
+        status: "failed",
+        kind: "not_fm_save",
+        fileName: "Notes.fm",
+        elapsedMs: 1,
+      },
+      "Season stats were not read: Notes.fm is not a supported FM27 save.",
+    ],
+    [
+      "an unsupported build",
+      {
+        status: "failed",
+        kind: "unsupported_build",
+        fileName: "Career.fm",
+        elapsedMs: 1,
+      },
+      "Season stats were not read: this FM27 build is not supported yet.",
+    ],
+    [
+      "a damaged save",
+      {
+        status: "failed",
+        kind: "corrupt",
+        fileName: "Career.fm",
+        elapsedMs: 1,
+      },
+      "Season stats were not read: the save could not be read safely.",
+    ],
+    [
+      "a save FM was still writing",
+      {
+        status: "failed",
+        kind: "changed_during_read",
+        fileName: "Career.fm",
+        elapsedMs: 1,
+      },
+      "Season stats were not read: the save changed while it was read. Wait for FM to finish saving, then try again.",
+    ],
+    [
+      "a failed write",
+      { status: "failed", kind: "database", fileName: null, elapsedMs: 1 },
+      "Season stats could not be stored, so the previous stats are unchanged.",
+    ],
+  ])("reports %s after the snapshot outcome", (_case, stats, expected) => {
+    render(
+      <LoadDataOutcome
+        error={null}
+        result={{ ...successResult(), stats }}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    const outcome = screen.getByText(/Loaded 3 players into the database/i);
+    expect(outcome).toHaveTextContent(
+      `This snapshot is now the latest. ${expected}`,
+    );
   });
 
   it("keeps progressbar outside the polite live region while phase text stays inside", () => {

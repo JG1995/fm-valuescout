@@ -6,6 +6,9 @@ import type { LoadDataProgress, LoadDataResult } from "../types/load-data";
 
 export type ActiveSaveContext = { id: number; contextToken: string };
 
+/** Lets other views observe a running Load Data with `useIsMutating`. */
+export const loadDataMutationKey = ["loadData"] as const;
+
 type UseLoadDataOptions = {
   activeSaveContext: ActiveSaveContext | null;
   clearExactRoots: (guard?: () => boolean) => Promise<void>;
@@ -66,6 +69,7 @@ export function useLoadData(options: UseLoadDataOptions) {
   };
 
   const mutation = useMutation<LoadDataResult, Error, void, MutationContext>({
+    mutationKey: loadDataMutationKey,
     onMutate: () => {
       const generation = ++generationRef.current;
       const revision = contextRevisionRef.current;
@@ -139,6 +143,14 @@ export function useLoadData(options: UseLoadDataOptions) {
           return;
         }
         options.invalidateHistoryOwners(captured.id);
+        // Stats attach to the save's current snapshot even when the loaded one is older.
+        // Its roots stay valid, so refresh current views without clearing them.
+        if (
+          data.stats.status === "attached" &&
+          sameContext(captured, activeSaveContextRef.current)
+        ) {
+          options.invalidateCurrentOwners();
+        }
         if (generation === generationRef.current) setProgress(null);
         return;
       }

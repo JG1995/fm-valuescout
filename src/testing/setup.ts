@@ -57,6 +57,8 @@ import {
 import {
   resetPlayerMoneyballOverride,
   resolveGetPlayerMoneyballIpcMock,
+  resolvePendingRefreshSeasonStats,
+  resolveRefreshSeasonStatsIpcMock,
 } from "@/testing/moneyball-ipc-mock";
 import {
   resetPlannerIpcMock,
@@ -276,6 +278,10 @@ function registerIpcMocks() {
       return resolveGetPlayerMoneyballIpcMock(args);
     }
 
+    if (cmd === "refresh_season_stats") {
+      return resolveRefreshSeasonStatsIpcMock(args);
+    }
+
     if (cmd === "set_hidden_information_revealed") {
       return resolveSetPlayerHiddenInformationRevealedIpcMock(args);
     }
@@ -429,6 +435,7 @@ afterEach(() => {
   resolveBusyClubDnaGetRequest();
   resolveBusyClubDnaSetRequest();
   resolveBusyClubDnaRemoveRequest();
+  resolvePendingRefreshSeasonStats();
   cleanup();
   clearMocks();
   setBridgeStatusIpcMockMode("ready");

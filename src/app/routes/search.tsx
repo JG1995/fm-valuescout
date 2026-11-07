@@ -1,6 +1,11 @@
-import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { DatabaseZap, FileUp } from "lucide-react";
+import { DatabaseZap, FileUp, RefreshCw } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
@@ -9,7 +14,14 @@ import { Panel } from "@/components/ui/panel/panel";
 import { SquadCsvImportModal } from "@/features/csv-import/components/squad-csv-import-modal";
 import type { CsvImportSummary } from "@/features/csv-import/types/csv-import-summary";
 import { GraphicsImage } from "@/features/graphics/components/graphics-image";
+import {
+  type RefreshSeasonStatsResult,
+  refreshSeasonStats,
+} from "@/features/memory-read/api/refresh-season-stats";
+import { seasonStatsCopy } from "@/features/memory-read/components/load-data-outcome";
+import { loadDataMutationKey } from "@/features/memory-read/hooks/use-load-data";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
+import { MoneyballStatsAsOf } from "@/features/moneyball/components/moneyball-profile-panel";
 import type { TacticContextBoundaryState } from "@/features/planner/components/tactic-context-boundary";
 import { TacticContextBoundary } from "@/features/planner/components/tactic-context-boundary";
 import type {
@@ -20,6 +32,7 @@ import {
   orderedTacticLanes,
   validateTacticDraft,
 } from "@/features/planner/utils/tactic-editor";
+import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { playerShortlistProbeQueryOptions } from "@/features/search/api/search-players-query-options";
 import { PlayerShortlistImportModal } from "@/features/search/components/player-shortlist-import-modal";
@@ -60,12 +73,14 @@ import {
 import { buildTacticColumnOrder } from "@/features/search/utils/tactic-columns";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
+import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import {
   shortlistFilterKey,
   useShortlistFilterStore,
 } from "@/stores/use-shortlist-filter-store";
+import { cn } from "@/utils/cn";
 import {
   isFullTacticGroup,
   isTacticColumnId,
@@ -230,6 +245,22 @@ function tacticLaneLabels(
   );
 }
 
+type SeasonStatsRefreshContext = { saveId: number; contextToken: string };
+
+/** The Refresh stats outcome sentence; a running Load Data is Refresh-only. */
+function refreshSeasonStatsCopy(result: RefreshSeasonStatsResult): {
+  text: string;
+  isProblem: boolean;
+} {
+  if (result.status === "loadDataRunning") {
+    return {
+      text: "Load Data is running. Refresh stats after it finishes.",
+      isProblem: true,
+    };
+  }
+  return seasonStatsCopy(result);
+}
+
 function SearchPageContent() {
   const snapshotQuery = useQuery(currentSnapshotQueryOptions);
   const savesQuery = useQuery(savesQueryOptions);
@@ -323,6 +354,34 @@ function SearchPageContent() {
   const [importOpen, setImportOpen] = useState(false);
   const [lastMoneyballImport, setLastMoneyballImport] =
     useState<CsvImportSummary | null>(null);
+  const isLoadDataRunning =
+    useIsMutating({ mutationKey: loadDataMutationKey }) > 0;
+  const refreshStats = useMutation({
+    mutationFn: ({ saveId, contextToken }: SeasonStatsRefreshContext) =>
+      refreshSeasonStats(saveId, contextToken),
+    onSuccess: async (result) => {
+      if (result.status !== "attached") return;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: snapshotKeys.all }),
+        queryClient.invalidateQueries({ queryKey: searchKeys.all }),
+        queryClient.invalidateQueries({ queryKey: moneyballKeys.all }),
+        queryClient.invalidateQueries({ queryKey: playerKeys.all }),
+      ]);
+    },
+  });
+  // The outcome belongs to the save context it refreshed; a switched save hides it.
+  const refreshOutcome =
+    refreshStats.variables?.saveId === activeSaveId &&
+    refreshStats.variables.contextToken === activeSaveContextToken
+      ? refreshStats.isError
+        ? {
+            text: "Season stats could not be refreshed. Try again.",
+            isProblem: true,
+          }
+        : refreshStats.data
+          ? refreshSeasonStatsCopy(refreshStats.data)
+          : null
+      : null;
   const [shortlistImportOpen, setShortlistImportOpen] = useState(false);
   const [lastShortlistImport, setLastShortlistImport] =
     useState<PlayerShortlistImportSummary | null>(null);
@@ -418,24 +477,32 @@ function SearchPageContent() {
     </button>
   );
   const comparisonPoolToggle = (
-    <fieldset className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5">
-      <legend className="sr-only">Comparison pool</legend>
-      {(["filtered", "fullCsv"] as const).map((pool) => (
-        <button
-          key={pool}
-          type="button"
-          aria-pressed={comparisonPool === pool}
-          className={
-            comparisonPool === pool
-              ? "h-8 rounded-sm bg-primary px-3 text-label-md text-on-primary"
-              : "h-8 rounded-sm px-3 text-label-md text-on-surface-variant hover:text-on-surface"
-          }
-          onClick={() => updateSearch({ comparisonPool: pool })}
-        >
-          {pool === "filtered" ? "Filtered cohort" : "Full CSV"}
-        </button>
-      ))}
-    </fieldset>
+    <>
+      {resultContext ? (
+        <MoneyballStatsAsOf
+          moneyballStatsGameDate={resultContext.snapshot.moneyballStatsGameDate}
+          snapshotGameDate={resultContext.snapshot.gameDate}
+        />
+      ) : null}
+      <fieldset className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5">
+        <legend className="sr-only">Comparison pool</legend>
+        {(["filtered", "fullCsv"] as const).map((pool) => (
+          <button
+            key={pool}
+            type="button"
+            aria-pressed={comparisonPool === pool}
+            className={
+              comparisonPool === pool
+                ? "h-8 rounded-sm bg-primary px-3 text-label-md text-on-primary"
+                : "h-8 rounded-sm px-3 text-label-md text-on-surface-variant hover:text-on-surface"
+            }
+            onClick={() => updateSearch({ comparisonPool: pool })}
+          >
+            {pool === "filtered" ? "Filtered cohort" : "Full CSV"}
+          </button>
+        ))}
+      </fieldset>
+    </>
   );
   const datasetToggles =
     view === "general" ? shortlistSwitch : comparisonPoolToggle;
@@ -582,6 +649,35 @@ function SearchPageContent() {
                 <p className="text-body-sm text-on-surface-variant">
                   Last import: {lastMoneyballImport.storedPlayers} stored,{" "}
                   {lastMoneyballImport.skippedPlayers} skipped.
+                </p>
+              ) : null}
+              <Button
+                variant="secondary"
+                icon={RefreshCw}
+                disabled={
+                  !resultContext || refreshStats.isPending || isLoadDataRunning
+                }
+                onClick={() => {
+                  if (!resultContext) return;
+                  refreshStats.mutate({
+                    saveId: resultContext.activeSave.id,
+                    contextToken: resultContext.activeSave.contextToken,
+                  });
+                }}
+              >
+                Refresh stats
+              </Button>
+              {refreshOutcome ? (
+                <p
+                  role="status"
+                  className={cn(
+                    "text-body-sm",
+                    refreshOutcome.isProblem
+                      ? "text-error"
+                      : "text-on-surface-variant",
+                  )}
+                >
+                  {refreshOutcome.text}
                 </p>
               ) : null}
             </>

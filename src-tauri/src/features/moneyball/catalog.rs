@@ -161,6 +161,36 @@ pub(crate) const LOWER_IS_BETTER_STATISTIC_KEYS: [&str; 19] = [
     "headers_lost_per_90",
 ];
 
+/// Canonical keys that FM27 save files provide no source for. Role scoring
+/// skips them and rescales the remaining weights.
+pub(crate) const SAVE_UNAVAILABLE_STATISTIC_KEYS: [&str; 21] = [
+    "goals_from_outside_the_box",
+    "goals_from_outside_the_box_per_90",
+    "xg-op",
+    "xg-op_per_90",
+    "expected_save_percentage",
+    "penalties_faced",
+    "penalties_faced_per_90",
+    "penalties_saved",
+    "penalties_saved_per_90",
+    "penalties_saved_ratio",
+    "games_won",
+    "games_drawn",
+    "games_lost",
+    "game_win_ratio",
+    "team_goals",
+    "team_goals_per_90",
+    "pressures_attempted",
+    "pressures_attempted_per_90",
+    "pressures_completed",
+    "pressures_completed_per_90",
+    "pressure_success_ratio",
+];
+
+pub(crate) fn is_save_unavailable_statistic_key(key: &str) -> bool {
+    SAVE_UNAVAILABLE_STATISTIC_KEYS.contains(&key)
+}
+
 pub(crate) fn is_lower_is_better_statistic_key(key: &str) -> bool {
     LOWER_IS_BETTER_STATISTIC_KEYS.contains(&key)
 }
@@ -173,7 +203,10 @@ pub(crate) fn is_moneyball_statistic_key(key: &str) -> bool {
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{LOWER_IS_BETTER_STATISTIC_KEYS, MONEYBALL_STATISTIC_KEYS};
+    use super::{
+        is_moneyball_statistic_key, LOWER_IS_BETTER_STATISTIC_KEYS, MONEYBALL_STATISTIC_KEYS,
+        SAVE_UNAVAILABLE_STATISTIC_KEYS,
+    };
 
     const CANONICAL_STATISTIC_KEYS: &str =
         include_str!("../csv_import/fixtures/moneyball_canonical_statistics.txt");
@@ -216,5 +249,18 @@ mod tests {
                 "headers_lost_per_90",
             ]
         );
+    }
+
+    #[test]
+    fn save_unavailable_metrics_are_distinct_canonical_keys() {
+        let distinct = SAVE_UNAVAILABLE_STATISTIC_KEYS
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(distinct.len(), SAVE_UNAVAILABLE_STATISTIC_KEYS.len());
+        for key in SAVE_UNAVAILABLE_STATISTIC_KEYS {
+            assert!(is_moneyball_statistic_key(key), "{key} is not canonical");
+        }
     }
 }

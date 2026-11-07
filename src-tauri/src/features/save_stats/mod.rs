@@ -10,10 +10,6 @@
 //!
 //! The module is pure: a path goes in, and save facts or a path-free error come out.
 
-// Nothing outside tests calls the reader until package `load-data-season-stats` attaches
-// save statistics during Load Data; that package removes this allowance.
-#![allow(dead_code)]
-
 mod container;
 mod layouts;
 mod players;
@@ -23,6 +19,7 @@ mod season_stats;
 #[cfg(test)]
 mod test_support;
 
+use std::collections::HashSet;
 use std::fmt;
 use std::path::Path;
 
@@ -136,7 +133,8 @@ macro_rules! season_stats {
             pub(crate) const ALL: [SeasonStat; [$($name),+].len()] = [$(SeasonStat::$stat),+];
             pub(crate) const COUNT: usize = Self::ALL.len();
 
-            /// The fmsave field name.
+            /// The fmsave field name, which only the reference report and tests print.
+            #[cfg(test)]
             pub(crate) fn name(self) -> &'static str {
                 match self {
                     $(Self::$stat => $name,)+
@@ -225,6 +223,72 @@ impl SavePlayerSeasonStats {
     pub(crate) fn total(&self, stat: SeasonStat) -> Option<f64> {
         self.totals[stat as usize]
     }
+
+    /// A player with no playing time and each total from `total`, for tests outside this
+    /// module that need statistics no synthetic season line stores.
+    #[cfg(test)]
+    pub(crate) fn for_test(unique_id: u32, total: impl Fn(SeasonStat) -> Option<f64>) -> Self {
+        Self {
+            unique_id,
+            starts: 0,
+            substitute_appearances: 0,
+            minutes: 0,
+            rated_appearances: 0,
+            rating_sum: 0.0,
+            totals: SeasonStat::ALL.map(total),
+        }
+    }
+}
+
+/// Synthetic FM27 saves for tests outside this module.
+#[cfg(test)]
+pub(crate) mod synthetic {
+    use std::path::{Path, PathBuf};
+
+    use super::test_support::{
+        season_stats_body, season_stats_save, stat_line, write_save, ExamplePlayer, ExampleRecord,
+        FM27_BUILD,
+    };
+
+    /// The in-game date every synthetic save reports.
+    pub(crate) const GAME_DATE: &str = "2031-03-02";
+
+    const LEAGUE_SLOT: usize = 1;
+
+    /// Writes a registered-build save in which each `(unique_id, fields)` outfield player
+    /// played one league line. Field names and units follow the season-line fixture, for
+    /// example `("minutes", 90.0)` or `("expected_goals", 0.45)`.
+    ///
+    /// Unique IDs must be distinct and at least 2: a closing Unique ID lies above its
+    /// record's uid, which must be above zero.
+    pub(crate) fn write_season_stats_save(
+        directory: &Path,
+        players: &[(u32, &[(&str, f64)])],
+    ) -> PathBuf {
+        let mut players = players.to_vec();
+        players.sort_by_key(|(unique_id, _)| *unique_id);
+        let mut example_players = Vec::new();
+        let mut records = Vec::new();
+        for (index, (unique_id, fields)) in players.iter().enumerate() {
+            let pindex = 10 * (index as u32 + 1);
+            example_players.push(ExamplePlayer::outfield(
+                pindex,
+                unique_id - 1,
+                Some(*unique_id),
+            ));
+            records.push(ExampleRecord::with_lines(
+                pindex + 1,
+                &[(LEAGUE_SLOT, stat_line(fields))],
+            ));
+        }
+        let save = season_stats_save(
+            FM27_BUILD,
+            4000,
+            &example_players,
+            &season_stats_body(&records, 15),
+        );
+        write_save(directory, &save)
+    }
 }
 
 /// The save's facts and the statistics of every player with a Unique ID and competitive
@@ -266,6 +330,14 @@ pub(crate) fn read_season_stats(path: &Path) -> Result<SaveSeasonStats, SaveStat
         game_db.len(),
     )
     .map_err(fit)?;
+    // Cohorts are keyed by Unique ID, so a repeated one cannot be attributed safely.
+    let mut unique_ids = HashSet::with_capacity(players.len());
+    if !players
+        .iter()
+        .all(|player| unique_ids.insert(player.unique_id))
+    {
+        return Err(fit(SaveStatsError::Corrupt));
+    }
     Ok(SaveSeasonStats { info, players })
 }
 
@@ -620,8 +692,9 @@ mod tests {
 
     use super::test_support::{
         build_container, compress, container_with_trailer, fm27_container, fm27_game_info_body,
-        fm27_sections, frame_declaring_content_size, packed_date, structured_summary_body,
-        with_body, write_save, FM27_BUILD, UNREGISTERED_FM27_BUILD,
+        fm27_sections, frame_declaring_content_size, packed_date, season_stats_body,
+        season_stats_save, stat_line, structured_summary_body, with_body, write_save,
+        ExamplePlayer, ExampleRecord, FM27_BUILD, UNREGISTERED_FM27_BUILD,
     };
     use super::*;
 
@@ -872,6 +945,35 @@ mod tests {
             assert!(!message.contains(&*path.to_string_lossy()), "{message}");
             let file_name = path.file_name().expect("file name").to_string_lossy();
             assert!(!message.contains(&*file_name), "{message}");
+        }
+    }
+
+    #[test]
+    fn two_players_sharing_a_unique_id_return_no_statistics() {
+        // A closing Unique ID must lie above its record's uid and not above the next
+        // record's, so a repeat needs a lower uid after a record that has none.
+        let players = [
+            ExamplePlayer::outfield(10, 1_000, Some(1_500)),
+            ExamplePlayer::outfield(20, 2_000, None),
+            ExamplePlayer::outfield(30, 1_200, Some(1_500)),
+        ];
+        let played = || stat_line(&[("minutes", 90.0), ("starts", 1.0)]);
+        let records = [
+            ExampleRecord::with_lines(11, &[(1, played())]),
+            ExampleRecord::with_lines(31, &[(1, played())]),
+        ];
+        let directory = tempfile::tempdir().expect("temp dir");
+
+        for (build, error) in [
+            (FM27_BUILD, SaveStatsError::Corrupt),
+            (UNREGISTERED_FM27_BUILD, SaveStatsError::UnsupportedBuild),
+        ] {
+            let save = season_stats_save(build, 4000, &players, &season_stats_body(&records, 15));
+            assert_eq!(
+                read_season_stats(&write_save(directory.path(), &save)),
+                Err(error),
+                "{build}"
+            );
         }
     }
 

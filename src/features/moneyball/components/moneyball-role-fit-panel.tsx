@@ -50,12 +50,18 @@ function MetricContribution({
       </dt>
       <dd className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-on-surface-variant">
         <span>Weight {formatWeight(contribution.weight)}</span>
-        <span>
-          {contribution.percentile === null
-            ? "Percentile unavailable"
-            : `Percentile ${contribution.percentile}`}
-        </span>
-        <span>{formatContribution(contribution.weightedContribution)}</span>
+        {contribution.availableFromSource ? (
+          <>
+            <span>
+              {contribution.percentile === null
+                ? "Percentile unavailable"
+                : `Percentile ${contribution.percentile}`}
+            </span>
+            <span>{formatContribution(contribution.weightedContribution)}</span>
+          </>
+        ) : (
+          <span>Not available from the save</span>
+        )}
       </dd>
     </div>
   );

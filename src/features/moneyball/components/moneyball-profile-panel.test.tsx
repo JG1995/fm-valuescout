@@ -7,11 +7,14 @@ import {
 } from "@/testing/moneyball-ipc-mock";
 import { MoneyballProfilePanel } from "./moneyball-profile-panel";
 
+const undatedStats = { moneyballStatsGameDate: null, snapshotGameDate: null };
+
 describe("MoneyballProfilePanel", () => {
   it("renders raw context separately from scored category metrics and supports keyboard tabs", async () => {
     const user = userEvent.setup();
     const { rerender } = render(
       <MoneyballProfilePanel
+        {...undatedStats}
         profile={fixturePlayerMoneyball({
           statistics: { goals: 10, goals_per_90: 0.6 },
           percentiles: { goals: 83, goals_per_90: 75 },
@@ -61,6 +64,7 @@ describe("MoneyballProfilePanel", () => {
 
     rerender(
       <MoneyballProfilePanel
+        {...undatedStats}
         profile={fixturePlayerMoneyball({
           comparisonBasis: {
             kind: "available",
@@ -78,6 +82,7 @@ describe("MoneyballProfilePanel", () => {
   it("keeps raw metrics while withholding stale percentiles without a natural position", () => {
     render(
       <MoneyballProfilePanel
+        {...undatedStats}
         profile={fixturePlayerMoneyballWithoutNaturalPosition({
           statistics: { goals: 10 },
           percentiles: { goals: 50 },
@@ -96,15 +101,55 @@ describe("MoneyballProfilePanel", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("labels the stats as-of date and notes a different snapshot date", () => {
+    const { rerender } = render(
+      <MoneyballProfilePanel
+        profile={fixturePlayerMoneyball()}
+        moneyballStatsGameDate="2027-01-01"
+        snapshotGameDate="2027-01-01"
+      />,
+    );
+    expect(
+      screen.getByText("Stats as of 1st January 2027"),
+    ).toBeInTheDocument();
+
+    rerender(
+      <MoneyballProfilePanel
+        profile={fixturePlayerMoneyball()}
+        moneyballStatsGameDate="2027-01-01"
+        snapshotGameDate="2027-01-03"
+      />,
+    );
+    expect(
+      screen.getByText(
+        "Stats as of 1st January 2027 · Snapshot dated 3rd January 2027",
+      ),
+    ).toBeInTheDocument();
+
+    rerender(
+      <MoneyballProfilePanel
+        profile={fixturePlayerMoneyball()}
+        moneyballStatsGameDate={null}
+        snapshotGameDate="2027-01-03"
+      />,
+    );
+    expect(screen.queryByText(/Stats as of/)).not.toBeInTheDocument();
+  });
+
   it("keeps missing and pre-score import states distinct", () => {
     const { rerender } = render(
-      <MoneyballProfilePanel profile={{ state: "noData" }} />,
+      <MoneyballProfilePanel {...undatedStats} profile={{ state: "noData" }} />,
     );
     expect(
       screen.getByText(/not included in the current Moneyball import/i),
     ).toBeInTheDocument();
 
-    rerender(<MoneyballProfilePanel profile={{ state: "needsReimport" }} />);
+    rerender(
+      <MoneyballProfilePanel
+        {...undatedStats}
+        profile={{ state: "needsReimport" }}
+      />,
+    );
     expect(
       screen.getByText(/before percentile scores were available/i),
     ).toBeInTheDocument();

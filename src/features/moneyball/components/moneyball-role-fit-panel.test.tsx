@@ -29,6 +29,7 @@ function role(
         percentile: partial.score,
         weightedContribution:
           partial.score === null ? null : partial.score * 0.6,
+        availableFromSource: true,
       },
       {
         metricKey: "possession_lost_per_90",
@@ -38,6 +39,7 @@ function role(
         percentile: partial.score,
         weightedContribution:
           partial.score === null ? null : partial.score * 0.4,
+        availableFromSource: true,
       },
     ],
   };
@@ -164,6 +166,61 @@ describe("MoneyballRoleFitPanel", () => {
     expect(within(panel).getAllByText("Contribution unavailable")).toHaveLength(
       2,
     );
+  });
+
+  it("marks a metric the save cannot provide and keeps its listed weight", async () => {
+    const user = userEvent.setup();
+    render(
+      <MoneyballRoleFitPanel
+        positions={{ MC: 20 }}
+        catalogVersion={1}
+        comparisonBasis={{
+          kind: "available",
+          naturalPositions: ["MC"],
+          comparisonPlayerCount: 24,
+        }}
+        roleScores={[
+          role({
+            roleId: "pressing",
+            displayName: "Pressing Role",
+            score: 60,
+            contributions: [
+              {
+                metricKey: "pressures_completed_per_90",
+                sourceLabel: "Pressures Completed per 90",
+                weight: 0.35,
+                direction: "higher",
+                percentile: null,
+                weightedContribution: null,
+                availableFromSource: false,
+              },
+              {
+                metricKey: "tackles_completed_per_90",
+                sourceLabel: "Tackles Completed per 90",
+                weight: 0.65,
+                direction: "higher",
+                percentile: 60,
+                weightedContribution: 60,
+                availableFromSource: true,
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    const panel = await screen.findByRole("region", {
+      name: "Moneyball role fit for MC",
+    });
+    await user.click(within(panel).getByText("Pressing Role"));
+    expect(
+      within(panel).getByText("Not available from the save"),
+    ).toBeInTheDocument();
+    expect(within(panel).getByText("Weight 35%")).toBeInTheDocument();
+    expect(
+      within(panel).queryByText("Percentile unavailable"),
+    ).not.toBeInTheDocument();
+    expect(within(panel).getByText("Contribution 60")).toBeInTheDocument();
   });
 
   it("withholds stale role scores when the player has no natural position", () => {

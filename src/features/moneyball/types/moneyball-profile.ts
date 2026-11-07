@@ -8,6 +8,7 @@ export type MoneyballRoleContribution = {
   direction: "higher" | "lower";
   percentile: number | null;
   weightedContribution: number | null;
+  availableFromSource: boolean;
 };
 
 export type MoneyballRoleScore = {

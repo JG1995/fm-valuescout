@@ -1,3 +1,4 @@
+import type { SeasonStatsOutcome } from "@/features/memory-read/types/load-data";
 import type { SaveDeleteResult } from "@/features/snapshot/api/delete-save";
 import type { SnapshotGameDateUpdateResult } from "@/features/snapshot/api/update-snapshot-date";
 import type { SaveSummary } from "@/features/snapshot/types/save";
@@ -15,6 +16,7 @@ type LoadDataTimings = {
   scoringMs: number;
   saveMs: number;
   finalizeMs: number;
+  statsMs: number;
   totalMs: number;
   ingestMs: number;
 };
@@ -25,6 +27,7 @@ type LoadDataResult = {
   storedSnapshot: SnapshotSummary;
   effectiveSnapshot: SnapshotSummary;
   timings: LoadDataTimings;
+  stats: SeasonStatsOutcome;
 };
 
 export type LoadDataIpcMockMode =
@@ -58,6 +61,7 @@ let currentSnapshotCapOverride: {
   scanTruncated: boolean;
   maxAccepted: number | null;
 } | null = null;
+let moneyballStatsGameDate: string | null = null;
 let snapshotDeleteMode: SnapshotManagementIpcMockMode = "success";
 let snapshotRenameMode: SnapshotManagementIpcMockMode = "success";
 let snapshotDateEditMode: SnapshotManagementIpcMockMode = "success";
@@ -115,6 +119,7 @@ function buildSnapshot(overrides?: Partial<SnapshotSummary>): SnapshotSummary {
     maxAccepted: null,
     playerCount: SAMPLE_PLAYER_COUNT,
     loadedAtUtc: "2026-07-28T15:05:00.000Z",
+    moneyballStatsGameDate: null,
     ...overrides,
   };
 }
@@ -132,6 +137,7 @@ function buildLoadDataResult(
     scoringMs: 400,
     saveMs: 200,
     finalizeMs: 200,
+    statsMs: 0,
     totalMs: 2100,
     ingestMs: 400,
   };
@@ -142,6 +148,7 @@ function buildLoadDataResult(
     storedSnapshot,
     effectiveSnapshot,
     timings: { ...defaultTimings, ...(overrideTimings ?? {}) },
+    stats: { status: "notLinked", elapsedMs: 0 },
     ...restOverrides,
   };
 }
@@ -319,6 +326,7 @@ export function resetSnapshotIpcMock() {
   loadDataMode = "success";
   currentSnapshotFails = false;
   currentSnapshotCapOverride = null;
+  moneyballStatsGameDate = null;
   snapshotDeleteMode = "success";
   snapshotRenameMode = "success";
   snapshotDateEditMode = "success";
@@ -403,6 +411,11 @@ export function setCurrentSnapshotCapIpcMock(
   override: { scanTruncated: boolean; maxAccepted: number | null } | null,
 ) {
   currentSnapshotCapOverride = override;
+}
+
+/** Sets the stats as-of date that the current snapshot reports. */
+export function setMoneyballStatsGameDateIpcMock(gameDate: string | null) {
+  moneyballStatsGameDate = gameDate;
 }
 
 export function setSnapshotHistoryIpcMock(snapshots: SnapshotMetadata[]) {
@@ -576,7 +589,7 @@ export function resolveGetCurrentSnapshotIpcMock() {
     throw new Error("Could not load current snapshot");
   }
   const state = activeSaveSnapshot();
-  return state ? { ...state.snapshot } : null;
+  return state ? { ...state.snapshot, moneyballStatsGameDate } : null;
 }
 
 function argString(args: unknown, key: string): string | null {

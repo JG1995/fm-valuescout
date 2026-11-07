@@ -1,21 +1,19 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::Path;
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Number, Value};
 
-use crate::features::moneyball::percentile::{
-    calculate_percentiles, numeric_statistics, MoneyballPercentiles,
+use crate::features::moneyball::percentile::calculate_percentiles;
+use crate::features::moneyball::persistence::{
+    load_moneyball_statistics, serialize_moneyball_statistics, update_moneyball_percentiles,
+    MoneyballPersistenceError,
 };
-use crate::features::moneyball::{MoneyballStatistics, MONEYBALL_STATISTIC_KEYS};
 
 use super::parser::{parse_csv_with_row_limit, ParsedCsv};
-use super::{
-    CsvImportError as ParsedCsvError, MoneyballMetricValue, MoneyballPlayer, MoneyballTransferValue,
-};
+use super::{CsvImportError as ParsedCsvError, MoneyballPlayer, MoneyballTransferValue};
 pub(crate) const MAX_CSV_BYTES: u64 = 8 * 1024 * 1024;
 pub(crate) const MAX_CSV_ROWS: usize = 10_000;
 
@@ -116,6 +114,15 @@ impl From<CsvImportServiceError> for CsvPersistenceError {
     }
 }
 
+impl From<MoneyballPersistenceError> for CsvPersistenceError {
+    fn from(error: MoneyballPersistenceError) -> Self {
+        match error {
+            MoneyballPersistenceError::InvalidStatistics => Self::InvalidStatistics,
+            MoneyballPersistenceError::Database => Self::Database,
+        }
+    }
+}
+
 pub(crate) enum PreparedCsvImport {
     YouthTracker(Vec<PreparedYouthCareerStats>),
     Moneyball(PreparedMoneyballImport),
@@ -162,6 +169,22 @@ struct PreparedMoneyballContext {
     starts: Option<i64>,
     substitute_appearances: Option<i64>,
     minutes: Option<i64>,
+}
+
+impl ImportContext {
+    pub(crate) fn active(&self) -> &ActiveImportContext {
+        &self.active
+    }
+
+    pub(crate) fn player_uids(&self) -> &HashSet<i64> {
+        &self.player_uids
+    }
+}
+
+impl ActiveImportContext {
+    pub(crate) fn save_context_token(&self) -> &str {
+        &self.save_context_token
+    }
 }
 
 pub(crate) fn capture_import_context(
@@ -428,132 +451,6 @@ fn sqlite_integer(value: u64) -> Result<i64, CsvPersistenceError> {
     i64::try_from(value).map_err(|_| CsvPersistenceError::NumericValueOutOfRange)
 }
 
-fn serialize_moneyball_statistics(
-    statistics: &MoneyballStatistics,
-) -> Result<String, CsvPersistenceError> {
-    let mut serialized = Map::new();
-    for (key, value) in statistics {
-        let value = match value {
-            None => Value::Null,
-            Some(MoneyballMetricValue::Count(value)) => Value::Number(Number::from(*value)),
-            Some(MoneyballMetricValue::Decimal(value)) => Value::Number(
-                Number::from_f64(*value).ok_or(CsvPersistenceError::InvalidStatistics)?,
-            ),
-        };
-        serialized.insert(key.clone(), value);
-    }
-
-    serde_json::to_string(&Value::Object(serialized))
-        .map_err(|_| CsvPersistenceError::InvalidStatistics)
-}
-
-fn serialize_moneyball_percentiles(
-    percentiles: &MoneyballPercentiles,
-) -> Result<String, CsvPersistenceError> {
-    let serialized = percentiles
-        .iter()
-        .map(|(key, value)| {
-            (
-                key.clone(),
-                value.map_or(Value::Null, |value| Value::Number(Number::from(value))),
-            )
-        })
-        .collect();
-
-    serde_json::to_string(&Value::Object(serialized))
-        .map_err(|_| CsvPersistenceError::InvalidStatistics)
-}
-
-fn load_moneyball_statistics(
-    tx: &Transaction<'_>,
-    snapshot_id: i64,
-) -> Result<
-    BTreeMap<i64, crate::features::moneyball::percentile::MoneyballNumericStatistics>,
-    CsvPersistenceError,
-> {
-    let mut statement = tx
-        .prepare(
-            "SELECT player_uid, statistics_json
-             FROM player_moneyball_stats
-             WHERE snapshot_id = ?1",
-        )
-        .map_err(|_| CsvPersistenceError::Database)?;
-    let rows = statement
-        .query_map([snapshot_id], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(|_| CsvPersistenceError::Database)?;
-
-    let mut statistics = BTreeMap::new();
-    for row in rows {
-        let (player_uid, statistics_json) = row.map_err(|_| CsvPersistenceError::Database)?;
-        statistics.insert(
-            player_uid,
-            numeric_statistics(&deserialize_moneyball_statistics(&statistics_json)?),
-        );
-    }
-    Ok(statistics)
-}
-
-fn deserialize_moneyball_statistics(
-    json: &str,
-) -> Result<MoneyballStatistics, CsvPersistenceError> {
-    let value: Value =
-        serde_json::from_str(json).map_err(|_| CsvPersistenceError::InvalidStatistics)?;
-    let object = value
-        .as_object()
-        .ok_or(CsvPersistenceError::InvalidStatistics)?;
-    if object.len() != MONEYBALL_STATISTIC_KEYS.len()
-        || !MONEYBALL_STATISTIC_KEYS
-            .iter()
-            .all(|key| object.contains_key(*key))
-    {
-        return Err(CsvPersistenceError::InvalidStatistics);
-    }
-
-    MONEYBALL_STATISTIC_KEYS
-        .iter()
-        .map(|key| {
-            let value = object
-                .get(*key)
-                .ok_or(CsvPersistenceError::InvalidStatistics)?;
-            let value = match value {
-                Value::Null => None,
-                Value::Number(number) => number
-                    .as_f64()
-                    .filter(|value| value.is_finite())
-                    .map(MoneyballMetricValue::Decimal)
-                    .map(Some)
-                    .ok_or(CsvPersistenceError::InvalidStatistics)?,
-                _ => return Err(CsvPersistenceError::InvalidStatistics),
-            };
-            Ok(((*key).to_string(), value))
-        })
-        .collect()
-}
-
-fn update_moneyball_percentiles(
-    tx: &Transaction<'_>,
-    snapshot_id: i64,
-    percentiles: &BTreeMap<i64, MoneyballPercentiles>,
-) -> Result<(), CsvPersistenceError> {
-    for (player_uid, player_percentiles) in percentiles {
-        let percentiles_json = serialize_moneyball_percentiles(player_percentiles)?;
-        let changed = tx
-            .execute(
-                "UPDATE player_moneyball_stats
-                 SET percentiles_json = ?1
-                 WHERE snapshot_id = ?2 AND player_uid = ?3",
-                params![percentiles_json, snapshot_id, player_uid],
-            )
-            .map_err(|_| CsvPersistenceError::Database)?;
-        if changed != 1 {
-            return Err(CsvPersistenceError::Database);
-        }
-    }
-    Ok(())
-}
-
 fn upsert_youth_career_stats(
     tx: &Transaction<'_>,
     save_id: i64,
@@ -664,7 +561,7 @@ mod tests {
 
     use super::*;
     use crate::db::migrations;
-    use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
+    use crate::features::moneyball::{MoneyballMetricValue, MONEYBALL_STATISTIC_KEYS};
     use crate::features::snapshot::ingest::{ingest_dump_file, ingest_dump_file_for_save};
     use crate::features::snapshot::service as snapshot_service;
 
@@ -1027,7 +924,7 @@ mod tests {
     }
 
     #[test]
-    fn moneyball_imports_follow_the_effective_current_snapshot_and_preserve_cohorts() {
+    fn moneyball_imports_follow_the_effective_current_snapshot_and_keep_only_its_cohort() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("snapshot-moneyball-import.db"));
         seed_current_snapshot(&mut conn, &[1]);
@@ -1135,13 +1032,8 @@ mod tests {
             .expect("query Moneyball history")
             .collect::<Result<_, _>>()
             .expect("read Moneyball history");
-        assert_eq!(
-            rows,
-            vec![
-                (first_snapshot_id, 1_000_000),
-                (second_snapshot_id, 4_000_000),
-            ]
-        );
+        // Promoting the second snapshot deleted the demoted first snapshot's cohort.
+        assert_eq!(rows, vec![(second_snapshot_id, 4_000_000)]);
         assert_eq!(
             career_values(&conn, save_id, 1),
             Some((Some(12), None, None, None))
@@ -1205,7 +1097,8 @@ mod tests {
             .expect("query retained Moneyball cohort")
             .collect::<Result<Vec<(i64, i64)>, _>>()
             .expect("read retained Moneyball cohort");
-        assert_eq!(rows, vec![(first_snapshot_id, 500_000)]);
+        // Demotion deleted the prior cohort, and the stale import added none.
+        assert_eq!(rows, Vec::<(i64, i64)>::new());
     }
 
     #[test]

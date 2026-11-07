@@ -14,6 +14,8 @@ export type SnapshotSummary = {
   maxAccepted: number | null;
   playerCount: number;
   loadedAtUtc: string;
+  /** In-game date of the save whose season stats the Moneyball cohort holds. */
+  moneyballStatsGameDate: string | null;
 };
 
 export type SnapshotMetadata = {

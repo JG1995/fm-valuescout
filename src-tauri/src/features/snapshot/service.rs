@@ -5,6 +5,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 use crate::features::{
     academy::service as academy_service,
     memory_read::dump_validation::canonical_game_date,
+    moneyball::persistence as moneyball_persistence,
     player_metrics::potential_scores,
     save_stats::{self, SaveStatsError},
     staff::scoring as staff_scoring,
@@ -562,6 +563,7 @@ pub(crate) fn select_current_snapshot(
         .map_err(|error| error.to_string())?;
     }
 
+    moneyball_persistence::clear_non_current_snapshots(tx, save_id)?;
     potential_scores::reconcile_current_selection(
         tx,
         save_id,
@@ -645,6 +647,7 @@ mod tests {
     use super::*;
     use crate::db::migrations;
     use crate::features::{
+        moneyball::persistence::test_support::{cohort_state, seed_cohort},
         player_metrics::potential_scores::PROJECTION_MODEL_VERSION,
         scoring::catalog::DUMP_ATTRIBUTE_KEYS,
     };
@@ -1381,6 +1384,36 @@ mod tests {
     }
 
     #[test]
+    fn deleting_the_current_snapshot_clears_moneyball_data_from_every_non_current_snapshot() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("delete-moneyball-retention.db"));
+        let save = list_saves(&conn).expect("seed default save").remove(0);
+        let snapshots = [
+            ("2025-01-01", "2026-08-11T09:00:00.000Z"),
+            ("2026-01-01", "2026-08-11T10:00:00.000Z"),
+            ("2027-01-01", "2026-08-11T11:00:00.000Z"),
+        ]
+        .map(|(game_date, loaded_at)| {
+            let snapshot = insert_snapshot(&conn, save.id, Some(game_date), loaded_at);
+            insert_player(&conn, snapshot, 77);
+            insert_staff_record(&conn, snapshot, 88);
+            snapshot
+        });
+        let [oldest, promoted, current] = snapshots;
+        select_current_snapshot_for_test(&mut conn, save.id);
+        seed_cohort(&conn, current, 77, "2027-01-01");
+        // Rows a pre-retention CSV import could have left on a demoted snapshot.
+        seed_cohort(&conn, oldest, 77, "2025-01-01");
+
+        let current_token = snapshot_token(&conn, current);
+        delete_snapshot(&mut conn, current, &current_token).expect("delete current snapshot");
+
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(promoted));
+        assert_eq!(cohort_state(&conn, promoted), (0, None));
+        assert_eq!(cohort_state(&conn, oldest), (0, None));
+    }
+
+    #[test]
     fn promoted_snapshot_compact_materialization_failure_rolls_back_current_deletion() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("promote-compact-rollback.db"));
@@ -1986,9 +2019,11 @@ mod tests {
         let mut conn = open_migrated(&temp_dir.path().join("promote-demote-game-date.db"));
         let (save, older, current) = game_date_edit_setup(&mut conn);
         let older_token = snapshot_token(&conn, older);
+        seed_cohort(&conn, current, 78, "2026-06-01");
 
         let promoted = update_snapshot_game_date(&mut conn, older, &older_token, "2027-01-01")
             .expect("promote older snapshot");
+        assert_eq!(cohort_state(&conn, current), (0, None));
         assert_eq!(promoted.previous_current_snapshot_id, Some(current));
         assert_eq!(promoted.current_snapshot_id, Some(older));
         assert!(promoted.snapshot.is_current);
@@ -2003,9 +2038,11 @@ mod tests {
         );
         assert_complete_potential_state(&conn, older);
         assert_eq!(staff_compact_row_count(&conn, older), 1);
+        seed_cohort(&conn, older, 77, "2027-01-01");
 
         let demoted = update_snapshot_game_date(&mut conn, older, &older_token, "2025-01-01")
             .expect("demote edited snapshot");
+        assert_eq!(cohort_state(&conn, older), (0, None));
         assert_eq!(demoted.previous_current_snapshot_id, Some(older));
         assert_eq!(demoted.current_snapshot_id, Some(current));
         assert!(!demoted.snapshot.is_current);

@@ -3,7 +3,8 @@ export type LoadDataPhase =
   | "preparing"
   | "scoring"
   | "saving"
-  | "finalizing";
+  | "finalizing"
+  | "seasonStats";
 
 export type LoadDataProgress = {
   saveId: number;
@@ -38,9 +39,37 @@ export type LoadDataTimings = {
   scoringMs: number;
   saveMs: number;
   finalizeMs: number;
+  statsMs: number;
   totalMs: number;
   ingestMs: number;
 };
+
+/** A save-file error kind, or `database` when the cohort could not be stored. */
+export type SeasonStatsErrorKind =
+  | "not_found"
+  | "unreadable"
+  | "not_fm_save"
+  | "unsupported_game"
+  | "unsupported_build"
+  | "corrupt"
+  | "out_of_bounds"
+  | "changed_during_read"
+  | "database";
+
+/** The season stats read from the active save's linked FM save file. */
+export type SeasonStatsOutcome = { elapsedMs: number } & (
+  | {
+      status: "attached";
+      matchedPlayers: number;
+      unmatchedPlayers: number;
+      gameDate: string;
+    }
+  | { status: "noMatches"; unmatchedPlayers: number; gameDate: string }
+  | { status: "notLinked" }
+  | { status: "noSnapshot" }
+  | { status: "staleContext" }
+  | { status: "failed"; kind: SeasonStatsErrorKind; fileName: string | null }
+);
 
 export type LoadDataResult = {
   requestId: string;
@@ -48,4 +77,5 @@ export type LoadDataResult = {
   storedSnapshot: LoadDataSnapshotSummary;
   effectiveSnapshot: LoadDataSnapshotSummary;
   timings: LoadDataTimings;
+  stats: SeasonStatsOutcome;
 };
