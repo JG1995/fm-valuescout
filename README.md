@@ -1,6 +1,6 @@
 # FM ValueScout
 
-FM ValueScout is an offline-first desktop companion for Football Manager 26. It reads a running game through a local BepInEx bridge, stores snapshots locally, and provides role-aware player search, profiles, squad planning, and squad optimization.
+FM ValueScout is an offline-first desktop companion for Football Manager 27. It reads a running game through a local BepInEx bridge, stores snapshots locally, and provides role-aware player search, profiles, squad planning, and squad optimization.
 
 ## Early-alpha status
 
@@ -15,19 +15,19 @@ Published GitHub releases provide an unsigned Windows x64 installer with a match
 | Area | Supported early-alpha boundary |
 | --- | --- |
 | Desktop OS | Windows x64 only |
-| Game | Steam Football Manager 26.3 on Windows (live validated on 26.3.2) |
-| Bridge prerequisite | BepInEx 6 IL2CPP already installed in the FM26 folder |
+| Game | Steam Football Manager 27.0 on Windows (live validated on 27.0) |
+| Bridge prerequisite | BepInEx 6 IL2CPP already installed in the FM27 folder |
 | Database scope | Men's database only |
-| Data refresh | Explicit **Load Data** while FM26 is running with a save loaded |
+| Data refresh | Explicit **Load Data** while FM27 is running with a save loaded |
 | Network use | Core use is local; there are no accounts, cloud sync, telemetry, or automatic data upload |
 
-FM patches can change memory layouts. Current Load Data support is limited to the FM26.3 layout; other FM26 builds are unsupported. If a game build is unsupported, the bridge is designed to fail closed rather than guess. The two player-boost actions are especially constrained: they are optional, require a fresh successful live load, and are supported only on the exact live-validated FM26.3.2 build. Back up the FM save before using either action.
+FM patches can change memory layouts. Current Load Data support is limited to the FM 27.0 layout; FM27 and other FM27 builds are unsupported. If a game build is unsupported, the bridge is designed to fail closed rather than guess. The two player-boost actions are especially constrained: they are optional, require a fresh successful live load, and are supported only on the exact FM 27.0 build. Back up the FM save before using either action.
 
-The app does not support macOS, Linux, non-Steam FM26, other Football Manager editions, women's or combined databases, automatic updates, BepInEx installation, save-file import, or downgrade/rollback of an upgraded app database.
+The app does not support macOS, Linux, non-Steam FM27, FM27 or other Football Manager editions, women's or combined databases, automatic updates, BepInEx installation, save-file import, or downgrade/rollback of an upgraded app database.
 
 ## Before installing
 
-1. Install BepInEx 6 IL2CPP into the Steam FM26 folder and launch FM once. ValueScout does not install BepInEx for you.
+1. Install BepInEx 6 IL2CPP into the Steam FM27 folder and launch FM once. ValueScout does not install BepInEx for you.
 2. Back up your FM save. The boost features can write only their specific guarded values, but they are still experimental.
 3. Download the installer and its `.sha256` asset from the matching GitHub release.
 4. Verify the checksum before running the installer. In PowerShell:
@@ -45,13 +45,13 @@ Windows SmartScreen or antivirus software may warn because the installer is unsi
 Once a release is available:
 
 1. Run its verified Windows x64 installer.
-2. Start FM26, load the save you want to inspect, then start FM ValueScout.
+2. Start FM27, load the save you want to inspect, then start FM ValueScout.
 3. In the app, use **Install plugin** in the bridge section. This copies only `FmDataBridge.dll` into FM's existing `BepInEx/plugins` directory.
-4. Restart FM26 so BepInEx loads the bridge.
+4. Restart FM27 so BepInEx loads the bridge.
 5. Return to ValueScout and click **Load Data**. A successful load creates a local snapshot for the active ValueScout save slot.
 6. Use Search, profiles, Squad, Planner, and Academy against that current snapshot. Click **Load Data** again after in-game changes when you want a new snapshot.
 
-If plugin installation fails, check that the Steam FM26 directory and BepInEx are correct. Windows may require permission to write under `Program Files (x86)`. The app does not request elevation; use a manual bridge install only if you understand the folder you are targeting. See the [bridge guide](bridge/README.md) for the exact developer and manual paths.
+If plugin installation fails, check that the Steam FM27 directory and BepInEx are correct. Windows may require permission to write under `Program Files (x86)`. The app does not request elevation; use a manual bridge install only if you understand the folder you are targeting. See the [bridge guide](bridge/README.md) for the exact developer and manual paths.
 
 ## Update and uninstall
 
@@ -61,7 +61,7 @@ Updates are manual in this alpha:
 2. Copy `%APPDATA%\app.fmvaluescout\` to a safe location before installing the update.
 3. Verify and run the newer installer from its GitHub release.
 4. Open the app and let its forward-only local database migrations finish.
-5. If the bundled bridge changes, use **Update plugin** and restart FM26.
+5. If the bundled bridge changes, use **Update plugin** and restart FM27.
 
 Do not use an older installer after a newer version has migrated the database. Restore a backup instead.
 
@@ -100,7 +100,7 @@ Release builds keep bounded local logs in:
 
 The active file is limited to 1 MB; up to three rotated files are retained. The log records app startup and database migration state. Bridge diagnostics are separate under `%LOCALAPPDATA%\fm-valuescout\fm-bridge\`.
 
-For a non-security bug, open a GitHub issue with the app version, Windows version, FM26 build, a short reproduction, and whether the bridge/plugin was installed or updated. Do **not** attach your `app-v2.db` or `app.db`, `dump.json`, full bridge diagnostics, memory addresses, or player data to a public issue. Review and redact logs before sharing them.
+For a non-security bug, open a GitHub issue with the app version, Windows version, FM27 build, a short reproduction, and whether the bridge/plugin was installed or updated. Do **not** attach your `app-v2.db` or `app.db`, `dump.json`, full bridge diagnostics, memory addresses, or player data to a public issue. Review and redact logs before sharing them.
 
 For a security problem, follow [SECURITY.md](SECURITY.md) and do not open a public issue.
 
@@ -115,7 +115,7 @@ pnpm exec playwright install chromium
 pnpm tauri dev
 ```
 
-Bridge development requires the .NET 6 SDK; attaching it to FM still requires a Windows host, Steam FM26, and BepInEx 6 IL2CPP. Run `./scripts/dev bridge-test` for bridge unit tests, and run `./scripts/dev package-windows` on native Windows for an unsigned x64 release validation artifact. See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository workflow and [bridge/README.md](bridge/README.md) for the bridge contract.
+Bridge development requires the .NET 6 SDK; attaching it to FM still requires a Windows host, Steam FM27, and BepInEx 6 IL2CPP. Run `./scripts/dev bridge-test` for bridge unit tests, and run `./scripts/dev package-windows` on native Windows for an unsigned x64 release validation artifact. See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository workflow and [bridge/README.md](bridge/README.md) for the bridge contract.
 
 ## Maintainers and contributors
 

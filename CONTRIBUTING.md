@@ -4,7 +4,7 @@ FM ValueScout uses a small, repository-owned development workflow. Keep changes 
 
 ## Develop from source
 
-Follow [README — Develop from source](README.md#develop-from-source) for dependency and platform setup. Building or installing the FM26 BepInEx plugin is separate from the Linux gate; see [bridge/README.md](bridge/README.md).
+Follow [README — Develop from source](README.md#develop-from-source) for dependency and platform setup. Building or installing the FM27 BepInEx plugin is separate from the Linux gate; see [bridge/README.md](bridge/README.md).
 
 Run formatting before staging and the full gate before every commit:
 

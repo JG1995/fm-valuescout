@@ -11,7 +11,7 @@
 <Project>
   <PropertyGroup>
     <!-- Example Steam layout — replace with your install -->
-    <FmSteamRoot>C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26</FmSteamRoot>
+    <FmSteamRoot>C:\Program Files (x86)\Steam\steamapps\common\Football Manager 27</FmSteamRoot>
     <BepInExCore>$(FmSteamRoot)\BepInEx\core</BepInExCore>
     <InteropDir>$(FmSteamRoot)\BepInEx\interop</InteropDir>
   </PropertyGroup>
