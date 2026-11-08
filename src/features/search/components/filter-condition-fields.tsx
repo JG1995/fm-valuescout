@@ -48,12 +48,15 @@ export function FilterConditionFields({
   field,
   view,
   error,
+  operators = field.operators,
   onChange,
 }: {
   rule: FilterRule;
   field: FilterFieldDef;
   view: SearchView;
   error?: string;
+  /** The operators to offer; defaults to all of the field's operators. */
+  operators?: FilterFieldDef["operators"];
   onChange: (next: FilterRule) => void;
 }) {
   const percentile = isPercentileOperator(rule.op);
@@ -217,13 +220,15 @@ export function FilterConditionFields({
         value={rule.op}
         onChange={(event) => changeOperator(event.target.value)}
       >
-        {field.operators.map((operator) => (
+        {operators.map((operator) => (
           <option key={operator.id} value={operator.id}>
             {operator.label}
           </option>
         ))}
       </SelectField>
-      <div className="min-w-0">{valueControl}</div>
+      <div className="min-w-0" data-filter-value>
+        {valueControl}
+      </div>
     </>
   );
 }

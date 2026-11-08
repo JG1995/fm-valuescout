@@ -1,6 +1,9 @@
 import {
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide,
   ChevronDown,
   ChevronUp,
+  Filter,
   MoveLeft,
   MoveRight,
   Plus,
@@ -26,6 +29,9 @@ import {
 } from "./table-groups";
 
 const KEYBOARD_RESIZE_STEP = 16;
+
+const MENU_ITEM_CLASSES =
+  "flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-label-md text-on-surface hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-45";
 
 export const IDENTITY_COLUMN_MIN_WIDTH = 240;
 export const IDENTITY_COLUMN_DEFAULT_WIDTH = 280;
@@ -96,6 +102,11 @@ export type ConfigurableTableHeaderProps = {
   onRemoveColumn: (metricId: string) => void;
   onMoveColumn: (metricId: string, targetIndex: number) => void;
   onResizeColumn: (metricId: string, width: number) => void;
+  /** Adds Sort ascending / descending to sortable columns' menus. */
+  onSortDirection?: (metricId: string, dir: "asc" | "desc") => void;
+  /** Adds "Filter by …" to the menus of columns it accepts. */
+  onFilterColumn?: (metricId: string) => void;
+  canFilterColumn?: (metricId: string) => boolean;
 };
 
 export type PlayerTableColumn = ConfigurableTableColumn;
@@ -216,6 +227,9 @@ export function ConfigurableTableHeader({
   onRemoveColumn,
   onMoveColumn,
   onResizeColumn,
+  onSortDirection,
+  onFilterColumn,
+  canFilterColumn,
 }: ConfigurableTableHeaderProps) {
   const [openColumnId, setOpenColumnId] = useState<string | null>(null);
   const [pickingColumnId, setPickingColumnId] = useState<string | null>(null);
@@ -369,7 +383,7 @@ export function ConfigurableTableHeader({
               scope="col"
               aria-label={accessibleName}
               aria-sort={columnSortable ? ariaSort : undefined}
-              className={`relative h-table-header-height px-2 ${
+              className={`group/header relative h-table-header-height px-2 ${
                 column.align === "right" ? "text-right" : "text-left"
               }`}
               onContextMenu={
@@ -463,6 +477,28 @@ export function ConfigurableTableHeader({
                   ) : null}
                 </button>
               </div>
+              {configurable ? (
+                // Pointer affordance for the column menu; keyboard users open it
+                // with Shift+F10 on the header button.
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className={`absolute top-1/2 z-10 inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-sm bg-surface-container-high text-on-surface-variant opacity-0 transition-opacity duration-150 group-hover/header:opacity-100 hover:text-on-surface ${
+                    column.align === "right" ? "left-1" : "right-2"
+                  } ${open ? "opacity-100" : ""}`}
+                  onClick={() => {
+                    if (open) {
+                      closeMenu();
+                    } else {
+                      setOpenColumnId(column.id);
+                      setPickingColumnId(null);
+                    }
+                  }}
+                >
+                  <ChevronDown aria-hidden size={14} strokeWidth={2} />
+                </button>
+              ) : null}
               {revealed ? (
                 <span
                   role="tooltip"
@@ -477,7 +513,7 @@ export function ConfigurableTableHeader({
                   ref={menuRef}
                   role="menu"
                   aria-label={`${accessibleName} column actions`}
-                  className="absolute right-1 top-full z-30 mt-1 w-44 rounded-md border border-outline-variant bg-surface-container-highest p-1 text-left shadow-overlay"
+                  className="absolute right-1 top-full z-30 mt-1 w-52 rounded-md border border-outline-variant bg-surface-container-highest p-1 text-left shadow-overlay"
                   onKeyDown={(event) => {
                     if (event.key === "Escape") {
                       event.preventDefault();
@@ -485,6 +521,50 @@ export function ConfigurableTableHeader({
                     }
                   }}
                 >
+                  {onSortDirection && columnSortable
+                    ? (
+                        [
+                          {
+                            dir: "asc",
+                            label: "Sort ascending",
+                            Icon: ArrowUpNarrowWide,
+                          },
+                          {
+                            dir: "desc",
+                            label: "Sort descending",
+                            Icon: ArrowDownWideNarrow,
+                          },
+                        ] as const
+                      ).map(({ dir, label, Icon }) => (
+                        <button
+                          key={dir}
+                          type="button"
+                          role="menuitem"
+                          className={MENU_ITEM_CLASSES}
+                          onClick={() => {
+                            onSortDirection(column.id, dir);
+                            closeMenu();
+                          }}
+                        >
+                          <Icon aria-hidden size={16} strokeWidth={1.5} />
+                          {label}
+                        </button>
+                      ))
+                    : null}
+                  {onFilterColumn && canFilterColumn?.(column.id) ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={MENU_ITEM_CLASSES}
+                      onClick={() => {
+                        closeMenu();
+                        onFilterColumn(column.id);
+                      }}
+                    >
+                      <Filter aria-hidden size={16} strokeWidth={1.5} />
+                      Filter by {accessibleName}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     role="menuitem"

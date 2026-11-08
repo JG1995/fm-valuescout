@@ -58,10 +58,10 @@ import {
 } from "../types/search-sort";
 import type { ComparisonPool, SearchView } from "../types/search-view";
 import { defaultSearchSort } from "../types/search-view";
-import { completeFilterRules } from "../utils/filter-registry";
+import { completeFilterRules, getFilterField } from "../utils/filter-registry";
 import { searchTableGroups } from "../utils/search-table-groups";
 import { buildTacticColumnOrder } from "../utils/tactic-columns";
-import { SearchFilterBar } from "./search-filter-bar";
+import { type FilterFieldRequest, SearchFilterBar } from "./search-filter-bar";
 
 type TableColumn = PlayerTableColumn;
 
@@ -221,6 +221,7 @@ function SearchResultsVirtualTable({
   onRemoveColumn,
   onMoveColumn,
   onResizeColumn,
+  onFilterColumn,
   view,
   comparisonPool,
   shortlistOnly,
@@ -241,6 +242,7 @@ function SearchResultsVirtualTable({
   onRemoveColumn: (metricId: string) => void;
   onMoveColumn: (metricId: string, targetIndex: number) => void;
   onResizeColumn: (metricId: string, width: number) => void;
+  onFilterColumn: (metricId: string) => void;
   view: SearchView;
   comparisonPool: ComparisonPool;
   shortlistOnly: boolean;
@@ -272,6 +274,11 @@ function SearchResultsVirtualTable({
           onRemoveColumn={onRemoveColumn}
           onMoveColumn={onMoveColumn}
           onResizeColumn={onResizeColumn}
+          onSortDirection={(metricId, dir) => onSortChange(metricId, dir)}
+          onFilterColumn={onFilterColumn}
+          canFilterColumn={(metricId) =>
+            getFilterField(metricId, view) !== undefined
+          }
           metrics={
             view === "moneyball"
               ? MONEYBALL_HEADER_METRICS
@@ -535,6 +542,9 @@ export function SearchResultsPanel({
     ],
   );
   const [committed, setCommitted] = useState(requested);
+  const [fieldRequest, setFieldRequest] = useState<FilterFieldRequest | null>(
+    null,
+  );
   const committedOptions = searchPlayersQueryOptions(
     0,
     SEARCH_PAGE_SIZE,
@@ -662,6 +672,8 @@ export function SearchResultsPanel({
       onRulesChange={onRulesChange}
       onApply={onApplyFilters}
       view={view}
+      comparisonPool={comparisonPool}
+      fieldRequest={fieldRequest}
       summary={summary}
       columnsControl={columnsControl}
       datasetToggles={datasetToggles}
@@ -864,6 +876,7 @@ export function SearchResultsPanel({
         onMoveColumn={(metricId, targetIndex) =>
           moveColumn(tableId, metricId, targetIndex)
         }
+        onFilterColumn={(field) => setFieldRequest({ field, key: Date.now() })}
         onResizeColumn={(metricId, width) =>
           setColumnWidth(tableId, metricId, width)
         }

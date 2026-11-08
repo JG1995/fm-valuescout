@@ -100,9 +100,12 @@ test.describe("application smoke", () => {
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.emulateMedia({ reducedMotion: "reduce" });
+    await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/search");
-    await page.getByRole("button", { name: "Edit filters" }).click();
-    const dialog = page.getByRole("dialog", { name: "Edit filters" });
+    await page.getByRole("button", { name: "Upload Shortlist" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: "Upload Player Shortlist CSV",
+    });
     const backdrop = page.getByRole("button", { name: "Close dialog" });
     await expect(dialog).toHaveCSS("opacity", "1");
     await expect(backdrop).toHaveCSS("opacity", "1");
@@ -1871,7 +1874,7 @@ test.describe("application smoke", () => {
         table.getByRole("columnheader", { name: "CA" }),
       ).toBeVisible();
       await expect(
-        main.getByRole("button", { name: "Edit filters" }),
+        main.getByRole("button", { name: "Add filter" }),
       ).toBeVisible();
       await expect(main.getByRole("button", { name: "Columns" })).toBeVisible();
       const tableBox = await table.boundingBox();
@@ -2170,15 +2173,14 @@ test.describe("application smoke", () => {
     );
   });
 
-  test("Search filter options remain fully interactive outside the modal scrollport", async ({
+  test("Search filter options remain fully interactive above the table", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/search");
 
-    await page.getByRole("button", { name: "Edit filters" }).click();
-    const dialog = page.getByRole("dialog", { name: "Edit filters" });
-    await dialog.getByRole("button", { name: "Add filter" }).click();
+    await page.getByRole("button", { name: "Add filter" }).click();
+    const dialog = page.getByRole("form", { name: "Add filter" });
 
     const listbox = dialog.getByRole("listbox", { name: "Field options" });
     const searchFields = dialog.getByRole("combobox", {
@@ -2579,9 +2581,8 @@ test.describe("application smoke", () => {
       table.getByRole("img", { name: /average rating: 71/i }).first(),
     ).toBeVisible();
 
-    await main.getByRole("button", { name: "Edit filters" }).click();
-    const dialog = page.getByRole("dialog", { name: "Edit filters" });
-    await dialog.getByRole("button", { name: "Add filter" }).click();
+    await main.getByRole("button", { name: "Add filter" }).click();
+    const dialog = page.getByRole("form", { name: "Add filter" });
     const fieldSearch = dialog.getByRole("combobox", {
       name: "Search fields",
     });
@@ -2597,12 +2598,10 @@ test.describe("application smoke", () => {
     await fieldSearch.press("ArrowDown");
     await fieldSearch.press("Enter");
     await expect(
-      dialog.getByText(
-        /role filters apply after the comparison cohort is calculated/i,
-      ),
+      dialog.getByText(/Scored against all players with stats/),
     ).toBeVisible();
     await dialog.getByLabel("Value").fill("70");
-    await dialog.getByRole("button", { name: "Done" }).click();
+    await dialog.getByRole("button", { name: "Add" }).click();
     await expect(
       main.getByRole("button", { name: /Remove filter/i }),
     ).toBeVisible();

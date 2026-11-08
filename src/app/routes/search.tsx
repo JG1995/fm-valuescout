@@ -679,6 +679,7 @@ function SearchPageContent() {
             onRulesChange={handleRulesChange}
             onApply={handleApplyFilters}
             view={view}
+            comparisonPool={comparisonPool}
             datasetToggles={
               view === "moneyball" ? comparisonPoolToggle : undefined
             }
