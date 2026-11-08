@@ -27,6 +27,16 @@ const NUMBER_OPERATORS = [
   { id: "eq", label: "equals" },
   { id: "neq", label: "does not equal" },
 ] as const;
+/** Compare a statistic's 0–100 comparison-pool percentile instead of its raw value. */
+const PERCENTILE_OPERATORS = [
+  { id: "pct_gte", label: "percentile ≥" },
+  { id: "pct_lte", label: "percentile ≤" },
+] as const;
+
+export function isPercentileOperator(op: string) {
+  return PERCENTILE_OPERATORS.some((operator) => operator.id === op);
+}
+
 const TEXT_OPERATORS = [
   { id: "contains", label: "contains" },
   { id: "not_contains", label: "does not contain" },
@@ -130,7 +140,7 @@ export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
     align: "right" as const,
     defaultWidth: metric.width === "wide" ? 176 : 112,
     sortable: true as const,
-    operators: NUMBER_OPERATORS,
+    operators: [...NUMBER_OPERATORS, ...PERCENTILE_OPERATORS],
     metric,
   })),
   ...MONEYBALL_ROLE_CATALOG.map(roleMetric),

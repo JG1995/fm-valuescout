@@ -154,10 +154,45 @@ pub fn moneyball_role_ids_from_ast(ast: &FilterAst) -> Result<Vec<String>, Strin
     Ok(role_ids)
 }
 
-pub fn without_moneyball_role_rules(ast: &FilterAst) -> Result<Option<FilterAst>, String> {
+/// The statistic key of a rule that compares a Moneyball statistic's 0–100
+/// comparison-pool percentile rather than its raw value.
+fn moneyball_percentile_key(rule: &FilterRule) -> Option<String> {
+    if !matches!(rule.op.as_str(), "pct_gte" | "pct_lte") {
+        return None;
+    }
+    match resolve_field(&rule.field, true) {
+        Ok(FieldKind::MoneyballReal { key }) => Some(key),
+        _ => None,
+    }
+}
+
+pub fn moneyball_percentile_keys_from_ast(ast: &FilterAst) -> Vec<String> {
+    let mut keys = Vec::new();
+    for key in ast.rules.iter().filter_map(moneyball_percentile_key) {
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    keys
+}
+
+/// Role and percentile rules depend on the scored comparison cohort, so they
+/// run in Rust after that cohort is loaded instead of compiling to SQL.
+fn is_post_cohort_rule(rule: &FilterRule) -> Result<bool, String> {
+    Ok(parse_moneyball_role_id(&rule.field, true)?.is_some()
+        || moneyball_percentile_key(rule).is_some())
+}
+
+pub fn has_post_cohort_rules(ast: &FilterAst) -> bool {
+    ast.rules.iter().any(|rule| {
+        rule.field.starts_with("moneyball_role.") || moneyball_percentile_key(rule).is_some()
+    })
+}
+
+pub fn without_post_cohort_rules(ast: &FilterAst) -> Result<Option<FilterAst>, String> {
     let mut rules = Vec::with_capacity(ast.rules.len());
     for rule in &ast.rules {
-        if parse_moneyball_role_id(&rule.field, true)?.is_some() {
+        if is_post_cohort_rule(rule)? {
             continue;
         }
         rules.push(rule.clone());
@@ -168,12 +203,25 @@ pub fn without_moneyball_role_rules(ast: &FilterAst) -> Result<Option<FilterAst>
     }))
 }
 
-pub fn moneyball_role_rules_match(
+pub fn post_cohort_rules_match(
     ast: &FilterAst,
     scores: &BTreeMap<String, Option<u8>>,
+    percentiles: &BTreeMap<String, Option<u8>>,
 ) -> Result<bool, String> {
     let mut matches = Vec::new();
     for rule in &ast.rules {
+        if let Some(key) = moneyball_percentile_key(rule) {
+            let target = value_as_real(&rule.value)?;
+            let percentile = percentiles.get(&key).copied().flatten().map(f64::from);
+            matches.push(percentile.is_some_and(|percentile| {
+                if rule.op == "pct_gte" {
+                    percentile >= target
+                } else {
+                    percentile <= target
+                }
+            }));
+            continue;
+        }
         let Some(role_id) = parse_moneyball_role_id(&rule.field, true)? else {
             continue;
         };
@@ -1430,7 +1478,7 @@ mod tests {
     }
 
     #[test]
-    fn partitions_moneyball_role_rules_from_sql_rules() {
+    fn partitions_moneyball_role_and_percentile_rules_from_sql_rules() {
         let ast = parse_filter_ast(
             vec![
                 rule(
@@ -1438,6 +1486,7 @@ mod tests {
                     "gt",
                     FilterValue::Integer(70),
                 ),
+                rule("moneyball.goals", "pct_gte", FilterValue::Integer(90)),
                 rule("moneyball.minutes", "gt", FilterValue::Integer(10)),
             ],
             Some("and"),
@@ -1448,12 +1497,27 @@ mod tests {
             moneyball_role_ids_from_ast(&ast).expect("role ids"),
             ["mc_central_midfielder_ip"]
         );
-        let non_role = without_moneyball_role_rules(&ast)
-            .expect("partition role rules")
-            .expect("non-role rule");
-        assert_eq!(non_role.rules.len(), 1);
-        assert_eq!(non_role.rules[0].field, "moneyball.minutes");
-        assert!(compile_filters_for_moneyball(&non_role, 2, true).is_ok());
+        assert_eq!(moneyball_percentile_keys_from_ast(&ast), ["goals"]);
+        let sql_rules = without_post_cohort_rules(&ast)
+            .expect("partition post-cohort rules")
+            .expect("SQL rule");
+        assert_eq!(sql_rules.rules.len(), 1);
+        assert_eq!(sql_rules.rules[0].field, "moneyball.minutes");
+        assert!(compile_filters_for_moneyball(&sql_rules, 2, true).is_ok());
+    }
+
+    #[test]
+    fn percentile_operators_never_compile_to_sql() {
+        // Playing-time context has no percentile, so its rule stays a rejected SQL rule.
+        for field in ["moneyball.goals", "moneyball.minutes"] {
+            let ast =
+                parse_filter_ast(vec![rule(field, "pct_gte", FilterValue::Integer(90))], None)
+                    .expect("parse ast");
+            assert!(
+                compile_filters_for_moneyball(&ast, 2, true).is_err(),
+                "expected {field} percentile rule to be rejected in SQL"
+            );
+        }
     }
 
     #[test]
@@ -1468,14 +1532,16 @@ mod tests {
         )
         .expect("parse role filter");
 
-        assert!(!moneyball_role_rules_match(
+        assert!(!post_cohort_rules_match(
             &ast,
-            &BTreeMap::from([("mc_central_midfielder_ip".to_string(), None)])
+            &BTreeMap::from([("mc_central_midfielder_ip".to_string(), None)]),
+            &BTreeMap::new()
         )
         .expect("match null score"));
-        assert!(moneyball_role_rules_match(
+        assert!(post_cohort_rules_match(
             &ast,
-            &BTreeMap::from([("mc_central_midfielder_ip".to_string(), Some(69))])
+            &BTreeMap::from([("mc_central_midfielder_ip".to_string(), Some(69))]),
+            &BTreeMap::new()
         )
         .expect("match score"));
     }

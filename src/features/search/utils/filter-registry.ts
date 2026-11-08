@@ -1,4 +1,5 @@
 import {
+  isPercentileOperator,
   MONEYBALL_SEARCH_METRICS,
   type MoneyballSearchMetric,
 } from "@/utils/moneyball-search-metrics";
@@ -85,6 +86,16 @@ export function isFilterRuleComplete(
     return false;
   }
   if (!field.operators.some((operator) => operator.id === rule.op)) {
+    return false;
+  }
+  if (
+    isPercentileOperator(rule.op) &&
+    !(
+      typeof rule.value.value === "number" &&
+      rule.value.value >= 0 &&
+      rule.value.value <= 100
+    )
+  ) {
     return false;
   }
 

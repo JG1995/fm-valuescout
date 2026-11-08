@@ -12,6 +12,10 @@ function operatorSymbol(op: string): string {
       return "=";
     case "neq":
       return "≠";
+    case "pct_gte":
+      return "percentile ≥";
+    case "pct_lte":
+      return "percentile ≤";
     default:
       return op.replaceAll("_", " ");
   }

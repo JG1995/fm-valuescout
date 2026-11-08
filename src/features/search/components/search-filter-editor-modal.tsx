@@ -5,6 +5,7 @@ import { SelectField } from "@/components/ui/field/select-field";
 import { TextField } from "@/components/ui/field/text-field";
 import { Modal } from "@/components/ui/modal/modal";
 import { PlayerMetricPicker } from "@/components/ui/player-metric-picker";
+import { isPercentileOperator } from "@/utils/moneyball-search-metrics";
 import type {
   FilterCombineMode,
   FilterRule,
@@ -59,8 +60,24 @@ function FilterRuleRow({
     });
   };
 
+  const percentile = isPercentileOperator(rule.op);
+
   const handleOperatorChange = (op: string) => {
-    onChange({ ...rule, op });
+    if (isPercentileOperator(op) === percentile) {
+      onChange({ ...rule, op });
+      return;
+    }
+    // Raw values and percentiles use different scales, so switching resets the value.
+    const value = defaultValueForField(rule.field, view);
+    onChange({
+      ...rule,
+      op,
+      value:
+        isPercentileOperator(op) &&
+        (value.type === "integer" || value.type === "number")
+          ? { ...value, value: 90 }
+          : value,
+    });
   };
 
   const handleValueChange = (value: FilterValue) => {
@@ -105,6 +122,8 @@ function FilterRuleRow({
             label="Value"
             type="number"
             inputMode="numeric"
+            min={percentile ? 0 : undefined}
+            max={percentile ? 100 : undefined}
             value={
               rule.value.type === "integer" ? String(rule.value.value) : "0"
             }
@@ -122,6 +141,8 @@ function FilterRuleRow({
             label="Value"
             type="number"
             inputMode="decimal"
+            min={percentile ? 0 : undefined}
+            max={percentile ? 100 : undefined}
             value={
               rule.value.type === "number" ? String(rule.value.value) : "0"
             }
@@ -193,9 +214,13 @@ export function SearchFilterEditorModal({
   const draftIsComplete = draftRules.every((rule) =>
     isFilterRuleComplete(rule, view),
   );
-  const hasMoneyballRoleRule =
+  const hasPostCohortRule =
     view === "moneyball" &&
-    draftRules.some((rule) => rule.field.startsWith("moneyball_role."));
+    draftRules.some(
+      (rule) =>
+        rule.field.startsWith("moneyball_role.") ||
+        isPercentileOperator(rule.op),
+    );
 
   useEffect(() => {
     if (open) {
@@ -275,16 +300,17 @@ export function SearchFilterEditorModal({
           </fieldset>
         </div>
 
-        {hasMoneyballRoleRule ? (
+        {hasPostCohortRule ? (
           <p
-            aria-label="Moneyball role filters apply after the comparison cohort is calculated"
+            aria-label="Percentile and Moneyball role filters apply after the comparison cohort is calculated"
             className="text-body-sm text-on-surface-variant"
             role="note"
           >
-            Moneyball role filters apply after the comparison cohort is
-            calculated. With AND they narrow that scored cohort; with OR they
-            can add scored matches from the full comparison cohort alongside
-            other rules.
+            Percentile and Moneyball role filters apply after the comparison
+            cohort is calculated, so they follow the Filtered cohort or All
+            players choice in the toolbar. With AND they narrow that scored
+            cohort; with OR they can add scored matches from the full comparison
+            cohort alongside other rules.
           </p>
         ) : null}
 

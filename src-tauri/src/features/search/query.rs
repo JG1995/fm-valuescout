@@ -21,9 +21,9 @@ use crate::features::player_metrics::{
 
 use super::filter::{
     compile_filters, compile_filters_for_moneyball, compile_filters_with_club_dna,
-    current_role_ids_from_ast, moneyball_role_ids_from_ast, moneyball_role_rules_match,
-    potential_role_ids_from_ast, without_moneyball_role_rules, CombineMode, CompiledFilter,
-    FilterAst,
+    current_role_ids_from_ast, has_post_cohort_rules, moneyball_percentile_keys_from_ast,
+    moneyball_role_ids_from_ast, post_cohort_rules_match, potential_role_ids_from_ast,
+    without_post_cohort_rules, CombineMode, CompiledFilter, FilterAst,
 };
 
 pub use crate::features::player_metrics::resolver::DynamicValue;
@@ -362,10 +362,10 @@ pub fn search_players_in_view(
     conn: &Connection,
     request: SearchPlayersRequest<'_>,
 ) -> Result<SearchPlayersPage, String> {
-    if request_uses_moneyball_role(&request)
+    if request_needs_cohort_scoring(&request)
         || (request.view == SearchView::Moneyball && request_uses_tactic(&request))
     {
-        return search_players_with_roles(conn, request);
+        return search_players_with_cohort_scoring(conn, request);
     }
 
     let SearchPlayersRequest {
@@ -808,17 +808,13 @@ fn tactic_sql_expression(
     )
 }
 
-fn request_uses_moneyball_role(request: &SearchPlayersRequest<'_>) -> bool {
+fn request_needs_cohort_scoring(request: &SearchPlayersRequest<'_>) -> bool {
     request
         .requested_fields
         .iter()
         .any(|field| field.starts_with("moneyball_role."))
         || request.sort_by.moneyball_role_id().is_some()
-        || request.filter_ast.is_some_and(|ast| {
-            ast.rules
-                .iter()
-                .any(|rule| rule.field.starts_with("moneyball_role."))
-        })
+        || request.filter_ast.is_some_and(has_post_cohort_rules)
 }
 
 struct RoleSearchCandidate {
@@ -831,7 +827,7 @@ struct RoleSearchCandidate {
     tactic_scores: BTreeMap<String, Option<u8>>,
 }
 
-fn search_players_with_roles(
+fn search_players_with_cohort_scoring(
     conn: &Connection,
     request: SearchPlayersRequest<'_>,
 ) -> Result<SearchPlayersPage, String> {
@@ -900,6 +896,12 @@ fn search_players_with_roles(
         .iter()
         .flat_map(|definition| definition.metrics.iter().map(|metric| metric.key.clone()))
         .collect();
+    // Percentile filters read their statistics' cohort percentiles alongside the roles'.
+    role_metric_keys.extend(
+        filter_ast
+            .map(moneyball_percentile_keys_from_ast)
+            .unwrap_or_default(),
+    );
     let tactic_fields_for_moneyball: Vec<MetricField> = dynamic_fields
         .iter()
         .filter(|f| f.is_tactic_field())
@@ -977,7 +979,7 @@ fn search_players_with_roles(
     let from_sql = "FROM players INNER JOIN player_moneyball_stats moneyball ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid AND moneyball.percentiles_json IS NOT NULL".to_string();
 
     let non_role_ast = match filter_ast {
-        Some(ast) => without_moneyball_role_rules(ast)?,
+        Some(ast) => without_post_cohort_rules(ast)?,
         None => None,
     };
     let compiled_non_role = non_role_ast
@@ -986,13 +988,9 @@ fn search_players_with_roles(
         .transpose()?;
     let base_where_sql = "players.snapshot_id = ?1".to_string();
     let non_role_where_sql = where_sql_with_filter(&base_where_sql, compiled_non_role.as_ref());
-    let has_role_rules = filter_ast.is_some_and(|ast| {
-        ast.rules
-            .iter()
-            .any(|rule| rule.field.starts_with("moneyball_role."))
-    });
-    let mixed_or =
-        has_role_rules && filter_ast.is_some_and(|ast| matches!(ast.combine, CombineMode::Or));
+    let has_post_cohort_rules = filter_ast.is_some_and(has_post_cohort_rules);
+    let mixed_or = has_post_cohort_rules
+        && filter_ast.is_some_and(|ast| matches!(ast.combine, CombineMode::Or));
 
     let mut non_role_bind_values = vec![Value::Integer(snapshot_id)];
     if let Some(compiled) = &compiled_non_role {
@@ -1149,14 +1147,18 @@ fn search_players_with_roles(
     }
 
     if let Some(ast) = filter_ast {
-        if has_role_rules {
+        if has_post_cohort_rules {
             let mut filtered_candidates = Vec::with_capacity(candidates.len());
             for candidate in candidates {
-                let role_match = moneyball_role_rules_match(ast, &candidate.role_scores)?;
+                let post_cohort_match = post_cohort_rules_match(
+                    ast,
+                    &candidate.role_scores,
+                    &candidate.role_percentiles,
+                )?;
                 let keep = if mixed_or {
-                    non_role_uids.contains(&candidate.player.uid) || role_match
+                    non_role_uids.contains(&candidate.player.uid) || post_cohort_match
                 } else {
-                    role_match
+                    post_cohort_match
                 };
                 if keep {
                     filtered_candidates.push(candidate);
@@ -4681,6 +4683,124 @@ mod tests {
                 .dynamic_values
                 .get(&format!("moneyball_role.{role_id}")),
             Some(&Some(DynamicValue::Integer(100)))
+        );
+    }
+
+    #[test]
+    fn filters_moneyball_percentiles_within_the_selected_comparison_pool() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-percentile-filters.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Cohort low", 100),
+                player_template(2, "Cohort high", 100),
+                player_template(3, "Outside top", 100),
+                player_template(4, "Cohort missing", 100),
+            ],
+        );
+        let snapshot_id = current_snapshot_id(&conn);
+        for (uid, statistics, percentiles) in [
+            (1, r#"{"goals":1}"#, r#"{"goals":10}"#),
+            (2, r#"{"goals":5}"#, r#"{"goals":60}"#),
+            (3, r#"{"goals":9}"#, r#"{"goals":100}"#),
+            (4, r#"{"goals":null}"#, r#"{"goals":null}"#),
+        ] {
+            insert_moneyball_statistics(&conn, snapshot_id, uid, statistics, Some(percentiles));
+        }
+        let requested_fields = ["moneyball.goals".to_string()];
+        let search = |op: &str, target: i64, pool: ComparisonPool| {
+            search_moneyball(
+                &conn,
+                0,
+                DEFAULT_PAGE_LIMIT,
+                SortField::Name,
+                SortDir::Asc,
+                &requested_fields,
+                vec![
+                    filter_rule("name", "contains", FilterValue::Text("Cohort".to_string())),
+                    filter_rule("moneyball.goals", op, FilterValue::Integer(target)),
+                ],
+                Some("and"),
+                pool,
+            )
+            .expect("percentile filter")
+        };
+        let uids = |page: &SearchPlayersPage| {
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>()
+        };
+
+        // Within the "Cohort" players, the higher scorer ranks best.
+        let filtered = search("pct_gte", 90, ComparisonPool::Filtered);
+        assert_eq!(uids(&filtered), [2]);
+        assert_eq!(
+            filtered.players[0]
+                .moneyball_percentiles
+                .get("moneyball.goals"),
+            Some(&Some(100))
+        );
+        // Across all players, the same player's stored percentile is 60.
+        assert!(uids(&search("pct_gte", 90, ComparisonPool::FullCsv)).is_empty());
+        assert_eq!(
+            uids(&search("pct_lte", 60, ComparisonPool::FullCsv)),
+            [2, 1]
+        );
+        // A player without the statistic matches neither bound.
+        assert_eq!(uids(&search("pct_lte", 50, ComparisonPool::Filtered)), [1]);
+    }
+
+    #[test]
+    fn unions_percentile_rules_under_or_and_ranks_lower_is_better_metrics_as_best() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-percentile-or.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Named", 100),
+                player_template(2, "Fast scorer", 100),
+                player_template(3, "Slow scorer", 100),
+            ],
+        );
+        let snapshot_id = current_snapshot_id(&conn);
+        for (uid, minutes_per_goal) in [(1, 300), (2, 60), (3, 400)] {
+            insert_moneyball_statistics(
+                &conn,
+                snapshot_id,
+                uid,
+                &json!({ "minutes_per_goal": minutes_per_goal }).to_string(),
+                Some(r#"{"minutes_per_goal":50}"#),
+            );
+        }
+
+        let page = search_moneyball(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::Name,
+            SortDir::Asc,
+            &[],
+            vec![
+                filter_rule("name", "contains", FilterValue::Text("Named".to_string())),
+                filter_rule(
+                    "moneyball.minutes_per_goal",
+                    "pct_gte",
+                    FilterValue::Integer(90),
+                ),
+            ],
+            Some("or"),
+            ComparisonPool::Filtered,
+        )
+        .expect("mixed OR percentile filter");
+
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            [2, 1]
         );
     }
 
