@@ -3436,6 +3436,34 @@ describe("My Club route", () => {
     expect(resolvePlannerTacticIpcMock().lanes[1].ipWeight).toBe(0.51);
   });
 
+  it("invalidates Search results after saving a tactic", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
+    const { queryClient } = renderMyClubRoute({
+      initialEntry: "/my-club?view=tactic",
+    });
+
+    await screen.findByRole("region", { name: "Tactic controls" });
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    const weight = screen.getByRole("slider", {
+      name: "IP/OOP score weight",
+    });
+    weight.focus();
+    await user.keyboard("{ArrowRight}");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    await waitFor(() =>
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: searchKeys.all,
+      }),
+    );
+    expect(resolvePlannerTacticIpcMock().lanes[0].customMetricKeys).toEqual([
+      "save_ratio",
+      "clean_sheets_ratio",
+    ]);
+  });
+
   it("saves an explicit midfield side without clearing its compatible role", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();

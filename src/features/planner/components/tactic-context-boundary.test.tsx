@@ -8,6 +8,7 @@ import {
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
 } from "@/testing/planner-ipc-mock";
+import { moneyballMetric } from "@/utils/moneyball-metrics";
 import { type PlannerContext, plannerKeys } from "../api/planner-keys";
 import type { PlannerTactic } from "../types/tactic";
 import { PlannerTacticEditor } from "./planner-tactic-editor";
@@ -233,5 +234,120 @@ describe("PlannerTacticEditor captured context", () => {
       screen.getByRole("slider", { name: "IP/OOP score weight" }),
     ).toHaveValue("30");
     expect(screen.queryByText("Tactic saved.")).not.toBeInTheDocument();
+  });
+});
+
+describe("PlannerTacticEditor slot metrics", () => {
+  const addTrigger = () =>
+    screen.queryByRole("button", {
+      name: "Add Moneyball metric: Choose a metric",
+    });
+  const removeButtonNames = () =>
+    screen
+      .getAllByRole("button", { name: /^Remove / })
+      .map((button) => button.getAttribute("aria-label"));
+  const removeNames = (keys: string[]) =>
+    keys.map((key) => `Remove ${moneyballMetric(key).label}`);
+
+  async function searchMetric(
+    user: ReturnType<typeof userEvent.setup>,
+    key: string,
+  ) {
+    const trigger = addTrigger();
+    if (!trigger) {
+      throw new Error("Add Moneyball metric is not available");
+    }
+    await user.click(trigger);
+    await user.type(
+      screen.getByRole("combobox", { name: "Search Moneyball metrics" }),
+      moneyballMetric(key).label,
+    );
+  }
+
+  it("adds metrics in order, stops at five, removes in place, and saves them", async () => {
+    const user = userEvent.setup();
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes[0].customMetricKeys = [];
+    const saveRequests: PlannerTactic[] = [];
+    vi.mocked(invokeCommand).mockImplementation(async (command, args) => {
+      if (command !== "save_planner_tactic") {
+        throw new Error(`Unexpected command ${command}`);
+      }
+      const request = args as PlannerContext & { tactic: PlannerTactic };
+      saveRequests.push(request.tactic);
+      return request.tactic;
+    });
+    render(
+      provider(
+        queryClient(),
+        <PlannerTacticEditor
+          context={contextA}
+          activeSaveRefreshError={false}
+          isActiveSaveUnavailable={false}
+          tactic={tactic}
+          options={resolvePlannerTacticOptionsIpcMock()}
+        />,
+      ),
+    );
+    expect(screen.getByText("No metrics chosen.")).toBeInTheDocument();
+    expect(screen.getByText("0/5")).toBeInTheDocument();
+
+    const keys = ["save_ratio", "goals", "assists", "xg", "xa"];
+    for (const [index, key] of keys.entries()) {
+      await searchMetric(user, key);
+      await user.click(
+        screen.getByRole("option", { name: moneyballMetric(key).label }),
+      );
+      if (index === 0) {
+        await searchMetric(user, key);
+        expect(
+          screen.queryByRole("option", { name: moneyballMetric(key).label }),
+        ).toBeNull();
+        await user.keyboard("{Escape}");
+      }
+    }
+
+    expect(removeButtonNames()).toEqual(removeNames(keys));
+    expect(screen.getByText("5/5")).toBeInTheDocument();
+    expect(addTrigger()).toBeNull();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: `Remove ${moneyballMetric("goals").label}`,
+      }),
+    );
+    const remaining = ["save_ratio", "assists", "xg", "xa"];
+    expect(removeButtonNames()).toEqual(removeNames(remaining));
+    expect(addTrigger()).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    await waitFor(() => expect(saveRequests).toHaveLength(1));
+    expect(saveRequests[0].lanes.map((lane) => lane.customMetricKeys)).toEqual(
+      tactic.lanes.map((lane, index) =>
+        index === 0 ? remaining : lane.customMetricKeys,
+      ),
+    );
+  });
+
+  it("disables the metric controls when the tactic is read-only", () => {
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes[0].customMetricKeys = ["save_ratio"];
+    render(
+      provider(
+        queryClient(),
+        <PlannerTacticEditor
+          context={contextA}
+          activeSaveRefreshError={false}
+          isActiveSaveUnavailable={false}
+          readOnly
+          tactic={tactic}
+          options={resolvePlannerTacticOptionsIpcMock()}
+        />,
+      ),
+    );
+
+    expect(screen.getByRole("button", { name: /^Remove / })).toBeDisabled();
+    expect(addTrigger()).toBeDisabled();
   });
 });

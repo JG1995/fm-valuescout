@@ -117,6 +117,7 @@ pub struct TacticLaneDto {
     pub ip_role_id: String,
     pub oop_position: String,
     pub oop_role_id: String,
+    pub custom_metric_keys: Vec<String>,
 }
 
 impl From<TacticLaneDto> for TacticLane {
@@ -131,6 +132,7 @@ impl From<TacticLaneDto> for TacticLane {
             ip_role_id: lane.ip_role_id,
             oop_position: lane.oop_position,
             oop_role_id: lane.oop_role_id,
+            custom_metric_keys: lane.custom_metric_keys,
         }
     }
 }
@@ -161,6 +163,7 @@ pub struct TacticLaneResponseDto {
     pub ip_role_id: String,
     pub oop_position: String,
     pub oop_role_id: String,
+    pub custom_metric_keys: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -185,6 +188,7 @@ impl From<PlannerTactic> for PlannerTacticDto {
                     ip_role_id: lane.ip_role_id,
                     oop_position: lane.oop_position,
                     oop_role_id: lane.oop_role_id,
+                    custom_metric_keys: lane.custom_metric_keys,
                 })
                 .collect(),
         }
@@ -919,6 +923,43 @@ mod tests {
             tactic_service::get_tactic(&conn, inactive.id).expect("read after wrong token"),
             persisted
         );
+    }
+
+    #[test]
+    fn tactic_ipc_round_trips_slot_metrics_and_requires_the_field() {
+        let (_temp_dir, conn, active, _inactive) = open_with_two_saves();
+        let mut payload = serde_json::to_value(PlannerTacticDto::from(
+            get_planner_tactic_for_context(&conn, &active).expect("read tactic"),
+        ))
+        .expect("serialize tactic");
+        payload["lanes"][0]["customMetricKeys"] = serde_json::json!(["save_ratio", "goals"]);
+
+        let input: PlannerTacticInputDto =
+            serde_json::from_value(payload.clone()).expect("deserialize tactic input");
+        let tactic = PlannerTactic::from(input);
+        save_planner_tactic_for_context(&conn, &active, &tactic).expect("save tactic");
+        let response = serde_json::to_value(PlannerTacticDto::from(
+            get_planner_tactic_for_context(&conn, &active).expect("reload tactic"),
+        ))
+        .expect("serialize reloaded tactic");
+
+        assert_eq!(
+            response["lanes"][0]["customMetricKeys"],
+            serde_json::json!(["save_ratio", "goals"])
+        );
+        assert_eq!(
+            response["lanes"][1]["customMetricKeys"],
+            serde_json::json!([])
+        );
+
+        payload["lanes"][0]
+            .as_object_mut()
+            .expect("lane object")
+            .remove("customMetricKeys");
+        let error = serde_json::from_value::<PlannerTacticInputDto>(payload)
+            .err()
+            .expect("reject a lane without customMetricKeys");
+        assert!(error.to_string().contains("customMetricKeys"));
     }
 
     #[test]

@@ -12,7 +12,9 @@ pub(crate) mod role_score;
 mod save_statistics;
 pub(crate) mod save_stats_import;
 
-pub(crate) use catalog::{is_moneyball_statistic_key, MONEYBALL_STATISTIC_KEYS};
+pub(crate) use catalog::{
+    is_moneyball_statistic_key, is_save_unavailable_statistic_key, MONEYBALL_STATISTIC_KEYS,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum MoneyballMetricValue {

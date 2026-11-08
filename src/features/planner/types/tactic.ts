@@ -10,6 +10,8 @@ export type TacticLane = {
   ipRoleId: string;
   oopPosition: string;
   oopRoleId: string;
+  /** Ordered Moneyball statistic keys for the slot's custom score (0–5). */
+  customMetricKeys: string[];
 };
 
 export type PlannerTactic = {
