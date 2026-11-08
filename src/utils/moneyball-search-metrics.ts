@@ -4,13 +4,14 @@ import {
   MONEYBALL_ROLE_CATALOG,
   type MoneyballRolePositionFamily,
 } from "./moneyball-role-catalog";
+import { getPlayerMetric } from "./player-metrics";
 import { POSITION_ORDER } from "./position-order";
 
 export type MoneyballSearchMetric = {
   id: string;
   label: string;
   category: string;
-  kind: "string" | "integer" | "number" | "enum";
+  kind: "string" | "integer" | "number" | "boolean" | "enum";
   align: "left" | "right";
   defaultWidth: number;
   sortable: true;
@@ -90,6 +91,25 @@ const basic = (id: string, label: string, kind: "string" | "integer") => ({
   operators: kind === "integer" ? NUMBER_OPERATORS : TEXT_OPERATORS,
 });
 
+/** A General Search field offered unchanged in Moneyball under a Moneyball category. */
+const shared = (id: string, category: string): MoneyballSearchMetric => {
+  const metric = getPlayerMetric(id);
+  if (!metric) {
+    throw new Error(`unknown General Search field: ${id}`);
+  }
+  return {
+    id,
+    label: metric.label,
+    category,
+    kind: metric.kind,
+    align: metric.align,
+    defaultWidth: metric.defaultWidth,
+    sortable: true,
+    operators: metric.operators,
+    enumOptions: metric.enumOptions,
+  };
+};
+
 const context = (id: string, label: string): MoneyballSearchMetric => ({
   id,
   label,
@@ -150,6 +170,22 @@ export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
     operators: ENUM_OPERATORS,
     enumOptions: POSITION_ORDER.map((key) => ({ value: key, label: key })),
   },
+  // Ability and contract context for recruitment. FM attributes, hidden and
+  // personality values, position suitability, FM role scores, and Club DNA
+  // stay General-only, so Moneyball remains a performance view.
+  ...["ca", "pa", "reputation", "world_reputation"].map((id) =>
+    shared(id, "Ability and reputation"),
+  ),
+  ...[
+    "wage",
+    "contract_year",
+    "transfer_listed",
+    "loan_listed",
+    "not_for_sale",
+    "set_for_release",
+    "on_loan",
+    "team_level",
+  ].map((id) => shared(id, "Club and value")),
   context("moneyball.starts", "Starts"),
   context("moneyball.substitute_appearances", "Sub appearances"),
   context("moneyball.minutes", "Minutes"),

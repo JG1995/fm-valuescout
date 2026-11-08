@@ -153,6 +153,9 @@ describe("dynamicColumnFields", () => {
   it("keeps General sorts and fields independent of Moneyball", () => {
     expect(isVisibleSortField("pa", [], "general")).toBe(true);
     expect(isVisibleSortField("moneyball.goals", [], "general")).toBe(false);
+    expect(isVisibleSortField("ca", [], "moneyball")).toBe(true);
+    expect(isVisibleSortField("wage", [], "moneyball")).toBe(true);
+    expect(isVisibleSortField("attr.Pace", [], "moneyball")).toBe(false);
     expect(
       dynamicColumnFields(
         [
@@ -174,15 +177,15 @@ describe("dynamicColumnFields", () => {
     ).toEqual([]);
   });
 
-  it("keeps Moneyball basic identity and value sorts while rejecting CA and PA", () => {
+  it("keeps Moneyball basic identity, ability, and value sorts", () => {
     expect(isVisibleSortField("name", [], "moneyball")).toBe(true);
     expect(isVisibleSortField("age", [], "moneyball")).toBe(true);
     expect(isVisibleSortField("nationality", [], "moneyball")).toBe(true);
     expect(isVisibleSortField("club", [], "moneyball")).toBe(true);
     expect(isVisibleSortField("division", [], "moneyball")).toBe(true);
     expect(isVisibleSortField("value", [], "moneyball")).toBe(true);
-    expect(isVisibleSortField("ca", [], "moneyball")).toBe(false);
-    expect(isVisibleSortField("pa", [], "moneyball")).toBe(false);
+    expect(isVisibleSortField("ca", [], "moneyball")).toBe(true);
+    expect(isVisibleSortField("pa", [], "moneyball")).toBe(true);
     expect(
       isVisibleSortField("moneyball.average_rating", [], "moneyball"),
     ).toBe(true);

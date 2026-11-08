@@ -439,6 +439,8 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           club: "Moneyball FC",
           currentClubUid: 9002,
           division: "Premier Division",
+          ca: 150 - (index % 40),
+          pa: 170 - (index % 30),
           marketValueGbp: 1000000 + index * 10000,
           dynamicValues: {
             "moneyball.minutes": 900 + index * 10,

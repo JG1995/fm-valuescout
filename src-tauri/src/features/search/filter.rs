@@ -1171,7 +1171,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_general_only_filters_in_moneyball_mode() {
+    fn limits_moneyball_filters_to_its_catalog() {
         let ast = parse_filter_ast(
             vec![rule("attr.Acceleration", "gt", FilterValue::Integer(12))],
             None,
@@ -1180,9 +1180,22 @@ mod tests {
 
         assert!(compile_filters_for_moneyball(&ast, 2, true).is_err());
 
-        let ability_ast = parse_filter_ast(vec![rule("ca", "gt", FilterValue::Integer(120))], None)
-            .expect("parse filter");
-        assert!(compile_filters_for_moneyball(&ability_ast, 2, true).is_err());
+        // Ability, reputation, and contract fields are shared with General.
+        let shared = parse_filter_ast(
+            vec![
+                rule("ca", "gte", FilterValue::Integer(120)),
+                rule("wage", "lte", FilterValue::Integer(50_000)),
+                rule("transfer_listed", "is", FilterValue::Bool(true)),
+                rule(
+                    "team_level",
+                    "in",
+                    FilterValue::List(vec![FilterValue::Text("senior".to_string())]),
+                ),
+            ],
+            None,
+        )
+        .expect("parse filter");
+        assert!(compile_filters_for_moneyball(&shared, 2, true).is_ok());
     }
 
     #[test]

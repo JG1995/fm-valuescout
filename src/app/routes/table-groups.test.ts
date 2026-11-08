@@ -173,11 +173,14 @@ describe("one field grouping across pickers, Columns, and headers", () => {
       MONEYBALL_TABLE_GROUPS,
     ).map((group) => group.label);
 
-    expect(labels.slice(0, 3)).toEqual([
+    expect(labels.slice(0, 4)).toEqual([
       "Identity",
+      "Ability and reputation",
       "Club and value",
       "Playing time",
     ]);
+    expect(MONEYBALL_TABLE_GROUPS.groupForColumn("ca")).toBe("ability");
+    expect(MONEYBALL_TABLE_GROUPS.groupForColumn("wage")).toBe("market");
   });
 
   it("inserts added columns at the end of their group instead of the far right", () => {

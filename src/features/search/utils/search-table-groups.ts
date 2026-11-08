@@ -47,6 +47,7 @@ export const SEARCH_TABLE_GROUPS: TableGroupInput = {
 export const MONEYBALL_TABLE_GROUPS: TableGroupInput = {
   groups: [
     { id: "profile", label: "Profile" },
+    { id: "ability", label: "Ability" },
     { id: "market", label: "Market" },
     { id: "playing-time", label: "Playing Time" },
     { id: "performance", label: "Performance" },
@@ -75,6 +76,8 @@ export const MONEYBALL_TABLE_GROUPS: TableGroupInput = {
     switch (metric.category) {
       case "Identity":
         return "profile";
+      case "Ability and reputation":
+        return "ability";
       case "Club and value":
         return "market";
       case "Playing time":

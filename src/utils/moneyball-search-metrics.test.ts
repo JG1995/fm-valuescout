@@ -26,6 +26,18 @@ describe("Moneyball Search metrics", () => {
       "preferred_foot",
       "value",
       "position",
+      "ca",
+      "pa",
+      "reputation",
+      "world_reputation",
+      "wage",
+      "contract_year",
+      "transfer_listed",
+      "loan_listed",
+      "not_for_sale",
+      "set_for_release",
+      "on_loan",
+      "team_level",
     ]);
     expect(getMoneyballSearchMetric("height")?.defaultWidth).toBe(88);
     expect(DEFAULT_MONEYBALL_TABLE_COLUMN_IDS).toEqual([
@@ -41,6 +53,29 @@ describe("Moneyball Search metrics", () => {
       "moneyball.xg_per_90",
       "moneyball.xa_per_90",
     ]);
+  });
+
+  it("shares General's ability and contract fields but not FM attributes or role scores", () => {
+    for (const id of ["ca", "wage", "transfer_listed", "team_level"]) {
+      const general = getPlayerMetric(id);
+      expect(getMoneyballSearchMetric(id)).toMatchObject({
+        label: general?.label,
+        kind: general?.kind,
+        operators: general?.operators,
+      });
+    }
+    expect(getMoneyballSearchMetric("ca")?.category).toBe(
+      "Ability and reputation",
+    );
+    expect(getMoneyballSearchMetric("wage")?.category).toBe("Club and value");
+    for (const id of [
+      "attr.Pace",
+      "hidden.Consistency",
+      "role.goalkeeper_ip",
+      "club_dna",
+    ]) {
+      expect(getMoneyballSearchMetric(id)).toBeUndefined();
+    }
   });
 
   it("filters Position with the same position choices as General Search", () => {
