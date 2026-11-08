@@ -51,6 +51,8 @@ pub enum FilterValue {
     Integer(i64),
     Real(f64),
     Bool(bool),
+    /// `[min, max]` for `between`, or the choices for `in` / `not_in`.
+    List(Vec<FilterValue>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -157,7 +159,7 @@ pub fn moneyball_role_ids_from_ast(ast: &FilterAst) -> Result<Vec<String>, Strin
 /// The statistic key of a rule that compares a Moneyball statistic's 0–100
 /// comparison-pool percentile rather than its raw value.
 fn moneyball_percentile_key(rule: &FilterRule) -> Option<String> {
-    if !matches!(rule.op.as_str(), "pct_gte" | "pct_lte") {
+    if !matches!(rule.op.as_str(), "pct_gte" | "pct_lte" | "pct_between") {
         return None;
     }
     match resolve_field(&rule.field, true) {
@@ -211,46 +213,68 @@ pub fn post_cohort_rules_match(
     let mut matches = Vec::new();
     for rule in &ast.rules {
         if let Some(key) = moneyball_percentile_key(rule) {
-            let target = value_as_real(&rule.value)?;
+            let op = rule.op.trim_start_matches("pct_");
             let percentile = percentiles.get(&key).copied().flatten().map(f64::from);
-            matches.push(percentile.is_some_and(|percentile| {
-                if rule.op == "pct_gte" {
-                    percentile >= target
-                } else {
-                    percentile <= target
-                }
-            }));
+            matches.push(number_matches(percentile, op, &rule.value, value_as_real)?);
             continue;
         }
         let Some(role_id) = parse_moneyball_role_id(&rule.field, true)? else {
             continue;
         };
-        let score = scores.get(&role_id).copied().flatten();
-        let matches_rule = score.is_some_and(|score| {
-            let Ok(target) = value_as_integer(&rule.value) else {
-                return false;
-            };
-            match rule.op.as_str() {
-                "gt" => i64::from(score) > target,
-                "lt" => i64::from(score) < target,
-                "eq" => i64::from(score) == target,
-                "neq" => i64::from(score) != target,
-                _ => false,
-            }
-        });
-        if !matches_rule && !matches!(rule.op.as_str(), "gt" | "lt" | "eq" | "neq") {
-            return Err(format!("invalid integer filter operator: {}", rule.op));
-        }
-        if !matches!(rule.value, FilterValue::Integer(_)) {
-            return Err("expected integer filter value".to_string());
-        }
-        matches.push(matches_rule);
+        let score = scores.get(&role_id).copied().flatten().map(f64::from);
+        matches.push(number_matches(
+            score,
+            &rule.op,
+            &rule.value,
+            |value| match value {
+                FilterValue::Integer(number) => Ok(*number as f64),
+                _ => Err("expected integer filter value".to_string()),
+            },
+        )?);
     }
 
     Ok(match ast.combine {
         CombineMode::And => matches.into_iter().all(|matches_rule| matches_rule),
         CombineMode::Or => matches.into_iter().any(|matches_rule| matches_rule),
     })
+}
+
+/// Whether a post-cohort score passes a numeric operator. The operator and
+/// value are validated first, so a missing score never hides a bad rule.
+fn number_matches(
+    actual: Option<f64>,
+    op: &str,
+    value: &FilterValue,
+    parse: impl Fn(&FilterValue) -> Result<f64, String>,
+) -> Result<bool, String> {
+    let (low, high) = if op == "between" {
+        let (low, high) = range_bounds(value)?;
+        (parse(low)?, parse(high)?)
+    } else {
+        let target = parse(value)?;
+        (target, target)
+    };
+    let test: fn(f64, f64, f64) -> bool = match op {
+        "gt" => |actual, target, _| actual > target,
+        "gte" => |actual, target, _| actual >= target,
+        "lt" => |actual, target, _| actual < target,
+        "lte" => |actual, target, _| actual <= target,
+        "eq" => |actual, target, _| actual == target,
+        "neq" => |actual, target, _| actual != target,
+        "between" => |actual, low, high| (low..=high).contains(&actual),
+        _ => return Err(format!("invalid numeric filter operator: {op}")),
+    };
+    Ok(actual.is_some_and(|actual| test(actual, low, high)))
+}
+
+fn range_bounds(value: &FilterValue) -> Result<(&FilterValue, &FilterValue), String> {
+    match value {
+        FilterValue::List(bounds) => match bounds.as_slice() {
+            [low, high] => Ok((low, high)),
+            _ => Err("between needs exactly two bounds".to_string()),
+        },
+        _ => Err("between needs a [min, max] value".to_string()),
+    }
 }
 
 fn resolve_position_suitability(field: &str) -> Result<Option<FieldKind>, String> {
@@ -441,8 +465,18 @@ pub fn filter_value_from_json(value: serde_json::Value) -> Result<FilterValue, S
             })
             .ok_or_else(|| "filter value number out of range".to_string()),
         serde_json::Value::Bool(value) => Ok(FilterValue::Bool(value)),
+        serde_json::Value::Array(items) => items
+            .into_iter()
+            .map(|item| match item {
+                serde_json::Value::Array(_) => Err("filter lists cannot be nested".to_string()),
+                item => filter_value_from_json(item),
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(FilterValue::List),
         serde_json::Value::Null => Err("filter value cannot be null".to_string()),
-        _ => Err("filter value must be a string, number, or boolean".to_string()),
+        serde_json::Value::Object(_) => {
+            Err("filter value must be a string, number, boolean, or list".to_string())
+        }
     }
 }
 
@@ -545,7 +579,7 @@ fn compile_rule(
             compile_json_integer_rule(column, &key, op, value, next_index)
         }
         FieldKind::StringList { column } => compile_string_list_rule(column, op, value, next_index),
-        FieldKind::PositionPresence => compile_position_presence_rule(op, value, next_index),
+        FieldKind::PositionPresence => compile_position_presence_rule(op, value),
         FieldKind::RoleScore { role_id } => {
             compile_role_score_rule(&role_id, op, value, next_index)
         }
@@ -572,26 +606,54 @@ fn compile_rule(
     }
 }
 
+/// `{expr} {op} ?n` for a numeric operator, or `{expr} BETWEEN ?n AND ?m`.
+/// `param` binds each bound as an integer or real SQL value.
+fn compare_number(
+    expr: &str,
+    op: &str,
+    value: &FilterValue,
+    next_index: &mut usize,
+    param: fn(&FilterValue) -> Result<Value, String>,
+) -> Result<(String, Vec<Value>), String> {
+    if op == "between" {
+        let (low, high) = range_bounds(value)?;
+        let params = vec![param(low)?, param(high)?];
+        let low = next_placeholder(next_index);
+        let high = next_placeholder(next_index);
+        return Ok((format!("{expr} BETWEEN {low} AND {high}"), params));
+    }
+    let compare = match op {
+        "gt" => ">",
+        "gte" => ">=",
+        "lt" => "<",
+        "lte" => "<=",
+        "eq" => "=",
+        "neq" => "!=",
+        _ => return Err(format!("invalid numeric filter operator: {op}")),
+    };
+    let bound = param(value)?;
+    let placeholder = next_placeholder(next_index);
+    Ok((format!("{expr} {compare} {placeholder}"), vec![bound]))
+}
+
+fn integer_param(value: &FilterValue) -> Result<Value, String> {
+    value_as_integer(value).map(Value::Integer)
+}
+
+fn real_param(value: &FilterValue) -> Result<Value, String> {
+    value_as_real(value).map(Value::Real)
+}
+
 fn compile_role_score_rule(
     role_id: &str,
     op: &str,
     value: &FilterValue,
     next_index: &mut usize,
 ) -> Result<(String, Vec<Value>), String> {
-    let number = value_as_integer(value)?;
-    let compare = match op {
-        "gt" => ">",
-        "lt" => "<",
-        "eq" => "=",
-        "neq" => "!=",
-        _ => return Err(format!("invalid integer filter operator: {op}")),
-    };
-    let score_placeholder = next_placeholder(next_index);
     let column = player_current_column(role_id)?;
-    let clause = format!(
-        "({PLAYER_METRICS_ALIAS}.{column} {compare} {score_placeholder} AND {PLAYER_METRICS_ALIAS}.{column} IS NOT NULL)"
-    );
-    Ok((clause, vec![Value::Integer(number)]))
+    let expr = format!("{PLAYER_METRICS_ALIAS}.{column}");
+    let (compare, params) = compare_number(&expr, op, value, next_index, integer_param)?;
+    Ok((format!("({compare} AND {expr} IS NOT NULL)"), params))
 }
 
 fn compile_club_dna_score_rule(
@@ -600,20 +662,12 @@ fn compile_club_dna_score_rule(
     next_index: &mut usize,
     bindings: ClubDnaSqlBindings,
 ) -> Result<(String, Vec<Value>), String> {
-    let number = value_as_integer(value)?;
-    let compare = match op {
-        "gt" => ">",
-        "lt" => "<",
-        "eq" => "=",
-        "neq" => "!=",
-        _ => return Err(format!("invalid integer filter operator: {op}")),
-    };
-    let score_placeholder = next_placeholder(next_index);
+    let (compare, params) = compare_number("cds.score", op, value, next_index, integer_param)?;
     let clause = format!(
-        "EXISTS (SELECT 1 FROM club_dna_scores cds WHERE cds.snapshot_id = players.snapshot_id AND cds.uid = players.uid AND cds.definition_version = ?{} AND cds.score_model_version = ?{} AND cds.score IS NOT NULL AND cds.score {compare} {score_placeholder})",
+        "EXISTS (SELECT 1 FROM club_dna_scores cds WHERE cds.snapshot_id = players.snapshot_id AND cds.uid = players.uid AND cds.definition_version = ?{} AND cds.score_model_version = ?{} AND cds.score IS NOT NULL AND {compare})",
         bindings.definition_version, bindings.score_model_version,
     );
-    Ok((clause, vec![Value::Integer(number)]))
+    Ok((clause, params))
 }
 
 fn compile_potential_role_score_rule(
@@ -622,20 +676,10 @@ fn compile_potential_role_score_rule(
     value: &FilterValue,
     next_index: &mut usize,
 ) -> Result<(String, Vec<Value>), String> {
-    let number = value_as_integer(value)?;
-    let compare = match op {
-        "gt" => ">",
-        "lt" => "<",
-        "eq" => "=",
-        "neq" => "!=",
-        _ => return Err(format!("invalid integer filter operator: {op}")),
-    };
-    let score_placeholder = next_placeholder(next_index);
     let column = player_potential_column(role_id)?;
-    let clause = format!(
-        "({PLAYER_METRICS_ALIAS}.{column} {compare} {score_placeholder} AND {PLAYER_METRICS_ALIAS}.{column} IS NOT NULL)"
-    );
-    Ok((clause, vec![Value::Integer(number)]))
+    let expr = format!("{PLAYER_METRICS_ALIAS}.{column}");
+    let (compare, params) = compare_number(&expr, op, value, next_index, integer_param)?;
+    Ok((format!("({compare} AND {expr} IS NOT NULL)"), params))
 }
 
 fn json_extract_expr(column: &str, key: &str) -> String {
@@ -650,18 +694,9 @@ fn compile_json_integer_rule(
     value: &FilterValue,
     next_index: &mut usize,
 ) -> Result<(String, Vec<Value>), String> {
-    let number = value_as_integer(value)?;
-    let placeholder = next_placeholder(next_index);
-    let compare = match op {
-        "gt" => ">",
-        "lt" => "<",
-        "eq" => "=",
-        "neq" => "!=",
-        _ => return Err(format!("invalid integer filter operator: {op}")),
-    };
     let extract = json_extract_expr(column, key);
-    let clause = format!("({extract} {compare} {placeholder} AND {extract} IS NOT NULL)");
-    Ok((clause, vec![Value::Integer(number)]))
+    let (compare, params) = compare_number(&extract, op, value, next_index, integer_param)?;
+    Ok((format!("({compare} AND {extract} IS NOT NULL)"), params))
 }
 
 fn compile_moneyball_real_rule(
@@ -670,18 +705,9 @@ fn compile_moneyball_real_rule(
     value: &FilterValue,
     next_index: &mut usize,
 ) -> Result<(String, Vec<Value>), String> {
-    let number = value_as_real(value)?;
-    let placeholder = next_placeholder(next_index);
-    let compare = match op {
-        "gt" => ">",
-        "lt" => "<",
-        "eq" => "=",
-        "neq" => "!=",
-        _ => return Err(format!("invalid real filter operator: {op}")),
-    };
     let extract = format!("json_extract(moneyball.statistics_json, '$.\"{key}\"')");
-    let clause = format!("({extract} {compare} {placeholder} AND {extract} IS NOT NULL)");
-    Ok((clause, vec![Value::Real(number)]))
+    let (compare, params) = compare_number(&extract, op, value, next_index, real_param)?;
+    Ok((format!("({compare} AND {extract} IS NOT NULL)"), params))
 }
 
 fn compile_string_list_rule(
@@ -727,28 +753,38 @@ fn compile_string_list_rule(
 fn compile_position_presence_rule(
     op: &str,
     value: &FilterValue,
-    next_index: &mut usize,
 ) -> Result<(String, Vec<Value>), String> {
-    let _ = next_index;
-    let text = value_as_text(value)?;
-    let Some(canonical) = POSITION_KEYS
-        .iter()
-        .copied()
-        .find(|candidate| candidate.eq_ignore_ascii_case(&text))
-    else {
-        return Err(format!("unknown position key: {text}"));
-    };
-    let extract = json_extract_expr("positions_json", canonical);
-
     // Position filters are exact key matches — never substring LIKE (MC must not match AMC).
     // FM rates every position from 1, so only familiarity 16+ counts; lower, null, and
     // missing values do not.
-    let positive = format!(
-        "COALESCE(json_type(positions_json, '$.{canonical}') = 'integer' AND {extract} >= 16, 0)"
-    );
+    let present = |text: &str| -> Result<String, String> {
+        let Some(canonical) = POSITION_KEYS
+            .iter()
+            .copied()
+            .find(|candidate| candidate.eq_ignore_ascii_case(text))
+        else {
+            return Err(format!("unknown position key: {text}"));
+        };
+        let extract = json_extract_expr("positions_json", canonical);
+        Ok(format!(
+            "COALESCE(json_type(positions_json, '$.{canonical}') = 'integer' AND {extract} >= 16, 0)"
+        ))
+    };
     let clause = match op {
-        "is" | "contains" => positive,
-        "is_not" | "not_contains" => format!("NOT ({positive})"),
+        "is" | "contains" => present(&value_as_text(value)?)?,
+        "is_not" | "not_contains" => format!("NOT ({})", present(&value_as_text(value)?)?),
+        "in" | "not_in" => {
+            let any = value_as_text_list(value)?
+                .iter()
+                .map(|text| present(text))
+                .collect::<Result<Vec<_>, _>>()?
+                .join(" OR ");
+            if op == "in" {
+                format!("({any})")
+            } else {
+                format!("NOT ({any})")
+            }
+        }
         _ => return Err(format!("invalid string filter operator: {op}")),
     };
     Ok((clause, Vec::new()))
@@ -811,23 +847,13 @@ fn compile_integer_rule(
     value: &FilterValue,
     next_index: &mut usize,
 ) -> Result<(String, Vec<Value>), String> {
-    let number = value_as_integer(value)?;
-    let placeholder = next_placeholder(next_index);
-    let compare = match op {
-        "gt" => ">",
-        "lt" => "<",
-        "eq" => "=",
-        "neq" => "!=",
-        _ => return Err(format!("invalid integer filter operator: {op}")),
-    };
-
+    let (compare, params) = compare_number(column, op, value, next_index, integer_param)?;
     let clause = if nullable {
-        format!("({column} {compare} {placeholder} AND {column} IS NOT NULL)")
+        format!("({compare} AND {column} IS NOT NULL)")
     } else {
-        format!("{column} {compare} {placeholder}")
+        compare
     };
-
-    Ok((clause, vec![Value::Integer(number)]))
+    Ok((clause, params))
 }
 
 fn compile_boolean_rule(
@@ -856,19 +882,36 @@ fn compile_enum_rule(
     value: &FilterValue,
     next_index: &mut usize,
 ) -> Result<(String, Vec<Value>), String> {
-    let text = value_as_text(value)?;
-    if !allowed.iter().any(|candidate| *candidate == text) {
+    let texts = match op {
+        "is" | "is_not" => vec![value_as_text(value)?],
+        "in" | "not_in" => value_as_text_list(value)?,
+        _ => return Err(format!("invalid enum filter operator: {op}")),
+    };
+    if let Some(text) = texts
+        .iter()
+        .find(|text| !allowed.iter().any(|candidate| candidate == text))
+    {
         return Err(format!("invalid value for {column}: {text}"));
     }
 
-    let placeholder = next_placeholder(next_index);
+    let placeholders = texts
+        .iter()
+        .map(|_| next_placeholder(next_index))
+        .collect::<Vec<_>>();
     let clause = match op {
-        "is" => format!("({column} = {placeholder} AND {column} IS NOT NULL)"),
-        "is_not" => format!("({column} != {placeholder} AND {column} IS NOT NULL)"),
-        _ => return Err(format!("invalid enum filter operator: {op}")),
+        "is" => format!("({column} = {} AND {column} IS NOT NULL)", placeholders[0]),
+        "is_not" => format!("({column} != {} AND {column} IS NOT NULL)", placeholders[0]),
+        "in" => format!(
+            "({column} IN ({}) AND {column} IS NOT NULL)",
+            placeholders.join(", ")
+        ),
+        _ => format!(
+            "({column} NOT IN ({}) AND {column} IS NOT NULL)",
+            placeholders.join(", ")
+        ),
     };
 
-    Ok((clause, vec![Value::Text(text)]))
+    Ok((clause, texts.into_iter().map(Value::Text).collect()))
 }
 
 fn next_placeholder(next_index: &mut usize) -> String {
@@ -882,6 +925,17 @@ fn value_as_text(value: &FilterValue) -> Result<String, String> {
         FilterValue::Text(text) => Ok(text.clone()),
         _ => Err("filter value must be a string".to_string()),
     }
+}
+
+/// The non-empty choices of an `in` / `not_in` rule.
+fn value_as_text_list(value: &FilterValue) -> Result<Vec<String>, String> {
+    let FilterValue::List(items) = value else {
+        return Err("filter value must be a list of choices".to_string());
+    };
+    if items.is_empty() {
+        return Err("filter value must list at least one choice".to_string());
+    }
+    items.iter().map(value_as_text).collect()
 }
 
 fn value_as_integer(value: &FilterValue) -> Result<i64, String> {
@@ -921,6 +975,7 @@ fn value_as_bool(value: &FilterValue) -> Result<bool, String> {
             _ => Err(format!("filter value must be a boolean: {number}")),
         },
         FilterValue::Real(number) => Err(format!("filter value must be a boolean: {number}")),
+        FilterValue::List(_) => Err("filter value must be a boolean".to_string()),
     }
 }
 
@@ -961,6 +1016,125 @@ mod tests {
 
         let error = parse_filter_ast(rules, None).expect_err("cap");
         assert!(error.contains("filter rule count exceeds maximum"));
+    }
+
+    #[test]
+    fn parses_json_arrays_as_list_values() {
+        assert_eq!(
+            filter_value_from_json(json!([18, 23])),
+            Ok(FilterValue::List(vec![
+                FilterValue::Integer(18),
+                FilterValue::Integer(23)
+            ]))
+        );
+        assert!(filter_value_from_json(json!([[1]])).is_err());
+    }
+
+    #[test]
+    fn compiles_inclusive_and_range_numeric_operators() {
+        let compile = |field: &str, op: &str, value: FilterValue, moneyball: bool| {
+            let ast = parse_filter_ast(vec![rule(field, op, value)], None).expect("parse");
+            compile_filters_for_moneyball(&ast, 1, moneyball).expect("compile")
+        };
+
+        let ca = compile("ca", "gte", FilterValue::Integer(140), false);
+        assert_eq!(ca.sql, "(ca >= ?1)");
+        assert_eq!(ca.params, vec![Value::Integer(140)]);
+
+        let age = compile(
+            "age",
+            "between",
+            FilterValue::List(vec![FilterValue::Integer(18), FilterValue::Integer(23)]),
+            false,
+        );
+        assert_eq!(age.sql, "((age BETWEEN ?1 AND ?2 AND age IS NOT NULL))");
+        assert_eq!(age.params, vec![Value::Integer(18), Value::Integer(23)]);
+
+        let pace = compile("attr.Pace", "lte", FilterValue::Integer(12), false);
+        assert!(pace
+            .sql
+            .contains("json_extract(attributes_json, '$.Pace') <= ?1"));
+
+        let xa = compile(
+            "moneyball.xa_per_90",
+            "between",
+            FilterValue::List(vec![FilterValue::Real(0.2), FilterValue::Real(0.4)]),
+            true,
+        );
+        assert!(xa.sql.contains("BETWEEN ?1 AND ?2"));
+        assert_eq!(xa.params, vec![Value::Real(0.2), Value::Real(0.4)]);
+
+        let one_bound = parse_filter_ast(
+            vec![rule(
+                "ca",
+                "between",
+                FilterValue::List(vec![FilterValue::Integer(1)]),
+            )],
+            None,
+        )
+        .expect("parse");
+        assert!(compile_filters(&one_bound, 1).is_err());
+    }
+
+    #[test]
+    fn compiles_any_of_choices_for_enums_and_positions() {
+        let texts = |values: &[&str]| {
+            FilterValue::List(
+                values
+                    .iter()
+                    .map(|value| FilterValue::Text((*value).to_string()))
+                    .collect(),
+            )
+        };
+        let compile = |field: &str, op: &str, value: FilterValue| {
+            let ast = parse_filter_ast(vec![rule(field, op, value)], None).expect("parse");
+            compile_filters(&ast, 1)
+        };
+
+        let foot = compile("preferred_foot", "in", texts(&["left", "either"])).expect("foot");
+        assert!(foot.sql.contains("preferred_foot IN (?1, ?2)"));
+        assert_eq!(
+            foot.params,
+            vec![Value::Text("left".into()), Value::Text("either".into())]
+        );
+        let level = compile("team_level", "not_in", texts(&["youth"])).expect("level");
+        assert!(level.sql.contains("team_level NOT IN (?1)"));
+
+        let positions = compile("position", "in", texts(&["DR", "DL"])).expect("positions");
+        assert!(positions.sql.contains("'$.DR'") && positions.sql.contains("'$.DL'"));
+        assert!(positions.sql.contains(" OR "));
+
+        assert!(compile("position", "in", texts(&[])).is_err());
+        assert!(compile("preferred_foot", "in", texts(&["both"])).is_err());
+    }
+
+    #[test]
+    fn matches_percentile_ranges_and_inclusive_role_bounds() {
+        let role = "moneyball_role.wbl_wbr_wing_back_ip";
+        let scores = BTreeMap::from([("wbl_wbr_wing_back_ip".to_string(), Some(70))]);
+        let percentiles = BTreeMap::from([("goals".to_string(), Some(85))]);
+        let range = |low: i64, high: i64| {
+            FilterValue::List(vec![FilterValue::Integer(low), FilterValue::Integer(high)])
+        };
+        let matches = |field: &str, op: &str, value: FilterValue| {
+            let ast = parse_filter_ast(vec![rule(field, op, value)], None).expect("parse");
+            post_cohort_rules_match(&ast, &scores, &percentiles).expect("match")
+        };
+
+        assert!(matches("moneyball.goals", "pct_between", range(80, 90)));
+        assert!(!matches("moneyball.goals", "pct_between", range(86, 90)));
+        assert!(matches(role, "gte", FilterValue::Integer(70)));
+        assert!(!matches(role, "between", range(71, 80)));
+        assert_eq!(
+            moneyball_percentile_keys_from_ast(
+                &parse_filter_ast(
+                    vec![rule("moneyball.goals", "pct_between", range(80, 90))],
+                    None
+                )
+                .expect("parse")
+            ),
+            vec!["goals".to_string()]
+        );
     }
 
     #[test]

@@ -9,25 +9,25 @@ describe("dynamicColumnFields", () => {
       {
         id: createFilterRuleId(),
         field: "ca",
-        op: "gt",
+        op: "gte",
         value: { type: "integer", value: 100 },
       },
       {
         id: createFilterRuleId(),
         field: "role.deep_lying_playmaker_ip",
-        op: "gt",
+        op: "gte",
         value: { type: "integer", value: 70 },
       },
       {
         id: createFilterRuleId(),
         field: "attr.Acceleration",
-        op: "gt",
+        op: "gte",
         value: { type: "integer", value: 12 },
       },
       {
         id: createFilterRuleId(),
         field: "role.deep_lying_playmaker_ip",
-        op: "lt",
+        op: "lte",
         value: { type: "integer", value: 95 },
       },
     ]);
@@ -43,7 +43,7 @@ describe("dynamicColumnFields", () => {
       {
         id: createFilterRuleId(),
         field: "club_dna",
-        op: "gt",
+        op: "gte",
         value: { type: "integer", value: 70 },
       },
     ]);
@@ -57,7 +57,7 @@ describe("dynamicColumnFields", () => {
       {
         id: createFilterRuleId(),
         field: "role.deep_lying_playmaker_ip",
-        op: "gt",
+        op: "gte",
         value: { type: "integer" as const, value: 70 },
       },
     ];
@@ -74,13 +74,13 @@ describe("dynamicColumnFields", () => {
         {
           id: createFilterRuleId(),
           field: "position",
-          op: "is",
-          value: { type: "text", value: "MC" },
+          op: "in",
+          value: { type: "list", value: ["MC"] },
         },
         {
           id: createFilterRuleId(),
           field: "pos.MC",
-          op: "gt",
+          op: "gte",
           value: { type: "integer", value: 15 },
         },
       ]),
@@ -92,7 +92,7 @@ describe("dynamicColumnFields", () => {
       {
         id: createFilterRuleId(),
         field: "potential_role.goalkeeper_ip",
-        op: "gt",
+        op: "gte",
         value: { type: "integer" as const, value: 70 },
       },
     ];
@@ -130,7 +130,7 @@ describe("dynamicColumnFields", () => {
       {
         id: createFilterRuleId(),
         field: "moneyball_role.wbl_wbr_wing_back_ip",
-        op: "gt",
+        op: "gte",
         value: { type: "integer" as const, value: 70 },
       },
     ];
@@ -159,13 +159,13 @@ describe("dynamicColumnFields", () => {
           {
             id: createFilterRuleId(),
             field: "moneyball.goals",
-            op: "gt",
+            op: "gte",
             value: { type: "integer" as const, value: 5 },
           },
           {
             id: createFilterRuleId(),
             field: "moneyball_role.wbl_wbr_wing_back_ip",
-            op: "gt",
+            op: "gte",
             value: { type: "integer" as const, value: 70 },
           },
         ],

@@ -23,15 +23,22 @@ export type MoneyballSearchMetric = {
 };
 
 const NUMBER_OPERATORS = [
-  { id: "gt", label: "greater than" },
-  { id: "lt", label: "less than" },
+  { id: "gte", label: "at least" },
+  { id: "lte", label: "at most" },
+  { id: "between", label: "between" },
   { id: "eq", label: "equals" },
-  { id: "neq", label: "does not equal" },
+] as const;
+/** Decimal statistics: an exact match is almost never meaningful. */
+const DECIMAL_OPERATORS = [
+  { id: "gte", label: "at least" },
+  { id: "lte", label: "at most" },
+  { id: "between", label: "between" },
 ] as const;
 /** Compare a statistic's 0–100 comparison-pool percentile instead of its raw value. */
 const PERCENTILE_OPERATORS = [
-  { id: "pct_gte", label: "percentile ≥" },
-  { id: "pct_lte", label: "percentile ≤" },
+  { id: "pct_gte", label: "percentile at least" },
+  { id: "pct_lte", label: "percentile at most" },
+  { id: "pct_between", label: "percentile between" },
 ] as const;
 
 export function isPercentileOperator(op: string) {
@@ -45,8 +52,8 @@ const TEXT_OPERATORS = [
   { id: "is_not", label: "is not" },
 ] as const;
 const ENUM_OPERATORS = [
-  { id: "is", label: "is" },
-  { id: "is_not", label: "is not" },
+  { id: "in", label: "is any of" },
+  { id: "not_in", label: "is none of" },
 ] as const;
 
 const MONEYBALL_ROLE_FAMILY_LABELS: Record<
@@ -151,7 +158,10 @@ export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
     align: "right" as const,
     defaultWidth: metric.width === "wide" ? 176 : 112,
     sortable: true as const,
-    operators: [...NUMBER_OPERATORS, ...PERCENTILE_OPERATORS],
+    operators: [
+      ...(metric.kind === "count" ? NUMBER_OPERATORS : DECIMAL_OPERATORS),
+      ...PERCENTILE_OPERATORS,
+    ],
     metric,
   })),
   ...MONEYBALL_ROLE_CATALOG.map(roleMetric),

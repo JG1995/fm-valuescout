@@ -6,13 +6,13 @@ import { SearchFilterStrip } from "./search-filter-strip";
 const ca: FilterRule = {
   id: "ca",
   field: "ca",
-  op: "gt",
+  op: "gte",
   value: { type: "integer", value: 150 },
 };
 const age: FilterRule = {
   id: "age",
   field: "age",
-  op: "lt",
+  op: "lte",
   value: { type: "integer", value: 23 },
 };
 

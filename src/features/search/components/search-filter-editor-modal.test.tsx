@@ -7,7 +7,7 @@ import { SearchFilterEditorModal } from "./search-filter-editor-modal";
 const appliedRule: FilterRule = {
   id: "applied-ca",
   field: "ca",
-  op: "gt",
+  op: "gte",
   value: { type: "integer", value: 150 },
 };
 
@@ -183,8 +183,61 @@ describe("SearchFilterEditorModal", () => {
         appliedRule,
         expect.objectContaining({
           field: "attr.Pace",
-          op: "gt",
+          op: "gte",
           value: { type: "integer", value: 15 },
+        }),
+      ],
+      "and",
+    );
+  });
+
+  it("edits a min–max range and a set of position choices", async () => {
+    const user = userEvent.setup();
+    const { onApply } = renderEditor();
+    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
+    const chooseField = async (search: string, option: string) => {
+      await user.click(
+        within(dialog).getByRole("button", { name: "Add filter" }),
+      );
+      await user.type(
+        within(dialog).getByRole("combobox", { name: "Search fields" }),
+        search,
+      );
+      await user.click(within(dialog).getByRole("option", { name: option }));
+    };
+
+    await chooseField("age", "Age");
+    await user.selectOptions(
+      within(dialog).getByRole("combobox", { name: "Operator" }),
+      "between",
+    );
+    const min = within(dialog).getByLabelText("Min");
+    await user.type(min, "23");
+    await user.type(within(dialog).getByLabelText("Max"), "18");
+
+    await chooseField("position", "Position");
+    await user.click(within(dialog).getByRole("checkbox", { name: "DR" }));
+    await user.click(within(dialog).getByRole("checkbox", { name: "DL" }));
+
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    expect(onApply).not.toHaveBeenCalled();
+    expect(min).toHaveAccessibleDescription("Enter both numbers, lowest first");
+
+    await user.clear(min);
+    await user.type(min, "16");
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+
+    expect(onApply).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          field: "age",
+          op: "between",
+          value: { type: "range", value: [16, 18] },
+        }),
+        expect.objectContaining({
+          field: "position",
+          op: "in",
+          value: { type: "list", value: ["DR", "DL"] },
         }),
       ],
       "and",
@@ -312,7 +365,7 @@ describe("SearchFilterEditorModal", () => {
         {
           id: "xa",
           field: "moneyball.xa_per_90",
-          op: "gt",
+          op: "gte",
           value: { type: "number", value: 0.35 },
         },
       ],
@@ -362,7 +415,7 @@ describe("SearchFilterEditorModal", () => {
         {
           id: "moneyball-role",
           field: "moneyball_role.wbl_wbr_wing_back_ip",
-          op: "gt",
+          op: "gte",
           value: { type: "integer", value: 70 },
         },
       ],

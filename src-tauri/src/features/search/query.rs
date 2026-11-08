@@ -3345,6 +3345,51 @@ mod tests {
         .expect("position suitability");
         assert_eq!(suitability.total, 1);
         assert_eq!(suitability.players[0].name, "Natural MC");
+
+        let names = |rules: Vec<FilterRule>| {
+            search_with_filters(
+                &conn,
+                0,
+                DEFAULT_PAGE_LIMIT,
+                SortField::DEFAULT,
+                SortDir::DEFAULT,
+                rules,
+                None,
+            )
+            .expect("position search")
+            .players
+            .into_iter()
+            .map(|player| player.name)
+            .collect::<Vec<_>>()
+        };
+        let positions = |keys: &[&str]| {
+            FilterValue::List(
+                keys.iter()
+                    .map(|key| FilterValue::Text((*key).to_string()))
+                    .collect(),
+            )
+        };
+        // Any of: familiarity 16+ at either key; DM 12 does not count.
+        assert_eq!(
+            names(vec![filter_rule(
+                "position",
+                "in",
+                positions(&["MC", "DM"])
+            )]),
+            vec!["Natural MC", "Cutoff MC"]
+        );
+        assert_eq!(
+            names(vec![filter_rule("position", "not_in", positions(&["ST"]))]),
+            vec!["Natural MC", "Cutoff MC"]
+        );
+        assert_eq!(
+            names(vec![filter_rule(
+                "pos.MC",
+                "between",
+                FilterValue::List(vec![FilterValue::Integer(15), FilterValue::Integer(16)])
+            )]),
+            vec!["Cutoff MC", "Fringe MC"]
+        );
     }
 
     #[test]

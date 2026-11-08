@@ -943,11 +943,11 @@ describe("search route", () => {
       expect(router.state.location.search).toMatchObject({
         view: "moneyball",
         filters: [
-          expect.objectContaining({ field: roleField, op: "gt", value: 70 }),
+          expect.objectContaining({ field: roleField, op: "gte", value: 70 }),
         ],
       });
       expect(getLastSearchPlayersArgs()).toMatchObject({
-        filters: [{ field: roleField, op: "gt", value: 70 }],
+        filters: [{ field: roleField, op: "gte", value: 70 }],
         requestedFields: expect.arrayContaining([roleField]),
       });
     });
@@ -956,7 +956,7 @@ describe("search route", () => {
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         comparisonPool: "fullCsv",
-        filters: [{ field: roleField, op: "gt", value: 70 }],
+        filters: [{ field: roleField, op: "gte", value: 70 }],
       });
     });
   });
@@ -2381,27 +2381,29 @@ describe("search route", () => {
     await waitFor(() => {
       expect(getSearchPlayersCallCount()).toBeGreaterThan(callsBeforeEdit);
       expect(getLastSearchPlayersArgs()?.filters).toEqual([
-        { field: "ca", op: "gt", value: 150 },
+        { field: "ca", op: "gte", value: 150 },
       ]);
       expect(getLastSearchPlayersArgs()?.filterCombine).toBe("or");
     });
     expect(router.state.location.search).toMatchObject({
       combine: "or",
-      filters: [expect.objectContaining({ field: "ca", op: "gt", value: 150 })],
+      filters: [
+        expect.objectContaining({ field: "ca", op: "gte", value: 150 }),
+      ],
     });
     expect(
       screen.getByRole("button", {
-        name: /Remove filter CA > 150/i,
+        name: /Remove filter CA ≥ 150/i,
       }),
     ).toBeInTheDocument();
     expect(screen.queryByText("Low CA")).not.toBeInTheDocument();
     expect(screen.getByText("High CA")).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole("button", { name: /Remove filter CA > 150/i }),
+      screen.getByRole("button", { name: /Remove filter CA ≥ 150/i }),
     );
     expect(
-      screen.queryByRole("button", { name: /Remove filter CA > 150/i }),
+      screen.queryByRole("button", { name: /Remove filter CA ≥ 150/i }),
     ).toBeNull();
     expect(await screen.findByText("Low CA")).toBeInTheDocument();
   });
@@ -2449,7 +2451,7 @@ describe("search route", () => {
 
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()?.filters).toEqual([
-        { field: "potential_role.goalkeeper_ip", op: "gt", value: 50 },
+        { field: "potential_role.goalkeeper_ip", op: "gte", value: 50 },
       ]);
     });
     expect(
@@ -2460,7 +2462,7 @@ describe("search route", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: /Remove filter Potential role · Goalkeeper \(IP\) > 50/i,
+        name: /Remove filter Potential role · Goalkeeper \(IP\) ≥ 50/i,
       }),
     );
 
@@ -2512,7 +2514,7 @@ describe("search route", () => {
     setSearchPlayersOverride([]);
     const encoded = encodeURIComponent(
       JSON.stringify([
-        { field: "moneyball.average_rating", op: "gt", value: 7 },
+        { field: "moneyball.average_rating", op: "gte", value: 7 },
       ]),
     );
     renderSearchRoute(`/search?view=moneyball&filters=${encoded}`);
@@ -2533,7 +2535,7 @@ describe("search route", () => {
     setSearchPlayersOverride([playerNamed("Passer", 150)]);
     const encoded = encodeURIComponent(
       JSON.stringify([
-        { field: "moneyball.pass_completion_ratio", op: "gt", value: 80 },
+        { field: "moneyball.pass_completion_ratio", op: "gte", value: 80 },
         {
           field: "moneyball.pass_completion_ratio",
           op: "pct_gte",
@@ -2545,11 +2547,11 @@ describe("search route", () => {
 
     expect(
       await screen.findByRole("button", {
-        name: "Remove filter Pass Completion % > 80%",
+        name: "Remove filter Pass Completion % ≥ 80%",
       }),
     ).toBeInTheDocument();
     expect(getLastSearchPlayersArgs()?.filters).toEqual([
-      { field: "moneyball.pass_completion_ratio", op: "gt", value: 0.8 },
+      { field: "moneyball.pass_completion_ratio", op: "gte", value: 0.8 },
       { field: "moneyball.pass_completion_ratio", op: "pct_gte", value: 90 },
     ]);
   });
@@ -2633,7 +2635,7 @@ describe("search route", () => {
         filters: [
           expect.objectContaining({
             field: "ca",
-            op: "gt",
+            op: "gte",
             value: 150,
           }),
         ],
@@ -2652,12 +2654,12 @@ describe("search route", () => {
 
     expect(
       await screen.findByRole("button", {
-        name: /Remove filter CA > 150/i,
+        name: /Remove filter CA ≥ 150/i,
       }),
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()?.filters).toEqual([
-        { field: "ca", op: "gt", value: 150 },
+        { field: "ca", op: "gte", value: 150 },
       ]);
       expect(getLastSearchPlayersArgs()?.filterCombine).toBe("or");
     });
@@ -2671,7 +2673,7 @@ describe("search route", () => {
       playerNamed("Low CA", 100),
     ]);
     const encodedFilters = encodeURIComponent(
-      JSON.stringify([{ id: "seed", field: "ca", op: "gt", value: 150 }]),
+      JSON.stringify([{ id: "seed", field: "ca", op: "gte", value: 150 }]),
     );
     renderSearchRoute(
       `/search?sort=ca&dir=desc&combine=and&filters=${encodedFilters}`,
@@ -2679,12 +2681,12 @@ describe("search route", () => {
 
     expect(
       await screen.findByRole("button", {
-        name: /Remove filter CA > 150/i,
+        name: /Remove filter CA ≥ 150/i,
       }),
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()?.filters).toEqual([
-        { field: "ca", op: "gt", value: 150 },
+        { field: "ca", op: "gte", value: 150 },
       ]);
     });
     expect(screen.queryByText("Low CA")).not.toBeInTheDocument();
@@ -2696,7 +2698,7 @@ describe("search route", () => {
     setSearchPlayersOverride([playerNamed("High CA", 180)]);
     const rules = Array.from({ length: 31 }, (_, index) => ({
       field: "ca",
-      op: "gt",
+      op: "gte",
       value: index,
     }));
     const { router } = renderSearchRoute(
@@ -2773,7 +2775,7 @@ describe("search route", () => {
       playerNamed("Low CA", 100),
     ]);
     const encodedFilters = encodeURIComponent(
-      JSON.stringify([{ field: "ca", op: "gt", value: 150 }]),
+      JSON.stringify([{ field: "ca", op: "gte", value: 150 }]),
     );
     const { router } = renderSearchRoute(
       `/search?view=general&sort=pa&dir=asc&combine=or&filters=${encodedFilters}&shortlistOnly=true`,
@@ -2886,8 +2888,8 @@ describe("search route", () => {
 
     const filters = encodeURIComponent(
       JSON.stringify([
-        { field: "role.deep_lying_playmaker_ip", op: "gt", value: 70 },
-        { field: "attr.Acceleration", op: "gt", value: 12 },
+        { field: "role.deep_lying_playmaker_ip", op: "gte", value: 70 },
+        { field: "attr.Acceleration", op: "gte", value: 12 },
       ]),
     );
     renderSearchRoute(
@@ -2908,8 +2910,8 @@ describe("search route", () => {
     expect(getLastSearchPlayersArgs()).toMatchObject({
       requestedFields: ["height"],
       filters: [
-        { field: "role.deep_lying_playmaker_ip", op: "gt", value: 70 },
-        { field: "attr.Acceleration", op: "gt", value: 12 },
+        { field: "role.deep_lying_playmaker_ip", op: "gte", value: 70 },
+        { field: "attr.Acceleration", op: "gte", value: 12 },
       ],
     });
   });
@@ -3211,7 +3213,7 @@ describe("search route", () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("General Scout", 160)]);
     const encoded = encodeURIComponent(
-      JSON.stringify([{ field: "ca", op: "gt", value: 150 }]),
+      JSON.stringify([{ field: "ca", op: "gte", value: 150 }]),
     );
     renderSearchRoute(`/search?shortlistOnly=true&filters=${encoded}`);
 
@@ -3491,8 +3493,8 @@ describe("search route", () => {
       const { router } = renderSearchRoute(
         `/search?sort=ca&dir=desc&combine=and&filters=${encodeURIComponent(
           JSON.stringify([
-            { field: "ca", op: "gt", value: 150 },
-            { field: "pa", op: "gt", value: 150 },
+            { field: "ca", op: "gte", value: 150 },
+            { field: "pa", op: "gte", value: 150 },
           ]),
         )}`,
       );
@@ -3512,7 +3514,7 @@ describe("search route", () => {
 
       await user.click(
         within(getToolbar()).getByRole("button", {
-          name: /Remove filter CA > 150/i,
+          name: /Remove filter CA ≥ 150/i,
         }),
       );
       await waitFor(() => {
@@ -3521,7 +3523,7 @@ describe("search route", () => {
       await waitFor(() => {
         expect(
           within(getToolbar()).queryByRole("button", {
-            name: /Remove filter CA > 150/i,
+            name: /Remove filter CA ≥ 150/i,
           }),
         ).toBeNull();
       });

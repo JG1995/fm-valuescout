@@ -39,7 +39,37 @@ export function getFilterField(
     : getPlayerMetric(fieldId);
 }
 
-export function defaultValueForField(
+/** The value shape an operator takes: one value, a `[min, max]` range, or a list of choices. */
+export function valueShapeForOperator(op: string): "single" | "range" | "list" {
+  if (op === "between" || op === "pct_between") {
+    return "range";
+  }
+  return op === "in" || op === "not_in" ? "list" : "single";
+}
+
+/** An empty value for the operator's shape; percentiles start at 90 (or 80–100). */
+export function defaultValueForRule(
+  fieldId: string,
+  op: string,
+  view: SearchView = "general",
+): FilterValue {
+  const shape = valueShapeForOperator(op);
+  if (shape === "list") {
+    return { type: "list", value: [] };
+  }
+  if (shape === "range") {
+    return {
+      type: "range",
+      value: op === "pct_between" ? [80, 100] : [Number.NaN, Number.NaN],
+    };
+  }
+  if (isPercentileOperator(op)) {
+    return { type: "number", value: 90 };
+  }
+  return defaultValueForField(fieldId, view);
+}
+
+function defaultValueForField(
   fieldId: string,
   view: SearchView = "general",
 ): FilterValue {
@@ -91,13 +121,30 @@ export function isFilterRuleComplete(
   if (!field.operators.some((operator) => operator.id === rule.op)) {
     return false;
   }
+  const shape = valueShapeForOperator(rule.op);
+  const inScale = (value: number) =>
+    Number.isFinite(value) &&
+    (!isPercentileOperator(rule.op) || (value >= 0 && value <= 100));
+  if (shape === "range") {
+    if (rule.value.type !== "range") {
+      return false;
+    }
+    const [min, max] = rule.value.value;
+    return inScale(min) && inScale(max) && min <= max;
+  }
+  if (shape === "list") {
+    return (
+      rule.value.type === "list" &&
+      rule.value.value.length > 0 &&
+      rule.value.value.every(
+        (choice) =>
+          field.enumOptions?.some((option) => option.value === choice) ?? false,
+      )
+    );
+  }
   if (
     isPercentileOperator(rule.op) &&
-    !(
-      typeof rule.value.value === "number" &&
-      rule.value.value >= 0 &&
-      rule.value.value <= 100
-    )
+    !(typeof rule.value.value === "number" && inScale(rule.value.value))
   ) {
     return false;
   }
@@ -151,10 +198,15 @@ export function filterRuleToSearchIpc(
     field !== undefined &&
     "metric" in field &&
     field.metric?.percentageScale === "fraction";
-  return fraction &&
-    !isPercentileOperator(rule.op) &&
-    typeof ipc.value === "number"
-    ? { ...ipc, value: ipc.value / 100 }
+  if (!fraction || isPercentileOperator(rule.op)) {
+    return ipc;
+  }
+  if (typeof ipc.value === "number") {
+    return { ...ipc, value: ipc.value / 100 };
+  }
+  return Array.isArray(ipc.value) &&
+    ipc.value.every((bound) => typeof bound === "number")
+    ? { ...ipc, value: ipc.value.map((bound) => (bound as number) / 100) }
     : ipc;
 }
 

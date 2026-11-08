@@ -90,7 +90,7 @@ describe("Moneyball Search metrics", () => {
           metric.kind === "integer" &&
           metric.sortable &&
           metric.operators.map((operator) => operator.id).join(",") ===
-            "gt,lt,eq,neq",
+            "gte,lte,between,eq",
       ),
     ).toBe(true);
     expect(

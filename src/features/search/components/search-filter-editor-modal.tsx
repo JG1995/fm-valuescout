@@ -2,28 +2,25 @@ import { Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { fieldLabelClasses } from "@/components/ui/field/field-styles";
-import { SelectField } from "@/components/ui/field/select-field";
-import { TextField } from "@/components/ui/field/text-field";
 import { Modal } from "@/components/ui/modal/modal";
 import { PlayerMetricPicker } from "@/components/ui/player-metric-picker";
 import { isPercentileOperator } from "@/utils/moneyball-search-metrics";
-import type {
-  FilterCombineMode,
-  FilterRule,
-  FilterValue,
-} from "../types/filter-rule";
+import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
 import type { SearchView } from "../types/search-view";
 import {
   createBlankFilterRule,
   defaultOperatorForField,
-  defaultValueForField,
-  type FilterFieldDef,
+  defaultValueForRule,
   filterFieldsForView,
   getFilterField,
   isFilterRuleComplete,
 } from "../utils/filter-registry";
 import { searchTableGroups } from "../utils/search-table-groups";
 import { capFilterRules, MAX_FILTER_RULES } from "../utils/search-url-search";
+import {
+  FilterConditionFields,
+  filterValueError,
+} from "./filter-condition-fields";
 
 type SearchFilterEditorModalProps = {
   open: boolean;
@@ -43,20 +40,6 @@ function draftFrom(rules: FilterRule[]): FilterRule[] {
 
 function isBlankRule(rule: FilterRule) {
   return rule.field === "";
-}
-
-function valueError(
-  rule: FilterRule,
-  field: FilterFieldDef,
-  view: SearchView,
-): string | undefined {
-  if (isFilterRuleComplete(rule, view)) {
-    return undefined;
-  }
-  if (isPercentileOperator(rule.op)) {
-    return "Enter a percentile from 0 to 100";
-  }
-  return field.kind === "string" ? "Enter a value" : "Enter a number";
 }
 
 /** Invisible label line that keeps a control level with the labelled fields beside it. */
@@ -97,7 +80,11 @@ function FilterRuleRow({
           ...rule,
           field: fieldId,
           op: defaultOperatorForField(fieldId, view),
-          value: defaultValueForField(fieldId, view),
+          value: defaultValueForRule(
+            fieldId,
+            defaultOperatorForField(fieldId, view),
+            view,
+          ),
         });
       }}
     />
@@ -136,139 +123,18 @@ function FilterRuleRow({
     return null;
   }
 
-  const percentile = isPercentileOperator(rule.op);
-
-  const handleOperatorChange = (op: string) => {
-    if (isPercentileOperator(op) === percentile) {
-      onChange({ ...rule, op });
-      return;
-    }
-    // Raw values and percentiles use different scales, so switching resets the value.
-    const value = defaultValueForField(rule.field, view);
-    onChange({
-      ...rule,
-      op,
-      value:
-        isPercentileOperator(op) &&
-        (value.type === "integer" || value.type === "number")
-          ? { ...value, value: 90 }
-          : value,
-    });
-  };
-
-  const handleValueChange = (value: FilterValue) => {
-    onChange({ ...rule, value });
-  };
-  const error = showError ? valueError(rule, field, view) : undefined;
+  const error = showError ? filterValueError(rule, field, view) : undefined;
 
   return (
     <div className={rowClasses}>
       {picker}
-
-      <SelectField
-        label="Operator"
-        value={rule.op}
-        onChange={(event) => {
-          handleOperatorChange(event.target.value);
-        }}
-      >
-        {field.operators.map((operator) => (
-          <option key={operator.id} value={operator.id}>
-            {operator.label}
-          </option>
-        ))}
-      </SelectField>
-
-      <div>
-        {field.kind === "string" ? (
-          <TextField
-            label="Value"
-            error={error}
-            value={rule.value.type === "text" ? rule.value.value : ""}
-            onChange={(event) => {
-              handleValueChange({ type: "text", value: event.target.value });
-            }}
-          />
-        ) : null}
-        {field.kind === "integer" ? (
-          <TextField
-            label="Value"
-            type="number"
-            inputMode="numeric"
-            min={percentile ? 0 : undefined}
-            max={percentile ? 100 : undefined}
-            error={error}
-            value={
-              rule.value.type === "integer" && Number.isFinite(rule.value.value)
-                ? String(rule.value.value)
-                : ""
-            }
-            onChange={(event) => {
-              handleValueChange({
-                type: "integer",
-                value: Number.parseInt(event.target.value, 10),
-              });
-            }}
-          />
-        ) : null}
-        {field.kind === "number" ? (
-          <TextField
-            label="Value"
-            type="number"
-            inputMode="decimal"
-            min={percentile ? 0 : undefined}
-            max={percentile ? 100 : undefined}
-            error={error}
-            value={
-              rule.value.type === "number" && Number.isFinite(rule.value.value)
-                ? String(rule.value.value)
-                : ""
-            }
-            onChange={(event) => {
-              handleValueChange({
-                type: "number",
-                value:
-                  event.target.value === ""
-                    ? Number.NaN
-                    : Number(event.target.value),
-              });
-            }}
-          />
-        ) : null}
-        {field.kind === "boolean" ? (
-          <SelectField
-            label="Value"
-            value={
-              rule.value.type === "bool" && rule.value.value ? "yes" : "no"
-            }
-            onChange={(event) => {
-              handleValueChange({
-                type: "bool",
-                value: event.target.value === "yes",
-              });
-            }}
-          >
-            <option value="yes">Yes</option>
-            <option value="no">No</option>
-          </SelectField>
-        ) : null}
-        {field.kind === "enum" ? (
-          <SelectField
-            label="Value"
-            value={rule.value.type === "text" ? rule.value.value : ""}
-            onChange={(event) => {
-              handleValueChange({ type: "text", value: event.target.value });
-            }}
-          >
-            {field.enumOptions?.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </SelectField>
-        ) : null}
-      </div>
-
+      <FilterConditionFields
+        rule={rule}
+        field={field}
+        view={view}
+        error={error}
+        onChange={onChange}
+      />
       {removeButton}
     </div>
   );
