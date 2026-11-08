@@ -10,8 +10,12 @@ import {
   type PlayerMetricKind,
   type PlayerMetricOperator,
 } from "@/utils/player-metrics";
-import type { FilterRule, FilterValue } from "../types/filter-rule";
-import { createFilterRuleId } from "../types/filter-rule";
+import type {
+  FilterRule,
+  FilterRuleIpc,
+  FilterValue,
+} from "../types/filter-rule";
+import { createFilterRuleId, filterRuleToIpc } from "../types/filter-rule";
 import type { SearchView } from "../types/search-view";
 
 export type FilterFieldKind = PlayerMetricKind | "number";
@@ -46,10 +50,11 @@ export function defaultValueForField(
   switch (field.kind) {
     case "string":
       return { type: "text", value: "" };
+    // Numbers start empty so a rule is never applied with an unchosen value.
     case "integer":
-      return { type: "integer", value: 0 };
+      return { type: "integer", value: Number.NaN };
     case "number":
-      return { type: "number", value: 0 };
+      return { type: "number", value: Number.NaN };
     case "boolean":
       return { type: "bool", value: true };
     case "enum":
@@ -65,15 +70,13 @@ export function defaultOperatorForField(
   return field?.operators[0]?.id ?? "contains";
 }
 
-export function createDefaultFilterRule(
-  fieldId = "ca",
-  view: SearchView = "general",
-): FilterRule {
+/** A draft rule with no field chosen yet; the editor drops it on Done. */
+export function createBlankFilterRule(): FilterRule {
   return {
     id: createFilterRuleId(),
-    field: fieldId,
-    op: defaultOperatorForField(fieldId, view),
-    value: defaultValueForField(fieldId, view),
+    field: "",
+    op: "",
+    value: { type: "text", value: "" },
   };
 }
 
@@ -117,6 +120,42 @@ export function isFilterRuleComplete(
           false)
       );
   }
+}
+
+/** True for a Moneyball statistic shown as a percentage, compared on its raw value. */
+export function isRawPercentageRule(
+  rule: FilterRule,
+  view: SearchView = "general",
+): boolean {
+  const field = getFilterField(rule.field, view);
+  return (
+    field !== undefined &&
+    "metric" in field &&
+    field.metric?.kind === "percentage" &&
+    !isPercentileOperator(rule.op)
+  );
+}
+
+/**
+ * Search IPC rule. Moneyball ratio statistics display ×100 but are stored as
+ * 0–1 fractions, so a raw comparison typed on the displayed scale is divided
+ * by 100. Percentile operators already use 0–100.
+ */
+export function filterRuleToSearchIpc(
+  rule: FilterRule,
+  view: SearchView = "general",
+): FilterRuleIpc {
+  const ipc = filterRuleToIpc(rule);
+  const field = getFilterField(rule.field, view);
+  const fraction =
+    field !== undefined &&
+    "metric" in field &&
+    field.metric?.percentageScale === "fraction";
+  return fraction &&
+    !isPercentileOperator(rule.op) &&
+    typeof ipc.value === "number"
+    ? { ...ipc, value: ipc.value / 100 }
+    : ipc;
 }
 
 export function completeFilterRules(

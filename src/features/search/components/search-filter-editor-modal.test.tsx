@@ -54,8 +54,6 @@ describe("SearchFilterEditorModal", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "Add filter" }),
     );
-
-    await user.click(within(dialog).getByRole("button", { name: "Field: CA" }));
     const picker = within(dialog).getByRole("listbox", {
       name: "Field options",
     });
@@ -64,7 +62,6 @@ describe("SearchFilterEditorModal", () => {
       "club",
     );
     await user.click(within(picker).getByRole("option", { name: "Club" }));
-    expect(within(dialog).getByRole("button", { name: "Done" })).toBeDisabled();
 
     await user.selectOptions(
       within(dialog).getByRole("combobox", { name: "Operator" }),
@@ -103,6 +100,97 @@ describe("SearchFilterEditorModal", () => {
     );
   });
 
+  it("opens an empty editor on one blank rule that Done ignores", async () => {
+    const user = userEvent.setup();
+    const { onApply } = renderEditor();
+    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
+
+    expect(
+      within(dialog).getByRole("button", { name: "Field: Choose a field" }),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Value")).toBeNull();
+
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+
+    expect(onApply).toHaveBeenCalledWith([], "and");
+  });
+
+  it("adds a blank rule with the field picker open and replaces an untouched blank rule", async () => {
+    const user = userEvent.setup();
+    renderEditor({ rules: [appliedRule] });
+    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Add filter" }),
+    );
+    expect(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+    ).toHaveFocus();
+
+    await user.click(
+      within(dialog).getByRole("heading", { name: "Edit filters" }),
+    );
+    expect(
+      within(dialog).queryByRole("listbox", { name: "Field options" }),
+    ).toBeNull();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Add filter" }),
+    );
+    expect(
+      within(dialog).getAllByRole("button", { name: "Remove filter rule" }),
+    ).toHaveLength(2);
+    expect(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+    ).toHaveFocus();
+  });
+
+  it("marks an incomplete rule when Done is selected and applies once it is fixed", async () => {
+    const user = userEvent.setup();
+    const { onApply } = renderEditor({ rules: [appliedRule] });
+    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Add filter" }),
+    );
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "pace",
+    );
+    await user.keyboard("{Enter}");
+
+    const values = within(dialog).getAllByLabelText("Value");
+    const paceValue = values[1];
+    if (!paceValue) {
+      throw new Error("expected the Pace value field");
+    }
+    expect(paceValue).toHaveValue(null);
+    expect(within(dialog).queryByText("Enter a number")).toBeNull();
+
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+
+    expect(onApply).not.toHaveBeenCalled();
+    expect(paceValue).toHaveAttribute("aria-invalid", "true");
+    expect(paceValue).toHaveAccessibleDescription("Enter a number");
+    expect(paceValue).toHaveFocus();
+
+    await user.type(paceValue, "15");
+    expect(within(dialog).queryByText("Enter a number")).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+
+    expect(onApply).toHaveBeenCalledWith(
+      [
+        appliedRule,
+        expect.objectContaining({
+          field: "attr.Pace",
+          op: "gt",
+          value: { type: "integer", value: 15 },
+        }),
+      ],
+      "and",
+    );
+  });
+
   it.each([
     [
       "Cancel",
@@ -133,6 +221,11 @@ describe("SearchFilterEditorModal", () => {
     const { onApply, onClose } = renderEditor();
 
     await user.click(screen.getByRole("button", { name: "Add filter" }));
+    await user.type(
+      screen.getByRole("combobox", { name: "Search fields" }),
+      "club",
+    );
+    await user.keyboard("{Enter}");
     await dismiss(user);
 
     expect(onApply).not.toHaveBeenCalled();
@@ -240,7 +333,11 @@ describe("SearchFilterEditorModal", () => {
 
     await user.clear(value);
     await user.type(value, "150");
-    expect(within(dialog).getByRole("button", { name: "Done" })).toBeDisabled();
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    expect(onApply).not.toHaveBeenCalled();
+    expect(value).toHaveAccessibleDescription(
+      "Enter a percentile from 0 to 100",
+    );
 
     await user.clear(value);
     await user.type(value, "75");

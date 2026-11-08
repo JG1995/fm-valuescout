@@ -104,6 +104,20 @@ describe("search URL search params", () => {
     );
   });
 
+  it("labels Moneyball role chips as roles, like General role chips", () => {
+    expect(
+      formatFilterTagLabel(
+        {
+          id: "role",
+          field: "moneyball_role.wbl_wbr_wing_back_ip",
+          op: "gt",
+          value: { type: "integer", value: 70 },
+        },
+        "moneyball",
+      ),
+    ).toBe("Role · Wing-Back (IP · WBR/WBL) > 70");
+  });
+
   it("parses the shortlist toggle as tri-state with deliberate invalid behavior", () => {
     expect(parseShortlistOnly(true)).toBe(true);
     expect(parseShortlistOnly("true")).toBe(true);

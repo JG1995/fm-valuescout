@@ -24,6 +24,10 @@ export type MetricPickerProps = {
   value: string;
   onChange: (metricId: string) => void;
   disabled?: boolean;
+  /** Trigger text while no metric is selected. */
+  placeholder?: string;
+  /** Open the picker when it mounts, focusing its search field. */
+  defaultOpen?: boolean;
 };
 
 const CATEGORY_ORDER = [
@@ -156,13 +160,16 @@ export function MetricPicker({
   value,
   onChange,
   disabled = false,
+  placeholder = "Choose a metric",
+  defaultOpen = false,
 }: MetricPickerProps) {
   const searchInputId = useId();
   const listboxId = useId();
   const optionIdPrefix = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const activeOptionRef = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [search, setSearch] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const selected = metrics.find((metric) => metric.id === value);
@@ -192,6 +199,21 @@ export function MetricPicker({
   }, [open]);
 
   useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      const root = rootRef.current;
+      if (root && !event.composedPath().includes(root)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [open]);
+
+  useEffect(() => {
     if (!activeMetric) {
       return;
     }
@@ -209,7 +231,7 @@ export function MetricPicker({
   };
 
   return (
-    <div className="relative space-y-1">
+    <div ref={rootRef} className="relative space-y-1">
       <span className={fieldLabelClasses}>{label}</span>
       <button
         ref={triggerRef}
@@ -217,13 +239,14 @@ export function MetricPicker({
         aria-controls={open ? listboxId : undefined}
         aria-expanded={open}
         aria-haspopup="listbox"
-        aria-label={`${label}: ${selected?.label ?? "Choose a metric"}`}
+        aria-label={`${label}: ${selected?.label ?? placeholder}`}
+        title={selected?.label}
         className={`${fieldClasses} flex w-full items-center justify-between gap-2 text-left`}
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
       >
         <span className="min-w-0 truncate">
-          {selected?.label ?? "Choose a metric"}
+          {selected?.label ?? placeholder}
         </span>
         <ChevronDown aria-hidden="true" className="shrink-0" size={16} />
       </button>
@@ -250,6 +273,7 @@ export function MetricPicker({
               aria-haspopup="listbox"
               className={`${fieldClasses} w-full`}
               id={searchInputId}
+              placeholder={`${searchLabel}…`}
               role="combobox"
               type="search"
               value={search}

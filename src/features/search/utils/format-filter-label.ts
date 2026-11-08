@@ -1,6 +1,6 @@
 import type { FilterRule } from "../types/filter-rule";
 import type { SearchView } from "../types/search-view";
-import { getFilterField } from "./filter-registry";
+import { getFilterField, isRawPercentageRule } from "./filter-registry";
 
 function operatorSymbol(op: string): string {
   switch (op) {
@@ -42,7 +42,9 @@ function formatValue(rule: FilterRule, view: SearchView): string {
     return String(rule.value.value);
   }
 
-  if (rule.value.type === "number") return String(rule.value.value);
+  if (rule.value.type === "number") {
+    return `${rule.value.value}${isRawPercentageRule(rule, view) ? "%" : ""}`;
+  }
 
   if (rule.value.type === "text") {
     return rule.value.value;
@@ -63,23 +65,26 @@ export function formatFilterTagLabel(
 
   const value = formatValue(rule, view);
   const op = rule.op;
+  // Moneyball role labels omit General's "Role ·" prefix, which a chip needs for context.
+  const label =
+    "role" in field && field.role ? `Role · ${field.label}` : field.label;
 
   if (field.kind === "string") {
     const opLabel = operatorSymbol(op);
-    return `${field.label} ${opLabel} ${value}`;
+    return `${label} ${opLabel} ${value}`;
   }
 
   if (field.kind === "integer" || field.kind === "number") {
-    return `${field.label} ${operatorSymbol(op)} ${value}`;
+    return `${label} ${operatorSymbol(op)} ${value}`;
   }
 
   if (field.kind === "boolean" || field.kind === "enum") {
     if (op === "contains" || op === "not_contains") {
-      return `${field.label} ${operatorSymbol(op)} ${value}`;
+      return `${label} ${operatorSymbol(op)} ${value}`;
     }
     const opLabel = op === "is_not" ? "is not" : "is";
-    return `${field.label} ${opLabel} ${value}`;
+    return `${label} ${opLabel} ${value}`;
   }
 
-  return field.label;
+  return label;
 }

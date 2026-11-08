@@ -920,11 +920,6 @@ describe("search route", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "Add filter" }),
     );
-    await user.click(
-      within(dialog).getByRole("button", {
-        name: "Field: Average Rating",
-      }),
-    );
     await user.type(
       within(dialog).getByRole("combobox", { name: "Search fields" }),
       "wing-back",
@@ -2364,7 +2359,6 @@ describe("search route", () => {
       within(dialog).getByRole("button", { name: "Add filter" }),
     );
 
-    await user.click(within(dialog).getByRole("button", { name: "Field: CA" }));
     await user.type(
       within(dialog).getByRole("combobox", { name: "Search fields" }),
       "ca",
@@ -2430,7 +2424,6 @@ describe("search route", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "Add filter" }),
     );
-    await user.click(within(dialog).getByRole("button", { name: "Field: CA" }));
     await user.type(
       within(dialog).getByRole("combobox", { name: "Search fields" }),
       "potential role",
@@ -2498,6 +2491,11 @@ describe("search route", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "Add filter" }),
     );
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "ca",
+    );
+    await user.click(within(dialog).getByRole("option", { name: "CA" }));
     fireEvent.change(within(dialog).getByLabelText("Value"), {
       target: { value: "250" },
     });
@@ -2530,6 +2528,32 @@ describe("search route", () => {
     ).toBeInTheDocument();
   });
 
+  it("filters Moneyball percentage stats on the displayed 0–100 scale", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Passer", 150)]);
+    const encoded = encodeURIComponent(
+      JSON.stringify([
+        { field: "moneyball.pass_completion_ratio", op: "gt", value: 80 },
+        {
+          field: "moneyball.pass_completion_ratio",
+          op: "pct_gte",
+          value: 90,
+        },
+      ]),
+    );
+    renderSearchRoute(`/search?view=moneyball&filters=${encoded}`);
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Remove filter Pass Completion % > 80%",
+      }),
+    ).toBeInTheDocument();
+    expect(getLastSearchPlayersArgs()?.filters).toEqual([
+      { field: "moneyball.pass_completion_ratio", op: "gt", value: 0.8 },
+      { field: "moneyball.pass_completion_ratio", op: "pct_gte", value: 90 },
+    ]);
+  });
+
   it("points an empty Moneyball cohort at the linked save and Refresh stats", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([]);
@@ -2558,6 +2582,11 @@ describe("search route", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "Add filter" }),
     );
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "ca",
+    );
+    await user.click(within(dialog).getByRole("option", { name: "CA" }));
 
     const valueField = within(dialog).getByLabelText("Value");
     await user.click(valueField);
@@ -2586,6 +2615,11 @@ describe("search route", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "Add filter" }),
     );
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "ca",
+    );
+    await user.click(within(dialog).getByRole("option", { name: "CA" }));
     fireEvent.change(within(dialog).getByLabelText("Value"), {
       target: { value: "150" },
     });
@@ -2660,7 +2694,14 @@ describe("search route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("High CA", 180)]);
-    const { router } = renderSearchRoute();
+    const rules = Array.from({ length: 31 }, (_, index) => ({
+      field: "ca",
+      op: "gt",
+      value: index,
+    }));
+    const { router } = renderSearchRoute(
+      `/search?filters=${encodeURIComponent(JSON.stringify(rules))}`,
+    );
 
     await user.click(
       await screen.findByRole("button", { name: "Edit filters" }),
@@ -2669,10 +2710,11 @@ describe("search route", () => {
     const addButton = within(dialog).getByRole("button", {
       name: "Add filter",
     });
+    expect(
+      within(dialog).getAllByRole("button", { name: "Remove filter rule" }),
+    ).toHaveLength(31);
 
-    for (let index = 0; index < 32; index += 1) {
-      await user.click(addButton);
-    }
+    await user.click(addButton);
 
     expect(addButton).toBeDisabled();
     expect(
@@ -2683,7 +2725,7 @@ describe("search route", () => {
     expect(
       within(dialog).getAllByRole("button", { name: "Remove filter rule" }),
     ).toHaveLength(32);
-    expect(router.state.location.search.filters).toHaveLength(0);
+    expect(router.state.location.search.filters).toHaveLength(31);
   });
 
   it("toggles CA from default descending to ascending on header click", async () => {
@@ -2766,6 +2808,13 @@ describe("search route", () => {
     });
     await user.click(
       within(moneyballDialog).getByRole("button", { name: "Add filter" }),
+    );
+    await user.type(
+      within(moneyballDialog).getByRole("combobox", { name: "Search fields" }),
+      "average rating",
+    );
+    await user.click(
+      within(moneyballDialog).getByRole("option", { name: "Average Rating" }),
     );
     fireEvent.change(within(moneyballDialog).getByLabelText("Value"), {
       target: { value: "7" },

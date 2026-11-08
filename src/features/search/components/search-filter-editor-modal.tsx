@@ -1,6 +1,7 @@
 import { Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
+import { fieldLabelClasses } from "@/components/ui/field/field-styles";
 import { SelectField } from "@/components/ui/field/select-field";
 import { TextField } from "@/components/ui/field/text-field";
 import { Modal } from "@/components/ui/modal/modal";
@@ -13,9 +14,10 @@ import type {
 } from "../types/filter-rule";
 import type { SearchView } from "../types/search-view";
 import {
-  createDefaultFilterRule,
+  createBlankFilterRule,
   defaultOperatorForField,
   defaultValueForField,
+  type FilterFieldDef,
   filterFieldsForView,
   getFilterField,
   isFilterRuleComplete,
@@ -31,8 +33,38 @@ type SearchFilterEditorModalProps = {
   view?: SearchView;
 };
 
-function copyRules(rules: FilterRule[]): FilterRule[] {
-  return rules.map((rule) => ({ ...rule, value: { ...rule.value } }));
+/** The applied rules, or one blank rule so an empty editor starts on a field choice. */
+function draftFrom(rules: FilterRule[]): FilterRule[] {
+  return rules.length > 0
+    ? rules.map((rule) => ({ ...rule, value: { ...rule.value } }))
+    : [createBlankFilterRule()];
+}
+
+function isBlankRule(rule: FilterRule) {
+  return rule.field === "";
+}
+
+function valueError(
+  rule: FilterRule,
+  field: FilterFieldDef,
+  view: SearchView,
+): string | undefined {
+  if (isFilterRuleComplete(rule, view)) {
+    return undefined;
+  }
+  if (isPercentileOperator(rule.op)) {
+    return "Enter a percentile from 0 to 100";
+  }
+  return field.kind === "string" ? "Enter a value" : "Enter a number";
+}
+
+/** Invisible label line that keeps a control level with the labelled fields beside it. */
+function LabelSpacer() {
+  return (
+    <span aria-hidden className={`${fieldLabelClasses} hidden sm:block`}>
+      &nbsp;
+    </span>
+  );
 }
 
 function FilterRuleRow({
@@ -40,25 +72,67 @@ function FilterRuleRow({
   onChange,
   onRemove,
   view,
+  showError,
+  openPicker,
 }: {
   rule: FilterRule;
   onChange: (next: FilterRule) => void;
   onRemove: () => void;
   view: SearchView;
+  showError: boolean;
+  openPicker: boolean;
 }) {
   const field = getFilterField(rule.field, view);
+  const picker = (
+    <PlayerMetricPicker
+      label="Field"
+      metrics={filterFieldsForView(view)}
+      value={rule.field}
+      placeholder="Choose a field"
+      defaultOpen={openPicker}
+      onChange={(fieldId) => {
+        onChange({
+          ...rule,
+          field: fieldId,
+          op: defaultOperatorForField(fieldId, view),
+          value: defaultValueForField(fieldId, view),
+        });
+      }}
+    />
+  );
+  const removeButton = (
+    <div className="space-y-1">
+      <LabelSpacer />
+      <Button
+        size="icon"
+        variant="ghost"
+        icon={Trash2}
+        aria-label="Remove filter rule"
+        onClick={onRemove}
+      />
+    </div>
+  );
+  // Top-aligned so an error under one value does not shift the other fields.
+  const rowClasses =
+    "grid gap-3 rounded-lg border border-outline-variant bg-surface-container-high p-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-start";
+
+  if (isBlankRule(rule)) {
+    return (
+      <div className={rowClasses}>
+        {picker}
+        <div className="space-y-1 sm:col-span-2">
+          <LabelSpacer />
+          <p className="flex h-8 items-center text-body-sm text-on-surface-variant">
+            Choose a field to set its condition.
+          </p>
+        </div>
+        {removeButton}
+      </div>
+    );
+  }
   if (!field) {
     return null;
   }
-
-  const handleFieldChange = (fieldId: string) => {
-    onChange({
-      ...rule,
-      field: fieldId,
-      op: defaultOperatorForField(fieldId, view),
-      value: defaultValueForField(fieldId, view),
-    });
-  };
 
   const percentile = isPercentileOperator(rule.op);
 
@@ -83,15 +157,11 @@ function FilterRuleRow({
   const handleValueChange = (value: FilterValue) => {
     onChange({ ...rule, value });
   };
+  const error = showError ? valueError(rule, field, view) : undefined;
 
   return (
-    <div className="grid gap-3 rounded-lg border border-outline-variant bg-surface-container-high p-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
-      <PlayerMetricPicker
-        label="Field"
-        metrics={filterFieldsForView(view)}
-        value={rule.field}
-        onChange={handleFieldChange}
-      />
+    <div className={rowClasses}>
+      {picker}
 
       <SelectField
         label="Operator"
@@ -111,6 +181,7 @@ function FilterRuleRow({
         {field.kind === "string" ? (
           <TextField
             label="Value"
+            error={error}
             value={rule.value.type === "text" ? rule.value.value : ""}
             onChange={(event) => {
               handleValueChange({ type: "text", value: event.target.value });
@@ -124,14 +195,16 @@ function FilterRuleRow({
             inputMode="numeric"
             min={percentile ? 0 : undefined}
             max={percentile ? 100 : undefined}
+            error={error}
             value={
-              rule.value.type === "integer" ? String(rule.value.value) : "0"
+              rule.value.type === "integer" && Number.isFinite(rule.value.value)
+                ? String(rule.value.value)
+                : ""
             }
             onChange={(event) => {
-              const parsed = Number.parseInt(event.target.value, 10);
               handleValueChange({
                 type: "integer",
-                value: Number.isNaN(parsed) ? 0 : parsed,
+                value: Number.parseInt(event.target.value, 10),
               });
             }}
           />
@@ -143,14 +216,19 @@ function FilterRuleRow({
             inputMode="decimal"
             min={percentile ? 0 : undefined}
             max={percentile ? 100 : undefined}
+            error={error}
             value={
-              rule.value.type === "number" ? String(rule.value.value) : "0"
+              rule.value.type === "number" && Number.isFinite(rule.value.value)
+                ? String(rule.value.value)
+                : ""
             }
             onChange={(event) => {
-              const parsed = Number(event.target.value);
               handleValueChange({
                 type: "number",
-                value: Number.isNaN(parsed) ? 0 : parsed,
+                value:
+                  event.target.value === ""
+                    ? Number.NaN
+                    : Number(event.target.value),
               });
             }}
           />
@@ -189,13 +267,7 @@ function FilterRuleRow({
         ) : null}
       </div>
 
-      <Button
-        size="icon"
-        variant="ghost"
-        icon={Trash2}
-        aria-label="Remove filter rule"
-        onClick={onRemove}
-      />
+      {removeButton}
     </div>
   );
 }
@@ -208,10 +280,15 @@ export function SearchFilterEditorModal({
   onApply,
   view = "general",
 }: SearchFilterEditorModalProps) {
-  const [draftRules, setDraftRules] = useState(() => copyRules(rules));
+  const [draftRules, setDraftRules] = useState(() => draftFrom(rules));
   const [draftCombine, setDraftCombine] = useState(combine);
+  const [openPickerRuleId, setOpenPickerRuleId] = useState<string | null>(null);
+  const [showErrors, setShowErrors] = useState(false);
+  const [doneAttempts, setDoneAttempts] = useState(0);
+  const rulesRef = useRef<HTMLDivElement>(null);
   const atCap = draftRules.length >= MAX_FILTER_RULES;
-  const draftIsComplete = draftRules.every((rule) =>
+  const chosenRules = draftRules.filter((rule) => !isBlankRule(rule));
+  const draftIsComplete = chosenRules.every((rule) =>
     isFilterRuleComplete(rule, view),
   );
   const hasPostCohortRule =
@@ -224,13 +301,23 @@ export function SearchFilterEditorModal({
 
   useEffect(() => {
     if (open) {
-      setDraftRules(copyRules(rules));
+      setDraftRules(draftFrom(rules));
       setDraftCombine(combine);
+      setOpenPickerRuleId(null);
+      setShowErrors(false);
     }
   }, [open, rules, combine]);
 
+  useEffect(() => {
+    if (doneAttempts > 0) {
+      rulesRef.current
+        ?.querySelector<HTMLElement>('[aria-invalid="true"]')
+        ?.focus();
+    }
+  }, [doneAttempts]);
+
   const dismiss = () => {
-    setDraftRules(copyRules(rules));
+    setDraftRules(draftFrom(rules));
     setDraftCombine(combine);
     onClose();
   };
@@ -239,22 +326,23 @@ export function SearchFilterEditorModal({
     if (atCap) {
       return;
     }
+    // An untouched blank rule is replaced, so repeated adds never stack empty rows.
+    const blank = createBlankFilterRule();
     setDraftRules((current) =>
-      capFilterRules([
-        ...current,
-        createDefaultFilterRule(
-          view === "moneyball" ? "moneyball.average_rating" : "ca",
-          view,
-        ),
-      ]),
+      capFilterRules([...current.filter((rule) => !isBlankRule(rule)), blank]),
     );
+    setOpenPickerRuleId(blank.id);
+    // A new rule has had no chance to be filled in yet; Done shows errors again.
+    setShowErrors(false);
   };
 
   const apply = () => {
     if (!draftIsComplete) {
+      setShowErrors(true);
+      setDoneAttempts((count) => count + 1);
       return;
     }
-    onApply(draftRules, draftCombine);
+    onApply(chosenRules, draftCombine);
     onClose();
   };
 
@@ -269,9 +357,7 @@ export function SearchFilterEditorModal({
           <Button variant="secondary" onClick={dismiss}>
             Cancel
           </Button>
-          <Button disabled={!draftIsComplete} onClick={apply}>
-            Done
-          </Button>
+          <Button onClick={apply}>Done</Button>
         </>
       }
     >
@@ -314,13 +400,7 @@ export function SearchFilterEditorModal({
           </p>
         ) : null}
 
-        {!draftIsComplete ? (
-          <p className="text-body-sm text-error" role="alert">
-            Complete every filter rule before applying filters.
-          </p>
-        ) : null}
-
-        <div className="space-y-3">
+        <div ref={rulesRef} className="space-y-3">
           {draftRules.length === 0 ? (
             <p className="text-body-md text-on-surface-variant">
               No filter rules yet. Add one below.
@@ -341,6 +421,8 @@ export function SearchFilterEditorModal({
                   );
                 }}
                 view={view}
+                showError={showErrors}
+                openPicker={rule.id === openPickerRuleId}
               />
             ))
           )}

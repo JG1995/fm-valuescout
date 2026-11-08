@@ -2179,7 +2179,6 @@ test.describe("application smoke", () => {
     await page.getByRole("button", { name: "Edit filters" }).click();
     const dialog = page.getByRole("dialog", { name: "Edit filters" });
     await dialog.getByRole("button", { name: "Add filter" }).click();
-    await dialog.getByRole("button", { name: "Field: CA" }).click();
 
     const listbox = dialog.getByRole("listbox", { name: "Field options" });
     const searchFields = dialog.getByRole("combobox", {
@@ -2583,7 +2582,6 @@ test.describe("application smoke", () => {
     await main.getByRole("button", { name: "Edit filters" }).click();
     const dialog = page.getByRole("dialog", { name: "Edit filters" });
     await dialog.getByRole("button", { name: "Add filter" }).click();
-    await dialog.getByRole("button", { name: "Field: Average Rating" }).click();
     const fieldSearch = dialog.getByRole("combobox", {
       name: "Search fields",
     });

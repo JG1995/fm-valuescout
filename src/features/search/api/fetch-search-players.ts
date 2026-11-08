@@ -1,6 +1,5 @@
 import { invokeCommand } from "@/lib/tauri-client";
 import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
-import { filterRuleToIpc } from "../types/filter-rule";
 import type { SearchPlayersPage } from "../types/player-summary";
 import type { SearchSortDir, SearchSortField } from "../types/search-sort";
 import {
@@ -8,7 +7,10 @@ import {
   DEFAULT_SEARCH_SORT_FIELD,
 } from "../types/search-sort";
 import type { ComparisonPool, SearchView } from "../types/search-view";
-import { completeFilterRules } from "../utils/filter-registry";
+import {
+  completeFilterRules,
+  filterRuleToSearchIpc,
+} from "../utils/filter-registry";
 
 /** Matches Rust `DEFAULT_PAGE_LIMIT` — window size for virtualized fetch. */
 export const SEARCH_PAGE_SIZE = 50;
@@ -37,7 +39,9 @@ export function fetchSearchPlayers(
     shortlistOnly,
     ...(applied.length > 0
       ? {
-          filters: applied.map(filterRuleToIpc),
+          filters: applied.map((rule) =>
+            filterRuleToSearchIpc(rule, searchView),
+          ),
           filterCombine,
         }
       : {}),

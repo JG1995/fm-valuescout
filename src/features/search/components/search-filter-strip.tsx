@@ -35,9 +35,11 @@ export function SearchFilterStrip({
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
-      <p className="text-label-md text-on-surface-variant uppercase">
-        Combined with {combine}
-      </p>
+      {appliedRules.length > 1 ? (
+        <p className="text-label-md text-on-surface-variant uppercase">
+          Combined with {combine}
+        </p>
+      ) : null}
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         {appliedRules.map((rule) => (
           <FilterTag
