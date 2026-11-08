@@ -1,5 +1,15 @@
+import { X } from "lucide-react";
 import { useId } from "react";
 import { SelectField } from "@/components/ui/field/select-field";
+import {
+  type MetricPickerMetric,
+  PlayerMetricPicker,
+} from "@/components/ui/player-metric-picker";
+import {
+  MONEYBALL_METRIC_CATEGORIES,
+  MONEYBALL_METRICS,
+  moneyballMetric,
+} from "@/utils/moneyball-metrics";
 import { orderedTacticPositions } from "@/utils/position-order";
 import {
   TACTIC_LANE_IDS,
@@ -30,7 +40,19 @@ type PlannerTacticInspectorProps = {
   ) => void;
   onPositionChange: (phase: TacticPhase, position: string) => void;
   onRoleChange: (phase: TacticPhase, roleId: string) => void;
+  onCustomMetricsChange: (customMetricKeys: string[]) => void;
 };
+
+const MAX_SLOT_METRICS = 5;
+
+const SLOT_METRIC_OPTIONS: readonly MetricPickerMetric[] =
+  MONEYBALL_METRICS.map((metric) => ({
+    id: metric.id,
+    label: metric.label,
+    category: MONEYBALL_METRIC_CATEGORIES.find(
+      (category) => category.id === metric.categoryId,
+    )?.title,
+  }));
 
 function nextWeight(value: number, key: string): number | null {
   if (key === "ArrowRight" || key === "ArrowUp") {
@@ -113,6 +135,67 @@ function PhaseControls({
   );
 }
 
+function SlotMetricControls({
+  metricKeys,
+  onChange,
+}: {
+  metricKeys: string[];
+  onChange: (metricKeys: string[]) => void;
+}) {
+  const available = SLOT_METRIC_OPTIONS.filter(
+    (metric) => !metricKeys.includes(metric.id),
+  );
+
+  return (
+    <>
+      <p className="text-body-sm text-on-surface-variant">
+        The score uses both phases. The IP/OOP weight does not apply.
+      </p>
+      {metricKeys.length === 0 ? (
+        <p className="text-body-sm text-on-surface-variant">
+          No metrics chosen.
+        </p>
+      ) : (
+        <ol className="space-y-1">
+          {metricKeys.map((key) => {
+            const { label } = moneyballMetric(key);
+            return (
+              <li
+                key={key}
+                className="flex items-center justify-between gap-2 text-body-sm text-on-surface"
+              >
+                <span className="min-w-0 truncate">{label}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${label}`}
+                  className="shrink-0 rounded-full p-0.5 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface focus-visible:outline-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-50"
+                  onClick={() =>
+                    onChange(
+                      metricKeys.filter((candidate) => candidate !== key),
+                    )
+                  }
+                >
+                  <X aria-hidden="true" size={14} />
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {metricKeys.length < MAX_SLOT_METRICS ? (
+        <PlayerMetricPicker
+          label="Add Moneyball metric"
+          searchLabel="Search Moneyball metrics"
+          metrics={available}
+          value=""
+          placeholder="Choose a metric"
+          onChange={(key) => onChange([...metricKeys, key])}
+        />
+      ) : null}
+    </>
+  );
+}
+
 export function PlannerTacticInspector({
   selectedLane,
   lanes,
@@ -125,6 +208,7 @@ export function PlannerTacticInspector({
   onFootPreferenceChange,
   onPositionChange,
   onRoleChange,
+  onCustomMetricsChange,
 }: PlannerTacticInspectorProps) {
   const weightId = useId();
   const headingId = useId();
@@ -265,6 +349,21 @@ export function PlannerTacticInspector({
             />
           </div>
         ))}
+
+        <div className="space-y-2 border-t border-outline-variant py-2 last:pb-0">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="text-label-md text-on-surface-variant">
+              Moneyball Metrics
+            </h3>
+            <p className="font-mono text-mono-sm text-on-surface-variant tabular-nums">
+              {selectedLane.customMetricKeys.length}/{MAX_SLOT_METRICS}
+            </p>
+          </div>
+          <SlotMetricControls
+            metricKeys={selectedLane.customMetricKeys}
+            onChange={onCustomMetricsChange}
+          />
+        </div>
       </fieldset>
     </section>
   );

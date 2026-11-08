@@ -333,6 +333,8 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           ipRoleId,
           oopPosition,
           oopRoleId,
+          customMetricKeys:
+            laneId === "goalkeeper" ? ["save_ratio", "clean_sheets_ratio"] : [],
         })),
       };
       const plannerTacticStore = new Map([

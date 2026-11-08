@@ -2,9 +2,11 @@ use std::collections::HashSet;
 
 use rusqlite::{params, Connection, Transaction};
 
+use crate::features::moneyball::{is_moneyball_statistic_key, is_save_unavailable_statistic_key};
 use crate::features::scoring::catalog::{all_roles, RolePhase};
 
 pub const TACTIC_LANE_COUNT: usize = 11;
+const MAX_SLOT_METRICS: usize = 5;
 pub const DEFAULT_LANE_IDS: [&str; TACTIC_LANE_COUNT] = [
     "goalkeeper",
     "left_back",
@@ -30,6 +32,8 @@ pub struct TacticLane {
     pub ip_role_id: String,
     pub oop_position: String,
     pub oop_role_id: String,
+    /// Ordered Moneyball statistic keys for the slot's custom score.
+    pub custom_metric_keys: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -183,6 +187,7 @@ pub fn default_tactic() -> PlannerTactic {
                 ip_role_id: lane.ip_role_id.to_string(),
                 oop_position: lane.oop_position.to_string(),
                 oop_role_id: lane.oop_role_id.to_string(),
+                custom_metric_keys: Vec::new(),
             })
             .collect(),
     }
@@ -246,10 +251,12 @@ pub(crate) fn save_tactic_in_tx(
     )
     .map_err(|error| error.to_string())?;
     for (lane_order, lane) in tactic.lanes.iter().enumerate() {
+        let custom_metric_keys_json =
+            serde_json::to_string(&lane.custom_metric_keys).map_err(|error| error.to_string())?;
         tx.execute(
             "INSERT INTO planner_tactic_lanes (
-                 save_id, lane_order, lane_id, ip_weight, importance_rank, preferred_foot, foot_preference, ip_position, ip_role_id, oop_position, oop_role_id
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                 save_id, lane_order, lane_id, ip_weight, importance_rank, preferred_foot, foot_preference, ip_position, ip_role_id, oop_position, oop_role_id, custom_metric_keys_json
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 save_id,
                 lane_order as i64,
@@ -266,6 +273,7 @@ pub(crate) fn save_tactic_in_tx(
                 lane.ip_role_id,
                 lane.oop_position,
                 lane.oop_role_id,
+                custom_metric_keys_json,
             ],
         )
         .map_err(|error| error.to_string())?;
@@ -308,7 +316,7 @@ pub fn get_tactic_options() -> TacticOptions {
 pub(super) fn load_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String> {
     let mut statement = conn
         .prepare(
-            "SELECT lane_id, ip_weight, importance_rank, preferred_foot, foot_preference, ip_position, ip_role_id, oop_position, oop_role_id
+            "SELECT lane_id, ip_weight, importance_rank, preferred_foot, foot_preference, ip_position, ip_role_id, oop_position, oop_role_id, custom_metric_keys_json
              FROM planner_tactic_lanes
              WHERE save_id = ?1
              ORDER BY lane_order",
@@ -326,6 +334,15 @@ pub(super) fn load_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTact
                 ip_role_id: row.get(6)?,
                 oop_position: row.get(7)?,
                 oop_role_id: row.get(8)?,
+                custom_metric_keys: parse_custom_metric_keys(&row.get::<_, String>(9)?).map_err(
+                    |error| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            9,
+                            rusqlite::types::Type::Text,
+                            Box::new(error),
+                        )
+                    },
+                )?,
             })
         })
         .map_err(|error| error.to_string())?
@@ -335,6 +352,22 @@ pub(super) fn load_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTact
     let tactic = PlannerTactic { lanes };
     validate_tactic_contents(&tactic, false)?;
     Ok(tactic)
+}
+
+fn is_offered_slot_metric(key: &str) -> bool {
+    is_moneyball_statistic_key(key) && !is_save_unavailable_statistic_key(key)
+}
+
+/// Keeps only the first occurrence of each stored key the catalog still offers. Moneyball
+/// Search interpolates these keys into SQL text, so this filter must stay on the load path.
+fn parse_custom_metric_keys(json: &str) -> Result<Vec<String>, serde_json::Error> {
+    let stored: Vec<serde_json::Value> = serde_json::from_str(json)?;
+    let mut seen = HashSet::new();
+    Ok(stored
+        .into_iter()
+        .filter_map(|value| value.as_str().map(str::to_string))
+        .filter(|key| is_offered_slot_metric(key) && seen.insert(key.clone()))
+        .collect())
 }
 
 fn ensure_save_exists(conn: &Connection, save_id: i64) -> Result<(), String> {
@@ -436,8 +469,35 @@ fn validate_tactic_contents(
             &lane.oop_role_id,
             RolePhase::OutOfPossession,
         )?;
+        validate_custom_metric_keys(lane)?;
     }
 
+    Ok(())
+}
+
+fn validate_custom_metric_keys(lane: &TacticLane) -> Result<(), String> {
+    let lane_id = &lane.lane_id;
+    if lane.custom_metric_keys.len() > MAX_SLOT_METRICS {
+        return Err(format!(
+            "Lane `{lane_id}` can have at most {MAX_SLOT_METRICS} Moneyball metrics"
+        ));
+    }
+    let mut seen = HashSet::new();
+    for key in &lane.custom_metric_keys {
+        if !is_moneyball_statistic_key(key) {
+            return Err(format!(
+                "Lane `{lane_id}` references unknown Moneyball metric `{key}`"
+            ));
+        }
+        if is_save_unavailable_statistic_key(key) {
+            return Err(format!(
+                "Lane `{lane_id}` uses Moneyball metric `{key}`, which save files do not provide"
+            ));
+        }
+        if !seen.insert(key.as_str()) {
+            return Err(format!("Lane `{lane_id}` repeats Moneyball metric `{key}`"));
+        }
+    }
     Ok(())
 }
 
@@ -684,6 +744,84 @@ mod tests {
 
         let error = save_tactic(&conn, save_id, &tactic).expect_err("reject a negative weight");
         assert!(error.contains("IP weight must be between 0 and 1"));
+    }
+
+    fn keys(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_string()).collect()
+    }
+
+    #[test]
+    fn persists_ordered_slot_metrics_per_lane() {
+        let (_temp_dir, conn, save_id) = open_with_save();
+        let mut tactic = get_tactic(&conn, save_id).expect("load default tactic");
+        tactic.lanes[0].custom_metric_keys = keys(&["save_ratio", "goals", "clean_sheets_ratio"]);
+
+        save_tactic(&conn, save_id, &tactic).expect("save slot metrics");
+
+        let reloaded = get_tactic(&conn, save_id).expect("reload tactic");
+        assert_eq!(
+            reloaded.lanes[0].custom_metric_keys,
+            ["save_ratio", "goals", "clean_sheets_ratio"]
+        );
+        assert!(reloaded.lanes[1..]
+            .iter()
+            .all(|lane| lane.custom_metric_keys.is_empty()));
+    }
+
+    #[test]
+    fn rejects_invalid_slot_metrics_without_changing_the_stored_tactic() {
+        let (_temp_dir, conn, save_id) = open_with_save();
+        let mut stored = get_tactic(&conn, save_id).expect("load default tactic");
+        stored.lanes[1].custom_metric_keys = keys(&["assists"]);
+        save_tactic(&conn, save_id, &stored).expect("save valid slot metrics");
+
+        for (metrics, expected_error) in [
+            (
+                keys(&["goals", "assists", "xg", "xa", "shots", "save_ratio"]),
+                "Lane `goalkeeper` can have at most 5 Moneyball metrics",
+            ),
+            (
+                keys(&["goals", "assists", "goals"]),
+                "Lane `goalkeeper` repeats Moneyball metric `goals`",
+            ),
+            (
+                keys(&["not_a_metric"]),
+                "Lane `goalkeeper` references unknown Moneyball metric `not_a_metric`",
+            ),
+            (
+                keys(&["pressures_attempted"]),
+                "Lane `goalkeeper` uses Moneyball metric `pressures_attempted`, which save files do not provide",
+            ),
+        ] {
+            let mut attempted = stored.clone();
+            attempted.lanes[0].custom_metric_keys = metrics;
+            attempted.lanes[1].custom_metric_keys = keys(&["goals"]);
+
+            let error = save_tactic(&conn, save_id, &attempted).expect_err("reject slot metrics");
+
+            assert_eq!(error, expected_error);
+            assert_eq!(get_tactic(&conn, save_id).expect("reload tactic"), stored);
+        }
+    }
+
+    #[test]
+    fn loading_drops_stored_slot_metrics_the_catalog_no_longer_offers() {
+        let (_temp_dir, conn, save_id) = open_with_save();
+        get_tactic(&conn, save_id).expect("initialize tactic");
+        conn.execute(
+            "UPDATE planner_tactic_lanes
+             SET custom_metric_keys_json = '[\"save_ratio\",\"retired_metric\",\"pressures_attempted\",\"clean_sheets_ratio\",\"save_ratio\"]'
+             WHERE save_id = ?1 AND lane_id = 'goalkeeper'",
+            params![save_id],
+        )
+        .expect("store drifted slot metrics");
+
+        let tactic = get_tactic(&conn, save_id).expect("load drifted tactic");
+
+        assert_eq!(
+            tactic.lanes[0].custom_metric_keys,
+            ["save_ratio", "clean_sheets_ratio"]
+        );
     }
 
     #[test]

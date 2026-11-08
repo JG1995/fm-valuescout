@@ -86,6 +86,8 @@ const DEFAULT_TACTIC: PlannerTactic = {
     ipRoleId,
     oopPosition,
     oopRoleId,
+    customMetricKeys:
+      laneId === "goalkeeper" ? ["save_ratio", "clean_sheets_ratio"] : [],
   })),
 };
 
@@ -345,7 +347,10 @@ function ordinalStringLabel(stringOrder: number): string {
 
 function cloneTactic(value: PlannerTactic): PlannerTactic {
   return {
-    lanes: value.lanes.map((lane) => ({ ...lane })),
+    lanes: value.lanes.map((lane) => ({
+      ...lane,
+      customMetricKeys: [...lane.customMetricKeys],
+    })),
   };
 }
 

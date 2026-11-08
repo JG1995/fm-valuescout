@@ -226,7 +226,10 @@ export function linkedPositionDescriptionForId(
 
 export function cloneTactic(tactic: PlannerTactic): PlannerTactic {
   return {
-    lanes: tactic.lanes.map((lane) => ({ ...lane })),
+    lanes: tactic.lanes.map((lane) => ({
+      ...lane,
+      customMetricKeys: [...lane.customMetricKeys],
+    })),
   };
 }
 

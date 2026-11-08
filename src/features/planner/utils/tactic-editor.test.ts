@@ -20,6 +20,7 @@ function lane(
     ipRoleId,
     oopPosition,
     oopRoleId,
+    customMetricKeys: [],
     ...overrides,
   };
 }
@@ -137,6 +138,7 @@ describe("swapPhasePlacement", () => {
           importanceRank: 2,
           preferredFoot: "left",
           footPreference: "strict",
+          customMetricKeys: ["goals", "assists"],
         },
       ),
       lane(
@@ -150,6 +152,7 @@ describe("swapPhasePlacement", () => {
           importanceRank: 5,
           preferredFoot: "right",
           footPreference: "preferred",
+          customMetricKeys: ["tackles_won"],
         },
       ),
     ];
@@ -162,6 +165,7 @@ describe("swapPhasePlacement", () => {
       importanceRank: 2,
       preferredFoot: "left",
       footPreference: "strict",
+      customMetricKeys: ["goals", "assists"],
     });
     expect(next.find((candidate) => candidate.laneId === "b")).toMatchObject({
       ipPosition: "MCR",
@@ -169,6 +173,7 @@ describe("swapPhasePlacement", () => {
       importanceRank: 5,
       preferredFoot: "right",
       footPreference: "preferred",
+      customMetricKeys: ["tackles_won"],
     });
   });
 

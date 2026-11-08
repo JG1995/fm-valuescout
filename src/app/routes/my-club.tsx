@@ -821,6 +821,11 @@ function MyClubPageContent() {
                     readOnly={readOnly}
                     tactic={tactic}
                     options={options}
+                    onSaved={() =>
+                      queryClient.invalidateQueries({
+                        queryKey: searchKeys.all,
+                      })
+                    }
                   />
                 </>
               );

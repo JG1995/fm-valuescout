@@ -27,6 +27,8 @@ type PlannerTacticEditorProps = {
   readOnly?: boolean;
   tactic: PlannerTactic;
   options: TacticOptions;
+  /** Runs after a successful save, so the route can refresh other features. */
+  onSaved?: () => Promise<unknown>;
 };
 
 const VIEW_LABELS: Record<TacticView, string> = {
@@ -64,6 +66,7 @@ export function PlannerTacticEditor({
   readOnly = false,
   tactic,
   options,
+  onSaved,
 }: PlannerTacticEditorProps) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(() => cloneTactic(tactic));
@@ -117,6 +120,7 @@ export function PlannerTacticEditor({
           queryKey: plannerKeys.roleReferences(),
         }),
       ]);
+      await onSaved?.();
     },
   });
 
@@ -188,6 +192,20 @@ export function PlannerTacticEditor({
       lanes: draft.lanes.map((lane) =>
         lane.laneId === selectedLane.laneId
           ? { ...lane, footPreference }
+          : lane,
+      ),
+    });
+  };
+
+  const updateSelectedLaneCustomMetrics = (customMetricKeys: string[]) => {
+    if (!selectedLane) {
+      return;
+    }
+    updateDraft({
+      ...draft,
+      lanes: draft.lanes.map((lane) =>
+        lane.laneId === selectedLane.laneId
+          ? { ...lane, customMetricKeys }
           : lane,
       ),
     });
@@ -361,6 +379,7 @@ export function PlannerTacticEditor({
                 onRoleChange={(phase, roleId) =>
                   updateRole(selectedLane.laneId, phase, roleId)
                 }
+                onCustomMetricsChange={updateSelectedLaneCustomMetrics}
               />
             </div>
           ) : null}
