@@ -4,6 +4,7 @@ import {
   MONEYBALL_ROLE_CATALOG,
   type MoneyballRolePositionFamily,
 } from "./moneyball-role-catalog";
+import { POSITION_ORDER } from "./position-order";
 
 export type MoneyballSearchMetric = {
   id: string;
@@ -127,7 +128,17 @@ export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
     ],
   },
   basic("value", "Value", "integer"),
-  basic("position", "Position", "string"),
+  {
+    id: "position",
+    label: "Position",
+    category: "Club and value",
+    kind: "enum",
+    align: "left",
+    defaultWidth: 144,
+    sortable: true,
+    operators: ENUM_OPERATORS,
+    enumOptions: POSITION_ORDER.map((key) => ({ value: key, label: key })),
+  },
   context("moneyball.starts", "Starts"),
   context("moneyball.substitute_appearances", "Sub appearances"),
   context("moneyball.minutes", "Minutes"),

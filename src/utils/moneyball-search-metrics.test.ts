@@ -5,6 +5,7 @@ import {
   getMoneyballSearchMetric,
   MONEYBALL_SEARCH_METRICS,
 } from "./moneyball-search-metrics";
+import { getPlayerMetric } from "./player-metrics";
 
 describe("Moneyball Search metrics", () => {
   it("includes every required recruitment field and the exact default columns", () => {
@@ -40,6 +41,16 @@ describe("Moneyball Search metrics", () => {
       "moneyball.xg_per_90",
       "moneyball.xa_per_90",
     ]);
+  });
+
+  it("filters Position with the same position choices as General Search", () => {
+    const general = getPlayerMetric("position");
+
+    expect(getMoneyballSearchMetric("position")).toMatchObject({
+      kind: "enum",
+      operators: general?.operators,
+      enumOptions: general?.enumOptions,
+    });
   });
 
   it("offers no column, filter, or sort for metrics the save cannot provide", () => {
