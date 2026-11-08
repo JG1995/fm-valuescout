@@ -42,6 +42,7 @@ pub const MAX_REQUESTED_FIELDS: usize = 256;
 
 pub const TACTIC_CURRENT_PREFIX: &str = "tactic_current.";
 pub const TACTIC_POTENTIAL_PREFIX: &str = "tactic_potential.";
+pub const TACTIC_CUSTOM_PREFIX: &str = "tactic_custom.";
 
 pub const TACTIC_LANE_IDS: [&str; 11] = [
     "goalkeeper",
@@ -61,6 +62,8 @@ pub const TACTIC_LANE_IDS: [&str; 11] = [
 pub enum TacticGroup {
     Current,
     Potential,
+    /// Moneyball-only equal-weight mean of the lane's chosen statistic percentiles.
+    Custom,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,11 +172,12 @@ impl MetricField {
 
     fn parse_inner(field: &str, moneyball: bool, allow_tactic: bool) -> Result<Self, String> {
         if allow_tactic {
-            if let Some(tactic) = parse_tactic_field(field)? {
+            if let Some(tactic) = parse_tactic_field(field, moneyball)? {
                 return Ok(tactic);
             }
         } else if field.starts_with(TACTIC_CURRENT_PREFIX)
             || field.starts_with(TACTIC_POTENTIAL_PREFIX)
+            || field.starts_with(TACTIC_CUSTOM_PREFIX)
         {
             return Err(format!("unknown player metric: {field}"));
         }
@@ -440,15 +444,24 @@ pub fn parse_moneyball_role_id(field: &str, moneyball: bool) -> Result<Option<St
     }
 }
 
-fn parse_tactic_field(field: &str) -> Result<Option<MetricField>, String> {
+/// General Search offers the Current and Potential tactic groups; Moneyball,
+/// which has no potential statistics, offers Current and Custom.
+fn parse_tactic_field(field: &str, moneyball: bool) -> Result<Option<MetricField>, String> {
     let (group, lane_id) = if let Some(lane) = field.strip_prefix(TACTIC_CURRENT_PREFIX) {
         (TacticGroup::Current, lane)
     } else if let Some(lane) = field.strip_prefix(TACTIC_POTENTIAL_PREFIX) {
         (TacticGroup::Potential, lane)
+    } else if let Some(lane) = field.strip_prefix(TACTIC_CUSTOM_PREFIX) {
+        (TacticGroup::Custom, lane)
     } else {
         return Ok(None);
     };
-    if !TACTIC_LANE_IDS.contains(&lane_id) {
+    let offered_in_view = match group {
+        TacticGroup::Current => true,
+        TacticGroup::Potential => !moneyball,
+        TacticGroup::Custom => moneyball,
+    };
+    if !offered_in_view || !TACTIC_LANE_IDS.contains(&lane_id) {
         return Err(format!("unknown player metric: {field}"));
     }
     Ok(Some(MetricField {
@@ -786,13 +799,17 @@ mod tests {
     }
 
     #[test]
-    fn tactic_fields_search_accepts_all_canonical_lanes_both_modes_as_integer_null() {
+    fn tactic_fields_search_accepts_all_canonical_lanes_of_each_view_group_as_integer_null() {
         for lane in TACTIC_LANE_IDS {
             for moneyball in [false, true] {
-                for (prefix, expected_group) in [
-                    (TACTIC_CURRENT_PREFIX, TacticGroup::Current),
-                    (TACTIC_POTENTIAL_PREFIX, TacticGroup::Potential),
-                ] {
+                let second_group = if moneyball {
+                    (TACTIC_CUSTOM_PREFIX, TacticGroup::Custom)
+                } else {
+                    (TACTIC_POTENTIAL_PREFIX, TacticGroup::Potential)
+                };
+                for (prefix, expected_group) in
+                    [(TACTIC_CURRENT_PREFIX, TacticGroup::Current), second_group]
+                {
                     let field = format!("{prefix}{lane}");
                     let parsed = MetricField::parse_for_moneyball(&field, moneyball)
                         .unwrap_or_else(|e| {
@@ -823,6 +840,32 @@ mod tests {
         let scalar = MetricField::parse("ca").expect("scalar");
         assert!(!scalar.is_tactic_field());
         assert!(scalar.tactic_lane_id().is_none());
+    }
+
+    #[test]
+    fn tactic_groups_are_gated_by_search_view() {
+        for (field, moneyball) in [
+            ("tactic_potential.goalkeeper", true),
+            ("tactic_custom.goalkeeper", false),
+        ] {
+            let expected = format!("unknown player metric: {field}");
+            assert_eq!(
+                MetricField::parse_for_moneyball(field, moneyball).unwrap_err(),
+                expected
+            );
+            assert_eq!(
+                parse_requested_fields_for_moneyball(&[field.to_string()], moneyball).unwrap_err(),
+                expected
+            );
+        }
+        assert_eq!(
+            MetricField::parse("tactic_custom.goalkeeper").unwrap_err(),
+            "unknown player metric: tactic_custom.goalkeeper"
+        );
+        assert_eq!(
+            MetricField::parse_for_moneyball("tactic_custom.not_a_lane", true).unwrap_err(),
+            "unknown player metric: tactic_custom.not_a_lane"
+        );
     }
 
     #[test]
@@ -900,7 +943,7 @@ mod tests {
                 "tactic_current.goalkeeper".to_string(),
                 "moneyball.np-xg".to_string(),
                 "tactic_current.goalkeeper".to_string(),
-                "tactic_potential.goalkeeper".to_string(),
+                "tactic_custom.goalkeeper".to_string(),
             ],
             true,
         )
@@ -910,7 +953,7 @@ mod tests {
             [
                 "tactic_current.goalkeeper",
                 "moneyball.np-xg",
-                "tactic_potential.goalkeeper"
+                "tactic_custom.goalkeeper"
             ]
         );
     }
@@ -921,6 +964,7 @@ mod tests {
         assert!(!is_moneyball_search_field(
             "tactic_potential.centre_forward"
         ));
+        assert!(!is_moneyball_search_field("tactic_custom.goalkeeper"));
         assert!(!is_moneyball_search_field("tactic_current.not_a_lane"));
     }
 

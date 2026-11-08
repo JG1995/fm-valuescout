@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   TACTIC_CURRENT_PREFIX,
+  TACTIC_CUSTOM_PREFIX,
   TACTIC_POTENTIAL_PREFIX,
 } from "@/utils/tactic-ids";
 import {
@@ -38,40 +39,46 @@ describe("tactic column ordering", () => {
   });
 
   it("builds deterministic straight orders for one active group", () => {
-    expect(buildTacticColumnOrder(orderedLaneIds, true, false)).toEqual(
+    expect(buildTacticColumnOrder(orderedLaneIds, ["current"])).toEqual(
       orderedLaneIds.map((laneId) => `${TACTIC_CURRENT_PREFIX}${laneId}`),
     );
-    expect(buildTacticColumnOrder(orderedLaneIds, false, true)).toEqual(
+    expect(buildTacticColumnOrder(orderedLaneIds, ["potential"])).toEqual(
       orderedLaneIds.map((laneId) => `${TACTIC_POTENTIAL_PREFIX}${laneId}`),
     );
-    expect(buildTacticColumnOrder(orderedLaneIds, false, false)).toEqual([]);
+    expect(buildTacticColumnOrder(orderedLaneIds, ["custom"])).toEqual(
+      orderedLaneIds.map((laneId) => `${TACTIC_CUSTOM_PREFIX}${laneId}`),
+    );
+    expect(buildTacticColumnOrder(orderedLaneIds, [])).toEqual([]);
   });
 
-  it("interleaves current then potential for each ordered lane", () => {
-    expect(buildTacticColumnOrder(orderedLaneIds, true, true)).toEqual(
+  it("interleaves the active groups per lane in view order", () => {
+    expect(
+      buildTacticColumnOrder(orderedLaneIds, ["current", "potential"]),
+    ).toEqual(
       orderedLaneIds.flatMap((laneId) => [
         `${TACTIC_CURRENT_PREFIX}${laneId}`,
         `${TACTIC_POTENTIAL_PREFIX}${laneId}`,
       ]),
     );
+    expect(
+      buildTacticColumnOrder(orderedLaneIds, ["current", "custom"]),
+    ).toEqual(
+      orderedLaneIds.flatMap((laneId) => [
+        `${TACTIC_CURRENT_PREFIX}${laneId}`,
+        `${TACTIC_CUSTOM_PREFIX}${laneId}`,
+      ]),
+    );
   });
 
   it("does not emit synthetic IDs for unknown lanes", () => {
-    expect(buildTacticColumnOrder(["not_a_lane"], true, false)).toEqual([]);
-    expect(buildTacticColumnOrder(["not_a_lane"], false, true)).toEqual([]);
-    expect(buildTacticColumnOrder(["not_a_lane"], true, true)).toEqual([]);
+    expect(buildTacticColumnOrder(["not_a_lane"], ["current"])).toEqual([]);
+    expect(
+      buildTacticColumnOrder(["not_a_lane"], ["current", "custom"]),
+    ).toEqual([]);
     expect(
       buildTacticColumnOrder(
         ["goalkeeper", "not_a_lane", "right_back"],
-        true,
-        false,
-      ),
-    ).toEqual(["tactic_current.goalkeeper", "tactic_current.right_back"]);
-    expect(
-      buildTacticColumnOrder(
-        ["goalkeeper", "not_a_lane", "right_back"],
-        true,
-        true,
+        ["current", "potential"],
       ),
     ).toEqual([
       "tactic_current.goalkeeper",
@@ -79,12 +86,5 @@ describe("tactic column ordering", () => {
       "tactic_current.right_back",
       "tactic_potential.right_back",
     ]);
-    expect(
-      buildTacticColumnOrder(
-        ["goalkeeper", "not_a_lane", "right_back"],
-        false,
-        true,
-      ),
-    ).toEqual(["tactic_potential.goalkeeper", "tactic_potential.right_back"]);
   });
 });

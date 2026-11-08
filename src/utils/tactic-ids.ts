@@ -11,6 +11,7 @@
  */
 export const TACTIC_CURRENT_PREFIX = "tactic_current.";
 export const TACTIC_POTENTIAL_PREFIX = "tactic_potential.";
+export const TACTIC_CUSTOM_PREFIX = "tactic_custom.";
 export const TACTIC_COLUMN_DEFAULT_WIDTH = 112;
 
 export const TACTIC_LANE_IDS = [
@@ -27,41 +28,58 @@ export const TACTIC_LANE_IDS = [
   "centre_forward",
 ] as const;
 
-export type TacticColumnGroup = "current" | "potential";
+export type TacticColumnGroup = "current" | "potential" | "custom";
 
 export type TacticLaneId = (typeof TACTIC_LANE_IDS)[number];
 
 const tacticLaneIds = new Set<string>(TACTIC_LANE_IDS);
+
+const TACTIC_GROUP_PREFIXES: Record<TacticColumnGroup, string> = {
+  current: TACTIC_CURRENT_PREFIX,
+  potential: TACTIC_POTENTIAL_PREFIX,
+  custom: TACTIC_CUSTOM_PREFIX,
+};
+
+const TACTIC_GROUPS = Object.keys(
+  TACTIC_GROUP_PREFIXES,
+) as readonly TacticColumnGroup[];
+
+/**
+ * Tactic groups each table offers, in view order. Moneyball has no potential
+ * statistics, so it offers Custom in place of Potential; Rust rejects each
+ * group in the other view.
+ */
+export function tacticColumnGroupsForTable(
+  table: string,
+): readonly TacticColumnGroup[] {
+  if (table === "search") {
+    return ["current", "potential"];
+  }
+  if (table === "moneyball-search") {
+    return ["current", "custom"];
+  }
+  return [];
+}
 
 export function isValidTacticLaneId(laneId: string): laneId is TacticLaneId {
   return tacticLaneIds.has(laneId);
 }
 
 export function isTacticColumnId(id: string): boolean {
-  return (
-    id.startsWith(TACTIC_CURRENT_PREFIX) ||
-    id.startsWith(TACTIC_POTENTIAL_PREFIX)
-  );
+  return tacticGroupForId(id) !== null;
 }
 
 export function tacticGroupForId(id: string): TacticColumnGroup | null {
-  if (id.startsWith(TACTIC_CURRENT_PREFIX)) {
-    return "current";
-  }
-  if (id.startsWith(TACTIC_POTENTIAL_PREFIX)) {
-    return "potential";
-  }
-  return null;
+  return (
+    TACTIC_GROUPS.find((group) =>
+      id.startsWith(TACTIC_GROUP_PREFIXES[group]),
+    ) ?? null
+  );
 }
 
 export function tacticLaneIdForId(id: string): string | null {
   const group = tacticGroupForId(id);
-  if (group === null) {
-    return null;
-  }
-  const prefix =
-    group === "current" ? TACTIC_CURRENT_PREFIX : TACTIC_POTENTIAL_PREFIX;
-  return id.slice(prefix.length);
+  return group === null ? null : id.slice(TACTIC_GROUP_PREFIXES[group].length);
 }
 
 export function tacticColumnId(
@@ -71,28 +89,25 @@ export function tacticColumnId(
   if (!tacticLaneIds.has(laneId)) {
     return null;
   }
-  const prefix =
-    group === "current" ? TACTIC_CURRENT_PREFIX : TACTIC_POTENTIAL_PREFIX;
-  return `${prefix}${laneId}`;
+  return `${TACTIC_GROUP_PREFIXES[group]}${laneId}`;
 }
 
+/** Accepts every group, for header grouping and sort validation. */
 export function isValidTacticColumnId(id: string): boolean {
   const laneId = tacticLaneIdForId(id);
   return laneId !== null && tacticLaneIds.has(laneId);
 }
 
-export function allTacticColumnIdsForGroup(
-  group: TacticColumnGroup,
-  orderedLaneIds: readonly string[],
-): string[] {
-  const ids: string[] = [];
-  for (const laneId of orderedLaneIds) {
-    const columnId = tacticColumnId(group, laneId);
-    if (columnId !== null) {
-      ids.push(columnId);
-    }
-  }
-  return ids;
+export function isValidTacticColumnIdForTable(
+  id: string,
+  table: string,
+): boolean {
+  const group = tacticGroupForId(id);
+  return (
+    group !== null &&
+    isValidTacticColumnId(id) &&
+    tacticColumnGroupsForTable(table).includes(group)
+  );
 }
 
 export function isFullTacticGroup(
