@@ -741,9 +741,10 @@ fn compile_position_presence_rule(
     let extract = json_extract_expr("positions_json", canonical);
 
     // Position filters are exact key matches — never substring LIKE (MC must not match AMC).
-    // Only positive integer familiarity counts; zero, null, and missing keys are not recorded positions.
+    // FM rates every position from 1, so only familiarity 16+ counts; lower, null, and
+    // missing values do not.
     let positive = format!(
-        "COALESCE(json_type(positions_json, '$.{canonical}') = 'integer' AND {extract} > 0, 0)"
+        "COALESCE(json_type(positions_json, '$.{canonical}') = 'integer' AND {extract} >= 16, 0)"
     );
     let clause = match op {
         "is" | "contains" => positive,
@@ -1313,7 +1314,7 @@ mod tests {
             presence
                 .sql
                 .contains("json_extract(positions_json, '$.MC')")
-                && presence.sql.contains("> 0")
+                && presence.sql.contains(">= 16")
                 && presence.sql.contains("COALESCE"),
             "expected positions presence SQL, got {}",
             presence.sql

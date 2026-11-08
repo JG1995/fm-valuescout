@@ -3227,7 +3227,7 @@ mod tests {
                     140,
                     DeepPlayerFields {
                         nationalities: json!(["ENG"]),
-                        positions: json!({ "MC": 10, "ST": 18 }),
+                        positions: json!({ "MC": 15, "ST": 18 }),
                         attributes: json!({ "Acceleration": 10 }),
                         hidden: json!({ "Consistency": 10 }),
                         personality: json!({ "Ambition": 10 }),
@@ -3258,6 +3258,18 @@ mod tests {
                     },
                 ),
                 player_with_deep_fields(
+                    6,
+                    "Cutoff MC",
+                    145,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": 16, "ST": 1 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+                player_with_deep_fields(
                     5,
                     "Null MC",
                     120,
@@ -3272,6 +3284,7 @@ mod tests {
             ],
         );
 
+        // FM rates every position from 1, so a Position rule only counts familiarity 16+.
         let presence = search_with_filters(
             &conn,
             0,
@@ -3293,7 +3306,7 @@ mod tests {
                 .iter()
                 .map(|player| player.name.as_str())
                 .collect::<Vec<_>>(),
-            vec!["Natural MC", "Fringe MC"]
+            vec!["Natural MC", "Cutoff MC"]
         );
 
         let inverse = search_with_filters(
@@ -3310,14 +3323,14 @@ mod tests {
             None,
         )
         .expect("inverse position presence");
-        assert_eq!(inverse.total, 3);
+        assert_eq!(inverse.total, 4);
         assert_eq!(
             inverse
                 .players
                 .iter()
                 .map(|player| player.name.as_str())
                 .collect::<Vec<_>>(),
-            vec!["Striker Only", "Zero MC", "Null MC"]
+            vec!["Striker Only", "Fringe MC", "Zero MC", "Null MC"]
         );
 
         let suitability = search_with_filters(
@@ -3326,7 +3339,7 @@ mod tests {
             DEFAULT_PAGE_LIMIT,
             SortField::DEFAULT,
             SortDir::DEFAULT,
-            vec![filter_rule("pos.MC", "gt", FilterValue::Integer(15))],
+            vec![filter_rule("pos.MC", "gt", FilterValue::Integer(16))],
             None,
         )
         .expect("position suitability");
