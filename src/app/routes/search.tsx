@@ -75,6 +75,7 @@ import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import { useSearchViewMemory } from "@/stores/use-search-view-memory";
 import {
   shortlistFilterKey,
   useShortlistFilterStore,
@@ -289,6 +290,16 @@ function SearchPageContent() {
   );
   const view = routeView ?? defaultAnalysisView;
   const comparisonPool = routeComparisonPool ?? "filtered";
+  // Remember this view's state so the top navigation can return to it.
+  useEffect(() => {
+    useSearchViewMemory.getState().remember(view, {
+      sort,
+      dir,
+      filters: filterUrls,
+      combine,
+      comparisonPool: routeComparisonPool,
+    });
+  }, [combine, dir, filterUrls, routeComparisonPool, sort, view]);
   // The save context that scopes the shortlist choice: only a matching
   // active-save + current-snapshot pair exposes the shortlist toggle.
   // Keying by the mounted save/snapshot context prevents a switched save
@@ -480,8 +491,15 @@ function SearchPageContent() {
           snapshotGameDate={resultContext.snapshot.gameDate}
         />
       ) : null}
+      <span
+        aria-hidden
+        className="text-label-md text-on-surface-variant"
+        title="Percentile badges and percentile filters compare each player with this group."
+      >
+        Percentiles vs
+      </span>
       <fieldset className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5">
-        <legend className="sr-only">Comparison pool</legend>
+        <legend className="sr-only">Percentiles vs</legend>
         {(["filtered", "fullCsv"] as const).map((pool) => (
           <button
             key={pool}
@@ -602,7 +620,9 @@ function SearchPageContent() {
         data-testid="search-page-header"
         className="flex w-full flex-wrap items-start justify-between gap-2"
       >
-        <h1 className="text-headline-md text-on-surface">Player Search</h1>
+        <h1 className="text-headline-md text-on-surface">
+          {view === "moneyball" ? "Moneyball" : "Player Search"}
+        </h1>
         <div
           className="flex flex-wrap items-center justify-end gap-2"
           data-testid="search-page-actions"

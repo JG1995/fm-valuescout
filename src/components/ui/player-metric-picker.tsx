@@ -31,6 +31,10 @@ export type MetricPickerProps = {
   defaultOpen?: boolean;
   /** Orders sections like the table's header groups. */
   groups?: TableGroupInput;
+  /** `inline` renders the choice as a link-like word inside a sentence, with no visible label. */
+  variant?: "field" | "inline";
+  /** Name of the search box; defaults to "Search {label}s". */
+  searchLabel?: string;
 };
 
 const CATEGORY_ORDER = [
@@ -191,6 +195,8 @@ export function MetricPicker({
   placeholder = "Choose a metric",
   defaultOpen = false,
   groups: tableGroups,
+  variant = "field",
+  searchLabel: searchLabelOverride,
 }: MetricPickerProps) {
   const searchInputId = useId();
   const listboxId = useId();
@@ -208,7 +214,7 @@ export function MetricPicker({
   );
   const options = groups.flatMap((group) => group.metrics);
   const activeMetric = options[activeIndex];
-  const searchLabel = `Search ${label.toLowerCase()}s`;
+  const searchLabel = searchLabelOverride ?? `Search ${label.toLowerCase()}s`;
   const {
     anchorRef: triggerRef,
     popoverRef: popupRef,
@@ -260,8 +266,15 @@ export function MetricPicker({
   };
 
   return (
-    <div ref={rootRef} className="relative space-y-1">
-      <span className={fieldLabelClasses}>{label}</span>
+    <div
+      ref={rootRef}
+      className={
+        variant === "inline" ? "relative inline-block" : "relative space-y-1"
+      }
+    >
+      {variant === "inline" ? null : (
+        <span className={fieldLabelClasses}>{label}</span>
+      )}
       <button
         ref={triggerRef}
         type="button"
@@ -270,14 +283,22 @@ export function MetricPicker({
         aria-haspopup="listbox"
         aria-label={`${label}: ${selected?.label ?? placeholder}`}
         title={selected?.label}
-        className={`${fieldClasses} flex w-full items-center justify-between gap-2 text-left`}
+        className={
+          variant === "inline"
+            ? "inline-flex items-center gap-0.5 rounded-sm text-on-surface underline decoration-dotted underline-offset-4 hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            : `${fieldClasses} flex w-full items-center justify-between gap-2 text-left`
+        }
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
       >
         <span className="min-w-0 truncate">
           {selected?.label ?? placeholder}
         </span>
-        <ChevronDown aria-hidden="true" className="shrink-0" size={16} />
+        <ChevronDown
+          aria-hidden="true"
+          className="shrink-0"
+          size={variant === "inline" ? 14 : 16}
+        />
       </button>
 
       {open ? (

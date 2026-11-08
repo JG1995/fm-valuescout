@@ -3,6 +3,7 @@ import {
   ArrowUpNarrowWide,
   ChevronDown,
   ChevronUp,
+  EllipsisVertical,
   Filter,
   MoveLeft,
   MoveRight,
@@ -474,6 +475,13 @@ export function ConfigurableTableHeader({
                       className="size-3.5 shrink-0"
                       strokeWidth={2}
                     />
+                  ) : columnSortable ? (
+                    // A faint hint on hover that the header sorts.
+                    <ChevronDown
+                      aria-hidden
+                      className="hidden size-3.5 shrink-0 opacity-50 group-hover/header:inline"
+                      strokeWidth={2}
+                    />
                   ) : null}
                 </button>
               </div>
@@ -496,7 +504,7 @@ export function ConfigurableTableHeader({
                     }
                   }}
                 >
-                  <ChevronDown aria-hidden size={14} strokeWidth={2} />
+                  <EllipsisVertical aria-hidden size={14} strokeWidth={2} />
                 </button>
               ) : null}
               {revealed ? (

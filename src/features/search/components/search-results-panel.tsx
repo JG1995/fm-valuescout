@@ -21,6 +21,7 @@ import {
 } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { PlayerMetricPicker } from "@/components/ui/player-metric-picker";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import {
   isIdentityColumnId,
@@ -58,7 +59,11 @@ import {
 } from "../types/search-sort";
 import type { ComparisonPool, SearchView } from "../types/search-view";
 import { defaultSearchSort } from "../types/search-view";
-import { completeFilterRules, getFilterField } from "../utils/filter-registry";
+import {
+  completeFilterRules,
+  filterFieldsForView,
+  getFilterField,
+} from "../utils/filter-registry";
 import { searchTableGroups } from "../utils/search-table-groups";
 import { buildTacticColumnOrder } from "../utils/tactic-columns";
 import { type FilterFieldRequest, SearchFilterBar } from "./search-filter-bar";
@@ -717,6 +722,48 @@ export function SearchResultsPanel({
   const sortLabel = sortMetric
     ? sortMetric.label
     : (sortColumn?.accessibleLabel ?? sortColumn?.label ?? committed.sortBy);
+  // "N players · sorted by [field] ([direction])": both parts are controls.
+  // Choosing a field also shows its column, so the sort is never invisible.
+  const summary = (
+    <div
+      className="text-body-md text-on-surface-variant"
+      data-testid="search-results-summary"
+    >
+      <span className="text-on-surface">{formatCount(page.total)}</span> players
+      · sorted by{" "}
+      <PlayerMetricPicker
+        label="Sort by"
+        searchLabel="Search fields"
+        variant="inline"
+        metrics={filterFieldsForView(view).filter(
+          (metric) => metric.sortable !== false,
+        )}
+        groups={searchTableGroups(view)}
+        value={committed.sortBy}
+        placeholder={sortLabel}
+        onChange={(field) => {
+          addColumns(tableId, [field], searchTableGroups(view));
+          onSortChange(field, defaultDirForSortField(field));
+        }}
+      />{" "}
+      (
+      <button
+        type="button"
+        aria-label={`Sort direction: ${dirLabel}`}
+        title="Reverse the sort direction"
+        className="rounded-sm text-on-surface underline decoration-dotted underline-offset-4 hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        onClick={() =>
+          onSortChange(
+            committed.sortBy,
+            committed.sortDir === "asc" ? "desc" : "asc",
+          )
+        }
+      >
+        {dirLabel}
+      </button>
+      )
+    </div>
+  );
   if (page.total === 0) {
     const appliedFilters = completeFilterRules(filters, view);
     const shortlistEmpty = view === "general" && shortlistOnly;
@@ -745,12 +792,7 @@ export function SearchResultsPanel({
         className="flex min-h-0 flex-1 flex-col"
         contentClassName="flex min-h-0 flex-1 flex-col"
       >
-        {renderToolbar(
-          <p className="text-body-md text-on-surface-variant">
-            <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
-            players · sorted by {sortLabel} ({dirLabel})
-          </p>,
-        )}
+        {renderToolbar(summary)}
         <EmptyState icon={SearchX} title={emptyTitle}>
           {emptyBody}
         </EmptyState>
@@ -823,12 +865,7 @@ export function SearchResultsPanel({
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
-      {renderToolbar(
-        <p className="text-body-md text-on-surface-variant">
-          <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
-          players · sorted by {sortLabel} ({dirLabel})
-        </p>,
-      )}
+      {renderToolbar(summary)}
       {isReplacementPending ? (
         <p
           className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"

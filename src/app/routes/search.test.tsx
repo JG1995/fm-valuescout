@@ -30,6 +30,7 @@ import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import { useSearchViewMemory } from "@/stores/use-search-view-memory";
 import {
   shortlistFilterKey,
   useShortlistFilterStore,
@@ -166,6 +167,7 @@ describe("search route", () => {
   beforeEach(() => {
     openCsvDialog.mockReset();
     useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
+    useSearchViewMemory.setState({ views: {} });
   });
 
   it("uses protocol URLs for visible exact-UID graphics and preserves rows", async () => {
@@ -1781,13 +1783,9 @@ describe("search route", () => {
     await screen.findByRole("table", {
       name: "Player search results",
     });
-    expect(
-      screen.getByText(
-        (_, element) =>
-          element?.tagName === "P" &&
-          element.textContent === "2 players · sorted by Name (ascending)",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("search-results-summary")).toHaveTextContent(
+      /^2 players · sorted by Name \(ascending\)$/,
+    );
   });
 
   it("moves keyboard focus to the next results row on ArrowDown", async () => {
@@ -1965,7 +1963,9 @@ describe("search route", () => {
     });
     const caHeader = within(table).getByRole("columnheader", { name: /CA/i });
     expect(caHeader).toHaveAttribute("aria-sort", "descending");
-    expect(screen.getByText(/sorted by CA \(descending\)/)).toBeInTheDocument();
+    expect(screen.getByTestId("search-results-summary")).toHaveTextContent(
+      /sorted by CA \(descending\)$/,
+    );
   });
 
   it("writes sort into URL search params when a header is clicked", async () => {
@@ -2096,13 +2096,9 @@ describe("search route", () => {
     expect(
       within(table).getByRole("columnheader", { name: "CA" }),
     ).toHaveAttribute("aria-sort", "descending");
-    expect(
-      screen.getByText(
-        (_, element) =>
-          element?.tagName === "P" &&
-          element.textContent === "2 players · sorted by CA (descending)",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("search-results-summary")).toHaveTextContent(
+      /^2 players · sorted by CA \(descending\)$/,
+    );
     const retainedRow = within(table)
       .getAllByRole("row")
       .find((row) => row.hasAttribute("data-index"));
@@ -2317,13 +2313,9 @@ describe("search route", () => {
     const table = await screen.findByRole("table", {
       name: "Player search results",
     });
-    expect(
-      screen.getByText(
-        (_, element) =>
-          element?.tagName === "P" &&
-          element.textContent === "2 players · sorted by Name (ascending)",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("search-results-summary")).toHaveTextContent(
+      /^2 players · sorted by Name \(ascending\)$/,
+    );
 
     const bodyRows = within(table)
       .getAllByRole("row")
@@ -2726,6 +2718,48 @@ describe("search route", () => {
     expect(within(editor).getByLabelText("Value")).toHaveFocus();
   });
 
+  it("sorts by any field from the summary and shows its column", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("High", 180),
+      playerNamed("Low", 100),
+    ]);
+    const { router } = renderSearchRoute();
+
+    const summary = await screen.findByTestId("search-results-summary");
+    await user.click(
+      within(summary).getByRole("button", { name: "Sort by: CA" }),
+    );
+    await user.type(
+      screen.getByRole("combobox", { name: "Search fields" }),
+      "pace",
+    );
+    await user.keyboard("{Enter}");
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        sort: "attr.Pace",
+        dir: "desc",
+      }),
+    );
+    expect(
+      await screen.findByRole("columnheader", { name: "Pace" }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(screen.getByTestId("search-results-summary")).getByRole("button", {
+        name: "Sort direction: descending",
+      }),
+    );
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        sort: "attr.Pace",
+        dir: "asc",
+      }),
+    );
+  });
+
   it("toggles CA from default descending to ascending on header click", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -2763,7 +2797,7 @@ describe("search route", () => {
     expect(within(firstRow).getByText("Low")).toBeInTheDocument();
   });
 
-  it("clears all filters and resets destination sort and direction when navigation selects a view", async () => {
+  it("returns each view to its own filters and sort when navigation switches views", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([
@@ -2777,29 +2811,30 @@ describe("search route", () => {
       `/search?view=general&sort=pa&dir=asc&combine=or&filters=${encodedFilters}&shortlistOnly=true`,
     );
     await screen.findByText("High CA");
-    expect(router.state.location.search).toMatchObject({
+    const generalState = {
       view: "general",
       sort: "pa",
       dir: "asc",
       combine: "or",
       filters: [expect.objectContaining({ field: "ca" })],
       shortlistOnly: true,
-    });
+    };
+    expect(router.state.location.search).toMatchObject(generalState);
 
+    // A first visit starts from the view's defaults; nothing carries across.
     await user.click(screen.getByRole("link", { name: "Moneyball" }));
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
         view: "moneyball",
         sort: "moneyball.average_rating",
         dir: "desc",
-        combine: "or",
+        combine: "and",
         filters: [],
         comparisonPool: "filtered",
         shortlistOnly: true,
       });
     });
 
-    // Add a Moneyball filter then switch back to General
     await user.click(screen.getByRole("button", { name: "Add filter" }));
     const moneyballDialog = screen.getByRole("form", { name: "Add filter" });
     await user.type(
@@ -2821,13 +2856,20 @@ describe("search route", () => {
 
     await user.click(screen.getByRole("link", { name: "Search" }));
     await waitFor(() => {
+      expect(router.state.location.search).toMatchObject(generalState);
+    });
+
+    await user.click(screen.getByRole("link", { name: "Moneyball" }));
+    await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        view: "general",
-        sort: "ca",
-        dir: "desc",
-        combine: "or",
-        filters: [],
-        shortlistOnly: true,
+        view: "moneyball",
+        filters: [
+          expect.objectContaining({
+            field: "moneyball.average_rating",
+            op: "gte",
+            value: 7,
+          }),
+        ],
       });
     });
     expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
@@ -2850,13 +2892,9 @@ describe("search route", () => {
     await screen.findByRole("table", {
       name: "Player search results",
     });
-    expect(
-      screen.getByText(
-        (_, element) =>
-          element?.tagName === "P" &&
-          element.textContent === "1 players · sorted by Name (ascending)",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("search-results-summary")).toHaveTextContent(
+      /^1 players · sorted by Name \(ascending\)$/,
+    );
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         sortBy: "name",
@@ -3552,13 +3590,16 @@ describe("search route", () => {
         within(toolbar).getByRole("button", { name: "All players" }),
       ).toBeInTheDocument();
       expect(
+        within(toolbar).getByRole("group", { name: "Percentiles vs" }),
+      ).toBeInTheDocument();
+      expect(
         within(toolbar).getByRole("button", { name: "Add filter" }),
       ).toBeInTheDocument();
       const header = screen.getByTestId("search-page-header");
       expect(
         within(header).getByRole("heading", {
           level: 1,
-          name: "Player Search",
+          name: "Moneyball",
         }),
       ).toBeInTheDocument();
       for (const name of [
