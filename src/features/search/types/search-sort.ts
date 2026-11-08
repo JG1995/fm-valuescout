@@ -1,3 +1,5 @@
+import { isLowerBetterMoneyballMetric } from "@/utils/moneyball-metrics";
+
 export const BASIC_SEARCH_SORT_FIELDS = [
   "name",
   "age",
@@ -48,8 +50,14 @@ export function isSearchSortDir(value: unknown): value is SearchSortDir {
   return value === "asc" || value === "desc";
 }
 
-/** Default direction when switching to a new column. */
+/** Default direction when switching to a new column: best values first. */
 export function defaultDirForSortField(field: SearchSortField): SearchSortDir {
+  if (
+    field.startsWith("moneyball.") &&
+    isLowerBetterMoneyballMetric(field.slice("moneyball.".length))
+  ) {
+    return "asc";
+  }
   switch (field) {
     case "name":
     case "nationality":

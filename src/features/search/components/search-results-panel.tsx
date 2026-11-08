@@ -15,13 +15,13 @@ import {
   TableScoreContent,
   TABLE_TEXT_CELL_CLASS as TEXT_CELL,
 } from "@/components/player-table/table-cells";
-import type { TableGroupInput } from "@/components/player-table/table-groups";
 import {
   type ConfigurableTableIdentity,
   VirtualizedPlayerTable,
 } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { PlayerMetricPicker } from "@/components/ui/player-metric-picker";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import {
   isIdentityColumnId,
@@ -59,9 +59,14 @@ import {
 } from "../types/search-sort";
 import type { ComparisonPool, SearchView } from "../types/search-view";
 import { defaultSearchSort } from "../types/search-view";
-import { completeFilterRules } from "../utils/filter-registry";
+import {
+  completeFilterRules,
+  filterFieldsForView,
+  getFilterField,
+} from "../utils/filter-registry";
+import { searchTableGroups } from "../utils/search-table-groups";
 import { buildTacticColumnOrder } from "../utils/tactic-columns";
-import { SearchFilterBar } from "./search-filter-bar";
+import { type FilterFieldRequest, SearchFilterBar } from "./search-filter-bar";
 
 type TableColumn = PlayerTableColumn;
 
@@ -207,83 +212,6 @@ function PlayerIdentityCell({
   );
 }
 
-export const SEARCH_TABLE_GROUPS: TableGroupInput = {
-  groups: [
-    { id: "profile", label: "Profile" },
-    { id: "ability", label: "Ability" },
-    { id: "market", label: "Market" },
-    { id: "tactic-fit", label: "Tactic Fit" },
-  ],
-  groupForColumn: (columnId) => {
-    if (
-      isValidTacticColumnId(columnId) ||
-      columnId.startsWith("role.") ||
-      columnId.startsWith("potential_role.") ||
-      columnId === "club_dna"
-    ) {
-      return "tactic-fit";
-    }
-    switch (getPlayerMetric(columnId)?.category) {
-      case "identity":
-        return "profile";
-      case "ability-reputation":
-      case "visible-attributes":
-      case "hidden-attributes":
-      case "personality":
-        return "ability";
-      case "club-contract":
-        return "market";
-      case "position-suitability":
-      case "current-role-scores":
-      case "potential-role-scores":
-        return "tactic-fit";
-      default:
-        return "other";
-    }
-  },
-};
-
-export const MONEYBALL_TABLE_GROUPS: TableGroupInput = {
-  groups: [
-    { id: "profile", label: "Profile" },
-    { id: "market", label: "Market" },
-    { id: "playing-time", label: "Playing Time" },
-    { id: "performance", label: "Performance" },
-    { id: "role-fit", label: "Role Fit" },
-  ],
-  groupForColumn: (columnId) => {
-    if (columnId === "position") {
-      return "profile";
-    }
-    if (columnId.startsWith("moneyball_role.")) {
-      return "role-fit";
-    }
-    const metric = getMoneyballSearchMetric(columnId);
-    if (!metric) {
-      return "other";
-    }
-    if (metric.context) {
-      return "playing-time";
-    }
-    if (metric.metric) {
-      return "performance";
-    }
-    if (metric.role) {
-      return "role-fit";
-    }
-    switch (metric.category) {
-      case "Identity":
-        return "profile";
-      case "Club and value":
-        return "market";
-      case "Context":
-        return "playing-time";
-      default:
-        return "other";
-    }
-  },
-};
-
 function SearchResultsVirtualTable({
   total,
   sortBy,
@@ -298,6 +226,7 @@ function SearchResultsVirtualTable({
   onRemoveColumn,
   onMoveColumn,
   onResizeColumn,
+  onFilterColumn,
   view,
   comparisonPool,
   shortlistOnly,
@@ -318,6 +247,7 @@ function SearchResultsVirtualTable({
   onRemoveColumn: (metricId: string) => void;
   onMoveColumn: (metricId: string, targetIndex: number) => void;
   onResizeColumn: (metricId: string, width: number) => void;
+  onFilterColumn: (metricId: string) => void;
   view: SearchView;
   comparisonPool: ComparisonPool;
   shortlistOnly: boolean;
@@ -337,9 +267,7 @@ function SearchResultsVirtualTable({
         <PlayerTableHeader
           columns={tableColumns}
           fixedColumns={fixedColumns}
-          groups={
-            view === "moneyball" ? MONEYBALL_TABLE_GROUPS : SEARCH_TABLE_GROUPS
-          }
+          groups={searchTableGroups(view)}
           identity={identity}
           sortBy={sortBy}
           sortDir={sortDir}
@@ -351,6 +279,11 @@ function SearchResultsVirtualTable({
           onRemoveColumn={onRemoveColumn}
           onMoveColumn={onMoveColumn}
           onResizeColumn={onResizeColumn}
+          onSortDirection={(metricId, dir) => onSortChange(metricId, dir)}
+          onFilterColumn={onFilterColumn}
+          canFilterColumn={(metricId) =>
+            getFilterField(metricId, view) !== undefined
+          }
           metrics={
             view === "moneyball"
               ? MONEYBALL_HEADER_METRICS
@@ -614,6 +547,9 @@ export function SearchResultsPanel({
     ],
   );
   const [committed, setCommitted] = useState(requested);
+  const [fieldRequest, setFieldRequest] = useState<FilterFieldRequest | null>(
+    null,
+  );
   const committedOptions = searchPlayersQueryOptions(
     0,
     SEARCH_PAGE_SIZE,
@@ -723,14 +659,14 @@ export function SearchResultsPanel({
       : undefined;
   const columnsControl = (
     <ConfigurableColumnsControl
-      groups={
-        view === "moneyball" ? MONEYBALL_TABLE_GROUPS : SEARCH_TABLE_GROUPS
-      }
+      groups={searchTableGroups(view)}
       metrics={
         view === "moneyball" ? MONEYBALL_HEADER_METRICS : SEARCH_HEADER_METRICS
       }
       visibleColumnIds={layout.columnIds}
-      onAddColumn={(metricId) => addColumns(tableId, [metricId])}
+      onAddColumn={(metricId) =>
+        addColumns(tableId, [metricId], searchTableGroups(view))
+      }
       onRemoveColumn={removeColumn}
     />
   );
@@ -741,6 +677,8 @@ export function SearchResultsPanel({
       onRulesChange={onRulesChange}
       onApply={onApplyFilters}
       view={view}
+      comparisonPool={comparisonPool}
+      fieldRequest={fieldRequest}
       summary={summary}
       columnsControl={columnsControl}
       datasetToggles={datasetToggles}
@@ -784,6 +722,48 @@ export function SearchResultsPanel({
   const sortLabel = sortMetric
     ? sortMetric.label
     : (sortColumn?.accessibleLabel ?? sortColumn?.label ?? committed.sortBy);
+  // "N players · sorted by [field] ([direction])": both parts are controls.
+  // Choosing a field also shows its column, so the sort is never invisible.
+  const summary = (
+    <div
+      className="text-body-md text-on-surface-variant"
+      data-testid="search-results-summary"
+    >
+      <span className="text-on-surface">{formatCount(page.total)}</span> players
+      · sorted by{" "}
+      <PlayerMetricPicker
+        label="Sort by"
+        searchLabel="Search fields"
+        variant="inline"
+        metrics={filterFieldsForView(view).filter(
+          (metric) => metric.sortable !== false,
+        )}
+        groups={searchTableGroups(view)}
+        value={committed.sortBy}
+        placeholder={sortLabel}
+        onChange={(field) => {
+          addColumns(tableId, [field], searchTableGroups(view));
+          onSortChange(field, defaultDirForSortField(field));
+        }}
+      />{" "}
+      (
+      <button
+        type="button"
+        aria-label={`Sort direction: ${dirLabel}`}
+        title="Reverse the sort direction"
+        className="rounded-sm text-on-surface underline decoration-dotted underline-offset-4 hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        onClick={() =>
+          onSortChange(
+            committed.sortBy,
+            committed.sortDir === "asc" ? "desc" : "asc",
+          )
+        }
+      >
+        {dirLabel}
+      </button>
+      )
+    </div>
+  );
   if (page.total === 0) {
     const appliedFilters = completeFilterRules(filters, view);
     const shortlistEmpty = view === "general" && shortlistOnly;
@@ -812,12 +792,7 @@ export function SearchResultsPanel({
         className="flex min-h-0 flex-1 flex-col"
         contentClassName="flex min-h-0 flex-1 flex-col"
       >
-        {renderToolbar(
-          <p className="text-body-md text-on-surface-variant">
-            <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
-            players · sorted by {sortLabel} ({dirLabel})
-          </p>,
-        )}
+        {renderToolbar(summary)}
         <EmptyState icon={SearchX} title={emptyTitle}>
           {emptyBody}
         </EmptyState>
@@ -890,12 +865,7 @@ export function SearchResultsPanel({
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
-      {renderToolbar(
-        <p className="text-body-md text-on-surface-variant">
-          <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
-          players · sorted by {sortLabel} ({dirLabel})
-        </p>,
-      )}
+      {renderToolbar(summary)}
       {isReplacementPending ? (
         <p
           className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
@@ -936,11 +906,14 @@ export function SearchResultsPanel({
         firstPageQueryOptions={committedOptions}
         isReplacementActive={isReplacementActive}
         onSortChange={onSortChange}
-        onAddColumn={(metricId) => addColumns(tableId, [metricId])}
+        onAddColumn={(metricId) =>
+          addColumns(tableId, [metricId], searchTableGroups(view))
+        }
         onRemoveColumn={removeColumn}
         onMoveColumn={(metricId, targetIndex) =>
           moveColumn(tableId, metricId, targetIndex)
         }
+        onFilterColumn={(field) => setFieldRequest({ field, key: Date.now() })}
         onResizeColumn={(metricId, width) =>
           setColumnWidth(tableId, metricId, width)
         }

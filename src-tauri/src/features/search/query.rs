@@ -243,6 +243,8 @@ impl SortField {
             | Self::Nationality
             | Self::Club
             | Self::Division
+            | Self::Ca
+            | Self::Pa
             | Self::Value => true,
             Self::Dynamic(field) => {
                 field.is_tactic_field()
@@ -250,7 +252,6 @@ impl SortField {
                         field.id(),
                     )
             }
-            Self::Ca | Self::Pa => false,
         }
     }
 }
@@ -2129,30 +2130,58 @@ mod tests {
     }
 
     #[test]
-    fn moneyball_view_rejects_ability_sort_fields() {
+    fn moneyball_view_filters_and_sorts_ability_and_contract_fields() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("moneyball-sort.db"));
-        ingest_players(&mut conn, vec![player_template(1, "Scored", 160)]);
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-ability.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Low", 140),
+                player_template(2, "High", 170),
+                player_template(3, "Mid", 155),
+            ],
+        );
         let snapshot_id = current_snapshot_id(&conn);
-        insert_moneyball_row(&conn, snapshot_id, 1, Some(r#"{"goals":50}"#));
+        for uid in 1..=3 {
+            insert_moneyball_row(&conn, snapshot_id, uid, Some(r#"{"goals":50}"#));
+        }
+        let filter_ast = parse_filter_ast(
+            vec![FilterRule {
+                field: "ca".to_string(),
+                op: "gte".to_string(),
+                value: FilterValue::Integer(150),
+            }],
+            None,
+        )
+        .expect("CA filter");
+        let requested_fields = ["wage".to_string(), "reputation".to_string()];
 
-        let error = search_players_in_view(
+        let page = search_players_in_view(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
                 limit: DEFAULT_PAGE_LIMIT,
-                sort_by: SortField::Ca,
+                sort_by: SortField::parse_for_moneyball("pa", true).expect("PA sort"),
                 sort_dir: SortDir::Desc,
-                filter_ast: None,
-                requested_fields: &[],
+                filter_ast: Some(&filter_ast),
+                requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::Filtered,
                 shortlist_only: false,
             },
         )
-        .expect_err("CA must not sort Moneyball Search");
+        .expect("CA and PA work in Moneyball Search");
 
-        assert_eq!(error, "unsupported Moneyball sort field");
+        assert_eq!(page.total, 2);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+        assert!(page.players[0].dynamic_values.contains_key("wage"));
+        assert!(page.players[0].dynamic_values.contains_key("reputation"));
     }
 
     #[test]
@@ -3345,6 +3374,51 @@ mod tests {
         .expect("position suitability");
         assert_eq!(suitability.total, 1);
         assert_eq!(suitability.players[0].name, "Natural MC");
+
+        let names = |rules: Vec<FilterRule>| {
+            search_with_filters(
+                &conn,
+                0,
+                DEFAULT_PAGE_LIMIT,
+                SortField::DEFAULT,
+                SortDir::DEFAULT,
+                rules,
+                None,
+            )
+            .expect("position search")
+            .players
+            .into_iter()
+            .map(|player| player.name)
+            .collect::<Vec<_>>()
+        };
+        let positions = |keys: &[&str]| {
+            FilterValue::List(
+                keys.iter()
+                    .map(|key| FilterValue::Text((*key).to_string()))
+                    .collect(),
+            )
+        };
+        // Any of: familiarity 16+ at either key; DM 12 does not count.
+        assert_eq!(
+            names(vec![filter_rule(
+                "position",
+                "in",
+                positions(&["MC", "DM"])
+            )]),
+            vec!["Natural MC", "Cutoff MC"]
+        );
+        assert_eq!(
+            names(vec![filter_rule("position", "not_in", positions(&["ST"]))]),
+            vec!["Natural MC", "Cutoff MC"]
+        );
+        assert_eq!(
+            names(vec![filter_rule(
+                "pos.MC",
+                "between",
+                FilterValue::List(vec![FilterValue::Integer(15), FilterValue::Integer(16)])
+            )]),
+            vec!["Cutoff MC", "Fringe MC"]
+        );
     }
 
     #[test]
@@ -4912,7 +4986,8 @@ mod tests {
             SearchPlayersRequest {
                 offset: 0,
                 limit: DEFAULT_PAGE_LIMIT,
-                sort_by: SortField::Ca,
+                // FM attributes stay General-only, so they cannot sort Moneyball.
+                sort_by: SortField::parse("attr.Acceleration").expect("General sort field"),
                 sort_dir: SortDir::DEFAULT,
                 filter_ast: None,
                 requested_fields: &[role_field],
@@ -4921,7 +4996,7 @@ mod tests {
                 shortlist_only: false,
             },
         )
-        .expect_err("CA sort in Moneyball role query");
+        .expect_err("attribute sort in Moneyball role query");
         assert!(error.contains("unsupported Moneyball sort field"));
     }
 

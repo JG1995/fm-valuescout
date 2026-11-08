@@ -461,6 +461,9 @@ fn parse_tactic_field(field: &str) -> Result<Option<MetricField>, String> {
     }))
 }
 
+/// Moneyball Search offers recruitment, ability, and contract fields alongside its
+/// statistics, but not FM attributes, hidden or personality values, position
+/// suitability, FM role scores, or Club DNA, so it stays a performance view.
 pub fn is_moneyball_search_field(field: &str) -> bool {
     if field.starts_with("moneyball_role.") {
         return parse_moneyball_role_id(field, true)
@@ -480,6 +483,18 @@ pub fn is_moneyball_search_field(field: &str) -> bool {
             | "preferred_foot"
             | "value"
             | "position"
+            | "ca"
+            | "pa"
+            | "reputation"
+            | "world_reputation"
+            | "wage"
+            | "contract_year"
+            | "transfer_listed"
+            | "loan_listed"
+            | "not_for_sale"
+            | "set_for_release"
+            | "on_loan"
+            | "team_level"
     ) || moneyball_context_column(field).is_some()
         || field
             .strip_prefix("moneyball.")

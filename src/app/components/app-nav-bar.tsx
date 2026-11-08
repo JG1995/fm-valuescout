@@ -13,6 +13,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
+import { useSearchViewMemory } from "@/stores/use-search-view-memory";
 import { cn } from "@/utils/cn";
 
 type DestinationId =
@@ -44,16 +45,6 @@ type Destination = {
   ) => Record<string, unknown>;
 };
 
-function searchViewTransition(
-  view: "general" | "moneyball",
-): (previous: Record<string, unknown>) => Record<string, unknown> {
-  return (previous) => ({
-    view,
-    combine: previous.combine,
-    shortlistOnly: previous.shortlistOnly,
-  });
-}
-
 function clubViewTransition(
   view: "squad" | "planner" | "tactic",
 ): (previous: Record<string, unknown>) => Record<string, unknown> {
@@ -72,7 +63,6 @@ const destinations: Destination[] = [
     icon: Search,
     to: "/search",
     search: { view: "general" },
-    searchTransition: searchViewTransition("general"),
   },
   {
     id: "moneyball",
@@ -80,7 +70,6 @@ const destinations: Destination[] = [
     icon: Target,
     to: "/search",
     search: { view: "moneyball" },
-    searchTransition: searchViewTransition("moneyball"),
   },
   {
     id: "staff-search",
@@ -167,11 +156,23 @@ export function AppNavBar() {
     search as Record<string, unknown>,
     defaultAnalysisView,
   );
+  const searchMemory = useSearchViewMemory((state) => state.views);
   const byId = new Map(destinations.map((item) => [item.id, item]));
-  // Same-route view transitions keep the old tab contract: inside /search
-  // shortlistOnly/combine survive, inside /my-club squadSort/squadDir
-  // survive, and every other key falls back to the destination view
-  // defaults in validateSearch. Links from other routes use the plain
+  // Search and Moneyball restore each view's last filters, sort, and
+  // comparison pool from session memory; on /search the shortlist override
+  // also carries over.
+  const searchViewLink =
+    (view: "general" | "moneyball") =>
+    (previous: Record<string, unknown>): Record<string, unknown> => ({
+      ...searchMemory[view],
+      view,
+      ...(pathname === "/search"
+        ? { shortlistOnly: previous.shortlistOnly }
+        : {}),
+    });
+  // Same-route view transitions keep the old tab contract: inside /my-club
+  // squadSort/squadDir survive, and every other key falls back to the
+  // destination view defaults in validateSearch. Links from other routes use the plain
   // search object so unrelated search state never leaks across routes.
   // Each transition only carries its own route's keys, so applying it on
   // the sibling route degrades to the plain object.
@@ -206,9 +207,13 @@ export function AppNavBar() {
                       key={id}
                       to={item.to}
                       search={
-                        item.searchTransition && pathname === item.to
-                          ? item.searchTransition
-                          : item.search
+                        id === "search" || id === "moneyball"
+                          ? searchViewLink(
+                              id === "moneyball" ? "moneyball" : "general",
+                            )
+                          : item.searchTransition && pathname === item.to
+                            ? item.searchTransition
+                            : item.search
                       }
                       activeOptions={{ exact: true }}
                       aria-current={isActive ? "page" : undefined}

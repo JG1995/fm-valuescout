@@ -114,10 +114,10 @@ const STRING_OPERATORS: readonly PlayerMetricOperator[] = [
 ];
 
 const INTEGER_OPERATORS: readonly PlayerMetricOperator[] = [
-  { id: "gt", label: "greater than" },
-  { id: "lt", label: "less than" },
+  { id: "gte", label: "at least" },
+  { id: "lte", label: "at most" },
+  { id: "between", label: "between" },
   { id: "eq", label: "equals" },
-  { id: "neq", label: "does not equal" },
 ];
 
 const BOOLEAN_OPERATORS: readonly PlayerMetricOperator[] = [
@@ -126,8 +126,8 @@ const BOOLEAN_OPERATORS: readonly PlayerMetricOperator[] = [
 ];
 
 const ENUM_OPERATORS: readonly PlayerMetricOperator[] = [
-  { id: "is", label: "is" },
-  { id: "is_not", label: "is not" },
+  { id: "in", label: "is any of" },
+  { id: "not_in", label: "is none of" },
 ];
 
 type RoleId = (typeof ROLE_CATALOG)[number]["id"];
@@ -463,7 +463,7 @@ const PLAYER_METRIC_DEFINITIONS: readonly PlayerMetricDefinition[] = [
   {
     id: "position",
     label: "Position",
-    category: "position-suitability",
+    category: "identity",
     kind: "enum",
     defaultWidth: 144,
     operators: ENUM_OPERATORS,

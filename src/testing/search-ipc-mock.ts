@@ -347,8 +347,10 @@ function matchFilterRule(player: PlayerSummary, rule: FilterRuleIpc): boolean {
     }
   }
 
-  if (typeof rule.value === "string") {
-    return false;
+  if (Array.isArray(rule.value) && (op === "in" || op === "not_in")) {
+    const chosen = (rule.value as unknown[]).map(String);
+    const present = raw !== null && chosen.includes(String(raw));
+    return op === "in" ? present : raw !== null && !present;
   }
 
   const number = typeof raw === "number" ? raw : null;
@@ -356,11 +358,29 @@ function matchFilterRule(player: PlayerSummary, rule: FilterRuleIpc): boolean {
     return false;
   }
 
+  if (Array.isArray(rule.value)) {
+    const [low, high] = rule.value as number[];
+    return (
+      op === "between" &&
+      low !== undefined &&
+      high !== undefined &&
+      number >= low &&
+      number <= high
+    );
+  }
+  if (typeof rule.value !== "number") {
+    return false;
+  }
+
   switch (op) {
     case "gt":
       return number > rule.value;
+    case "gte":
+      return number >= rule.value;
     case "lt":
       return number < rule.value;
+    case "lte":
+      return number <= rule.value;
     case "eq":
       return number === rule.value;
     case "neq":

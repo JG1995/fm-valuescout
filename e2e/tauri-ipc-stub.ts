@@ -439,6 +439,8 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           club: "Moneyball FC",
           currentClubUid: 9002,
           division: "Premier Division",
+          ca: 150 - (index % 40),
+          pa: 170 - (index % 30),
           marketValueGbp: 1000000 + index * 10000,
           dynamicValues: {
             "moneyball.minutes": 900 + index * 10,
@@ -1002,6 +1004,13 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                       else if (field === "pa") raw = player.pa;
                       else if (field === "value") raw = player.marketValueGbp;
                       else raw = player.dynamicValues?.[field] ?? null;
+                      if (
+                        typeof raw === "number" &&
+                        rule.op === "between" &&
+                        Array.isArray(rule.value)
+                      ) {
+                        return raw >= rule.value[0] && raw <= rule.value[1];
+                      }
                       if (typeof raw !== "number" || typeof rule.value !== "number") {
                         if (typeof raw === "string" && typeof rule.value === "string") {
                           const hay = String(raw).toLowerCase();
@@ -1016,7 +1025,9 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                       }
                       switch (rule.op) {
                         case "gt": return raw > rule.value;
+                        case "gte": return raw >= rule.value;
                         case "lt": return raw < rule.value;
+                        case "lte": return raw <= rule.value;
                         case "eq": return raw === rule.value;
                         case "neq": return raw !== rule.value;
                         default: return false;
@@ -1058,6 +1069,13 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                     const matches = filterRules.map((rule) => {
                       const value = player.dynamicValues?.[rule.field];
                       if (
+                        typeof value === "number" &&
+                        rule.op === "between" &&
+                        Array.isArray(rule.value)
+                      ) {
+                        return value >= rule.value[0] && value <= rule.value[1];
+                      }
+                      if (
                         typeof value !== "number" ||
                         typeof rule.value !== "number"
                       ) {
@@ -1066,8 +1084,12 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                       switch (rule.op) {
                         case "gt":
                           return value > rule.value;
+                        case "gte":
+                          return value >= rule.value;
                         case "lt":
                           return value < rule.value;
+                        case "lte":
+                          return value <= rule.value;
                         case "eq":
                           return value === rule.value;
                         case "neq":

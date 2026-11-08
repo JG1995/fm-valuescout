@@ -1,11 +1,16 @@
+import { isPercentileOperator } from "@/utils/moneyball-search-metrics";
 import type {
   FilterCombineMode,
   FilterRule,
   FilterValue,
 } from "../types/filter-rule";
-import { createFilterRuleId } from "../types/filter-rule";
+import { createFilterRuleId, filterValueToIpc } from "../types/filter-rule";
 import type { SearchView } from "../types/search-view";
-import { getFilterField } from "./filter-registry";
+import {
+  type FilterFieldDef,
+  getFilterField,
+  valueShapeForOperator,
+} from "./filter-registry";
 
 /** Mirrors Rust `MAX_FILTER_RULES` in `features/search/filter.rs`. */
 export const MAX_FILTER_RULES = 32;
@@ -14,7 +19,7 @@ export type FilterRuleUrl = {
   id?: string;
   field: string;
   op: string;
-  value: string | number | boolean;
+  value: string | number | boolean | number[] | string[];
 };
 
 export function parseSearchCombine(value: unknown): FilterCombineMode {
@@ -37,29 +42,17 @@ export function parseShortlistOnly(value: unknown): boolean | undefined {
   return undefined;
 }
 
-function isFilterValue(value: unknown): value is FilterValue {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return false;
+/** URL values are flat, but older links stored `{ type, value }` objects. */
+function unwrapTaggedValue(raw: unknown): unknown {
+  if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
+    return (raw as Record<string, unknown>).value;
   }
-  const record = value as Record<string, unknown>;
-  if (record.type === "text" && typeof record.value === "string") {
-    return true;
-  }
-  if (
-    (record.type === "integer" || record.type === "number") &&
-    typeof record.value === "number" &&
-    Number.isFinite(record.value)
-  ) {
-    return true;
-  }
-  if (record.type === "bool" && typeof record.value === "boolean") {
-    return true;
-  }
-  return false;
+  return raw;
 }
 
 function valueFromRaw(
   fieldId: string,
+  op: string,
   raw: unknown,
   view: SearchView,
 ): FilterValue | undefined {
@@ -67,38 +60,66 @@ function valueFromRaw(
   if (!field) {
     return undefined;
   }
+  const value = unwrapTaggedValue(raw);
+  const isNumber = (item: unknown): item is number =>
+    typeof item === "number" && Number.isFinite(item);
 
-  if (isFilterValue(raw)) {
-    switch (field.kind) {
-      case "string":
-      case "enum":
-        return raw.type === "text" ? raw : undefined;
-      case "integer":
-        return raw.type === "integer" ? raw : undefined;
-      case "number":
-        return raw.type === "number" ? raw : undefined;
-      case "boolean":
-        return raw.type === "bool" ? raw : undefined;
-    }
+  switch (valueShapeForOperator(op)) {
+    case "range":
+      return Array.isArray(value) && value.length === 2 && value.every(isNumber)
+        ? { type: "range", value: [value[0], value[1]] }
+        : undefined;
+    case "list":
+      return Array.isArray(value) &&
+        value.every((item) => typeof item === "string")
+        ? { type: "list", value: [...value] }
+        : undefined;
+    case "single":
+      break;
   }
-
+  if (isPercentileOperator(op)) {
+    return isNumber(value) ? { type: "number", value } : undefined;
+  }
   switch (field.kind) {
     case "string":
     case "enum":
-      return typeof raw === "string" ? { type: "text", value: raw } : undefined;
+      return typeof value === "string" ? { type: "text", value } : undefined;
     case "integer":
-      return typeof raw === "number" && Number.isFinite(raw)
-        ? { type: "integer", value: raw }
-        : undefined;
+      return isNumber(value) ? { type: "integer", value } : undefined;
     case "number":
-      return typeof raw === "number" && Number.isFinite(raw)
-        ? { type: "number", value: raw }
-        : undefined;
+      return isNumber(value) ? { type: "number", value } : undefined;
     case "boolean":
-      return typeof raw === "boolean"
-        ? { type: "bool", value: raw }
-        : undefined;
+      return typeof value === "boolean" ? { type: "bool", value } : undefined;
   }
+}
+
+/**
+ * Older links used exclusive `gt` / `lt`, `neq`, and single-value `is` /
+ * `is_not` for choices. Map them onto today's operators: whole numbers shift
+ * by one, decimals become inclusive, choices become one-item lists, and
+ * `neq` (no longer offered) is dropped.
+ */
+function migrateLegacyRule(
+  field: FilterFieldDef,
+  op: string,
+  raw: unknown,
+): { op: string; raw: unknown } | undefined {
+  const value = unwrapTaggedValue(raw);
+  if (field.kind === "integer" || field.kind === "number") {
+    if (op === "neq") {
+      return undefined;
+    }
+    if ((op === "gt" || op === "lt") && typeof value === "number") {
+      const step = field.kind === "integer" ? 1 : 0;
+      return op === "gt"
+        ? { op: "gte", raw: value + step }
+        : { op: "lte", raw: value - step };
+    }
+  }
+  if (field.kind === "enum" && (op === "is" || op === "is_not")) {
+    return { op: op === "is" ? "in" : "not_in", raw: [value] };
+  }
+  return { op, raw };
 }
 
 function parseOneFilterRule(
@@ -111,17 +132,23 @@ function parseOneFilterRule(
 
   const record = entry as Record<string, unknown>;
   const field = typeof record.field === "string" ? record.field : undefined;
-  const op = typeof record.op === "string" ? record.op : undefined;
-  if (!field || !op) {
+  const recordOp = typeof record.op === "string" ? record.op : undefined;
+  if (!field || !recordOp) {
     return undefined;
   }
 
   const fieldDef = getFilterField(field, view);
-  if (!fieldDef?.operators.some((candidate) => candidate.id === op)) {
+  const migrated = fieldDef
+    ? migrateLegacyRule(fieldDef, recordOp, record.value)
+    : undefined;
+  if (
+    !migrated ||
+    !fieldDef?.operators.some((candidate) => candidate.id === migrated.op)
+  ) {
     return undefined;
   }
 
-  const value = valueFromRaw(field, record.value, view);
+  const value = valueFromRaw(field, migrated.op, migrated.raw, view);
   if (!value) {
     return undefined;
   }
@@ -131,7 +158,7 @@ function parseOneFilterRule(
       ? record.id
       : createFilterRuleId();
 
-  return { id, field, op, value };
+  return { id, field, op: migrated.op, value };
 }
 
 export function parseSearchFilters(
@@ -160,7 +187,7 @@ export function searchFiltersForUrl(rules: FilterRule[]): FilterRuleUrl[] {
     id: rule.id,
     field: rule.field,
     op: rule.op,
-    value: rule.value.value,
+    value: filterValueToIpc(rule.value),
   }));
 }
 

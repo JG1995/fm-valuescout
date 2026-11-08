@@ -9,25 +9,25 @@ describe("dynamicColumnFields", () => {
       {
         id: createFilterRuleId(),
         field: "ca",
-        op: "gt",
+        op: "gte",
         value: { type: "integer", value: 100 },
       },
       {
         id: createFilterRuleId(),
         field: "role.deep_lying_playmaker_ip",
-        op: "gt",
+        op: "gte",
         value: { type: "integer", value: 70 },
       },
       {
         id: createFilterRuleId(),
         field: "attr.Acceleration",
-        op: "gt",
+        op: "gte",
         value: { type: "integer", value: 12 },
       },
       {
         id: createFilterRuleId(),
         field: "role.deep_lying_playmaker_ip",
-        op: "lt",
+        op: "lte",
         value: { type: "integer", value: 95 },
       },
     ]);
@@ -43,7 +43,7 @@ describe("dynamicColumnFields", () => {
       {
         id: createFilterRuleId(),
         field: "club_dna",
-        op: "gt",
+        op: "gte",
         value: { type: "integer", value: 70 },
       },
     ]);
@@ -57,7 +57,7 @@ describe("dynamicColumnFields", () => {
       {
         id: createFilterRuleId(),
         field: "role.deep_lying_playmaker_ip",
-        op: "gt",
+        op: "gte",
         value: { type: "integer" as const, value: 70 },
       },
     ];
@@ -74,13 +74,13 @@ describe("dynamicColumnFields", () => {
         {
           id: createFilterRuleId(),
           field: "position",
-          op: "is",
-          value: { type: "text", value: "MC" },
+          op: "in",
+          value: { type: "list", value: ["MC"] },
         },
         {
           id: createFilterRuleId(),
           field: "pos.MC",
-          op: "gt",
+          op: "gte",
           value: { type: "integer", value: 15 },
         },
       ]),
@@ -92,7 +92,7 @@ describe("dynamicColumnFields", () => {
       {
         id: createFilterRuleId(),
         field: "potential_role.goalkeeper_ip",
-        op: "gt",
+        op: "gte",
         value: { type: "integer" as const, value: 70 },
       },
     ];
@@ -130,7 +130,7 @@ describe("dynamicColumnFields", () => {
       {
         id: createFilterRuleId(),
         field: "moneyball_role.wbl_wbr_wing_back_ip",
-        op: "gt",
+        op: "gte",
         value: { type: "integer" as const, value: 70 },
       },
     ];
@@ -153,19 +153,22 @@ describe("dynamicColumnFields", () => {
   it("keeps General sorts and fields independent of Moneyball", () => {
     expect(isVisibleSortField("pa", [], "general")).toBe(true);
     expect(isVisibleSortField("moneyball.goals", [], "general")).toBe(false);
+    expect(isVisibleSortField("ca", [], "moneyball")).toBe(true);
+    expect(isVisibleSortField("wage", [], "moneyball")).toBe(true);
+    expect(isVisibleSortField("attr.Pace", [], "moneyball")).toBe(false);
     expect(
       dynamicColumnFields(
         [
           {
             id: createFilterRuleId(),
             field: "moneyball.goals",
-            op: "gt",
+            op: "gte",
             value: { type: "integer" as const, value: 5 },
           },
           {
             id: createFilterRuleId(),
             field: "moneyball_role.wbl_wbr_wing_back_ip",
-            op: "gt",
+            op: "gte",
             value: { type: "integer" as const, value: 70 },
           },
         ],
@@ -174,15 +177,15 @@ describe("dynamicColumnFields", () => {
     ).toEqual([]);
   });
 
-  it("keeps Moneyball basic identity and value sorts while rejecting CA and PA", () => {
+  it("keeps Moneyball basic identity, ability, and value sorts", () => {
     expect(isVisibleSortField("name", [], "moneyball")).toBe(true);
     expect(isVisibleSortField("age", [], "moneyball")).toBe(true);
     expect(isVisibleSortField("nationality", [], "moneyball")).toBe(true);
     expect(isVisibleSortField("club", [], "moneyball")).toBe(true);
     expect(isVisibleSortField("division", [], "moneyball")).toBe(true);
     expect(isVisibleSortField("value", [], "moneyball")).toBe(true);
-    expect(isVisibleSortField("ca", [], "moneyball")).toBe(false);
-    expect(isVisibleSortField("pa", [], "moneyball")).toBe(false);
+    expect(isVisibleSortField("ca", [], "moneyball")).toBe(true);
+    expect(isVisibleSortField("pa", [], "moneyball")).toBe(true);
     expect(
       isVisibleSortField("moneyball.average_rating", [], "moneyball"),
     ).toBe(true);

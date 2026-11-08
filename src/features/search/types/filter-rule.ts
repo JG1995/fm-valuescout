@@ -4,7 +4,11 @@ export type FilterValue =
   | { type: "text"; value: string }
   | { type: "integer"; value: number }
   | { type: "number"; value: number }
-  | { type: "bool"; value: boolean };
+  | { type: "bool"; value: boolean }
+  /** `[min, max]` for `between` and `pct_between`. */
+  | { type: "range"; value: [number, number] }
+  /** The choices for `in` and `not_in`. */
+  | { type: "list"; value: string[] };
 
 export type FilterRule = {
   id: string;
@@ -17,20 +21,16 @@ export type FilterRule = {
 export type FilterRuleIpc = {
   field: string;
   op: string;
-  value: string | number | boolean;
+  value: string | number | boolean | number[] | string[];
 };
 
-export function filterValueToIpc(
-  value: FilterValue,
-): string | number | boolean {
+export function filterValueToIpc(value: FilterValue): FilterRuleIpc["value"] {
   switch (value.type) {
-    case "text":
-      return value.value;
-    case "integer":
-      return value.value;
-    case "number":
-      return value.value;
-    case "bool":
+    case "range":
+      return [...value.value];
+    case "list":
+      return [...value.value];
+    default:
       return value.value;
   }
 }

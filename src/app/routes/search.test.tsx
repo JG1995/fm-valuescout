@@ -30,6 +30,7 @@ import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import { useSearchViewMemory } from "@/stores/use-search-view-memory";
 import {
   shortlistFilterKey,
   useShortlistFilterStore,
@@ -166,6 +167,7 @@ describe("search route", () => {
   beforeEach(() => {
     openCsvDialog.mockReset();
     useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
+    useSearchViewMemory.setState({ views: {} });
   });
 
   it("uses protocol URLs for visible exact-UID graphics and preserves rows", async () => {
@@ -288,7 +290,7 @@ describe("search route", () => {
     expect(searchLink).toHaveAttribute("aria-current", "page");
     expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Edit filters" }),
+      screen.getByRole("button", { name: "Add filter" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Add Tactic (Current)" }),
@@ -323,7 +325,7 @@ describe("search route", () => {
     });
 
     expect(
-      await screen.findByRole("button", { name: "Edit filters" }),
+      await screen.findByRole("button", { name: "Add filter" }),
     ).toBeInTheDocument();
     expect(
       await screen.findByText("No data loaded for this save"),
@@ -915,16 +917,8 @@ describe("search route", () => {
     const { router } = renderSearchRoute("/search?view=moneyball");
 
     await screen.findByText("Role-fit Scout");
-    await user.click(screen.getByRole("button", { name: "Edit filters" }));
-    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Add filter" }),
-    );
-    await user.click(
-      within(dialog).getByRole("button", {
-        name: "Field: Average Rating",
-      }),
-    );
+    await user.click(screen.getByRole("button", { name: "Add filter" }));
+    const dialog = screen.getByRole("form", { name: "Add filter" });
     await user.type(
       within(dialog).getByRole("combobox", { name: "Search fields" }),
       "wing-back",
@@ -936,23 +930,23 @@ describe("search route", () => {
     );
     expect(
       within(dialog).getByText(
-        /role filters apply after the comparison cohort is calculated/i,
+        /Scored against the players matching your other filters/,
       ),
     ).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText("Value"), {
       target: { value: "70" },
     });
-    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    await user.click(within(dialog).getByRole("button", { name: "Add" }));
 
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
         view: "moneyball",
         filters: [
-          expect.objectContaining({ field: roleField, op: "gt", value: 70 }),
+          expect.objectContaining({ field: roleField, op: "gte", value: 70 }),
         ],
       });
       expect(getLastSearchPlayersArgs()).toMatchObject({
-        filters: [{ field: roleField, op: "gt", value: 70 }],
+        filters: [{ field: roleField, op: "gte", value: 70 }],
         requestedFields: expect.arrayContaining([roleField]),
       });
     });
@@ -961,7 +955,7 @@ describe("search route", () => {
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         comparisonPool: "fullCsv",
-        filters: [{ field: roleField, op: "gt", value: 70 }],
+        filters: [{ field: roleField, op: "gte", value: 70 }],
       });
     });
   });
@@ -1789,13 +1783,9 @@ describe("search route", () => {
     await screen.findByRole("table", {
       name: "Player search results",
     });
-    expect(
-      screen.getByText(
-        (_, element) =>
-          element?.tagName === "P" &&
-          element.textContent === "2 players · sorted by Name (ascending)",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("search-results-summary")).toHaveTextContent(
+      /^2 players · sorted by Name \(ascending\)$/,
+    );
   });
 
   it("moves keyboard focus to the next results row on ArrowDown", async () => {
@@ -1973,7 +1963,9 @@ describe("search route", () => {
     });
     const caHeader = within(table).getByRole("columnheader", { name: /CA/i });
     expect(caHeader).toHaveAttribute("aria-sort", "descending");
-    expect(screen.getByText(/sorted by CA \(descending\)/)).toBeInTheDocument();
+    expect(screen.getByTestId("search-results-summary")).toHaveTextContent(
+      /sorted by CA \(descending\)$/,
+    );
   });
 
   it("writes sort into URL search params when a header is clicked", async () => {
@@ -2104,13 +2096,9 @@ describe("search route", () => {
     expect(
       within(table).getByRole("columnheader", { name: "CA" }),
     ).toHaveAttribute("aria-sort", "descending");
-    expect(
-      screen.getByText(
-        (_, element) =>
-          element?.tagName === "P" &&
-          element.textContent === "2 players · sorted by CA (descending)",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("search-results-summary")).toHaveTextContent(
+      /^2 players · sorted by CA \(descending\)$/,
+    );
     const retainedRow = within(table)
       .getAllByRole("row")
       .find((row) => row.hasAttribute("data-index"));
@@ -2325,13 +2313,9 @@ describe("search route", () => {
     const table = await screen.findByRole("table", {
       name: "Player search results",
     });
-    expect(
-      screen.getByText(
-        (_, element) =>
-          element?.tagName === "P" &&
-          element.textContent === "2 players · sorted by Name (ascending)",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("search-results-summary")).toHaveTextContent(
+      /^2 players · sorted by Name \(ascending\)$/,
+    );
 
     const bodyRows = within(table)
       .getAllByRole("row")
@@ -2343,7 +2327,7 @@ describe("search route", () => {
     expect(within(firstRow).getByText("Alice")).toBeInTheDocument();
   });
 
-  it("keeps filter edits query-silent until Done, then applies the complete draft", async () => {
+  it("keeps a drafted filter query-silent until Add, then applies it", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([
@@ -2355,16 +2339,10 @@ describe("search route", () => {
     expect(await screen.findByText("High CA")).toBeInTheDocument();
     expect(screen.getByText("Low CA")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Edit filters" }));
-    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
-    expect(dialog).toBeInTheDocument();
     const callsBeforeEdit = getSearchPlayersCallCount();
+    await user.click(screen.getByRole("button", { name: "Add filter" }));
+    const dialog = screen.getByRole("form", { name: "Add filter" });
 
-    await user.click(
-      within(dialog).getByRole("button", { name: "Add filter" }),
-    );
-
-    await user.click(within(dialog).getByRole("button", { name: "Field: CA" }));
     await user.type(
       within(dialog).getByRole("combobox", { name: "Search fields" }),
       "ca",
@@ -2373,7 +2351,6 @@ describe("search route", () => {
 
     const valueField = within(dialog).getByLabelText("Value");
     fireEvent.change(valueField, { target: { value: "150" } });
-    await user.click(within(dialog).getByRole("button", { name: "or" }));
 
     expect(getSearchPlayersCallCount()).toBe(callsBeforeEdit);
     expect(router.state.location.search).toMatchObject({
@@ -2382,37 +2359,39 @@ describe("search route", () => {
     });
     expect(screen.getByText("Low CA")).toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    await user.click(within(dialog).getByRole("button", { name: "Add" }));
 
     await waitFor(() => {
       expect(getSearchPlayersCallCount()).toBeGreaterThan(callsBeforeEdit);
       expect(getLastSearchPlayersArgs()?.filters).toEqual([
-        { field: "ca", op: "gt", value: 150 },
+        { field: "ca", op: "gte", value: 150 },
       ]);
-      expect(getLastSearchPlayersArgs()?.filterCombine).toBe("or");
+      expect(getLastSearchPlayersArgs()?.filterCombine).toBe("and");
     });
     expect(router.state.location.search).toMatchObject({
-      combine: "or",
-      filters: [expect.objectContaining({ field: "ca", op: "gt", value: 150 })],
+      combine: "and",
+      filters: [
+        expect.objectContaining({ field: "ca", op: "gte", value: 150 }),
+      ],
     });
     expect(
       screen.getByRole("button", {
-        name: /Remove filter CA > 150/i,
+        name: /Remove filter CA ≥ 150/i,
       }),
     ).toBeInTheDocument();
     expect(screen.queryByText("Low CA")).not.toBeInTheDocument();
     expect(screen.getByText("High CA")).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole("button", { name: /Remove filter CA > 150/i }),
+      screen.getByRole("button", { name: /Remove filter CA ≥ 150/i }),
     );
     expect(
-      screen.queryByRole("button", { name: /Remove filter CA > 150/i }),
+      screen.queryByRole("button", { name: /Remove filter CA ≥ 150/i }),
     ).toBeNull();
     expect(await screen.findByText("Low CA")).toBeInTheDocument();
   });
 
-  it("keeps a drafted potential role filter query-silent until Done", async () => {
+  it("keeps a drafted potential role filter query-silent until Add", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([
@@ -2424,13 +2403,9 @@ describe("search route", () => {
     renderSearchRoute();
 
     expect(await screen.findByText("Potential target")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Edit filters" }));
-    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
     const callsBeforeEdit = getSearchPlayersCallCount();
-    await user.click(
-      within(dialog).getByRole("button", { name: "Add filter" }),
-    );
-    await user.click(within(dialog).getByRole("button", { name: "Field: CA" }));
+    await user.click(screen.getByRole("button", { name: "Add filter" }));
+    const dialog = screen.getByRole("form", { name: "Add filter" });
     await user.type(
       within(dialog).getByRole("combobox", { name: "Search fields" }),
       "potential role",
@@ -2452,11 +2427,11 @@ describe("search route", () => {
 
     expect(getSearchPlayersCallCount()).toBe(callsBeforeEdit);
 
-    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    await user.click(within(dialog).getByRole("button", { name: "Add" }));
 
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()?.filters).toEqual([
-        { field: "potential_role.goalkeeper_ip", op: "gt", value: 50 },
+        { field: "potential_role.goalkeeper_ip", op: "gte", value: 50 },
       ]);
     });
     expect(
@@ -2467,7 +2442,7 @@ describe("search route", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: /Remove filter Potential role · Goalkeeper \(IP\) > 50/i,
+        name: /Remove filter Potential role · Goalkeeper \(IP\) ≥ 50/i,
       }),
     );
 
@@ -2493,15 +2468,17 @@ describe("search route", () => {
     renderSearchRoute();
 
     expect(await screen.findByText("High CA")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Edit filters" }));
-    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Add filter" }),
+    await user.click(screen.getByRole("button", { name: "Add filter" }));
+    const dialog = screen.getByRole("form", { name: "Add filter" });
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "ca",
     );
+    await user.click(within(dialog).getByRole("option", { name: "CA" }));
     fireEvent.change(within(dialog).getByLabelText("Value"), {
       target: { value: "250" },
     });
-    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    await user.click(within(dialog).getByRole("button", { name: "Add" }));
 
     expect(
       await screen.findByText("No players match these filters"),
@@ -2514,7 +2491,7 @@ describe("search route", () => {
     setSearchPlayersOverride([]);
     const encoded = encodeURIComponent(
       JSON.stringify([
-        { field: "moneyball.average_rating", op: "gt", value: 7 },
+        { field: "moneyball.average_rating", op: "gte", value: 7 },
       ]),
     );
     renderSearchRoute(`/search?view=moneyball&filters=${encoded}`);
@@ -2528,6 +2505,32 @@ describe("search route", () => {
     expect(
       screen.getByText(/Adjust or clear filters in the toolbar above/),
     ).toBeInTheDocument();
+  });
+
+  it("filters Moneyball percentage stats on the displayed 0–100 scale", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Passer", 150)]);
+    const encoded = encodeURIComponent(
+      JSON.stringify([
+        { field: "moneyball.pass_completion_ratio", op: "gte", value: 80 },
+        {
+          field: "moneyball.pass_completion_ratio",
+          op: "pct_gte",
+          value: 90,
+        },
+      ]),
+    );
+    renderSearchRoute(`/search?view=moneyball&filters=${encoded}`);
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Remove filter Pass Completion % ≥ 80%",
+      }),
+    ).toBeInTheDocument();
+    expect(getLastSearchPlayersArgs()?.filters).toEqual([
+      { field: "moneyball.pass_completion_ratio", op: "gte", value: 0.8 },
+      { field: "moneyball.pass_completion_ratio", op: "pct_gte", value: 90 },
+    ]);
   });
 
   it("points an empty Moneyball cohort at the linked save and Refresh stats", async () => {
@@ -2551,13 +2554,13 @@ describe("search route", () => {
     setSearchPlayersOverride([playerNamed("High CA", 180)]);
     renderSearchRoute();
 
-    await user.click(
-      await screen.findByRole("button", { name: "Edit filters" }),
+    await user.click(await screen.findByRole("button", { name: "Add filter" }));
+    const dialog = screen.getByRole("form", { name: "Add filter" });
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "ca",
     );
-    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Add filter" }),
-    );
+    await user.click(within(dialog).getByRole("option", { name: "CA" }));
 
     const valueField = within(dialog).getByLabelText("Value");
     await user.click(valueField);
@@ -2577,19 +2580,29 @@ describe("search route", () => {
       playerNamed("High CA", 180),
       playerNamed("Low CA", 100),
     ]);
-    const { router } = renderSearchRoute();
+    const seeded = encodeURIComponent(
+      JSON.stringify([{ id: "seed", field: "ca", op: "gte", value: 160 }]),
+    );
+    const { router } = renderSearchRoute(`/search?filters=${seeded}`);
 
     expect(await screen.findByText("High CA")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Edit filters" }));
-    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
-    await user.click(within(dialog).getByRole("button", { name: "or" }));
-    await user.click(
-      within(dialog).getByRole("button", { name: "Add filter" }),
+    await user.click(screen.getByRole("button", { name: "Add filter" }));
+    const dialog = screen.getByRole("form", { name: "Add filter" });
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "ca",
     );
+    await user.click(within(dialog).getByRole("option", { name: "CA" }));
     fireEvent.change(within(dialog).getByLabelText("Value"), {
       target: { value: "150" },
     });
-    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    await user.click(within(dialog).getByRole("button", { name: "Add" }));
+    await user.click(
+      within(await screen.findByRole("group", { name: "Match" })).getByRole(
+        "button",
+        { name: "Any" },
+      ),
+    );
 
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
@@ -2597,11 +2610,8 @@ describe("search route", () => {
         dir: "desc",
         combine: "or",
         filters: [
-          expect.objectContaining({
-            field: "ca",
-            op: "gt",
-            value: 150,
-          }),
+          expect.objectContaining({ field: "ca", op: "gte", value: 160 }),
+          expect.objectContaining({ field: "ca", op: "gte", value: 150 }),
         ],
       });
       const href = decodeURIComponent(router.state.location.href);
@@ -2618,12 +2628,13 @@ describe("search route", () => {
 
     expect(
       await screen.findByRole("button", {
-        name: /Remove filter CA > 150/i,
+        name: /Remove filter CA ≥ 150/i,
       }),
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()?.filters).toEqual([
-        { field: "ca", op: "gt", value: 150 },
+        { field: "ca", op: "gte", value: 160 },
+        { field: "ca", op: "gte", value: 150 },
       ]);
       expect(getLastSearchPlayersArgs()?.filterCombine).toBe("or");
     });
@@ -2637,7 +2648,7 @@ describe("search route", () => {
       playerNamed("Low CA", 100),
     ]);
     const encodedFilters = encodeURIComponent(
-      JSON.stringify([{ id: "seed", field: "ca", op: "gt", value: 150 }]),
+      JSON.stringify([{ id: "seed", field: "ca", op: "gte", value: 150 }]),
     );
     renderSearchRoute(
       `/search?sort=ca&dir=desc&combine=and&filters=${encodedFilters}`,
@@ -2645,45 +2656,108 @@ describe("search route", () => {
 
     expect(
       await screen.findByRole("button", {
-        name: /Remove filter CA > 150/i,
+        name: /Remove filter CA ≥ 150/i,
       }),
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()?.filters).toEqual([
-        { field: "ca", op: "gt", value: 150 },
+        { field: "ca", op: "gte", value: 150 },
       ]);
     });
     expect(screen.queryByText("Low CA")).not.toBeInTheDocument();
   });
 
   it("stops adding filter rules once the UI cap is reached", async () => {
-    const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    const rules = Array.from({ length: 32 }, (_, index) => ({
+      field: "ca",
+      op: "gte",
+      value: index,
+    }));
+    renderSearchRoute(
+      `/search?filters=${encodeURIComponent(JSON.stringify(rules))}`,
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Add filter" }),
+    ).toBeDisabled();
+    expect(
+      screen.getAllByRole("button", { name: /^Remove filter CA/ }),
+    ).toHaveLength(32);
+  });
+
+  it("sorts and starts a filter from a column's menu", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("High", 180),
+      playerNamed("Low", 100),
+    ]);
     const { router } = renderSearchRoute();
 
-    await user.click(
-      await screen.findByRole("button", { name: "Edit filters" }),
-    );
-    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
-    const addButton = within(dialog).getByRole("button", {
-      name: "Add filter",
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const paHeader = within(table).getByRole("columnheader", { name: "PA" });
+    fireEvent.contextMenu(paHeader);
+    await user.click(screen.getByRole("menuitem", { name: "Sort ascending" }));
+    expect(router.state.location.search).toMatchObject({
+      sort: "pa",
+      dir: "asc",
     });
 
-    for (let index = 0; index < 32; index += 1) {
-      await user.click(addButton);
-    }
-
-    expect(addButton).toBeDisabled();
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "PA" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Filter by PA" }));
+    const editor = screen.getByRole("form", { name: "Add filter" });
     expect(
-      within(dialog).getAllByRole("button", { name: "Remove filter rule" }),
-    ).toHaveLength(32);
+      within(editor).getByRole("button", { name: "Field: PA" }),
+    ).toBeInTheDocument();
+    expect(within(editor).getByLabelText("Value")).toHaveFocus();
+  });
 
-    await user.click(addButton);
+  it("sorts by any field from the summary and shows its column", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("High", 180),
+      playerNamed("Low", 100),
+    ]);
+    const { router } = renderSearchRoute();
+
+    const summary = await screen.findByTestId("search-results-summary");
+    await user.click(
+      within(summary).getByRole("button", { name: "Sort by: CA" }),
+    );
+    await user.type(
+      screen.getByRole("combobox", { name: "Search fields" }),
+      "pace",
+    );
+    await user.keyboard("{Enter}");
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        sort: "attr.Pace",
+        dir: "desc",
+      }),
+    );
     expect(
-      within(dialog).getAllByRole("button", { name: "Remove filter rule" }),
-    ).toHaveLength(32);
-    expect(router.state.location.search.filters).toHaveLength(0);
+      await screen.findByRole("columnheader", { name: "Pace" }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(screen.getByTestId("search-results-summary")).getByRole("button", {
+        name: "Sort direction: descending",
+      }),
+    );
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        sort: "attr.Pace",
+        dir: "asc",
+      }),
+    );
   });
 
   it("toggles CA from default descending to ascending on header click", async () => {
@@ -2723,7 +2797,7 @@ describe("search route", () => {
     expect(within(firstRow).getByText("Low")).toBeInTheDocument();
   });
 
-  it("clears all filters and resets destination sort and direction when navigation selects a view", async () => {
+  it("returns each view to its own filters and sort when navigation switches views", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([
@@ -2731,47 +2805,50 @@ describe("search route", () => {
       playerNamed("Low CA", 100),
     ]);
     const encodedFilters = encodeURIComponent(
-      JSON.stringify([{ field: "ca", op: "gt", value: 150 }]),
+      JSON.stringify([{ field: "ca", op: "gte", value: 150 }]),
     );
     const { router } = renderSearchRoute(
       `/search?view=general&sort=pa&dir=asc&combine=or&filters=${encodedFilters}&shortlistOnly=true`,
     );
     await screen.findByText("High CA");
-    expect(router.state.location.search).toMatchObject({
+    const generalState = {
       view: "general",
       sort: "pa",
       dir: "asc",
       combine: "or",
       filters: [expect.objectContaining({ field: "ca" })],
       shortlistOnly: true,
-    });
+    };
+    expect(router.state.location.search).toMatchObject(generalState);
 
+    // A first visit starts from the view's defaults; nothing carries across.
     await user.click(screen.getByRole("link", { name: "Moneyball" }));
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
         view: "moneyball",
         sort: "moneyball.average_rating",
         dir: "desc",
-        combine: "or",
+        combine: "and",
         filters: [],
         comparisonPool: "filtered",
         shortlistOnly: true,
       });
     });
 
-    // Add a Moneyball filter then switch back to General
-    await user.click(screen.getByRole("button", { name: "Edit filters" }));
-    const moneyballDialog = screen.getByRole("dialog", {
-      name: "Edit filters",
-    });
+    await user.click(screen.getByRole("button", { name: "Add filter" }));
+    const moneyballDialog = screen.getByRole("form", { name: "Add filter" });
+    await user.type(
+      within(moneyballDialog).getByRole("combobox", { name: "Search fields" }),
+      "average rating",
+    );
     await user.click(
-      within(moneyballDialog).getByRole("button", { name: "Add filter" }),
+      within(moneyballDialog).getByRole("option", { name: "Average Rating" }),
     );
     fireEvent.change(within(moneyballDialog).getByLabelText("Value"), {
       target: { value: "7" },
     });
     await user.click(
-      within(moneyballDialog).getByRole("button", { name: "Done" }),
+      within(moneyballDialog).getByRole("button", { name: "Add" }),
     );
     await waitFor(() =>
       expect(router.state.location.search.filters).toHaveLength(1),
@@ -2779,13 +2856,20 @@ describe("search route", () => {
 
     await user.click(screen.getByRole("link", { name: "Search" }));
     await waitFor(() => {
+      expect(router.state.location.search).toMatchObject(generalState);
+    });
+
+    await user.click(screen.getByRole("link", { name: "Moneyball" }));
+    await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        view: "general",
-        sort: "ca",
-        dir: "desc",
-        combine: "or",
-        filters: [],
-        shortlistOnly: true,
+        view: "moneyball",
+        filters: [
+          expect.objectContaining({
+            field: "moneyball.average_rating",
+            op: "gte",
+            value: 7,
+          }),
+        ],
       });
     });
     expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
@@ -2808,13 +2892,9 @@ describe("search route", () => {
     await screen.findByRole("table", {
       name: "Player search results",
     });
-    expect(
-      screen.getByText(
-        (_, element) =>
-          element?.tagName === "P" &&
-          element.textContent === "1 players · sorted by Name (ascending)",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("search-results-summary")).toHaveTextContent(
+      /^1 players · sorted by Name \(ascending\)$/,
+    );
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         sortBy: "name",
@@ -2837,8 +2917,8 @@ describe("search route", () => {
 
     const filters = encodeURIComponent(
       JSON.stringify([
-        { field: "role.deep_lying_playmaker_ip", op: "gt", value: 70 },
-        { field: "attr.Acceleration", op: "gt", value: 12 },
+        { field: "role.deep_lying_playmaker_ip", op: "gte", value: 70 },
+        { field: "attr.Acceleration", op: "gte", value: 12 },
       ]),
     );
     renderSearchRoute(
@@ -2859,8 +2939,8 @@ describe("search route", () => {
     expect(getLastSearchPlayersArgs()).toMatchObject({
       requestedFields: ["height"],
       filters: [
-        { field: "role.deep_lying_playmaker_ip", op: "gt", value: 70 },
-        { field: "attr.Acceleration", op: "gt", value: 12 },
+        { field: "role.deep_lying_playmaker_ip", op: "gte", value: 70 },
+        { field: "attr.Acceleration", op: "gte", value: 12 },
       ],
     });
   });
@@ -3162,7 +3242,7 @@ describe("search route", () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("General Scout", 160)]);
     const encoded = encodeURIComponent(
-      JSON.stringify([{ field: "ca", op: "gt", value: 150 }]),
+      JSON.stringify([{ field: "ca", op: "gte", value: 150 }]),
     );
     renderSearchRoute(`/search?shortlistOnly=true&filters=${encoded}`);
 
@@ -3383,7 +3463,7 @@ describe("search route", () => {
         within(toolbar).getByText(/players · sorted by/),
       ).toBeInTheDocument();
       expect(
-        within(toolbar).getByRole("button", { name: "Edit filters" }),
+        within(toolbar).getByRole("button", { name: "Add filter" }),
       ).toBeInTheDocument();
       expect(
         within(toolbar).getByRole("button", { name: "Columns" }),
@@ -3442,8 +3522,8 @@ describe("search route", () => {
       const { router } = renderSearchRoute(
         `/search?sort=ca&dir=desc&combine=and&filters=${encodeURIComponent(
           JSON.stringify([
-            { field: "ca", op: "gt", value: 150 },
-            { field: "pa", op: "gt", value: 150 },
+            { field: "ca", op: "gte", value: 150 },
+            { field: "pa", op: "gte", value: 150 },
           ]),
         )}`,
       );
@@ -3463,7 +3543,7 @@ describe("search route", () => {
 
       await user.click(
         within(getToolbar()).getByRole("button", {
-          name: /Remove filter CA > 150/i,
+          name: /Remove filter CA ≥ 150/i,
         }),
       );
       await waitFor(() => {
@@ -3472,7 +3552,7 @@ describe("search route", () => {
       await waitFor(() => {
         expect(
           within(getToolbar()).queryByRole("button", {
-            name: /Remove filter CA > 150/i,
+            name: /Remove filter CA ≥ 150/i,
           }),
         ).toBeNull();
       });
@@ -3510,13 +3590,16 @@ describe("search route", () => {
         within(toolbar).getByRole("button", { name: "All players" }),
       ).toBeInTheDocument();
       expect(
-        within(toolbar).getByRole("button", { name: "Edit filters" }),
+        within(toolbar).getByRole("group", { name: "Percentiles vs" }),
+      ).toBeInTheDocument();
+      expect(
+        within(toolbar).getByRole("button", { name: "Add filter" }),
       ).toBeInTheDocument();
       const header = screen.getByTestId("search-page-header");
       expect(
         within(header).getByRole("heading", {
           level: 1,
-          name: "Player Search",
+          name: "Moneyball",
         }),
       ).toBeInTheDocument();
       for (const name of [

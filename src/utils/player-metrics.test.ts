@@ -104,10 +104,10 @@ describe("player metric table metadata", () => {
       defaultWidth: 88,
       sortable: true,
       operators: [
-        { id: "gt", label: "greater than" },
-        { id: "lt", label: "less than" },
+        { id: "gte", label: "at least" },
+        { id: "lte", label: "at most" },
+        { id: "between", label: "between" },
         { id: "eq", label: "equals" },
-        { id: "neq", label: "does not equal" },
       ],
     });
   });

@@ -250,7 +250,7 @@ describe("app shell routing", () => {
       });
     });
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Player Search" }),
+      await screen.findByRole("heading", { level: 1, name: "Moneyball" }),
     ).toBeInTheDocument();
     const searchHref = router.history.location.href;
 
@@ -264,7 +264,7 @@ describe("app shell routing", () => {
 
     await user.click(screen.getByRole("button", { name: "Back" }));
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Player Search" }),
+      await screen.findByRole("heading", { level: 1, name: "Moneyball" }),
     ).toBeInTheDocument();
     expect(searchHref).toContain("view=moneyball");
     expect(searchHref).toMatch(/#filters$/);

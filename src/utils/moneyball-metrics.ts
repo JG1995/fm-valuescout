@@ -51,6 +51,36 @@ const SAVE_UNAVAILABLE_METRIC_IDS: ReadonlySet<string> = new Set([
   "pressure_success_ratio",
 ]);
 
+/**
+ * Metrics where a lower value is better; their percentiles are inverted. Mirrors
+ * `LOWER_IS_BETTER_STATISTIC_KEYS` in `src-tauri/src/features/moneyball/catalog.rs`.
+ */
+const LOWER_IS_BETTER_METRIC_IDS: ReadonlySet<string> = new Set([
+  "minutes_per_goal",
+  "minutes_per_assist",
+  "minutes_per_goal_or_assist",
+  "goals_conceded",
+  "goals_conceded_per_90",
+  "fouls_made",
+  "fouls_made_per_90",
+  "yellow_cards",
+  "yellow_cards_per_90",
+  "red_cards",
+  "red_cards_per_90",
+  "offsides",
+  "offsides_per_90",
+  "mistakes_leading_to_goal",
+  "mistakes_leading_to_goal_per_90",
+  "possession_lost",
+  "possession_lost_per_90",
+  "headers_lost",
+  "headers_lost_per_90",
+]);
+
+export function isLowerBetterMoneyballMetric(metricId: string) {
+  return LOWER_IS_BETTER_METRIC_IDS.has(metricId);
+}
+
 /** Every canonical metric, including those the save cannot provide. */
 const CANONICAL_METRIC_CATEGORIES: readonly MoneyballMetricCategory[] = [
   {

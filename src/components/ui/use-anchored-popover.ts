@@ -6,11 +6,17 @@ const VIEWPORT_PADDING = 8;
 type AnchoredPopoverOptions = {
   maxHeight?: number;
   minWidth?: number;
+  /** Anchor to an element the caller already holds instead of `anchorRef`. */
+  anchor?: HTMLElement | null;
 };
 
 export function useAnchoredPopover<TAnchor extends HTMLElement>(
   open: boolean,
-  { maxHeight = 256, minWidth = 0 }: AnchoredPopoverOptions = {},
+  {
+    maxHeight = 256,
+    minWidth = 0,
+    anchor: anchorElement,
+  }: AnchoredPopoverOptions = {},
 ) {
   const anchorRef = useRef<TAnchor>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -19,7 +25,7 @@ export function useAnchoredPopover<TAnchor extends HTMLElement>(
     "showPopover" in HTMLElement.prototype;
 
   useEffect(() => {
-    const anchor = anchorRef.current;
+    const anchor = anchorElement ?? anchorRef.current;
     const popover = popoverRef.current;
     if (!open || !anchor || !popover || !supportsPopover) {
       return;
@@ -66,7 +72,7 @@ export function useAnchoredPopover<TAnchor extends HTMLElement>(
       window.removeEventListener("scroll", positionPopover, true);
       popover.hidePopover();
     };
-  }, [maxHeight, minWidth, open, supportsPopover]);
+  }, [anchorElement, maxHeight, minWidth, open, supportsPopover]);
 
   return {
     anchorRef,

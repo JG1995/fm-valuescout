@@ -1,13 +1,17 @@
 import type { FilterRule } from "../types/filter-rule";
 import type { SearchView } from "../types/search-view";
-import { getFilterField } from "./filter-registry";
+import { getFilterField, isRawPercentageRule } from "./filter-registry";
 
 function operatorSymbol(op: string): string {
   switch (op) {
     case "gt":
       return ">";
+    case "gte":
+      return "≥";
     case "lt":
       return "<";
+    case "lte":
+      return "≤";
     case "eq":
       return "=";
     case "neq":
@@ -16,42 +20,14 @@ function operatorSymbol(op: string): string {
       return "percentile ≥";
     case "pct_lte":
       return "percentile ≤";
+    case "is_not":
+      return "is not";
     default:
       return op.replaceAll("_", " ");
   }
 }
 
-function formatValue(rule: FilterRule, view: SearchView): string {
-  const field = getFilterField(rule.field, view);
-  if (!field) {
-    return "";
-  }
-
-  if (field.kind === "boolean" && rule.value.type === "bool") {
-    return rule.value.value ? "Yes" : "No";
-  }
-
-  if (field.kind === "enum" && rule.value.type === "text") {
-    const option = field.enumOptions?.find(
-      (candidate) => candidate.value === rule.value.value,
-    );
-    return option?.label ?? rule.value.value;
-  }
-
-  if (rule.value.type === "integer") {
-    return String(rule.value.value);
-  }
-
-  if (rule.value.type === "number") return String(rule.value.value);
-
-  if (rule.value.type === "text") {
-    return rule.value.value;
-  }
-
-  return "";
-}
-
-/** Short label for compact filter tags. */
+/** Short label for compact filter tags, e.g. `Age 18–23` or `Position: DR, DL`. */
 export function formatFilterTagLabel(
   rule: FilterRule,
   view: SearchView = "general",
@@ -61,25 +37,36 @@ export function formatFilterTagLabel(
     return "Unknown filter";
   }
 
-  const value = formatValue(rule, view);
-  const op = rule.op;
+  // Moneyball role labels omit General's "Role ·" prefix, which a chip needs for context.
+  const label =
+    "role" in field && field.role ? `Role · ${field.label}` : field.label;
+  const unit = isRawPercentageRule(rule, view) ? "%" : "";
+  const value = rule.value;
 
-  if (field.kind === "string") {
-    const opLabel = operatorSymbol(op);
-    return `${field.label} ${opLabel} ${value}`;
-  }
-
-  if (field.kind === "integer" || field.kind === "number") {
-    return `${field.label} ${operatorSymbol(op)} ${value}`;
-  }
-
-  if (field.kind === "boolean" || field.kind === "enum") {
-    if (op === "contains" || op === "not_contains") {
-      return `${field.label} ${operatorSymbol(op)} ${value}`;
+  switch (value.type) {
+    case "range": {
+      const scale = rule.op === "pct_between" ? " percentile" : "";
+      return `${label}${scale} ${value.value[0]}–${value.value[1]}${unit}`;
     }
-    const opLabel = op === "is_not" ? "is not" : "is";
-    return `${field.label} ${opLabel} ${value}`;
+    case "list": {
+      const choices = value.value
+        .map(
+          (choice) =>
+            field.enumOptions?.find((option) => option.value === choice)
+              ?.label ?? choice,
+        )
+        .join(", ");
+      return `${label}: ${rule.op === "not_in" ? "not " : ""}${choices}`;
+    }
+    case "bool":
+      return `${label} ${operatorSymbol(rule.op)} ${value.value ? "Yes" : "No"}`;
+    case "text": {
+      const option = field.enumOptions?.find(
+        (candidate) => candidate.value === value.value,
+      );
+      return `${label} ${operatorSymbol(rule.op)} ${option?.label ?? value.value}`;
+    }
+    default:
+      return `${label} ${operatorSymbol(rule.op)} ${value.value}${unit}`;
   }
-
-  return field.label;
 }

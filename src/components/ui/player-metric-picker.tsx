@@ -1,5 +1,6 @@
 import { ChevronDown } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { TableGroupInput } from "@/components/player-table/table-groups";
 import {
   fieldClasses,
   fieldLabelClasses,
@@ -24,16 +25,26 @@ export type MetricPickerProps = {
   value: string;
   onChange: (metricId: string) => void;
   disabled?: boolean;
+  /** Trigger text while no metric is selected. */
+  placeholder?: string;
+  /** Open the picker when it mounts, focusing its search field. */
+  defaultOpen?: boolean;
+  /** Orders sections like the table's header groups. */
+  groups?: TableGroupInput;
+  /** `inline` renders the choice as a link-like word inside a sentence, with no visible label. */
+  variant?: "field" | "inline";
+  /** Name of the search box; defaults to "Search {label}s". */
+  searchLabel?: string;
 };
 
 const CATEGORY_ORDER = [
   "identity",
-  "club-contract",
   "ability-reputation",
   "staff-attributes",
   "visible-attributes",
   "hidden-attributes",
   "personality",
+  "club-contract",
   "position-suitability",
   "current-role-scores",
   "potential-role-scores",
@@ -66,10 +77,35 @@ const ROLE_FAMILY_ORDER = [
 const POPUP_MAX_HEIGHT = 320;
 const POPUP_MIN_WIDTH = 288;
 
-function groupsForMetrics(
-  metrics: readonly MetricPickerMetric[],
+/**
+ * Picker sections: categories, with role scores split by family. Given the
+ * table's groups, sections follow the header's group order so the picker,
+ * Columns, and the header read the same way.
+ */
+export function groupsForMetrics<TMetric extends MetricPickerMetric>(
+  metrics: readonly TMetric[],
   search: string,
-): MetricPickerGroup[] {
+  tableGroups?: TableGroupInput,
+): { label: string; metrics: TMetric[] }[] {
+  const groups = categoryGroups(metrics, search);
+  if (!tableGroups) {
+    return groups;
+  }
+  const order = tableGroups.groups.map((group) => group.id);
+  const rank = (group: { metrics: TMetric[] }) => {
+    const first = group.metrics[0];
+    const index = first
+      ? order.indexOf(tableGroups.groupForColumn(first.id) ?? "")
+      : -1;
+    return index === -1 ? order.length : index;
+  };
+  return [...groups].sort((left, right) => rank(left) - rank(right));
+}
+
+function categoryGroups<TMetric extends MetricPickerMetric>(
+  metrics: readonly TMetric[],
+  search: string,
+): { label: string; metrics: TMetric[] }[] {
   const term = search.trim().toLowerCase();
   const matches = metrics.filter((metric) => {
     if (!term) {
@@ -80,7 +116,7 @@ function groupsForMetrics(
       .includes(term);
   });
 
-  const groups: MetricPickerGroup[] = [];
+  const groups: { label: string; metrics: TMetric[] }[] = [];
   for (const category of CATEGORY_ORDER) {
     const categoryMetrics = matches.filter(
       (metric) => metric.category === category,
@@ -156,23 +192,29 @@ export function MetricPicker({
   value,
   onChange,
   disabled = false,
+  placeholder = "Choose a metric",
+  defaultOpen = false,
+  groups: tableGroups,
+  variant = "field",
+  searchLabel: searchLabelOverride,
 }: MetricPickerProps) {
   const searchInputId = useId();
   const listboxId = useId();
   const optionIdPrefix = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const activeOptionRef = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [search, setSearch] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const selected = metrics.find((metric) => metric.id === value);
   const groups = useMemo(
-    () => groupsForMetrics(metrics, search),
-    [metrics, search],
+    () => groupsForMetrics(metrics, search, tableGroups),
+    [metrics, search, tableGroups],
   );
   const options = groups.flatMap((group) => group.metrics);
   const activeMetric = options[activeIndex];
-  const searchLabel = `Search ${label.toLowerCase()}s`;
+  const searchLabel = searchLabelOverride ?? `Search ${label.toLowerCase()}s`;
   const {
     anchorRef: triggerRef,
     popoverRef: popupRef,
@@ -189,6 +231,21 @@ export function MetricPicker({
     setSearch("");
     setActiveIndex(0);
     searchInputRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      const root = rootRef.current;
+      if (root && !event.composedPath().includes(root)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [open]);
 
   useEffect(() => {
@@ -209,23 +266,39 @@ export function MetricPicker({
   };
 
   return (
-    <div className="relative space-y-1">
-      <span className={fieldLabelClasses}>{label}</span>
+    <div
+      ref={rootRef}
+      className={
+        variant === "inline" ? "relative inline-block" : "relative space-y-1"
+      }
+    >
+      {variant === "inline" ? null : (
+        <span className={fieldLabelClasses}>{label}</span>
+      )}
       <button
         ref={triggerRef}
         type="button"
         aria-controls={open ? listboxId : undefined}
         aria-expanded={open}
         aria-haspopup="listbox"
-        aria-label={`${label}: ${selected?.label ?? "Choose a metric"}`}
-        className={`${fieldClasses} flex w-full items-center justify-between gap-2 text-left`}
+        aria-label={`${label}: ${selected?.label ?? placeholder}`}
+        title={selected?.label}
+        className={
+          variant === "inline"
+            ? "inline-flex items-center gap-0.5 rounded-sm text-on-surface underline decoration-dotted underline-offset-4 hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            : `${fieldClasses} flex w-full items-center justify-between gap-2 text-left`
+        }
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
       >
         <span className="min-w-0 truncate">
-          {selected?.label ?? "Choose a metric"}
+          {selected?.label ?? placeholder}
         </span>
-        <ChevronDown aria-hidden="true" className="shrink-0" size={16} />
+        <ChevronDown
+          aria-hidden="true"
+          className="shrink-0"
+          size={variant === "inline" ? 14 : 16}
+        />
       </button>
 
       {open ? (
@@ -250,6 +323,7 @@ export function MetricPicker({
               aria-haspopup="listbox"
               className={`${fieldClasses} w-full`}
               id={searchInputId}
+              placeholder={`${searchLabel}…`}
               role="combobox"
               type="search"
               value={search}

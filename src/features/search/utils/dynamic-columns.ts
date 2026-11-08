@@ -49,7 +49,7 @@ export function isVisibleSortField(
     return visibleColumnIds.includes(value);
   }
   if ((BASIC_SEARCH_SORT_FIELDS as readonly string[]).includes(value)) {
-    return view === "general" || (value !== "ca" && value !== "pa");
+    return true;
   }
   return getFilterField(value, view) !== undefined;
 }

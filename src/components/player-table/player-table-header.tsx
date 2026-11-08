@@ -1,13 +1,19 @@
 import {
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide,
   ChevronDown,
   ChevronUp,
+  EllipsisVertical,
+  Filter,
   MoveLeft,
   MoveRight,
   Plus,
   Trash2,
 } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { fieldClasses } from "@/components/ui/field/field-styles";
 import {
+  groupsForMetrics,
   MetricPicker,
   type MetricPickerMetric,
 } from "@/components/ui/player-metric-picker";
@@ -24,6 +30,9 @@ import {
 } from "./table-groups";
 
 const KEYBOARD_RESIZE_STEP = 16;
+
+const MENU_ITEM_CLASSES =
+  "flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-label-md text-on-surface hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-45";
 
 export const IDENTITY_COLUMN_MIN_WIDTH = 240;
 export const IDENTITY_COLUMN_DEFAULT_WIDTH = 280;
@@ -94,6 +103,11 @@ export type ConfigurableTableHeaderProps = {
   onRemoveColumn: (metricId: string) => void;
   onMoveColumn: (metricId: string, targetIndex: number) => void;
   onResizeColumn: (metricId: string, width: number) => void;
+  /** Adds Sort ascending / descending to sortable columns' menus. */
+  onSortDirection?: (metricId: string, dir: "asc" | "desc") => void;
+  /** Adds "Filter by …" to the menus of columns it accepts. */
+  onFilterColumn?: (metricId: string) => void;
+  canFilterColumn?: (metricId: string) => boolean;
 };
 
 export type PlayerTableColumn = ConfigurableTableColumn;
@@ -214,6 +228,9 @@ export function ConfigurableTableHeader({
   onRemoveColumn,
   onMoveColumn,
   onResizeColumn,
+  onSortDirection,
+  onFilterColumn,
+  canFilterColumn,
 }: ConfigurableTableHeaderProps) {
   const [openColumnId, setOpenColumnId] = useState<string | null>(null);
   const [pickingColumnId, setPickingColumnId] = useState<string | null>(null);
@@ -367,7 +384,7 @@ export function ConfigurableTableHeader({
               scope="col"
               aria-label={accessibleName}
               aria-sort={columnSortable ? ariaSort : undefined}
-              className={`relative h-table-header-height px-2 ${
+              className={`group/header relative h-table-header-height px-2 ${
                 column.align === "right" ? "text-right" : "text-left"
               }`}
               onContextMenu={
@@ -458,9 +475,38 @@ export function ConfigurableTableHeader({
                       className="size-3.5 shrink-0"
                       strokeWidth={2}
                     />
+                  ) : columnSortable ? (
+                    // A faint hint on hover that the header sorts.
+                    <ChevronDown
+                      aria-hidden
+                      className="hidden size-3.5 shrink-0 opacity-50 group-hover/header:inline"
+                      strokeWidth={2}
+                    />
                   ) : null}
                 </button>
               </div>
+              {configurable ? (
+                // Pointer affordance for the column menu; keyboard users open it
+                // with Shift+F10 on the header button.
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className={`absolute top-1/2 z-10 inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-sm bg-surface-container-high text-on-surface-variant opacity-0 transition-opacity duration-150 group-hover/header:opacity-100 hover:text-on-surface ${
+                    column.align === "right" ? "left-1" : "right-2"
+                  } ${open ? "opacity-100" : ""}`}
+                  onClick={() => {
+                    if (open) {
+                      closeMenu();
+                    } else {
+                      setOpenColumnId(column.id);
+                      setPickingColumnId(null);
+                    }
+                  }}
+                >
+                  <EllipsisVertical aria-hidden size={14} strokeWidth={2} />
+                </button>
+              ) : null}
               {revealed ? (
                 <span
                   role="tooltip"
@@ -475,7 +521,7 @@ export function ConfigurableTableHeader({
                   ref={menuRef}
                   role="menu"
                   aria-label={`${accessibleName} column actions`}
-                  className="absolute right-1 top-full z-30 mt-1 w-44 rounded-md border border-outline-variant bg-surface-container-highest p-1 text-left shadow-overlay"
+                  className="absolute right-1 top-full z-30 mt-1 w-52 rounded-md border border-outline-variant bg-surface-container-highest p-1 text-left shadow-overlay"
                   onKeyDown={(event) => {
                     if (event.key === "Escape") {
                       event.preventDefault();
@@ -483,6 +529,50 @@ export function ConfigurableTableHeader({
                     }
                   }}
                 >
+                  {onSortDirection && columnSortable
+                    ? (
+                        [
+                          {
+                            dir: "asc",
+                            label: "Sort ascending",
+                            Icon: ArrowUpNarrowWide,
+                          },
+                          {
+                            dir: "desc",
+                            label: "Sort descending",
+                            Icon: ArrowDownWideNarrow,
+                          },
+                        ] as const
+                      ).map(({ dir, label, Icon }) => (
+                        <button
+                          key={dir}
+                          type="button"
+                          role="menuitem"
+                          className={MENU_ITEM_CLASSES}
+                          onClick={() => {
+                            onSortDirection(column.id, dir);
+                            closeMenu();
+                          }}
+                        >
+                          <Icon aria-hidden size={16} strokeWidth={1.5} />
+                          {label}
+                        </button>
+                      ))
+                    : null}
+                  {onFilterColumn && canFilterColumn?.(column.id) ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={MENU_ITEM_CLASSES}
+                      onClick={() => {
+                        closeMenu();
+                        onFilterColumn(column.id);
+                      }}
+                    >
+                      <Filter aria-hidden size={16} strokeWidth={1.5} />
+                      Filter by {accessibleName}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     role="menuitem"
@@ -550,6 +640,7 @@ export function ConfigurableTableHeader({
                   <MetricPicker
                     label="Column"
                     metrics={availableMetrics}
+                    groups={groups}
                     value=""
                     onChange={(metricId) => {
                       onAddColumn(metricId);
@@ -625,20 +716,29 @@ export function ConfigurableColumnsControl({
   onRemoveColumn,
 }: ConfigurableColumnsControlProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
   const visible = useMemo(() => new Set(visibleColumnIds), [visibleColumnIds]);
+  // Header groups, each split into the picker's categories, filtered by search.
   const grouped = useMemo(
-    () => resolveGroupedMetrics(metrics, groups),
-    [groups, metrics],
+    () =>
+      resolveGroupedMetrics(metrics, groups)
+        .map(({ group, metrics: items }) => ({
+          group,
+          sections: groupsForMetrics(items, search),
+        }))
+        .filter(({ sections }) => sections.length > 0),
+    [groups, metrics, search],
   );
 
   useEffect(() => {
     if (!open) {
       return;
     }
+    setSearch("");
     panelRef.current
       ?.querySelector<HTMLInputElement>("input:not([disabled])")
       ?.focus();
@@ -694,32 +794,57 @@ export function ConfigurableColumnsControl({
             }
           }}
         >
-          {grouped.map(({ group, metrics: items }) => (
+          <input
+            type="search"
+            aria-label="Search columns"
+            placeholder="Search columns…"
+            className={`${fieldClasses} w-full`}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          {grouped.length === 0 ? (
+            <p className="px-1 py-3 text-body-sm text-on-surface-variant">
+              No columns match this search.
+            </p>
+          ) : null}
+          {grouped.map(({ group, sections }) => (
             <fieldset key={group.id} className="m-0 min-w-0 border-0 p-0">
               <legend className="px-1 pt-2 pb-1 text-label-md text-on-surface-variant uppercase">
                 {group.label}
               </legend>
-              {items.map((metric) => {
-                const checked = visible.has(metric.id);
+              {sections.map((section) => {
+                const labelled = sections.length > 1;
                 return (
-                  <label
-                    key={metric.id}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-1 py-1.5 text-left text-body-sm text-on-surface hover:bg-surface-container-high focus-within:outline-2 focus-within:outline-offset-[-2px] focus-within:outline-primary"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => {
-                        if (checked) {
-                          onRemoveColumn(metric.id);
-                        } else {
-                          onAddColumn(metric.id);
-                        }
-                      }}
-                      className="size-4 shrink-0 accent-primary"
-                    />
-                    {metric.label}
-                  </label>
+                  <div key={section.label}>
+                    {labelled ? (
+                      <p className="px-1 pt-1.5 pb-0.5 text-label-sm text-on-surface-variant">
+                        {section.label}
+                      </p>
+                    ) : null}
+                    {section.metrics.map((metric) => {
+                      const checked = visible.has(metric.id);
+                      return (
+                        <label
+                          key={metric.id}
+                          className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-1 py-1.5 text-left text-body-sm text-on-surface hover:bg-surface-container-high focus-within:outline-2 focus-within:outline-offset-[-2px] focus-within:outline-primary"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              if (checked) {
+                                onRemoveColumn(metric.id);
+                              } else {
+                                onAddColumn(metric.id);
+                              }
+                            }}
+                            className="size-4 shrink-0 accent-primary"
+                          />
+                          {metric.label}
+                        </label>
+                      );
+                    })}
+                  </div>
                 );
               })}
             </fieldset>
