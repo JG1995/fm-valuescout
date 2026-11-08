@@ -1,10 +1,10 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, HashMap};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
 use super::{
-    percentile::calculate_percentiles,
+    percentile::subject_percentiles,
     role_catalog::{builtin_catalog, RoleDefinition, RolePhase},
     role_score::explain_role,
     MONEYBALL_STATISTIC_KEYS,
@@ -156,7 +156,12 @@ pub fn get_player_moneyball(
         return Ok(Some(MoneyballProfile::needs_reimport()));
     }
 
-    let statistics = parse_statistics(&statistics_json)?;
+    let statistic_values = parse_statistics(&statistics_json)?;
+    let statistics = MONEYBALL_STATISTIC_KEYS
+        .iter()
+        .zip(&statistic_values)
+        .map(|(key, value)| ((*key).to_string(), *value))
+        .collect::<BTreeMap<_, _>>();
     let natural_positions = natural_positions(&positions_json)?;
     if natural_positions.is_empty() {
         return Ok(Some(MoneyballProfile {
@@ -172,12 +177,13 @@ pub fn get_player_moneyball(
         }));
     }
 
-    let cohort_statistics = load_natural_position_cohort(conn, snapshot_id, &natural_positions)?;
-    let percentiles = calculate_percentiles(&cohort_statistics)
-        .remove(&uid)
-        .ok_or_else(|| {
-            "subject Moneyball row is missing from its natural-position cohort".to_string()
-        })?;
+    let cohort = load_natural_position_cohort(conn, snapshot_id, &natural_positions)?;
+    if !cohort.contains_key(&uid) {
+        return Err(
+            "subject Moneyball row is missing from its natural-position cohort".to_string(),
+        );
+    }
+    let percentiles = subject_percentiles(&statistic_values, cohort.values());
     let role_catalog = builtin_catalog()?;
     let role_scores = score_roles(&role_catalog.definitions, &percentiles)?;
 
@@ -192,7 +198,7 @@ pub fn get_player_moneyball(
         role_scores: Some(role_scores),
         comparison_basis: Some(MoneyballComparisonBasis::Available {
             natural_positions,
-            comparison_player_count: cohort_statistics.len(),
+            comparison_player_count: cohort.len(),
         }),
     }))
 }
@@ -219,37 +225,35 @@ fn load_natural_position_cohort(
     conn: &Connection,
     snapshot_id: i64,
     subject_natural_positions: &[String],
-) -> Result<BTreeMap<i64, BTreeMap<String, Option<f64>>>, String> {
+) -> Result<BTreeMap<i64, Vec<Option<f64>>>, String> {
+    // SQLite selects the peers, so only their statistics are parsed. It applies the
+    // `natural_positions` rule: a natural position has the integer familiarity 20.
     let mut statement = conn
         .prepare(
-            "SELECT moneyball.player_uid, moneyball.statistics_json, players.positions_json
+            "SELECT moneyball.player_uid, moneyball.statistics_json
              FROM player_moneyball_stats moneyball
              INNER JOIN players ON players.snapshot_id = moneyball.snapshot_id
                 AND players.uid = moneyball.player_uid
-             WHERE moneyball.snapshot_id = ?1 AND moneyball.percentiles_json IS NOT NULL",
+             WHERE moneyball.snapshot_id = ?1 AND moneyball.percentiles_json IS NOT NULL
+               AND EXISTS (
+                   SELECT 1 FROM json_each(players.positions_json) position
+                   WHERE position.type = 'integer' AND position.value = 20
+                     AND position.key IN (SELECT value FROM json_each(?2))
+               )",
         )
         .map_err(|error| error.to_string())?;
+    let subject_natural_positions =
+        serde_json::to_string(subject_natural_positions).map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map([snapshot_id], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
+        .query_map(params![snapshot_id, subject_natural_positions], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
         })
         .map_err(|error| error.to_string())?;
 
     let mut cohort = BTreeMap::new();
     for row in rows {
-        let (player_uid, statistics_json, positions_json) =
-            row.map_err(|error| error.to_string())?;
-        let peer_natural_positions = natural_positions(&positions_json)?;
-        if peer_natural_positions
-            .iter()
-            .any(|position| subject_natural_positions.contains(position))
-        {
-            cohort.insert(player_uid, parse_statistics(&statistics_json)?);
-        }
+        let (player_uid, statistics_json) = row.map_err(|error| error.to_string())?;
+        cohort.insert(player_uid, parse_statistics(&statistics_json)?);
     }
     Ok(cohort)
 }
@@ -309,48 +313,21 @@ fn score_roles(
         .collect()
 }
 
-fn parse_statistics(json: &str) -> Result<BTreeMap<String, Option<f64>>, String> {
-    parse_map(json, "statistics", |key, value| match value {
-        Value::Null => Ok(None),
-        Value::Number(number) => number
-            .as_f64()
-            .filter(|number| number.is_finite())
-            .map(Some)
-            .ok_or_else(|| format!("Moneyball statistic `{key}` must be a finite number or null")),
-        _ => Err(format!(
-            "Moneyball statistic `{key}` must be a finite number or null"
-        )),
-    })
-}
-
-fn parse_map<T>(
-    json: &str,
-    name: &str,
-    parse_value: impl Fn(&str, &Value) -> Result<Option<T>, String>,
-) -> Result<BTreeMap<String, Option<T>>, String> {
-    let value: Value = serde_json::from_str(json)
-        .map_err(|error| format!("invalid Moneyball {name} JSON: {error}"))?;
-    let object = value
-        .as_object()
-        .ok_or_else(|| format!("Moneyball {name} must be a JSON object"))?;
-    let expected = MONEYBALL_STATISTIC_KEYS
-        .iter()
-        .copied()
-        .collect::<BTreeSet<_>>();
-    let actual = object.keys().map(String::as_str).collect::<BTreeSet<_>>();
-    if actual != expected {
-        return Err(format!(
-            "Moneyball {name} must contain the exact metric catalogue"
-        ));
+/// Parses a stored statistics row into values in `MONEYBALL_STATISTIC_KEYS` order.
+fn parse_statistics(json: &str) -> Result<Vec<Option<f64>>, String> {
+    let object: HashMap<&str, Option<f64>> = serde_json::from_str(json)
+        .map_err(|error| format!("invalid Moneyball statistics JSON: {error}"))?;
+    const CATALOGUE_ERROR: &str = "Moneyball statistics must contain the exact metric catalogue";
+    if object.len() != MONEYBALL_STATISTIC_KEYS.len() {
+        return Err(CATALOGUE_ERROR.to_string());
     }
-
     MONEYBALL_STATISTIC_KEYS
         .iter()
         .map(|key| {
-            let value = object
-                .get(*key)
-                .expect("catalogue equality proves every metric key exists");
-            parse_value(key, value).map(|parsed| ((*key).to_string(), parsed))
+            object
+                .get(key)
+                .copied()
+                .ok_or_else(|| CATALOGUE_ERROR.to_string())
         })
         .collect()
 }

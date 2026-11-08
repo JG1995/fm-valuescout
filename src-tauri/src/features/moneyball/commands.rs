@@ -140,8 +140,9 @@ impl From<MoneyballProfile> for MoneyballProfileDto {
 }
 
 /// Reads the active save's current Moneyball cohort for one current player UID.
+/// Async keeps the cohort read off the main thread, so the window stays responsive.
 #[tauri::command]
-pub fn get_player_moneyball(
+pub async fn get_player_moneyball(
     uid: i64,
     db: State<'_, Db>,
 ) -> Result<Option<MoneyballProfileDto>, String> {
