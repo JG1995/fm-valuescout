@@ -98,3 +98,43 @@ export function resolveTableGroupRuns(
   });
   return runs;
 }
+
+/**
+ * Insert new column ids at the end of their table group, so an added column
+ * joins its group's header run instead of starting a new run at the far right.
+ * A group with no visible column starts after the last column of an earlier
+ * group. Ids already present are skipped.
+ */
+export function insertColumnsInGroups(
+  columnIds: readonly string[],
+  additions: readonly string[],
+  input: TableGroupInput,
+): string[] {
+  const groupIds = input.groups.map((group) => group.id);
+  const rank = (id: string) => {
+    const index = groupIds.indexOf(input.groupForColumn(id) ?? "");
+    return index === -1 ? groupIds.length : index;
+  };
+  const lastIndex = (columns: string[], match: (id: string) => boolean) => {
+    for (let index = columns.length - 1; index >= 0; index -= 1) {
+      if (match(columns[index] as string)) {
+        return index;
+      }
+    }
+    return -1;
+  };
+  const next = [...columnIds];
+  for (const id of additions) {
+    if (next.includes(id)) {
+      continue;
+    }
+    const target = rank(id);
+    const sameGroup = lastIndex(next, (column) => rank(column) === target);
+    const at =
+      sameGroup !== -1
+        ? sameGroup + 1
+        : lastIndex(next, (column) => rank(column) < target) + 1;
+    next.splice(at, 0, id);
+  }
+  return next;
+}

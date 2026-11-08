@@ -563,6 +563,29 @@ describe("grouped columns control", () => {
     expect(within(dialog).queryByText("Other")).toBeNull();
   });
 
+  it("searches the optional columns from the focused search box", async () => {
+    renderColumnsControl({ visibleColumnIds: ["ca"] });
+    const { user, dialog } = await openColumnsControl();
+
+    const search = within(dialog).getByRole("searchbox", {
+      name: "Search columns",
+    });
+    expect(search).toHaveFocus();
+    await user.type(search, "val");
+
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Value" }),
+    ).toBeVisible();
+    expect(within(dialog).queryByRole("checkbox", { name: "CA" })).toBeNull();
+    expect(within(dialog).queryByText("Profile")).toBeNull();
+
+    await user.clear(search);
+    await user.type(search, "zzz");
+    expect(
+      within(dialog).getByText("No columns match this search."),
+    ).toBeVisible();
+  });
+
   it("toggles optional columns through the keyboard", async () => {
     const { onAddColumn, onRemoveColumn } = renderColumnsControl({
       visibleColumnIds: ["ca"],
@@ -611,7 +634,7 @@ describe("grouped columns control", () => {
     expect(screen.getByRole("button", { name: "Columns" })).toHaveFocus();
   });
 
-  it("focuses the first checkbox on keyboard open so Escape closes and restores focus", async () => {
+  it("focuses the column search on keyboard open so Escape closes and restores focus", async () => {
     renderColumnsControl({ visibleColumnIds: ["ca"] });
     const user = userEvent.setup();
 
@@ -621,7 +644,7 @@ describe("grouped columns control", () => {
 
     const dialog = screen.getByRole("dialog", { name: "Columns" });
     expect(
-      within(dialog).getByRole("checkbox", { name: "Age / DOB" }),
+      within(dialog).getByRole("searchbox", { name: "Search columns" }),
     ).toHaveFocus();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Columns" })).toBeNull();

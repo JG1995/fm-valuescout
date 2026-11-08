@@ -2099,12 +2099,12 @@ test.describe("application smoke", () => {
     await expect(
       wide.table.getByRole("columnheader", { name: "Player" }),
     ).toBeVisible();
-    // Height now lives in Profile and this persisted layout places Height
-    // after Market fields, so the interrupted Profile run renders two
-    // colgroup headers.
+    // Height and Position live in Profile, and this persisted layout places
+    // each after fields from other groups, so the interrupted Profile run
+    // renders three colgroup headers.
     await expect(
       wide.table.getByRole("columnheader", { name: "Profile" }),
-    ).toHaveCount(2);
+    ).toHaveCount(3);
     await expect(
       wide.table.getByRole("columnheader", { name: "Profile" }).first(),
     ).toBeVisible();
@@ -2362,9 +2362,9 @@ test.describe("application smoke", () => {
         "Height",
         "CA",
         "PA",
-        "Value",
         "Agility",
         "Acceleration",
+        "Value",
       ]);
 
     await page.reload();
@@ -2391,9 +2391,9 @@ test.describe("application smoke", () => {
         "Height",
         "CA",
         "PA",
-        "Value",
         "Agility",
         "Acceleration",
+        "Value",
       ]);
     await expect(
       search.getByRole("separator", { name: "Resize Acceleration column" }),

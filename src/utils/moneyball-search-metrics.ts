@@ -82,7 +82,7 @@ const basic = (id: string, label: string, kind: "string" | "integer") => ({
 const context = (id: string, label: string): MoneyballSearchMetric => ({
   id,
   label,
-  category: "Context",
+  category: "Playing time",
   kind: "integer",
   align: "right",
   defaultWidth: 104,
@@ -131,7 +131,7 @@ export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
   {
     id: "position",
     label: "Position",
-    category: "Club and value",
+    category: "Identity",
     kind: "enum",
     align: "left",
     defaultWidth: 144,

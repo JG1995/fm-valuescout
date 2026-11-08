@@ -517,6 +517,32 @@ describe("usePlayerTableStore", () => {
     });
   });
 
+  it("adds columns at the end of their table group when given the groups", () => {
+    usePlayerTableStore
+      .getState()
+      .addColumns("search", ["attr.Acceleration", "wage"], {
+        groups: [
+          { id: "profile", label: "Profile" },
+          { id: "ability", label: "Ability" },
+          { id: "market", label: "Market" },
+        ],
+        groupForColumn: (id) =>
+          ({ age: "profile", nationality: "profile", height: "profile" })[id] ??
+          (id === "value" || id === "wage" ? "market" : "ability"),
+      });
+
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
+      "age",
+      "nationality",
+      "height",
+      "ca",
+      "pa",
+      "attr.Acceleration",
+      "value",
+      "wage",
+    ]);
+  });
+
   it("adds independent staff layout slots without changing player layouts", () => {
     usePlayerTableStore.setState({
       layouts: {

@@ -61,6 +61,7 @@ import {
   type SearchView,
 } from "@/features/search/types/search-view";
 import { isVisibleSortField } from "@/features/search/utils/dynamic-columns";
+import { searchTableGroups } from "@/features/search/utils/search-table-groups";
 import type { FilterRuleUrl } from "@/features/search/utils/search-url-search";
 import {
   parseSearchCombine,
@@ -442,6 +443,7 @@ function SearchPageContent() {
       addColumns(
         tableId,
         rules.map((rule) => rule.field),
+        searchTableGroups(view),
       );
     });
   };

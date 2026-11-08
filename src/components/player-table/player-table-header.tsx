@@ -7,7 +7,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { fieldClasses } from "@/components/ui/field/field-styles";
 import {
+  groupsForMetrics,
   MetricPicker,
   type MetricPickerMetric,
 } from "@/components/ui/player-metric-picker";
@@ -550,6 +552,7 @@ export function ConfigurableTableHeader({
                   <MetricPicker
                     label="Column"
                     metrics={availableMetrics}
+                    groups={groups}
                     value=""
                     onChange={(metricId) => {
                       onAddColumn(metricId);
@@ -625,20 +628,29 @@ export function ConfigurableColumnsControl({
   onRemoveColumn,
 }: ConfigurableColumnsControlProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
   const visible = useMemo(() => new Set(visibleColumnIds), [visibleColumnIds]);
+  // Header groups, each split into the picker's categories, filtered by search.
   const grouped = useMemo(
-    () => resolveGroupedMetrics(metrics, groups),
-    [groups, metrics],
+    () =>
+      resolveGroupedMetrics(metrics, groups)
+        .map(({ group, metrics: items }) => ({
+          group,
+          sections: groupsForMetrics(items, search),
+        }))
+        .filter(({ sections }) => sections.length > 0),
+    [groups, metrics, search],
   );
 
   useEffect(() => {
     if (!open) {
       return;
     }
+    setSearch("");
     panelRef.current
       ?.querySelector<HTMLInputElement>("input:not([disabled])")
       ?.focus();
@@ -694,32 +706,57 @@ export function ConfigurableColumnsControl({
             }
           }}
         >
-          {grouped.map(({ group, metrics: items }) => (
+          <input
+            type="search"
+            aria-label="Search columns"
+            placeholder="Search columns…"
+            className={`${fieldClasses} w-full`}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          {grouped.length === 0 ? (
+            <p className="px-1 py-3 text-body-sm text-on-surface-variant">
+              No columns match this search.
+            </p>
+          ) : null}
+          {grouped.map(({ group, sections }) => (
             <fieldset key={group.id} className="m-0 min-w-0 border-0 p-0">
               <legend className="px-1 pt-2 pb-1 text-label-md text-on-surface-variant uppercase">
                 {group.label}
               </legend>
-              {items.map((metric) => {
-                const checked = visible.has(metric.id);
+              {sections.map((section) => {
+                const labelled = sections.length > 1;
                 return (
-                  <label
-                    key={metric.id}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-1 py-1.5 text-left text-body-sm text-on-surface hover:bg-surface-container-high focus-within:outline-2 focus-within:outline-offset-[-2px] focus-within:outline-primary"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => {
-                        if (checked) {
-                          onRemoveColumn(metric.id);
-                        } else {
-                          onAddColumn(metric.id);
-                        }
-                      }}
-                      className="size-4 shrink-0 accent-primary"
-                    />
-                    {metric.label}
-                  </label>
+                  <div key={section.label}>
+                    {labelled ? (
+                      <p className="px-1 pt-1.5 pb-0.5 text-label-sm text-on-surface-variant">
+                        {section.label}
+                      </p>
+                    ) : null}
+                    {section.metrics.map((metric) => {
+                      const checked = visible.has(metric.id);
+                      return (
+                        <label
+                          key={metric.id}
+                          className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-1 py-1.5 text-left text-body-sm text-on-surface hover:bg-surface-container-high focus-within:outline-2 focus-within:outline-offset-[-2px] focus-within:outline-primary"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              if (checked) {
+                                onRemoveColumn(metric.id);
+                              } else {
+                                onAddColumn(metric.id);
+                              }
+                            }}
+                            className="size-4 shrink-0 accent-primary"
+                          />
+                          {metric.label}
+                        </label>
+                      );
+                    })}
+                  </div>
                 );
               })}
             </fieldset>

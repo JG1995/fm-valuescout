@@ -15,7 +15,6 @@ import {
   TableScoreContent,
   TABLE_TEXT_CELL_CLASS as TEXT_CELL,
 } from "@/components/player-table/table-cells";
-import type { TableGroupInput } from "@/components/player-table/table-groups";
 import {
   type ConfigurableTableIdentity,
   VirtualizedPlayerTable,
@@ -60,6 +59,7 @@ import {
 import type { ComparisonPool, SearchView } from "../types/search-view";
 import { defaultSearchSort } from "../types/search-view";
 import { completeFilterRules } from "../utils/filter-registry";
+import { searchTableGroups } from "../utils/search-table-groups";
 import { buildTacticColumnOrder } from "../utils/tactic-columns";
 import { SearchFilterBar } from "./search-filter-bar";
 
@@ -207,83 +207,6 @@ function PlayerIdentityCell({
   );
 }
 
-export const SEARCH_TABLE_GROUPS: TableGroupInput = {
-  groups: [
-    { id: "profile", label: "Profile" },
-    { id: "ability", label: "Ability" },
-    { id: "market", label: "Market" },
-    { id: "tactic-fit", label: "Tactic Fit" },
-  ],
-  groupForColumn: (columnId) => {
-    if (
-      isValidTacticColumnId(columnId) ||
-      columnId.startsWith("role.") ||
-      columnId.startsWith("potential_role.") ||
-      columnId === "club_dna"
-    ) {
-      return "tactic-fit";
-    }
-    switch (getPlayerMetric(columnId)?.category) {
-      case "identity":
-        return "profile";
-      case "ability-reputation":
-      case "visible-attributes":
-      case "hidden-attributes":
-      case "personality":
-        return "ability";
-      case "club-contract":
-        return "market";
-      case "position-suitability":
-      case "current-role-scores":
-      case "potential-role-scores":
-        return "tactic-fit";
-      default:
-        return "other";
-    }
-  },
-};
-
-export const MONEYBALL_TABLE_GROUPS: TableGroupInput = {
-  groups: [
-    { id: "profile", label: "Profile" },
-    { id: "market", label: "Market" },
-    { id: "playing-time", label: "Playing Time" },
-    { id: "performance", label: "Performance" },
-    { id: "role-fit", label: "Role Fit" },
-  ],
-  groupForColumn: (columnId) => {
-    if (columnId === "position") {
-      return "profile";
-    }
-    if (columnId.startsWith("moneyball_role.")) {
-      return "role-fit";
-    }
-    const metric = getMoneyballSearchMetric(columnId);
-    if (!metric) {
-      return "other";
-    }
-    if (metric.context) {
-      return "playing-time";
-    }
-    if (metric.metric) {
-      return "performance";
-    }
-    if (metric.role) {
-      return "role-fit";
-    }
-    switch (metric.category) {
-      case "Identity":
-        return "profile";
-      case "Club and value":
-        return "market";
-      case "Context":
-        return "playing-time";
-      default:
-        return "other";
-    }
-  },
-};
-
 function SearchResultsVirtualTable({
   total,
   sortBy,
@@ -337,9 +260,7 @@ function SearchResultsVirtualTable({
         <PlayerTableHeader
           columns={tableColumns}
           fixedColumns={fixedColumns}
-          groups={
-            view === "moneyball" ? MONEYBALL_TABLE_GROUPS : SEARCH_TABLE_GROUPS
-          }
+          groups={searchTableGroups(view)}
           identity={identity}
           sortBy={sortBy}
           sortDir={sortDir}
@@ -723,14 +644,14 @@ export function SearchResultsPanel({
       : undefined;
   const columnsControl = (
     <ConfigurableColumnsControl
-      groups={
-        view === "moneyball" ? MONEYBALL_TABLE_GROUPS : SEARCH_TABLE_GROUPS
-      }
+      groups={searchTableGroups(view)}
       metrics={
         view === "moneyball" ? MONEYBALL_HEADER_METRICS : SEARCH_HEADER_METRICS
       }
       visibleColumnIds={layout.columnIds}
-      onAddColumn={(metricId) => addColumns(tableId, [metricId])}
+      onAddColumn={(metricId) =>
+        addColumns(tableId, [metricId], searchTableGroups(view))
+      }
       onRemoveColumn={removeColumn}
     />
   );
@@ -936,7 +857,9 @@ export function SearchResultsPanel({
         firstPageQueryOptions={committedOptions}
         isReplacementActive={isReplacementActive}
         onSortChange={onSortChange}
-        onAddColumn={(metricId) => addColumns(tableId, [metricId])}
+        onAddColumn={(metricId) =>
+          addColumns(tableId, [metricId], searchTableGroups(view))
+        }
         onRemoveColumn={removeColumn}
         onMoveColumn={(metricId, targetIndex) =>
           moveColumn(tableId, metricId, targetIndex)

@@ -463,7 +463,7 @@ const PLAYER_METRIC_DEFINITIONS: readonly PlayerMetricDefinition[] = [
   {
     id: "position",
     label: "Position",
-    category: "position-suitability",
+    category: "identity",
     kind: "enum",
     defaultWidth: 144,
     operators: ENUM_OPERATORS,

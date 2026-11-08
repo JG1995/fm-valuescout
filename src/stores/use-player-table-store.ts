@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
+  insertColumnsInGroups,
+  type TableGroupInput,
+} from "@/components/player-table/table-groups";
+import {
   DEFAULT_MONEYBALL_TABLE_COLUMN_IDS,
   getMoneyballSearchMetric,
 } from "@/utils/moneyball-search-metrics";
@@ -91,7 +95,12 @@ type PlayerTableLayouts = Record<PlayerTableId, PlayerTableLayout>;
 
 type PlayerTableStore = {
   layouts: PlayerTableLayouts;
-  addColumns: (table: PlayerTableId, metricIds: readonly string[]) => void;
+  /** Appends new columns, or places them at the end of their group when given the table's groups. */
+  addColumns: (
+    table: PlayerTableId,
+    metricIds: readonly string[],
+    groups?: TableGroupInput,
+  ) => void;
   removeColumn: (table: PlayerTableId, metricId: string) => void;
   moveColumn: (
     table: PlayerTableId,
@@ -533,7 +542,7 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
   persist(
     (set) => ({
       layouts: defaultPlayerTableLayouts(),
-      addColumns: (table, metricIds) => {
+      addColumns: (table, metricIds, groups) => {
         set((state) => {
           const layout = state.layouts[table];
           const additions = metricIds.filter(
@@ -550,7 +559,9 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
               ...state.layouts,
               [table]: {
                 ...layout,
-                columnIds: [...layout.columnIds, ...additions],
+                columnIds: groups
+                  ? insertColumnsInGroups(layout.columnIds, additions, groups)
+                  : [...layout.columnIds, ...additions],
               },
             },
           };

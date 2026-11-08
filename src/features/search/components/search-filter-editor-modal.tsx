@@ -22,6 +22,7 @@ import {
   getFilterField,
   isFilterRuleComplete,
 } from "../utils/filter-registry";
+import { searchTableGroups } from "../utils/search-table-groups";
 import { capFilterRules, MAX_FILTER_RULES } from "../utils/search-url-search";
 
 type SearchFilterEditorModalProps = {
@@ -90,6 +91,7 @@ function FilterRuleRow({
       value={rule.field}
       placeholder="Choose a field"
       defaultOpen={openPicker}
+      groups={searchTableGroups(view)}
       onChange={(fieldId) => {
         onChange({
           ...rule,

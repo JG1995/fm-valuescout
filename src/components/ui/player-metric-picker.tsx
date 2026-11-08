@@ -1,5 +1,6 @@
 import { ChevronDown } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { TableGroupInput } from "@/components/player-table/table-groups";
 import {
   fieldClasses,
   fieldLabelClasses,
@@ -28,16 +29,18 @@ export type MetricPickerProps = {
   placeholder?: string;
   /** Open the picker when it mounts, focusing its search field. */
   defaultOpen?: boolean;
+  /** Orders sections like the table's header groups. */
+  groups?: TableGroupInput;
 };
 
 const CATEGORY_ORDER = [
   "identity",
-  "club-contract",
   "ability-reputation",
   "staff-attributes",
   "visible-attributes",
   "hidden-attributes",
   "personality",
+  "club-contract",
   "position-suitability",
   "current-role-scores",
   "potential-role-scores",
@@ -70,10 +73,35 @@ const ROLE_FAMILY_ORDER = [
 const POPUP_MAX_HEIGHT = 320;
 const POPUP_MIN_WIDTH = 288;
 
-function groupsForMetrics(
-  metrics: readonly MetricPickerMetric[],
+/**
+ * Picker sections: categories, with role scores split by family. Given the
+ * table's groups, sections follow the header's group order so the picker,
+ * Columns, and the header read the same way.
+ */
+export function groupsForMetrics<TMetric extends MetricPickerMetric>(
+  metrics: readonly TMetric[],
   search: string,
-): MetricPickerGroup[] {
+  tableGroups?: TableGroupInput,
+): { label: string; metrics: TMetric[] }[] {
+  const groups = categoryGroups(metrics, search);
+  if (!tableGroups) {
+    return groups;
+  }
+  const order = tableGroups.groups.map((group) => group.id);
+  const rank = (group: { metrics: TMetric[] }) => {
+    const first = group.metrics[0];
+    const index = first
+      ? order.indexOf(tableGroups.groupForColumn(first.id) ?? "")
+      : -1;
+    return index === -1 ? order.length : index;
+  };
+  return [...groups].sort((left, right) => rank(left) - rank(right));
+}
+
+function categoryGroups<TMetric extends MetricPickerMetric>(
+  metrics: readonly TMetric[],
+  search: string,
+): { label: string; metrics: TMetric[] }[] {
   const term = search.trim().toLowerCase();
   const matches = metrics.filter((metric) => {
     if (!term) {
@@ -84,7 +112,7 @@ function groupsForMetrics(
       .includes(term);
   });
 
-  const groups: MetricPickerGroup[] = [];
+  const groups: { label: string; metrics: TMetric[] }[] = [];
   for (const category of CATEGORY_ORDER) {
     const categoryMetrics = matches.filter(
       (metric) => metric.category === category,
@@ -162,6 +190,7 @@ export function MetricPicker({
   disabled = false,
   placeholder = "Choose a metric",
   defaultOpen = false,
+  groups: tableGroups,
 }: MetricPickerProps) {
   const searchInputId = useId();
   const listboxId = useId();
@@ -174,8 +203,8 @@ export function MetricPicker({
   const [activeIndex, setActiveIndex] = useState(0);
   const selected = metrics.find((metric) => metric.id === value);
   const groups = useMemo(
-    () => groupsForMetrics(metrics, search),
-    [metrics, search],
+    () => groupsForMetrics(metrics, search, tableGroups),
+    [metrics, search, tableGroups],
   );
   const options = groups.flatMap((group) => group.metrics);
   const activeMetric = options[activeIndex];
