@@ -202,16 +202,15 @@ describe("SearchFilterBar", () => {
 
     await user.click(screen.getByRole("button", { name: "Add filter" }));
     await chooseField(user, "xa / 90", "xA / 90");
-    const operator = screen.getByRole("combobox", { name: "Operator" });
-    expect(
-      within(operator).queryByRole("option", { name: "percentile at least" }),
-    ).toBeNull();
+    const operatorValues = () =>
+      within(screen.getByRole("combobox", { name: "Operator" }))
+        .getAllByRole("option")
+        .map((option) => (option as HTMLOptionElement).value);
+    expect(operatorValues()).toEqual(["gte", "lte", "between"]);
 
     await user.click(screen.getByRole("button", { name: "Percentile" }));
     expect(screen.getByLabelText("Value")).toHaveValue(90);
-    expect(
-      within(operator).queryByRole("option", { name: "at least" }),
-    ).toBeNull();
+    expect(operatorValues()).toEqual(["pct_gte", "pct_lte", "pct_between"]);
     expect(
       screen.getByText(
         /Scored against the players matching your other filters/,

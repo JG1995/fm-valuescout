@@ -34,11 +34,15 @@ const DECIMAL_OPERATORS = [
   { id: "lte", label: "at most" },
   { id: "between", label: "between" },
 ] as const;
-/** Compare a statistic's 0–100 comparison-pool percentile instead of its raw value. */
+/**
+ * Compare a statistic's 0–100 comparison-pool percentile instead of its raw
+ * value. The editor's Value | Percentile switch names the scale, so the
+ * labels match the raw operators.
+ */
 const PERCENTILE_OPERATORS = [
-  { id: "pct_gte", label: "percentile at least" },
-  { id: "pct_lte", label: "percentile at most" },
-  { id: "pct_between", label: "percentile between" },
+  { id: "pct_gte", label: "at least" },
+  { id: "pct_lte", label: "at most" },
+  { id: "pct_between", label: "between" },
 ] as const;
 
 export function isPercentileOperator(op: string) {
