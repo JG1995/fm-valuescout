@@ -4,6 +4,7 @@ import {
   MONEYBALL_ROLE_CATALOG,
   type MoneyballRolePositionFamily,
 } from "./moneyball-role-catalog";
+import { POSITION_ORDER } from "./position-order";
 
 export type MoneyballSearchMetric = {
   id: string;
@@ -27,6 +28,16 @@ const NUMBER_OPERATORS = [
   { id: "eq", label: "equals" },
   { id: "neq", label: "does not equal" },
 ] as const;
+/** Compare a statistic's 0–100 comparison-pool percentile instead of its raw value. */
+const PERCENTILE_OPERATORS = [
+  { id: "pct_gte", label: "percentile ≥" },
+  { id: "pct_lte", label: "percentile ≤" },
+] as const;
+
+export function isPercentileOperator(op: string) {
+  return PERCENTILE_OPERATORS.some((operator) => operator.id === op);
+}
+
 const TEXT_OPERATORS = [
   { id: "contains", label: "contains" },
   { id: "not_contains", label: "does not contain" },
@@ -117,7 +128,17 @@ export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
     ],
   },
   basic("value", "Value", "integer"),
-  basic("position", "Position", "string"),
+  {
+    id: "position",
+    label: "Position",
+    category: "Club and value",
+    kind: "enum",
+    align: "left",
+    defaultWidth: 144,
+    sortable: true,
+    operators: ENUM_OPERATORS,
+    enumOptions: POSITION_ORDER.map((key) => ({ value: key, label: key })),
+  },
   context("moneyball.starts", "Starts"),
   context("moneyball.substitute_appearances", "Sub appearances"),
   context("moneyball.minutes", "Minutes"),
@@ -130,7 +151,7 @@ export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
     align: "right" as const,
     defaultWidth: metric.width === "wide" ? 176 : 112,
     sortable: true as const,
-    operators: NUMBER_OPERATORS,
+    operators: [...NUMBER_OPERATORS, ...PERCENTILE_OPERATORS],
     metric,
   })),
   ...MONEYBALL_ROLE_CATALOG.map(roleMetric),

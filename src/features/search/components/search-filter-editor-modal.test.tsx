@@ -211,6 +211,53 @@ describe("SearchFilterEditorModal", () => {
     expect(fieldTrigger).toHaveFocus();
   });
 
+  it("switches a Moneyball metric rule to a 0–100 percentile", async () => {
+    const user = userEvent.setup();
+    const { onApply } = renderEditor({
+      view: "moneyball",
+      rules: [
+        {
+          id: "xa",
+          field: "moneyball.xa_per_90",
+          op: "gt",
+          value: { type: "number", value: 0.35 },
+        },
+      ],
+    });
+    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
+
+    await user.selectOptions(
+      within(dialog).getByRole("combobox", { name: "Operator" }),
+      "pct_gte",
+    );
+    const value = within(dialog).getByLabelText("Value");
+    expect(value).toHaveValue(90);
+    expect(
+      within(dialog).getByRole("note", {
+        name: /role filters apply after the comparison cohort is calculated/i,
+      }),
+    ).toBeInTheDocument();
+
+    await user.clear(value);
+    await user.type(value, "150");
+    expect(within(dialog).getByRole("button", { name: "Done" })).toBeDisabled();
+
+    await user.clear(value);
+    await user.type(value, "75");
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+
+    expect(onApply).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          field: "moneyball.xa_per_90",
+          op: "pct_gte",
+          value: { type: "number", value: 75 },
+        }),
+      ],
+      "and",
+    );
+  });
+
   it("explains the post-score cohort when a Moneyball role rule is present", () => {
     renderEditor({
       view: "moneyball",

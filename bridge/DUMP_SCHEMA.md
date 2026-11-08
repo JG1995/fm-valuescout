@@ -73,7 +73,7 @@ Each value is an integer from `0` through `20`, or JSON `null`:
 - An integer is the byte read successfully from FM memory, including a successful zero.
 - `null` means the byte was unreadable or outside the trusted FM range. The bridge never omits a key in schema v9.
 
-Rust rejects missing or extra keys, booleans, strings, fractional values, and integers outside `0..=20` before snapshot mutation. Consumers apply their own explicit recorded (`>0`) or playable (`>=15`) rules; the dump itself does not filter positions.
+Rust rejects missing or extra keys, booleans, strings, fractional values, and integers outside `0..=20` before snapshot mutation. Consumers apply their own explicit recorded (`>0`) or playable (`>=15`) rules; the dump itself does not filter positions. Live FM27 scans rate every position at least `1`, so `>0` marks all 15 positions; the Search Position filter uses `>=16`.
 
 Existing nullable fields preserve JSON `null` for unread or out-of-range values, never a sentinel zero. Attribute maps remain PascalCase keys with number or null values. `loanListed` uses SuperScout status bit1, pending live confirmation.
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FilterRule } from "../types/filter-rule";
+import { formatFilterTagLabel } from "./format-filter-label";
 import {
   MAX_FILTER_RULES,
   parseSearchCombine,
@@ -79,6 +80,28 @@ describe("search URL search params", () => {
         value: { type: "integer", value: 100 },
       },
     ]);
+  });
+
+  it("keeps percentile rules only on Moneyball statistics", () => {
+    const parsed = parseSearchFilters(
+      [
+        { id: "xa", field: "moneyball.xa_per_90", op: "pct_gte", value: 90 },
+        { id: "minutes", field: "moneyball.minutes", op: "pct_gte", value: 90 },
+      ],
+      "moneyball",
+    );
+
+    expect(parsed).toEqual([
+      {
+        id: "xa",
+        field: "moneyball.xa_per_90",
+        op: "pct_gte",
+        value: { type: "number", value: 90 },
+      },
+    ]);
+    expect(formatFilterTagLabel(parsed[0] as FilterRule, "moneyball")).toBe(
+      "xA / 90 percentile ≥ 90",
+    );
   });
 
   it("parses the shortlist toggle as tri-state with deliberate invalid behavior", () => {
