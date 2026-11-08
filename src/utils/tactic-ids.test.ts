@@ -2,15 +2,17 @@ import { describe, expect, it } from "vitest";
 import rustTacticSource from "../../src-tauri/src/features/planner/tactic.rs?raw";
 import { TACTIC_LANE_IDS as PLANNER_TACTIC_LANE_IDS } from "../features/planner/types/tactic";
 import {
-  allTacticColumnIdsForGroup,
   isFullTacticGroup,
   isTacticColumnId,
   isValidTacticColumnId,
+  isValidTacticColumnIdForTable,
   sanitizeTacticIds,
   TACTIC_COLUMN_DEFAULT_WIDTH,
   TACTIC_CURRENT_PREFIX,
+  TACTIC_CUSTOM_PREFIX,
   TACTIC_LANE_IDS,
   TACTIC_POTENTIAL_PREFIX,
+  tacticColumnGroupsForTable,
   tacticColumnId,
   tacticGroupForId,
   tacticLaneIdForId,
@@ -38,20 +40,52 @@ describe("tactic column IDs", () => {
     expect(isTacticColumnId("role.goalkeeper_ip")).toBe(false);
     expect(isValidTacticColumnId("tactic_current.goalkeeper")).toBe(true);
     expect(isValidTacticColumnId("tactic_potential.right_winger")).toBe(true);
+    expect(isValidTacticColumnId("tactic_custom.right_winger")).toBe(true);
     expect(isValidTacticColumnId("tactic_current.not_a_lane")).toBe(false);
+    expect(isValidTacticColumnId("tactic_custom.not_a_lane")).toBe(false);
     expect(isValidTacticColumnId("tactic_current.")).toBe(false);
+  });
+
+  it("offers Current and Potential in General and Current and Custom in Moneyball", () => {
+    expect(tacticColumnGroupsForTable("search")).toEqual([
+      "current",
+      "potential",
+    ]);
+    expect(tacticColumnGroupsForTable("moneyball-search")).toEqual([
+      "current",
+      "custom",
+    ]);
+    expect(tacticColumnGroupsForTable("squad")).toEqual([]);
+
+    for (const [id, search, moneyball] of [
+      ["tactic_current.goalkeeper", true, true],
+      ["tactic_potential.goalkeeper", true, false],
+      ["tactic_custom.goalkeeper", false, true],
+      ["tactic_custom.not_a_lane", false, false],
+      ["age", false, false],
+    ] as const) {
+      expect(isValidTacticColumnIdForTable(id, "search")).toBe(search);
+      expect(isValidTacticColumnIdForTable(id, "moneyball-search")).toBe(
+        moneyball,
+      );
+      expect(isValidTacticColumnIdForTable(id, "squad")).toBe(false);
+    }
   });
 
   it("extracts groups and lane IDs without accepting other column families", () => {
     expect(tacticGroupForId("tactic_current.left_back")).toBe("current");
     expect(tacticGroupForId("tactic_potential.left_back")).toBe("potential");
+    expect(tacticGroupForId("tactic_custom.left_back")).toBe("custom");
     expect(tacticGroupForId("role.left_back")).toBeNull();
     expect(tacticLaneIdForId("tactic_current.left_back")).toBe("left_back");
+    expect(tacticLaneIdForId("tactic_custom.left_back")).toBe("left_back");
     expect(tacticLaneIdForId("role.left_back")).toBeNull();
   });
 
   it("requires all 11 canonical IDs for a full group", () => {
-    const currentIds = allTacticColumnIdsForGroup("current", TACTIC_LANE_IDS);
+    const currentIds = TACTIC_LANE_IDS.map(
+      (laneId) => `${TACTIC_CURRENT_PREFIX}${laneId}`,
+    );
 
     expect(isFullTacticGroup(currentIds.slice(0, 10), "current")).toBe(false);
     expect(isFullTacticGroup(currentIds, "current")).toBe(true);
@@ -79,13 +113,22 @@ describe("tactic column IDs", () => {
       "pos.",
     ];
 
-    expect(TACTIC_CURRENT_PREFIX).not.toBe(TACTIC_POTENTIAL_PREFIX);
+    const tacticPrefixes = [
+      TACTIC_CURRENT_PREFIX,
+      TACTIC_POTENTIAL_PREFIX,
+      TACTIC_CUSTOM_PREFIX,
+    ];
+    expect(new Set(tacticPrefixes).size).toBe(3);
     for (const catalogPrefix of catalogPrefixes) {
-      expect(TACTIC_CURRENT_PREFIX.startsWith(catalogPrefix)).toBe(false);
-      expect(TACTIC_POTENTIAL_PREFIX.startsWith(catalogPrefix)).toBe(false);
+      for (const tacticPrefix of tacticPrefixes) {
+        expect(tacticPrefix.startsWith(catalogPrefix)).toBe(false);
+      }
     }
     expect(tacticColumnId("current", "goalkeeper")).toBe(
       "tactic_current.goalkeeper",
+    );
+    expect(tacticColumnId("custom", "goalkeeper")).toBe(
+      "tactic_custom.goalkeeper",
     );
     expect(TACTIC_COLUMN_DEFAULT_WIDTH).toBe(112);
   });
@@ -94,17 +137,6 @@ describe("tactic column IDs", () => {
     expect(tacticColumnId("current", "not_a_lane")).toBeNull();
     expect(tacticColumnId("potential", "")).toBeNull();
     expect(tacticColumnId("current", "goalkeeper ")).toBeNull();
-
-    expect(allTacticColumnIdsForGroup("current", ["not_a_lane"])).toEqual([]);
-    expect(
-      allTacticColumnIdsForGroup("potential", [
-        "goalkeeper",
-        "not_a_lane",
-        "right_winger",
-      ]),
-    ).toEqual(["tactic_potential.goalkeeper", "tactic_potential.right_winger"]);
-    expect(
-      allTacticColumnIdsForGroup("current", ["not_a_lane", "also_bad"]),
-    ).toEqual([]);
+    expect(tacticColumnId("custom", "not_a_lane")).toBeNull();
   });
 });

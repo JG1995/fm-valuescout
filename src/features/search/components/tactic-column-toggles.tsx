@@ -1,37 +1,38 @@
 import { Button } from "@/components/ui/button/button";
 import type { TacticColumnGroup } from "@/utils/tactic-ids";
 
+export type TacticColumnToggle = {
+  group: TacticColumnGroup;
+  label: string;
+  active: boolean;
+  /** False when the group has nothing to add; active columns stay removable. */
+  canAdd?: boolean;
+};
+
 type TacticColumnTogglesProps = {
-  currentActive: boolean;
-  potentialActive: boolean;
+  groups: readonly TacticColumnToggle[];
   disabled: boolean;
   onToggleGroup: (group: TacticColumnGroup) => void;
 };
 
 export function TacticColumnToggles({
-  currentActive,
-  potentialActive,
+  groups,
   disabled,
   onToggleGroup,
 }: TacticColumnTogglesProps) {
   return (
     <>
-      <Button
-        variant={currentActive ? "primary" : "secondary"}
-        aria-pressed={currentActive}
-        disabled={disabled}
-        onClick={() => onToggleGroup("current")}
-      >
-        Add Tactic (Current)
-      </Button>
-      <Button
-        variant={potentialActive ? "primary" : "secondary"}
-        aria-pressed={potentialActive}
-        disabled={disabled}
-        onClick={() => onToggleGroup("potential")}
-      >
-        Add Tactic (Potential)
-      </Button>
+      {groups.map(({ group, label, active, canAdd = true }) => (
+        <Button
+          key={group}
+          variant={active ? "primary" : "secondary"}
+          aria-pressed={active}
+          disabled={disabled || (!active && !canAdd)}
+          onClick={() => onToggleGroup(group)}
+        >
+          Add Tactic ({label})
+        </Button>
+      ))}
     </>
   );
 }

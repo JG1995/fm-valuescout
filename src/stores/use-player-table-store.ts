@@ -19,7 +19,11 @@ import {
   isSuggestedTrainingColumnId,
   SUGGESTED_TRAINING_COLUMN_ID,
 } from "@/utils/suggested-training";
-import { isTacticColumnId, isValidTacticColumnId } from "@/utils/tactic-ids";
+import {
+  isTacticColumnId,
+  isValidTacticColumnId,
+  isValidTacticColumnIdForTable,
+} from "@/utils/tactic-ids";
 
 const DEFAULT_STAFF_SHORTLIST_COLUMN_IDS = [
   "name",
@@ -165,11 +169,10 @@ function isAllowedColumnId(table: PlayerTableId, id: string): boolean {
   if (isSuggestedTrainingColumnId(id)) {
     return table === "squad";
   }
-  if (isValidTacticColumnId(id)) {
-    return table === "search" || table === "moneyball-search";
-  }
+  // Moneyball layouts lose Potential tactic columns and General layouts never
+  // keep Custom ones; `merge` sanitizes every load through this check.
   if (isTacticColumnId(id)) {
-    return false;
+    return isValidTacticColumnIdForTable(id, table);
   }
   if (table === "moneyball-search") {
     return (

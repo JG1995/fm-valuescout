@@ -40,6 +40,7 @@ import {
   isValidTacticColumnId,
   TACTIC_COLUMN_DEFAULT_WIDTH,
   TACTIC_LANE_IDS,
+  tacticColumnGroupsForTable,
   tacticGroupForId,
   tacticLaneIdForId,
 } from "@/utils/tactic-ids";
@@ -80,6 +81,8 @@ export type TacticLaneLabel = {
   compact: string;
   context: string;
   full: string;
+  /** Context and full definition for the lane's Moneyball Custom column. */
+  custom?: { context: string; full: string };
 };
 
 type SearchResultsPanelProps = {
@@ -122,11 +125,13 @@ export function tableColumnForMetric(
   if (isValidTacticColumnId(metricId)) {
     const laneId = tacticLaneIdForId(metricId);
     const laneLabel = laneLabels.get(laneId ?? "");
+    const groupLabel =
+      tacticGroupForId(metricId) === "custom" ? laneLabel?.custom : laneLabel;
     return {
       id: metricId,
       label: laneLabel?.compact ?? laneId ?? metricId,
-      secondaryLabel: laneLabel?.context,
-      accessibleLabel: laneLabel?.full ?? laneId ?? metricId,
+      secondaryLabel: groupLabel?.context,
+      accessibleLabel: groupLabel?.full ?? laneId ?? metricId,
       align: "right",
       width: width ?? TACTIC_COLUMN_DEFAULT_WIDTH,
     };
@@ -806,16 +811,12 @@ export function SearchResultsPanel({
       return;
     }
     if (isTacticColumnId(metricId)) {
-      const currentSurvives = isFullTacticGroup(nextColumnIds, "current");
-      const potentialSurvives = isFullTacticGroup(nextColumnIds, "potential");
-      const survivingGroup = currentSurvives
-        ? "current"
-        : potentialSurvives
-          ? "potential"
-          : null;
+      const survivingGroups = tacticColumnGroupsForTable(tableId).filter(
+        (group) => isFullTacticGroup(nextColumnIds, group),
+      );
       const persistedLaneIds = nextColumnIds.flatMap((id) => {
         const laneId = tacticLaneIdForId(id);
-        return laneId && tacticGroupForId(id) === survivingGroup
+        return laneId && tacticGroupForId(id) === survivingGroups[0]
           ? [laneId]
           : [];
       });
@@ -825,11 +826,7 @@ export function SearchResultsPanel({
           : [...new Set(persistedLaneIds)];
       nextColumnIds = [
         ...nextColumnIds.filter((id) => !isTacticColumnId(id)),
-        ...buildTacticColumnOrder(
-          removalOrder,
-          currentSurvives,
-          potentialSurvives,
-        ),
+        ...buildTacticColumnOrder(removalOrder, survivingGroups),
       ];
       if (nextColumnIds.length === 0) {
         // Identity-only is valid and never rolls to defaults: emptying the

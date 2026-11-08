@@ -780,6 +780,69 @@ describe("usePlayerTableStore", () => {
     const potentialGroup = TACTIC_LANE_IDS.map(
       (laneId) => `tactic_potential.${laneId}`,
     );
+    const customGroup = TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_custom.${laneId}`,
+    );
+
+    it("drops Potential from a stored Moneyball layout and Custom from a General layout", async () => {
+      const interleaved = (secondGroup: string[]) =>
+        currentGroup.flatMap((id, index) => [id, secondGroup[index]]);
+      localStorage.setItem(
+        PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layouts: {
+              search: {
+                columnIds: [
+                  "ca",
+                  ...interleaved(potentialGroup),
+                  ...customGroup,
+                ],
+                widths: {
+                  "tactic_potential.goalkeeper": 150,
+                  "tactic_custom.goalkeeper": 150,
+                },
+              },
+              "moneyball-search": {
+                columnIds: ["age", ...interleaved(potentialGroup)],
+                widths: {
+                  "tactic_current.goalkeeper": 140,
+                  "tactic_potential.goalkeeper": 150,
+                },
+              },
+            },
+          },
+          version: 8,
+        }),
+      );
+      await usePlayerTableStore.persist.rehydrate();
+      const layouts = usePlayerTableStore.getState().layouts;
+      expect(layouts["moneyball-search"].columnIds).toEqual([
+        "age",
+        ...currentGroup,
+      ]);
+      expect(layouts["moneyball-search"].widths).toEqual({
+        "tactic_current.goalkeeper": 140,
+      });
+      expect(layouts.search.columnIds).toEqual([
+        "ca",
+        ...interleaved(potentialGroup),
+      ]);
+      expect(layouts.search.widths).toEqual({
+        "tactic_potential.goalkeeper": 150,
+      });
+
+      usePlayerTableStore
+        .getState()
+        .replaceLayout("moneyball-search", [
+          "age",
+          "tactic_potential.goalkeeper",
+          "tactic_custom.goalkeeper",
+        ]);
+      expect(
+        usePlayerTableStore.getState().layouts["moneyball-search"].columnIds,
+      ).toEqual(["age", "tactic_custom.goalkeeper"]);
+    });
 
     it("hydrates a valid synthetic group round-trip and clamps tactic widths", async () => {
       localStorage.setItem(
@@ -797,8 +860,8 @@ describe("usePlayerTableStore", () => {
                 },
               },
               "moneyball-search": {
-                columnIds: ["name", ...potentialGroup],
-                widths: { "tactic_potential.goalkeeper": 10_000 },
+                columnIds: ["name", ...customGroup],
+                widths: { "tactic_custom.goalkeeper": 10_000 },
               },
               shortlist: {
                 columnIds: [...currentGroup, ...potentialGroup],
@@ -815,11 +878,9 @@ describe("usePlayerTableStore", () => {
       expect(layouts.search.widths["tactic_current.goalkeeper"]).toBe(360);
       expect(layouts.search.widths["tactic_current.left_back"]).toBe(72);
       expect(layouts.search.identityWidth).toBe(240);
-      expect(layouts["moneyball-search"].columnIds).toEqual([
-        ...potentialGroup,
-      ]);
+      expect(layouts["moneyball-search"].columnIds).toEqual([...customGroup]);
       expect(
-        layouts["moneyball-search"].widths["tactic_potential.goalkeeper"],
+        layouts["moneyball-search"].widths["tactic_custom.goalkeeper"],
       ).toBe(360);
       expect(layouts).not.toHaveProperty("shortlist");
     });

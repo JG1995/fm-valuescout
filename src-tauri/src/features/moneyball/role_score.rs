@@ -75,6 +75,23 @@ pub(crate) fn explain_role(
     })
 }
 
+/// Equal-weight mean of the given metrics' percentiles, rounded to 0–100.
+/// Percentiles of lower-is-better metrics are already inverted, so they are
+/// used as stored. No score without metrics or when any percentile is missing.
+pub(crate) fn mean_percentile_score(
+    metric_keys: &[String],
+    percentiles: &BTreeMap<String, Option<u8>>,
+) -> Option<u8> {
+    if metric_keys.is_empty() {
+        return None;
+    }
+    let mut sum = 0.0;
+    for key in metric_keys {
+        sum += f64::from(percentiles.get(key).copied().flatten()?);
+    }
+    Some((sum / metric_keys.len() as f64).round().clamp(0.0, 100.0) as u8)
+}
+
 pub(crate) fn score_role(
     definition: &RoleDefinition,
     percentiles: &BTreeMap<String, Option<u8>>,
@@ -91,7 +108,7 @@ pub(crate) fn score_role(
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{explain_role, score_role};
+    use super::{explain_role, mean_percentile_score, score_role};
     use crate::features::moneyball::percentile::calculate_percentiles;
     use crate::features::moneyball::role_catalog::{RoleDefinition, RoleMetric, RolePhase};
 
@@ -330,5 +347,53 @@ mod tests {
             .contributions
             .iter()
             .all(|contribution| !contribution.available_from_source));
+    }
+
+    fn keys(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn mean_percentile_score_of_one_key_is_its_percentile() {
+        let percentiles = BTreeMap::from([("goals".to_owned(), Some(37))]);
+
+        assert_eq!(
+            mean_percentile_score(&keys(&["goals"]), &percentiles),
+            Some(37)
+        );
+    }
+
+    #[test]
+    fn mean_percentile_score_rounds_the_equal_weight_mean_of_five_keys() {
+        let percentiles = BTreeMap::from([
+            ("a".to_owned(), Some(10)),
+            ("b".to_owned(), Some(20)),
+            ("c".to_owned(), Some(30)),
+            ("d".to_owned(), Some(40)),
+            ("e".to_owned(), Some(53)),
+            ("unused".to_owned(), Some(0)),
+        ]);
+
+        // (10 + 20 + 30 + 40 + 53) / 5 = 30.6
+        assert_eq!(
+            mean_percentile_score(&keys(&["a", "b", "c", "d", "e"]), &percentiles),
+            Some(31)
+        );
+    }
+
+    #[test]
+    fn mean_percentile_score_is_absent_without_keys_or_with_a_missing_percentile() {
+        let percentiles =
+            BTreeMap::from([("goals".to_owned(), Some(80)), ("assists".to_owned(), None)]);
+
+        assert_eq!(mean_percentile_score(&[], &percentiles), None);
+        assert_eq!(
+            mean_percentile_score(&keys(&["goals", "assists"]), &percentiles),
+            None
+        );
+        assert_eq!(
+            mean_percentile_score(&keys(&["goals", "xg"]), &percentiles),
+            None
+        );
     }
 }

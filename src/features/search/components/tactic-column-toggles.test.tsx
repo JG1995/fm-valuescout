@@ -9,34 +9,38 @@ describe("TacticColumnToggles", () => {
     const onToggleGroup = vi.fn();
     render(
       <TacticColumnToggles
-        currentActive
-        potentialActive={false}
+        groups={[
+          { group: "current", label: "Roles", active: true },
+          { group: "custom", label: "Custom", active: false },
+        ]}
         disabled={false}
         onToggleGroup={onToggleGroup}
       />,
     );
 
-    const current = screen.getByRole("button", {
-      name: "Add Tactic (Current)",
+    const roles = screen.getByRole("button", {
+      name: "Add Tactic (Roles)",
     });
-    const potential = screen.getByRole("button", {
-      name: "Add Tactic (Potential)",
+    const custom = screen.getByRole("button", {
+      name: "Add Tactic (Custom)",
     });
-    expect(current).toHaveAttribute("aria-pressed", "true");
-    expect(potential).toHaveAttribute("aria-pressed", "false");
+    expect(roles).toHaveAttribute("aria-pressed", "true");
+    expect(custom).toHaveAttribute("aria-pressed", "false");
 
-    await user.click(current);
-    await user.click(potential);
-    expect(onToggleGroup.mock.calls).toEqual([["current"], ["potential"]]);
+    await user.click(roles);
+    await user.click(custom);
+    expect(onToggleGroup.mock.calls).toEqual([["current"], ["custom"]]);
   });
 
-  it("does not invoke callbacks while disabled", async () => {
+  it("does not invoke callbacks while disabled or for a group that cannot add", async () => {
     const user = userEvent.setup();
     const onToggleGroup = vi.fn();
-    render(
+    const { rerender } = render(
       <TacticColumnToggles
-        currentActive={false}
-        potentialActive={false}
+        groups={[
+          { group: "current", label: "Current", active: false },
+          { group: "potential", label: "Potential", active: false },
+        ]}
         disabled
         onToggleGroup={onToggleGroup}
       />,
@@ -48,6 +52,20 @@ describe("TacticColumnToggles", () => {
     await user.click(
       screen.getByRole("button", { name: "Add Tactic (Potential)" }),
     );
+
+    rerender(
+      <TacticColumnToggles
+        groups={[
+          { group: "current", label: "Roles", active: false },
+          { group: "custom", label: "Custom", active: false, canAdd: false },
+        ]}
+        disabled={false}
+        onToggleGroup={onToggleGroup}
+      />,
+    );
+    const custom = screen.getByRole("button", { name: "Add Tactic (Custom)" });
+    expect(custom).toBeDisabled();
+    await user.click(custom);
     expect(onToggleGroup).not.toHaveBeenCalled();
   });
 });

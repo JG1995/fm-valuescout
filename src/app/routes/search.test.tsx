@@ -29,7 +29,10 @@ import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
-import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import {
+  PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+  usePlayerTableStore,
+} from "@/stores/use-player-table-store";
 import { useSearchViewMemory } from "@/stores/use-search-view-memory";
 import {
   shortlistFilterKey,
@@ -670,15 +673,17 @@ describe("search route", () => {
       tableId: "search",
       entry: (sort: string) => `/search?sort=${sort}&dir=desc`,
       expectedSort: "ca",
+      toggleName: "Add Tactic (Current)",
     },
     {
       tableId: "moneyball-search",
       entry: (sort: string) => `/search?view=moneyball&sort=${sort}&dir=desc`,
       expectedSort: "moneyball.average_rating",
+      toggleName: "Add Tactic (Roles)",
     },
   ] as const)(
     "keeps identity-only when its tactic-only group is toggled off ($tableId)",
-    async ({ tableId, entry, expectedSort }) => {
+    async ({ tableId, entry, expectedSort, toggleName }) => {
       const user = userEvent.setup();
       await resolveLoadDataIpcMock();
       const currentIds = ORDERED_TACTIC_LANE_IDS.map(
@@ -688,7 +693,7 @@ describe("search route", () => {
       const { router } = renderSearchRoute(entry(currentIds[0]));
 
       const currentToggle = await screen.findByRole("button", {
-        name: "Add Tactic (Current)",
+        name: toggleName,
       });
       await waitFor(() => expect(currentToggle).toBeEnabled());
       await user.click(currentToggle);
@@ -767,7 +772,7 @@ describe("search route", () => {
     renderSearchRoute("/search?view=moneyball");
 
     const toggle = await screen.findByRole("button", {
-      name: "Add Tactic (Current)",
+      name: "Add Tactic (Roles)",
     });
     await waitFor(() => expect(toggle).toBeEnabled());
     await user.click(toggle);
@@ -778,6 +783,175 @@ describe("search route", () => {
     expect(
       usePlayerTableStore.getState().layouts.search.columnIds,
     ).not.toContain("tactic_current.goalkeeper");
+  });
+
+  describe("Moneyball custom tactic columns", () => {
+    const rolesIds = ORDERED_TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_current.${laneId}`,
+    );
+    const customIds = ORDERED_TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_custom.${laneId}`,
+    );
+    const moneyballColumnIds = () =>
+      usePlayerTableStore.getState().layouts["moneyball-search"].columnIds;
+
+    async function enabledToggle(name: string) {
+      const toggle = await screen.findByRole("button", { name });
+      await waitFor(() => expect(toggle).toBeEnabled());
+      return toggle;
+    }
+
+    function storeTacticWithoutMetrics() {
+      const tactic = resolvePlannerTacticIpcMock();
+      for (const lane of tactic.lanes) {
+        lane.customMetricKeys = [];
+      }
+      setPlannerTacticForContext(
+        { saveId: 1, contextToken: "save-token-1" },
+        tactic,
+      );
+    }
+
+    it("offers Roles and Custom in place of Current and Potential", async () => {
+      await resolveLoadDataIpcMock();
+      renderSearchRoute("/search?view=moneyball");
+
+      await enabledToggle("Add Tactic (Roles)");
+      expect(
+        screen.getByRole("button", { name: "Add Tactic (Custom)" }),
+      ).toBeEnabled();
+      expect(
+        screen.queryByRole("button", { name: "Add Tactic (Current)" }),
+      ).toBeNull();
+      expect(screen.queryByRole("button", { name: /Potential/ })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Tactic editor" })).toBeNull();
+    });
+
+    it("adds and removes all 11 Custom columns, interleaved after Roles", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      renderSearchRoute("/search?view=moneyball");
+      const nonTacticIds = moneyballColumnIds();
+
+      const custom = await enabledToggle("Add Tactic (Custom)");
+      await user.click(custom);
+      expect(moneyballColumnIds()).toEqual([...nonTacticIds, ...customIds]);
+      expect(custom).toHaveAttribute("aria-pressed", "true");
+
+      await user.click(
+        screen.getByRole("button", { name: "Add Tactic (Roles)" }),
+      );
+      expect(moneyballColumnIds()).toEqual([
+        ...nonTacticIds,
+        ...rolesIds.flatMap((rolesId, index) => [rolesId, customIds[index]]),
+      ]);
+
+      await user.click(custom);
+      expect(moneyballColumnIds()).toEqual([...nonTacticIds, ...rolesIds]);
+      expect(custom).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("names each Custom header by its slot and metrics in order", async () => {
+      await resolveLoadDataIpcMock();
+      usePlayerTableStore
+        .getState()
+        .replaceLayout("moneyball-search", ["age", ...customIds]);
+      renderSearchRoute("/search?view=moneyball");
+
+      const table = await screen.findByRole("table", {
+        name: "Player search results",
+      });
+      const goalkeeper = await within(table).findByRole("columnheader", {
+        name: "GK custom: Save %, Clean Sheets %",
+      });
+      expect(within(goalkeeper).getByText("GK")).toBeVisible();
+      expect(within(goalkeeper).getByText("Custom")).toBeVisible();
+      expect(
+        within(table).getByRole("columnheader", {
+          name: "DR custom: no metrics chosen",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("cannot add Custom columns while no slot has metrics and links to the Tactic editor", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      storeTacticWithoutMetrics();
+      const { router } = renderSearchRoute("/search?view=moneyball");
+      const before = moneyballColumnIds();
+
+      await enabledToggle("Add Tactic (Roles)");
+      const custom = screen.getByRole("button", {
+        name: "Add Tactic (Custom)",
+      });
+      expect(custom).toBeDisabled();
+      await user.click(custom);
+      expect(moneyballColumnIds()).toEqual(before);
+
+      const link = screen.getByRole("link", { name: "Tactic editor" });
+      expect(link).toHaveAttribute("href", "/my-club?view=tactic");
+      await user.click(link);
+      await waitFor(() => {
+        expect(router.state.location.pathname).toBe("/my-club");
+      });
+      expect(router.state.location.search).toMatchObject({ view: "tactic" });
+    });
+
+    it("still removes shown Custom columns while no slot has metrics", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      storeTacticWithoutMetrics();
+      usePlayerTableStore
+        .getState()
+        .replaceLayout("moneyball-search", ["age", ...customIds]);
+      renderSearchRoute("/search?view=moneyball");
+
+      const custom = await enabledToggle("Add Tactic (Custom)");
+      expect(custom).toHaveAttribute("aria-pressed", "true");
+      expect(screen.queryByRole("link", { name: "Tactic editor" })).toBeNull();
+      await user.click(custom);
+
+      expect(moneyballColumnIds()).toEqual(["age"]);
+      expect(custom).toBeDisabled();
+      expect(
+        screen.getByRole("link", { name: "Tactic editor" }),
+      ).toBeInTheDocument();
+    });
+
+    it("falls back to the default sort for a stored Potential tactic sort", async () => {
+      localStorage.setItem(
+        PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layouts: {
+              "moneyball-search": {
+                columnIds: [
+                  "age",
+                  ...rolesIds.flatMap((rolesId) => [
+                    rolesId,
+                    rolesId.replace("tactic_current.", "tactic_potential."),
+                  ]),
+                ],
+                widths: {},
+              },
+            },
+          },
+          version: 8,
+        }),
+      );
+      await usePlayerTableStore.persist.rehydrate();
+      expect(moneyballColumnIds()).toEqual(["age", ...rolesIds]);
+
+      const { router } = renderSearchRoute(
+        "/search?view=moneyball&sort=tactic_potential.goalkeeper",
+      );
+
+      await screen.findByRole("heading", { level: 1, name: "Moneyball" });
+      expect(router.state.location.search).toMatchObject({
+        sort: "moneyball.average_rating",
+        dir: "desc",
+      });
+    });
   });
 
   it("restores a persisted tactic sort only for the current view layout", async () => {
@@ -794,7 +968,7 @@ describe("search route", () => {
   });
 
   it("falls back when a tactic sort exists only in another table layout", async () => {
-    const tacticSort = "tactic_potential.goalkeeper";
+    const tacticSort = "tactic_custom.goalkeeper";
     usePlayerTableStore
       .getState()
       .replaceLayout("moneyball-search", [tacticSort]);
@@ -3603,8 +3777,8 @@ describe("search route", () => {
         }),
       ).toBeInTheDocument();
       for (const name of [
-        "Add Tactic (Current)",
-        "Add Tactic (Potential)",
+        "Add Tactic (Roles)",
+        "Add Tactic (Custom)",
         "Refresh stats",
       ]) {
         expect(

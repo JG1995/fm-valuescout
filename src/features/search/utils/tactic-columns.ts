@@ -1,5 +1,5 @@
 import { compareTacticPositions } from "@/utils/position-order";
-import { allTacticColumnIdsForGroup, tacticColumnId } from "@/utils/tactic-ids";
+import { type TacticColumnGroup, tacticColumnId } from "@/utils/tactic-ids";
 
 export function orderedLaneIdsForColumns(
   lanes: readonly {
@@ -17,30 +17,12 @@ export function orderedLaneIdsForColumns(
     .map((lane) => lane.laneId);
 }
 
+/** Interleaves the active groups per lane, in the order the view lists them. */
 export function buildTacticColumnOrder(
   orderedLaneIds: readonly string[],
-  currentActive: boolean,
-  potentialActive: boolean,
+  activeGroups: readonly TacticColumnGroup[],
 ): string[] {
-  if (currentActive && potentialActive) {
-    return orderedLaneIds.flatMap((laneId) => {
-      const currentId = tacticColumnId("current", laneId);
-      const potentialId = tacticColumnId("potential", laneId);
-      const ids: string[] = [];
-      if (currentId !== null) {
-        ids.push(currentId);
-      }
-      if (potentialId !== null) {
-        ids.push(potentialId);
-      }
-      return ids;
-    });
-  }
-  if (currentActive) {
-    return allTacticColumnIdsForGroup("current", orderedLaneIds);
-  }
-  if (potentialActive) {
-    return allTacticColumnIdsForGroup("potential", orderedLaneIds);
-  }
-  return [];
+  return orderedLaneIds.flatMap((laneId) =>
+    activeGroups.flatMap((group) => tacticColumnId(group, laneId) ?? []),
+  );
 }

@@ -4,8 +4,11 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Row};
 
 use crate::features::moneyball::percentile::{calculate_percentiles, MoneyballNumericStatistics};
-use crate::features::moneyball::{role_catalog::builtin_catalog, role_score::score_role};
-use crate::features::planner::fit::tactic_adjusted_score;
+use crate::features::moneyball::{
+    role_catalog::builtin_catalog,
+    role_score::{mean_percentile_score, score_role},
+};
+use crate::features::planner::fit::{lane_fit_score, tactic_adjusted_score};
 use crate::features::planner::tactic::{base_position, get_tactic};
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
@@ -728,11 +731,11 @@ fn current_club_dna_definition_version(
 }
 
 fn request_uses_tactic(request: &SearchPlayersRequest<'_>) -> bool {
-    request
-        .requested_fields
-        .iter()
-        .any(|field| field.starts_with("tactic_current.") || field.starts_with("tactic_potential."))
-        || request.sort_by.is_tactic()
+    request.requested_fields.iter().any(|field| {
+        field.starts_with("tactic_current.")
+            || field.starts_with("tactic_potential.")
+            || field.starts_with("tactic_custom.")
+    }) || request.sort_by.is_tactic()
 }
 
 fn snapshot_save_id(conn: &Connection, snapshot_id: i64) -> Result<i64, String> {
@@ -773,12 +776,14 @@ fn tactic_sql_expression(
         TacticGroup::Potential => format!(
             "CASE WHEN {player_alias}.age >= 29 THEN {PLAYER_METRICS_ALIAS}.{ip_current} ELSE {PLAYER_METRICS_ALIAS}.{ip_pot} END"
         ),
+        TacticGroup::Custom => unreachable!("Custom tactic fields parse only in Moneyball"),
     };
     let oop_expr = match group {
         TacticGroup::Current => format!("{PLAYER_METRICS_ALIAS}.{oop_current}"),
         TacticGroup::Potential => format!(
             "CASE WHEN {player_alias}.age >= 29 THEN {PLAYER_METRICS_ALIAS}.{oop_current} ELSE {PLAYER_METRICS_ALIAS}.{oop_pot} END"
         ),
+        TacticGroup::Custom => unreachable!("Custom tactic fields parse only in Moneyball"),
     };
     let weight = lane.ip_weight;
     let oop_weight = 1.0 - weight;
@@ -955,6 +960,12 @@ fn search_players_with_cohort_scoring(
         for field in &tactic_moneyball_worklist {
             if let Some(lane_id) = field.tactic_lane_id() {
                 if let Some(lane) = tactic.lanes.iter().find(|l| l.lane_id == lane_id) {
+                    // Loaded custom keys passed the catalog checks in `load_tactic`,
+                    // so they are safe to interpolate into the percentile SQL.
+                    if field.tactic_group() == Some(TacticGroup::Custom) {
+                        extra_keys.extend(lane.custom_metric_keys.iter().cloned());
+                        continue;
+                    }
                     for (role_id, pos) in [
                         (lane.ip_role_id.as_str(), lane.ip_position.as_str()),
                         (lane.oop_role_id.as_str(), lane.oop_position.as_str()),
@@ -1114,6 +1125,22 @@ fn search_players_with_cohort_scoring(
             for field in &tactic_moneyball_worklist {
                 if let Some(lane_id) = field.tactic_lane_id() {
                     if let Some(lane) = tactic.lanes.iter().find(|l| l.lane_id == lane_id) {
+                        if field.tactic_group() == Some(TacticGroup::Custom) {
+                            let base = mean_percentile_score(
+                                &lane.custom_metric_keys,
+                                &candidate.role_percentiles,
+                            );
+                            let score = lane_fit_score(
+                                base,
+                                &candidate.player_foot,
+                                &candidate.positions,
+                                lane,
+                            );
+                            candidate
+                                .tactic_scores
+                                .insert(field.id().to_string(), score);
+                            continue;
+                        }
                         let base_ip = base_position(&lane.ip_position);
                         let base_oop = base_position(&lane.oop_position);
                         let ip_def =
@@ -1185,6 +1212,7 @@ fn search_players_with_cohort_scoring(
                 .map(|g| match g {
                     TacticGroup::Current => format!("tactic_current.{lane_id}"),
                     TacticGroup::Potential => format!("tactic_potential.{lane_id}"),
+                    TacticGroup::Custom => format!("tactic_custom.{lane_id}"),
                 })
                 .unwrap_or_else(|| format!("tactic_current.{lane_id}"));
             candidates.sort_by(|left, right| {
@@ -5399,7 +5427,7 @@ mod tests {
     }
 
     #[test]
-    fn tactic_moneyball_sort_only_and_opposite_group_same_lane() {
+    fn tactic_moneyball_sort_only_and_view_gated_groups() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("tactic-moneyball-sortonly.db"));
         let players = (1..=2)
@@ -5464,63 +5492,179 @@ mod tests {
         assert_eq!(page_sort_only.total, 2);
         assert_eq!(page_sort_only.players[0].uid, 2);
         assert_eq!(page_sort_only.players[1].uid, 1);
-        // Request potential same lane while sorting current: both must be computed independently
-        let page_both = search_players_in_view(
-            &conn,
-            SearchPlayersRequest {
-                offset: 0,
-                limit: 10,
-                sort_by: SortField::parse_for_moneyball("tactic_current.goalkeeper", true)
-                    .expect("sort"),
-                sort_dir: SortDir::Desc,
-                filter_ast: None,
-                requested_fields: &["tactic_potential.goalkeeper".to_string()],
-                view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
-            },
-        )
-        .expect("opposite group");
-        for p in &page_both.players {
-            assert!(
-                p.dynamic_values.contains_key("tactic_potential.goalkeeper"),
-                "potential must be present"
-            );
-            let v = p.dynamic_values.get("tactic_potential.goalkeeper").unwrap();
-            assert!(v.is_some(), "potential score should be numeric");
-        }
-        assert_eq!(page_both.players[0].uid, 2);
-        assert_eq!(page_both.players[1].uid, 1);
-        // Ensure current and potential keys remain distinct (same lane, different group)
-        let page_both_vals = search_players_in_view(
-            &conn,
-            SearchPlayersRequest {
-                offset: 0,
-                limit: 10,
-                sort_by: SortField::parse_for_moneyball("tactic_current.goalkeeper", true)
-                    .expect("sort"),
-                sort_dir: SortDir::Asc,
-                filter_ast: None,
-                requested_fields: &[
-                    "tactic_current.goalkeeper".to_string(),
-                    "tactic_potential.goalkeeper".to_string(),
-                ],
-                view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
-            },
-        )
-        .expect("both groups");
-        for p in &page_both_vals.players {
-            assert!(p.dynamic_values.contains_key("tactic_current.goalkeeper"));
-            assert!(p.dynamic_values.contains_key("tactic_potential.goalkeeper"));
-            // Moneyball tactic current/potential intentionally share identical cohort score sources,
-            // but exact IDs must remain distinct keys; scores should be equal for this cohort.
+        // Moneyball has no Potential group, and General has no Custom group.
+        for (field, view) in [
+            ("tactic_potential.goalkeeper", SearchView::Moneyball),
+            ("tactic_custom.goalkeeper", SearchView::General),
+        ] {
+            let expected = format!("unknown player metric: {field}");
             assert_eq!(
-                p.dynamic_values.get("tactic_current.goalkeeper"),
-                p.dynamic_values.get("tactic_potential.goalkeeper")
+                SortField::parse_for_moneyball(field, view == SearchView::Moneyball).unwrap_err(),
+                expected
+            );
+            let error = search_players_in_view(
+                &conn,
+                SearchPlayersRequest {
+                    offset: 0,
+                    limit: 10,
+                    sort_by: SortField::DEFAULT,
+                    sort_dir: SortDir::Desc,
+                    filter_ast: None,
+                    requested_fields: &[field.to_string()],
+                    view,
+                    comparison_pool: ComparisonPool::FullCsv,
+                    shortlist_only: false,
+                },
+            )
+            .unwrap_err();
+            assert_eq!(error, expected);
+        }
+    }
+
+    fn tactic_scores_by_uid(page: &SearchPlayersPage, field: &str) -> Vec<(i64, Option<i64>)> {
+        page.players
+            .iter()
+            .map(|player| {
+                let value = match player.dynamic_values.get(field) {
+                    Some(Some(DynamicValue::Integer(value))) => Some(*value),
+                    Some(None) => None,
+                    other => panic!("unexpected {field} value: {other:?}"),
+                };
+                (player.uid, value)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn tactic_moneyball_custom_scores_fit_adjusted_mean_per_pool_with_null_last_sort() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("tactic-moneyball-custom.db"));
+        // uid 2 cannot play GK (familiarity 10); uid 3 is GK 14, a 5-point
+        // penalty in each of the goalkeeper slot's IP and OOP positions.
+        let players = (1..=5)
+            .map(|uid| {
+                let mut p = player_template(uid, &format!("P{uid}"), 150);
+                let goalkeeper = match uid {
+                    2 => 10,
+                    3 => 14,
+                    _ => 18,
+                };
+                p["positions"] = serde_json::json!({"GK": goalkeeper, "MC": 18});
+                p
+            })
+            .collect();
+        ingest_players(&mut conn, players);
+        let snapshot_id = current_snapshot_id(&conn);
+        let save_id = snapshot_save_id(&conn, snapshot_id).expect("save");
+        let mut tactic =
+            crate::features::planner::tactic::get_tactic(&conn, save_id).expect("tactic");
+        assert_eq!(tactic.lanes[0].lane_id, "goalkeeper");
+        // goals_conceded_per_90 is lower-is-better, so its stored percentile is already inverted.
+        tactic.lanes[0].custom_metric_keys = vec![
+            "save_ratio".to_string(),
+            "goals_conceded_per_90".to_string(),
+        ];
+        crate::features::planner::tactic::save_tactic(&conn, save_id, &tactic)
+            .expect("save metrics");
+        // uid 4 has no goals_conceded_per_90 statistic or stored percentile.
+        let rows = [
+            (1, 0.5, Some((1.0, 31)), 80),
+            (2, 0.1, Some((2.0, 31)), 80),
+            (3, 0.3, Some((3.0, 41)), 60),
+            (4, 0.9, None, 90),
+            (5, 0.5, Some((1.0, 31)), 80),
+        ];
+        for (uid, save_ratio, conceded, save_ratio_percentile) in rows {
+            let mut statistics = serde_json::json!({ "save_ratio": save_ratio });
+            let mut percentiles = serde_json::json!({ "save_ratio": save_ratio_percentile });
+            if let Some((value, percentile)) = conceded {
+                statistics["goals_conceded_per_90"] = serde_json::json!(value);
+                percentiles["goals_conceded_per_90"] = serde_json::json!(percentile);
+            }
+            insert_moneyball_statistics(
+                &conn,
+                snapshot_id,
+                uid,
+                &statistics.to_string(),
+                Some(&percentiles.to_string()),
             );
         }
+        let custom_page = |conn: &Connection, field: &str, sort_dir, comparison_pool| {
+            search_players_in_view(
+                conn,
+                SearchPlayersRequest {
+                    offset: 0,
+                    limit: 10,
+                    sort_by: SortField::parse_for_moneyball(field, true).expect("custom sort"),
+                    sort_dir,
+                    filter_ast: None,
+                    requested_fields: &[field.to_string()],
+                    view: SearchView::Moneyball,
+                    comparison_pool,
+                    shortlist_only: false,
+                },
+            )
+            .expect("custom search")
+        };
+        let field = "tactic_custom.goalkeeper";
+
+        // All players: uid 1 and 5 average 80 and 31 to 56; uid 3 averages
+        // 60 and 41 to 51, minus 10 for GK 14. Nulls stay last, ties by UID.
+        let full_desc = custom_page(&conn, field, SortDir::Desc, ComparisonPool::FullCsv);
+        assert_eq!(
+            tactic_scores_by_uid(&full_desc, field),
+            [
+                (1, Some(56)),
+                (5, Some(56)),
+                (3, Some(41)),
+                (2, None),
+                (4, None)
+            ]
+        );
+        let full_asc = custom_page(&conn, field, SortDir::Asc, ComparisonPool::FullCsv);
+        assert_eq!(
+            tactic_scores_by_uid(&full_asc, field),
+            [
+                (3, Some(41)),
+                (1, Some(56)),
+                (5, Some(56)),
+                (2, None),
+                (4, None)
+            ]
+        );
+
+        // Filtered cohort recalculates both percentiles over the five players:
+        // uid 1 and 5 rank 50 on save_ratio and best (100) on goals conceded;
+        // uid 3 ranks 25 and worst (0), so (12.5 -> 13) - 10 = 3.
+        let filtered = custom_page(&conn, field, SortDir::Desc, ComparisonPool::Filtered);
+        assert_eq!(
+            tactic_scores_by_uid(&filtered, field),
+            [
+                (1, Some(75)),
+                (5, Some(75)),
+                (3, Some(3)),
+                (2, None),
+                (4, None)
+            ]
+        );
+
+        // The custom score covers both phases and ignores the IP/OOP weight.
+        tactic.lanes[0].ip_weight = 0.9;
+        crate::features::planner::tactic::save_tactic(&conn, save_id, &tactic)
+            .expect("save weight");
+        let reweighted = custom_page(&conn, field, SortDir::Desc, ComparisonPool::FullCsv);
+        assert_eq!(
+            tactic_scores_by_uid(&reweighted, field),
+            tactic_scores_by_uid(&full_desc, field)
+        );
+
+        // A slot without metrics has no custom score.
+        let empty_field = "tactic_custom.left_back";
+        let empty = custom_page(&conn, empty_field, SortDir::Desc, ComparisonPool::FullCsv);
+        assert_eq!(
+            tactic_scores_by_uid(&empty, empty_field),
+            [(1, None), (2, None), (3, None), (4, None), (5, None)]
+        );
     }
 
     #[test]

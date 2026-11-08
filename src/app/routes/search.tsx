@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { DatabaseZap, FileUp, RefreshCw } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
@@ -81,11 +81,21 @@ import {
   useShortlistFilterStore,
 } from "@/stores/use-shortlist-filter-store";
 import { cn } from "@/utils/cn";
+import { moneyballMetric } from "@/utils/moneyball-metrics";
 import {
   isFullTacticGroup,
   isTacticColumnId,
   type TacticColumnGroup,
+  tacticColumnGroupsForTable,
 } from "@/utils/tactic-ids";
+
+const TACTIC_GROUP_LABELS: Record<
+  SearchView,
+  Record<TacticColumnGroup, string>
+> = {
+  general: { current: "Current", potential: "Potential", custom: "Custom" },
+  moneyball: { current: "Roles", potential: "Potential", custom: "Custom" },
+};
 
 function SearchIdentityGraphics({
   player,
@@ -229,16 +239,27 @@ function tacticLaneLabels(
     tactic.lanes.map((lane) => {
       const ipRole = roleNames.get(lane.ipRoleId) ?? lane.ipRoleId;
       const oopRole = roleNames.get(lane.oopRoleId) ?? lane.oopRoleId;
+      // Compact placement primary: one token when both phases share the
+      // placement, otherwise the slash-joined pair (e.g. "AML/ML").
+      const compact =
+        lane.ipPosition === lane.oopPosition
+          ? lane.ipPosition
+          : `${lane.ipPosition}/${lane.oopPosition}`;
+      const metricLabels = lane.customMetricKeys.map(
+        (key) => moneyballMetric(key).label,
+      );
       const label: TacticLaneLabel = {
-        // Compact placement primary: one token when both phases share the
-        // placement, otherwise the slash-joined pair (e.g. "AML/ML").
-        compact:
-          lane.ipPosition === lane.oopPosition
-            ? lane.ipPosition
-            : `${lane.ipPosition}/${lane.oopPosition}`,
+        compact,
         // Restrained role context: full role names in smaller inline text.
         context: ipRole === oopRole ? ipRole : `${ipRole} / ${oopRole}`,
         full: `${lane.ipPosition} (${ipRole}) / ${lane.oopPosition} (${oopRole})`,
+        custom: {
+          context: "Custom",
+          full:
+            metricLabels.length > 0
+              ? `${compact} custom: ${metricLabels.join(", ")}`
+              : `${compact} custom: no metrics chosen`,
+        },
       };
       return [lane.laneId, label];
     }),
@@ -531,8 +552,21 @@ function SearchPageContent() {
       tactic && options ? tacticLaneLabels(tactic, options) : new Map();
     const validationError =
       tactic && options ? validateTacticDraft(tactic, options) : null;
-    const currentActive = isFullTacticGroup(layout.columnIds, "current");
-    const potentialActive = isFullTacticGroup(layout.columnIds, "potential");
+    const viewGroups = tacticColumnGroupsForTable(tableId);
+    const hasCustomMetrics =
+      tactic?.lanes.some((lane) => lane.customMetricKeys.length > 0) ?? false;
+    const customActive = isFullTacticGroup(layout.columnIds, "custom");
+    const tacticToggles = viewGroups.map((group) => ({
+      group,
+      label: TACTIC_GROUP_LABELS[view][group],
+      active: isFullTacticGroup(layout.columnIds, group),
+      canAdd: group !== "custom" || hasCustomMetrics,
+    }));
+    const showCustomUnavailable =
+      viewGroups.includes("custom") &&
+      tactic !== undefined &&
+      !hasCustomMetrics &&
+      !customActive;
     const toggleDisabled =
       isResultContextChanging ||
       tacticState === null ||
@@ -577,21 +611,18 @@ function SearchPageContent() {
       }
       const columnIds =
         usePlayerTableStore.getState().layouts[tableId].columnIds;
-      const nextCurrentActive =
-        group === "current"
-          ? !isFullTacticGroup(columnIds, "current")
-          : isFullTacticGroup(columnIds, "current");
-      const nextPotentialActive =
-        group === "potential"
-          ? !isFullTacticGroup(columnIds, "potential")
-          : isFullTacticGroup(columnIds, "potential");
+      const groupActive = isFullTacticGroup(columnIds, group);
+      if (group === "custom" && !groupActive && !hasCustomMetrics) {
+        return;
+      }
+      const nextActiveGroups = viewGroups.filter((viewGroup) =>
+        viewGroup === group
+          ? !groupActive
+          : isFullTacticGroup(columnIds, viewGroup),
+      );
       const nextColumnIds = [
         ...columnIds.filter((id) => !isTacticColumnId(id)),
-        ...buildTacticColumnOrder(
-          orderedLaneIds,
-          nextCurrentActive,
-          nextPotentialActive,
-        ),
+        ...buildTacticColumnOrder(orderedLaneIds, nextActiveGroups),
       ];
       // Identity-only is valid: emptying the last tactic group removes
       // those leaves through removeColumn instead of replaceLayout([]),
@@ -628,11 +659,23 @@ function SearchPageContent() {
           data-testid="search-page-actions"
         >
           <TacticColumnToggles
-            currentActive={currentActive}
-            potentialActive={potentialActive}
+            groups={tacticToggles}
             disabled={toggleDisabled}
             onToggleGroup={toggleGroup}
           />
+          {showCustomUnavailable ? (
+            <p className="text-body-sm text-on-surface-variant">
+              Choose custom metrics per slot in the{" "}
+              <Link
+                to="/my-club"
+                search={{ view: "tactic" }}
+                className="rounded-sm text-on-surface underline decoration-dotted underline-offset-4 hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Tactic editor
+              </Link>
+              .
+            </p>
+          ) : null}
           {view === "general" ? (
             <>
               <Button
