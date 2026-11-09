@@ -282,6 +282,8 @@ const SECOND_SAVE: SaveSummary = {
   createdAtUtc: "2026-07-28T16:00:00.000Z",
   updatedAtUtc: "2026-07-28T16:00:00.000Z",
   linkedSaveFileName: null,
+  playerShortlistName: null,
+  playerShortlistFileName: null,
 };
 
 function savesFor(activeSaveId: number): SaveSummary[] {
@@ -294,6 +296,8 @@ function savesFor(activeSaveId: number): SaveSummary[] {
       createdAtUtc: "2026-07-28T12:00:00.000Z",
       updatedAtUtc: "2026-07-28T12:00:00.000Z",
       linkedSaveFileName: null,
+      playerShortlistName: null,
+      playerShortlistFileName: null,
     },
     ...(activeSaveId === SECOND_SAVE.id ? [SECOND_SAVE] : []),
   ];

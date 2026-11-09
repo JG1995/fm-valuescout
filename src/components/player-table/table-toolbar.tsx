@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button/button";
  * and edit, grouped column configuration, and caller-owned dataset toggles
  * — and ties them to the table region through the toolbar label. It
  * deliberately exposes no `children`, `actions`, or page-action slot: page
- * actions (Add Tactic, Upload Shortlist, Configure, Optimize, boosts, Squad
+ * actions (Add Tactic, Choose FM Shortlist, Configure, Optimize, boosts, Squad
  * actions) stay in page-header or feature-owned areas outside the toolbar.
  * This file imports no store, no feature code, and knows no table IDs.
  */

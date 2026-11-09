@@ -6,6 +6,8 @@ import { formatCount, formatLongGameDate } from "@/utils/format";
 import type {
   LoadDataProgress,
   LoadDataResult,
+  PlayerShortlistOutcome,
+  PlayerShortlistReadErrorKind,
   SeasonStatsErrorKind,
   SeasonStatsOutcome,
 } from "../types/load-data";
@@ -77,6 +79,46 @@ export function seasonStatsCopy(stats: SeasonStatsOutcome): {
   }
 }
 
+const shortlistReadFailureReasons: Record<
+  Exclude<PlayerShortlistReadErrorKind, "database">,
+  (fileName: string) => string
+> = {
+  unreadable: (fileName) => `${fileName} could not be found or opened`,
+  too_large: (fileName) => `${fileName} is too large to be an FM shortlist`,
+  not_fm_shortlist: (fileName) => `${fileName} is not a readable FM shortlist`,
+  not_player_shortlist: (fileName) => `${fileName} is not a player shortlist`,
+  unsupported_format: (fileName) =>
+    `${fileName} uses a shortlist format that is not supported`,
+};
+
+/** One sentence for the shortlist re-read, or null when no shortlist is linked. */
+function shortlistCopy(
+  shortlist: PlayerShortlistOutcome,
+): { text: string; isProblem: boolean } | null {
+  switch (shortlist.status) {
+    case "read":
+      return {
+        text: `Read the shortlist ${shortlist.name}: ${formatCount(shortlist.totalPlayers)} players, ${formatCount(shortlist.matchedPlayers)} in this snapshot.`,
+        isProblem: false,
+      };
+    case "notLinked":
+      return null;
+    case "staleContext":
+      return {
+        text: "The save or its shortlist changed while the shortlist was read, so it was not updated.",
+        isProblem: true,
+      };
+    case "failed":
+      return {
+        text:
+          shortlist.kind === "database"
+            ? "The shortlist could not be stored, so the previous shortlist is kept."
+            : `The shortlist was not read: ${shortlistReadFailureReasons[shortlist.kind](shortlist.fileName ?? "the linked shortlist file")}. The previous shortlist is kept.`,
+        isProblem: true,
+      };
+  }
+}
+
 function formatDurationMs(ms: number): string {
   if (ms < 1000) {
     return `${ms}ms`;
@@ -138,10 +180,12 @@ function resolveBanner({ error, result }: LoadDataOutcomeProps): Banner | null {
     ? " This snapshot is now the latest."
     : ` Stored this snapshot in history; the latest remains ${formatSnapshotDate(latestSnapshot.gameDate)}.`;
   const stats = seasonStatsCopy(result.stats);
+  const shortlist = shortlistCopy(result.shortlist);
+  const isProblem = stats.isProblem || shortlist?.isProblem === true;
   return {
-    icon: stats.isProblem ? CircleAlert : CircleCheck,
-    tone: stats.isProblem ? toneClasses.warning : toneClasses.success,
-    body: `${loaded}${latestMessage} ${stats.text}`,
+    icon: isProblem ? CircleAlert : CircleCheck,
+    tone: isProblem ? toneClasses.warning : toneClasses.success,
+    body: `${loaded}${latestMessage} ${stats.text}${shortlist ? ` ${shortlist.text}` : ""}`,
   };
 }
 

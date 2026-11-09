@@ -100,11 +100,14 @@ test.describe("application smoke", () => {
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/search");
-    await page.getByRole("button", { name: "Upload Shortlist" }).click();
+    await stubTauriIpc(page, { staffWorkspace: true });
+    await page.goto("/staff?shortlistOnly=true");
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: "Upload CSV" })
+      .click();
     const dialog = page.getByRole("dialog", {
-      name: "Upload Player Shortlist CSV",
+      name: "Upload Staff Shortlist CSV",
     });
     const backdrop = page.getByRole("button", { name: "Close dialog" });
     await expect(dialog).toHaveCSS("opacity", "1");
@@ -5952,9 +5955,23 @@ test.describe("application smoke", () => {
     await expect(page).toHaveURL(/\/search\?.*view=general/);
     await expect(searchLink).toHaveAttribute("aria-current", "page");
 
+    await page.getByRole("button", { name: "Choose FM Shortlist" }).click();
     await expect(
-      page.getByRole("button", { name: "Upload Shortlist" }),
+      page.getByText("Smoke Targets: 3 players, 2 in this snapshot."),
     ).toBeVisible();
+    await expect(
+      page.getByRole("switch", { name: "Shortlist: On" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Smoke Targets", { exact: true }),
+    ).toHaveAttribute("title", "Smoke Targets.fmf");
+    await page.getByRole("button", { name: "Remove shortlist" }).click();
+    await expect(
+      page.getByRole("switch", { name: "Shortlist: Off" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Remove shortlist" }),
+    ).toHaveCount(0);
 
     await page.goto("/search?view=shortlist");
     await expect(searchLink).toHaveAttribute("aria-current", "page");

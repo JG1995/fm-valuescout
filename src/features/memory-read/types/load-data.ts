@@ -71,6 +71,31 @@ export type SeasonStatsOutcome = { elapsedMs: number } & (
   | { status: "failed"; kind: SeasonStatsErrorKind; fileName: string | null }
 );
 
+/** A shortlist reader kind, or `database` when the shortlist could not be stored. */
+export type PlayerShortlistReadErrorKind =
+  | "unreadable"
+  | "too_large"
+  | "not_fm_shortlist"
+  | "not_player_shortlist"
+  | "unsupported_format"
+  | "database";
+
+/** The re-read of the active save's linked FM shortlist file. Only `read` changed it. */
+export type PlayerShortlistOutcome =
+  | {
+      status: "read";
+      name: string;
+      totalPlayers: number;
+      matchedPlayers: number;
+    }
+  | { status: "notLinked" }
+  | { status: "staleContext" }
+  | {
+      status: "failed";
+      kind: PlayerShortlistReadErrorKind;
+      fileName: string | null;
+    };
+
 export type LoadDataResult = {
   requestId: string;
   playersFound: number | null;
@@ -78,4 +103,5 @@ export type LoadDataResult = {
   effectiveSnapshot: LoadDataSnapshotSummary;
   timings: LoadDataTimings;
   stats: SeasonStatsOutcome;
+  shortlist: PlayerShortlistOutcome;
 };

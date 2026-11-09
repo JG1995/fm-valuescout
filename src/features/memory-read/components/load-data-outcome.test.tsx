@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type {
   LoadDataProgress,
   LoadDataResult,
+  PlayerShortlistOutcome,
   SeasonStatsOutcome,
 } from "../types/load-data";
 import { LoadDataOutcome, loadDataPhaseLabels } from "./load-data-outcome";
@@ -56,6 +57,7 @@ function resultWithHistoricalStoredSnapshot(): LoadDataResult {
       ingestMs: 400,
     },
     stats: { status: "notLinked", elapsedMs: 100 },
+    shortlist: { status: "notLinked" },
   };
 }
 
@@ -108,6 +110,7 @@ function successResult(): LoadDataResult {
       ingestMs: 400,
     },
     stats: { status: "notLinked", elapsedMs: 100 },
+    shortlist: { status: "notLinked" },
   };
 }
 
@@ -562,6 +565,72 @@ describe("LoadDataOutcome", () => {
     expect(outcome).toHaveTextContent(
       `This snapshot is now the latest. ${expected}`,
     );
+  });
+
+  const statsSentence =
+    "No FM save file is linked, so no season stats were read. Link one in Settings.";
+
+  it.each<[string, PlayerShortlistOutcome, string]>([
+    [
+      "a re-read shortlist with its counts",
+      {
+        status: "read",
+        name: "Targets",
+        totalPlayers: 9,
+        matchedPlayers: 7,
+      },
+      "Read the shortlist Targets: 9 players, 7 in this snapshot.",
+    ],
+    [
+      "a discarded stale re-read",
+      { status: "staleContext" },
+      "The save or its shortlist changed while the shortlist was read, so it was not updated.",
+    ],
+    [
+      "a missing or unopenable file by name",
+      { status: "failed", kind: "unreadable", fileName: "Targets.fmf" },
+      "The shortlist was not read: Targets.fmf could not be found or opened. The previous shortlist is kept.",
+    ],
+    [
+      "a file that is not a player shortlist",
+      {
+        status: "failed",
+        kind: "not_player_shortlist",
+        fileName: "View.fmf",
+      },
+      "The shortlist was not read: View.fmf is not a player shortlist. The previous shortlist is kept.",
+    ],
+    [
+      "a failed write",
+      { status: "failed", kind: "database", fileName: null },
+      "The shortlist could not be stored, so the previous shortlist is kept.",
+    ],
+  ])("reports %s after the season stats", (_case, shortlist, expected) => {
+    render(
+      <LoadDataOutcome
+        error={null}
+        result={{ ...successResult(), shortlist }}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(
+      screen.getByText(/Loaded 3 players into the database/i),
+    ).toHaveTextContent(`${statsSentence} ${expected}`);
+  });
+
+  it("reports nothing about a shortlist when none is linked", () => {
+    render(
+      <LoadDataOutcome
+        error={null}
+        result={successResult()}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(
+      screen.getByText(/Loaded 3 players into the database/i).textContent,
+    ).toMatch(new RegExp(`${statsSentence}$`));
   });
 
   it("keeps progressbar outside the polite live region while phase text stays inside", () => {

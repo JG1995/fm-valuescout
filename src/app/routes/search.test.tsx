@@ -52,8 +52,9 @@ import {
   setPlannerTacticForContext,
 } from "@/testing/planner-ipc-mock";
 import {
-  getLastPlayerShortlistImportIpcArgs,
-  setPlayerShortlistImportIpcMockResult,
+  getLastChoosePlayerShortlistIpcArgs,
+  getLastRemovePlayerShortlistIpcArgs,
+  setPlayerShortlistChoiceIpcMockError,
 } from "@/testing/player-shortlist-ipc-mock";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
@@ -71,13 +72,14 @@ import {
   resolveLoadDataIpcMock,
   resolveSetActiveSaveIpcMock,
   setLoadDataIpcMockMode,
+  setSavePlayerShortlistIpcMock,
 } from "@/testing/snapshot-ipc-mock";
 
-const { openCsvDialog } = vi.hoisted(() => ({
-  openCsvDialog: vi.fn(),
+const { openFileDialog } = vi.hoisted(() => ({
+  openFileDialog: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openCsvDialog }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openFileDialog }));
 
 function renderSearchRoute(
   initialEntry = "/search",
@@ -237,7 +239,7 @@ function retainedRow(table: HTMLElement): HTMLElement {
 
 describe("search route", () => {
   beforeEach(() => {
-    openCsvDialog.mockReset();
+    openFileDialog.mockReset();
     useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
     useSearchViewMemory.setState({ views: {} });
   });
@@ -3715,29 +3717,34 @@ describe("search route", () => {
     expect(await screen.findByText("Low CA")).toBeInTheDocument();
   });
 
-  it("turns shortlist filtering on after a successful upload and refetches General", async () => {
+  it("links a chosen FM shortlist, turns filtering on, and refreshes the save and General", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("High CA", 180)]);
-    openCsvDialog.mockResolvedValue("C:\\exports\\shortlist.csv");
-    setPlayerShortlistImportIpcMockResult({
-      totalPlayers: 3,
-      storedPlayers: 2,
-      skippedPlayers: 1,
-    });
-    const { router } = renderSearchRoute("/search");
+    openFileDialog.mockResolvedValue("C:\\FM\\shortlists\\Targets.fmf");
+    const { router, queryClient } = renderSearchRoute("/search");
     await screen.findByText("High CA");
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
-    await user.click(screen.getByRole("button", { name: "Upload Shortlist" }));
-    const dialog = await screen.findByRole("dialog", {
-      name: "Upload Player Shortlist CSV",
-    });
     await user.click(
-      within(dialog).getByRole("button", { name: "Choose CSV" }),
+      screen.getByRole("button", { name: "Choose FM Shortlist" }),
     );
 
-    // The successful import forces the filter on through the per-save choice
-    // while the URL stays clean.
+    expect(
+      await screen.findByText("Targets: 9 players, 7 in this snapshot."),
+    ).toBeInTheDocument();
+    expect(openFileDialog).toHaveBeenCalledWith({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "FM shortlist", extensions: ["fmf"] }],
+    });
+    expect(getLastChoosePlayerShortlistIpcArgs()).toEqual({
+      saveId: 1,
+      contextToken: "save-token-1",
+      path: "C:\\FM\\shortlists\\Targets.fmf",
+    });
+    // The choice forces the filter on through the per-save choice while the
+    // URL stays clean.
     expect(
       await screen.findByRole("switch", { name: "Shortlist: On" }),
     ).toHaveAttribute("aria-checked", "true");
@@ -3750,18 +3757,99 @@ describe("search route", () => {
         })
       ],
     ).toBe(true);
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "general",
-        shortlistOnly: true,
-      });
+    for (const queryKey of [snapshotKeys.saves(), searchKeys.playerPages()]) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey });
+    }
+    // The refreshed save shows the list name with its file name as the title.
+    expect(await screen.findByText("Targets")).toHaveAttribute(
+      "title",
+      "Targets.fmf",
+    );
+    expect(
+      screen.getByRole("button", { name: "Remove shortlist" }),
+    ).toBeInTheDocument();
+  });
+
+  it("states why a chosen file was rejected and keeps the shortlist switch", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    openFileDialog.mockResolvedValue("C:\\FM\\views\\Scouting.fmf");
+    setPlayerShortlistChoiceIpcMockError({
+      kind: "not_player_shortlist",
+      fileName: "Scouting.fmf",
     });
-    expect(getLastPlayerShortlistImportIpcArgs()).toEqual({
-      path: "C:\\exports\\shortlist.csv",
+    renderSearchRoute("/search");
+    await screen.findByText("High CA");
+    await screen.findByRole("switch", { name: "Shortlist: Off" });
+
+    await user.click(
+      screen.getByRole("button", { name: "Choose FM Shortlist" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Scouting.fmf is not a player shortlist.",
+    );
+    expect(
+      screen.getByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(
+      screen.queryByRole("button", { name: "Remove shortlist" }),
+    ).toBeNull();
+  });
+
+  it("does nothing when the shortlist picker is cancelled", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    openFileDialog.mockResolvedValue(null);
+    renderSearchRoute("/search");
+    await screen.findByText("High CA");
+
+    await user.click(
+      screen.getByRole("button", { name: "Choose FM Shortlist" }),
+    );
+
+    await waitFor(() => expect(openFileDialog).toHaveBeenCalled());
+    expect(getLastChoosePlayerShortlistIpcArgs()).toBeUndefined();
+    expect(
+      screen.getByRole("switch", { name: "Shortlist: Off" }),
+    ).toBeInTheDocument();
+  });
+
+  it("removes the linked shortlist, turns filtering off, and refreshes the save and General", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSavePlayerShortlistIpcMock(1, {
+      name: "Targets",
+      fileName: "Targets.fmf",
+    });
+    setPlayerShortlistPresent(true);
+    setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    const { queryClient } = renderSearchRoute("/search");
+    expect(await screen.findByText("Targets")).toHaveAttribute(
+      "title",
+      "Targets.fmf",
+    );
+    await screen.findByRole("switch", { name: "Shortlist: On" });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    await user.click(screen.getByRole("button", { name: "Remove shortlist" }));
+
+    expect(getLastRemovePlayerShortlistIpcArgs()).toEqual({
+      saveId: 1,
+      contextToken: "save-token-1",
     });
     expect(
-      await screen.findByText("Last import: 3 players, 2 stored, 1 skipped."),
-    ).toBeInTheDocument();
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+    await waitFor(() => expect(screen.queryByText("Targets")).toBeNull());
+    expect(
+      screen.queryByRole("button", { name: "Remove shortlist" }),
+    ).toBeNull();
+    for (const queryKey of [snapshotKeys.saves(), searchKeys.playerPages()]) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey });
+    }
   });
 
   it("composes shortlist filtering with a General filter in one fetch", async () => {
@@ -3791,19 +3879,16 @@ describe("search route", () => {
     setSearchPlayersOverride([]);
     const { router } = renderSearchRoute("/search?shortlistOnly=true");
 
-    expect(
-      await screen.findByText("No players in shortlist"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("No shortlist linked")).toBeInTheDocument();
     expect(
       screen.queryByText("No players in snapshot"),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("No shortlist yet")).not.toBeInTheDocument();
     const toggleOn = await screen.findByRole("switch", {
       name: "Shortlist: On",
     });
     expect(toggleOn).toHaveAttribute("aria-checked", "true");
     expect(
-      screen.getByText(/Upload a shortlist CSV for this save/),
+      screen.getByText(/Use Choose FM Shortlist to link a shortlist file/),
     ).toBeInTheDocument();
 
     await user.click(toggleOn);
@@ -3815,6 +3900,22 @@ describe("search route", () => {
     ).toHaveAttribute("aria-checked", "false");
     expect(
       await screen.findByText("No players in snapshot"),
+    ).toBeInTheDocument();
+  });
+
+  it("explains a linked shortlist with no player in the current snapshot", async () => {
+    await resolveLoadDataIpcMock();
+    setPlayerShortlistPresent(true);
+    setSearchPlayersOverride([]);
+    renderSearchRoute("/search?shortlistOnly=true");
+
+    expect(
+      await screen.findByText("No shortlisted player in this snapshot"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "None of the shortlist's players are in this snapshot. Turn Shortlist off to browse every snapshot player.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -3920,59 +4021,24 @@ describe("search route", () => {
     ).toBeInTheDocument();
   });
 
-  it("clears shortlist import feedback and never arms a delayed dialog across a null snapshot", async () => {
-    const user = userEvent.setup();
+  it("keeps Choose FM Shortlist unavailable without a current snapshot", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("High CA", 180)]);
-    openCsvDialog.mockResolvedValue("C:\\exports\\shortlist.csv");
-    setPlayerShortlistImportIpcMockResult({
-      totalPlayers: 3,
-      storedPlayers: 2,
-      skippedPlayers: 1,
-    });
     const { queryClient } = renderSearchRoute("/search");
     await screen.findByText("High CA");
+    expect(
+      screen.getByRole("button", { name: "Choose FM Shortlist" }),
+    ).toBeEnabled();
 
-    await user.click(screen.getByRole("button", { name: "Upload Shortlist" }));
-    const dialog = await screen.findByRole("dialog", {
-      name: "Upload Player Shortlist CSV",
-    });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Choose CSV" }),
-    );
-    await screen.findByText("Last import: 3 players, 2 stored, 1 skipped.");
-
-    const snapshot = queryClient.getQueryData(
-      currentSnapshotQueryOptions.queryKey,
-    );
     await act(async () => {
       queryClient.setQueryData(currentSnapshotQueryOptions.queryKey, null);
     });
 
-    // The null context discards the context-owned summary.
-    await waitFor(() => {
+    await waitFor(() =>
       expect(
-        screen.queryByText("Last import: 3 players, 2 stored, 1 skipped."),
-      ).toBeNull();
-    });
-    expect(
-      screen.getByRole("button", { name: "Upload Shortlist" }),
-    ).toBeDisabled();
-
-    // Clicking Upload with no valid snapshot must not arm a delayed dialog.
-    await user.click(screen.getByRole("button", { name: "Upload Shortlist" }));
-
-    await act(async () => {
-      queryClient.setQueryData(currentSnapshotQueryOptions.queryKey, snapshot);
-    });
-
-    await screen.findByText("High CA");
-    expect(
-      screen.queryByRole("dialog", { name: "Upload Player Shortlist CSV" }),
-    ).toBeNull();
-    expect(
-      screen.queryByText("Last import: 3 players, 2 stored, 1 skipped."),
-    ).toBeNull();
+        screen.getByRole("button", { name: "Choose FM Shortlist" }),
+      ).toBeDisabled(),
+    );
   });
 
   describe("search table toolbar", () => {
@@ -4006,7 +4072,7 @@ describe("search route", () => {
       ).toBeTruthy();
     });
 
-    it("keeps Add Tactic and Upload Shortlist outside the generic toolbar", async () => {
+    it("keeps Add Tactic and Choose FM Shortlist outside the generic toolbar", async () => {
       await resolveLoadDataIpcMock();
       setSearchPlayersOverride([playerNamed("High CA", 180)]);
       renderSearchRoute("/search?view=general");
@@ -4028,7 +4094,7 @@ describe("search route", () => {
       for (const name of [
         "Add Tactic (Current)",
         "Add Tactic (Potential)",
-        "Upload Shortlist",
+        "Choose FM Shortlist",
       ]) {
         expect(screen.getByRole("button", { name })).toBeInTheDocument();
         expect(

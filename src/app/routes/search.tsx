@@ -5,8 +5,9 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { DatabaseZap, FileUp, RefreshCw } from "lucide-react";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { DatabaseZap, FolderOpen, RefreshCw, X } from "lucide-react";
+import { Suspense, useEffect, useMemo } from "react";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
@@ -31,9 +32,10 @@ import {
   validateTacticDraft,
 } from "@/features/planner/utils/tactic-editor";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
+import { choosePlayerShortlist } from "@/features/search/api/choose-player-shortlist";
+import { removePlayerShortlist } from "@/features/search/api/remove-player-shortlist";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { playerShortlistProbeQueryOptions } from "@/features/search/api/search-players-query-options";
-import { PlayerShortlistImportModal } from "@/features/search/components/player-shortlist-import-modal";
 import { SearchFilterBar } from "@/features/search/components/search-filter-bar";
 import type { TacticLaneLabel } from "@/features/search/components/search-results-panel";
 import { SearchResultsPanel } from "@/features/search/components/search-results-panel";
@@ -42,7 +44,7 @@ import type {
   FilterCombineMode,
   FilterRule,
 } from "@/features/search/types/filter-rule";
-import type { PlayerShortlistImportSummary } from "@/features/search/types/player-shortlist-import-summary";
+import type { PlayerShortlistErrorKind } from "@/features/search/types/player-shortlist-choice";
 import type { PlayerSummary } from "@/features/search/types/player-summary";
 import type {
   SearchSortDir,
@@ -73,6 +75,7 @@ import { buildTacticColumnOrder } from "@/features/search/utils/tactic-columns";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import { TauriCommandError } from "@/lib/tauri-client";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { useSearchViewMemory } from "@/stores/use-search-view-memory";
@@ -268,6 +271,49 @@ function tacticLaneLabels(
 
 type SeasonStatsRefreshContext = { saveId: number; contextToken: string };
 
+type ShortlistChoiceRequest = SeasonStatsRefreshContext & { path: string };
+
+/** Opens the native picker for one FM shortlist file. Resolves to null when cancelled. */
+async function chooseShortlistFile() {
+  const path = await openFileDialog({
+    multiple: false,
+    directory: false,
+    filters: [{ name: "FM shortlist", extensions: ["fmf"] }],
+  });
+  return typeof path === "string" ? path : null;
+}
+
+function fileNameOf(path: string) {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
+const shortlistChoiceFailureReasons: Record<
+  PlayerShortlistErrorKind,
+  (fileName: string) => string
+> = {
+  unreadable: (fileName) => `${fileName} could not be opened.`,
+  too_large: (fileName) => `${fileName} is too large to be an FM shortlist.`,
+  not_fm_shortlist: (fileName) => `${fileName} is not a readable FM shortlist.`,
+  not_player_shortlist: (fileName) => `${fileName} is not a player shortlist.`,
+  unsupported_format: (fileName) =>
+    `${fileName} uses a shortlist format that is not supported.`,
+  no_snapshot: () => "Use Load Data before choosing a shortlist.",
+  no_matching_players: (fileName) =>
+    `${fileName} does not match this save: none of its players are in the current snapshot.`,
+  stale_context: () =>
+    "The save changed while the shortlist was read. Choose the file again.",
+  database: () => "The shortlist could not be saved. Try again.",
+};
+
+/** The reason a choice was rejected; the previous shortlist is unchanged. */
+function shortlistChoiceFailureCopy(error: Error, path: string) {
+  const reason =
+    error instanceof TauriCommandError
+      ? shortlistChoiceFailureReasons[error.kind as PlayerShortlistErrorKind]
+      : undefined;
+  return (reason ?? shortlistChoiceFailureReasons.database)(fileNameOf(path));
+}
+
 /** The Refresh stats outcome sentence; a running Load Data is Refresh-only. */
 function refreshSeasonStatsCopy(result: RefreshSeasonStatsResult): {
   text: string;
@@ -410,25 +456,10 @@ function SearchPageContent() {
           ? refreshSeasonStatsCopy(refreshStats.data)
           : null
       : null;
-  const [shortlistImportOpen, setShortlistImportOpen] = useState(false);
-  const [lastShortlistImport, setLastShortlistImport] =
-    useState<PlayerShortlistImportSummary | null>(null);
   const resultContext =
     snapshot && activeSave && snapshot.saveId === activeSave.id
       ? { snapshot, activeSave }
       : null;
-  // The shortlist import UI and its summary belong to one result context: a
-  // null or changed context closes the modal and discards the summary, so
-  // opening Upload without a valid snapshot cannot arm a delayed dialog.
-  const shortlistUiContextKey = resultContext
-    ? `${resultContext.activeSave.id}:${resultContext.activeSave.contextToken}:${resultContext.snapshot.id}:${resultContext.snapshot.contextToken}`
-    : null;
-  useEffect(() => {
-    setLastShortlistImport(null);
-    if (shortlistUiContextKey === null) {
-      setShortlistImportOpen(false);
-    }
-  }, [shortlistUiContextKey]);
 
   const updateSearch = (
     patch: Partial<{
@@ -463,6 +494,67 @@ function SearchPageContent() {
       }),
       replace: patch.replace ?? true,
     });
+
+  const refreshShortlistQueries = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: snapshotKeys.saves() }),
+      queryClient.invalidateQueries({ queryKey: searchKeys.playerPages() }),
+    ]);
+  // Rust revalidates the save context before it writes, so a file picked for a
+  // save that changed meanwhile is rejected rather than linked to another save.
+  const chooseShortlist = useMutation({
+    mutationFn: ({ saveId, contextToken, path }: ShortlistChoiceRequest) =>
+      choosePlayerShortlist(saveId, contextToken, path),
+    onSuccess: async (_choice, { saveId, contextToken }) => {
+      useShortlistFilterStore
+        .getState()
+        .set("player", { saveId, contextToken }, true);
+      await updateSearch({ shortlistOnly: undefined });
+      await refreshShortlistQueries();
+    },
+  });
+  const removeShortlist = useMutation({
+    mutationFn: ({ saveId, contextToken }: SeasonStatsRefreshContext) =>
+      removePlayerShortlist(saveId, contextToken),
+    onSuccess: async (_result, { saveId, contextToken }) => {
+      useShortlistFilterStore
+        .getState()
+        .set("player", { saveId, contextToken }, false);
+      await updateSearch({ shortlistOnly: undefined });
+      await refreshShortlistQueries();
+    },
+  });
+  const pickShortlistFile = async () => {
+    if (!resultContext) return;
+    const { id: saveId, contextToken } = resultContext.activeSave;
+    const path = await chooseShortlistFile();
+    if (path) {
+      chooseShortlist.mutate({ saveId, contextToken, path });
+    }
+  };
+  // The outcome belongs to the save context it chose for; a switched save hides it.
+  const shortlistChoiceOutcome =
+    chooseShortlist.variables?.saveId === activeSaveId &&
+    chooseShortlist.variables.contextToken === activeSaveContextToken
+      ? chooseShortlist.isError
+        ? {
+            text: shortlistChoiceFailureCopy(
+              chooseShortlist.error,
+              chooseShortlist.variables.path,
+            ),
+            isProblem: true,
+          }
+        : chooseShortlist.data
+          ? {
+              text: `${chooseShortlist.data.name}: ${chooseShortlist.data.totalPlayers} players, ${chooseShortlist.data.matchedPlayers} in this snapshot.`,
+              isProblem: false,
+            }
+          : null
+      : null;
+  const linkedShortlistSave =
+    resultContext?.activeSave.playerShortlistFileName != null
+      ? resultContext.activeSave
+      : null;
 
   const handleRulesChange = (rules: FilterRule[]) => {
     updateSearch({ filters: rules });
@@ -504,6 +596,34 @@ function SearchPageContent() {
       Shortlist: {shortlistOnly ? "On" : "Off"}
     </button>
   );
+  const shortlistControl = (
+    <>
+      {shortlistSwitch}
+      {linkedShortlistSave ? (
+        <>
+          <span
+            className="max-w-48 truncate text-label-md text-on-surface-variant"
+            title={linkedShortlistSave.playerShortlistFileName ?? undefined}
+          >
+            {linkedShortlistSave.playerShortlistName}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            icon={X}
+            aria-label="Remove shortlist"
+            disabled={removeShortlist.isPending}
+            onClick={() =>
+              removeShortlist.mutate({
+                saveId: linkedShortlistSave.id,
+                contextToken: linkedShortlistSave.contextToken,
+              })
+            }
+          />
+        </>
+      ) : null}
+    </>
+  );
   const comparisonPoolToggle = (
     <>
       {resultContext ? (
@@ -540,7 +660,7 @@ function SearchPageContent() {
     </>
   );
   const datasetToggles =
-    view === "general" ? shortlistSwitch : comparisonPoolToggle;
+    view === "general" ? shortlistControl : comparisonPoolToggle;
 
   const renderSearchBody = (tacticState: TacticContextBoundaryState | null) => {
     const tactic = tacticState?.tactic;
@@ -644,7 +764,7 @@ function SearchPageContent() {
     };
 
     // Page-header owns the title and every page action (Add Tactic groups,
-    // General Upload Shortlist, Moneyball Refresh stats): the generic table toolbar
+    // General Choose FM Shortlist, Moneyball Refresh stats): the generic table toolbar
     // below owns only dataset slots and never hosts these controls.
     const pageHeader = (
       <header
@@ -680,17 +800,23 @@ function SearchPageContent() {
             <>
               <Button
                 variant="secondary"
-                icon={FileUp}
-                disabled={!resultContext}
-                onClick={() => setShortlistImportOpen(true)}
+                icon={FolderOpen}
+                disabled={!resultContext || chooseShortlist.isPending}
+                onClick={() => void pickShortlistFile()}
               >
-                Upload Shortlist
+                Choose FM Shortlist
               </Button>
-              {lastShortlistImport ? (
-                <p className="text-body-sm text-on-surface-variant">
-                  Last import: {lastShortlistImport.totalPlayers} players,{" "}
-                  {lastShortlistImport.storedPlayers} stored,{" "}
-                  {lastShortlistImport.skippedPlayers} skipped.
+              {shortlistChoiceOutcome ? (
+                <p
+                  role={shortlistChoiceOutcome.isProblem ? "alert" : "status"}
+                  className={cn(
+                    "text-body-sm",
+                    shortlistChoiceOutcome.isProblem
+                      ? "text-error"
+                      : "text-on-surface-variant",
+                  )}
+                >
+                  {shortlistChoiceOutcome.text}
                 </p>
               ) : null}
             </>
@@ -833,34 +959,6 @@ function SearchPageContent() {
       ) : (
         renderSearchBody(null)
       )}
-      {resultContext ? (
-        <PlayerShortlistImportModal
-          activeSaveId={resultContext.snapshot.saveId}
-          activeSaveContextToken={resultContext.activeSave.contextToken}
-          snapshotId={resultContext.snapshot.id}
-          snapshotContextToken={resultContext.snapshot.contextToken}
-          open={shortlistImportOpen}
-          onClose={() => setShortlistImportOpen(false)}
-          onImported={async (summary) => {
-            setLastShortlistImport(summary);
-            setShortlistImportOpen(false);
-            if (activeSaveId !== null && activeSaveContextToken !== null) {
-              useShortlistFilterStore.getState().set(
-                "player",
-                {
-                  saveId: activeSaveId,
-                  contextToken: activeSaveContextToken,
-                },
-                true,
-              );
-            }
-            await updateSearch({ shortlistOnly: undefined });
-            await queryClient.invalidateQueries({
-              queryKey: searchKeys.playerPages(),
-            });
-          }}
-        />
-      ) : null}
     </>
   );
 }
