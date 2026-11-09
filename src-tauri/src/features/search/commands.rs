@@ -6,6 +6,7 @@ use crate::db::result_cache::{parse_table_id, TableRegistry, TableTicket};
 use crate::db::Db;
 
 use super::filter::{self, FilterAst, FilterRule};
+use super::moneyball_cohort::MoneyballCohortCache;
 use super::query::{
     self, ComparisonPool, DynamicValue, GeneralOrderCache, PlayerSummary, SearchPlayersPage,
     SearchPlayersPageState, SearchPlayersRequest, SearchView, SortDir, SortField,
@@ -21,6 +22,8 @@ pub struct SearchCaches {
     pub suggestions: SuggestionCache,
     /// General table orders: at most four queries, about 8 MB each at 1,000,000 players.
     pub general_orders: GeneralOrderCache,
+    /// Moneyball cohorts: at most two queries, each at most about 42 MB at 1,000,000 players.
+    pub moneyball_cohorts: MoneyballCohortCache,
 }
 
 impl Default for SearchCaches {
@@ -28,6 +31,7 @@ impl Default for SearchCaches {
         Self {
             suggestions: SuggestionCache::new(1),
             general_orders: GeneralOrderCache::new(4),
+            moneyball_cohorts: MoneyballCohortCache::new(2),
         }
     }
 }
@@ -170,14 +174,12 @@ pub async fn search_players(
         shortlist_only,
     )?;
     let table = table_id.as_deref().map(parse_table_id).transpose()?;
-    // Moneyball keeps its uncached path, which nothing supersedes yet.
     let ticket = table
-        .filter(|_| search.view == SearchView::General)
-        .map(|table| registry.arrive(table, &query::general_query_fingerprint(&search.request())));
+        .map(|table| registry.arrive(table, &query::search_query_fingerprint(&search.request())));
     let db = db.inner().clone();
-    let orders = caches.general_orders.clone();
+    let caches = caches.inner().clone();
     let registry = registry.inner().clone();
-    blocking::run(move || read_players_page(&db, &orders, &registry, ticket.as_ref(), &search))
+    blocking::run(move || read_players_page(&db, &caches, &registry, ticket.as_ref(), &search))
         .await
 }
 
@@ -261,16 +263,26 @@ impl PlayerSearch {
 
 fn read_players_page(
     db: &Db,
-    orders: &GeneralOrderCache,
+    caches: &SearchCaches,
     registry: &TableRegistry,
     ticket: Option<&TableTicket>,
     search: &PlayerSearch,
 ) -> Result<SearchPlayersPageDto, String> {
     let page = match search.view {
-        SearchView::General => {
-            query::search_general_players(db, orders, registry, ticket, search.request())?
-        }
-        SearchView::Moneyball => query::search_players_in_view(&*db.read()?, search.request())?,
+        SearchView::General => query::search_general_players(
+            db,
+            &caches.general_orders,
+            registry,
+            ticket,
+            search.request(),
+        )?,
+        SearchView::Moneyball => query::search_moneyball_players(
+            db,
+            &caches.moneyball_cohorts,
+            registry,
+            ticket,
+            search.request(),
+        )?,
     };
     Ok(SearchPlayersPageDto::from(page))
 }
@@ -472,7 +484,7 @@ mod tests {
                 let ticket = registry.arrive("search", "first page");
                 read_players_page(
                     db,
-                    &GeneralOrderCache::new(4),
+                    &SearchCaches::default(),
                     &registry,
                     Some(&ticket),
                     &search,

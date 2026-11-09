@@ -27,10 +27,11 @@ use crate::features::player_metrics::resolver::{
     HIDDEN_ATTRIBUTE_KEYS, PERSONALITY_KEYS, POSITION_KEYS, TACTIC_LANE_IDS,
 };
 use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
+use crate::features::search::commands::SearchCaches;
 use crate::features::search::filter::{parse_filter_ast, FilterAst, FilterRule, FilterValue};
 use crate::features::search::query::{
-    search_general_players, search_players_in_view, ComparisonPool, GeneralOrderCache,
-    SearchPlayersRequest, SearchView, SortDir, SortField, DEFAULT_PAGE_LIMIT,
+    search_general_players, search_moneyball_players, ComparisonPool, SearchPlayersRequest,
+    SearchView, SortDir, SortField, DEFAULT_PAGE_LIMIT,
 };
 use crate::features::search::suggest::{suggest_players, SuggestionCache, DEFAULT_SUGGEST_LIMIT};
 use crate::features::snapshot::{load_data, service};
@@ -676,14 +677,9 @@ fn player_shapes() -> Vec<PlayerShape> {
     ]
 }
 
-/// Requests one page as `search_players` does: General through its computed orders in
-/// `orders`, Moneyball uncached.
-fn search_player_page(
-    db: &Db,
-    orders: &GeneralOrderCache,
-    shape: &PlayerShape,
-    offset: usize,
-) -> usize {
+/// Requests one page as `search_players` does, through the computed General orders or
+/// Moneyball cohorts in `caches`.
+fn search_player_page(db: &Db, caches: &SearchCaches, shape: &PlayerShape, offset: usize) -> usize {
     let request = SearchPlayersRequest {
         offset,
         limit: DEFAULT_PAGE_LIMIT,
@@ -696,12 +692,20 @@ fn search_player_page(
         shortlist_only: false,
     };
     match shape.view {
-        SearchView::General => {
-            search_general_players(db, orders, &TableRegistry::default(), None, request)
-        }
-        SearchView::Moneyball => {
-            search_players_in_view(&db.read().expect("read connection"), request)
-        }
+        SearchView::General => search_general_players(
+            db,
+            &caches.general_orders,
+            &TableRegistry::default(),
+            None,
+            request,
+        ),
+        SearchView::Moneyball => search_moneyball_players(
+            db,
+            &caches.moneyball_cohorts,
+            &TableRegistry::default(),
+            None,
+            request,
+        ),
     }
     .unwrap_or_else(|error| panic!("{} request failed: {error}", shape.name))
     .total as usize
@@ -711,27 +715,27 @@ fn measure_player_shape(db: &Db, shape: &PlayerShape) -> Value {
     let first_page = match &shape.warm_base_fields {
         // A column change keeps the query's fingerprint, so the app reuses its computed order.
         Some(base_fields) => {
-            let orders = GeneralOrderCache::new(4);
+            let caches = SearchCaches::default();
             let base = PlayerShape {
                 fields: base_fields.clone(),
                 ..shape.clone()
             };
-            search_player_page(db, &orders, &base, 0);
+            search_player_page(db, &caches, &base, 0);
             time_repeated(|| {
-                search_player_page(db, &orders, shape, 0);
+                search_player_page(db, &caches, shape, 0);
             })
         }
         // Every other first page computes its query afresh, as after a sort or filter change.
         None => time_repeated(|| {
-            search_player_page(db, &GeneralOrderCache::new(4), shape, 0);
+            search_player_page(db, &SearchCaches::default(), shape, 0);
         }),
     };
     // Later windows reuse the query computed by its first page.
-    let orders = GeneralOrderCache::new(4);
-    let total = search_player_page(db, &orders, shape, 0);
+    let caches = SearchCaches::default();
+    let total = search_player_page(db, &caches, shape, 0);
     let offset = later_window_offset(total, shape.deep_window);
     let later_window = time_repeated(|| {
-        search_player_page(db, &orders, shape, offset);
+        search_player_page(db, &caches, shape, offset);
     });
     json!({
         "total": total,
