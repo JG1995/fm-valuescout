@@ -342,29 +342,29 @@ pub fn score_staff_role(
 /// required source attribute is missing.
 pub(crate) struct CompactStaffRow {
     pub(crate) uid: i64,
-    pub(crate) scores: Vec<Option<i64>>,
+    pub(crate) scores: Vec<Option<u8>>,
 }
 
 /// Scores every closed-catalog staff role in `all_staff_roles()` order.
 /// A role whose source attributes are missing, null, or out of range scores
 /// SQL null.
-pub(crate) fn score_all_staff_roles(attributes: &HashMap<String, Option<u8>>) -> Vec<Option<i64>> {
+pub(crate) fn score_all_staff_roles(attributes: &HashMap<String, Option<u8>>) -> Vec<Option<u8>> {
     all_staff_roles()
         .iter()
-        .map(|role| score_staff_role(attributes, role).map(i64::from))
+        .map(|role| score_staff_role(attributes, role))
         .collect()
 }
 
 /// Borrowed persistence implementation: inserts or replaces one compact row per staff member
 /// without cloning the 21-value score vectors. Accepts any iterator over borrowed
-/// slices directly from `PreparedStaff`.
+/// slices directly from `PreparedSnapshot`'s staff scores.
 pub(crate) fn persist_rows_borrowed<'a, I>(
     tx: &Transaction<'_>,
     snapshot_id: i64,
     rows: I,
 ) -> Result<(), String>
 where
-    I: IntoIterator<Item = (i64, &'a [Option<i64>])>,
+    I: IntoIterator<Item = (i64, &'a [Option<u8>])>,
 {
     let roles = all_staff_roles();
     let columns = roles
@@ -394,7 +394,7 @@ where
         values.extend(
             scores
                 .iter()
-                .map(|score| score.map_or(Value::Null, Value::Integer)),
+                .map(|score| score.map_or(Value::Null, |score| Value::Integer(score.into()))),
         );
         statement
             .execute(params_from_iter(values.iter()))

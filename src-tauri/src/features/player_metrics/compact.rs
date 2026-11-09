@@ -208,7 +208,7 @@ pub(crate) fn prepare_player_derived(
     ca: i64,
     pa: i64,
     age: Option<i64>,
-) -> Result<(String, Vec<Option<i64>>, Vec<Option<i64>>), String> {
+) -> Result<(String, Vec<Option<u8>>, Vec<Option<u8>>), String> {
     let source_attributes = serde_json::from_str::<HashMap<String, Option<u8>>>(attributes_json)
         .map_err(|error| format!("invalid player {uid} attributes JSON: {error}"))?;
     for key in DUMP_ATTRIBUTE_KEYS {
@@ -238,26 +238,29 @@ pub(crate) fn prepare_player_derived(
         age,
         positions_map.iter().map(|(k, v)| (k.as_str(), *v)),
     );
-    let projected_json = potential_scores::projected_attributes_json(uid, &projected)?;
+    let mut projected_json = potential_scores::projected_attributes_json(uid, &projected)?;
+    // Load Data holds every player's JSON until publication, so drop serialization slack.
+    projected_json.shrink_to_fit();
     let mut current_scores = Vec::with_capacity(all_roles().len());
     let mut potential_scores = Vec::with_capacity(all_roles().len());
     for role in all_roles() {
-        current_scores.push(score_role(&attributes_for_scoring, role).map(i64::from));
-        potential_scores.push(score_role(&projected, role).map(i64::from));
+        current_scores.push(score_role(&attributes_for_scoring, role));
+        potential_scores.push(score_role(&projected, role));
     }
     Ok((projected_json, current_scores, potential_scores))
 }
 
 /// Borrowed persistence implementation: inserts or replaces one compact row per player
 /// without cloning the 158-value score vectors. Accepts any iterator over borrowed
-/// slices directly from `PreparedPlayer`.
-pub(crate) fn persist_rows_borrowed<'a, I>(
+/// slices, such as a Load Data preparation's `u8` scores or a rebuild's `i64` scores.
+pub(crate) fn persist_rows_borrowed<'a, I, S>(
     tx: &Transaction<'_>,
     snapshot_id: i64,
     rows: I,
 ) -> Result<(), String>
 where
-    I: IntoIterator<Item = (i64, &'a [Option<i64>], &'a [Option<i64>])>,
+    I: IntoIterator<Item = (i64, &'a [Option<S>], &'a [Option<S>])>,
+    S: Copy + Into<i64> + 'a,
 {
     let roles = all_roles();
     let mut columns = roles
@@ -294,12 +297,12 @@ where
         values.extend(
             current_scores
                 .iter()
-                .map(|score| score.map_or(Value::Null, Value::Integer)),
+                .map(|score| score.map_or(Value::Null, |score| Value::Integer(score.into()))),
         );
         values.extend(
             potential_scores
                 .iter()
-                .map(|score| score.map_or(Value::Null, Value::Integer)),
+                .map(|score| score.map_or(Value::Null, |score| Value::Integer(score.into()))),
         );
         statement
             .execute(params_from_iter(values.iter()))

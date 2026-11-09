@@ -640,7 +640,7 @@ where
     let scoring_started = now_ms();
     let prepared = score(raw)?;
     let scoring_ms = now_ms().saturating_sub(scoring_started);
-    let total_entities = (prepared.players.len() + prepared.staff.len()) as u64;
+    let total_entities = (prepared.raw.players.len() + prepared.raw.staff.len()) as u64;
     let _ = on_progress(LoadDataProgressDto::determinate(
         save_context.id,
         save_context.context_token.clone(),
@@ -711,9 +711,21 @@ where
         1,
         1,
     ));
+    // Dropping the publishing guard advances the data generation, so no cached result for the
+    // displaced snapshot is served while the checkpoint runs. Later reads then use the database
+    // file instead of a large WAL. A reader can block the checkpoint for at most the busy
+    // timeout, and a failed checkpoint never turns a published load into an error.
+    drop(conn);
+    match db.0.lock() {
+        Ok(conn) => {
+            if let Err(error) = crate::db::checkpoint_wal(&conn) {
+                log::warn!("database checkpoint failed after Load Data: {error}");
+            }
+        }
+        Err(_) => log::warn!("database checkpoint skipped after Load Data: the lock is poisoned"),
+    }
     // The stats step takes its own brief locks and reads the file without one. It still
     // runs under the load gate, and its outcome never turns a published load into an error.
-    drop(conn);
     let _ = on_progress(LoadDataProgressDto::indeterminate(
         save_context.id,
         save_context.context_token.clone(),
@@ -2313,5 +2325,94 @@ mod tests {
         let snapshots = snapshots.expect("snapshots on a reader");
         assert_eq!(snapshots.len(), 1);
         assert_eq!(snapshots[0].id, current.id);
+    }
+
+    #[test]
+    fn load_data_empties_the_wal_after_publication_while_a_reader_holds_a_transaction() {
+        let _guard = crate::features::player::boost_gate::BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join(crate::db::APP_DB_FILE);
+        let db = crate::db::open(&db_path).expect("open database");
+        let requested = active_save_context(&db);
+        let published_before = db.generation();
+        let (reader_started, reader_ready) = std::sync::mpsc::channel();
+
+        let (result, reader_saw_publication) = std::thread::scope(|scope| {
+            let reader = scope.spawn(|| {
+                let reader = db.read().expect("reader");
+                reader
+                    .query_row("SELECT COUNT(*) FROM snapshots", [], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                    .expect("start the read transaction");
+                reader_started.send(()).expect("signal the reader");
+                // A checkpoint waits for this transaction, so it ends only once the load has
+                // published; a checkpoint inside publication would time out instead.
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                while db.generation() == published_before && std::time::Instant::now() < deadline {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                db.generation() != published_before
+            });
+            reader_ready.recv().expect("reader started");
+            let mut now_ms = || 0u64;
+            let result = execute_load_data_with(
+                &db,
+                requested,
+                || {
+                    let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
+                    tmp.write_all(GOLDEN_FIXTURE.as_bytes()).expect("write");
+                    Ok((
+                        tmp.into_temp_path(),
+                        DumpRequestResult {
+                            request_id: "req-checkpoint".to_string(),
+                            state: "ready".to_string(),
+                            players_found: Some(1),
+                            dump_present: true,
+                            error: None,
+                        },
+                    ))
+                },
+                load_data::prepare_raw_for_publish,
+                load_data::score_raw_for_publish,
+                |conn, save_context, prepared, dump_result, now_ms, boundary| {
+                    load_data::publish_prepared_with_progress(
+                        conn,
+                        save_context,
+                        prepared,
+                        dump_result,
+                        now_ms,
+                        boundary,
+                    )
+                },
+                &mut now_ms,
+                |_| Ok(()),
+            );
+            (result, reader.join().expect("reader thread"))
+        });
+
+        let result = result.expect("load succeeds");
+        assert!(reader_saw_publication);
+        let wal_len = std::fs::metadata(
+            temp_dir
+                .path()
+                .join(format!("{}-wal", crate::db::APP_DB_FILE)),
+        )
+        .expect("WAL file")
+        .len();
+        assert_eq!(wal_len, 0);
+        assert_eq!(result.stored_snapshot.id, result.effective_snapshot.id);
+        let current: i64 =
+            db.0.lock()
+                .expect("lock")
+                .query_row(
+                    "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+                    [result.stored_snapshot.save_id],
+                    |row| row.get(0),
+                )
+                .expect("current snapshot");
+        assert_eq!(current, result.stored_snapshot.id);
     }
 }

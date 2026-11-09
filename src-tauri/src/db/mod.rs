@@ -321,7 +321,9 @@ fn configure_connection(conn: &Connection, cache_kib: i64) -> rusqlite::Result<(
     conn.pragma_update(None, "temp_store", "MEMORY")
 }
 
-/// Copies the WAL into the database file and truncates it. The app runs it at exit.
+/// Copies the WAL into the database file and truncates it. The app runs it at exit, and Load
+/// Data runs it once its publishing writer guard has advanced the data generation
+/// (`snapshot::commands::execute_load_data_with`).
 pub fn checkpoint_wal(conn: &Connection) -> Result<(), String> {
     let blocked: i64 = conn
         .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get(0))
