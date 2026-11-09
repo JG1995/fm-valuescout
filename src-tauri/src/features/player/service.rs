@@ -969,8 +969,11 @@ mod tests {
     fn potential_state(conn: &Connection, snapshot_id: i64) -> PotentialState {
         let projected = conn
             .query_row(
-                "SELECT potential_attributes_json, potential_projection_model_version
-                 FROM players WHERE snapshot_id = ?1 AND uid = ?2",
+                "SELECT a.attributes_json, a.projection_model_version
+                 FROM players p
+                 LEFT JOIN player_projected_attributes a
+                   ON a.snapshot_id = p.snapshot_id AND a.uid = p.uid
+                 WHERE p.snapshot_id = ?1 AND p.uid = ?2",
                 params![snapshot_id, PLAYER_UID],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
@@ -2218,8 +2221,8 @@ mod tests {
         fixture
             .conn
             .execute_batch(&format!(
-                "CREATE TRIGGER fail_potential_projection_update
-                 BEFORE UPDATE OF potential_attributes_json ON players
+                "CREATE TRIGGER fail_potential_projection_insert
+                 BEFORE INSERT ON player_projected_attributes
                  WHEN NEW.snapshot_id = {} AND NEW.uid = {}
                  BEGIN
                      SELECT RAISE(ABORT, 'forced potential projection failure');

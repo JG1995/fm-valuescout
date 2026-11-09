@@ -238,7 +238,7 @@ pub(crate) fn prepare_player_derived(
         age,
         positions_map.iter().map(|(k, v)| (k.as_str(), *v)),
     );
-    let projected_json = serde_json::to_string(&projected).map_err(|e| e.to_string())?;
+    let projected_json = potential_scores::projected_attributes_json(uid, &projected)?;
     let mut current_scores = Vec::with_capacity(all_roles().len());
     let mut potential_scores = Vec::with_capacity(all_roles().len());
     for role in all_roles() {
@@ -356,32 +356,25 @@ pub(crate) fn clear_non_current_snapshots(
 
 /// Verifies that every player of an effective current snapshot has exactly one
 /// compact row with the checked-in score and projection model versions. The
-/// `(snapshot_id, uid)` primary key makes a second row per player impossible.
+/// `(snapshot_id, uid)` primary key and the foreign key to `players` make equal
+/// counts equivalent to "every player has one such row".
 pub(crate) fn assert_snapshot_complete(conn: &Connection, snapshot_id: i64) -> Result<(), String> {
-    let incomplete: bool = conn
+    let complete: bool = conn
         .query_row(
-            "SELECT
-                 NOT EXISTS(SELECT 1 FROM snapshots WHERE id = ?1 AND is_current = 1)
-                 OR EXISTS(
-                     SELECT 1
-                     FROM players p
-                     LEFT JOIN player_role_metrics m
-                       ON m.snapshot_id = p.snapshot_id AND m.uid = p.uid
-                     WHERE p.snapshot_id = ?1
-                       AND (
-                           m.snapshot_id IS NULL
-                           OR m.score_model_version <> ?2
-                           OR m.projection_model_version <> ?3
-                       )
-                 )",
+            "SELECT EXISTS(SELECT 1 FROM snapshots WHERE id = ?1 AND is_current = 1)
+                 AND (SELECT COUNT(*) FROM players WHERE snapshot_id = ?1)
+                   = (SELECT COUNT(*) FROM player_role_metrics
+                      WHERE snapshot_id = ?1
+                        AND score_model_version = ?2
+                        AND projection_model_version = ?3)",
             params![snapshot_id, SCORE_MODEL_VERSION, PROJECTION_MODEL_VERSION],
             |row| row.get(0),
         )
         .map_err(|error| error.to_string())?;
-    if incomplete {
-        Err("Current compact player snapshot is incomplete".to_string())
-    } else {
+    if complete {
         Ok(())
+    } else {
+        Err("Current compact player snapshot is incomplete".to_string())
     }
 }
 
