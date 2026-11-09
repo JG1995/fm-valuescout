@@ -1231,6 +1231,33 @@ describe("staff route", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the committed no-matches empty state while a cleared filter loads", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    const filters = encodeURIComponent(
+      JSON.stringify([{ id: "ca", field: "ca", op: "gt", value: 200 }]),
+    );
+    renderStaffRoute(`/staff?filters=${filters}`);
+    expect(
+      await screen.findByText("No staff match these filters"),
+    ).toBeInTheDocument();
+    const held = holdNamedStaffSearchRequests();
+
+    await user.click(screen.getByRole("button", { name: "Remove CA filter" }));
+
+    await waitFor(() => expect(held).toHaveLength(1));
+    expect(screen.getByRole("status")).toHaveTextContent("Filtering…");
+    expect(
+      screen.getByText("No staff match these filters"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No staff in snapshot")).toBeNull();
+
+    act(() => held[0].resolve());
+    expect(
+      await screen.findByRole("table", { name: "Staff search results" }),
+    ).toBeInTheDocument();
+  });
+
   it("opens a staff profile from a shortlisted row", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();

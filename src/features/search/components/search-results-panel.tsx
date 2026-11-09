@@ -988,15 +988,20 @@ export function SearchResultsPanel({
     </div>
   );
   if (page.total === 0) {
-    const appliedFilters = completeFilterRules(filters, view);
-    const shortlistEmpty = view === "general" && shortlistOnly;
+    // The copy describes the committed rows, not a request still loading.
+    const appliedFilters = completeFilterRules(
+      committed.filters,
+      committed.view,
+    );
+    const shortlistEmpty =
+      committed.view === "general" && committed.shortlistOnly;
     const emptyTitle = shortlistEmpty
       ? appliedFilters.length > 0
         ? "No shortlisted players match these filters"
         : "No players in shortlist"
       : appliedFilters.length > 0
         ? "No players match these filters"
-        : view === "moneyball"
+        : committed.view === "moneyball"
           ? "No Moneyball stats for this snapshot"
           : "No players in snapshot";
     const emptyBody = shortlistEmpty
@@ -1005,7 +1010,7 @@ export function SearchResultsPanel({
         : "Upload a shortlist CSV for this save, or turn Shortlist off to browse every snapshot player."
       : appliedFilters.length > 0
         ? "Adjust or clear filters in the toolbar above to widen the result set."
-        : view === "moneyball"
+        : committed.view === "moneyball"
           ? "Moneyball stats come from the FM save file linked to this save. Use Refresh stats to read it, or link a save file in Settings."
           : "The snapshot exists but holds no player rows. Run Load Data again with Football Manager in an active save.";
 

@@ -2982,6 +2982,36 @@ describe("search route", () => {
     expect(screen.queryByText("High CA")).not.toBeInTheDocument();
   });
 
+  it("keeps the committed no-matches empty state while a cleared filter loads", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    const encodedFilters = encodeURIComponent(
+      JSON.stringify([{ id: "seed", field: "ca", op: "gte", value: 250 }]),
+    );
+    renderSearchRoute(
+      `/search?sort=ca&dir=desc&combine=and&filters=${encodedFilters}`,
+    );
+    expect(
+      await screen.findByText("No players match these filters"),
+    ).toBeInTheDocument();
+    const held = holdNamedSearchRequests();
+
+    await user.click(
+      screen.getByRole("button", { name: /Remove filter CA ≥ 250/i }),
+    );
+
+    await waitFor(() => expect(held).toHaveLength(1));
+    expect(screen.getByRole("status")).toHaveTextContent("Filtering…");
+    expect(
+      screen.getByText("No players match these filters"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No players in snapshot")).toBeNull();
+
+    act(() => held[0].resolve());
+    expect(await screen.findByText("High CA")).toBeInTheDocument();
+  });
+
   it("shows the filtered empty state for Moneyball when filters exclude every player", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([]);

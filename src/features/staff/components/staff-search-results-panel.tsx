@@ -1058,10 +1058,13 @@ export function StaffSearchResultsPanel({
       ? "Nationality"
       : (sortMetric?.label ?? committed.sortBy);
   if (page.total === 0) {
+    // The copy describes the committed rows, not a request still loading.
+    const hasCommittedFilters =
+      completeStaffFilterRules(committed.filters).length > 0;
     const hasShortlistFilter =
-      Boolean(preferredJob) ||
-      unemployedOnly ||
-      completeStaffFilterRules(filters).length > 0;
+      Boolean(committed.preferredJob) ||
+      committed.unemployedOnly ||
+      hasCommittedFilters;
     return (
       <Panel
         flush
@@ -1085,7 +1088,7 @@ export function StaffSearchResultsPanel({
                 ? hasShortlistFilter
                   ? "No shortlist staff match these filters"
                   : "No shortlisted staff in this snapshot"
-                : completeStaffFilterRules(filters).length > 0
+                : hasCommittedFilters
                   ? "No staff match these filters"
                   : "No staff in snapshot"
           }
@@ -1096,7 +1099,7 @@ export function StaffSearchResultsPanel({
               ? hasShortlistFilter
                 ? "Adjust or clear filters to widen the results."
                 : "Load Data to restore saved shortlist people who are absent from the current snapshot."
-              : completeStaffFilterRules(filters).length > 0
+              : hasCommittedFilters
                 ? "Adjust or clear filters to widen the result set."
                 : "The snapshot exists but contains no staff rows."}
         </EmptyState>
