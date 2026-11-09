@@ -10,7 +10,8 @@
 //! lookup followed by safe snake_case validation. WebView input never becomes
 //! an SQL identifier.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
 use rusqlite::{params, params_from_iter, types::Value, Connection, Transaction};
 
@@ -80,6 +81,12 @@ pub fn player_metrics_join(
 /// from the same compact row) and the checked-in projection model for
 /// potential role requests. Missing or wrong-version state fails before
 /// values are read; a read never writes or repairs.
+///
+/// The `(snapshot_id, uid)` primary key and its foreign key to `players` make
+/// "as many matching compact rows as players" equivalent to "every player has
+/// one". A read-only connection remembers its success for the data generation,
+/// because its request reads one committed state; a check on the writer always
+/// runs in full.
 pub(crate) fn assert_read_models_complete(
     conn: &Connection,
     snapshot_id: i64,
@@ -89,41 +96,94 @@ pub(crate) fn assert_read_models_complete(
     if !require_score_model && !require_projection_model {
         return Ok(());
     }
-    let mut model_predicates = Vec::new();
-    if require_score_model || require_projection_model {
-        model_predicates.push(format!(
-            "{PLAYER_METRICS_ALIAS}.score_model_version = {SCORE_MODEL_VERSION}"
-        ));
+    let read_check = ReadCheck::for_reader(
+        conn,
+        snapshot_id,
+        require_score_model,
+        require_projection_model,
+    );
+    if read_check.as_ref().is_some_and(ReadCheck::succeeded) {
+        return Ok(());
     }
+
+    let mut model_predicates = vec![format!("score_model_version = {SCORE_MODEL_VERSION}")];
     if require_projection_model {
         model_predicates.push(format!(
-            "{PLAYER_METRICS_ALIAS}.projection_model_version = {PROJECTION_MODEL_VERSION}"
+            "projection_model_version = {PROJECTION_MODEL_VERSION}"
         ));
     }
     let sql = format!(
-        "SELECT EXISTS(
-             SELECT 1
-             FROM players p
-             LEFT JOIN player_role_metrics {PLAYER_METRICS_ALIAS}
-               ON {PLAYER_METRICS_ALIAS}.snapshot_id = p.snapshot_id
-              AND {PLAYER_METRICS_ALIAS}.uid = p.uid
-              AND {}
-             WHERE p.snapshot_id = ?1 AND {PLAYER_METRICS_ALIAS}.snapshot_id IS NULL
-         )",
+        "SELECT (SELECT COUNT(*) FROM players WHERE snapshot_id = ?1)
+              = (SELECT COUNT(*) FROM player_role_metrics WHERE snapshot_id = ?1 AND {})",
         model_predicates.join(" AND ")
     );
-    let incomplete: bool = conn
+    let complete: bool = conn
         .query_row(&sql, [snapshot_id], |row| row.get(0))
         .map_err(|error| error.to_string())?;
-    if incomplete {
-        Err(if require_projection_model {
+    if !complete {
+        return Err(if require_projection_model {
             "Current potential snapshot is incomplete".to_string()
         } else {
             "Current compact player snapshot is incomplete".to_string()
-        })
-    } else {
-        Ok(())
+        });
     }
+    if let Some(read_check) = read_check {
+        read_check.remember();
+    }
+    Ok(())
+}
+
+/// One successful read-time check: its database file, data generation, snapshot, and
+/// exact requirement.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct ReadCheck {
+    database: String,
+    generation: u64,
+    snapshot_id: i64,
+    require_score_model: bool,
+    require_projection_model: bool,
+}
+
+impl ReadCheck {
+    /// The check's memo key on a read-only connection to a registered database file, or
+    /// `None` for the writer or an unregistered connection, which always check in full.
+    fn for_reader(
+        conn: &Connection,
+        snapshot_id: i64,
+        require_score_model: bool,
+        require_projection_model: bool,
+    ) -> Option<Self> {
+        if !conn.is_readonly(rusqlite::MAIN_DB).ok()? {
+            return None;
+        }
+        Some(Self {
+            database: conn.path()?.to_string(),
+            generation: crate::db::data_generation(conn)?,
+            snapshot_id,
+            require_score_model,
+            require_projection_model,
+        })
+    }
+
+    fn succeeded(&self) -> bool {
+        read_checks().contains(self)
+    }
+
+    /// Keeps only this generation's successes for the database, so the memo stays small.
+    fn remember(self) {
+        let mut checks = read_checks();
+        checks
+            .retain(|check| check.database != self.database || check.generation == self.generation);
+        checks.insert(self);
+    }
+}
+
+fn read_checks() -> MutexGuard<'static, HashSet<ReadCheck>> {
+    static READ_CHECKS: OnceLock<Mutex<HashSet<ReadCheck>>> = OnceLock::new();
+    READ_CHECKS
+        .get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
 }
 
 /// One catalog-ordered compact row to persist for a player: the 79 current
@@ -491,6 +551,120 @@ mod tests {
         assert!(both.contains("player_metrics.score_model_version = 2"));
         assert!(both.contains("player_metrics.projection_model_version = 2"));
         assert!(both.contains(" LEFT JOIN player_role_metrics "));
+    }
+
+    fn golden_snapshot_id(conn: &Connection) -> i64 {
+        conn.query_row("SELECT id FROM snapshots WHERE is_current = 1", [], |row| {
+            row.get(0)
+        })
+        .expect("current snapshot")
+    }
+
+    /// Changes compact rows without the writer, so the data generation stays where it was.
+    fn change_without_writer(temp_dir: &tempfile::TempDir, sql: &str) {
+        Connection::open(temp_dir.path().join(crate::db::APP_DB_FILE))
+            .expect("open bypass connection")
+            .execute_batch(sql)
+            .expect("change compact rows");
+    }
+
+    #[test]
+    fn a_read_check_succeeds_once_per_generation_snapshot_and_requirement() {
+        let (temp_dir, db) = crate::db::open_with_golden_snapshot();
+        db.0.lock()
+            .expect("lock writer")
+            .execute_batch("UPDATE player_role_metrics SET projection_model_version = 99")
+            .expect("break the projection version");
+
+        let reader = db.read().expect("reader");
+        let snapshot_id = golden_snapshot_id(&reader);
+        assert_eq!(
+            assert_read_models_complete(&reader, snapshot_id, true, false),
+            Ok(())
+        );
+        // A remembered current-only success never answers a potential requirement.
+        assert_eq!(
+            assert_read_models_complete(&reader, snapshot_id, true, true),
+            Err("Current potential snapshot is incomplete".to_string())
+        );
+        drop(reader);
+
+        // The remembered success answers later reads of the same generation...
+        change_without_writer(
+            &temp_dir,
+            "UPDATE player_role_metrics SET score_model_version = 99",
+        );
+        let reader = db.read().expect("reader");
+        assert_eq!(
+            assert_read_models_complete(&reader, snapshot_id, true, false),
+            Ok(())
+        );
+        drop(reader);
+        // ...but never a check on the writer.
+        assert_eq!(
+            assert_read_models_complete(
+                &db.0.lock().expect("lock writer"),
+                snapshot_id,
+                true,
+                false
+            ),
+            Err("Current compact player snapshot is incomplete".to_string())
+        );
+
+        // A writer change starts a new generation, which checks again.
+        db.0.lock()
+            .expect("lock writer")
+            .execute_batch("UPDATE players SET name = name || ' changed'")
+            .expect("change data");
+        let reader = db.read().expect("reader");
+        assert_eq!(
+            assert_read_models_complete(&reader, snapshot_id, true, false),
+            Err("Current compact player snapshot is incomplete".to_string())
+        );
+    }
+
+    #[test]
+    fn a_read_check_remembers_its_success_under_the_generation_it_read() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+        let reader = db.read().expect("reader");
+        // The first statement fixes the reader's snapshot before the writer commits.
+        let snapshot_id = golden_snapshot_id(&reader);
+
+        db.0.lock()
+            .expect("lock writer")
+            .execute_batch("UPDATE player_role_metrics SET score_model_version = 99")
+            .expect("break the score version");
+        assert_eq!(
+            assert_read_models_complete(&reader, snapshot_id, true, false),
+            Ok(())
+        );
+        drop(reader);
+
+        let reader = db.read().expect("reader");
+        assert_eq!(
+            assert_read_models_complete(&reader, snapshot_id, true, false),
+            Err("Current compact player snapshot is incomplete".to_string())
+        );
+    }
+
+    #[test]
+    fn a_read_check_fails_for_a_missing_compact_row() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+        db.0.lock()
+            .expect("lock writer")
+            .execute_batch("DELETE FROM player_role_metrics")
+            .expect("remove compact rows");
+
+        let reader = db.read().expect("reader");
+        let snapshot_id = golden_snapshot_id(&reader);
+        assert_eq!(
+            assert_read_models_complete(&reader, snapshot_id, true, false),
+            Err("Current compact player snapshot is incomplete".to_string())
+        );
+        assert_eq!(
+            assert_read_models_complete(&reader, snapshot_id, false, true),
+            Err("Current potential snapshot is incomplete".to_string())
+        );
     }
 
     #[test]

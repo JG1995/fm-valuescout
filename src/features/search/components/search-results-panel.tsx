@@ -44,6 +44,7 @@ import {
   tacticGroupForId,
   tacticLaneIdForId,
 } from "@/utils/tactic-ids";
+import { isSupersededError } from "../api/fetch-search-players";
 import type { SearchPlayerPageContext } from "../api/search-keys";
 import {
   SEARCH_PAGE_SIZE,
@@ -568,7 +569,7 @@ export function SearchResultsPanel({
     committed.shortlistOnly,
     committed.pageContext,
   );
-  const requestedOptions = searchPlayersQueryOptions(
+  const namedRequestOptions = searchPlayersQueryOptions(
     0,
     SEARCH_PAGE_SIZE,
     requested.sortBy,
@@ -580,7 +581,17 @@ export function SearchResultsPanel({
     requested.comparisonPool,
     requested.shortlistOnly,
     requested.pageContext,
+    tableId,
   );
+  const requestMatchesCommitted =
+    JSON.stringify(committedOptions.queryKey) ===
+    JSON.stringify(namedRequestOptions.queryKey);
+  // A shared key shares one Query whose options the last observer sets, so a
+  // request matching the committed page must not name the table: a refetch
+  // of the committed page could otherwise be superseded.
+  const requestedOptions = requestMatchesCommitted
+    ? committedOptions
+    : namedRequestOptions;
   const committedQuery = useQuery(committedOptions);
   const requestedQuery = useQuery(requestedOptions);
   const queryClient = useQueryClient();
@@ -597,9 +608,6 @@ export function SearchResultsPanel({
       dataUpdateCount: requestedDataUpdateCount,
     };
   }
-  const requestMatchesCommitted =
-    JSON.stringify(committedOptions.queryKey) ===
-    JSON.stringify(requestedOptions.queryKey);
   const isSortReplacement =
     !requestMatchesCommitted &&
     JSON.stringify({
@@ -620,11 +628,28 @@ export function SearchResultsPanel({
       });
   const isReplacementActive = !requestMatchesCommitted;
   const isReplacementPending = isSortReplacement && requestedQuery.isFetching;
-  const replacementError =
-    isSortReplacement && requestedQuery.isError ? requestedQuery.error : null;
+  // A newer request stopped this one in Rust; it is pending again, never failed.
+  const isRequestedSuperseded =
+    requestedQuery.isError && isSupersededError(requestedQuery.error);
+  const requestedError =
+    requestedQuery.isError && !isRequestedSuperseded
+      ? requestedQuery.error
+      : null;
+  const replacementError = isSortReplacement ? requestedError : null;
   const replacementLabel = requested.sortBy.startsWith("potential_role.")
     ? "Calculating and sorting…"
     : "Sorting…";
+
+  // The user came back to a query whose request was superseded while it ran.
+  useEffect(() => {
+    if (isRequestedSuperseded && !requestedQuery.isFetching) {
+      void requestedQuery.refetch();
+    }
+  }, [
+    isRequestedSuperseded,
+    requestedQuery.isFetching,
+    requestedQuery.refetch,
+  ]);
 
   useEffect(() => {
     if (
@@ -695,13 +720,9 @@ export function SearchResultsPanel({
         {renderToolbar()}
         <EmptyState
           icon={SearchX}
-          title={
-            requestedQuery.isError
-              ? "Could not load players"
-              : "Loading players"
-          }
+          title={requestedError ? "Could not load players" : "Loading players"}
           action={
-            requestedQuery.isError ? (
+            requestedError ? (
               <button
                 type="button"
                 onClick={() => void requestedQuery.refetch()}
@@ -711,9 +732,7 @@ export function SearchResultsPanel({
             ) : undefined
           }
         >
-          {requestedQuery.isError
-            ? requestedQuery.error.message
-            : "Loading player results…"}
+          {requestedError ? requestedError.message : "Loading player results…"}
         </EmptyState>
       </Panel>
     );

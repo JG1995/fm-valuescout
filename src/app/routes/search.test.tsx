@@ -2471,6 +2471,117 @@ describe("search route", () => {
     expect(within(table).getByText("Alice")).toBeInTheDocument();
   });
 
+  it("names the Search table only on its requested first page", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("Zara", 200),
+      playerNamed("Alice", 100),
+    ]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(getLastSearchPlayersArgs()).not.toHaveProperty("tableId");
+
+    const callsBeforeSort = getSearchPlayersCallCount();
+    setSearchPlayersPageIpcMockMode("pendingReplacement");
+    await user.click(within(table).getByRole("button", { name: "Value" }));
+    await waitFor(() =>
+      expect(getSearchPlayersCallCount()).toBe(callsBeforeSort + 1),
+    );
+    expect(getLastSearchPlayersArgs()).toMatchObject({
+      offset: 0,
+      sortBy: "value",
+      tableId: "search",
+    });
+    resolvePendingSearchPlayersPageIpcMock();
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "Value" }),
+      ).toHaveAttribute("aria-sort", "descending"),
+    );
+  });
+
+  it("refetches the committed Search page without naming the table", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Committed Star", 180)]);
+    const { queryClient } = renderSearchRoute();
+
+    expect(await screen.findByText("Committed Star")).toBeInTheDocument();
+    const callsBeforeRefetch = getSearchPlayersCallCount();
+
+    await queryClient.invalidateQueries({ queryKey: searchKeys.all });
+
+    expect(getSearchPlayersCallCount()).toBe(callsBeforeRefetch + 1);
+    expect(getLastSearchPlayersArgs()).toMatchObject({ offset: 0 });
+    expect(getLastSearchPlayersArgs()).not.toHaveProperty("tableId");
+  });
+
+  it("never shows a superseded Search request as an error and requests it again", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("Zara", 200),
+      playerNamed("Alice", 100),
+    ]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const callsBeforeSort = getSearchPlayersCallCount();
+    setSearchPlayersPageIpcMockMode("pendingReplacement");
+    await user.click(within(table).getByRole("button", { name: "Value" }));
+    await screen.findByRole("status");
+
+    rejectPendingSearchPlayersPageIpcMock("Superseded by a newer request");
+
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "Value" }),
+      ).toHaveAttribute("aria-sort", "descending"),
+    );
+    expect(getSearchPlayersCallCount()).toBe(callsBeforeSort + 2);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText(/Superseded/)).toBeNull();
+  });
+
+  it("shows a superseded column change as loading rather than a failure", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Projected Search", 160)]);
+    renderSearchRoute();
+
+    expect(await screen.findByText("Projected Search")).toBeInTheDocument();
+    const callsBeforeProjection = getSearchPlayersCallCount();
+    setSearchPlayersPageIpcMockMode("pendingProjection");
+    act(() => {
+      usePlayerTableStore
+        .getState()
+        .addColumns("search", ["attr.Acceleration"]);
+    });
+    await waitFor(() =>
+      expect(getSearchPlayersCallCount()).toBe(callsBeforeProjection + 1),
+    );
+
+    rejectPendingSearchPlayersPageIpcMock("Superseded by a newer request");
+    setSearchPlayersPageIpcMockMode("pendingProjection");
+    await waitFor(() =>
+      expect(getSearchPlayersCallCount()).toBe(callsBeforeProjection + 2),
+    );
+    expect(screen.getByText("Loading player results…")).toBeInTheDocument();
+    expect(screen.queryByText("Could not load players")).toBeNull();
+
+    resolvePendingSearchPlayersPageIpcMock();
+    expect(await screen.findByText("Projected Search")).toBeInTheDocument();
+    act(() => {
+      usePlayerTableStore
+        .getState()
+        .removeColumn("search", "attr.Acceleration");
+    });
+  });
+
   it("defaults missing dir from the sort field for partial URLs", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([

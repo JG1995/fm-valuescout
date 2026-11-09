@@ -6,7 +6,11 @@ import {
   DEFAULT_SEARCH_SORT_FIELD,
 } from "../types/search-sort";
 import type { ComparisonPool, SearchView } from "../types/search-view";
-import { fetchSearchPlayers, SEARCH_PAGE_SIZE } from "./fetch-search-players";
+import {
+  fetchSearchPlayers,
+  SEARCH_PAGE_SIZE,
+  type SearchTableId,
+} from "./fetch-search-players";
 import { type SearchPlayerPageContext, searchKeys } from "./search-keys";
 
 export { SEARCH_PAGE_SIZE };
@@ -23,6 +27,7 @@ export function searchPlayersQueryOptions(
   comparisonPool: ComparisonPool = "filtered",
   shortlistOnly = false,
   context?: SearchPlayerPageContext,
+  tableId?: SearchTableId,
 ) {
   return queryOptions({
     queryKey: searchKeys.players(
@@ -50,6 +55,7 @@ export function searchPlayersQueryOptions(
         searchView,
         comparisonPool,
         shortlistOnly,
+        tableId,
       ),
   });
 }

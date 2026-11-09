@@ -2,7 +2,7 @@
 //! computations. Nothing here is persisted; a restart starts empty.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use rusqlite::{Connection, InterruptHandle};
@@ -170,19 +170,44 @@ impl<V> Drop for Computing<'_, V> {
     }
 }
 
-/// The running computation of each table, so a newer request for a table can stop an older
-/// one. Clones share it.
+/// Table IDs a request may name. Only a panel's requested first page names its table.
+const TABLE_IDS: [&str; 3] = ["search", "moneyball-search", "staff-search"];
+
+/// Validates a table ID from the WebView against the closed set of tables.
+pub fn parse_table_id(value: &str) -> Result<&'static str, String> {
+    TABLE_IDS
+        .into_iter()
+        .find(|table| *table == value)
+        .ok_or_else(|| format!("unknown table: {value}"))
+}
+
+/// The arrival order and running computation of each table, so the newest request for a
+/// table is the one that completes. Clones share it.
 #[derive(Clone, Default)]
 pub struct TableRegistry {
-    running: Arc<Mutex<HashMap<String, Running>>>,
-    next_run: Arc<AtomicU64>,
+    tables: Arc<Mutex<HashMap<&'static str, TableState>>>,
+}
+
+#[derive(Default)]
+struct TableState {
+    /// The number of requests that have arrived, which is the newest one's arrival number.
+    arrivals: u64,
+    newest_fingerprint: String,
+    running: Option<Running>,
 }
 
 struct Running {
-    run: u64,
+    arrival: u64,
     fingerprint: String,
     cancelled: Arc<AtomicBool>,
     interrupt: InterruptHandle,
+}
+
+/// A table request's place in its table's arrival order.
+pub struct TableTicket {
+    table: &'static str,
+    arrival: u64,
+    fingerprint: String,
 }
 
 /// Tells a running table computation whether a newer request superseded it.
@@ -200,29 +225,46 @@ impl Cancellation {
     }
 }
 
-#[cfg_attr(not(test), allow(dead_code))] // PR `cached-table-results` runs table computations here.
 impl TableRegistry {
+    /// Records a request for `table` with the query `fingerprint` as the table's newest. A
+    /// command takes its ticket before it waits on a cache or a reader, so arrival order is
+    /// the order of the user's requests.
+    pub fn arrive(&self, table: &'static str, fingerprint: &str) -> TableTicket {
+        let mut tables = self.lock();
+        let state = tables.entry(table).or_default();
+        state.arrivals += 1;
+        state.newest_fingerprint = fingerprint.to_string();
+        TableTicket {
+            table,
+            arrival: state.arrivals,
+            fingerprint: fingerprint.to_string(),
+        }
+    }
+
     /// Runs one computation on `conn`.
     ///
-    /// With a table ID, it is that table's running computation until it returns. Starting a
-    /// different fingerprint for the same table cancels it and interrupts its statement on
-    /// `conn`; a failure it then returns becomes [`SUPERSEDED`]. It leaves the registry before
-    /// returning, and `conn` stays borrowed until then, so an interrupt can never reach a later
-    /// request on that connection. Without a table ID, nothing can supersede it.
+    /// Without a ticket, nothing can supersede it. With one, it fails with [`SUPERSEDED`]
+    /// without computing when a newer request for its table has a different fingerprint.
+    /// Otherwise it is the table's running computation until it returns: it cancels an older
+    /// running computation with a different fingerprint and interrupts that one's statement,
+    /// and a newer request does the same to it, turning its failure into [`SUPERSEDED`]. It
+    /// never replaces a newer request's computation; it then runs unregistered.
+    ///
+    /// It leaves the registry before returning, and `conn` stays borrowed until then, so an
+    /// interrupt can never reach a later request on that connection.
     pub fn run<T>(
         &self,
-        table: Option<&str>,
-        fingerprint: &str,
+        ticket: Option<&TableTicket>,
         conn: &Connection,
         compute: impl FnOnce(&Cancellation) -> Result<T, String>,
     ) -> Result<T, String> {
         let cancelled = Arc::new(AtomicBool::new(false));
         let cancellation = Cancellation(Arc::clone(&cancelled));
-        let Some(table) = table else {
+        let Some(ticket) = ticket else {
             return compute(&cancellation);
         };
 
-        let registration = self.register(table, fingerprint, conn, cancelled);
+        let registration = self.register(ticket, conn, cancelled)?;
         let result = compute(&cancellation);
         drop(registration);
         match result {
@@ -231,58 +273,63 @@ impl TableRegistry {
         }
     }
 
+    /// Decides under the registry lock whether the ticket's request may compute, and
+    /// registers it when no newer request runs.
     fn register<'a>(
         &'a self,
-        table: &'a str,
-        fingerprint: &str,
+        ticket: &'a TableTicket,
         conn: &Connection,
         cancelled: Arc<AtomicBool>,
-    ) -> Registration<'a> {
-        let run = self.next_run.fetch_add(1, Ordering::Relaxed);
-        let mut running = self.lock();
-        if let Some(older) = running.get(table) {
-            if older.fingerprint != fingerprint {
+    ) -> Result<Option<Registration<'a>>, String> {
+        let mut tables = self.lock();
+        let state = tables.entry(ticket.table).or_default();
+        if state.arrivals > ticket.arrival && state.newest_fingerprint != ticket.fingerprint {
+            return Err(SUPERSEDED.to_string());
+        }
+        if let Some(running) = &state.running {
+            if running.arrival > ticket.arrival {
+                return Ok(None);
+            }
+            if running.fingerprint != ticket.fingerprint {
                 // The older computation is still registered, so it still holds its connection.
-                older.cancelled.store(true, Ordering::Release);
-                older.interrupt.interrupt();
+                running.cancelled.store(true, Ordering::Release);
+                running.interrupt.interrupt();
             }
         }
-        running.insert(
-            table.to_string(),
-            Running {
-                run,
-                fingerprint: fingerprint.to_string(),
-                cancelled,
-                interrupt: conn.get_interrupt_handle(),
-            },
-        );
-        Registration {
+        state.running = Some(Running {
+            arrival: ticket.arrival,
+            fingerprint: ticket.fingerprint.clone(),
+            cancelled,
+            interrupt: conn.get_interrupt_handle(),
+        });
+        Ok(Some(Registration {
             registry: self,
-            table,
-            run,
-        }
+            ticket,
+        }))
     }
 
-    fn lock(&self) -> MutexGuard<'_, HashMap<String, Running>> {
-        self.running.lock().unwrap_or_else(PoisonError::into_inner)
+    fn lock(&self) -> MutexGuard<'_, HashMap<&'static str, TableState>> {
+        self.tables.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
 /// Removes its computation from the registry when dropped, unless a newer one replaced it.
 struct Registration<'a> {
     registry: &'a TableRegistry,
-    table: &'a str,
-    run: u64,
+    ticket: &'a TableTicket,
 }
 
 impl Drop for Registration<'_> {
     fn drop(&mut self) {
-        let mut running = self.registry.lock();
-        if running
-            .get(self.table)
-            .is_some_and(|entry| entry.run == self.run)
-        {
-            running.remove(self.table);
+        let mut tables = self.registry.lock();
+        if let Some(state) = tables.get_mut(self.ticket.table) {
+            if state
+                .running
+                .as_ref()
+                .is_some_and(|running| running.arrival == self.ticket.arrival)
+            {
+                state.running = None;
+            }
         }
     }
 }
@@ -430,11 +477,13 @@ mod tests {
         let registry = TableRegistry::default();
         let older = Connection::open_in_memory().unwrap();
         let newer = Connection::open_in_memory().unwrap();
+        let older_ticket = registry.arrive("search", "sort by CA");
 
-        let result = registry.run(Some("search"), "sort by CA", &older, |cancellation| {
+        let result = registry.run(Some(&older_ticket), &older, |cancellation| {
             let stepped = step_around(&older, || {
+                let newer_ticket = registry.arrive("search", "sort by PA");
                 registry
-                    .run(Some("search"), "sort by PA", &newer, |_| Ok(()))
+                    .run(Some(&newer_ticket), &newer, |_| Ok(()))
                     .unwrap();
             });
             assert!(cancellation.check().is_err());
@@ -449,18 +498,15 @@ mod tests {
         let registry = TableRegistry::default();
         let running = Connection::open_in_memory().unwrap();
         let other = Connection::open_in_memory().unwrap();
+        let running_ticket = registry.arrive("search", "sort by CA");
 
-        let result = registry.run(Some("search"), "sort by CA", &running, |cancellation| {
+        let result = registry.run(Some(&running_ticket), &running, |cancellation| {
             let stepped = step_around(&running, || {
-                registry
-                    .run(Some("search"), "sort by CA", &other, |_| Ok(()))
-                    .unwrap();
-                registry
-                    .run(None, "sort by PA", &other, |_| Ok(()))
-                    .unwrap();
-                registry
-                    .run(Some("staff-search"), "sort by PA", &other, |_| Ok(()))
-                    .unwrap();
+                let same = registry.arrive("search", "sort by CA");
+                registry.run(Some(&same), &other, |_| Ok(())).unwrap();
+                registry.run(None, &other, |_| Ok(())).unwrap();
+                let staff = registry.arrive("staff-search", "sort by PA");
+                registry.run(Some(&staff), &other, |_| Ok(())).unwrap();
             });
             cancellation.check()?;
             stepped.map_err(|error| error.to_string())
@@ -474,17 +520,52 @@ mod tests {
         let registry = TableRegistry::default();
         let reader = Connection::open_in_memory().unwrap();
         let newer = Connection::open_in_memory().unwrap();
-        registry
-            .run(Some("search"), "sort by CA", &reader, |_| Ok(()))
-            .unwrap();
+        let finished = registry.arrive("search", "sort by CA");
+        registry.run(Some(&finished), &reader, |_| Ok(())).unwrap();
 
         // The connection now serves an unrelated read while the table's next query starts.
         let unrelated = step_around(&reader, || {
-            registry
-                .run(Some("search"), "sort by PA", &newer, |_| Ok(()))
-                .unwrap();
+            let next = registry.arrive("search", "sort by PA");
+            registry.run(Some(&next), &newer, |_| Ok(())).unwrap();
         });
 
         assert_eq!(unrelated.unwrap(), 1000);
+    }
+
+    #[test]
+    fn an_older_request_that_wins_its_miss_after_a_newer_one_arrived_does_not_compute() {
+        let registry = TableRegistry::default();
+        let newer_conn = Connection::open_in_memory().unwrap();
+        let waiter_conn = Connection::open_in_memory().unwrap();
+        // The older request waited on a cache miss for its fingerprint while a newer one arrived.
+        let waiter = registry.arrive("search", "sort by CA");
+        let newer = registry.arrive("search", "sort by PA");
+
+        let newest = registry.run(Some(&newer), &newer_conn, |cancellation| {
+            let mut waiter_computed = false;
+            let stepped = step_around(&newer_conn, || {
+                let late = registry.run(Some(&waiter), &waiter_conn, |_| {
+                    waiter_computed = true;
+                    Ok(())
+                });
+                assert_eq!(late, Err(SUPERSEDED.to_string()));
+            });
+            assert!(!waiter_computed);
+            cancellation.check()?;
+            stepped.map_err(|error| error.to_string())
+        });
+
+        assert_eq!(newest, Ok(1000));
+    }
+
+    #[test]
+    fn only_the_closed_set_of_tables_is_accepted() {
+        assert_eq!(parse_table_id("search"), Ok("search"));
+        assert_eq!(parse_table_id("moneyball-search"), Ok("moneyball-search"));
+        assert_eq!(parse_table_id("staff-search"), Ok("staff-search"));
+        assert_eq!(
+            parse_table_id("squad"),
+            Err("unknown table: squad".to_string())
+        );
     }
 }

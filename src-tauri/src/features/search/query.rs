@@ -1,7 +1,10 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Row};
+
+use crate::db::result_cache::{Cancellation, ResultCache, TableRegistry, TableTicket};
+use crate::db::Db;
 
 use crate::features::moneyball::percentile::{calculate_percentiles, MoneyballNumericStatistics};
 use crate::features::moneyball::{
@@ -320,20 +323,7 @@ pub fn search_players_in_view(
     let club_dna_requested = club_dna_filter
         || sort_by.is_club_dna()
         || dynamic_fields.iter().any(MetricField::is_club_dna);
-    let snapshot_id: Option<i64> = conn
-        .query_row(
-            "SELECT s.id
-             FROM snapshots s
-             INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
-             WHERE s.is_current = 1
-             LIMIT 1",
-            [],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-
-    let Some(snapshot_id) = snapshot_id else {
+    let Some(snapshot_id) = active_current_snapshot_id(conn)? else {
         return Ok(SearchPlayersPage {
             players: Vec::new(),
             total: 0,
@@ -344,24 +334,12 @@ pub fn search_players_in_view(
     // Save-owned shortlist presence is checked before the current-snapshot
     // join, so a shortlist probe can distinguish `no_shortlist` from a stored
     // shortlist that happens to match no current player (empty `ready`).
-    if view == SearchView::General && shortlist_only {
-        let has_shortlist: bool = conn
-            .query_row(
-                "SELECT EXISTS(
-                    SELECT 1 FROM player_shortlist_entries
-                    WHERE save_id = (SELECT save_id FROM snapshots WHERE id = ?1)
-                 )",
-                [snapshot_id],
-                |row| row.get(0),
-            )
-            .map_err(|error| error.to_string())?;
-        if !has_shortlist {
-            return Ok(SearchPlayersPage {
-                players: Vec::new(),
-                total: 0,
-                state: SearchPlayersPageState::NoShortlist,
-            });
-        }
+    if view == SearchView::General && shortlist_only && !has_player_shortlist(conn, snapshot_id)? {
+        return Ok(SearchPlayersPage {
+            players: Vec::new(),
+            total: 0,
+            state: SearchPlayersPageState::NoShortlist,
+        });
     }
 
     let limit = limit.clamp(1, MAX_PAGE_LIMIT);
@@ -458,7 +436,7 @@ pub fn search_players_in_view(
         // Save-owned shortlist restriction (Commit 3): join by UID against the
         // effective current snapshot. Reusing ?1 adds no bind and keeps every
         // downstream parameter index unchanged.
-        SearchView::General if shortlist_only => "FROM players INNER JOIN player_shortlist_entries shortlist ON shortlist.player_uid = players.uid AND shortlist.save_id = (SELECT save_id FROM snapshots WHERE id = ?1)".to_string(),
+        SearchView::General if shortlist_only => GENERAL_SHORTLIST_FROM_SQL.to_string(),
         SearchView::General => "FROM players".to_string(),
         SearchView::Moneyball => "FROM players INNER JOIN player_moneyball_stats moneyball ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid AND moneyball.percentiles_json IS NOT NULL".to_string(),
     };
@@ -630,6 +608,412 @@ pub fn search_players_in_view(
     Ok(SearchPlayersPage {
         players,
         total,
+        state: SearchPlayersPageState::Ready,
+    })
+}
+
+/// Restricts General results to the save-owned shortlist by UID. Reusing `?1` (the snapshot)
+/// adds no bind, so every other parameter index stays unchanged.
+const GENERAL_SHORTLIST_FROM_SQL: &str = "FROM players INNER JOIN player_shortlist_entries shortlist ON shortlist.player_uid = players.uid AND shortlist.save_id = (SELECT save_id FROM snapshots WHERE id = ?1)";
+
+fn active_current_snapshot_id(conn: &Connection) -> Result<Option<i64>, String> {
+    conn.query_row(
+        "SELECT s.id
+         FROM snapshots s
+         INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
+         WHERE s.is_current = 1
+         LIMIT 1",
+        [],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|error| error.to_string())
+}
+
+fn has_player_shortlist(conn: &Connection, snapshot_id: i64) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM player_shortlist_entries
+            WHERE save_id = (SELECT save_id FROM snapshots WHERE id = ?1)
+         )",
+        [snapshot_id],
+        |row| row.get(0),
+    )
+    .map_err(|error| error.to_string())
+}
+
+/// One General table query's complete ordering, computed once per data generation.
+pub struct GeneralOrder {
+    /// The data generation of the reader that computed it.
+    generation: u64,
+    state: SearchPlayersPageState,
+    snapshot_id: i64,
+    uids: Vec<i64>,
+}
+
+/// General Search's computed orders, keyed by [`general_query_fingerprint`].
+pub type GeneralOrderCache = ResultCache<GeneralOrder>;
+
+/// Identifies a General table query by every input that changes its rows or their order. The
+/// offset, limit, and requested fields only choose which rows and columns a window shows.
+pub fn general_query_fingerprint(request: &SearchPlayersRequest<'_>) -> String {
+    format!(
+        "{:?}|{:?}|{:?}|{:?}|{:?}|{}",
+        request.view,
+        request.filter_ast,
+        request.sort_by,
+        request.sort_dir,
+        request.comparison_pool,
+        request.shortlist_only,
+    )
+}
+
+/// Serves one General Search window from its query's computed order, computing the order on a
+/// miss. With a ticket, the computation is its table's in `registry`, so a newer request for
+/// the table can supersede it. Returns the same page as [`search_players_in_view`].
+pub fn search_general_players(
+    db: &Db,
+    orders: &GeneralOrderCache,
+    registry: &TableRegistry,
+    ticket: Option<&TableTicket>,
+    request: SearchPlayersRequest<'_>,
+) -> Result<SearchPlayersPage, String> {
+    if request_needs_cohort_scoring(&request) {
+        // Moneyball-only queries keep failing on the uncached path, as they always have.
+        return search_players_in_view(&*db.read()?, request);
+    }
+    let fingerprint = general_query_fingerprint(&request);
+    let mut generation = db.generation();
+    loop {
+        let order = orders.get_or_compute(&fingerprint, generation, || {
+            let reader = db.read()?;
+            let order = registry.run(ticket, &reader, |cancellation| {
+                compute_general_order(&reader, reader.generation(), &request, cancellation)
+            })?;
+            Ok::<_, String>((reader.generation(), order))
+        })?;
+        let reader = db.read()?;
+        if reader.generation() > order.generation {
+            // Data changed since the order was read, so the window reads a fresh order.
+            generation = reader.generation();
+            continue;
+        }
+        return read_general_window(&reader, &order, &request);
+    }
+}
+
+/// Computes a General query's complete key-only ordering with `search_players_in_view`'s
+/// snapshot, shortlist, filter, join, and sort SQL.
+fn compute_general_order(
+    conn: &Connection,
+    generation: u64,
+    request: &SearchPlayersRequest<'_>,
+    cancellation: &Cancellation,
+) -> Result<GeneralOrder, String> {
+    #[cfg(test)]
+    tests::ORDER_COMPUTATIONS.with(|count| count.set(count.get() + 1));
+    let SearchPlayersRequest {
+        sort_by,
+        sort_dir,
+        filter_ast,
+        shortlist_only,
+        ..
+    } = request;
+    let empty = |state| GeneralOrder {
+        generation,
+        state,
+        snapshot_id: 0,
+        uids: Vec::new(),
+    };
+    let Some(snapshot_id) = active_current_snapshot_id(conn)? else {
+        return Ok(empty(SearchPlayersPageState::NoCurrentSnapshot));
+    };
+    if *shortlist_only && !has_player_shortlist(conn, snapshot_id)? {
+        return Ok(empty(SearchPlayersPageState::NoShortlist));
+    }
+
+    let club_dna_filter =
+        filter_ast.is_some_and(|ast| ast.rules.iter().any(|rule| rule.field == "club_dna"));
+    let compiled = match filter_ast {
+        None => None,
+        Some(ast) => {
+            let compiled = if club_dna_filter {
+                compile_filters_with_club_dna(ast, 4, ClubDnaSqlBindings::new(2, 3))?
+            } else {
+                compile_filters(ast, 2)?
+            };
+            (!compiled.sql.is_empty()).then_some(compiled)
+        }
+    };
+    let (uses_current_role_metrics, uses_potential_role_metrics) =
+        general_role_metric_requirements(request, &[])?;
+    assert_read_models_complete(
+        conn,
+        snapshot_id,
+        uses_current_role_metrics,
+        uses_potential_role_metrics,
+    )?;
+    cancellation.check()?;
+
+    let tactic = sort_by
+        .is_tactic()
+        .then(|| read_tactic(conn, snapshot_save_id(conn, snapshot_id)?))
+        .transpose()?;
+    let club_dna_bindings = (club_dna_filter || sort_by.is_club_dna()).then(|| {
+        if club_dna_filter {
+            ClubDnaSqlBindings::new(2, 3)
+        } else {
+            let filter_params = compiled.as_ref().map_or(0, |filter| filter.params.len());
+            ClubDnaSqlBindings::new(filter_params + 2, filter_params + 3)
+        }
+    });
+    let club_dna_definition_version = club_dna_bindings
+        .is_some()
+        .then(|| current_club_dna_definition_version(conn, snapshot_id))
+        .transpose()?
+        .flatten();
+    let club_dna_sort = sort_by.club_dna_sort_identity(club_dna_definition_version);
+
+    let mut from_sql = if *shortlist_only {
+        GENERAL_SHORTLIST_FROM_SQL.to_string()
+    } else {
+        "FROM players".to_string()
+    };
+    if uses_current_role_metrics || uses_potential_role_metrics {
+        from_sql.push_str(&player_metrics_join(
+            "players",
+            uses_current_role_metrics,
+            uses_potential_role_metrics,
+        ));
+    }
+    if let Some((_, bindings)) = club_dna_sort.zip(club_dna_bindings) {
+        from_sql.push_str(&format!(
+            " LEFT JOIN club_dna_scores club_dna_sort
+              ON club_dna_sort.snapshot_id = players.snapshot_id
+              AND club_dna_sort.uid = players.uid
+              AND club_dna_sort.definition_version = ?{}
+              AND club_dna_sort.score_model_version = ?{}",
+            bindings.definition_version, bindings.score_model_version
+        ));
+    }
+    let mut where_sql = "players.snapshot_id = ?1".to_string();
+    let mut bind_values = vec![Value::Integer(snapshot_id)];
+    if club_dna_filter {
+        bind_values.push(club_dna_definition_version.map_or(Value::Null, Value::Integer));
+        bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
+    }
+    if let Some(compiled) = &compiled {
+        where_sql.push_str(" AND ");
+        where_sql.push_str(&compiled.sql);
+        bind_values.extend(compiled.params.iter().cloned());
+    }
+    if let Some(identity) = club_dna_sort.filter(|_| !club_dna_filter) {
+        bind_values.push(
+            identity
+                .definition_version
+                .map_or(Value::Null, Value::Integer),
+        );
+        bind_values.push(Value::Integer(identity.score_model_version));
+    }
+
+    // Whitelisted expr + dir only — never interpolate raw client strings.
+    let order_sql = if club_dna_sort.is_some() {
+        format!(
+            "ORDER BY club_dna_sort.score IS NULL ASC, club_dna_sort.score {}, players.uid ASC",
+            sort_dir.sql_keyword()
+        )
+    } else if let Some(tactic) = &tactic {
+        let lane_id = sort_by.tactic_lane_id().expect("tactic lane");
+        let lane = tactic
+            .lanes
+            .iter()
+            .find(|l| l.lane_id == lane_id)
+            .ok_or_else(|| format!("unknown tactic lane: {lane_id}"))?;
+        let group = sort_by.tactic_group().expect("tactic group");
+        let expr = tactic_sql_expression(lane, group, "players");
+        format!(
+            "ORDER BY ({expr} IS NULL) ASC, {expr} {}, players.uid ASC",
+            sort_dir.sql_keyword()
+        )
+    } else {
+        format!(
+            "ORDER BY {} {}, players.uid ASC",
+            sort_by.sql_expr(club_dna_bindings),
+            sort_dir.sql_keyword()
+        )
+    };
+
+    #[cfg(test)]
+    if let Some(hook) = tests::BEFORE_ORDER_QUERY.with(|hook| hook.borrow_mut().take()) {
+        hook();
+    }
+    cancellation.check()?;
+    let uids = conn
+        .prepare(&format!(
+            "SELECT players.uid {from_sql} WHERE {where_sql} {order_sql}"
+        ))
+        .map_err(|error| error.to_string())?
+        .query_map(params_from_iter(bind_values.iter()), |row| row.get(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<i64>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(GeneralOrder {
+        generation,
+        state: SearchPlayersPageState::Ready,
+        snapshot_id,
+        uids,
+    })
+}
+
+/// Whether a General request reads current and potential compact role metrics, through its
+/// filters, sort, tactic columns, or requested fields.
+fn general_role_metric_requirements(
+    request: &SearchPlayersRequest<'_>,
+    dynamic_fields: &[MetricField],
+) -> Result<(bool, bool), String> {
+    let current_filter_roles = request
+        .filter_ast
+        .map(current_role_ids_from_ast)
+        .transpose()?
+        .unwrap_or_default();
+    let potential_filter_roles = request
+        .filter_ast
+        .map(potential_role_ids_from_ast)
+        .transpose()?
+        .unwrap_or_default();
+    let sort_by = &request.sort_by;
+    let mut uses_current = sort_by.current_role_id().is_some()
+        || dynamic_fields
+            .iter()
+            .any(|field| field.current_role_id().is_some())
+        || !current_filter_roles.is_empty();
+    let mut uses_potential = sort_by.potential_role_id().is_some()
+        || dynamic_fields
+            .iter()
+            .any(|field| field.potential_role_id().is_some())
+        || !potential_filter_roles.is_empty();
+    let uses_tactic_current =
+        dynamic_fields.iter().any(MetricField::is_tactic_current) || sort_by.is_tactic_current();
+    let uses_tactic_potential = dynamic_fields
+        .iter()
+        .any(|field| field.is_tactic_field() && !field.is_tactic_current())
+        || (sort_by.is_tactic() && !sort_by.is_tactic_current());
+    if uses_tactic_current || uses_tactic_potential {
+        uses_current = true;
+        uses_potential |= uses_tactic_potential;
+    }
+    Ok((uses_current, uses_potential))
+}
+
+/// Reads today's display columns and the requested fields for one window of a computed order,
+/// in the order's sequence.
+fn read_general_window(
+    conn: &Connection,
+    order: &GeneralOrder,
+    request: &SearchPlayersRequest<'_>,
+) -> Result<SearchPlayersPage, String> {
+    let dynamic_fields = parse_requested_fields_for_moneyball(request.requested_fields, false)?
+        .into_iter()
+        .filter(|field| !field.is_basic_table_field())
+        .collect::<Vec<_>>();
+    if order.state != SearchPlayersPageState::Ready {
+        return Ok(SearchPlayersPage {
+            players: Vec::new(),
+            total: 0,
+            state: order.state,
+        });
+    }
+    let snapshot_id = order.snapshot_id;
+    let (uses_current_role_metrics, uses_potential_role_metrics) =
+        general_role_metric_requirements(request, &dynamic_fields)?;
+    assert_read_models_complete(
+        conn,
+        snapshot_id,
+        uses_current_role_metrics,
+        uses_potential_role_metrics,
+    )?;
+    let tactic = dynamic_fields
+        .iter()
+        .any(MetricField::is_tactic_field)
+        .then(|| read_tactic(conn, snapshot_save_id(conn, snapshot_id)?))
+        .transpose()?;
+
+    let mut bind_values = vec![Value::Integer(snapshot_id)];
+    let club_dna_bindings = dynamic_fields
+        .iter()
+        .any(MetricField::is_club_dna)
+        .then(|| ClubDnaSqlBindings::new(2, 3));
+    if club_dna_bindings.is_some() {
+        let definition_version = current_club_dna_definition_version(conn, snapshot_id)?;
+        bind_values.push(definition_version.map_or(Value::Null, Value::Integer));
+        bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
+    }
+
+    let mut select_sql = String::from(
+        "SELECT
+                players.uid,
+                players.name,
+                players.age,
+                players.birth_year,
+                players.birth_day_of_year,
+                players.nationalities_json,
+                players.current_club,
+                players.current_club_uid,
+                players.division,
+                players.ca,
+                players.pa,
+                players.market_value_gbp",
+    );
+    for field in &dynamic_fields {
+        select_sql.push_str(", ");
+        if let Some(tactic) = tactic.as_ref().filter(|_| field.is_tactic_field()) {
+            let lane_id = field.tactic_lane_id().expect("tactic lane");
+            let lane = tactic
+                .lanes
+                .iter()
+                .find(|l| l.lane_id == lane_id)
+                .ok_or_else(|| format!("unknown tactic lane: {lane_id}"))?;
+            let group = field.tactic_group().expect("tactic group");
+            select_sql.push_str(&tactic_sql_expression(lane, group, "players"));
+        } else {
+            select_sql.push_str(&field.sql_expression_with_club_dna("players", club_dna_bindings));
+        }
+    }
+    select_sql.push_str(" FROM players");
+    if uses_current_role_metrics || uses_potential_role_metrics {
+        select_sql.push_str(&player_metrics_join(
+            "players",
+            uses_current_role_metrics,
+            uses_potential_role_metrics,
+        ));
+    }
+
+    let limit = request.limit.clamp(1, MAX_PAGE_LIMIT);
+    let start = request.offset.min(order.uids.len());
+    let window = &order.uids[start..(start + limit).min(order.uids.len())];
+    let first_uid_index = bind_values.len() + 1;
+    let uid_placeholders = (0..window.len())
+        .map(|index| format!("?{}", first_uid_index + index))
+        .collect::<Vec<_>>()
+        .join(", ");
+    bind_values.extend(window.iter().map(|uid| Value::Integer(*uid)));
+    select_sql.push_str(&format!(
+        " WHERE players.snapshot_id = ?1 AND players.uid IN ({uid_placeholders})"
+    ));
+
+    let mut rows = conn
+        .prepare(&select_sql)
+        .map_err(|error| error.to_string())?
+        .query_map(params_from_iter(bind_values.iter()), |row| {
+            map_player_summary(row, &dynamic_fields, &[], false)
+        })
+        .map_err(|error| error.to_string())?
+        .map(|row| row.map(|player| (player.uid, player)))
+        .collect::<Result<HashMap<_, _>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(SearchPlayersPage {
+        players: window.iter().filter_map(|uid| rows.remove(uid)).collect(),
+        total: i64::try_from(order.uids.len()).map_err(|error| error.to_string())?,
         state: SearchPlayersPageState::Ready,
     })
 }
@@ -1434,7 +1818,16 @@ mod tests {
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service::{create_save, set_active_save};
     use serde_json::{json, Map, Value};
+    use std::cell::{Cell, RefCell};
     use std::path::Path;
+
+    thread_local! {
+        /// General order computations run on this thread.
+        pub(super) static ORDER_COMPUTATIONS: Cell<usize> = const { Cell::new(0) };
+        /// Runs once, just before the next General order query on this thread.
+        pub(super) static BEFORE_ORDER_QUERY: RefCell<Option<Box<dyn FnOnce()>>> =
+            const { RefCell::new(None) };
+    }
 
     fn search_without_filters(
         conn: &Connection,
@@ -5977,6 +6370,314 @@ mod tests {
                 .dynamic_values
                 .get("tactic_current.goalkeeper"),
             "filtered vs full must diverge for same player"
+        );
+    }
+
+    struct GeneralShape {
+        name: &'static str,
+        sort: &'static str,
+        dir: SortDir,
+        filters: Option<FilterAst>,
+        fields: Vec<String>,
+        shortlist_only: bool,
+    }
+
+    impl GeneralShape {
+        fn new(name: &'static str, sort: &'static str, dir: SortDir, fields: &[&str]) -> Self {
+            Self {
+                name,
+                sort,
+                dir,
+                filters: None,
+                fields: fields.iter().map(|field| field.to_string()).collect(),
+                shortlist_only: false,
+            }
+        }
+
+        fn filtered(self, rules: Vec<FilterRule>, combine: &str) -> Self {
+            Self {
+                filters: Some(parse_filter_ast(rules, Some(combine)).expect("filters")),
+                ..self
+            }
+        }
+
+        fn request(&self, offset: usize, limit: usize) -> SearchPlayersRequest<'_> {
+            SearchPlayersRequest {
+                offset,
+                limit,
+                sort_by: SortField::parse(self.sort).expect("sort"),
+                sort_dir: self.dir,
+                filter_ast: self.filters.as_ref(),
+                requested_fields: &self.fields,
+                view: SearchView::General,
+                comparison_pool: ComparisonPool::FullCsv,
+                shortlist_only: self.shortlist_only,
+            }
+        }
+    }
+
+    /// A database with readers whose players tie and miss values across every General sort.
+    fn open_general_equivalence_db() -> (tempfile::TempDir, Db) {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = crate::db::open(&temp_dir.path().join(crate::db::APP_DB_FILE)).expect("open db");
+        let names = [
+            "Zed", "alpha", "Bravo", "charlie", "Delta", "echo", "Alpha", "foxtrot", "Golf",
+            "hotel", "India",
+        ];
+        let abilities = [150, 120, 150, 90, 120, 150, 180, 90, 120, 150, 100];
+        let players = (1..=11)
+            .map(|uid| {
+                let index = uid as usize - 1;
+                let mut player = player_template(uid, names[index], abilities[index]);
+                player["age"] = json!(18 + (uid as i64 * 5) % 14);
+                player["marketValueGbp"] = json!((uid as i64 % 4) * 500_000);
+                player["attributes"] = if uid % 5 == 0 {
+                    json!({})
+                } else {
+                    json!({ "Acceleration": 8 + uid % 4 })
+                };
+                player["positions"] = match uid % 3 {
+                    0 => json!({ "MC": 18 }),
+                    1 => json!({ "GK": 18 }),
+                    _ => json!({ "GK": 14, "MC": 12 }),
+                };
+                player
+            })
+            .collect();
+        ingest_players(&mut db.0.lock().expect("lock writer"), players);
+
+        let writer = db.0.lock().expect("lock writer");
+        for (uid, score) in [
+            (1, Some(70)),
+            (2, Some(70)),
+            (4, None),
+            (7, Some(85)),
+            (8, Some(40)),
+        ] {
+            set_role_score(&writer, uid, "goalkeeper_ip", score);
+            set_role_score(&writer, uid, "line_holding_keeper_oop", score);
+            set_potential_role_score(&writer, uid, "goalkeeper_ip", score.map(|value| value + 5));
+            set_potential_role_score(
+                &writer,
+                uid,
+                "line_holding_keeper_oop",
+                score.map(|value| value + 5),
+            );
+        }
+        let snapshot_id = current_snapshot_id(&writer);
+        writer
+            .execute(
+                "INSERT INTO club_dna_definitions (save_id, attribute_ids_json, definition_version)
+                 SELECT save_id, '[\"attr.Acceleration\"]', 2 FROM snapshots WHERE id = ?1",
+                [snapshot_id],
+            )
+            .expect("insert Club DNA definition");
+        for (uid, definition_version, score) in [
+            (1, 2, Some(30)),
+            (3, 2, Some(30)),
+            (6, 2, None),
+            (9, 1, Some(99)),
+            (10, 2, Some(75)),
+        ] {
+            writer
+                .execute(
+                    "INSERT INTO club_dna_scores (
+                        snapshot_id, uid, definition_version, score_model_version, score
+                     ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![
+                        snapshot_id,
+                        uid,
+                        definition_version,
+                        SCORE_MODEL_VERSION,
+                        score
+                    ],
+                )
+                .expect("insert Club DNA score");
+        }
+        drop(writer);
+        (temp_dir, db)
+    }
+
+    /// Joins three-row cached windows and compares each with the uncached page at its offset.
+    fn assert_cached_windows_match(db: &Db, orders: &GeneralOrderCache, shape: &GeneralShape) {
+        let registry = TableRegistry::default();
+        let complete = search_players_in_view(
+            &db.read().expect("reader"),
+            shape.request(0, MAX_PAGE_LIMIT),
+        )
+        .expect("uncached complete page");
+        let mut joined = Vec::new();
+        for offset in (0..complete.players.len() + 3).step_by(3) {
+            let cached =
+                search_general_players(db, orders, &registry, None, shape.request(offset, 3))
+                    .unwrap_or_else(|error| panic!("{}: {error}", shape.name));
+            let uncached =
+                search_players_in_view(&db.read().expect("reader"), shape.request(offset, 3))
+                    .expect("uncached page");
+            assert_eq!(cached, uncached, "{} at offset {offset}", shape.name);
+            joined.extend(cached.players);
+        }
+        assert_eq!(joined, complete.players, "{} joined windows", shape.name);
+    }
+
+    #[test]
+    fn cached_general_windows_equal_uncached_pages_for_every_shape() {
+        let (_temp_dir, db) = open_general_equivalence_db();
+        let orders = GeneralOrderCache::new(4);
+        let shapes = vec![
+            GeneralShape::new("CA", "ca", SortDir::Desc, &["height"]),
+            GeneralShape::new("name", "name", SortDir::Asc, &[]),
+            GeneralShape::new(
+                "current role",
+                "role.goalkeeper_ip",
+                SortDir::Desc,
+                &["role.goalkeeper_ip", "potential_role.goalkeeper_ip"],
+            ),
+            GeneralShape::new(
+                "potential role",
+                "potential_role.goalkeeper_ip",
+                SortDir::Asc,
+                &["potential_role.goalkeeper_ip"],
+            ),
+            GeneralShape::new("Club DNA", "club_dna", SortDir::Desc, &["club_dna"]),
+            GeneralShape::new(
+                "tactic column",
+                "tactic_current.goalkeeper",
+                SortDir::Desc,
+                &["tactic_current.goalkeeper", "tactic_potential.goalkeeper"],
+            ),
+            GeneralShape::new(
+                "attribute",
+                "attr.Acceleration",
+                SortDir::Asc,
+                &["attr.Acceleration", "position"],
+            ),
+            GeneralShape::new("AND filter", "pa", SortDir::Desc, &["club_dna"]).filtered(
+                vec![
+                    filter_rule("ca", "gte", FilterValue::Integer(120)),
+                    filter_rule("age", "lte", FilterValue::Integer(26)),
+                ],
+                "and",
+            ),
+            GeneralShape::new("OR filter", "value", SortDir::Asc, &["role.goalkeeper_ip"])
+                .filtered(
+                    vec![
+                        filter_rule("ca", "eq", FilterValue::Integer(90)),
+                        filter_rule("role.goalkeeper_ip", "gte", FilterValue::Integer(70)),
+                    ],
+                    "or",
+                ),
+            GeneralShape::new("Club DNA filter", "club_dna", SortDir::Asc, &["club_dna"]).filtered(
+                vec![filter_rule("club_dna", "gte", FilterValue::Integer(10))],
+                "and",
+            ),
+            GeneralShape::new("empty", "ca", SortDir::Desc, &[]).filtered(
+                vec![filter_rule("ca", "gte", FilterValue::Integer(999))],
+                "and",
+            ),
+        ];
+        for shape in &shapes {
+            assert_cached_windows_match(&db, &orders, shape);
+        }
+
+        let shortlist = GeneralShape {
+            shortlist_only: true,
+            ..GeneralShape::new("shortlist", "ca", SortDir::Desc, &["role.goalkeeper_ip"])
+        };
+        assert_cached_windows_match(&db, &orders, &shortlist);
+        {
+            let writer = db.0.lock().expect("lock writer");
+            for uid in [2, 3, 5, 99] {
+                writer
+                    .execute(
+                        "INSERT INTO player_shortlist_entries (save_id, player_uid)
+                         SELECT save_id, ?1 FROM snapshots WHERE is_current = 1",
+                        [uid],
+                    )
+                    .expect("seed shortlist");
+            }
+        }
+        assert_cached_windows_match(&db, &orders, &shortlist);
+    }
+
+    #[test]
+    fn later_windows_reuse_the_order_until_a_write() {
+        let (_temp_dir, db) = open_general_equivalence_db();
+        let orders = GeneralOrderCache::new(4);
+        let registry = TableRegistry::default();
+        let shape = GeneralShape::new("CA", "ca", SortDir::Desc, &["height"]);
+        let with_column = GeneralShape::new("CA", "ca", SortDir::Desc, &["attr.Acceleration"]);
+        ORDER_COMPUTATIONS.with(|count| count.set(0));
+
+        search_general_players(&db, &orders, &registry, None, shape.request(0, 3))
+            .expect("first window");
+        search_general_players(&db, &orders, &registry, None, shape.request(6, 3))
+            .expect("later window");
+        search_general_players(&db, &orders, &registry, None, with_column.request(3, 3))
+            .expect("window with another column");
+        assert_eq!(ORDER_COMPUTATIONS.with(Cell::get), 1);
+
+        db.0.lock()
+            .expect("lock writer")
+            .execute("UPDATE players SET ca = 200 WHERE uid = 4", [])
+            .expect("change a player");
+        let fresh = search_general_players(&db, &orders, &registry, None, shape.request(0, 3))
+            .expect("window after a write");
+        assert_eq!(ORDER_COMPUTATIONS.with(Cell::get), 2);
+        assert_eq!(fresh.players[0].uid, 4);
+        assert_eq!(
+            fresh,
+            search_players_in_view(&db.read().expect("reader"), shape.request(0, 3))
+                .expect("uncached page")
+        );
+    }
+
+    #[test]
+    fn a_newer_general_query_supersedes_a_running_one_and_completes() {
+        let (_temp_dir, db) = open_general_equivalence_db();
+        let orders = GeneralOrderCache::new(4);
+        let registry = TableRegistry::default();
+        let older = GeneralShape::new("CA", "ca", SortDir::Desc, &[]);
+        let newer = || GeneralShape::new("name", "name", SortDir::Asc, &[]);
+        let older_ticket =
+            registry.arrive("search", &general_query_fingerprint(&older.request(0, 3)));
+
+        let (sender, receiver) = std::sync::mpsc::channel();
+        {
+            let (db, orders, registry) = (db.clone(), orders.clone(), registry.clone());
+            BEFORE_ORDER_QUERY.with(|hook| {
+                *hook.borrow_mut() = Some(Box::new(move || {
+                    let newer = newer();
+                    let ticket =
+                        registry.arrive("search", &general_query_fingerprint(&newer.request(0, 3)));
+                    sender
+                        .send(search_general_players(
+                            &db,
+                            &orders,
+                            &registry,
+                            Some(&ticket),
+                            newer.request(0, 3),
+                        ))
+                        .expect("send newer page");
+                }));
+            });
+        }
+
+        let superseded = search_general_players(
+            &db,
+            &orders,
+            &registry,
+            Some(&older_ticket),
+            older.request(0, 3),
+        );
+        assert_eq!(
+            superseded,
+            Err(crate::db::result_cache::SUPERSEDED.to_string())
+        );
+        let newer = newer();
+        assert_eq!(
+            receiver.recv().expect("newer page"),
+            search_players_in_view(&db.read().expect("reader"), newer.request(0, 3))
         );
     }
 }
