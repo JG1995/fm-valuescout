@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::blocking;
 use crate::db::Db;
 
 use super::filter::{self, FilterRule};
@@ -119,7 +120,7 @@ impl From<SearchPlayersPage> for SearchPlayersPageDto {
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Tauri deserializes this established flat query payload.
-pub fn search_players(
+pub async fn search_players(
     offset: Option<u32>,
     limit: Option<u32>,
     sort_by: Option<String>,
@@ -132,50 +133,54 @@ pub fn search_players(
     shortlist_only: Option<bool>,
     db: State<'_, Db>,
 ) -> Result<SearchPlayersPageDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let offset = offset.unwrap_or(0) as usize;
-    let limit = limit
-        .map(|value| value as usize)
-        .unwrap_or(DEFAULT_PAGE_LIMIT)
-        .clamp(1, MAX_PAGE_LIMIT);
-    let view = parse_search_view(search_view.as_deref())?;
-    let comparison_pool = parse_comparison_pool(comparison_pool.as_deref(), view)?;
-    let sort_by = parse_search_sort_for_view(sort_by.as_deref(), view)?;
-    let sort_dir = match sort_dir.as_deref() {
-        None => SortDir::DEFAULT,
-        Some(value) => SortDir::parse(value)?,
-    };
-    let filter_ast = match filters {
-        None => None,
-        Some(rules) => {
-            let parsed_rules = rules
-                .into_iter()
-                .map(FilterRule::try_from)
-                .collect::<Result<Vec<_>, _>>()?;
-            Some(filter::parse_filter_ast(
-                parsed_rules,
-                filter_combine.as_deref(),
-            )?)
-        }
-    };
-    let requested_fields = requested_fields.unwrap_or_default();
-    let page = query::search_players_in_view(
-        &conn,
-        SearchPlayersRequest {
-            offset,
-            limit,
-            sort_by,
-            sort_dir,
-            filter_ast: filter_ast.as_ref(),
-            requested_fields: &requested_fields,
-            view,
-            comparison_pool,
-            shortlist_only: shortlist_only.unwrap_or(false),
-        },
-    )?;
-    Ok(SearchPlayersPageDto::from(page))
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let offset = offset.unwrap_or(0) as usize;
+        let limit = limit
+            .map(|value| value as usize)
+            .unwrap_or(DEFAULT_PAGE_LIMIT)
+            .clamp(1, MAX_PAGE_LIMIT);
+        let view = parse_search_view(search_view.as_deref())?;
+        let comparison_pool = parse_comparison_pool(comparison_pool.as_deref(), view)?;
+        let sort_by = parse_search_sort_for_view(sort_by.as_deref(), view)?;
+        let sort_dir = match sort_dir.as_deref() {
+            None => SortDir::DEFAULT,
+            Some(value) => SortDir::parse(value)?,
+        };
+        let filter_ast = match filters {
+            None => None,
+            Some(rules) => {
+                let parsed_rules = rules
+                    .into_iter()
+                    .map(FilterRule::try_from)
+                    .collect::<Result<Vec<_>, _>>()?;
+                Some(filter::parse_filter_ast(
+                    parsed_rules,
+                    filter_combine.as_deref(),
+                )?)
+            }
+        };
+        let requested_fields = requested_fields.unwrap_or_default();
+        let page = query::search_players_in_view(
+            &conn,
+            SearchPlayersRequest {
+                offset,
+                limit,
+                sort_by,
+                sort_dir,
+                filter_ast: filter_ast.as_ref(),
+                requested_fields: &requested_fields,
+                view,
+                comparison_pool,
+                shortlist_only: shortlist_only.unwrap_or(false),
+            },
+        )?;
+        Ok(SearchPlayersPageDto::from(page))
+    })
+    .await
 }
 
 fn parse_search_view(value: Option<&str>) -> Result<SearchView, String> {
@@ -230,20 +235,24 @@ impl From<PlayerSuggestHit> for PlayerSuggestHitDto {
 }
 
 #[tauri::command]
-pub fn suggest_players(
+pub async fn suggest_players(
     query: String,
     limit: Option<u32>,
     db: State<'_, Db>,
 ) -> Result<Vec<PlayerSuggestHitDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let limit = limit
-        .map(|value| value as usize)
-        .unwrap_or(DEFAULT_SUGGEST_LIMIT)
-        .clamp(1, MAX_SUGGEST_LIMIT);
-    let hits = query::suggest_players(&conn, &query, limit)?;
-    Ok(hits.into_iter().map(PlayerSuggestHitDto::from).collect())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let limit = limit
+            .map(|value| value as usize)
+            .unwrap_or(DEFAULT_SUGGEST_LIMIT)
+            .clamp(1, MAX_SUGGEST_LIMIT);
+        let hits = query::suggest_players(&conn, &query, limit)?;
+        Ok(hits.into_iter().map(PlayerSuggestHitDto::from).collect())
+    })
+    .await
 }
 
 #[cfg(test)]

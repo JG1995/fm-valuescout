@@ -2,6 +2,7 @@ use std::path::Path;
 
 use tauri::State;
 
+use crate::blocking;
 use crate::db::Db;
 
 use super::player_shortlist::{
@@ -18,24 +19,38 @@ use super::staff_shortlist::{
 };
 
 #[tauri::command]
-pub fn import_csv(path: String, db: State<'_, Db>) -> Result<CsvImportSummary, String> {
-    import_csv_for_path(Path::new(&path), &db).map_err(|error| error.to_string())
+pub async fn import_csv(path: String, db: State<'_, Db>) -> Result<CsvImportSummary, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        import_csv_for_path(Path::new(&path), &db).map_err(|error| error.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn import_player_shortlist_csv(
+pub async fn import_player_shortlist_csv(
     path: String,
     db: State<'_, Db>,
 ) -> Result<PlayerShortlistImportSummary, String> {
-    import_player_shortlist_csv_for_path(Path::new(&path), &db).map_err(|error| error.to_string())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        import_player_shortlist_csv_for_path(Path::new(&path), &db)
+            .map_err(|error| error.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn import_staff_shortlist_csv(
+pub async fn import_staff_shortlist_csv(
     path: String,
     db: State<'_, Db>,
 ) -> Result<StaffShortlistImportSummary, String> {
-    import_staff_shortlist_csv_for_path(Path::new(&path), &db).map_err(|error| error.to_string())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        import_staff_shortlist_csv_for_path(Path::new(&path), &db)
+            .map_err(|error| error.to_string())
+    })
+    .await
 }
 
 pub(crate) fn import_csv_for_path(

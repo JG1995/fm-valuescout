@@ -1,7 +1,7 @@
 pub mod migrations;
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use rusqlite::Connection;
 use tauri::{AppHandle, Manager};
@@ -12,8 +12,15 @@ use tauri::{AppHandle, Manager};
 /// never opened, migrated, or converted.
 pub const APP_DB_FILE: &str = "app-v2.db";
 
-/// Shared rusqlite connection for IPC commands.
-pub struct Db(pub Mutex<Connection>);
+/// Shared rusqlite connection for IPC commands. Clones share one connection.
+#[derive(Clone)]
+pub struct Db(pub Arc<Mutex<Connection>>);
+
+impl Db {
+    pub fn new(conn: Connection) -> Self {
+        Self(Arc::new(Mutex::new(conn)))
+    }
+}
 
 pub fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
@@ -34,7 +41,7 @@ pub fn open(db_path: &Path) -> Result<Db, String> {
         .map_err(|error| error.to_string())?;
     migrations::apply(&conn).map_err(|error| error.to_string())?;
 
-    Ok(Db(Mutex::new(conn)))
+    Ok(Db::new(conn))
 }
 
 #[cfg(test)]
@@ -45,7 +52,7 @@ mod tests {
     fn open_enables_foreign_key_enforcement() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db = open(&temp_dir.path().join("foreign-keys-test.db")).expect("open db");
-        let conn = db.0.into_inner().expect("unlock db");
+        let conn = db.0.lock().expect("lock db");
 
         let foreign_keys: i32 = conn
             .pragma_query_value(None, "foreign_keys", |row| row.get(0))
@@ -63,7 +70,7 @@ mod tests {
     fn opening_the_v2_database_applies_the_compact_metrics_schema() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db = open(&temp_dir.path().join(APP_DB_FILE)).expect("open fresh v2 database");
-        let conn = db.0.into_inner().expect("unlock db");
+        let conn = db.0.lock().expect("lock db");
 
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))

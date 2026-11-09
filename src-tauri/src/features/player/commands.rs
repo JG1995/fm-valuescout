@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tauri::State;
 
+use crate::blocking;
 use crate::db::Db;
 use crate::features::managed_club::service as managed_club_service;
 use crate::features::memory_read::service::{
@@ -177,72 +178,97 @@ impl From<VerifiedPlayerBoost> for PlayerBoostResultDto {
 /// Query key for frontend cache: `["player", uid]` — invalidate with snapshot/save keys
 /// when Load Data or set_active_save runs (wired in a later commit).
 #[tauri::command]
-pub fn get_player(uid: i64, db: State<'_, Db>) -> Result<Option<PlayerDetailDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let player = query::get_player(&conn, uid)?;
-    Ok(player.map(PlayerDetailDto::from))
+pub async fn get_player(uid: i64, db: State<'_, Db>) -> Result<Option<PlayerDetailDto>, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let player = query::get_player(&conn, uid)?;
+        Ok(player.map(PlayerDetailDto::from))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn set_hidden_information_revealed(revealed: bool, db: State<'_, Db>) -> Result<bool, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    service::set_hidden_information_revealed(&conn, revealed)
+pub async fn set_hidden_information_revealed(
+    revealed: bool,
+    db: State<'_, Db>,
+) -> Result<bool, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        service::set_hidden_information_revealed(&conn, revealed)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn boost_current_ability(
+pub async fn boost_current_ability(
     uid: i64,
     db: State<'_, Db>,
 ) -> Result<PlayerBoostResultDto, PlayerBoostError> {
-    execute_player_boost(uid, db.inner(), service::prepare_current_ability_boost)
+    let db = db.inner().clone();
+    blocking::run(move || execute_player_boost(uid, &db, service::prepare_current_ability_boost))
+        .await
 }
 
 #[tauri::command]
-pub fn boost_wonderkid_mentality(
+pub async fn boost_wonderkid_mentality(
     uid: i64,
     db: State<'_, Db>,
 ) -> Result<PlayerBoostResultDto, PlayerBoostError> {
-    execute_player_boost(uid, db.inner(), service::prepare_wonderkid_mentality_boost)
+    let db = db.inner().clone();
+    blocking::run(move || {
+        execute_player_boost(uid, &db, service::prepare_wonderkid_mentality_boost)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn boost_squad_current_ability(
+pub async fn boost_squad_current_ability(
     db: State<'_, Db>,
     on_progress: tauri::ipc::Channel<SquadPlayerBoostProgressDto>,
 ) -> Result<SquadPlayerBoostResultDto, PlayerBoostError> {
-    execute_squad_current_ability_boost_with_progress(
-        db.inner(),
-        request_local_player_boost,
-        move |progress| match on_progress.send(progress) {
-            Ok(()) => true,
-            Err(error) => {
-                log::debug!("squad boost progress delivery failed: {error}");
-                false
-            }
-        },
-    )
+    let db = db.inner().clone();
+    blocking::run(move || {
+        execute_squad_current_ability_boost_with_progress(
+            &db,
+            request_local_player_boost,
+            move |progress| match on_progress.send(progress) {
+                Ok(()) => true,
+                Err(error) => {
+                    log::debug!("squad boost progress delivery failed: {error}");
+                    false
+                }
+            },
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn boost_squad_wonderkid_mentality(
+pub async fn boost_squad_wonderkid_mentality(
     db: State<'_, Db>,
     on_progress: tauri::ipc::Channel<SquadPlayerBoostProgressDto>,
 ) -> Result<SquadPlayerBoostResultDto, PlayerBoostError> {
-    execute_squad_wonderkid_mentality_boost_with_progress(
-        db.inner(),
-        request_local_player_boost,
-        move |progress| match on_progress.send(progress) {
-            Ok(()) => true,
-            Err(error) => {
-                log::debug!("squad boost progress delivery failed: {error}");
-                false
-            }
-        },
-    )
+    let db = db.inner().clone();
+    blocking::run(move || {
+        execute_squad_wonderkid_mentality_boost_with_progress(
+            &db,
+            request_local_player_boost,
+            move |progress| match on_progress.send(progress) {
+                Ok(()) => true,
+                Err(error) => {
+                    log::debug!("squad boost progress delivery failed: {error}");
+                    false
+                }
+            },
+        )
+    })
+    .await
 }
 
 fn execute_player_boost(
@@ -620,7 +646,6 @@ fn recovery_required_result(
 #[cfg(test)]
 mod tests {
     use std::cell::{Cell, RefCell};
-    use std::sync::Mutex;
 
     use rusqlite::{params, Connection};
 
@@ -652,7 +677,7 @@ mod tests {
         )
         .expect("bind source request");
 
-        (temp_dir, Db(Mutex::new(conn)))
+        (temp_dir, Db::new(conn))
     }
 
     fn seeded_history_db() -> (tempfile::TempDir, Db, i64, i64) {
@@ -686,7 +711,7 @@ mod tests {
         )
         .expect("bind historical source request");
 
-        (temp_dir, Db(Mutex::new(conn)), current.id, historical.id)
+        (temp_dir, Db::new(conn), current.id, historical.id)
     }
 
     fn seeded_squad_db() -> (tempfile::TempDir, Db) {
@@ -735,7 +760,7 @@ mod tests {
         managed_club_service::set_managed_club(&conn, save_id, "Loan FC", Some(1000))
             .expect("configure managed club");
 
-        (temp_dir, Db(Mutex::new(conn)))
+        (temp_dir, Db::new(conn))
     }
 
     fn verified_ca_result() -> PlayerBoostResult {

@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tauri::State;
 
+use crate::blocking;
 use crate::db::Db;
 use crate::features::snapshot::service::active_save_id;
 
@@ -31,11 +32,15 @@ impl From<ManagedClubStatus> for ManagedClubStatusDto {
 }
 
 #[tauri::command]
-pub fn get_managed_club(db: State<'_, Db>) -> Result<ManagedClubStatusDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    Ok(service::get_managed_club(&conn, active_save_id(&conn)?)?.into())
+pub async fn get_managed_club(db: State<'_, Db>) -> Result<ManagedClubStatusDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        Ok(service::get_managed_club(&conn, active_save_id(&conn)?)?.into())
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -55,26 +60,36 @@ impl From<service::ManagedClubOption> for ManagedClubOptionDto {
 }
 
 #[tauri::command]
-pub fn list_managed_club_options(db: State<'_, Db>) -> Result<Vec<ManagedClubOptionDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    Ok(
-        service::list_managed_club_options(&conn, active_save_id(&conn)?)?
-            .into_iter()
-            .map(ManagedClubOptionDto::from)
-            .collect(),
-    )
+pub async fn list_managed_club_options(
+    db: State<'_, Db>,
+) -> Result<Vec<ManagedClubOptionDto>, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        Ok(
+            service::list_managed_club_options(&conn, active_save_id(&conn)?)?
+                .into_iter()
+                .map(ManagedClubOptionDto::from)
+                .collect(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn set_managed_club(
+pub async fn set_managed_club(
     club_name: String,
     club_uid: Option<i64>,
     db: State<'_, Db>,
 ) -> Result<ManagedClubStatusDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    Ok(service::set_managed_club(&conn, active_save_id(&conn)?, &club_name, club_uid)?.into())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        Ok(service::set_managed_club(&conn, active_save_id(&conn)?, &club_name, club_uid)?.into())
+    })
+    .await
 }

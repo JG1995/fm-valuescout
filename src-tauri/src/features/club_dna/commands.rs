@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tauri::State;
 
+use crate::blocking;
 use crate::db::Db;
 
 use super::service::{self, ClubDnaDefinition, ClubDnaUpsertResult};
@@ -42,42 +43,54 @@ pub struct ClubDnaRemoveResultDto {
 }
 
 #[tauri::command]
-pub fn get_club_dna(
+pub async fn get_club_dna(
     save_id: i64,
     context_token: String,
     db: State<'_, Db>,
 ) -> Result<Option<ClubDnaDefinitionDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    service::get_club_dna(&conn, save_id, &context_token)
-        .map(|definition| definition.map(Into::into))
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        service::get_club_dna(&conn, save_id, &context_token)
+            .map(|definition| definition.map(Into::into))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn set_club_dna(
+pub async fn set_club_dna(
     save_id: i64,
     context_token: String,
     attribute_ids: Vec<String>,
     db: State<'_, Db>,
 ) -> Result<ClubDnaUpsertResultDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    service::set_club_dna(&conn, save_id, &context_token, attribute_ids).map(Into::into)
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        service::set_club_dna(&conn, save_id, &context_token, attribute_ids).map(Into::into)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn remove_club_dna(
+pub async fn remove_club_dna(
     save_id: i64,
     context_token: String,
     db: State<'_, Db>,
 ) -> Result<ClubDnaRemoveResultDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    service::remove_club_dna(&conn, save_id, &context_token)
-        .map(|removed| ClubDnaRemoveResultDto { removed })
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        service::remove_club_dna(&conn, save_id, &context_token)
+            .map(|removed| ClubDnaRemoveResultDto { removed })
+    })
+    .await
 }
 
 #[cfg(test)]

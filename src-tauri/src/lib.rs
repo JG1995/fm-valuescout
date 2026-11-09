@@ -1,3 +1,4 @@
+mod blocking;
 mod db;
 mod features;
 #[cfg(test)]

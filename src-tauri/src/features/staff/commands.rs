@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::blocking;
 use crate::db::Db;
 use crate::features::memory_read::service::{
     request_staff_boost_from_local_app_data, DumpWaitConfig, StaffBoostResult,
@@ -281,27 +282,36 @@ impl From<StaffAssignmentTargetInputDto> for StaffAssignmentTargetInput {
 }
 
 #[tauri::command]
-pub fn get_staff_assignment_targets(
+pub async fn get_staff_assignment_targets(
     expected_save_context_token: String,
     db: State<'_, Db>,
 ) -> Result<StaffAssignmentTargetsDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    assignment_targets::get_targets(&conn, &expected_save_context_token).map(Into::into)
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        assignment_targets::get_targets(&conn, &expected_save_context_token).map(Into::into)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn save_staff_assignment_targets(
+pub async fn save_staff_assignment_targets(
     expected_save_context_token: String,
     targets: Vec<StaffAssignmentTargetInputDto>,
     db: State<'_, Db>,
 ) -> Result<StaffAssignmentTargetsDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let inputs = targets.into_iter().map(Into::into).collect::<Vec<_>>();
-    assignment_targets::save_targets(&conn, &expected_save_context_token, &inputs).map(Into::into)
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let inputs = targets.into_iter().map(Into::into).collect::<Vec<_>>();
+        assignment_targets::save_targets(&conn, &expected_save_context_token, &inputs)
+            .map(Into::into)
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -427,20 +437,24 @@ impl From<StaffAssignmentOptimization> for StaffAssignmentOptimizationDto {
 }
 
 #[tauri::command]
-pub fn optimize_staff_assignments(
+pub async fn optimize_staff_assignments(
     expected_save_context_token: String,
     expected_snapshot_context_token: String,
     db: State<'_, Db>,
 ) -> Result<StaffAssignmentOptimizationDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    assignment_optimizer_query::optimize_staff_assignments(
-        &conn,
-        &expected_save_context_token,
-        &expected_snapshot_context_token,
-    )
-    .map(Into::into)
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        assignment_optimizer_query::optimize_staff_assignments(
+            &conn,
+            &expected_save_context_token,
+            &expected_snapshot_context_token,
+        )
+        .map(Into::into)
+    })
+    .await
 }
 
 fn classification_name(classification: StaffAssignmentClassification) -> &'static str {
@@ -478,7 +492,7 @@ fn run(
     shortlist_only: Option<bool>,
     preferred_job: Option<String>,
     unemployed_only: Option<bool>,
-    db: State<'_, Db>,
+    db: &Db,
 ) -> Result<StaffPageDto, String> {
     let conn =
         db.0.lock()
@@ -512,7 +526,7 @@ fn run(
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub fn search_staff(
+pub async fn search_staff(
     offset: Option<u32>,
     limit: Option<u32>,
     sort_by: Option<String>,
@@ -525,25 +539,29 @@ pub fn search_staff(
     unemployed_only: Option<bool>,
     db: State<'_, Db>,
 ) -> Result<StaffPageDto, String> {
-    run(
-        StaffScope::Search,
-        offset,
-        limit,
-        sort_by,
-        sort_dir,
-        filters,
-        filter_combine,
-        requested_fields,
-        shortlist_only,
-        preferred_job,
-        unemployed_only,
-        db,
-    )
+    let db = db.inner().clone();
+    blocking::run(move || {
+        run(
+            StaffScope::Search,
+            offset,
+            limit,
+            sort_by,
+            sort_dir,
+            filters,
+            filter_combine,
+            requested_fields,
+            shortlist_only,
+            preferred_job,
+            unemployed_only,
+            &db,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub fn list_my_staff(
+pub async fn list_my_staff(
     offset: Option<u32>,
     limit: Option<u32>,
     sort_by: Option<String>,
@@ -551,28 +569,36 @@ pub fn list_my_staff(
     requested_fields: Option<Vec<String>>,
     db: State<'_, Db>,
 ) -> Result<StaffPageDto, String> {
-    run(
-        StaffScope::MyStaff,
-        offset,
-        limit,
-        sort_by,
-        sort_dir,
-        None,
-        None,
-        requested_fields,
-        None,
-        None,
-        None,
-        db,
-    )
+    let db = db.inner().clone();
+    blocking::run(move || {
+        run(
+            StaffScope::MyStaff,
+            offset,
+            limit,
+            sort_by,
+            sort_dir,
+            None,
+            None,
+            requested_fields,
+            None,
+            None,
+            None,
+            &db,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn get_staff(uid: i64, db: State<'_, Db>) -> Result<Option<StaffDetailDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    query::get_staff(&conn, uid).map(|staff| staff.map(StaffDetailDto::from))
+pub async fn get_staff(uid: i64, db: State<'_, Db>) -> Result<Option<StaffDetailDto>, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        query::get_staff(&conn, uid).map(|staff| staff.map(StaffDetailDto::from))
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -619,27 +645,32 @@ impl From<VerifiedStaffBoost> for StaffBoostResultDto {
 }
 
 #[tauri::command]
-pub fn boost_staff_current_ability(
+pub async fn boost_staff_current_ability(
     uid: i64,
     db: State<'_, Db>,
 ) -> Result<StaffBoostResultDto, StaffBoostError> {
-    execute_staff_boost_with(uid, db.inner(), request_local_staff_boost)
+    let db = db.inner().clone();
+    blocking::run(move || execute_staff_boost_with(uid, &db, request_local_staff_boost)).await
 }
 
 #[tauri::command]
-pub fn boost_my_staff_current_ability(
+pub async fn boost_my_staff_current_ability(
     db: State<'_, Db>,
     on_progress: tauri::ipc::Channel<MyStaffBoostProgressDto>,
 ) -> Result<MyStaffBoostResultDto, StaffBoostError> {
-    execute_my_staff_boost_with_progress(db.inner(), request_local_staff_boost, move |progress| {
-        match on_progress.send(progress) {
-            Ok(()) => true,
-            Err(error) => {
-                log::debug!("My Staff boost progress delivery failed: {error}");
-                false
+    let db = db.inner().clone();
+    blocking::run(move || {
+        execute_my_staff_boost_with_progress(&db, request_local_staff_boost, move |progress| {
+            match on_progress.send(progress) {
+                Ok(()) => true,
+                Err(error) => {
+                    log::debug!("My Staff boost progress delivery failed: {error}");
+                    false
+                }
             }
-        }
+        })
     })
+    .await
 }
 
 #[cfg(test)]
@@ -882,7 +913,6 @@ fn mark_recovery_required(db: &Db, prepared: &PreparedStaffBoost) -> Result<(), 
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
 
     use rusqlite::Connection;
 
@@ -914,7 +944,7 @@ mod tests {
             [snapshot.id],
         )
         .expect("bind scan");
-        (temp_dir, Db(Mutex::new(conn)))
+        (temp_dir, Db::new(conn))
     }
 
     fn verified_result(prepared: &PreparedStaffBoost, current_ability: i32) -> StaffBoostResult {
@@ -1150,9 +1180,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let gate = boost_gate::acquire_boost_gate().expect("hold shared boost gate");
-        let db = Db(Mutex::new(
-            Connection::open_in_memory().expect("open test database"),
-        ));
+        let db = Db::new(Connection::open_in_memory().expect("open test database"));
         let error = execute_staff_boost_with(88, &db, |_| {
             panic!("staff request must not reach the bridge while the shared gate is held")
         })

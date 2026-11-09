@@ -2,6 +2,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::blocking;
 use crate::db::Db;
 use crate::features::snapshot::service;
 
@@ -430,7 +431,7 @@ impl From<PlannerDepth> for PlannerDepthDto {
 }
 
 #[tauri::command]
-pub fn list_squad_players(
+pub async fn list_squad_players(
     offset: Option<u32>,
     limit: Option<u32>,
     sort_by: Option<String>,
@@ -438,34 +439,38 @@ pub fn list_squad_players(
     requested_fields: Option<Vec<String>>,
     db: State<'_, Db>,
 ) -> Result<SquadPlayersPageDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    let offset = offset.unwrap_or(0) as usize;
-    let limit = limit
-        .map(|value| value as usize)
-        .unwrap_or(DEFAULT_SQUAD_PAGE_LIMIT)
-        .clamp(1, MAX_SQUAD_PAGE_LIMIT);
-    let sort_by = match sort_by.as_deref() {
-        None => SquadSortField::DEFAULT,
-        Some(value) => SquadSortField::parse(value)?,
-    };
-    let sort_dir = match sort_dir.as_deref() {
-        None => SquadSortDir::DEFAULT,
-        Some(value) => SquadSortDir::parse(value)?,
-    };
-    let requested_fields = requested_fields.unwrap_or_default();
-    Ok(squad_service::list_squad_players(
-        &conn,
-        save_id,
-        offset,
-        limit,
-        sort_by,
-        sort_dir,
-        &requested_fields,
-    )?
-    .into())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        let offset = offset.unwrap_or(0) as usize;
+        let limit = limit
+            .map(|value| value as usize)
+            .unwrap_or(DEFAULT_SQUAD_PAGE_LIMIT)
+            .clamp(1, MAX_SQUAD_PAGE_LIMIT);
+        let sort_by = match sort_by.as_deref() {
+            None => SquadSortField::DEFAULT,
+            Some(value) => SquadSortField::parse(value)?,
+        };
+        let sort_dir = match sort_dir.as_deref() {
+            None => SquadSortDir::DEFAULT,
+            Some(value) => SquadSortDir::parse(value)?,
+        };
+        let requested_fields = requested_fields.unwrap_or_default();
+        Ok(squad_service::list_squad_players(
+            &conn,
+            save_id,
+            offset,
+            limit,
+            sort_by,
+            sort_dir,
+            &requested_fields,
+        )?
+        .into())
+    })
+    .await
 }
 
 fn get_planner_tactic_for_context(
@@ -508,78 +513,98 @@ fn save_planner_tactic_for_context(
 }
 
 #[tauri::command]
-pub fn get_planner_tactic(
+pub async fn get_planner_tactic(
     save_id: i64,
     context_token: String,
     db: State<'_, Db>,
 ) -> Result<PlannerTacticDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let context = service::SaveContext {
-        id: save_id,
-        context_token,
-    };
-    Ok(get_planner_tactic_for_context(&conn, &context)?.into())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let context = service::SaveContext {
+            id: save_id,
+            context_token,
+        };
+        Ok(get_planner_tactic_for_context(&conn, &context)?.into())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn get_planner_role_reference(
+pub async fn get_planner_role_reference(
     phase: String,
     score_basis: String,
     db: State<'_, Db>,
 ) -> Result<PlannerRoleReferenceDto, String> {
-    let phase = RoleReferencePhase::parse(&phase)?;
-    let score_basis = RoleReferenceBasis::parse(&score_basis)?;
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    Ok(role_reference_service::get_role_reference(&conn, save_id, phase, score_basis)?.into())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let phase = RoleReferencePhase::parse(&phase)?;
+        let score_basis = RoleReferenceBasis::parse(&score_basis)?;
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        Ok(role_reference_service::get_role_reference(&conn, save_id, phase, score_basis)?.into())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn get_planner_tactic_options(
+pub async fn get_planner_tactic_options(
     save_id: i64,
     context_token: String,
     db: State<'_, Db>,
 ) -> Result<TacticOptionsDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let context = service::SaveContext {
-        id: save_id,
-        context_token,
-    };
-    Ok(get_planner_tactic_options_for_context(&conn, &context)?.into())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let context = service::SaveContext {
+            id: save_id,
+            context_token,
+        };
+        Ok(get_planner_tactic_options_for_context(&conn, &context)?.into())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn save_planner_tactic(
+pub async fn save_planner_tactic(
     save_id: i64,
     context_token: String,
     tactic: PlannerTacticInputDto,
     db: State<'_, Db>,
 ) -> Result<PlannerTacticDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let context = service::SaveContext {
-        id: save_id,
-        context_token,
-    };
-    let tactic = PlannerTactic::from(tactic);
-    save_planner_tactic_for_context(&conn, &context, &tactic)?;
-    Ok(tactic.into())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let context = service::SaveContext {
+            id: save_id,
+            context_token,
+        };
+        let tactic = PlannerTactic::from(tactic);
+        save_planner_tactic_for_context(&conn, &context, &tactic)?;
+        Ok(tactic.into())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn get_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    Ok(depth_service::get_depth(&conn, save_id)?.into())
+pub async fn get_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        Ok(depth_service::get_depth(&conn, save_id)?.into())
+    })
+    .await
 }
 
 #[derive(Deserialize)]
@@ -683,128 +708,166 @@ impl From<PlannerTeamRemovalImpact> for PlannerTeamRemovalImpactDto {
 }
 
 #[tauri::command]
-pub fn get_planner_team_removal_impacts(
+pub async fn get_planner_team_removal_impacts(
     teams: Vec<PlannerTeamInputDto>,
     db: State<'_, Db>,
 ) -> Result<Vec<PlannerTeamRemovalImpactDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    let teams = teams
-        .into_iter()
-        .map(PlannerTeamInput::from)
-        .collect::<Vec<_>>();
-    teams_service::planner_team_removal_impacts(&conn, save_id, &teams)
-        .map(|impacts| impacts.into_iter().map(Into::into).collect())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        let teams = teams
+            .into_iter()
+            .map(PlannerTeamInput::from)
+            .collect::<Vec<_>>();
+        teams_service::planner_team_removal_impacts(&conn, save_id, &teams)
+            .map(|impacts| impacts.into_iter().map(Into::into).collect())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn save_planner_teams(
+pub async fn save_planner_teams(
     teams: Vec<PlannerTeamInputDto>,
     confirm_populated_removal: bool,
     db: State<'_, Db>,
 ) -> Result<PlannerDepthDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    let teams = teams
-        .into_iter()
-        .map(PlannerTeamInput::from)
-        .collect::<Vec<_>>();
-    let (_, snapshot_id) =
-        teams_service::save_team_settings(&conn, save_id, &teams, confirm_populated_removal)?;
-    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        let teams = teams
+            .into_iter()
+            .map(PlannerTeamInput::from)
+            .collect::<Vec<_>>();
+        let (_, snapshot_id) =
+            teams_service::save_team_settings(&conn, save_id, &teams, confirm_populated_removal)?;
+        Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn optimize_planner_depth(
+pub async fn optimize_planner_depth(
     score_basis: String,
     db: State<'_, Db>,
 ) -> Result<PlannerDepthDto, String> {
-    let score_basis = optimizer::ScoreBasis::parse(&score_basis)?;
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    Ok(optimizer::optimize_depth_with_basis(&conn, save_id, score_basis)?.into())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let score_basis = optimizer::ScoreBasis::parse(&score_basis)?;
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        Ok(optimizer::optimize_depth_with_basis(&conn, save_id, score_basis)?.into())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn get_planner_slot_candidates(
+pub async fn get_planner_slot_candidates(
     team: String,
     lane_id: String,
     search: String,
     db: State<'_, Db>,
 ) -> Result<Vec<PlannerSlotCandidateDto>, String> {
-    let team = PlannerTeam::parse(&team)?;
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    depth_service::get_slot_candidates(&conn, save_id, team, &lane_id, &search).map(|candidates| {
-        candidates
-            .into_iter()
-            .map(PlannerSlotCandidateDto::from)
-            .collect()
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let team = PlannerTeam::parse(&team)?;
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        depth_service::get_slot_candidates(&conn, save_id, team, &lane_id, &search).map(
+            |candidates| {
+                candidates
+                    .into_iter()
+                    .map(PlannerSlotCandidateDto::from)
+                    .collect()
+            },
+        )
     })
+    .await
 }
 
 #[tauri::command]
-pub fn clear_planner_depth(confirmed: bool, db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    let (_, snapshot_id) = depth_service::clear_all(&conn, save_id, confirmed)?;
-    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
+pub async fn clear_planner_depth(
+    confirmed: bool,
+    db: State<'_, Db>,
+) -> Result<PlannerDepthDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        let (_, snapshot_id) = depth_service::clear_all(&conn, save_id, confirmed)?;
+        Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn clear_planner_assignment(
+pub async fn clear_planner_assignment(
     string_id: i64,
     lane_id: String,
     db: State<'_, Db>,
 ) -> Result<PlannerDepthDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    let (_, snapshot_id) = depth_service::clear_assignment(&conn, save_id, string_id, &lane_id)?;
-    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        let (_, snapshot_id) =
+            depth_service::clear_assignment(&conn, save_id, string_id, &lane_id)?;
+        Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn assign_planner_player(
-    string_id: i64,
-    lane_id: String,
-    player_uid: i64,
-    db: State<'_, Db>,
-) -> Result<PlannerDepthDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    let (_, snapshot_id) =
-        depth_service::assign_player(&conn, save_id, string_id, &lane_id, player_uid)?;
-    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
-}
-
-#[tauri::command]
-pub fn move_planner_player(
+pub async fn assign_planner_player(
     string_id: i64,
     lane_id: String,
     player_uid: i64,
     db: State<'_, Db>,
 ) -> Result<PlannerDepthDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = service::active_save_id(&conn)?;
-    let (_, snapshot_id) =
-        depth_service::move_player(&conn, save_id, string_id, &lane_id, player_uid)?;
-    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        let (_, snapshot_id) =
+            depth_service::assign_player(&conn, save_id, string_id, &lane_id, player_uid)?;
+        Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn move_planner_player(
+    string_id: i64,
+    lane_id: String,
+    player_uid: i64,
+    db: State<'_, Db>,
+) -> Result<PlannerDepthDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        let (_, snapshot_id) =
+            depth_service::move_player(&conn, save_id, string_id, &lane_id, player_uid)?;
+        Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
+    })
+    .await
 }
 
 #[cfg(test)]

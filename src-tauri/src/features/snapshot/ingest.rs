@@ -2919,13 +2919,11 @@ mod tests {
 
     #[test]
     fn prepare_snapshot_is_pure_and_does_not_hold_db_mutex() {
-        use std::sync::Mutex;
-
         use crate::db::Db;
 
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = open_migrated(&temp_dir.path().join("prepare-mutex.db"));
-        let db = Db(Mutex::new(conn));
+        let db = Db::new(conn);
         // DB is empty, no writes yet.
         let before_snapshots: i64 =
             db.0.lock()

@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tauri::State;
 
+use crate::blocking;
 use crate::db::Db;
 use crate::features::player::boost_gate;
 use crate::features::player::commands::{
@@ -59,49 +60,54 @@ impl From<StaffBoostError> for ManagedClubBoostError {
 }
 
 #[tauri::command]
-pub fn boost_managed_club(
+pub async fn boost_managed_club(
     db: State<'_, Db>,
     on_progress: tauri::ipc::Channel<ManagedClubBoostProgressDto>,
 ) -> Result<ManagedClubBoostResultDto, ManagedClubBoostError> {
-    let guard = boost_gate::acquire_boost_gate().map_err(|message| PlayerBoostError::Bridge {
-        kind: "inProgress".to_string(),
-        message,
-    })?;
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let guard =
+            boost_gate::acquire_boost_gate().map_err(|message| PlayerBoostError::Bridge {
+                kind: "inProgress".to_string(),
+                message,
+            })?;
 
-    execute_managed_club_boost(
-        || {
-            player_commands::boost_squad_wonderkid_mentality_under_guard(
-                db.inner(),
-                &guard,
-                |progress| {
-                    send_player_progress(&on_progress, ManagedClubBoostPhase::Wonderkids, progress)
-                },
-            )
-            .map_err(Into::into)
-        },
-        || {
-            player_commands::boost_squad_current_ability_under_guard(
-                db.inner(),
-                &guard,
-                |progress| {
+        execute_managed_club_boost(
+            || {
+                player_commands::boost_squad_wonderkid_mentality_under_guard(
+                    &db,
+                    &guard,
+                    |progress| {
+                        send_player_progress(
+                            &on_progress,
+                            ManagedClubBoostPhase::Wonderkids,
+                            progress,
+                        )
+                    },
+                )
+                .map_err(Into::into)
+            },
+            || {
+                player_commands::boost_squad_current_ability_under_guard(&db, &guard, |progress| {
                     send_player_progress(
                         &on_progress,
                         ManagedClubBoostPhase::PlayerCurrentAbility,
                         progress,
                     )
-                },
-            )
-            .map_err(Into::into)
-        },
-        || {
-            staff_commands::boost_my_staff_current_ability_under_guard(
-                db.inner(),
-                &guard,
-                |progress| send_staff_progress(&on_progress, progress),
-            )
-            .map_err(Into::into)
-        },
-    )
+                })
+                .map_err(Into::into)
+            },
+            || {
+                staff_commands::boost_my_staff_current_ability_under_guard(
+                    &db,
+                    &guard,
+                    |progress| send_staff_progress(&on_progress, progress),
+                )
+                .map_err(Into::into)
+            },
+        )
+    })
+    .await
 }
 
 fn execute_managed_club_boost<W, P, S>(

@@ -4,6 +4,7 @@ use std::time::Instant;
 use serde::Serialize;
 use tauri::State;
 
+use crate::blocking;
 use crate::db::Db;
 use crate::features::player::boost_gate;
 
@@ -140,16 +141,20 @@ impl From<MoneyballProfile> for MoneyballProfileDto {
 }
 
 /// Reads the active save's current Moneyball cohort for one current player UID.
-/// Async keeps the cohort read off the main thread, so the window stays responsive.
 #[tauri::command]
 pub async fn get_player_moneyball(
     uid: i64,
     db: State<'_, Db>,
 ) -> Result<Option<MoneyballProfileDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    query::get_player_moneyball(&conn, uid).map(|profile| profile.map(MoneyballProfileDto::from))
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        query::get_player_moneyball(&conn, uid)
+            .map(|profile| profile.map(MoneyballProfileDto::from))
+    })
+    .await
 }
 
 /// Why Refresh stats did not read the save. The frontend matches on `kind`.
@@ -173,9 +178,13 @@ pub async fn refresh_season_stats(
     db: State<'_, Db>,
 ) -> Result<SeasonStatsOutcome, RefreshSeasonStatsError> {
     let start = Instant::now();
-    refresh_season_stats_with(db.inner(), save_id, &context_token, &mut || {
-        start.elapsed().as_millis() as u64
+    let db = db.inner().clone();
+    blocking::run(move || {
+        refresh_season_stats_with(&db, save_id, &context_token, &mut || {
+            start.elapsed().as_millis() as u64
+        })
     })
+    .await
 }
 
 /// The check does not hold the load gate during the read, so a Load Data that starts
@@ -197,7 +206,6 @@ fn refresh_season_stats_with(
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
-    use std::sync::Mutex;
 
     use rusqlite::{params, Connection};
     use serde_json::json;
@@ -356,7 +364,7 @@ mod tests {
         }
         seed_cohort(&conn, snapshot_id, 20, PRIOR_AS_OF);
         RefreshFixture {
-            db: Db(Mutex::new(conn)),
+            db: Db::new(conn),
             save_id: save.id,
             save_token: save.context_token,
             snapshot_id,

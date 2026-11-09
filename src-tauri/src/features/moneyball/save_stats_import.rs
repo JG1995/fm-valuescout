@@ -226,7 +226,6 @@ fn file_name(path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
 
     use rusqlite::params;
 
@@ -285,7 +284,7 @@ mod tests {
         }
         seed_cohort(&conn, snapshot_id, 30, PRIOR_AS_OF);
         Fixture {
-            db: Db(Mutex::new(conn)),
+            db: Db::new(conn),
             save_id: save.id,
             save_token: save.context_token,
             snapshot_id,
