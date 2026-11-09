@@ -1663,6 +1663,88 @@ describe("staff route", () => {
     expect(screen.queryByRole("menuitem", { name: "Add column" })).toBeNull();
   });
 
+  it("keeps Staff rows inactive while a sort, filter, or column change loads", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setStaffOverride([fixtureStaff()]);
+    const { router } = renderStaffRoute(
+      `/staff?filters=${encodeURIComponent(
+        JSON.stringify([{ field: "ca", op: "gt", value: 100 }]),
+      )}`,
+    );
+    const getTable = () =>
+      screen.getByRole("table", { name: "Staff search results" });
+    await screen.findByRole("table", { name: "Staff search results" });
+    const held = holdNamedStaffSearchRequests();
+    const staffRow = () => {
+      const row = within(getTable())
+        .getAllByRole("row")
+        .find((candidate) => candidate.hasAttribute("data-index"));
+      if (!row) {
+        throw new Error("expected a retained Staff row");
+      }
+      return row;
+    };
+    const expectRetainedWhile = (status: string) => {
+      expect(screen.getByRole("status")).toHaveTextContent(status);
+      expect(within(staffRow()).getByText("Alex Coach")).toBeInTheDocument();
+      expect(staffRow()).not.toHaveAttribute("tabindex");
+      fireEvent.click(staffRow());
+      expect(router.state.location.pathname).toBe("/staff");
+    };
+
+    await user.click(within(getTable()).getByRole("button", { name: "CA" }));
+    await waitFor(() => expect(held).toHaveLength(1));
+    expectRetainedWhile("Sorting…");
+    act(() => held[0].resolve());
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+
+    await user.click(
+      within(
+        screen.getByRole("toolbar", { name: "Staff results toolbar" }),
+      ).getByRole("button", { name: /Remove CA filter/i }),
+    );
+    await waitFor(() => expect(held).toHaveLength(2));
+    expectRetainedWhile("Filtering…");
+    act(() => held[1].resolve());
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    await user.click(
+      within(screen.getByRole("dialog", { name: "Columns" })).getByRole(
+        "checkbox",
+        { name: "Authority" },
+      ),
+    );
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(held).toHaveLength(3));
+    expectRetainedWhile("Loading columns…");
+    act(() => held[2].resolve());
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(within(staffRow()).getByText("15")).toBeInTheDocument();
+  });
+
+  it("clears Staff rows while the Shortlist switch loads its table", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    renderStaffRoute("/staff");
+    await screen.findByRole("table", { name: "Staff search results" });
+    const held = holdNamedStaffSearchRequests();
+
+    await user.click(screen.getByRole("switch", { name: "Shortlist: Off" }));
+
+    await waitFor(() => expect(held).toHaveLength(1));
+    expect(
+      screen.queryByRole("table", { name: "Staff search results" }),
+    ).toBeNull();
+    expect(screen.queryByText("Alex Coach")).toBeNull();
+    expect(screen.getByText("Loading staff results…")).toBeInTheDocument();
+    act(() => held[0].resolve());
+    expect(
+      await screen.findByText("No Staff Shortlist uploaded"),
+    ).toBeInTheDocument();
+  });
+
   describe("staff table toolbar", () => {
     it("associates summary, chips, edit, columns, and dataset toggles in one table toolbar", async () => {
       await resolveLoadDataIpcMock();

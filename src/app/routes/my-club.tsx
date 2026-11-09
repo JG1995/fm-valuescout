@@ -822,9 +822,14 @@ function MyClubPageContent() {
                     tactic={tactic}
                     options={options}
                     onSaved={() =>
-                      queryClient.invalidateQueries({
-                        queryKey: searchKeys.all,
-                      })
+                      Promise.all([
+                        queryClient.invalidateQueries({
+                          queryKey: searchKeys.all,
+                        }),
+                        queryClient.invalidateQueries({
+                          queryKey: squadKeys.all,
+                        }),
+                      ])
                     }
                   />
                 </>

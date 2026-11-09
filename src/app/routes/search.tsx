@@ -770,7 +770,7 @@ function SearchPageContent() {
             </Panel>
           ) : resultContext ? (
             <SearchResultsPanel
-              key={`${resultContext.activeSave.id}:${resultContext.activeSave.contextToken}:${resultContext.snapshot.id}:${resultContext.snapshot.saveId}:${view}:${comparisonPool}:${combine}:${JSON.stringify(filters)}:${shortlistOnly}`}
+              key={`${resultContext.activeSave.id}:${resultContext.activeSave.contextToken}:${resultContext.snapshot.id}:${resultContext.snapshot.saveId}:${view}`}
               sortBy={sort}
               sortDir={dir}
               filters={filters}

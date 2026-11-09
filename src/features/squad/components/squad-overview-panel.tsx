@@ -227,6 +227,7 @@ function SquadOverviewTable({
   pageContext,
   firstPageQueryOptions,
   isReplacementActive,
+  unresolvedFieldIds,
 }: {
   total: number;
   sortBy: SquadSortField;
@@ -242,6 +243,7 @@ function SquadOverviewTable({
   pageContext: SquadPlayerPageContext;
   firstPageQueryOptions: ReturnType<typeof squadPlayersQueryOptions>;
   isReplacementActive: boolean;
+  unresolvedFieldIds: ReadonlySet<string>;
 }) {
   const navigate = useNavigate();
 
@@ -283,8 +285,11 @@ function SquadOverviewTable({
         )
       }
       pageSize={SQUAD_PAGE_SIZE}
-      renderCells={(player) =>
+      renderCells={(row) =>
         columns.map((column) => {
+          // Fields the replacement query has not delivered yet render as
+          // loading, never as truthful-missing.
+          const player = unresolvedFieldIds.has(column.id) ? undefined : row;
           if (column.id === SUGGESTED_TRAINING_COLUMN_ID) {
             if (player === undefined) {
               return (
@@ -477,23 +482,58 @@ export function SquadOverviewPanel({
   const requestMatchesCommitted =
     JSON.stringify(committedOptions.queryKey) ===
     JSON.stringify(requestedOptions.queryKey);
-  const isSortReplacement =
+  // The committed rows stay rendered, inactive, for every change inside the
+  // same page context; a context change clears them.
+  const isRetainedReplacement =
     !requestMatchesCommitted &&
-    JSON.stringify({
-      requestedFields: committed.requestedFields,
-      pageContext: committed.pageContext,
-    }) ===
-      JSON.stringify({
-        requestedFields: requested.requestedFields,
-        pageContext: requested.pageContext,
-      });
+    JSON.stringify(committed.pageContext) ===
+      JSON.stringify(requested.pageContext);
+  const replacementKind = !isRetainedReplacement
+    ? null
+    : committed.sortBy !== requested.sortBy ||
+        committed.sortDir !== requested.sortDir
+      ? "sort"
+      : "columns";
+  const unresolvedFieldIds = new Set(
+    isRetainedReplacement
+      ? requested.requestedFields.filter(
+          (field) => !committed.requestedFields.includes(field),
+        )
+      : [],
+  );
   const isReplacementActive = !requestMatchesCommitted;
-  const isReplacementPending = isSortReplacement && requestedQuery.isFetching;
-  const replacementError =
-    isSortReplacement && requestedQuery.isError ? requestedQuery.error : null;
-  const replacementLabel = requested.sortBy.startsWith("potential_role.")
-    ? "Calculating and sorting…"
-    : "Sorting…";
+  const replacementFeedback =
+    replacementKind === null ? null : requestedQuery.isError ? (
+      <div
+        className="flex shrink-0 items-center justify-between gap-3 px-4 pb-3 text-body-sm text-error"
+        role="alert"
+      >
+        <span>
+          {replacementKind === "sort"
+            ? "Could not sort squad."
+            : "Could not load squad columns."}{" "}
+          {requestedQuery.error.message}
+        </span>
+        <button
+          type="button"
+          className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          onClick={() => void requestedQuery.refetch()}
+        >
+          Retry
+        </button>
+      </div>
+    ) : (
+      <p
+        className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
+        role="status"
+      >
+        {replacementKind === "columns"
+          ? "Loading columns…"
+          : requested.sortBy.startsWith("potential_role.")
+            ? "Calculating and sorting…"
+            : "Sorting…"}
+      </p>
+    );
 
   useEffect(() => {
     if (
@@ -537,7 +577,7 @@ export function SquadOverviewPanel({
     />
   );
   const page =
-    requestMatchesCommitted || isSortReplacement
+    requestMatchesCommitted || isRetainedReplacement
       ? committedQuery.data
       : undefined;
   if (!page) {
@@ -579,6 +619,7 @@ export function SquadOverviewPanel({
             players · sorted by {sortLabel} ({dirLabel})
           </p>,
         )}
+        {replacementFeedback}
         <EmptyState icon={UsersRound} title="No players at your managed club">
           No current-snapshot players match your managed club.
         </EmptyState>
@@ -619,29 +660,7 @@ export function SquadOverviewPanel({
           {dirLabel})
         </p>,
       )}
-      {isReplacementPending ? (
-        <p
-          className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
-          role="status"
-        >
-          {replacementLabel}
-        </p>
-      ) : null}
-      {replacementError ? (
-        <div
-          className="flex shrink-0 items-center justify-between gap-3 px-4 pb-3 text-body-sm text-error"
-          role="alert"
-        >
-          <span>Could not sort squad. {replacementError.message}</span>
-          <button
-            type="button"
-            className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            onClick={() => void requestedQuery.refetch()}
-          >
-            Retry
-          </button>
-        </div>
-      ) : null}
+      {replacementFeedback}
       <SquadOverviewTable
         total={page.total}
         sortBy={committed.sortBy}
@@ -652,6 +671,7 @@ export function SquadOverviewPanel({
         pageContext={committed.pageContext}
         firstPageQueryOptions={committedOptions}
         isReplacementActive={isReplacementActive}
+        unresolvedFieldIds={unresolvedFieldIds}
         onSortChange={onSortChange}
         onAddColumn={(metricId) => addColumns("squad", [metricId])}
         onRemoveColumn={removeColumn}

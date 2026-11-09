@@ -2089,16 +2089,21 @@ describe("My Club route", () => {
     expect(getSquadPlayersCallCount()).toBeGreaterThan(callsAfterFailure);
   });
 
-  it("clears Squad rows while a visible-field projection loads", async () => {
+  it("keeps Squad rows inactive with loading cells while a column change loads", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
       primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
-    setSquadPlayersOverride([squadPlayerNamed("Projected Squad", 1)]);
-    renderMyClubRoute({ initialEntry: "/my-club" });
+    setSquadPlayersOverride([
+      {
+        ...squadPlayerNamed("Projected Squad", 1),
+        dynamicValues: { "attr.Acceleration": 16 },
+      },
+    ]);
+    const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
 
-    expect(await screen.findByText("Projected Squad")).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "Squad overview" });
     const callsBeforeProjection = getSquadPlayersCallCount();
     setSquadPlayersPageIpcMockMode("pendingProjection");
     act(() => {
@@ -2108,15 +2113,73 @@ describe("My Club route", () => {
     await waitFor(() =>
       expect(getSquadPlayersCallCount()).toBe(callsBeforeProjection + 1),
     );
-    expect(screen.getByText("Loading squad overview…")).toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: "Squad overview" })).toBeNull();
-    expect(screen.queryByText("Projected Squad")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading columns…");
+    const squadRow = () => {
+      const row = within(table)
+        .getAllByRole("row")
+        .find((candidate) => candidate.hasAttribute("data-index"));
+      if (!row) {
+        throw new Error("expected a retained Squad row");
+      }
+      return row;
+    };
+    const accelerationCell = () => {
+      const headerLabels = within(table)
+        .getAllByRole("columnheader")
+        .filter((header) => header.getAttribute("scope") === "col")
+        .map((header) => header.getAttribute("aria-label"));
+      return within(squadRow()).getAllByRole("cell")[
+        headerLabels.indexOf("Acceleration")
+      ];
+    };
+    expect(within(squadRow()).getByText("Projected Squad")).toBeInTheDocument();
+    // The committed row never requested Acceleration, so its cell waits.
+    expect(accelerationCell()).toHaveTextContent("…");
+    expect(squadRow()).not.toHaveAttribute("tabindex");
+    fireEvent.click(squadRow());
+    fireEvent.keyDown(squadRow(), { key: "Enter" });
+    expect(router.state.location.pathname).toBe("/my-club");
 
     resolvePendingSquadPlayersPageIpcMock();
-    expect(await screen.findByText("Projected Squad")).toBeInTheDocument();
+    await waitFor(() => expect(accelerationCell()).toHaveTextContent("16"));
+    expect(screen.queryByRole("status")).toBeNull();
     act(() => {
       usePlayerTableStore.getState().removeColumn("squad", "attr.Acceleration");
     });
+  });
+
+  it("clears Squad rows when the current snapshot is replaced", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Old Snapshot Scout", 1)]);
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
+
+    expect(await screen.findByText("Old Snapshot Scout")).toBeInTheDocument();
+    setSquadPlayersPageIpcMockMode("pendingProjection");
+    setSquadPlayersOverride([squadPlayerNamed("New Snapshot Scout", 2)]);
+    const snapshot = queryClient.getQueryData<SnapshotSummary>(
+      currentSnapshotQueryOptions.queryKey,
+    );
+    if (!snapshot) {
+      throw new Error("Expected a current snapshot");
+    }
+    act(() => {
+      queryClient.setQueryData<SnapshotSummary>(
+        currentSnapshotQueryOptions.queryKey,
+        { ...snapshot, id: snapshot.id + 1 },
+      );
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByText("Old Snapshot Scout")).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("table", { name: "Squad overview" })).toBeNull();
+
+    resolvePendingSquadPlayersPageIpcMock();
+    expect(await screen.findByText("New Snapshot Scout")).toBeInTheDocument();
   });
 
   it("sorts the Squad table through the URL and backend query", async () => {
@@ -3462,6 +3525,48 @@ describe("My Club route", () => {
       "save_ratio",
       "clean_sheets_ratio",
     ]);
+  });
+
+  it("refreshes Squad suggested training after saving a tactic", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
+      sources: [],
+    });
+    setSquadPlayersOverride([
+      {
+        ...squadPlayerNamed("Focused Scout", 42),
+        suggestedTraining: "Quickness",
+      },
+    ]);
+    renderMyClubRoute({ staleTime: 60_000, initialEntry: "/my-club" });
+
+    const table = await screen.findByRole("table", { name: "Squad overview" });
+    expect(within(table).getByText("Quickness")).toBeInTheDocument();
+    await openMyClubWorkspace(user, "tactic");
+    await screen.findByRole("region", { name: "Tactic controls" });
+    setSquadPlayersOverride([
+      {
+        ...squadPlayerNamed("Focused Scout", 42),
+        suggestedTraining: "Attacking",
+      },
+    ]);
+    const callsBeforeSave = getSquadPlayersCallCount();
+    const weight = screen.getByRole("slider", {
+      name: "IP/OOP score weight",
+    });
+    weight.focus();
+    await user.keyboard("{ArrowRight}");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    await waitFor(() =>
+      expect(getSquadPlayersCallCount()).toBeGreaterThan(callsBeforeSave),
+    );
+    await openMyClubWorkspace(user, "squad");
+    const refreshed = screen.getByRole("table", { name: "Squad overview" });
+    expect(await within(refreshed).findByText("Attacking")).toBeInTheDocument();
+    expect(within(refreshed).queryByText("Quickness")).toBeNull();
   });
 
   it("saves an explicit midfield side without clearing its compatible role", async () => {

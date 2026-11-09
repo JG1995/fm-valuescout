@@ -239,6 +239,7 @@ function SearchResultsVirtualTable({
   pageContext,
   firstPageQueryOptions,
   isReplacementActive,
+  unresolvedFieldIds,
 }: {
   total: number;
   sortBy: SearchSortField;
@@ -260,6 +261,7 @@ function SearchResultsVirtualTable({
   pageContext: SearchPlayerPageContext;
   firstPageQueryOptions: ReturnType<typeof searchPlayersQueryOptions>;
   isReplacementActive: boolean;
+  unresolvedFieldIds: ReadonlySet<string>;
 }) {
   const navigate = useNavigate();
 
@@ -315,8 +317,11 @@ function SearchResultsVirtualTable({
         )
       }
       pageSize={SEARCH_PAGE_SIZE}
-      renderCells={(player) =>
+      renderCells={(row) =>
         columns.map((column) => {
+          // Fields the replacement query has not delivered yet render as
+          // loading, never as truthful-missing.
+          const player = unresolvedFieldIds.has(column.id) ? undefined : row;
           if (isValidTacticColumnId(column.id)) {
             const score = player?.dynamicValues?.[column.id];
             const roleName = column.accessibleLabel ?? column.label;
@@ -337,13 +342,14 @@ function SearchResultsVirtualTable({
           if (moneyballMetric?.metric || moneyballMetric?.context) {
             const raw = player?.dynamicValues?.[column.id];
             const value = typeof raw === "number" ? raw : null;
-            const text = moneyballMetric.metric
-              ? formatMoneyballMetric(moneyballMetric.metric, value)
-              : value === null
-                ? player === undefined
-                  ? "…"
-                  : "—"
-                : formatCount(value);
+            const text =
+              player === undefined
+                ? "…"
+                : moneyballMetric.metric
+                  ? formatMoneyballMetric(moneyballMetric.metric, value)
+                  : value === null
+                    ? "—"
+                    : formatCount(value);
             const score = player?.moneyballPercentiles?.[column.id];
             return (
               <td
@@ -608,26 +614,40 @@ export function SearchResultsPanel({
       dataUpdateCount: requestedDataUpdateCount,
     };
   }
-  const isSortReplacement =
+  // The committed rows stay rendered, inactive, for every change inside the
+  // same view and page context; a view or context change clears them.
+  const isRetainedReplacement =
     !requestMatchesCommitted &&
-    JSON.stringify({
-      filters: committed.filters,
-      filterCombine: committed.filterCombine,
-      requestedFields: committed.requestedFields,
-      view: committed.view,
-      comparisonPool: committed.comparisonPool,
-      pageContext: committed.pageContext,
-    }) ===
-      JSON.stringify({
-        filters: requested.filters,
-        filterCombine: requested.filterCombine,
-        requestedFields: requested.requestedFields,
-        view: requested.view,
-        comparisonPool: requested.comparisonPool,
-        pageContext: requested.pageContext,
-      });
+    committed.view === requested.view &&
+    JSON.stringify(committed.pageContext) ===
+      JSON.stringify(requested.pageContext);
+  const replacementKind = !isRetainedReplacement
+    ? null
+    : JSON.stringify([
+          committed.filters,
+          committed.filterCombine,
+          committed.comparisonPool,
+          committed.shortlistOnly,
+        ]) !==
+        JSON.stringify([
+          requested.filters,
+          requested.filterCombine,
+          requested.comparisonPool,
+          requested.shortlistOnly,
+        ])
+      ? "filter"
+      : committed.sortBy !== requested.sortBy ||
+          committed.sortDir !== requested.sortDir
+        ? "sort"
+        : "columns";
+  const unresolvedFieldIds = new Set(
+    isRetainedReplacement
+      ? requested.requestedFields.filter(
+          (field) => !committed.requestedFields.includes(field),
+        )
+      : [],
+  );
   const isReplacementActive = !requestMatchesCommitted;
-  const isReplacementPending = isSortReplacement && requestedQuery.isFetching;
   // A newer request stopped this one in Rust; it is pending again, never failed.
   const isRequestedSuperseded =
     requestedQuery.isError && isSupersededError(requestedQuery.error);
@@ -635,10 +655,42 @@ export function SearchResultsPanel({
     requestedQuery.isError && !isRequestedSuperseded
       ? requestedQuery.error
       : null;
-  const replacementError = isSortReplacement ? requestedError : null;
-  const replacementLabel = requested.sortBy.startsWith("potential_role.")
-    ? "Calculating and sorting…"
-    : "Sorting…";
+  const replacementFeedback =
+    replacementKind === null ? null : requestedError ? (
+      <div
+        className="flex shrink-0 items-center justify-between gap-3 px-4 pb-3 text-body-sm text-error"
+        role="alert"
+      >
+        <span>
+          {replacementKind === "filter"
+            ? "Could not filter players."
+            : replacementKind === "sort"
+              ? "Could not sort players."
+              : "Could not load player columns."}{" "}
+          {requestedError.message}
+        </span>
+        <button
+          type="button"
+          className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          onClick={() => void requestedQuery.refetch()}
+        >
+          Retry
+        </button>
+      </div>
+    ) : (
+      <p
+        className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
+        role="status"
+      >
+        {replacementKind === "filter"
+          ? "Filtering…"
+          : replacementKind === "columns"
+            ? "Loading columns…"
+            : requested.sortBy.startsWith("potential_role.")
+              ? "Calculating and sorting…"
+              : "Sorting…"}
+      </p>
+    );
 
   // The user came back to a query whose request was superseded while it ran.
   useEffect(() => {
@@ -675,6 +727,7 @@ export function SearchResultsPanel({
       [
         committed.view,
         committed.comparisonPool,
+        String(committed.shortlistOnly),
         committed.filterCombine,
         ...committed.filters.map(
           (rule) =>
@@ -684,7 +737,7 @@ export function SearchResultsPanel({
     [committed],
   );
   const page =
-    requestMatchesCommitted || isSortReplacement
+    requestMatchesCommitted || isRetainedReplacement
       ? committedQuery.data
       : undefined;
   const columnsControl = (
@@ -817,6 +870,7 @@ export function SearchResultsPanel({
         contentClassName="flex min-h-0 flex-1 flex-col"
       >
         {renderToolbar(summary)}
+        {replacementFeedback}
         <EmptyState icon={SearchX} title={emptyTitle}>
           {emptyBody}
         </EmptyState>
@@ -882,29 +936,7 @@ export function SearchResultsPanel({
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
       {renderToolbar(summary)}
-      {isReplacementPending ? (
-        <p
-          className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
-          role="status"
-        >
-          {replacementLabel}
-        </p>
-      ) : null}
-      {replacementError ? (
-        <div
-          className="flex shrink-0 items-center justify-between gap-3 px-4 pb-3 text-body-sm text-error"
-          role="alert"
-        >
-          <span>Could not sort players. {replacementError.message}</span>
-          <button
-            type="button"
-            className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            onClick={() => void requestedQuery.refetch()}
-          >
-            Retry
-          </button>
-        </div>
-      ) : null}
+      {replacementFeedback}
       <SearchResultsVirtualTable
         key={listKey}
         total={page.total}
@@ -921,6 +953,7 @@ export function SearchResultsPanel({
         pageContext={committed.pageContext}
         firstPageQueryOptions={committedOptions}
         isReplacementActive={isReplacementActive}
+        unresolvedFieldIds={unresolvedFieldIds}
         onSortChange={onSortChange}
         onAddColumn={(metricId) =>
           addColumns(tableId, [metricId], searchTableGroups(view))

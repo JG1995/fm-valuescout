@@ -687,37 +687,34 @@ export function StaffSearchResultsPanel({
       dataUpdateCount: requestedDataUpdateCount,
     };
   }
-  const isSameListReplacement =
+  // Staff keeps the committed rows rendered, inactive, for sort, filter,
+  // and column changes until the requested page commits. The Shortlist
+  // switch changes the layout and adds shortlist-only columns that other
+  // rows cannot fill, so it clears like a view change. Unresolved dynamic
+  // cells render as loading placeholders, never as truthful-missing.
+  const isRetainedReplacement =
     !requestMatchesCommitted &&
-    JSON.stringify({
-      filters: committed.filters,
-      filterCombine: committed.filterCombine,
-      shortlistOnly: committed.shortlistOnly,
-      preferredJob: committed.preferredJob,
-      unemployedOnly: committed.unemployedOnly,
-    }) ===
-      JSON.stringify({
-        filters: requested.filters,
-        filterCombine: requested.filterCombine,
-        shortlistOnly: requested.shortlistOnly,
-        preferredJob: requested.preferredJob,
-        unemployedOnly: requested.unemployedOnly,
-      });
-  // Staff keeps committed rows for sort and requested-field (column
-  // add/remove) changes: the row set is unchanged, so the mounted table
-  // applies column updates live instead of unmounting. Sort changes report
-  // the pending/error replacement status; requested-field changes keep
-  // their unresolved dynamic cells as loading placeholders with their own
-  // error/retry state so unfetched values never read as truthful-missing.
-  const isSortChanged =
-    committed.sortBy !== requested.sortBy ||
-    committed.sortDir !== requested.sortDir;
-  const fieldsMatch =
-    JSON.stringify(committed.requestedFields) ===
-    JSON.stringify(requested.requestedFields);
+    committed.shortlistOnly === requested.shortlistOnly;
+  const replacementKind = !isRetainedReplacement
+    ? null
+    : JSON.stringify([
+          committed.filters,
+          committed.filterCombine,
+          committed.preferredJob,
+          committed.unemployedOnly,
+        ]) !==
+        JSON.stringify([
+          requested.filters,
+          requested.filterCombine,
+          requested.preferredJob,
+          requested.unemployedOnly,
+        ])
+      ? "filter"
+      : committed.sortBy !== requested.sortBy ||
+          committed.sortDir !== requested.sortDir
+        ? "sort"
+        : "columns";
   const isReplacementActive = !requestMatchesCommitted;
-  const isReplacementPending =
-    isSameListReplacement && isSortChanged && requestedQuery.isFetching;
   // A newer request stopped this one in Rust; it is pending again, never failed.
   const isRequestedSuperseded =
     requestedQuery.isError && isSupersededError(requestedQuery.error);
@@ -725,17 +722,47 @@ export function StaffSearchResultsPanel({
     requestedQuery.isError && !isRequestedSuperseded
       ? requestedQuery.error
       : null;
-  const replacementError =
-    isSameListReplacement && isSortChanged ? requestedError : null;
-  const isFieldReplacement = isSameListReplacement && !fieldsMatch;
-  const unresolvedFieldIds = isFieldReplacement
-    ? new Set(
-        requested.requestedFields.filter(
+  const unresolvedFieldIds = new Set(
+    isRetainedReplacement
+      ? requested.requestedFields.filter(
           (field) => !committed.requestedFields.includes(field),
-        ),
-      )
-    : new Set<string>();
-  const fieldReplacementError = isFieldReplacement ? requestedError : null;
+        )
+      : [],
+  );
+  const replacementFeedback =
+    replacementKind === null ? null : requestedError ? (
+      <div
+        className="flex shrink-0 items-center justify-between gap-3 px-4 pb-3 text-body-sm text-error"
+        role="alert"
+      >
+        <span>
+          {replacementKind === "filter"
+            ? "Could not filter staff."
+            : replacementKind === "sort"
+              ? "Could not sort staff."
+              : "Could not load staff columns."}{" "}
+          {requestedError.message}
+        </span>
+        <button
+          type="button"
+          className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          onClick={() => void requestedQuery.refetch()}
+        >
+          Retry
+        </button>
+      </div>
+    ) : (
+      <p
+        className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
+        role="status"
+      >
+        {replacementKind === "filter"
+          ? "Filtering…"
+          : replacementKind === "sort"
+            ? "Sorting…"
+            : "Loading columns…"}
+      </p>
+    );
 
   // The user came back to a query whose request was superseded while it ran.
   useEffect(() => {
@@ -780,7 +807,7 @@ export function StaffSearchResultsPanel({
     [committed, scope],
   );
   const page =
-    requestMatchesCommitted || isSameListReplacement
+    requestMatchesCommitted || isRetainedReplacement
       ? committedQuery.data
       : undefined;
   const removeStoredColumn = (metricId: string) => {
@@ -977,6 +1004,7 @@ export function StaffSearchResultsPanel({
             {committed.sortDir === "asc" ? "ascending" : "descending"})
           </p>,
         )}
+        {replacementFeedback}
         <EmptyState
           icon={scope === "my-staff" || isShortlist ? UsersRound : SearchX}
           title={
@@ -1064,46 +1092,7 @@ export function StaffSearchResultsPanel({
           {committed.sortDir === "asc" ? "ascending" : "descending"})
         </p>,
       )}
-      {isReplacementPending ? (
-        <p
-          className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
-          role="status"
-        >
-          Sorting…
-        </p>
-      ) : null}
-      {replacementError ? (
-        <div
-          className="flex shrink-0 items-center justify-between gap-3 px-4 pb-3 text-body-sm text-error"
-          role="alert"
-        >
-          <span>Could not sort staff. {replacementError.message}</span>
-          <button
-            type="button"
-            className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            onClick={() => void requestedQuery.refetch()}
-          >
-            Retry
-          </button>
-        </div>
-      ) : null}
-      {fieldReplacementError ? (
-        <div
-          className="flex shrink-0 items-center justify-between gap-3 px-4 pb-3 text-body-sm text-error"
-          role="alert"
-        >
-          <span>
-            Could not load staff columns. {fieldReplacementError.message}
-          </span>
-          <button
-            type="button"
-            className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            onClick={() => void requestedQuery.refetch()}
-          >
-            Retry
-          </button>
-        </div>
-      ) : null}
+      {replacementFeedback}
       {allScoresUnavailable ? (
         <p
           role="status"
