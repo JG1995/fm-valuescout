@@ -34,7 +34,7 @@ describe("search player fetch", () => {
       [],
       "general",
       "fullCsv",
-      false,
+      null,
       "search",
     );
     expect(lastArgs()).toMatchObject({ tableId: "search" });
@@ -51,7 +51,7 @@ describe("search player fetch", () => {
       [],
       "moneyball",
       "filtered",
-      false,
+      null,
       context,
     );
     const named = searchPlayersQueryOptions(
@@ -64,7 +64,7 @@ describe("search player fetch", () => {
       [],
       "moneyball",
       "filtered",
-      false,
+      null,
       context,
       "moneyball-search",
     );

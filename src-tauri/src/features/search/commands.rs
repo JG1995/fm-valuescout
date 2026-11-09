@@ -155,7 +155,7 @@ pub async fn search_players(
     requested_fields: Option<Vec<String>>,
     search_view: Option<String>,
     comparison_pool: Option<String>,
-    shortlist_only: Option<bool>,
+    shortlist_id: Option<i64>,
     table_id: Option<String>,
     db: State<'_, Db>,
     caches: State<'_, SearchCaches>,
@@ -171,7 +171,7 @@ pub async fn search_players(
         requested_fields,
         search_view,
         comparison_pool,
-        shortlist_only,
+        shortlist_id,
     )?;
     let table = table_id.as_deref().map(parse_table_id).transpose()?;
     let ticket = table
@@ -193,7 +193,7 @@ struct PlayerSearch {
     requested_fields: Vec<String>,
     view: SearchView,
     comparison_pool: ComparisonPool,
-    shortlist_only: bool,
+    shortlist_id: Option<i64>,
 }
 
 impl PlayerSearch {
@@ -208,7 +208,7 @@ impl PlayerSearch {
         requested_fields: Option<Vec<String>>,
         search_view: Option<String>,
         comparison_pool: Option<String>,
-        shortlist_only: Option<bool>,
+        shortlist_id: Option<i64>,
     ) -> Result<Self, String> {
         let view = parse_search_view(search_view.as_deref())?;
         let comparison_pool = parse_comparison_pool(comparison_pool.as_deref(), view)?;
@@ -242,7 +242,7 @@ impl PlayerSearch {
             requested_fields: requested_fields.unwrap_or_default(),
             view,
             comparison_pool,
-            shortlist_only: shortlist_only.unwrap_or(false),
+            shortlist_id,
         })
     }
 
@@ -256,7 +256,7 @@ impl PlayerSearch {
             requested_fields: &self.requested_fields,
             view: self.view,
             comparison_pool: self.comparison_pool,
-            shortlist_only: self.shortlist_only,
+            shortlist_id: self.shortlist_id,
         }
     }
 }

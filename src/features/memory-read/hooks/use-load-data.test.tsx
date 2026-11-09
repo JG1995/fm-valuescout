@@ -79,19 +79,19 @@ function historicalResultWithAttachedStats(saveId: number): BusyLoadDataResult {
       gameDate: "2027-08-16",
       elapsedMs: 900,
     },
-    shortlist: { status: "notLinked" },
+    shortlists: { read: 0, failed: [] },
   };
 }
 
 /** The same historical load with no stats attached and the given shortlist outcome. */
-function historicalResultWithShortlist(
+function historicalResultWithShortlists(
   saveId: number,
-  shortlist: BusyLoadDataResult["shortlist"],
+  shortlists: BusyLoadDataResult["shortlists"],
 ): BusyLoadDataResult {
   return {
     ...historicalResultWithAttachedStats(saveId),
     stats: { status: "notLinked", elapsedMs: 0 },
-    shortlist,
+    shortlists,
   };
 }
 
@@ -463,20 +463,17 @@ describe("useLoadData", () => {
     ["attached stats", historicalResultWithAttachedStats(1), 1],
     [
       "a re-read shortlist",
-      historicalResultWithShortlist(1, {
-        status: "read",
-        name: "Targets",
-        totalPlayers: 2,
-        matchedPlayers: 1,
+      historicalResultWithShortlists(1, {
+        read: 1,
+        failed: [{ kind: "unreadable", fileName: "Loans.fmf" }],
       }),
       1,
     ],
     [
-      "a failed shortlist re-read and no stats",
-      historicalResultWithShortlist(1, {
-        status: "failed",
-        kind: "unreadable",
-        fileName: "Targets.fmf",
+      "only failed shortlist re-reads and no stats",
+      historicalResultWithShortlists(1, {
+        read: 0,
+        failed: [{ kind: "unreadable", fileName: "Targets.fmf" }],
       }),
       0,
     ],
@@ -1062,7 +1059,7 @@ describe("useLoadData", () => {
           ingestMs: 400,
         },
         stats: { status: "notLinked", elapsedMs: 0 },
-        shortlist: { status: "notLinked" },
+        shortlists: { read: 0, failed: [] },
       } as never);
     });
 
@@ -1241,7 +1238,7 @@ describe("useLoadData", () => {
           ingestMs: 400,
         },
         stats: { status: "notLinked", elapsedMs: 0 },
-        shortlist: { status: "notLinked" },
+        shortlists: { read: 0, failed: [] },
       } as never);
     });
     await act(async () => {
@@ -1368,7 +1365,7 @@ describe("useLoadData", () => {
           ingestMs: 400,
         },
         stats: { status: "notLinked", elapsedMs: 0 },
-        shortlist: { status: "notLinked" },
+        shortlists: { read: 0, failed: [] },
       } as never);
     });
     await act(async () => {
@@ -1510,7 +1507,7 @@ describe("useLoadData", () => {
           ingestMs: 400,
         },
         stats: { status: "notLinked", elapsedMs: 0 },
-        shortlist: { status: "notLinked" },
+        shortlists: { read: 0, failed: [] },
       } as never);
     });
     await act(async () => {

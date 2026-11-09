@@ -759,7 +759,7 @@ fn search_player_page(db: &Db, caches: &SearchCaches, shape: &PlayerShape, offse
         requested_fields: &shape.fields,
         view: shape.view,
         comparison_pool: shape.pool,
-        shortlist_only: false,
+        shortlist_id: None,
     };
     match shape.view {
         SearchView::General => search_general_players(

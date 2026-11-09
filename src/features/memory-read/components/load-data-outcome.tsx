@@ -6,8 +6,8 @@ import { formatCount, formatLongGameDate } from "@/utils/format";
 import type {
   LoadDataProgress,
   LoadDataResult,
-  PlayerShortlistOutcome,
   PlayerShortlistReadErrorKind,
+  PlayerShortlistsOutcome,
   SeasonStatsErrorKind,
   SeasonStatsOutcome,
 } from "../types/load-data";
@@ -91,32 +91,38 @@ const shortlistReadFailureReasons: Record<
     `${fileName} uses a shortlist format that is not supported`,
 };
 
-/** One sentence for the shortlist re-read, or null when no shortlist is linked. */
-function shortlistCopy(
-  shortlist: PlayerShortlistOutcome,
-): { text: string; isProblem: boolean } | null {
-  switch (shortlist.status) {
-    case "read":
-      return {
-        text: `Read the shortlist ${shortlist.name}: ${formatCount(shortlist.totalPlayers)} players, ${formatCount(shortlist.matchedPlayers)} in this snapshot.`,
-        isProblem: false,
-      };
-    case "notLinked":
-      return null;
-    case "staleContext":
-      return {
-        text: "The save or its shortlist changed while the shortlist was read, so it was not updated.",
-        isProblem: true,
-      };
-    case "failed":
-      return {
-        text:
-          shortlist.kind === "database"
-            ? "The shortlist could not be stored, so the previous shortlist is kept."
-            : `The shortlist was not read: ${shortlistReadFailureReasons[shortlist.kind](shortlist.fileName ?? "the linked shortlist file")}. The previous shortlist is kept.`,
-        isProblem: true,
-      };
+function shortlistFailureCopy({
+  kind,
+  fileName,
+}: PlayerShortlistsOutcome["failed"][number]): string {
+  if (fileName === null) {
+    return "The shortlists could not be updated, so their previous players are kept.";
   }
+  const reason =
+    kind === "database"
+      ? `${fileName} could not be stored`
+      : shortlistReadFailureReasons[kind](fileName);
+  return `${reason}, so its previous players are kept.`;
+}
+
+/**
+ * How many shortlists were re-read plus each failed file, or null when the
+ * save has no shortlists.
+ */
+function shortlistsCopy({
+  read,
+  failed,
+}: PlayerShortlistsOutcome): { text: string; isProblem: boolean } | null {
+  if (read === 0 && failed.length === 0) {
+    return null;
+  }
+  return {
+    text: [
+      `Read ${formatCount(read)} ${read === 1 ? "shortlist" : "shortlists"}.`,
+      ...failed.map(shortlistFailureCopy),
+    ].join(" "),
+    isProblem: failed.length > 0,
+  };
 }
 
 function formatDurationMs(ms: number): string {
@@ -180,7 +186,7 @@ function resolveBanner({ error, result }: LoadDataOutcomeProps): Banner | null {
     ? " This snapshot is now the latest."
     : ` Stored this snapshot in history; the latest remains ${formatSnapshotDate(latestSnapshot.gameDate)}.`;
   const stats = seasonStatsCopy(result.stats);
-  const shortlist = shortlistCopy(result.shortlist);
+  const shortlist = shortlistsCopy(result.shortlists);
   const isProblem = stats.isProblem || shortlist?.isProblem === true;
   return {
     icon: isProblem ? CircleAlert : CircleCheck,

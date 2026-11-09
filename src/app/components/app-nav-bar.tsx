@@ -159,17 +159,13 @@ export function AppNavBar() {
   const searchMemory = useSearchViewMemory((state) => state.views);
   const byId = new Map(destinations.map((item) => [item.id, item]));
   // Search and Moneyball restore each view's last filters, sort, and
-  // comparison pool from session memory; on /search the shortlist override
-  // also carries over.
-  const searchViewLink =
-    (view: "general" | "moneyball") =>
-    (previous: Record<string, unknown>): Record<string, unknown> => ({
-      ...searchMemory[view],
-      view,
-      ...(pathname === "/search"
-        ? { shortlistOnly: previous.shortlistOnly }
-        : {}),
-    });
+  // comparison pool from session memory.
+  const searchViewLink = (
+    view: "general" | "moneyball",
+  ): Record<string, unknown> => ({
+    ...searchMemory[view],
+    view,
+  });
   // Same-route view transitions keep the old tab contract: inside /my-club
   // squadSort/squadDir survive, and every other key falls back to the
   // destination view defaults in validateSearch. Links from other routes use the plain

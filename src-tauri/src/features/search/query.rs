@@ -234,11 +234,9 @@ pub struct PlayerSummary {
 pub struct SearchPlayersPage {
     pub players: Vec<PlayerSummary>,
     pub total: i64,
-    /// Response state mirrors `StaffPageState`: the frontend shortlist probe
-    /// needs it to tell a save with no stored shortlist (`NoShortlist`) apart
-    /// from a stored shortlist whose entries match no current-snapshot player
-    /// (both page as empty `Ready`). Only a shortlist-only request can report
-    /// `NoShortlist`.
+    /// `NoShortlist` means the requested shortlist is not one of the current snapshot's
+    /// save's shortlists, so the frontend drops its selection. A shortlist whose players are
+    /// not in the snapshot pages as an empty `Ready`.
     pub state: SearchPlayersPageState,
 }
 
@@ -258,8 +256,8 @@ pub struct SearchPlayersRequest<'a> {
     pub requested_fields: &'a [String],
     pub view: SearchView,
     pub comparison_pool: ComparisonPool,
-    /// Restrict General and Moneyball results to the save-owned player shortlist.
-    pub shortlist_only: bool,
+    /// Restrict General and Moneyball results to this player shortlist of the save.
+    pub shortlist_id: Option<i64>,
 }
 
 #[cfg(test)]
@@ -283,7 +281,7 @@ fn search_players(
             requested_fields,
             view: SearchView::General,
             comparison_pool: ComparisonPool::FullCsv,
-            shortlist_only: false,
+            shortlist_id: None,
         },
     )
 }
@@ -307,7 +305,7 @@ pub fn search_players_in_view(
         requested_fields,
         view,
         comparison_pool,
-        shortlist_only,
+        shortlist_id,
     } = request;
     if view == SearchView::Moneyball && !sort_by.is_available_in_moneyball() {
         return Err("unsupported Moneyball sort field".to_string());
@@ -335,10 +333,7 @@ pub fn search_players_in_view(
         });
     };
 
-    // Save-owned shortlist presence is checked before the current-snapshot
-    // join, so a shortlist probe can distinguish `no_shortlist` from a stored
-    // shortlist that happens to match no current player (empty `ready`).
-    if shortlist_only && !has_player_shortlist(conn, snapshot_id)? {
+    if requested_shortlist_missing(conn, snapshot_id, shortlist_id)? {
         return Ok(SearchPlayersPage {
             players: Vec::new(),
             total: 0,
@@ -436,13 +431,10 @@ pub fn search_players_in_view(
         .flatten();
     let club_dna_sort = sort_by.club_dna_sort_identity(club_dna_definition_version);
 
-    let mut from_sql = match view {
-        // Save-owned shortlist restriction (Commit 3): join by UID against the
-        // effective current snapshot. Reusing ?1 adds no bind and keeps every
-        // downstream parameter index unchanged.
-        SearchView::General if shortlist_only => GENERAL_SHORTLIST_FROM_SQL.to_string(),
-        SearchView::General => "FROM players".to_string(),
-        SearchView::Moneyball => "FROM players INNER JOIN player_moneyball_stats moneyball ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid AND moneyball.percentiles_json IS NOT NULL".to_string(),
+    let mut from_sql = match (view, shortlist_id) {
+        (SearchView::General, Some(shortlist_id)) => general_shortlist_from_sql(shortlist_id),
+        (SearchView::General, None) => "FROM players".to_string(),
+        (SearchView::Moneyball, _) => "FROM players INNER JOIN player_moneyball_stats moneyball ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid AND moneyball.percentiles_json IS NOT NULL".to_string(),
     };
     if uses_current_role_metrics || uses_potential_role_metrics {
         from_sql.push_str(&player_metrics_join(
@@ -462,10 +454,9 @@ pub fn search_players_in_view(
         ));
     }
     let mut where_sql = match view {
-        SearchView::General => "players.snapshot_id = ?1",
-        SearchView::Moneyball => moneyball_base_where_sql(shortlist_only),
-    }
-    .to_string();
+        SearchView::General => "players.snapshot_id = ?1".to_string(),
+        SearchView::Moneyball => moneyball_base_where_sql(shortlist_id),
+    };
     if let Some(compiled) = &compiled {
         where_sql.push_str(" AND ");
         where_sql.push_str(&compiled.sql);
@@ -620,18 +611,22 @@ pub fn search_players_in_view(
     })
 }
 
-/// Restricts General results to the save-owned shortlist by UID. Reusing `?1` (the snapshot)
-/// adds no bind, so every other parameter index stays unchanged.
-const GENERAL_SHORTLIST_FROM_SQL: &str = "FROM players INNER JOIN player_shortlist_entries shortlist ON shortlist.player_uid = players.uid AND shortlist.save_id = (SELECT save_id FROM snapshots WHERE id = ?1)";
+/// Restricts General results to shortlist `shortlist_id`'s players by UID. The ID is a typed
+/// integer written as a literal, so it adds no bind and every parameter index stays unchanged.
+/// Callers first check that the shortlist belongs to the snapshot's save.
+fn general_shortlist_from_sql(shortlist_id: i64) -> String {
+    format!("FROM players INNER JOIN player_shortlist_entries shortlist ON shortlist.player_uid = players.uid AND shortlist.shortlist_id = {shortlist_id}")
+}
 
-/// Moneyball's base condition: the snapshot `?1`, restricted to the save-owned shortlist by
-/// UID when `shortlist_only` is set. The restriction reuses `?1`, so it adds no bind. As the
-/// base, it bounds the rows, a mixed OR filter's cohort, and Filtered cohort percentiles.
-pub(super) fn moneyball_base_where_sql(shortlist_only: bool) -> &'static str {
-    if shortlist_only {
-        "players.snapshot_id = ?1 AND players.uid IN (SELECT player_uid FROM player_shortlist_entries WHERE save_id = (SELECT save_id FROM snapshots WHERE id = ?1))"
-    } else {
-        "players.snapshot_id = ?1"
+/// Moneyball's base condition: the snapshot `?1`, restricted by UID to shortlist
+/// `shortlist_id`'s players when one is given. The ID is a typed integer written as a
+/// literal, so it adds no bind. As the base, it bounds the rows, a mixed OR filter's cohort,
+/// and Filtered cohort percentiles. Callers first check that the shortlist belongs to the
+/// snapshot's save.
+pub(super) fn moneyball_base_where_sql(shortlist_id: Option<i64>) -> String {
+    match shortlist_id {
+        Some(shortlist_id) => format!("players.snapshot_id = ?1 AND players.uid IN (SELECT player_uid FROM player_shortlist_entries WHERE shortlist_id = {shortlist_id})"),
+        None => "players.snapshot_id = ?1".to_string(),
     }
 }
 
@@ -649,15 +644,22 @@ pub(super) fn active_current_snapshot_id(conn: &Connection) -> Result<Option<i64
     .map_err(|error| error.to_string())
 }
 
-/// Whether the snapshot's save has a linked shortlist file, even one that lists no player.
-pub(super) fn has_player_shortlist(conn: &Connection, snapshot_id: i64) -> Result<bool, String> {
+/// Whether a shortlist is requested that is not one of the snapshot's save's shortlists. Such
+/// a request must restrict to nothing rather than to another save's players.
+pub(super) fn requested_shortlist_missing(
+    conn: &Connection,
+    snapshot_id: i64,
+    shortlist_id: Option<i64>,
+) -> Result<bool, String> {
+    let Some(shortlist_id) = shortlist_id else {
+        return Ok(false);
+    };
     conn.query_row(
-        "SELECT EXISTS(
-            SELECT 1 FROM saves
-            WHERE id = (SELECT save_id FROM snapshots WHERE id = ?1)
-              AND player_shortlist_file_path IS NOT NULL
+        "SELECT NOT EXISTS(
+            SELECT 1 FROM player_shortlists
+            WHERE id = ?2 AND save_id = (SELECT save_id FROM snapshots WHERE id = ?1)
          )",
-        [snapshot_id],
+        [snapshot_id, shortlist_id],
         |row| row.get(0),
     )
     .map_err(|error| error.to_string())
@@ -680,13 +682,13 @@ pub type GeneralOrderCache = ResultCache<GeneralOrder>;
 /// which rows and columns a window shows.
 pub fn search_query_fingerprint(request: &SearchPlayersRequest<'_>) -> String {
     format!(
-        "{:?}|{:?}|{:?}|{:?}|{:?}|{}",
+        "{:?}|{:?}|{:?}|{:?}|{:?}|{:?}",
         request.view,
         request.filter_ast,
         request.sort_by,
         request.sort_dir,
         request.comparison_pool,
-        request.shortlist_only,
+        request.shortlist_id,
     )
 }
 
@@ -738,7 +740,7 @@ fn compute_general_order(
         sort_by,
         sort_dir,
         filter_ast,
-        shortlist_only,
+        shortlist_id,
         ..
     } = request;
     let empty = |state| GeneralOrder {
@@ -750,7 +752,7 @@ fn compute_general_order(
     let Some(snapshot_id) = active_current_snapshot_id(conn)? else {
         return Ok(empty(SearchPlayersPageState::NoCurrentSnapshot));
     };
-    if *shortlist_only && !has_player_shortlist(conn, snapshot_id)? {
+    if requested_shortlist_missing(conn, snapshot_id, *shortlist_id)? {
         return Ok(empty(SearchPlayersPageState::NoShortlist));
     }
 
@@ -806,8 +808,8 @@ fn compute_general_order(
             sort_by,
             SortField::Pa | SortField::Age | SortField::Value | SortField::Club
         );
-    let mut from_sql = if *shortlist_only {
-        GENERAL_SHORTLIST_FROM_SQL.to_string()
+    let mut from_sql = if let Some(shortlist_id) = *shortlist_id {
+        general_shortlist_from_sql(shortlist_id)
     } else if reads_in_key_order {
         "FROM players INDEXED BY sqlite_autoindex_players_1".to_string()
     } else {
@@ -1374,7 +1376,7 @@ fn search_players_with_cohort_scoring(
         requested_fields,
         view,
         comparison_pool,
-        shortlist_only,
+        shortlist_id,
     } = request;
     if view != SearchView::Moneyball {
         return Err("Moneyball role fields require Moneyball search view".to_string());
@@ -1475,7 +1477,7 @@ fn search_players_with_cohort_scoring(
             state: SearchPlayersPageState::NoCurrentSnapshot,
         });
     };
-    if shortlist_only && !has_player_shortlist(conn, snapshot_id)? {
+    if requested_shortlist_missing(conn, snapshot_id, shortlist_id)? {
         return Ok(SearchPlayersPage {
             players: Vec::new(),
             total: 0,
@@ -1537,7 +1539,7 @@ fn search_players_with_cohort_scoring(
         .as_ref()
         .map(|ast| compile_filters_for_moneyball(ast, 2, true))
         .transpose()?;
-    let base_where_sql = moneyball_base_where_sql(shortlist_only).to_string();
+    let base_where_sql = moneyball_base_where_sql(shortlist_id);
     let non_role_where_sql = where_sql_with_filter(&base_where_sql, compiled_non_role.as_ref());
     let has_post_cohort_rules = filter_ast.is_some_and(has_post_cohort_rules);
     let mixed_or = has_post_cohort_rules
@@ -2073,7 +2075,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
     }
@@ -2099,7 +2101,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
     }
@@ -2198,22 +2200,33 @@ mod tests {
         }
     }
 
-    /// Links a shortlist file to the current snapshot's save and stores `uids` as its players.
-    fn seed_player_shortlist(conn: &Connection, uids: &[i64]) {
-        conn.execute(
-            "UPDATE saves SET player_shortlist_file_path = '/lists/Targets.fmf'
-             WHERE id = (SELECT save_id FROM snapshots WHERE is_current = 1)",
-            [],
-        )
-        .expect("link shortlist file");
+    /// Links `/lists/Targets.fmf` to the current snapshot's save, adds `uids` to its players,
+    /// and returns its shortlist ID.
+    fn seed_player_shortlist(conn: &Connection, uids: &[i64]) -> i64 {
+        seed_named_player_shortlist(conn, "/lists/Targets.fmf", uids)
+    }
+
+    /// Links `path` to the current snapshot's save, adds `uids` to its players, and returns
+    /// its shortlist ID.
+    fn seed_named_player_shortlist(conn: &Connection, path: &str, uids: &[i64]) -> i64 {
+        let shortlist_id = conn
+            .query_row(
+                "INSERT INTO player_shortlists (save_id, file_path, name)
+                 SELECT save_id, ?1, 'Targets' FROM snapshots WHERE is_current = 1
+                 ON CONFLICT (save_id, file_path) DO UPDATE SET name = name
+                 RETURNING id",
+                [path],
+                |row| row.get(0),
+            )
+            .expect("link shortlist file");
         for uid in uids {
             conn.execute(
-                "INSERT INTO player_shortlist_entries (save_id, player_uid)
-                 SELECT save_id, ?1 FROM snapshots WHERE is_current = 1",
-                [uid],
+                "INSERT INTO player_shortlist_entries (shortlist_id, player_uid) VALUES (?1, ?2)",
+                [shortlist_id, *uid],
             )
             .expect("seed shortlist");
         }
+        shortlist_id
     }
 
     fn current_snapshot_id(conn: &Connection) -> i64 {
@@ -2496,7 +2509,7 @@ mod tests {
                 requested_fields,
                 view: SearchView::Moneyball,
                 comparison_pool,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
     }
@@ -2581,7 +2594,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("search Moneyball players");
@@ -2623,7 +2636,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("search Moneyball players");
@@ -2685,7 +2698,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::Filtered,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("first page");
@@ -2700,7 +2713,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::Filtered,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("second page");
@@ -2760,7 +2773,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::Filtered,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("CA and PA work in Moneyball Search");
@@ -2794,8 +2807,10 @@ mod tests {
         set_role_score(&conn, 2, "deep_lying_playmaker_ip", Some(40));
         set_role_score(&conn, 3, "deep_lying_playmaker_ip", Some(90));
         set_role_score(&conn, 4, "deep_lying_playmaker_ip", Some(80));
-        // Saved UIDs 1..=3 plus a stale UID with no current-snapshot player.
-        seed_player_shortlist(&conn, &[1, 2, 3, 99]);
+        // Saved UIDs 1..=3 plus a stale UID with no current-snapshot player, and another
+        // shortlist of the same save holding only UID 4.
+        let shortlist = Some(seed_player_shortlist(&conn, &[1, 2, 3, 99]));
+        let loans = seed_named_player_shortlist(&conn, "/lists/Loans.fmf", &[4]);
         let requested_fields = vec!["role.deep_lying_playmaker_ip".to_string()];
 
         // Unrestricted General still returns every current player.
@@ -2810,7 +2825,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("unrestricted General");
@@ -2828,7 +2843,7 @@ mod tests {
                 requested_fields: &requested_fields,
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: true,
+                shortlist_id: shortlist,
             },
         )
         .expect("restricted General");
@@ -2842,6 +2857,27 @@ mod tests {
                 .dynamic_values
                 .get("role.deep_lying_playmaker_ip"),
             Some(&Some(DynamicValue::Integer(90)))
+        );
+
+        // Another shortlist of the same save restricts to its own players only.
+        let other = search_players_in_view(
+            &conn,
+            SearchPlayersRequest {
+                offset: 0,
+                limit: DEFAULT_PAGE_LIMIT,
+                sort_by: SortField::Ca,
+                sort_dir: SortDir::Desc,
+                filter_ast: None,
+                requested_fields: &[],
+                view: SearchView::General,
+                comparison_pool: ComparisonPool::FullCsv,
+                shortlist_id: Some(loans),
+            },
+        )
+        .expect("other shortlist");
+        assert_eq!(
+            other.players.iter().map(|p| p.uid).collect::<Vec<_>>(),
+            vec![4]
         );
 
         // The restriction composes with one General filter.
@@ -2865,7 +2901,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: true,
+                shortlist_id: shortlist,
             },
         )
         .expect("filtered restricted General");
@@ -2887,7 +2923,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: true,
+                shortlist_id: shortlist,
             },
         )
         .expect("paged restricted General");
@@ -2911,7 +2947,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: true,
+                shortlist_id: shortlist,
             },
         )
         .expect("empty restricted General");
@@ -2920,7 +2956,7 @@ mod tests {
     }
 
     #[test]
-    fn shortlist_probe_reports_presence_by_linked_file_not_by_stored_entries() {
+    fn a_shortlist_of_another_save_or_an_unknown_one_reports_no_shortlist() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("shortlist-probe.db"));
         ingest_players(
@@ -2930,15 +2966,8 @@ mod tests {
                 player_template(2, "Two", 140),
             ],
         );
-        let save_id: i64 = conn
-            .query_row(
-                "SELECT save_id FROM snapshots WHERE is_current = 1",
-                [],
-                |row| row.get(0),
-            )
-            .expect("current save");
 
-        let probe = |conn: &Connection| {
+        let probe = |conn: &Connection, shortlist_id: i64| {
             search_players_in_view(
                 conn,
                 SearchPlayersRequest {
@@ -2950,36 +2979,37 @@ mod tests {
                     requested_fields: &[],
                     view: SearchView::General,
                     comparison_pool: ComparisonPool::FullCsv,
-                    shortlist_only: true,
+                    shortlist_id: Some(shortlist_id),
                 },
             )
             .expect("shortlist probe")
         };
 
-        // Stored entries without a linked file report no_shortlist.
-        conn.execute(
-            "INSERT INTO player_shortlist_entries (save_id, player_uid) VALUES (?1, ?2)",
-            rusqlite::params![save_id, 1],
+        // An unknown ID, and another save's shortlist of current players, restrict to nothing.
+        let unknown = probe(&conn, 1);
+        assert_eq!(unknown.state, SearchPlayersPageState::NoShortlist);
+        conn.execute_batch(
+            "INSERT INTO saves (id, name, is_active) VALUES (99, 'Other save', 0);
+             INSERT INTO player_shortlists (id, save_id, file_path, name)
+             VALUES (7, 99, '/lists/Other.fmf', 'Other');
+             INSERT INTO player_shortlist_entries (shortlist_id, player_uid) VALUES (7, 1);",
         )
-        .expect("seed unlinked shortlist uid");
-        let unlinked = probe(&conn);
-        assert_eq!(unlinked.state, SearchPlayersPageState::NoShortlist);
-        assert_eq!(unlinked.total, 0);
-        assert!(unlinked.players.is_empty());
+        .expect("seed another save's shortlist");
+        let foreign = probe(&conn, 7);
+        assert_eq!(foreign.state, SearchPlayersPageState::NoShortlist);
+        assert_eq!(foreign.total, 0);
+        assert!(foreign.players.is_empty());
 
-        // A linked shortlist whose players are not in the snapshot stays ready with an
-        // empty page.
-        conn.execute("DELETE FROM player_shortlist_entries", [])
-            .expect("clear shortlist");
-        seed_player_shortlist(&conn, &[99]);
-        let stale_only = probe(&conn);
+        // A shortlist whose players are not in the snapshot stays ready with an empty page.
+        let shortlist_id = seed_player_shortlist(&conn, &[99]);
+        let stale_only = probe(&conn, shortlist_id);
         assert_eq!(stale_only.state, SearchPlayersPageState::Ready);
         assert_eq!(stale_only.total, 0);
         assert!(stale_only.players.is_empty());
 
         // A linked uid that resolves to a current player reports ready with matches.
         seed_player_shortlist(&conn, &[1]);
-        let matched = probe(&conn);
+        let matched = probe(&conn, shortlist_id);
         assert_eq!(matched.state, SearchPlayersPageState::Ready);
         assert_eq!(matched.total, 1);
         assert_eq!(matched.players[0].uid, 1);
@@ -5543,7 +5573,7 @@ mod tests {
                 requested_fields: &[role_field],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect_err("General role field");
@@ -5566,7 +5596,7 @@ mod tests {
                 requested_fields: &[role_field],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect_err("attribute sort in Moneyball role query");
@@ -5642,7 +5672,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("tactic current");
@@ -5678,7 +5708,7 @@ mod tests {
                 requested_fields: &["tactic_potential.goalkeeper".to_string()],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("tactic potential");
@@ -5722,7 +5752,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("desc");
@@ -5742,7 +5772,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("asc");
@@ -5837,7 +5867,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("moneyball mapped");
@@ -5876,7 +5906,7 @@ mod tests {
                 requested_fields: &["tactic_current.centre_forward".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("uncovered");
@@ -5899,7 +5929,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("desc");
@@ -5919,7 +5949,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::Filtered,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("filtered");
@@ -5989,7 +6019,7 @@ mod tests {
                 requested_fields: &[],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("sort-only");
@@ -6017,7 +6047,7 @@ mod tests {
                     requested_fields: &[field.to_string()],
                     view,
                     comparison_pool: ComparisonPool::FullCsv,
-                    shortlist_only: false,
+                    shortlist_id: None,
                 },
             )
             .unwrap_err();
@@ -6105,7 +6135,7 @@ mod tests {
                     requested_fields: &[field.to_string()],
                     view: SearchView::Moneyball,
                     comparison_pool,
-                    shortlist_only: false,
+                    shortlist_id: None,
                 },
             )
             .expect("custom search")
@@ -6285,7 +6315,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("parity query");
@@ -6350,7 +6380,7 @@ mod tests {
                     requested_fields: &[field.to_string()],
                     view: SearchView::General,
                     comparison_pool: ComparisonPool::FullCsv,
-                    shortlist_only: false,
+                    shortlist_id: None,
                 },
             )
             .expect_err("must fail completeness");
@@ -6370,7 +6400,7 @@ mod tests {
                     requested_fields: &[],
                     view: SearchView::General,
                     comparison_pool: ComparisonPool::FullCsv,
-                    shortlist_only: false,
+                    shortlist_id: None,
                 },
             )
             .expect_err("sort-only must also fail");
@@ -6392,7 +6422,7 @@ mod tests {
             .collect();
         ingest_players(&mut conn, players);
         let snapshot_id = current_snapshot_id(&conn);
-        seed_player_shortlist(&conn, &[1, 2]);
+        let shortlist = Some(seed_player_shortlist(&conn, &[1, 2]));
         set_role_score(&conn, 1, "goalkeeper_ip", Some(90));
         set_role_score(&conn, 1, "line_holding_keeper_oop", Some(90));
         set_role_score(&conn, 2, "goalkeeper_ip", Some(60));
@@ -6410,7 +6440,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: true,
+                shortlist_id: shortlist,
             },
         )
         .expect("restricted general");
@@ -6446,7 +6476,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: true,
+                shortlist_id: shortlist,
             },
         )
         .expect("restricted general nulls last");
@@ -6519,7 +6549,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("full");
@@ -6556,7 +6586,7 @@ mod tests {
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
                 comparison_pool: ComparisonPool::Filtered,
-                shortlist_only: false,
+                shortlist_id: None,
             },
         )
         .expect("filtered");
@@ -6602,7 +6632,7 @@ mod tests {
         dir: SortDir,
         filters: Option<FilterAst>,
         fields: Vec<String>,
-        shortlist_only: bool,
+        shortlist_id: Option<i64>,
     }
 
     impl GeneralShape {
@@ -6613,7 +6643,7 @@ mod tests {
                 dir,
                 filters: None,
                 fields: fields.iter().map(|field| field.to_string()).collect(),
-                shortlist_only: false,
+                shortlist_id: None,
             }
         }
 
@@ -6634,7 +6664,7 @@ mod tests {
                 requested_fields: &self.fields,
                 view: SearchView::General,
                 comparison_pool: ComparisonPool::FullCsv,
-                shortlist_only: self.shortlist_only,
+                shortlist_id: self.shortlist_id,
             }
         }
     }
@@ -6813,13 +6843,35 @@ mod tests {
             assert_cached_windows_match(&db, &orders, shape);
         }
 
+        // Shortlist 1 is unknown until it is seeded, then restricts; another save's
+        // shortlist reports no_shortlist on both paths.
         let shortlist = GeneralShape {
-            shortlist_only: true,
+            shortlist_id: Some(1),
             ..GeneralShape::new("shortlist", "ca", SortDir::Desc, &["role.goalkeeper_ip"])
         };
         assert_cached_windows_match(&db, &orders, &shortlist);
-        seed_player_shortlist(&db.0.lock().expect("lock writer"), &[2, 3, 5, 99]);
+        {
+            let writer = db.0.lock().expect("lock writer");
+            assert_eq!(seed_player_shortlist(&writer, &[2, 3, 5, 99]), 1);
+            writer
+                .execute_batch(
+                    "INSERT INTO saves (id, name, is_active) VALUES (99, 'Other save', 0);
+                     INSERT INTO player_shortlists (id, save_id, file_path, name)
+                     VALUES (7, 99, '/lists/Other.fmf', 'Other');
+                     INSERT INTO player_shortlist_entries (shortlist_id, player_uid)
+                     VALUES (7, 2);",
+                )
+                .expect("seed another save's shortlist");
+        }
         assert_cached_windows_match(&db, &orders, &shortlist);
+        assert_cached_windows_match(
+            &db,
+            &orders,
+            &GeneralShape {
+                shortlist_id: Some(7),
+                ..GeneralShape::new("foreign shortlist", "ca", SortDir::Desc, &[])
+            },
+        );
     }
 
     #[test]
@@ -6916,7 +6968,7 @@ mod tests {
         pool: ComparisonPool,
         filters: Option<FilterAst>,
         fields: Vec<String>,
-        shortlist_only: bool,
+        shortlist_id: Option<i64>,
     }
 
     impl MoneyballShape {
@@ -6928,13 +6980,14 @@ mod tests {
                 pool: ComparisonPool::Filtered,
                 filters: None,
                 fields: fields.iter().map(|field| field.to_string()).collect(),
-                shortlist_only: false,
+                shortlist_id: None,
             }
         }
 
+        /// Restricts to shortlist 1, the first one a test seeds.
         fn shortlisted(self) -> Self {
             Self {
-                shortlist_only: true,
+                shortlist_id: Some(1),
                 ..self
             }
         }
@@ -6954,7 +7007,7 @@ mod tests {
                 pool,
                 filters: self.filters.clone(),
                 fields: self.fields.clone(),
-                shortlist_only: self.shortlist_only,
+                shortlist_id: self.shortlist_id,
             }
         }
 
@@ -6968,7 +7021,7 @@ mod tests {
                 requested_fields: &self.fields,
                 view: SearchView::Moneyball,
                 comparison_pool: self.pool,
-                shortlist_only: self.shortlist_only,
+                shortlist_id: self.shortlist_id,
             }
         }
     }
@@ -7282,7 +7335,10 @@ mod tests {
             }
         };
         assert_shortlist_shapes();
-        seed_player_shortlist(&db.0.lock().expect("lock writer"), &[1, 2, 4, 7, 9, 11, 99]);
+        assert_eq!(
+            seed_player_shortlist(&db.0.lock().expect("lock writer"), &[1, 2, 4, 7, 9, 11, 99]),
+            1
+        );
         assert_shortlist_shapes();
 
         let (_empty_dir, empty_db) = {
@@ -7322,8 +7378,14 @@ mod tests {
 
         // UID 11 has no stored percentiles and UID 99 is not in the snapshot. Of the
         // shortlist, CA 120 or less leaves UIDs 2, 5, and 9: exactly the players with CA 120.
+        // Another shortlist of the save holds UIDs 4, 8, and 12, which also have CA 120 or
+        // less, and must not leak into the rows or the cohort.
         let shortlist = [1, 2, 5, 7, 9, 11, 99];
-        seed_player_shortlist(&db.0.lock().expect("lock writer"), &shortlist);
+        {
+            let writer = db.0.lock().expect("lock writer");
+            assert_eq!(seed_player_shortlist(&writer, &shortlist), 1);
+            seed_named_player_shortlist(&writer, "/lists/Loans.fmf", &[4, 8, 12]);
+        }
         let in_shortlist = |page: SearchPlayersPage| {
             page.players
                 .into_iter()

@@ -80,21 +80,17 @@ export type PlayerShortlistReadErrorKind =
   | "unsupported_format"
   | "database";
 
-/** The re-read of the active save's linked FM shortlist file. Only `read` changed it. */
-export type PlayerShortlistOutcome =
-  | {
-      status: "read";
-      name: string;
-      totalPlayers: number;
-      matchedPlayers: number;
-    }
-  | { status: "notLinked" }
-  | { status: "staleContext" }
-  | {
-      status: "failed";
-      kind: PlayerShortlistReadErrorKind;
-      fileName: string | null;
-    };
+/**
+ * The re-read of the active save's linked FM shortlist files. A re-read
+ * discarded because the save or shortlist changed counts as neither, so a
+ * save without shortlists reports `{ read: 0, failed: [] }`.
+ */
+export type PlayerShortlistsOutcome = {
+  /** How many shortlists had their name and players replaced. */
+  read: number;
+  /** Each shortlist that kept its previous players. */
+  failed: { kind: PlayerShortlistReadErrorKind; fileName: string | null }[];
+};
 
 export type LoadDataResult = {
   requestId: string;
@@ -103,5 +99,5 @@ export type LoadDataResult = {
   effectiveSnapshot: LoadDataSnapshotSummary;
   timings: LoadDataTimings;
   stats: SeasonStatsOutcome;
-  shortlist: PlayerShortlistOutcome;
+  shortlists: PlayerShortlistsOutcome;
 };

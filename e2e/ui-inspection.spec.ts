@@ -35,8 +35,8 @@ const canonicalPages: readonly InspectionPage[] = [
   },
   {
     name: "player-shortlist",
-    route: "/search?shortlistOnly=true",
-    readyText: "Shortlist player 001",
+    route: "/search#inspection-shortlist-selected",
+    readyText: "Player 001",
   },
   { name: "staff-search", route: "/staff", readyText: "Staff member 001" },
   {
@@ -159,6 +159,13 @@ for (const inspectedPage of pages) {
       ).toBeVisible();
     }
     expect(pageErrors).toEqual([]);
+
+    if (inspectedPage.route.includes("#inspection-shortlist-selected")) {
+      await page
+        .getByRole("combobox", { name: "Shortlist" })
+        .selectOption({ label: "Targets" });
+      await expect(page.getByText("Shortlist player 001")).toBeVisible();
+    }
 
     if (inspectedPage.route.includes("#inspection-assignment-modal")) {
       await page

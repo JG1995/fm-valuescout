@@ -19,8 +19,8 @@ use super::filter::{
     moneyball_role_ids_from_ast, post_cohort_rules_match, without_post_cohort_rules, CombineMode,
 };
 use super::query::{
-    active_current_snapshot_id, compare_role_scores, has_player_shortlist,
-    moneyball_base_where_sql, moneyball_definition_for_role_and_position, query_matching_uids,
+    active_current_snapshot_id, compare_role_scores, moneyball_base_where_sql,
+    moneyball_definition_for_role_and_position, query_matching_uids, requested_shortlist_missing,
     snapshot_save_id, where_sql_with_filter, ComparisonPool, SearchPlayersPageState,
     SearchPlayersRequest, SortField,
 };
@@ -103,7 +103,7 @@ impl MoneyballCohort {
             sort_dir,
             filter_ast,
             comparison_pool,
-            shortlist_only,
+            shortlist_id,
             ..
         } = request;
         let catalog = builtin_catalog()?;
@@ -139,7 +139,7 @@ impl MoneyballCohort {
             return Ok(cohort);
         };
         cohort.snapshot_id = snapshot_id;
-        if *shortlist_only && !has_player_shortlist(conn, snapshot_id)? {
+        if requested_shortlist_missing(conn, snapshot_id, *shortlist_id)? {
             cohort.state = SearchPlayersPageState::NoShortlist;
             return Ok(cohort);
         }
@@ -162,8 +162,8 @@ impl MoneyballCohort {
             .as_ref()
             .map(|ast| compile_filters_for_moneyball(ast, 2, true))
             .transpose()?;
-        let base_where_sql = moneyball_base_where_sql(*shortlist_only);
-        let non_role_where_sql = where_sql_with_filter(base_where_sql, compiled_non_role.as_ref());
+        let base_where_sql = moneyball_base_where_sql(*shortlist_id);
+        let non_role_where_sql = where_sql_with_filter(&base_where_sql, compiled_non_role.as_ref());
         let mut non_role_bind_values = vec![Value::Integer(snapshot_id)];
         if let Some(compiled) = &compiled_non_role {
             non_role_bind_values.extend(compiled.params.iter().cloned());
@@ -171,10 +171,7 @@ impl MoneyballCohort {
         let post_cohort_ast = filter_ast.filter(|ast| has_post_cohort_rules(ast));
         let mixed_or = post_cohort_ast.is_some_and(|ast| matches!(ast.combine, CombineMode::Or));
         let (cohort_where_sql, cohort_bind_values) = if mixed_or {
-            (
-                base_where_sql.to_string(),
-                vec![Value::Integer(snapshot_id)],
-            )
+            (base_where_sql, vec![Value::Integer(snapshot_id)])
         } else {
             (non_role_where_sql.clone(), non_role_bind_values.clone())
         };

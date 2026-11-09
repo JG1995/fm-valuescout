@@ -20,6 +20,7 @@ import {
   setBridgeStatusIpcMockMode,
   setDumpRequestIpcMockMode,
 } from "@/features/memory-read/api/bridge-status-ipc-mock";
+import { usePlayerShortlistSelectionStore } from "@/stores/use-player-shortlist-selection-store";
 import {
   defaultPlayerTableLayouts,
   usePlayerTableStore,
@@ -464,5 +465,6 @@ afterEach(() => {
   usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });
   usePlayerTableStore.persist.clearStorage();
   useShortlistFilterStore.getState().reset();
+  usePlayerShortlistSelectionStore.getState().reset();
   registerIpcMocks();
 });

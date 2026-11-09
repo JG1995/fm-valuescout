@@ -79,9 +79,13 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         createdAtUtc: "2026-07-28T12:00:00.000Z",
         updatedAtUtc: "2026-07-28T12:00:00.000Z",
         linkedSaveFileName: null,
-        playerShortlistName: null,
-        playerShortlistFileName: null,
+        // Loans and Targets restrict Search to different players.
+        playerShortlists: shortlistSearchEnabled ? [
+          { id: 2, name: "Loans", fileName: "Loans.fmf" },
+          { id: 1, name: "Targets", fileName: "Targets.fmf" },
+        ] : [],
       }];
+      let nextShortlistId = 3;
       let snapshots = snapshotHistoryEnabled ? [
         {
           id: 1,
@@ -764,8 +768,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               linkedSaveFileName: args?.saveFilePath
                 ? args.saveFilePath.split(/[\\\\/]/).pop()
                 : null,
-              playerShortlistName: null,
-              playerShortlistFileName: null,
+              playerShortlists: [],
             };
             nextSaveId += 1;
             saves.push(created);
@@ -907,8 +910,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   createdAtUtc: "2026-07-28T16:20:00.000Z",
                   updatedAtUtc: "2026-07-28T16:20:00.000Z",
                   linkedSaveFileName: null,
-                  playerShortlistName: null,
-                  playerShortlistFileName: null,
+                  playerShortlists: [],
                 }];
               } else {
                 saves = saves.map((save, index) => ({
@@ -991,16 +993,32 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               save.id === args?.saveId && save.contextToken === args?.contextToken
             );
             if (index < 0) throw { kind: "stale_context", fileName: null };
-            const chosen = cmd === "choose_player_shortlist";
-            const fileName = chosen ? args.path.split(/[\\\\/]/).pop() : null;
+            const shortlists = saves[index].playerShortlists;
+            if (cmd === "remove_player_shortlist") {
+              saves[index] = {
+                ...saves[index],
+                playerShortlists: shortlists.filter(
+                  (shortlist) => shortlist.id !== args?.shortlistId,
+                ),
+              };
+              return null;
+            }
+            // Adding a linked file again updates its shortlist in place.
+            const fileName = args.path.split(/[\\\\/]/).pop();
+            const linked = shortlists.find((shortlist) => shortlist.fileName === fileName);
+            const added = {
+              id: linked ? linked.id : nextShortlistId++,
+              name: "Smoke Targets",
+              fileName,
+            };
             saves[index] = {
               ...saves[index],
-              playerShortlistName: chosen ? "Smoke Targets" : null,
-              playerShortlistFileName: fileName,
+              playerShortlists: [
+                ...shortlists.filter((shortlist) => shortlist.id !== added.id),
+                added,
+              ].sort((left, right) => left.name.localeCompare(right.name)),
             };
-            return chosen
-              ? { name: "Smoke Targets", fileName, totalPlayers: 3, matchedPlayers: 2 }
-              : null;
+            return { ...added, totalPlayers: 3, matchedPlayers: 2 };
           }
 
           if (cmd === "search_players") {
@@ -1010,12 +1028,26 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             const limit = Number.isInteger(args?.limit)
               ? Math.min(200, Math.max(1, args.limit))
               : 50;
-            if (args?.shortlistOnly === true && args?.searchView === "general") {
+            const shortlistId = typeof args?.shortlistId === "number"
+              ? args.shortlistId
+              : null;
+            if (
+              shortlistId !== null &&
+              !activeSave().playerShortlists.some((shortlist) => shortlist.id === shortlistId)
+            ) {
+              return { players: [], total: 0, state: "no_shortlist" };
+            }
+            if (shortlistId !== null && args?.searchView === "general") {
+              // Loans holds the first three shortlist players; every other
+              // shortlist holds all of them.
+              const generalShortlistPlayers = shortlistId === 2
+                ? shortlistPlayers.slice(0, 3)
+                : shortlistPlayers;
               const filterRules = Array.isArray(args?.filters)
                 ? args.filters
                 : [];
               const filtered = filterRules.length > 0
-                ? shortlistPlayers.filter((player) => {
+                ? generalShortlistPlayers.filter((player) => {
                     const matches = filterRules.map((rule) => {
                       const field = rule.field;
                       let raw = null;
@@ -1056,7 +1088,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                       ? matches.some(Boolean)
                       : matches.every(Boolean);
                   })
-                : shortlistPlayers;
+                : generalShortlistPlayers;
               const sorted = [...filtered].sort((left, right) => {
                 const sortBy = typeof args?.sortBy === "string" ? args.sortBy : "ca";
                 let leftVal = null;
@@ -1083,9 +1115,11 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               const filterRules = Array.isArray(args?.filters)
                 ? args.filters
                 : [];
-              // Shortlist On restricts Moneyball to the even players 002, 004, and 006.
-              const cohort = args?.shortlistOnly === true
-                ? moneyballPlayers.filter((player) => [2, 4, 6].includes(player.uid))
+              // Loans restricts Moneyball to players 001 and 003; every other
+              // shortlist to the even players 002, 004, and 006.
+              const shortlistUids = shortlistId === 2 ? [1, 3] : [2, 4, 6];
+              const cohort = shortlistId !== null
+                ? moneyballPlayers.filter((player) => shortlistUids.includes(player.uid))
                 : moneyballPlayers;
               const filtered = filterRules.length > 0
                 ? cohort.filter((player) => {
@@ -2188,7 +2222,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               storedSnapshot: loadedSnapshot,
               effectiveSnapshot: loadedSnapshot,
               stats: { status: "notLinked", elapsedMs: 0 },
-              shortlist: { status: "notLinked" },
+              shortlists: { read: activeSave().playerShortlists.length, failed: [] },
             };
           }
 
