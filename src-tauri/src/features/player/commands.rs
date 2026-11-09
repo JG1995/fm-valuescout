@@ -180,14 +180,13 @@ impl From<VerifiedPlayerBoost> for PlayerBoostResultDto {
 #[tauri::command]
 pub async fn get_player(uid: i64, db: State<'_, Db>) -> Result<Option<PlayerDetailDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let player = query::get_player(&conn, uid)?;
-        Ok(player.map(PlayerDetailDto::from))
-    })
-    .await
+    blocking::run(move || read_player(&db, uid)).await
+}
+
+fn read_player(db: &Db, uid: i64) -> Result<Option<PlayerDetailDto>, String> {
+    let conn = db.read()?;
+    let player = query::get_player(&conn, uid)?;
+    Ok(player.map(PlayerDetailDto::from))
 }
 
 #[tauri::command]
@@ -841,6 +840,18 @@ mod tests {
                 ],
             )
             .expect("set squad player mentality");
+    }
+
+    #[test]
+    fn player_profile_answers_on_a_reader() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+
+        let player = crate::db::read_while_writer_is_held(&db, |db| read_player(db, 77))
+            .expect("profile on a reader")
+            .expect("current player");
+
+        assert_eq!(player.uid, 77);
+        assert!(!player.role_scores.is_empty());
     }
 
     #[test]

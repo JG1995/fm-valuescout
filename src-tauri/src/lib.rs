@@ -138,8 +138,25 @@ pub fn run() {
             features::graphics::commands::clear_graphics_root,
             features::graphics::commands::rescan_graphics,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                checkpoint_database_at_exit(&app.state::<db::Db>());
+            }
+        });
+}
+
+/// Folds the WAL into the database file. A writer still busy at exit, such as Load Data,
+/// keeps its WAL, which SQLite recovers on the next open.
+fn checkpoint_database_at_exit(db: &db::Db) {
+    let Ok(conn) = db.0.try_lock() else {
+        log::info!("database checkpoint skipped at exit: the writer is busy");
+        return;
+    };
+    if let Err(error) = db::checkpoint_wal(&conn) {
+        log::warn!("database checkpoint failed at exit: {error}");
+    }
 }
 
 #[cfg(test)]

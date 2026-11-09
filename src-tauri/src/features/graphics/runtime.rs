@@ -7,6 +7,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 
+use crate::db::WriterLock;
+
 use super::index::{GraphicsIndex, GraphicsKind, GraphicsSummary, ImageResult};
 
 const CACHE_LIMIT: usize = 512;
@@ -370,7 +372,7 @@ impl GraphicsRuntime {
     /// Reserve and persist under the transition gate. Filesystem work starts only after this returns.
     pub fn persist_transition(
         &self,
-        db: &Mutex<Connection>,
+        db: &WriterLock,
         root: Option<PathBuf>,
     ) -> Result<Option<(u64, Option<PathBuf>)>, String> {
         let persisted_root = root.clone();
@@ -430,10 +432,7 @@ impl GraphicsRuntime {
         }
         Ok(Some((generation, root)))
     }
-    pub fn begin_rescan(
-        &self,
-        db: &Mutex<Connection>,
-    ) -> Result<Option<(u64, Option<PathBuf>)>, String> {
+    pub fn begin_rescan(&self, db: &WriterLock) -> Result<Option<(u64, Option<PathBuf>)>, String> {
         self.begin_rescan_with(|root| {
             let conn = db
                 .lock()
@@ -901,10 +900,10 @@ mod tests {
         println!("{json}");
     }
 
-    fn test_db() -> Mutex<Connection> {
+    fn test_db() -> WriterLock {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE graphics_settings (id INTEGER PRIMARY KEY CHECK (id=1), root TEXT); INSERT INTO graphics_settings VALUES (1, NULL);").unwrap();
-        Mutex::new(conn)
+        crate::db::Db::new(conn).0
     }
     #[test]
     fn resolve_and_kind_dtos_are_pathless_and_closed() {

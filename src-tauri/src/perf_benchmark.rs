@@ -666,9 +666,9 @@ fn player_shapes() -> Vec<PlayerShape> {
     ]
 }
 
-fn search_player_page(conn: &Connection, shape: &PlayerShape, offset: usize) -> usize {
+fn search_player_page(db: &Db, shape: &PlayerShape, offset: usize) -> usize {
     search_players_in_view(
-        conn,
+        &db.read().expect("read connection"),
         SearchPlayersRequest {
             offset,
             limit: DEFAULT_PAGE_LIMIT,
@@ -685,14 +685,14 @@ fn search_player_page(conn: &Connection, shape: &PlayerShape, offset: usize) -> 
     .total as usize
 }
 
-fn measure_player_shape(conn: &Connection, shape: &PlayerShape) -> Value {
+fn measure_player_shape(db: &Db, shape: &PlayerShape) -> Value {
     let first_page = time_repeated(|| {
-        search_player_page(conn, shape, 0);
+        search_player_page(db, shape, 0);
     });
-    let total = search_player_page(conn, shape, 0);
+    let total = search_player_page(db, shape, 0);
     let offset = later_window_offset(total, shape.deep_window);
     let later_window = time_repeated(|| {
-        search_player_page(conn, shape, offset);
+        search_player_page(db, shape, offset);
     });
     json!({
         "total": total,
@@ -702,9 +702,9 @@ fn measure_player_shape(conn: &Connection, shape: &PlayerShape) -> Value {
     })
 }
 
-fn search_staff_page(conn: &Connection, offset: usize) -> usize {
+fn search_staff_page(db: &Db, offset: usize) -> usize {
     staff::query::list_staff(
-        conn,
+        &db.read().expect("read connection"),
         staff::query::StaffScope::Search,
         offset,
         DEFAULT_PAGE_LIMIT,
@@ -720,19 +720,20 @@ fn search_staff_page(conn: &Connection, offset: usize) -> usize {
     .total as usize
 }
 
-fn measure_requests(conn: &Connection) -> Map<String, Value> {
+/// Runs every request on a read connection, as the commands do.
+fn measure_requests(db: &Db) -> Map<String, Value> {
     let mut requests = Map::new();
     for shape in player_shapes() {
-        requests.insert(shape.name.to_string(), measure_player_shape(conn, &shape));
+        requests.insert(shape.name.to_string(), measure_player_shape(db, &shape));
     }
 
     let first_page = time_repeated(|| {
-        search_staff_page(conn, 0);
+        search_staff_page(db, 0);
     });
-    let total = search_staff_page(conn, 0);
+    let total = search_staff_page(db, 0);
     let offset = later_window_offset(total, false);
     let later_window = time_repeated(|| {
-        search_staff_page(conn, offset);
+        search_staff_page(db, offset);
     });
     requests.insert(
         "staff_role_sort".to_string(),
@@ -747,7 +748,12 @@ fn measure_requests(conn: &Connection) -> Map<String, Value> {
     requests.insert(
         "suggest_three_letters".to_string(),
         time_repeated(|| {
-            suggest_players(conn, "smi", DEFAULT_SUGGEST_LIMIT).expect("suggest request");
+            suggest_players(
+                &db.read().expect("read connection"),
+                "smi",
+                DEFAULT_SUGGEST_LIMIT,
+            )
+            .expect("suggest request");
         }),
     );
     requests
@@ -810,14 +816,17 @@ fn perf_benchmark_harness() {
         Value::Null
     };
 
-    let mut conn = db.0.lock().expect("database lock");
-    let moneyball_write = seed_moneyball_cohort(&mut conn, dump_scale.cohort);
-    let replication = if dump_scale.players == scale.players {
-        Value::Null
-    } else {
-        replicate_current_snapshot(&mut conn)
+    let (moneyball_write, replication) = {
+        let mut conn = db.0.lock().expect("database lock");
+        let moneyball_write = seed_moneyball_cohort(&mut conn, dump_scale.cohort);
+        let replication = if dump_scale.players == scale.players {
+            Value::Null
+        } else {
+            replicate_current_snapshot(&mut conn)
+        };
+        (moneyball_write, replication)
     };
-    let requests = measure_requests(&conn);
+    let requests = measure_requests(&db);
 
     let report = json!({
         "test": "perf_benchmark_harness",

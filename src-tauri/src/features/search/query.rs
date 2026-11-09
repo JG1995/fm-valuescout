@@ -9,7 +9,7 @@ use crate::features::moneyball::{
     role_score::{mean_percentile_score, score_role},
 };
 use crate::features::planner::fit::{lane_fit_score, tactic_adjusted_score};
-use crate::features::planner::tactic::{base_position, get_tactic};
+use crate::features::planner::tactic::{base_position, read_tactic};
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
     compact::{
@@ -509,7 +509,7 @@ pub fn search_players_in_view(
     // Load tactic once when needed for General tactic scoring and validation
     let tactic_for_sql: Option<crate::features::planner::tactic::PlannerTactic> = if uses_tactic {
         let save_id = snapshot_save_id(conn, snapshot_id)?;
-        let tactic = get_tactic(conn, save_id).map_err(|e| e.to_string())?;
+        let tactic = read_tactic(conn, save_id)?;
         Some(tactic)
     } else {
         None
@@ -951,7 +951,7 @@ fn search_players_with_cohort_scoring(
     let tactic_for_moneyball: Option<crate::features::planner::tactic::PlannerTactic> =
         if uses_tactic_moneyball {
             let save_id = snapshot_save_id(conn, snapshot_id)?;
-            Some(get_tactic(conn, save_id).map_err(|e| e.to_string())?)
+            Some(read_tactic(conn, save_id)?)
         } else {
             None
         };

@@ -147,14 +147,12 @@ pub async fn get_player_moneyball(
     db: State<'_, Db>,
 ) -> Result<Option<MoneyballProfileDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        query::get_player_moneyball(&conn, uid)
-            .map(|profile| profile.map(MoneyballProfileDto::from))
-    })
-    .await
+    blocking::run(move || read_player_moneyball(&db, uid)).await
+}
+
+fn read_player_moneyball(db: &Db, uid: i64) -> Result<Option<MoneyballProfileDto>, String> {
+    let conn = db.read()?;
+    query::get_player_moneyball(&conn, uid).map(|profile| profile.map(MoneyballProfileDto::from))
 }
 
 /// Why Refresh stats did not read the save. The frontend matches on `kind`.
@@ -237,6 +235,28 @@ mod tests {
             role_scores: Some(Vec::new()),
             comparison_basis: Some(comparison_basis),
         }
+    }
+
+    #[test]
+    fn moneyball_profile_answers_on_a_reader() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+        {
+            let conn = db.0.lock().expect("lock writer");
+            let snapshot_id: i64 = conn
+                .query_row("SELECT id FROM snapshots WHERE is_current = 1", [], |row| {
+                    row.get(0)
+                })
+                .expect("current snapshot");
+            seed_cohort(&conn, snapshot_id, 77, PRIOR_AS_OF);
+        }
+
+        let profile =
+            crate::db::read_while_writer_is_held(&db, |db| super::read_player_moneyball(db, 77))
+                .expect("Moneyball profile on a reader")
+                .expect("cohort player");
+
+        // The seeded cohort row has no statistics, which the profile reports for reimport.
+        assert_eq!(profile.state, "needsReimport");
     }
 
     #[test]

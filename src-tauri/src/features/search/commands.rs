@@ -135,52 +135,79 @@ pub async fn search_players(
 ) -> Result<SearchPlayersPageDto, String> {
     let db = db.inner().clone();
     blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let offset = offset.unwrap_or(0) as usize;
-        let limit = limit
-            .map(|value| value as usize)
-            .unwrap_or(DEFAULT_PAGE_LIMIT)
-            .clamp(1, MAX_PAGE_LIMIT);
-        let view = parse_search_view(search_view.as_deref())?;
-        let comparison_pool = parse_comparison_pool(comparison_pool.as_deref(), view)?;
-        let sort_by = parse_search_sort_for_view(sort_by.as_deref(), view)?;
-        let sort_dir = match sort_dir.as_deref() {
-            None => SortDir::DEFAULT,
-            Some(value) => SortDir::parse(value)?,
-        };
-        let filter_ast = match filters {
-            None => None,
-            Some(rules) => {
-                let parsed_rules = rules
-                    .into_iter()
-                    .map(FilterRule::try_from)
-                    .collect::<Result<Vec<_>, _>>()?;
-                Some(filter::parse_filter_ast(
-                    parsed_rules,
-                    filter_combine.as_deref(),
-                )?)
-            }
-        };
-        let requested_fields = requested_fields.unwrap_or_default();
-        let page = query::search_players_in_view(
-            &conn,
-            SearchPlayersRequest {
-                offset,
-                limit,
-                sort_by,
-                sort_dir,
-                filter_ast: filter_ast.as_ref(),
-                requested_fields: &requested_fields,
-                view,
-                comparison_pool,
-                shortlist_only: shortlist_only.unwrap_or(false),
-            },
-        )?;
-        Ok(SearchPlayersPageDto::from(page))
+        read_players_page(
+            &db,
+            offset,
+            limit,
+            sort_by,
+            sort_dir,
+            filters,
+            filter_combine,
+            requested_fields,
+            search_view,
+            comparison_pool,
+            shortlist_only,
+        )
     })
     .await
+}
+
+#[allow(clippy::too_many_arguments)]
+fn read_players_page(
+    db: &Db,
+    offset: Option<u32>,
+    limit: Option<u32>,
+    sort_by: Option<String>,
+    sort_dir: Option<String>,
+    filters: Option<Vec<FilterRuleInput>>,
+    filter_combine: Option<String>,
+    requested_fields: Option<Vec<String>>,
+    search_view: Option<String>,
+    comparison_pool: Option<String>,
+    shortlist_only: Option<bool>,
+) -> Result<SearchPlayersPageDto, String> {
+    let conn = db.read()?;
+    let offset = offset.unwrap_or(0) as usize;
+    let limit = limit
+        .map(|value| value as usize)
+        .unwrap_or(DEFAULT_PAGE_LIMIT)
+        .clamp(1, MAX_PAGE_LIMIT);
+    let view = parse_search_view(search_view.as_deref())?;
+    let comparison_pool = parse_comparison_pool(comparison_pool.as_deref(), view)?;
+    let sort_by = parse_search_sort_for_view(sort_by.as_deref(), view)?;
+    let sort_dir = match sort_dir.as_deref() {
+        None => SortDir::DEFAULT,
+        Some(value) => SortDir::parse(value)?,
+    };
+    let filter_ast = match filters {
+        None => None,
+        Some(rules) => {
+            let parsed_rules = rules
+                .into_iter()
+                .map(FilterRule::try_from)
+                .collect::<Result<Vec<_>, _>>()?;
+            Some(filter::parse_filter_ast(
+                parsed_rules,
+                filter_combine.as_deref(),
+            )?)
+        }
+    };
+    let requested_fields = requested_fields.unwrap_or_default();
+    let page = query::search_players_in_view(
+        &conn,
+        SearchPlayersRequest {
+            offset,
+            limit,
+            sort_by,
+            sort_dir,
+            filter_ast: filter_ast.as_ref(),
+            requested_fields: &requested_fields,
+            view,
+            comparison_pool,
+            shortlist_only: shortlist_only.unwrap_or(false),
+        },
+    )?;
+    Ok(SearchPlayersPageDto::from(page))
 }
 
 fn parse_search_view(value: Option<&str>) -> Result<SearchView, String> {
@@ -241,18 +268,21 @@ pub async fn suggest_players(
     db: State<'_, Db>,
 ) -> Result<Vec<PlayerSuggestHitDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let limit = limit
-            .map(|value| value as usize)
-            .unwrap_or(DEFAULT_SUGGEST_LIMIT)
-            .clamp(1, MAX_SUGGEST_LIMIT);
-        let hits = query::suggest_players(&conn, &query, limit)?;
-        Ok(hits.into_iter().map(PlayerSuggestHitDto::from).collect())
-    })
-    .await
+    blocking::run(move || read_suggestions(&db, &query, limit)).await
+}
+
+fn read_suggestions(
+    db: &Db,
+    query: &str,
+    limit: Option<u32>,
+) -> Result<Vec<PlayerSuggestHitDto>, String> {
+    let conn = db.read()?;
+    let limit = limit
+        .map(|value| value as usize)
+        .unwrap_or(DEFAULT_SUGGEST_LIMIT)
+        .clamp(1, MAX_SUGGEST_LIMIT);
+    let hits = query::suggest_players(&conn, query, limit)?;
+    Ok(hits.into_iter().map(PlayerSuggestHitDto::from).collect())
 }
 
 #[cfg(test)]
@@ -351,6 +381,47 @@ mod tests {
         }))
         .expect("serialize no snapshot page");
         assert_eq!(no_snapshot["state"], "no_current_snapshot");
+    }
+
+    #[test]
+    fn player_search_and_suggestions_answer_on_a_reader() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+
+        let (general, moneyball, hits) = crate::db::read_while_writer_is_held(&db, |db| {
+            let page = |view: &str, field: &str| {
+                read_players_page(
+                    db,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(vec![field.to_string()]),
+                    Some(view.to_string()),
+                    None,
+                    None,
+                )
+            };
+            (
+                page("general", "tactic_current.goalkeeper"),
+                page("moneyball", "tactic_custom.goalkeeper"),
+                read_suggestions(db, "golden", None),
+            )
+        });
+
+        let general = general.expect("General page on a reader");
+        assert_eq!(general.state, "ready");
+        assert_eq!(general.players.len(), 1);
+        assert!(general.players[0]
+            .dynamic_values
+            .contains_key("tactic_current.goalkeeper"));
+        assert_eq!(
+            moneyball.expect("Moneyball page on a reader").state,
+            "ready"
+        );
+        let hits = hits.expect("suggestions on a reader");
+        assert_eq!(hits.iter().map(|hit| hit.uid).collect::<Vec<_>>(), vec![77]);
     }
 
     #[test]

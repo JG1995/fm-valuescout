@@ -211,6 +211,25 @@ pub fn get_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, Stri
     load_tactic(conn, save_id)
 }
 
+/// Returns `get_tactic`'s values without writing: a save without stored lanes gets
+/// `default_tactic()` in memory, so a read-only connection can load it.
+pub fn read_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String> {
+    ensure_save_exists(conn, save_id)?;
+
+    let tactic_exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM planner_tactic_lanes WHERE save_id = ?1)",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if tactic_exists {
+        load_tactic(conn, save_id)
+    } else {
+        Ok(default_tactic())
+    }
+}
+
 pub fn save_tactic(conn: &Connection, save_id: i64, tactic: &PlannerTactic) -> Result<(), String> {
     ensure_save_exists(conn, save_id)?;
 
@@ -573,6 +592,36 @@ mod tests {
         assert_eq!(tactic.lanes[8].ip_position, "AML");
         assert_eq!(tactic.lanes[8].oop_position, "ML");
         assert_eq!(tactic.lanes[10].ip_position, "STC");
+    }
+
+    #[test]
+    fn read_tactic_returns_get_tactic_values_without_storing_lanes() {
+        let (_temp_dir, conn, save_id) = open_with_save();
+        let stored_lanes = |conn: &Connection| -> i64 {
+            conn.query_row("SELECT COUNT(*) FROM planner_tactic_lanes", [], |row| {
+                row.get(0)
+            })
+            .expect("count lanes")
+        };
+
+        let read_default = read_tactic(&conn, save_id).expect("read default tactic");
+        assert_eq!(stored_lanes(&conn), 0);
+        assert_eq!(
+            read_default,
+            get_tactic(&conn, save_id).expect("get tactic")
+        );
+
+        let mut edited = read_default;
+        edited.lanes[0].ip_weight = 0.7;
+        save_tactic(&conn, save_id, &edited).expect("save tactic");
+        assert_eq!(
+            read_tactic(&conn, save_id).expect("read stored tactic"),
+            get_tactic(&conn, save_id).expect("get stored tactic")
+        );
+        assert_eq!(
+            read_tactic(&conn, save_id + 1).unwrap_err(),
+            get_tactic(&conn, save_id + 1).unwrap_err()
+        );
     }
 
     #[test]

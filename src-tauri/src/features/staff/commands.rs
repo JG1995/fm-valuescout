@@ -494,9 +494,7 @@ fn run(
     unemployed_only: Option<bool>,
     db: &Db,
 ) -> Result<StaffPageDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
+    let conn = db.read()?;
     let sort = sort_by
         .as_deref()
         .map(SortField::parse)
@@ -592,13 +590,12 @@ pub async fn list_my_staff(
 #[tauri::command]
 pub async fn get_staff(uid: i64, db: State<'_, Db>) -> Result<Option<StaffDetailDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        query::get_staff(&conn, uid).map(|staff| staff.map(StaffDetailDto::from))
-    })
-    .await
+    blocking::run(move || read_staff(&db, uid)).await
+}
+
+fn read_staff(db: &Db, uid: i64) -> Result<Option<StaffDetailDto>, String> {
+    let conn = db.read()?;
+    query::get_staff(&conn, uid).map(|staff| staff.map(StaffDetailDto::from))
 }
 
 #[derive(Serialize)]
@@ -991,6 +988,47 @@ mod tests {
             )
             .expect("clone staff row");
     }
+
+    #[test]
+    fn staff_search_my_staff_and_profile_answer_on_a_reader() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+        db.0.lock()
+            .expect("lock writer")
+            .execute(
+                "INSERT INTO managed_club_settings (save_id, club_name)
+                 SELECT id, 'Golden FC' FROM saves WHERE is_active = 1",
+                [],
+            )
+            .expect("manage the staff member's club");
+
+        let (search, my_staff, detail) = crate::db::read_while_writer_is_held(&db, |db| {
+            let page = |scope| {
+                run(
+                    scope, None, None, None, None, None, None, None, None, None, None, db,
+                )
+            };
+            (
+                page(StaffScope::Search),
+                page(StaffScope::MyStaff),
+                read_staff(db, 88),
+            )
+        });
+
+        let staff_uids = |page: Result<StaffPageDto, String>| {
+            page.expect("staff page on a reader")
+                .staff
+                .iter()
+                .map(|staff| staff.uid)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(staff_uids(search), vec![88]);
+        assert_eq!(staff_uids(my_staff), vec![88]);
+        let detail = detail
+            .expect("staff profile on a reader")
+            .expect("current staff");
+        assert_eq!(detail.uid, 88);
+    }
+
     #[test]
     fn rejects_non_scalar_filter_values() {
         assert!(filter::filter_value_from_json(serde_json::json!({"x":1})).is_err());
