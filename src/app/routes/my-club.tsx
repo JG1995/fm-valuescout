@@ -455,6 +455,13 @@ function MyClubPageContent() {
   const navigate = Route.useNavigate();
   const requestedWorkspace = parseMyClubWorkspace(view);
   const activeWorkspace = requestedWorkspace ?? "squad";
+  // Workspaces mount on their first visit and stay mounted, so drafts survive.
+  const [visitedWorkspaces, setVisitedWorkspaces] = useState<
+    ReadonlySet<MyClubWorkspace>
+  >(() => new Set([activeWorkspace]));
+  if (!visitedWorkspaces.has(activeWorkspace)) {
+    setVisitedWorkspaces(new Set([...visitedWorkspaces, activeWorkspace]));
+  }
   const squadCurrentAbilityBoostContextIsCurrent =
     squadCurrentAbilityBoost.variables?.snapshotId === snapshot?.id;
   const squadWonderkidMentalityBoostContextIsCurrent =
@@ -581,263 +588,278 @@ function MyClubPageContent() {
   return (
     <div className="flex h-full min-w-0 flex-col gap-4">
       {myClubHeader}
-      <div
-        hidden={activeWorkspace !== "squad"}
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        {managedClub.clubName ? (
-          isSquadResultBlocked ? (
-            <Panel flush>
-              <p className="p-4 text-body-md text-on-surface-variant">
-                Loading squad overview…
-              </p>
-            </Panel>
-          ) : (
-            <SquadOverviewPanel
-              key={`${activeSave?.id}:${activeSave?.contextToken}:${snapshot.id}:${snapshot.saveId}:${managedClub.clubName}:${managedClub.status}`}
-              identityGraphics={(player) => ({
-                portrait: (
-                  <SquadIdentityGraphics player={player} kind="portrait" />
-                ),
-                crest: <SquadIdentityGraphics player={player} kind="crest" />,
-              })}
-              pageContext={{
-                activeSave: activeSave
-                  ? { id: activeSave.id, contextToken: activeSave.contextToken }
-                  : null,
-                currentSnapshot: { id: snapshot.id, saveId: snapshot.saveId },
-                managedClub: {
-                  clubName: managedClub.clubName,
-                  status: managedClub.status,
-                },
-              }}
-              feedback={squadBoostFeedback}
-              feedbackRef={squadBoostFeedbackRef}
-              actions={
-                <fieldset className="m-0 flex min-w-0 flex-wrap justify-end gap-4 border-0 p-0">
-                  <legend className="sr-only">Squad actions</legend>
-                  <SquadCsvImportActions
-                    activeSaveId={snapshot.saveId}
-                    snapshotId={snapshot.id}
-                    onYouthImported={() => {
-                      void queryClient.invalidateQueries({
-                        queryKey: academyKeys.all,
-                      });
-                    }}
-                  />
-                  <fieldset className="m-0 flex min-w-0 flex-wrap justify-end gap-2 border-0 p-0">
-                    <legend className="sr-only">Squad development</legend>
-                    <SquadCurrentAbilityBoost
-                      key={`current-ability-${snapshot.id}`}
-                      pending={
-                        squadCurrentAbilityBoostContextIsCurrent &&
-                        squadCurrentAbilityBoost.isPending
+      {visitedWorkspaces.has("squad") ? (
+        <div
+          hidden={activeWorkspace !== "squad"}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          {managedClub.clubName ? (
+            isSquadResultBlocked ? (
+              <Panel flush>
+                <p className="p-4 text-body-md text-on-surface-variant">
+                  Loading squad overview…
+                </p>
+              </Panel>
+            ) : (
+              <SquadOverviewPanel
+                key={`${activeSave?.id}:${activeSave?.contextToken}:${snapshot.id}:${snapshot.saveId}:${managedClub.clubName}:${managedClub.status}`}
+                identityGraphics={(player) => ({
+                  portrait: (
+                    <SquadIdentityGraphics player={player} kind="portrait" />
+                  ),
+                  crest: <SquadIdentityGraphics player={player} kind="crest" />,
+                })}
+                pageContext={{
+                  activeSave: activeSave
+                    ? {
+                        id: activeSave.id,
+                        contextToken: activeSave.contextToken,
                       }
-                      disabled={squadBoostPending || squadBoostRecoveryRequired}
-                      error={
-                        squadCurrentAbilityBoostContextIsCurrent
-                          ? (squadCurrentAbilityBoost.error ?? null)
-                          : null
-                      }
-                      onBoost={(onProgress) =>
-                        squadCurrentAbilityBoost.mutateAsync({
-                          snapshotId: snapshot.id,
-                          onProgress,
-                        })
-                      }
-                      onOpenConfirmation={() => {
-                        squadCurrentAbilityBoost.reset();
-                        setLatestSquadBoostAction("currentAbility");
+                    : null,
+                  currentSnapshot: { id: snapshot.id, saveId: snapshot.saveId },
+                  managedClub: {
+                    clubName: managedClub.clubName,
+                    status: managedClub.status,
+                  },
+                }}
+                feedback={squadBoostFeedback}
+                feedbackRef={squadBoostFeedbackRef}
+                actions={
+                  <fieldset className="m-0 flex min-w-0 flex-wrap justify-end gap-4 border-0 p-0">
+                    <legend className="sr-only">Squad actions</legend>
+                    <SquadCsvImportActions
+                      activeSaveId={snapshot.saveId}
+                      snapshotId={snapshot.id}
+                      onYouthImported={() => {
+                        void queryClient.invalidateQueries({
+                          queryKey: academyKeys.all,
+                        });
                       }}
-                      onConfirmationChange={(open) =>
-                        setOpenSquadBoostAction(open ? "currentAbility" : null)
-                      }
-                      fallbackFocusTo={() => squadBoostFeedbackRef.current}
                     />
-                    <SquadWonderkidMentalityBoost
-                      key={`wonderkid-mentality-${snapshot.id}`}
-                      pending={
-                        squadWonderkidMentalityBoostContextIsCurrent &&
-                        squadWonderkidMentalityBoost.isPending
-                      }
-                      disabled={squadBoostPending || squadBoostRecoveryRequired}
-                      error={
-                        squadWonderkidMentalityBoostContextIsCurrent
-                          ? (squadWonderkidMentalityBoost.error ?? null)
-                          : null
-                      }
-                      onBoost={(onProgress) =>
-                        squadWonderkidMentalityBoost.mutateAsync({
-                          snapshotId: snapshot.id,
-                          onProgress,
-                        })
-                      }
-                      onOpenConfirmation={() => {
-                        squadWonderkidMentalityBoost.reset();
-                        setLatestSquadBoostAction("wonderkidMentality");
-                      }}
-                      onConfirmationChange={(open) =>
-                        setOpenSquadBoostAction(
-                          open ? "wonderkidMentality" : null,
-                        )
-                      }
-                      fallbackFocusTo={() => squadBoostFeedbackRef.current}
-                    />
+                    <fieldset className="m-0 flex min-w-0 flex-wrap justify-end gap-2 border-0 p-0">
+                      <legend className="sr-only">Squad development</legend>
+                      <SquadCurrentAbilityBoost
+                        key={`current-ability-${snapshot.id}`}
+                        pending={
+                          squadCurrentAbilityBoostContextIsCurrent &&
+                          squadCurrentAbilityBoost.isPending
+                        }
+                        disabled={
+                          squadBoostPending || squadBoostRecoveryRequired
+                        }
+                        error={
+                          squadCurrentAbilityBoostContextIsCurrent
+                            ? (squadCurrentAbilityBoost.error ?? null)
+                            : null
+                        }
+                        onBoost={(onProgress) =>
+                          squadCurrentAbilityBoost.mutateAsync({
+                            snapshotId: snapshot.id,
+                            onProgress,
+                          })
+                        }
+                        onOpenConfirmation={() => {
+                          squadCurrentAbilityBoost.reset();
+                          setLatestSquadBoostAction("currentAbility");
+                        }}
+                        onConfirmationChange={(open) =>
+                          setOpenSquadBoostAction(
+                            open ? "currentAbility" : null,
+                          )
+                        }
+                        fallbackFocusTo={() => squadBoostFeedbackRef.current}
+                      />
+                      <SquadWonderkidMentalityBoost
+                        key={`wonderkid-mentality-${snapshot.id}`}
+                        pending={
+                          squadWonderkidMentalityBoostContextIsCurrent &&
+                          squadWonderkidMentalityBoost.isPending
+                        }
+                        disabled={
+                          squadBoostPending || squadBoostRecoveryRequired
+                        }
+                        error={
+                          squadWonderkidMentalityBoostContextIsCurrent
+                            ? (squadWonderkidMentalityBoost.error ?? null)
+                            : null
+                        }
+                        onBoost={(onProgress) =>
+                          squadWonderkidMentalityBoost.mutateAsync({
+                            snapshotId: snapshot.id,
+                            onProgress,
+                          })
+                        }
+                        onOpenConfirmation={() => {
+                          squadWonderkidMentalityBoost.reset();
+                          setLatestSquadBoostAction("wonderkidMentality");
+                        }}
+                        onConfirmationChange={(open) =>
+                          setOpenSquadBoostAction(
+                            open ? "wonderkidMentality" : null,
+                          )
+                        }
+                        fallbackFocusTo={() => squadBoostFeedbackRef.current}
+                      />
+                    </fieldset>
                   </fieldset>
-                </fieldset>
-              }
-              sortBy={squadSort}
-              sortDir={squadDir}
-              onSortChange={onSquadSortChange}
-            />
-          )
-        ) : (
-          <Panel title="Squad" flush>
-            <EmptyState
-              icon={UsersRound}
-              title="Choose your managed club"
-              action={
-                <Link
-                  to="/my-club"
-                  hash="managed-club"
-                  className="inline-flex h-8 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
-                >
-                  Open Managed Club
-                </Link>
-              }
-            >
-              Choose your managed club in My Club before reviewing your squad.
-            </EmptyState>
-          </Panel>
-        )}
-      </div>
-      <div
-        hidden={activeWorkspace !== "planner"}
-        className="min-h-0 flex-1 overflow-y-auto"
-      >
-        {plannerContext && isMatchedSnapshot ? (
-          <TacticContextBoundary context={plannerContext}>
-            {({
-              tactic,
-              options,
-              isPending,
-              initialError,
-              refreshError,
-              retryBoth,
-            }) => {
-              if (isPending) {
-                return (
-                  <p className="p-4 text-body-md text-on-surface-variant">
-                    Loading tactic…
-                  </p>
-                );
-              }
-              if (initialError) {
-                return (
-                  <TacticQueryError
-                    error={initialError}
-                    title="Could not load tactic"
-                    onRetry={retryBoth}
-                  />
-                );
-              }
-              if (!tactic || !options) {
-                return null;
-              }
-              return (
-                <>
-                  {refreshError ? (
+                }
+                sortBy={squadSort}
+                sortDir={squadDir}
+                onSortChange={onSquadSortChange}
+              />
+            )
+          ) : (
+            <Panel title="Squad" flush>
+              <EmptyState
+                icon={UsersRound}
+                title="Choose your managed club"
+                action={
+                  <Link
+                    to="/my-club"
+                    hash="managed-club"
+                    className="inline-flex h-8 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
+                  >
+                    Open Managed Club
+                  </Link>
+                }
+              >
+                Choose your managed club in My Club before reviewing your squad.
+              </EmptyState>
+            </Panel>
+          )}
+        </div>
+      ) : null}
+      {visitedWorkspaces.has("planner") ? (
+        <div
+          hidden={activeWorkspace !== "planner"}
+          className="min-h-0 flex-1 overflow-y-auto"
+        >
+          {plannerContext && isMatchedSnapshot ? (
+            <TacticContextBoundary context={plannerContext}>
+              {({
+                tactic,
+                options,
+                isPending,
+                initialError,
+                refreshError,
+                retryBoth,
+              }) => {
+                if (isPending) {
+                  return (
+                    <p className="p-4 text-body-md text-on-surface-variant">
+                      Loading tactic…
+                    </p>
+                  );
+                }
+                if (initialError) {
+                  return (
                     <TacticQueryError
-                      error={refreshError}
-                      title="Could not refresh tactic"
+                      error={initialError}
+                      title="Could not load tactic"
                       onRetry={retryBoth}
                     />
-                  ) : null}
-                  <PlannerDepthMatrix
-                    key={`${plannerContext.saveId}:${plannerContext.contextToken}`}
-                    activeSaveId={plannerContext.saveId}
-                    depth={depth}
-                    tactic={tactic}
-                    options={options}
-                  />
-                </>
-              );
-            }}
-          </TacticContextBoundary>
-        ) : (
-          <p className="p-4 text-body-md text-on-surface-variant">
-            Loading planner…
-          </p>
-        )}
-      </div>
-      <div
-        hidden={activeWorkspace !== "tactic"}
-        className="mx-auto flex min-h-0 w-full max-w-[1920px] flex-1 flex-col"
-      >
-        {plannerContext && isMatchedSnapshot ? (
-          <TacticContextBoundary context={plannerContext}>
-            {({
-              tactic,
-              options,
-              isPending,
-              initialError,
-              refreshError,
-              readOnly,
-              retryBoth,
-            }) => {
-              if (isPending) {
+                  );
+                }
+                if (!tactic || !options) {
+                  return null;
+                }
                 return (
-                  <p className="p-4 text-body-md text-on-surface-variant">
-                    Loading tactic…
-                  </p>
+                  <>
+                    {refreshError ? (
+                      <TacticQueryError
+                        error={refreshError}
+                        title="Could not refresh tactic"
+                        onRetry={retryBoth}
+                      />
+                    ) : null}
+                    <PlannerDepthMatrix
+                      key={`${plannerContext.saveId}:${plannerContext.contextToken}`}
+                      activeSaveId={plannerContext.saveId}
+                      depth={depth}
+                      tactic={tactic}
+                      options={options}
+                    />
+                  </>
                 );
-              }
-              if (initialError) {
-                return (
-                  <TacticQueryError
-                    error={initialError}
-                    title="Could not load tactic"
-                    onRetry={retryBoth}
-                  />
-                );
-              }
-              if (!tactic || !options) {
-                return null;
-              }
-              return (
-                <>
-                  {refreshError ? (
+              }}
+            </TacticContextBoundary>
+          ) : (
+            <p className="p-4 text-body-md text-on-surface-variant">
+              Loading planner…
+            </p>
+          )}
+        </div>
+      ) : null}
+      {visitedWorkspaces.has("tactic") ? (
+        <div
+          hidden={activeWorkspace !== "tactic"}
+          className="mx-auto flex min-h-0 w-full max-w-[1920px] flex-1 flex-col"
+        >
+          {plannerContext && isMatchedSnapshot ? (
+            <TacticContextBoundary context={plannerContext}>
+              {({
+                tactic,
+                options,
+                isPending,
+                initialError,
+                refreshError,
+                readOnly,
+                retryBoth,
+              }) => {
+                if (isPending) {
+                  return (
+                    <p className="p-4 text-body-md text-on-surface-variant">
+                      Loading tactic…
+                    </p>
+                  );
+                }
+                if (initialError) {
+                  return (
                     <TacticQueryError
-                      error={refreshError}
-                      title="Could not refresh tactic"
+                      error={initialError}
+                      title="Could not load tactic"
                       onRetry={retryBoth}
                     />
-                  ) : null}
-                  <PlannerTacticEditor
-                    key={`${plannerContext.saveId}:${plannerContext.contextToken}`}
-                    context={plannerContext}
-                    activeSaveRefreshError={activeSaveRefreshError}
-                    isActiveSaveUnavailable={isActiveSaveUnavailable}
-                    readOnly={readOnly}
-                    tactic={tactic}
-                    options={options}
-                    onSaved={() =>
-                      Promise.all([
-                        queryClient.invalidateQueries({
-                          queryKey: searchKeys.all,
-                        }),
-                        queryClient.invalidateQueries({
-                          queryKey: squadKeys.all,
-                        }),
-                      ])
-                    }
-                  />
-                </>
-              );
-            }}
-          </TacticContextBoundary>
-        ) : null}
-      </div>
+                  );
+                }
+                if (!tactic || !options) {
+                  return null;
+                }
+                return (
+                  <>
+                    {refreshError ? (
+                      <TacticQueryError
+                        error={refreshError}
+                        title="Could not refresh tactic"
+                        onRetry={retryBoth}
+                      />
+                    ) : null}
+                    <PlannerTacticEditor
+                      key={`${plannerContext.saveId}:${plannerContext.contextToken}`}
+                      context={plannerContext}
+                      activeSaveRefreshError={activeSaveRefreshError}
+                      isActiveSaveUnavailable={isActiveSaveUnavailable}
+                      readOnly={readOnly}
+                      tactic={tactic}
+                      options={options}
+                      onSaved={() =>
+                        Promise.all([
+                          queryClient.invalidateQueries({
+                            queryKey: searchKeys.all,
+                          }),
+                          queryClient.invalidateQueries({
+                            queryKey: squadKeys.all,
+                          }),
+                        ])
+                      }
+                    />
+                  </>
+                );
+              }}
+            </TacticContextBoundary>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

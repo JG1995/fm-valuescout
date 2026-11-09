@@ -438,17 +438,11 @@ describe("My Club route", () => {
       within(squadTable).getByRole("columnheader", { name: "Player" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", {
-        name: "Squad depth",
-        hidden: true,
-      }),
-    ).not.toBeVisible();
+      screen.queryByRole("heading", { name: "Squad depth", hidden: true }),
+    ).toBeNull();
     expect(
-      screen.getByRole("region", {
-        name: "Tactic controls",
-        hidden: true,
-      }),
-    ).not.toBeVisible();
+      screen.queryByRole("region", { name: "Tactic controls", hidden: true }),
+    ).toBeNull();
 
     await user.click(workspaceLink("Planner"));
     await waitFor(() =>
@@ -463,6 +457,7 @@ describe("My Club route", () => {
     expect(
       await screen.findByRole("heading", { name: "Squad depth" }),
     ).toBeVisible();
+    expect(workspaceLink("Planner")).toHaveFocus();
     expect(squadTable).not.toBeVisible();
 
     await user.click(workspaceLink("Tactic"));
@@ -499,6 +494,12 @@ describe("My Club route", () => {
     expect(
       within(squadTable).getByRole("columnheader", { name: "Player" }),
     ).toBeInTheDocument();
+    const plannerHeading = screen.getByRole("heading", {
+      name: "Squad depth",
+      hidden: true,
+    });
+    expect(plannerHeading.closest("[hidden]")).not.toBeNull();
+    expect(plannerHeading).not.toBeVisible();
   });
 
   it.each([
@@ -1210,7 +1211,7 @@ describe("My Club route", () => {
     });
   });
 
-  it("defaults to Squad and keeps Planner and Tactic mounted", async () => {
+  it("defaults to Squad and keeps a visited Tactic draft mounted", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
     renderMyClubRoute({ initialEntry: "/my-club" });
@@ -1237,22 +1238,15 @@ describe("My Club route", () => {
     expect(
       screen.getByRole("link", { name: "Open Managed Club" }),
     ).toHaveAttribute("href", "/my-club#managed-club");
-    const tacticRegion = await screen.findByRole("region", {
-      name: "Tactic controls",
-      hidden: true,
-    });
-    const depthHeading = await screen.findByRole("heading", {
-      level: 2,
-      name: "Squad depth",
-      hidden: true,
-    });
-    expect(tacticRegion.closest("[hidden]")).not.toBeNull();
-    expect(depthHeading.closest("[hidden]")).not.toBeNull();
-    expect(tacticRegion).not.toBeVisible();
-    expect(depthHeading).not.toBeVisible();
+    expect(
+      screen.queryByRole("region", { name: "Tactic controls", hidden: true }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "Squad depth", hidden: true }),
+    ).toBeNull();
 
     await openMyClubWorkspace(user, "tactic");
-    const tacticEditor = screen.getByRole("region", {
+    const tacticEditor = await screen.findByRole("region", {
       name: "Tactic controls",
     });
     const weight = screen.getByRole("slider", {
@@ -4256,9 +4250,11 @@ describe("My Club route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const { queryClient } = renderMyClubRoute({
-      initialEntry: "/my-club?view=tactic",
+      initialEntry: "/my-club?view=planner",
     });
 
+    await screen.findByRole("region", { name: "Squad depth board" });
+    await openMyClubWorkspace(user, "tactic");
     await screen.findByRole("region", { name: "Tactic controls" });
     const weight = screen.getByRole("slider", {
       name: "IP/OOP score weight",
