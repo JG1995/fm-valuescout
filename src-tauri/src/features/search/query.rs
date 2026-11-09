@@ -635,11 +635,13 @@ pub(super) fn active_current_snapshot_id(conn: &Connection) -> Result<Option<i64
     .map_err(|error| error.to_string())
 }
 
+/// Whether the snapshot's save has a linked shortlist file, even one that lists no player.
 fn has_player_shortlist(conn: &Connection, snapshot_id: i64) -> Result<bool, String> {
     conn.query_row(
         "SELECT EXISTS(
-            SELECT 1 FROM player_shortlist_entries
-            WHERE save_id = (SELECT save_id FROM snapshots WHERE id = ?1)
+            SELECT 1 FROM saves
+            WHERE id = (SELECT save_id FROM snapshots WHERE id = ?1)
+              AND player_shortlist_file_path IS NOT NULL
          )",
         [snapshot_id],
         |row| row.get(0),
@@ -2175,6 +2177,24 @@ mod tests {
         }
     }
 
+    /// Links a shortlist file to the current snapshot's save and stores `uids` as its players.
+    fn seed_player_shortlist(conn: &Connection, uids: &[i64]) {
+        conn.execute(
+            "UPDATE saves SET player_shortlist_file_path = '/lists/Targets.fmf'
+             WHERE id = (SELECT save_id FROM snapshots WHERE is_current = 1)",
+            [],
+        )
+        .expect("link shortlist file");
+        for uid in uids {
+            conn.execute(
+                "INSERT INTO player_shortlist_entries (save_id, player_uid)
+                 SELECT save_id, ?1 FROM snapshots WHERE is_current = 1",
+                [uid],
+            )
+            .expect("seed shortlist");
+        }
+    }
+
     fn current_snapshot_id(conn: &Connection) -> i64 {
         conn.query_row("SELECT id FROM snapshots WHERE is_current = 1", [], |row| {
             row.get(0)
@@ -2753,21 +2773,8 @@ mod tests {
         set_role_score(&conn, 2, "deep_lying_playmaker_ip", Some(40));
         set_role_score(&conn, 3, "deep_lying_playmaker_ip", Some(90));
         set_role_score(&conn, 4, "deep_lying_playmaker_ip", Some(80));
-        let save_id: i64 = conn
-            .query_row(
-                "SELECT save_id FROM snapshots WHERE is_current = 1",
-                [],
-                |row| row.get(0),
-            )
-            .expect("current save");
         // Saved UIDs 1..=3 plus a stale UID with no current-snapshot player.
-        for uid in [1, 2, 3, 99] {
-            conn.execute(
-                "INSERT INTO player_shortlist_entries (save_id, player_uid) VALUES (?1, ?2)",
-                rusqlite::params![save_id, uid],
-            )
-            .expect("seed shortlist");
-        }
+        seed_player_shortlist(&conn, &[1, 2, 3, 99]);
         let requested_fields = vec!["role.deep_lying_playmaker_ip".to_string()];
 
         // Unrestricted General still returns every current player.
@@ -2870,11 +2877,8 @@ mod tests {
         );
 
         // An empty saved list restricts to nothing.
-        conn.execute(
-            "DELETE FROM player_shortlist_entries WHERE save_id = ?1",
-            [save_id],
-        )
-        .expect("clear shortlist");
+        conn.execute("DELETE FROM player_shortlist_entries", [])
+            .expect("clear shortlist");
         let empty = search_players_in_view(
             &conn,
             SearchPlayersRequest {
@@ -2895,7 +2899,7 @@ mod tests {
     }
 
     #[test]
-    fn shortlist_probe_distinguishes_no_stored_shortlist_from_stored_but_no_current_matches() {
+    fn shortlist_probe_reports_presence_by_linked_file_not_by_stored_entries() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("shortlist-probe.db"));
         ingest_players(
@@ -2931,30 +2935,29 @@ mod tests {
             .expect("shortlist probe")
         };
 
-        // No stored shortlist at all reports no_shortlist.
-        let none = probe(&conn);
-        assert_eq!(none.state, SearchPlayersPageState::NoShortlist);
-        assert_eq!(none.total, 0);
-        assert!(none.players.is_empty());
-
-        // Stored entries exist but none resolve to a current-snapshot player:
-        // the probe stays ready with an empty page (empty-ready preservation).
+        // Stored entries without a linked file report no_shortlist.
         conn.execute(
             "INSERT INTO player_shortlist_entries (save_id, player_uid) VALUES (?1, ?2)",
-            rusqlite::params![save_id, 99],
+            rusqlite::params![save_id, 1],
         )
-        .expect("seed stale shortlist uid");
+        .expect("seed unlinked shortlist uid");
+        let unlinked = probe(&conn);
+        assert_eq!(unlinked.state, SearchPlayersPageState::NoShortlist);
+        assert_eq!(unlinked.total, 0);
+        assert!(unlinked.players.is_empty());
+
+        // A linked shortlist whose players are not in the snapshot stays ready with an
+        // empty page.
+        conn.execute("DELETE FROM player_shortlist_entries", [])
+            .expect("clear shortlist");
+        seed_player_shortlist(&conn, &[99]);
         let stale_only = probe(&conn);
         assert_eq!(stale_only.state, SearchPlayersPageState::Ready);
         assert_eq!(stale_only.total, 0);
         assert!(stale_only.players.is_empty());
 
-        // A stored uid that resolves to a current player reports ready with matches.
-        conn.execute(
-            "INSERT INTO player_shortlist_entries (save_id, player_uid) VALUES (?1, ?2)",
-            rusqlite::params![save_id, 1],
-        )
-        .expect("seed current shortlist uid");
+        // A linked uid that resolves to a current player reports ready with matches.
+        seed_player_shortlist(&conn, &[1]);
         let matched = probe(&conn);
         assert_eq!(matched.state, SearchPlayersPageState::Ready);
         assert_eq!(matched.total, 1);
@@ -6368,20 +6371,7 @@ mod tests {
             .collect();
         ingest_players(&mut conn, players);
         let snapshot_id = current_snapshot_id(&conn);
-        let save_id: i64 = conn
-            .query_row(
-                "SELECT save_id FROM snapshots WHERE is_current = 1",
-                [],
-                |row| row.get(0),
-            )
-            .expect("current save");
-        for uid in 1..=2 {
-            conn.execute(
-                "INSERT INTO player_shortlist_entries (save_id, player_uid) VALUES (?1, ?2)",
-                rusqlite::params![save_id, uid],
-            )
-            .expect("seed shortlist");
-        }
+        seed_player_shortlist(&conn, &[1, 2]);
         set_role_score(&conn, 1, "goalkeeper_ip", Some(90));
         set_role_score(&conn, 1, "line_holding_keeper_oop", Some(90));
         set_role_score(&conn, 2, "goalkeeper_ip", Some(60));
@@ -6807,18 +6797,7 @@ mod tests {
             ..GeneralShape::new("shortlist", "ca", SortDir::Desc, &["role.goalkeeper_ip"])
         };
         assert_cached_windows_match(&db, &orders, &shortlist);
-        {
-            let writer = db.0.lock().expect("lock writer");
-            for uid in [2, 3, 5, 99] {
-                writer
-                    .execute(
-                        "INSERT INTO player_shortlist_entries (save_id, player_uid)
-                         SELECT save_id, ?1 FROM snapshots WHERE is_current = 1",
-                        [uid],
-                    )
-                    .expect("seed shortlist");
-            }
-        }
+        seed_player_shortlist(&db.0.lock().expect("lock writer"), &[2, 3, 5, 99]);
         assert_cached_windows_match(&db, &orders, &shortlist);
     }
 

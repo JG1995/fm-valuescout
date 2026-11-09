@@ -29,6 +29,8 @@ pub struct SaveSummaryDto {
     pub created_at_utc: String,
     pub updated_at_utc: String,
     pub linked_save_file_name: Option<String>,
+    pub player_shortlist_name: Option<String>,
+    pub player_shortlist_file_name: Option<String>,
 }
 
 impl From<SaveSummary> for SaveSummaryDto {
@@ -41,6 +43,8 @@ impl From<SaveSummary> for SaveSummaryDto {
             created_at_utc: save.created_at_utc,
             updated_at_utc: save.updated_at_utc,
             linked_save_file_name: save.linked_save_file_name,
+            player_shortlist_name: save.player_shortlist_name,
+            player_shortlist_file_name: save.player_shortlist_file_name,
         }
     }
 }
@@ -2120,6 +2124,8 @@ mod tests {
                 created_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
                 updated_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
                 linked_save_file_name: Some("Career.fm".to_string()),
+                player_shortlist_name: Some("Targets".to_string()),
+                player_shortlist_file_name: Some("Targets.fmf".to_string()),
             },
         });
         let deleted_save_value =
@@ -2130,6 +2136,14 @@ mod tests {
         assert_eq!(
             deleted_save_value["activeSave"]["linkedSaveFileName"],
             "Career.fm"
+        );
+        assert_eq!(
+            deleted_save_value["activeSave"]["playerShortlistName"],
+            "Targets"
+        );
+        assert_eq!(
+            deleted_save_value["activeSave"]["playerShortlistFileName"],
+            "Targets.fmf"
         );
     }
 

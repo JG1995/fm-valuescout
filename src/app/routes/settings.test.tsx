@@ -203,6 +203,8 @@ describe("Settings", () => {
         createdAtUtc: "2026-07-29T00:00:00.000Z",
         updatedAtUtc: "2026-07-29T00:00:00.000Z",
         linkedSaveFileName: null,
+        playerShortlistName: null,
+        playerShortlistFileName: null,
       },
     ]);
 

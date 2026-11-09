@@ -79,6 +79,8 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         createdAtUtc: "2026-07-28T12:00:00.000Z",
         updatedAtUtc: "2026-07-28T12:00:00.000Z",
         linkedSaveFileName: null,
+        playerShortlistName: null,
+        playerShortlistFileName: null,
       }];
       let snapshots = snapshotHistoryEnabled ? [
         {
@@ -697,6 +699,9 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
           if (cmd === "plugin:dialog|open") {
+            if (args?.options?.filters?.[0]?.extensions?.includes("fmf")) {
+              return "/tmp/Smoke Targets.fmf";
+            }
             return csvImportFormat ? "/tmp/smoke-import.csv" : null;
           }
 
@@ -759,6 +764,8 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               linkedSaveFileName: args?.saveFilePath
                 ? args.saveFilePath.split(/[\\\\/]/).pop()
                 : null,
+              playerShortlistName: null,
+              playerShortlistFileName: null,
             };
             nextSaveId += 1;
             saves.push(created);
@@ -900,6 +907,8 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   createdAtUtc: "2026-07-28T16:20:00.000Z",
                   updatedAtUtc: "2026-07-28T16:20:00.000Z",
                   linkedSaveFileName: null,
+                  playerShortlistName: null,
+                  playerShortlistFileName: null,
                 }];
               } else {
                 saves = saves.map((save, index) => ({
@@ -977,12 +986,21 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             };
           }
 
-          if (cmd === "import_player_shortlist_csv") {
-            return {
-              totalPlayers: 3,
-              storedPlayers: 2,
-              skippedPlayers: 1,
+          if (cmd === "choose_player_shortlist" || cmd === "remove_player_shortlist") {
+            const index = saves.findIndex((save) =>
+              save.id === args?.saveId && save.contextToken === args?.contextToken
+            );
+            if (index < 0) throw { kind: "stale_context", fileName: null };
+            const chosen = cmd === "choose_player_shortlist";
+            const fileName = chosen ? args.path.split(/[\\\\/]/).pop() : null;
+            saves[index] = {
+              ...saves[index],
+              playerShortlistName: chosen ? "Smoke Targets" : null,
+              playerShortlistFileName: fileName,
             };
+            return chosen
+              ? { name: "Smoke Targets", fileName, totalPlayers: 3, matchedPlayers: 2 }
+              : null;
           }
 
           if (cmd === "search_players") {

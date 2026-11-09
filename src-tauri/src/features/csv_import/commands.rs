@@ -5,10 +5,6 @@ use tauri::State;
 use crate::blocking;
 use crate::db::Db;
 
-use super::player_shortlist::{
-    capture_player_shortlist_import_context, persist_player_shortlist_import,
-    prepare_player_shortlist_import, PlayerShortlistImportError, PlayerShortlistImportSummary,
-};
 use super::service::{
     capture_import_context, persist_csv_import, prepare_csv_import, CsvImportSummary,
     CsvPersistenceError,
@@ -23,19 +19,6 @@ pub async fn import_csv(path: String, db: State<'_, Db>) -> Result<CsvImportSumm
     let db = db.inner().clone();
     blocking::run(move || {
         import_csv_for_path(Path::new(&path), &db).map_err(|error| error.to_string())
-    })
-    .await
-}
-
-#[tauri::command]
-pub async fn import_player_shortlist_csv(
-    path: String,
-    db: State<'_, Db>,
-) -> Result<PlayerShortlistImportSummary, String> {
-    let db = db.inner().clone();
-    blocking::run(move || {
-        import_player_shortlist_csv_for_path(Path::new(&path), &db)
-            .map_err(|error| error.to_string())
     })
     .await
 }
@@ -64,23 +47,6 @@ pub(crate) fn import_csv_for_path(
     let import = prepare_csv_import(path)?;
     let mut conn = db.0.lock().map_err(|_| CsvPersistenceError::Database)?;
     persist_csv_import(&mut conn, &context, import)
-}
-
-pub(crate) fn import_player_shortlist_csv_for_path(
-    path: &Path,
-    db: &Db,
-) -> Result<PlayerShortlistImportSummary, PlayerShortlistImportError> {
-    let context = {
-        let conn =
-            db.0.lock()
-                .map_err(|_| PlayerShortlistImportError::Database)?;
-        capture_player_shortlist_import_context(&conn)?
-    };
-    let parsed = prepare_player_shortlist_import(path)?;
-    let mut conn =
-        db.0.lock()
-            .map_err(|_| PlayerShortlistImportError::Database)?;
-    persist_player_shortlist_import(&mut conn, &context, parsed)
 }
 
 pub(crate) fn import_staff_shortlist_csv_for_path(
@@ -166,33 +132,6 @@ mod tests {
             )
             .expect("read stored career values"),
             (12, 3, 4, 5)
-        );
-    }
-
-    #[test]
-    fn command_helper_imports_player_shortlist_and_serializes_the_safe_summary() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let db =
-            db::open(&temp_dir.path().join("player-shortlist-command.db")).expect("open database");
-        let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/features/memory_read/fixtures/golden_dump_v9.json");
-        {
-            let mut conn = db.0.lock().expect("lock database");
-            ingest_dump_file(&mut conn, &dump_path).expect("ingest fixture snapshot");
-        }
-        let csv_path = temp_dir.path().join("players.csv");
-        std::fs::write(&csv_path, "Unique ID\n77\n88\n").expect("write player CSV");
-
-        let summary =
-            import_player_shortlist_csv_for_path(&csv_path, &db).expect("import player shortlist");
-
-        assert_eq!(
-            serde_json::to_value(summary).expect("serialize summary"),
-            json!({
-                "totalPlayers": 2,
-                "storedPlayers": 1,
-                "skippedPlayers": 1,
-            })
         );
     }
 

@@ -48,6 +48,8 @@ const DEFAULT_SAVE: SaveSummary = {
   createdAtUtc: "2026-07-28T12:00:00.000Z",
   updatedAtUtc: "2026-07-28T12:00:00.000Z",
   linkedSaveFileName: null,
+  playerShortlistName: null,
+  playerShortlistFileName: null,
 };
 
 const SAMPLE_PLAYER_COUNT = 3;
@@ -637,6 +639,22 @@ export function resolveSetSaveFileLinkIpcMock(args: unknown) {
   return updated;
 }
 
+/** Sets the linked shortlist a later `list_saves` reports for save `saveId`. */
+export function setSavePlayerShortlistIpcMock(
+  saveId: number,
+  shortlist: { name: string; fileName: string } | null,
+) {
+  saves = saves.map((save) =>
+    save.id === saveId
+      ? {
+          ...save,
+          playerShortlistName: shortlist?.name ?? null,
+          playerShortlistFileName: shortlist?.fileName ?? null,
+        }
+      : save,
+  );
+}
+
 export function resolveCreateSaveIpcMock(args: unknown) {
   const name =
     typeof args === "object" &&
@@ -658,6 +676,8 @@ export function resolveCreateSaveIpcMock(args: unknown) {
     createdAtUtc: "2026-07-28T16:00:00.000Z",
     updatedAtUtc: "2026-07-28T16:00:00.000Z",
     linkedSaveFileName: validatedSaveFileName(argString(args, "saveFilePath")),
+    playerShortlistName: null,
+    playerShortlistFileName: null,
   };
   nextSaveId += 1;
   saves = [...saves, created];
@@ -846,6 +866,8 @@ export function resolveDeleteSaveIpcMock(args: unknown): SaveDeleteResult {
         createdAtUtc: "2026-07-28T16:20:00.000Z",
         updatedAtUtc: "2026-07-28T16:20:00.000Z",
         linkedSaveFileName: null,
+        playerShortlistName: null,
+        playerShortlistFileName: null,
       };
       saves = [replacement];
     }
@@ -928,6 +950,8 @@ export function resolveLoadDataIpcMock(
             createdAtUtc: "2026-07-28T12:00:00.000Z",
             updatedAtUtc: "2026-07-28T12:00:00.000Z",
             linkedSaveFileName: null,
+            playerShortlistName: null,
+            playerShortlistFileName: null,
           };
       busyDeferred = {
         promise,

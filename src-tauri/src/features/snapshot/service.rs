@@ -29,6 +29,10 @@ pub struct SaveSummary {
     pub updated_at_utc: String,
     /// The linked FM save's file name. The stored path's directory never leaves the database.
     pub linked_save_file_name: Option<String>,
+    /// The linked FM shortlist's list name.
+    pub player_shortlist_name: Option<String>,
+    /// The linked FM shortlist's file name, which marks a save as having a shortlist.
+    pub player_shortlist_file_name: Option<String>,
 }
 
 /// A WebView-supplied path that read as a supported FM27 save when it was validated.
@@ -246,7 +250,7 @@ pub fn list_saves(conn: &Connection) -> Result<Vec<SaveSummary>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT id, context_token, name, is_active, created_at_utc, updated_at_utc,
-                    linked_save_file_path
+                    linked_save_file_path, player_shortlist_name, player_shortlist_file_path
              FROM saves
              ORDER BY id",
         )
@@ -631,7 +635,7 @@ fn set_active_save_in_transaction(tx: &Transaction<'_>, save_id: i64) -> Result<
 fn get_save_by_id(conn: &Connection, save_id: i64) -> Result<SaveSummary, String> {
     conn.query_row(
         "SELECT id, context_token, name, is_active, created_at_utc, updated_at_utc,
-                linked_save_file_path
+                linked_save_file_path, player_shortlist_name, player_shortlist_file_path
          FROM saves
          WHERE id = ?1",
         params![save_id],
@@ -648,12 +652,16 @@ fn map_save_row(row: &Row<'_>) -> rusqlite::Result<SaveSummary> {
         is_active: row.get::<_, i32>(3)? == 1,
         created_at_utc: row.get(4)?,
         updated_at_utc: row.get(5)?,
-        linked_save_file_name: row
-            .get::<_, Option<String>>(6)?
-            .as_deref()
-            .and_then(|path| Path::new(path).file_name())
-            .map(|name| name.to_string_lossy().into_owned()),
+        linked_save_file_name: file_name(row.get::<_, Option<String>>(6)?.as_deref()),
+        player_shortlist_name: row.get(7)?,
+        player_shortlist_file_name: file_name(row.get::<_, Option<String>>(8)?.as_deref()),
     })
+}
+
+/// The last component of a stored path; the directory never leaves the database.
+fn file_name(path: Option<&str>) -> Option<String> {
+    path.and_then(|path| Path::new(path).file_name())
+        .map(|name| name.to_string_lossy().into_owned())
 }
 
 #[cfg(test)]

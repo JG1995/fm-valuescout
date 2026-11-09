@@ -996,18 +996,22 @@ export function SearchResultsPanel({
     const shortlistEmpty =
       committed.view === "general" && committed.shortlistOnly;
     const emptyTitle = shortlistEmpty
-      ? appliedFilters.length > 0
-        ? "No shortlisted players match these filters"
-        : "No players in shortlist"
+      ? page.state === "no_shortlist"
+        ? "No shortlist linked"
+        : appliedFilters.length > 0
+          ? "No shortlisted players match these filters"
+          : "No shortlisted player in this snapshot"
       : appliedFilters.length > 0
         ? "No players match these filters"
         : committed.view === "moneyball"
           ? "No Moneyball stats for this snapshot"
           : "No players in snapshot";
     const emptyBody = shortlistEmpty
-      ? appliedFilters.length > 0
-        ? "Adjust or clear filters in the toolbar above, or turn Shortlist off to widen the result set."
-        : "Upload a shortlist CSV for this save, or turn Shortlist off to browse every snapshot player."
+      ? page.state === "no_shortlist"
+        ? "Use Choose FM Shortlist to link a shortlist file exported from Football Manager, or turn Shortlist off to browse every snapshot player."
+        : appliedFilters.length > 0
+          ? "Adjust or clear filters in the toolbar above, or turn Shortlist off to widen the result set."
+          : "None of the shortlist's players are in this snapshot. Turn Shortlist off to browse every snapshot player."
       : appliedFilters.length > 0
         ? "Adjust or clear filters in the toolbar above to widen the result set."
         : committed.view === "moneyball"

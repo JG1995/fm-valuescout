@@ -87,8 +87,9 @@ import {
   resolveSetPlayerHiddenInformationRevealedIpcMock,
 } from "@/testing/player-ipc-mock";
 import {
-  resetPlayerShortlistImportIpcMock,
-  resolvePlayerShortlistImportIpcMock,
+  resetPlayerShortlistIpcMock,
+  resolveChoosePlayerShortlistIpcMock,
+  resolveRemovePlayerShortlistIpcMock,
 } from "@/testing/player-shortlist-ipc-mock";
 import {
   resetSearchPlayersOverride,
@@ -206,8 +207,12 @@ function registerIpcMocks() {
       return resolveGetCurrentSnapshotIpcMock();
     }
 
-    if (cmd === "import_player_shortlist_csv") {
-      return resolvePlayerShortlistImportIpcMock(args);
+    if (cmd === "choose_player_shortlist") {
+      return resolveChoosePlayerShortlistIpcMock(args);
+    }
+
+    if (cmd === "remove_player_shortlist") {
+      return resolveRemovePlayerShortlistIpcMock(args);
     }
 
     if (cmd === "import_staff_shortlist_csv") {
@@ -445,7 +450,7 @@ afterEach(() => {
   resetGraphicsIpcMock();
   resetSnapshotIpcMock();
   resetCsvImportIpcMock();
-  resetPlayerShortlistImportIpcMock();
+  resetPlayerShortlistIpcMock();
   resetStaffShortlistImportIpcMock();
   resetClubDnaIpcMock();
   resetSearchPlayersOverride();
