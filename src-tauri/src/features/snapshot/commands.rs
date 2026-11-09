@@ -10,6 +10,7 @@ use crate::db::Db;
 use crate::features::memory_read::service::{DumpRequestResult, DumpWaitConfig};
 use crate::features::moneyball::save_stats_import::{self, SeasonStatsOutcome};
 use crate::features::player::boost_gate;
+use crate::features::player_shortlist::{self, PlayerShortlistOutcome};
 use crate::features::save_stats::SaveStatsError;
 
 use super::ingest::{self, SnapshotSummary};
@@ -503,6 +504,8 @@ pub struct LoadDataResultDto {
     pub timings: LoadDataTimingsDto,
     /// The season stats step, which never fails Load Data.
     pub stats: SeasonStatsOutcome,
+    /// The linked shortlist re-read, which never fails Load Data.
+    pub shortlist: PlayerShortlistOutcome,
 }
 
 impl From<load_data::LoadDataTimings> for LoadDataTimingsDto {
@@ -521,7 +524,11 @@ impl From<load_data::LoadDataTimings> for LoadDataTimingsDto {
 }
 
 impl LoadDataResultDto {
-    fn new(result: LoadDataResult, stats: SeasonStatsOutcome) -> Self {
+    fn new(
+        result: LoadDataResult,
+        stats: SeasonStatsOutcome,
+        shortlist: PlayerShortlistOutcome,
+    ) -> Self {
         Self {
             request_id: result.request_id,
             players_found: result.players_found,
@@ -529,6 +536,7 @@ impl LoadDataResultDto {
             effective_snapshot: SnapshotSummaryDto::from(result.effective_snapshot),
             timings: LoadDataTimingsDto::from(result.timings),
             stats,
+            shortlist,
         }
     }
 }
@@ -728,8 +736,9 @@ where
         }
         Err(_) => log::warn!("database checkpoint skipped after Load Data: the lock is poisoned"),
     }
-    // The stats step takes its own brief locks and reads the file without one. It still
-    // runs under the load gate, and its outcome never turns a published load into an error.
+    // The stats and shortlist steps take their own brief locks and read their files without
+    // one. They still run under the load gate, and their outcomes never turn a published load
+    // into an error.
     let _ = on_progress(LoadDataProgressDto::indeterminate(
         save_context.id,
         save_context.context_token.clone(),
@@ -740,6 +749,11 @@ where
         save_context.id,
         &save_context.context_token,
         now_ms,
+    );
+    let shortlist = player_shortlist::refresh_linked_player_shortlist(
+        db,
+        save_context.id,
+        &save_context.context_token,
     );
     let total_ms = now_ms().saturating_sub(total_started);
     let ingest_ms = save_ms.saturating_add(finalize_ms);
@@ -753,7 +767,7 @@ where
         total_ms,
         ingest_ms,
     };
-    Ok(LoadDataResultDto::new(result, stats))
+    Ok(LoadDataResultDto::new(result, stats, shortlist))
 }
 
 #[tauri::command]
@@ -1038,6 +1052,7 @@ mod tests {
             save_stats_import::SeasonStatsResult::NotLinked,
             "an unlinked save still publishes"
         );
+        assert_eq!(result.shortlist, PlayerShortlistOutcome::NotLinked);
         assert_eq!(
             result.timings.total_ms, 350,
             "total_ms must be exact wall-clock"
@@ -1816,6 +1831,10 @@ mod tests {
                 result: save_stats_import::SeasonStatsResult::NotLinked,
                 elapsed_ms: 1,
             },
+            shortlist: PlayerShortlistOutcome::Failed {
+                kind: player_shortlist::PlayerShortlistErrorKind::Unreadable,
+                file_name: Some("Targets.fmf".to_string()),
+            },
         })
         .expect("serialize Load Data result");
         assert_eq!(load_data["storedSnapshot"]["contextToken"], "stored-token");
@@ -1833,6 +1852,14 @@ mod tests {
         assert_eq!(load_data["timings"]["totalMs"], 7);
         assert_eq!(load_data["stats"]["status"], "notLinked");
         assert_eq!(load_data["stats"]["elapsedMs"], 1);
+        assert_eq!(
+            load_data["shortlist"],
+            serde_json::json!({
+                "status": "failed",
+                "kind": "unreadable",
+                "fileName": "Targets.fmf",
+            })
+        );
         assert_eq!(load_data["timings"]["ingestMs"], 2);
     }
 

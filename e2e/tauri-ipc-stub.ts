@@ -2184,6 +2184,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               storedSnapshot: loadedSnapshot,
               effectiveSnapshot: loadedSnapshot,
               stats: { status: "notLinked", elapsedMs: 0 },
+              shortlist: { status: "notLinked" },
             };
           }
 

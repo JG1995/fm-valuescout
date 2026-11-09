@@ -1,4 +1,7 @@
-import type { SeasonStatsOutcome } from "@/features/memory-read/types/load-data";
+import type {
+  PlayerShortlistOutcome,
+  SeasonStatsOutcome,
+} from "@/features/memory-read/types/load-data";
 import type { SaveDeleteResult } from "@/features/snapshot/api/delete-save";
 import type { SnapshotGameDateUpdateResult } from "@/features/snapshot/api/update-snapshot-date";
 import type { SaveSummary } from "@/features/snapshot/types/save";
@@ -28,6 +31,7 @@ type LoadDataResult = {
   effectiveSnapshot: SnapshotSummary;
   timings: LoadDataTimings;
   stats: SeasonStatsOutcome;
+  shortlist: PlayerShortlistOutcome;
 };
 
 export type LoadDataIpcMockMode =
@@ -151,6 +155,7 @@ function buildLoadDataResult(
     effectiveSnapshot,
     timings: { ...defaultTimings, ...(overrideTimings ?? {}) },
     stats: { status: "notLinked", elapsedMs: 0 },
+    shortlist: { status: "notLinked" },
     ...restOverrides,
   };
 }

@@ -79,6 +79,19 @@ function historicalResultWithAttachedStats(saveId: number): BusyLoadDataResult {
       gameDate: "2027-08-16",
       elapsedMs: 900,
     },
+    shortlist: { status: "notLinked" },
+  };
+}
+
+/** The same historical load with no stats attached and the given shortlist outcome. */
+function historicalResultWithShortlist(
+  saveId: number,
+  shortlist: BusyLoadDataResult["shortlist"],
+): BusyLoadDataResult {
+  return {
+    ...historicalResultWithAttachedStats(saveId),
+    stats: { status: "notLinked", elapsedMs: 0 },
+    shortlist,
   };
 }
 
@@ -446,40 +459,64 @@ describe("useLoadData", () => {
     expect(queryClient.getQueryState(bridgeKey)?.isInvalidated).toBe(true);
   });
 
-  it("historical result with attached stats on the active save refreshes current owners without clearing roots", async () => {
-    const clearExactRoots = vi.fn(async () => undefined);
-    const invalidateCurrent = vi.fn();
-    const invalidateHistory = vi.fn();
+  it.each<[string, BusyLoadDataResult, number]>([
+    ["attached stats", historicalResultWithAttachedStats(1), 1],
+    [
+      "a re-read shortlist",
+      historicalResultWithShortlist(1, {
+        status: "read",
+        name: "Targets",
+        totalPlayers: 2,
+        matchedPlayers: 1,
+      }),
+      1,
+    ],
+    [
+      "a failed shortlist re-read and no stats",
+      historicalResultWithShortlist(1, {
+        status: "failed",
+        kind: "unreadable",
+        fileName: "Targets.fmf",
+      }),
+      0,
+    ],
+  ])(
+    "historical result with %s on the active save refreshes current owners only for changed current data, without clearing roots",
+    async (_case, loaded, currentRefreshes) => {
+      const clearExactRoots = vi.fn(async () => undefined);
+      const invalidateCurrent = vi.fn();
+      const invalidateHistory = vi.fn();
 
-    const { result } = renderHook(
-      () =>
-        useLoadData({
-          activeSaveContext: { id: 1, contextToken: "save-token-1" },
-          clearExactRoots,
-          invalidateCurrentOwners: invalidateCurrent,
-          invalidateHistoryOwners: invalidateHistory,
-        }),
-      { wrapper: wrapper(createQueryClient()) },
-    );
+      const { result } = renderHook(
+        () =>
+          useLoadData({
+            activeSaveContext: { id: 1, contextToken: "save-token-1" },
+            clearExactRoots,
+            invalidateCurrentOwners: invalidateCurrent,
+            invalidateHistoryOwners: invalidateHistory,
+          }),
+        { wrapper: wrapper(createQueryClient()) },
+      );
 
-    setLoadDataIpcMockMode("busy");
-    act(() => {
-      result.current.mutate();
-    });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
-    await act(async () => {
-      resolveBusyLoadDataRequest(historicalResultWithAttachedStats(1));
-    });
+      setLoadDataIpcMockMode("busy");
+      act(() => {
+        result.current.mutate();
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      await act(async () => {
+        resolveBusyLoadDataRequest(loaded);
+      });
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(clearExactRoots).not.toHaveBeenCalled();
-    expect(invalidateCurrent).toHaveBeenCalledOnce();
-    expect(invalidateHistory).toHaveBeenCalledOnce();
-    expect(invalidateHistory).toHaveBeenCalledWith(1);
-  });
+      expect(clearExactRoots).not.toHaveBeenCalled();
+      expect(invalidateCurrent).toHaveBeenCalledTimes(currentRefreshes);
+      expect(invalidateHistory).toHaveBeenCalledOnce();
+      expect(invalidateHistory).toHaveBeenCalledWith(1);
+    },
+  );
 
   it("historical result with attached stats settling after a save switch refreshes only history", async () => {
     const clearExactRoots = vi.fn(async () => undefined);
@@ -1025,6 +1062,7 @@ describe("useLoadData", () => {
           ingestMs: 400,
         },
         stats: { status: "notLinked", elapsedMs: 0 },
+        shortlist: { status: "notLinked" },
       } as never);
     });
 
@@ -1203,6 +1241,7 @@ describe("useLoadData", () => {
           ingestMs: 400,
         },
         stats: { status: "notLinked", elapsedMs: 0 },
+        shortlist: { status: "notLinked" },
       } as never);
     });
     await act(async () => {
@@ -1329,6 +1368,7 @@ describe("useLoadData", () => {
           ingestMs: 400,
         },
         stats: { status: "notLinked", elapsedMs: 0 },
+        shortlist: { status: "notLinked" },
       } as never);
     });
     await act(async () => {
@@ -1470,6 +1510,7 @@ describe("useLoadData", () => {
           ingestMs: 400,
         },
         stats: { status: "notLinked", elapsedMs: 0 },
+        shortlist: { status: "notLinked" },
       } as never);
     });
     await act(async () => {

@@ -2,7 +2,8 @@
 //!
 //! `file` reads a shortlist file into its list name and player Unique IDs. Choosing a file
 //! links it to the active save and stores every ID it lists, so a later snapshot can match
-//! players the current one lacks. Search matches the IDs against the current snapshot.
+//! players the current one lacks. Load Data re-reads the linked file after publication.
+//! Search matches the IDs against the current snapshot.
 
 pub(crate) mod commands;
 mod file;
@@ -53,6 +54,32 @@ pub(crate) enum PlayerShortlistErrorKind {
 pub(crate) struct PlayerShortlistError {
     pub kind: PlayerShortlistErrorKind,
     pub file_name: Option<String>,
+}
+
+/// What a Load Data re-read of the linked shortlist did. Only `Read` changed the stored
+/// shortlist. Nothing here carries the linked path; `Failed` names the file only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(
+    tag = "status",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub(crate) enum PlayerShortlistOutcome {
+    /// The name and players were replaced, even when none of them is in the snapshot.
+    Read {
+        name: String,
+        total_players: usize,
+        matched_players: usize,
+    },
+    NotLinked,
+    /// The active save, its current snapshot, its context token, or the link changed, so the
+    /// read was discarded.
+    StaleContext,
+    /// `kind` is a reader kind, or `database` for a failed write.
+    Failed {
+        kind: PlayerShortlistErrorKind,
+        file_name: Option<String>,
+    },
 }
 
 use PlayerShortlistErrorKind::{Database, NoMatchingPlayers, NoSnapshot, StaleContext};
@@ -166,54 +193,167 @@ fn persist(
     shortlist: &PlayerShortlistFile,
 ) -> Result<usize, PlayerShortlistErrorKind> {
     let tx = conn.transaction().map_err(|_| Database)?;
-    match revalidate_active_import_context(&tx, active) {
-        Ok(()) => {}
-        Err(CsvImportServiceError::StaleContext) => return Err(StaleContext),
-        Err(_) => return Err(Database),
-    }
-    let matched_players = {
-        let mut in_snapshot = tx
-            .prepare("SELECT EXISTS(SELECT 1 FROM players WHERE snapshot_id = ?1 AND uid = ?2)")
-            .map_err(|_| Database)?;
-        let mut matched_players = 0;
-        for uid in &shortlist.player_uids {
-            if in_snapshot
-                .query_row(params![active.snapshot_id, uid], |row| {
-                    row.get::<_, bool>(0)
-                })
-                .map_err(|_| Database)?
-            {
-                matched_players += 1;
-            }
-        }
-        matched_players
-    };
+    revalidate(&tx, active)?;
+    let matched_players = count_in_snapshot(&tx, active.snapshot_id, &shortlist.player_uids)?;
     if matched_players == 0 {
         return Err(NoMatchingPlayers);
     }
-
-    tx.execute(
-        "UPDATE saves SET player_shortlist_file_path = ?1, player_shortlist_name = ?2 WHERE id = ?3",
-        params![path, shortlist.name, active.save_id],
-    )
-    .map_err(|_| Database)?;
-    tx.execute(
-        "DELETE FROM player_shortlist_entries WHERE save_id = ?1",
-        [active.save_id],
-    )
-    .map_err(|_| Database)?;
-    {
-        let mut insert = tx
-            .prepare("INSERT INTO player_shortlist_entries (save_id, player_uid) VALUES (?1, ?2)")
-            .map_err(|_| Database)?;
-        for uid in &shortlist.player_uids {
-            insert
-                .execute(params![active.save_id, uid])
-                .map_err(|_| Database)?;
-        }
-    }
+    store(&tx, active.save_id, path, shortlist)?;
     tx.commit().map_err(|_| Database)?;
     Ok(matched_players)
+}
+
+/// Re-reads the shortlist file linked to save `save_id`, identified by `context_token`, and
+/// replaces its stored name and players while that save is active and still links the same
+/// file. Load Data runs it after publication; the file is read without the database lock.
+pub(crate) fn refresh_linked_player_shortlist(
+    db: &Db,
+    save_id: i64,
+    context_token: &str,
+) -> PlayerShortlistOutcome {
+    let failed = |kind, file_name| PlayerShortlistOutcome::Failed { kind, file_name };
+    let (active, linked_path) = {
+        let Ok(conn) = db.0.lock() else {
+            return failed(Database, None);
+        };
+        match capture_link(&conn, save_id, context_token) {
+            Ok(captured) => captured,
+            Err(outcome) => return outcome,
+        }
+    };
+    let shortlist = match read_player_shortlist(Path::new(&linked_path)) {
+        Ok(shortlist) => shortlist,
+        Err(error) => return failed(error.into(), Some(file_name(&linked_path))),
+    };
+    let Ok(mut conn) = db.0.lock() else {
+        return failed(Database, None);
+    };
+    match persist_refresh(&mut conn, &active, &linked_path, &shortlist) {
+        Ok(matched_players) => PlayerShortlistOutcome::Read {
+            total_players: shortlist.player_uids.len(),
+            name: shortlist.name,
+            matched_players,
+        },
+        Err(StaleContext) => PlayerShortlistOutcome::StaleContext,
+        Err(kind) => failed(kind, None),
+    }
+}
+
+/// The active save's current snapshot and its linked shortlist path, captured before the
+/// file is read.
+fn capture_link(
+    conn: &Connection,
+    save_id: i64,
+    context_token: &str,
+) -> Result<(ActiveImportContext, String), PlayerShortlistOutcome> {
+    let database_failure = || PlayerShortlistOutcome::Failed {
+        kind: Database,
+        file_name: None,
+    };
+    let active = match capture(conn, save_id, context_token) {
+        Ok(active) => active,
+        // Load Data has just published a current snapshot for this save, so its absence
+        // means the context changed.
+        Err(StaleContext | NoSnapshot) => return Err(PlayerShortlistOutcome::StaleContext),
+        Err(_) => return Err(database_failure()),
+    };
+    let linked_path: Option<String> = conn
+        .query_row(
+            "SELECT player_shortlist_file_path FROM saves WHERE id = ?1",
+            [save_id],
+            |row| row.get(0),
+        )
+        .map_err(|_| database_failure())?;
+    let linked_path = linked_path.ok_or(PlayerShortlistOutcome::NotLinked)?;
+    Ok((active, linked_path))
+}
+
+/// Replaces the save's name and players in one transaction, but only while the captured
+/// save and snapshot are still current and the save still links `linked_path`. Returns how
+/// many listed players the snapshot holds.
+fn persist_refresh(
+    conn: &mut Connection,
+    active: &ActiveImportContext,
+    linked_path: &str,
+    shortlist: &PlayerShortlistFile,
+) -> Result<usize, PlayerShortlistErrorKind> {
+    let tx = conn.transaction().map_err(|_| Database)?;
+    revalidate(&tx, active)?;
+    // Choosing or removing a file keeps the save's context token, so the link is checked on
+    // its own.
+    let same_link: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM saves WHERE id = ?1 AND player_shortlist_file_path = ?2)",
+            params![active.save_id, linked_path],
+            |row| row.get(0),
+        )
+        .map_err(|_| Database)?;
+    if !same_link {
+        return Err(StaleContext);
+    }
+    let matched_players = count_in_snapshot(&tx, active.snapshot_id, &shortlist.player_uids)?;
+    store(&tx, active.save_id, linked_path, shortlist)?;
+    tx.commit().map_err(|_| Database)?;
+    Ok(matched_players)
+}
+
+fn revalidate(
+    conn: &Connection,
+    active: &ActiveImportContext,
+) -> Result<(), PlayerShortlistErrorKind> {
+    match revalidate_active_import_context(conn, active) {
+        Ok(()) => Ok(()),
+        Err(CsvImportServiceError::StaleContext) => Err(StaleContext),
+        Err(_) => Err(Database),
+    }
+}
+
+fn count_in_snapshot(
+    conn: &Connection,
+    snapshot_id: i64,
+    player_uids: &[i64],
+) -> Result<usize, PlayerShortlistErrorKind> {
+    let mut in_snapshot = conn
+        .prepare("SELECT EXISTS(SELECT 1 FROM players WHERE snapshot_id = ?1 AND uid = ?2)")
+        .map_err(|_| Database)?;
+    let mut matched_players = 0;
+    for uid in player_uids {
+        if in_snapshot
+            .query_row(params![snapshot_id, uid], |row| row.get::<_, bool>(0))
+            .map_err(|_| Database)?
+        {
+            matched_players += 1;
+        }
+    }
+    Ok(matched_players)
+}
+
+/// Sets the save's link and name and replaces its players with every listed ID.
+fn store(
+    conn: &Connection,
+    save_id: i64,
+    path: &str,
+    shortlist: &PlayerShortlistFile,
+) -> Result<(), PlayerShortlistErrorKind> {
+    conn.execute(
+        "UPDATE saves SET player_shortlist_file_path = ?1, player_shortlist_name = ?2 WHERE id = ?3",
+        params![path, shortlist.name, save_id],
+    )
+    .map_err(|_| Database)?;
+    conn.execute(
+        "DELETE FROM player_shortlist_entries WHERE save_id = ?1",
+        [save_id],
+    )
+    .map_err(|_| Database)?;
+    let mut insert = conn
+        .prepare("INSERT INTO player_shortlist_entries (save_id, player_uid) VALUES (?1, ?2)")
+        .map_err(|_| Database)?;
+    for uid in &shortlist.player_uids {
+        insert
+            .execute(params![save_id, uid])
+            .map_err(|_| Database)?;
+    }
+    Ok(())
 }
 
 fn file_name(path: &str) -> String {
@@ -277,6 +417,20 @@ mod tests {
 
         fn choose(&self, path: &str) -> Result<PlayerShortlistChoice, PlayerShortlistError> {
             choose_player_shortlist(&self.db, self.save.id, &self.save.context_token, path)
+        }
+
+        fn refresh(&self) -> PlayerShortlistOutcome {
+            refresh_linked_player_shortlist(&self.db, self.save.id, &self.save.context_token)
+        }
+
+        /// Links `Targets.fmf` holding the in-snapshot player and returns its path.
+        fn link_targets(&self) -> String {
+            let path = self.write(
+                "Targets.fmf",
+                &player_shortlist_file("Targets", &[IN_SNAPSHOT]),
+            );
+            self.choose(&path).expect("link shortlist");
+            path
         }
 
         fn state(&self) -> ShortlistState {
@@ -455,5 +609,109 @@ mod tests {
             .expect("remove shortlist");
         assert_eq!(fixture.state(), (None, None, Vec::new()));
         assert_eq!(active_save(&fixture.db).player_shortlist_name, None);
+    }
+
+    #[test]
+    fn a_reread_replaces_the_name_and_players_even_when_none_is_in_the_snapshot() {
+        let fixture = fixture();
+        let path = fixture.link_targets();
+        fixture.write(
+            "Targets.fmf",
+            &player_shortlist_file("Renamed", &[NOT_IN_SNAPSHOT]),
+        );
+
+        assert_eq!(
+            serde_json::to_value(fixture.refresh()).expect("serialize outcome"),
+            json!({
+                "status": "read",
+                "name": "Renamed",
+                "totalPlayers": 1,
+                "matchedPlayers": 0,
+            })
+        );
+        assert_eq!(
+            fixture.state(),
+            (
+                Some(path.clone()),
+                Some("Renamed".to_string()),
+                vec![i64::from(NOT_IN_SNAPSHOT)],
+            )
+        );
+
+        fixture.write("Targets.fmf", &player_shortlist_file("Emptied", &[]));
+        assert_eq!(
+            fixture.refresh(),
+            PlayerShortlistOutcome::Read {
+                name: "Emptied".to_string(),
+                total_players: 0,
+                matched_players: 0,
+            }
+        );
+        assert_eq!(
+            fixture.state(),
+            (Some(path), Some("Emptied".to_string()), Vec::new())
+        );
+    }
+
+    #[test]
+    fn a_failed_reread_keeps_the_previous_shortlist_and_names_only_the_file() {
+        let fixture = fixture();
+        let path = fixture.link_targets();
+        let linked = fixture.state();
+
+        fixture.write("Targets.fmf", b"not an FM shortlist");
+        let invalid = fixture.refresh();
+        std::fs::remove_file(&path).expect("remove linked file");
+        let missing = fixture.refresh();
+
+        for (outcome, kind) in [(invalid, "not_fm_shortlist"), (missing, "unreadable")] {
+            let serialized = serde_json::to_value(&outcome).expect("serialize outcome");
+            assert_eq!(
+                serialized,
+                json!({ "status": "failed", "kind": kind, "fileName": "Targets.fmf" })
+            );
+            assert!(!serialized.to_string().contains("Private Folder"));
+        }
+        assert_eq!(fixture.state(), linked);
+    }
+
+    #[test]
+    fn a_reread_whose_link_changed_writes_nothing() {
+        let fixture = fixture();
+        let path = fixture.link_targets();
+        let (active, linked_path) = capture_link(
+            &fixture.db.0.lock().expect("lock"),
+            fixture.save.id,
+            &fixture.save.context_token,
+        )
+        .expect("capture link");
+        fixture.write(
+            "Targets.fmf",
+            &player_shortlist_file("Stale", &[NOT_IN_SNAPSHOT]),
+        );
+        let shortlist = read_player_shortlist(Path::new(&linked_path)).expect("read shortlist");
+        let other = fixture.write("Other.fmf", &player_shortlist_file("Other", &[IN_SNAPSHOT]));
+        fixture.choose(&other).expect("choose another file");
+        let relinked = fixture.state();
+
+        let mut conn = fixture.db.0.lock().expect("lock");
+        assert_eq!(
+            persist_refresh(&mut conn, &active, &path, &shortlist),
+            Err(StaleContext)
+        );
+        drop(conn);
+        assert_eq!(fixture.state(), relinked);
+    }
+
+    #[test]
+    fn an_unlinked_or_inactive_save_reads_no_shortlist() {
+        let fixture = fixture();
+
+        assert_eq!(fixture.refresh(), PlayerShortlistOutcome::NotLinked);
+        fixture.link_targets();
+        assert_eq!(
+            refresh_linked_player_shortlist(&fixture.db, fixture.save.id, "stale-token"),
+            PlayerShortlistOutcome::StaleContext
+        );
     }
 }
