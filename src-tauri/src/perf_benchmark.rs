@@ -741,19 +741,25 @@ fn measure_player_shape(db: &Db, shape: &PlayerShape) -> Value {
     })
 }
 
-fn search_staff_page(db: &Db, offset: usize) -> usize {
-    staff::query::list_staff(
-        &db.read().expect("read connection"),
-        staff::query::StaffScope::Search,
-        offset,
-        DEFAULT_PAGE_LIMIT,
-        staff::query::SortField::parse("role.coach_fitness").expect("staff sort"),
-        staff::query::SortDir::Desc,
+/// Requests one Staff Search page as `search_staff` does, through its computed orders in
+/// `orders`.
+fn search_staff_page(db: &Db, orders: &staff::query::StaffOrderCache, offset: usize) -> usize {
+    staff::query::search_staff_page(
+        db,
+        orders,
+        &TableRegistry::default(),
         None,
-        false,
-        None,
-        false,
-        &fields(&["role.coach_fitness"]),
+        staff::query::StaffSearchRequest {
+            offset,
+            limit: DEFAULT_PAGE_LIMIT,
+            sort: staff::query::SortField::parse("role.coach_fitness").expect("staff sort"),
+            direction: staff::query::SortDir::Desc,
+            filters: None,
+            shortlist_only: false,
+            preferred_job: None,
+            unemployed_only: false,
+            requested_fields: &fields(&["role.coach_fitness"]),
+        },
     )
     .expect("staff request")
     .total as usize
@@ -766,13 +772,15 @@ fn measure_requests(db: &Db) -> Map<String, Value> {
         requests.insert(shape.name.to_string(), measure_player_shape(db, &shape));
     }
 
+    // Every first page computes its query afresh; later windows reuse the first page's.
     let first_page = time_repeated(|| {
-        search_staff_page(db, 0);
+        search_staff_page(db, &staff::query::StaffOrderCache::new(4), 0);
     });
-    let total = search_staff_page(db, 0);
+    let orders = staff::query::StaffOrderCache::new(4);
+    let total = search_staff_page(db, &orders, 0);
     let offset = later_window_offset(total, false);
     let later_window = time_repeated(|| {
-        search_staff_page(db, offset);
+        search_staff_page(db, &orders, offset);
     });
     requests.insert(
         "staff_role_sort".to_string(),

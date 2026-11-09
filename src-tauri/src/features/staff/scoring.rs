@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
 use rusqlite::{params, params_from_iter, types::Value, Connection, Transaction};
 
@@ -221,30 +222,79 @@ pub fn staff_metrics_join(staff_alias: &str) -> String {
 /// Scoped read validation: every current staff member must have one compact
 /// row carrying the checked-in score model. Missing or wrong-version state
 /// fails before values are read; a read never writes or repairs.
+///
+/// The `(snapshot_id, uid)` primary key and its foreign key to `staff` make
+/// "as many matching compact rows as staff" equivalent to "every staff member
+/// has one". A read-only connection remembers its success for the data
+/// generation, because its request reads one committed state; a check on the
+/// writer always runs in full.
 pub(crate) fn assert_read_models_complete(
     conn: &Connection,
     snapshot_id: i64,
 ) -> Result<(), String> {
-    let incomplete: bool = conn
+    let read_check = ReadCheck::for_reader(conn, snapshot_id);
+    if read_check.as_ref().is_some_and(ReadCheck::succeeded) {
+        return Ok(());
+    }
+    let complete: bool = conn
         .query_row(
-            "SELECT EXISTS(
-                 SELECT 1
-                 FROM staff s
-                 LEFT JOIN staff_role_metrics m
-                   ON m.snapshot_id = s.snapshot_id
-                  AND m.uid = s.uid
-                  AND m.score_model_version = ?2
-                 WHERE s.snapshot_id = ?1 AND m.snapshot_id IS NULL
-             )",
+            "SELECT (SELECT COUNT(*) FROM staff WHERE snapshot_id = ?1)
+                  = (SELECT COUNT(*) FROM staff_role_metrics
+                     WHERE snapshot_id = ?1 AND score_model_version = ?2)",
             params![snapshot_id, SCORE_MODEL_VERSION],
             |row| row.get(0),
         )
         .map_err(|error| error.to_string())?;
-    if incomplete {
-        Err("Current compact staff snapshot is incomplete".to_string())
-    } else {
-        Ok(())
+    if !complete {
+        return Err("Current compact staff snapshot is incomplete".to_string());
     }
+    if let Some(read_check) = read_check {
+        read_check.remember();
+    }
+    Ok(())
+}
+
+/// One successful read-time check: its database file, data generation, and snapshot.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct ReadCheck {
+    database: String,
+    generation: u64,
+    snapshot_id: i64,
+}
+
+impl ReadCheck {
+    /// The check's memo key on a read-only connection to a registered database file, or
+    /// `None` for the writer or an unregistered connection, which always check in full.
+    fn for_reader(conn: &Connection, snapshot_id: i64) -> Option<Self> {
+        if !conn.is_readonly(rusqlite::MAIN_DB).ok()? {
+            return None;
+        }
+        Some(Self {
+            database: conn.path()?.to_string(),
+            generation: crate::db::data_generation(conn)?,
+            snapshot_id,
+        })
+    }
+
+    fn succeeded(&self) -> bool {
+        read_checks().contains(self)
+    }
+
+    /// Keeps only this generation's successes for the database, so the memo stays small.
+    fn remember(self) {
+        let mut checks = read_checks();
+        checks
+            .retain(|check| check.database != self.database || check.generation == self.generation);
+        checks.insert(self);
+    }
+}
+
+fn read_checks() -> MutexGuard<'static, HashSet<ReadCheck>> {
+    static READ_CHECKS: OnceLock<Mutex<HashSet<ReadCheck>>> = OnceLock::new();
+    READ_CHECKS
+        .get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
 }
 
 /// Returns the compact `staff_role_metrics` column for a closed-catalog staff
@@ -896,5 +946,74 @@ mod tests {
         ] {
             assert!(staff_role_column(id).is_err(), "{id}");
         }
+    }
+
+    const INCOMPLETE: &str = "Current compact staff snapshot is incomplete";
+
+    /// A database file whose current snapshot 1 is complete and whose snapshot 2 lacks its
+    /// compact row.
+    fn open_two_snapshot_db() -> (tempfile::TempDir, crate::db::Db) {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = crate::db::open(&temp_dir.path().join(crate::db::APP_DB_FILE)).expect("open db");
+        db.0.lock()
+            .expect("lock writer")
+            .execute_batch(
+                "INSERT INTO saves (id, name, is_active) VALUES (1, 'Save', 1);
+                 INSERT INTO snapshots (
+                    id, save_id, is_current, schema_version, generated_at_utc, game_version,
+                    supported_game_version, bridge_version, protocol_version, game_date_source,
+                    scan_truncated, player_count
+                 ) VALUES
+                    (1, 1, 1, 8, 'now', '26.3', '26.3', '0.4', 1, 'unknown', 0, 0),
+                    (2, 1, 0, 8, 'old', '26.3', '26.3', '0.4', 1, 'unknown', 0, 0);
+                 INSERT INTO staff (
+                    snapshot_id, uid, name, age, nationalities_json, gender, ca, pa,
+                    staff_attributes_json
+                 ) VALUES
+                    (1, 1, 'Current', 40, '[]', 'male', 100, 120, '{}'),
+                    (2, 9, 'Old', 50, '[]', 'male', 90, 100, '{}');
+                 INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version)
+                 VALUES (1, 1, 1);",
+            )
+            .expect("seed staff snapshots");
+        (temp_dir, db)
+    }
+
+    #[test]
+    fn a_read_check_succeeds_once_per_generation_and_snapshot() {
+        let (temp_dir, db) = open_two_snapshot_db();
+        let reader = db.read().expect("reader");
+        assert_eq!(assert_read_models_complete(&reader, 1), Ok(()));
+        // A remembered success for one snapshot never answers another.
+        assert_eq!(
+            assert_read_models_complete(&reader, 2),
+            Err(INCOMPLETE.to_string())
+        );
+        drop(reader);
+
+        // The remembered success answers later reads of the same generation...
+        Connection::open(temp_dir.path().join(crate::db::APP_DB_FILE))
+            .expect("open bypass connection")
+            .execute_batch("UPDATE staff_role_metrics SET score_model_version = 99")
+            .expect("break the score version without the writer");
+        let reader = db.read().expect("reader");
+        assert_eq!(assert_read_models_complete(&reader, 1), Ok(()));
+        drop(reader);
+        // ...but never a check on the writer.
+        assert_eq!(
+            assert_read_models_complete(&db.0.lock().expect("lock writer"), 1),
+            Err(INCOMPLETE.to_string())
+        );
+
+        // A writer change starts a new generation, which checks again.
+        db.0.lock()
+            .expect("lock writer")
+            .execute_batch("UPDATE staff SET name = name || ' changed'")
+            .expect("change data");
+        let reader = db.read().expect("reader");
+        assert_eq!(
+            assert_read_models_complete(&reader, 1),
+            Err(INCOMPLETE.to_string())
+        );
     }
 }

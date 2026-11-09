@@ -62,6 +62,7 @@ pub fn run() {
             };
             app.manage(db);
             app.manage(features::search::commands::SearchCaches::default());
+            app.manage(features::staff::commands::StaffCaches::default());
             app.manage(db::result_cache::TableRegistry::default());
             app.manage(graphics_runtime);
             app.state::<features::graphics::runtime::GraphicsRuntime>()

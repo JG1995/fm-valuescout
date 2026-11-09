@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::blocking;
+use crate::db::result_cache::{TableRegistry, TableTicket};
 use crate::db::Db;
 use crate::features::memory_read::service::{
     request_staff_boost_from_local_app_data, DumpWaitConfig, StaffBoostResult,
@@ -22,8 +23,8 @@ use super::assignment_targets::{
 };
 use super::filter::{self, FilterAst, FilterRule};
 use super::query::{
-    self, SortDir, SortField, StaffDetail, StaffPage, StaffPageState, StaffRoleScore, StaffScope,
-    StaffShortlistMetadata, StaffSummary,
+    self, SortDir, SortField, StaffDetail, StaffOrderCache, StaffPage, StaffPageState,
+    StaffRoleScore, StaffScope, StaffSearchRequest, StaffShortlistMetadata, StaffSummary,
 };
 use super::service::{
     self, PreparedStaffBoost, StaffBoostBatchContext, StaffBoostError, VerifiedStaffBoost,
@@ -492,48 +493,113 @@ fn parse_filters(
         .transpose()
 }
 
-#[allow(clippy::too_many_arguments)]
-fn run(
-    scope: StaffScope,
-    offset: Option<u32>,
-    limit: Option<u32>,
-    sort_by: Option<String>,
-    sort_dir: Option<String>,
-    filters: Option<Vec<StaffFilterRuleInput>>,
-    filter_combine: Option<String>,
-    requested_fields: Option<Vec<String>>,
-    shortlist_only: Option<bool>,
+/// Staff tables' computed results. Clones share them.
+#[derive(Clone)]
+pub struct StaffCaches {
+    /// Staff Search orders: at most four queries.
+    pub search_orders: StaffOrderCache,
+}
+
+impl Default for StaffCaches {
+    fn default() -> Self {
+        Self {
+            search_orders: StaffOrderCache::new(4),
+        }
+    }
+}
+
+/// A validated Staff page request.
+struct StaffPageRequest {
+    offset: usize,
+    limit: usize,
+    sort: SortField,
+    direction: SortDir,
+    filters: Option<FilterAst>,
+    requested_fields: Vec<String>,
+    shortlist_only: bool,
     preferred_job: Option<String>,
-    unemployed_only: Option<bool>,
+    unemployed_only: bool,
+}
+
+impl StaffPageRequest {
+    #[allow(clippy::too_many_arguments)]
+    fn parse(
+        offset: Option<u32>,
+        limit: Option<u32>,
+        sort_by: Option<String>,
+        sort_dir: Option<String>,
+        filters: Option<Vec<StaffFilterRuleInput>>,
+        filter_combine: Option<String>,
+        requested_fields: Option<Vec<String>>,
+        shortlist_only: Option<bool>,
+        preferred_job: Option<String>,
+        unemployed_only: Option<bool>,
+    ) -> Result<Self, String> {
+        Ok(Self {
+            offset: offset.unwrap_or(0) as usize,
+            limit: limit.unwrap_or(query::DEFAULT_PAGE_LIMIT as u32) as usize,
+            sort: sort_by
+                .as_deref()
+                .map(SortField::parse)
+                .transpose()?
+                .unwrap_or(SortField::DEFAULT),
+            direction: sort_dir
+                .as_deref()
+                .map(SortDir::parse)
+                .transpose()?
+                .unwrap_or(SortDir::DEFAULT),
+            filters: parse_filters(filters, filter_combine.as_deref())?,
+            requested_fields: requested_fields.unwrap_or_default(),
+            shortlist_only: shortlist_only.unwrap_or(false),
+            preferred_job,
+            unemployed_only: unemployed_only.unwrap_or(false),
+        })
+    }
+
+    fn search(&self) -> StaffSearchRequest<'_> {
+        StaffSearchRequest {
+            offset: self.offset,
+            limit: self.limit,
+            sort: self.sort.clone(),
+            direction: self.direction,
+            filters: self.filters.as_ref(),
+            shortlist_only: self.shortlist_only,
+            preferred_job: self.preferred_job.as_deref(),
+            unemployed_only: self.unemployed_only,
+            requested_fields: &self.requested_fields,
+        }
+    }
+}
+
+fn read_search_page(
     db: &Db,
+    orders: &StaffOrderCache,
+    registry: &TableRegistry,
+    ticket: Option<&TableTicket>,
+    request: &StaffPageRequest,
 ) -> Result<StaffPageDto, String> {
-    let conn = db.read()?;
-    let sort = sort_by
-        .as_deref()
-        .map(SortField::parse)
-        .transpose()?
-        .unwrap_or(SortField::DEFAULT);
-    let direction = sort_dir
-        .as_deref()
-        .map(SortDir::parse)
-        .transpose()?
-        .unwrap_or(SortDir::DEFAULT);
-    let filters = parse_filters(filters, filter_combine.as_deref())?;
+    query::search_staff_page(db, orders, registry, ticket, request.search()).map(StaffPageDto::from)
+}
+
+fn read_my_staff_page(db: &Db, request: &StaffPageRequest) -> Result<StaffPageDto, String> {
     query::list_staff(
-        &conn,
-        scope,
-        offset.unwrap_or(0) as usize,
-        limit.unwrap_or(query::DEFAULT_PAGE_LIMIT as u32) as usize,
-        sort,
-        direction,
-        filters.as_ref(),
-        shortlist_only.unwrap_or(false),
-        preferred_job.as_deref(),
-        unemployed_only.unwrap_or(false),
-        &requested_fields.unwrap_or_default(),
+        &*db.read()?,
+        StaffScope::MyStaff,
+        request.offset,
+        request.limit,
+        request.sort.clone(),
+        request.direction,
+        None,
+        false,
+        None,
+        false,
+        &request.requested_fields,
     )
     .map(StaffPageDto::from)
 }
+
+/// The only table a Staff Search request may name.
+const STAFF_SEARCH_TABLE: &str = "staff-search";
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -548,26 +614,36 @@ pub async fn search_staff(
     shortlist_only: Option<bool>,
     preferred_job: Option<String>,
     unemployed_only: Option<bool>,
+    table_id: Option<String>,
     db: State<'_, Db>,
+    caches: State<'_, StaffCaches>,
+    registry: State<'_, TableRegistry>,
 ) -> Result<StaffPageDto, String> {
+    let request = StaffPageRequest::parse(
+        offset,
+        limit,
+        sort_by,
+        sort_dir,
+        filters,
+        filter_combine,
+        requested_fields,
+        shortlist_only,
+        preferred_job,
+        unemployed_only,
+    )?;
+    let table = match table_id.as_deref() {
+        None => None,
+        Some(STAFF_SEARCH_TABLE) => Some(STAFF_SEARCH_TABLE),
+        Some(id) => return Err(format!("unknown table: {id}")),
+    };
+    // The ticket is taken before any wait, so arrival order is the order of the user's requests.
+    let ticket = table
+        .map(|table| registry.arrive(table, &query::staff_query_fingerprint(&request.search())));
     let db = db.inner().clone();
-    blocking::run(move || {
-        run(
-            StaffScope::Search,
-            offset,
-            limit,
-            sort_by,
-            sort_dir,
-            filters,
-            filter_combine,
-            requested_fields,
-            shortlist_only,
-            preferred_job,
-            unemployed_only,
-            &db,
-        )
-    })
-    .await
+    let orders = caches.search_orders.clone();
+    let registry = registry.inner().clone();
+    blocking::run(move || read_search_page(&db, &orders, &registry, ticket.as_ref(), &request))
+        .await
 }
 
 #[tauri::command]
@@ -580,24 +656,20 @@ pub async fn list_my_staff(
     requested_fields: Option<Vec<String>>,
     db: State<'_, Db>,
 ) -> Result<StaffPageDto, String> {
+    let request = StaffPageRequest::parse(
+        offset,
+        limit,
+        sort_by,
+        sort_dir,
+        None,
+        None,
+        requested_fields,
+        None,
+        None,
+        None,
+    )?;
     let db = db.inner().clone();
-    blocking::run(move || {
-        run(
-            StaffScope::MyStaff,
-            offset,
-            limit,
-            sort_by,
-            sort_dir,
-            None,
-            None,
-            requested_fields,
-            None,
-            None,
-            None,
-            &db,
-        )
-    })
-    .await
+    blocking::run(move || read_my_staff_page(&db, &request)).await
 }
 
 #[tauri::command]
@@ -1015,14 +1087,20 @@ mod tests {
             .expect("manage the staff member's club");
 
         let (search, my_staff, detail) = crate::db::read_while_writer_is_held(&db, |db| {
-            let page = |scope| {
-                run(
-                    scope, None, None, None, None, None, None, None, None, None, None, db,
-                )
-            };
+            let request =
+                StaffPageRequest::parse(None, None, None, None, None, None, None, None, None, None)
+                    .expect("default request");
+            let registry = TableRegistry::default();
+            let ticket = registry.arrive(STAFF_SEARCH_TABLE, "first page");
             (
-                page(StaffScope::Search),
-                page(StaffScope::MyStaff),
+                read_search_page(
+                    db,
+                    &StaffOrderCache::new(4),
+                    &registry,
+                    Some(&ticket),
+                    &request,
+                ),
+                read_my_staff_page(db, &request),
                 read_staff(db, 88),
             )
         });

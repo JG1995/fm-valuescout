@@ -92,6 +92,49 @@ function renderStaffRoute(initialEntry = "/staff") {
   };
 }
 
+const SUPERSEDED = new Error("Superseded by a newer request");
+
+type HeldStaffSearchRequest = {
+  args: Record<string, unknown>;
+  /** Answers from the shared IPC mock. */
+  resolve: () => void;
+  reject: (error: Error) => void;
+};
+
+/**
+ * Holds every `search_staff` request that names its table until the test
+ * settles it. Other requests keep the shared IPC mock, which the test setup
+ * registers again after each test.
+ */
+function holdNamedStaffSearchRequests(): HeldStaffSearchRequest[] {
+  const internals = (
+    window as unknown as {
+      __TAURI_INTERNALS__: {
+        invoke: (
+          cmd: string,
+          args?: Record<string, unknown>,
+          options?: unknown,
+        ) => Promise<unknown>;
+      };
+    }
+  ).__TAURI_INTERNALS__;
+  const invoke = internals.invoke;
+  const held: HeldStaffSearchRequest[] = [];
+  internals.invoke = (cmd, args, options) => {
+    if (cmd !== "search_staff" || !args?.tableId) {
+      return invoke(cmd, args, options);
+    }
+    return new Promise((resolve, reject) => {
+      held.push({
+        args,
+        resolve: () => resolve(invoke(cmd, args, options)),
+        reject,
+      });
+    });
+  };
+  return held;
+}
+
 describe("staff route", () => {
   beforeEach(() => {
     openCsvDialog.mockReset();
@@ -299,6 +342,113 @@ describe("staff route", () => {
     expect(
       within(sortedTable).getByRole("columnheader", { name: "CA" }),
     ).toHaveAttribute("aria-sort", "ascending");
+  });
+
+  it("names the Staff Search table only on its requested first page", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    renderStaffRoute("/staff");
+    const table = await screen.findByRole("table", {
+      name: "Staff search results",
+    });
+    expect(getSearchStaffIpcMockCalls()).not.toContainEqual(
+      expect.objectContaining({ tableId: expect.anything() }),
+    );
+    const callsBeforeSort = getSearchStaffIpcMockCalls().length;
+
+    await user.click(within(table).getByRole("button", { name: "CA" }));
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "CA" }),
+      ).toHaveAttribute("aria-sort", "ascending"),
+    );
+    // The route loader's prefetch and every other request stay unnamed.
+    const namedCalls = getSearchStaffIpcMockCalls()
+      .slice(callsBeforeSort)
+      .filter((call) => (call as { tableId?: string }).tableId !== undefined);
+    expect(namedCalls).toEqual([
+      expect.objectContaining({
+        offset: 0,
+        sortBy: "ca",
+        sortDir: "asc",
+        tableId: "staff-search",
+      }),
+    ]);
+  });
+
+  it("refetches the committed Staff Search page without naming the table", async () => {
+    await resolveLoadDataIpcMock();
+    const { queryClient } = renderStaffRoute("/staff");
+    expect(await screen.findByText("Alex Coach")).toBeInTheDocument();
+    const callsBeforeRefetch = getSearchStaffIpcMockCalls().length;
+
+    await queryClient.invalidateQueries({ queryKey: staffKeys.all });
+
+    const refetches = getSearchStaffIpcMockCalls().slice(callsBeforeRefetch);
+    expect(refetches).toContainEqual(expect.objectContaining({ offset: 0 }));
+    expect(refetches).not.toContainEqual(
+      expect.objectContaining({ tableId: expect.anything() }),
+    );
+  });
+
+  it("never shows a superseded Staff Search request as an error and requests it again", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    renderStaffRoute("/staff");
+    const table = await screen.findByRole("table", {
+      name: "Staff search results",
+    });
+    const held = holdNamedStaffSearchRequests();
+
+    await user.click(within(table).getByRole("button", { name: "CA" }));
+    await waitFor(() => expect(held).toHaveLength(1));
+    // The refetch replaces an error within one render, so record every alert.
+    const alerts: string[] = [];
+    const observer = new MutationObserver(() => {
+      for (const alert of document.querySelectorAll('[role="alert"]')) {
+        alerts.push(alert.textContent ?? "");
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    act(() => held[0].reject(SUPERSEDED));
+
+    await waitFor(() => expect(held).toHaveLength(2));
+    act(() => held[1].resolve());
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "CA" }),
+      ).toHaveAttribute("aria-sort", "ascending"),
+    );
+    observer.disconnect();
+    expect(alerts).toEqual([]);
+  });
+
+  it("loads a returned-to Staff Search query whose request was superseded", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    renderStaffRoute("/staff");
+    const table = await screen.findByRole("table", {
+      name: "Staff search results",
+    });
+    const held = holdNamedStaffSearchRequests();
+
+    await user.click(within(table).getByRole("button", { name: "CA" }));
+    await waitFor(() => expect(held).toHaveLength(1));
+    await user.click(within(table).getByRole("button", { name: "Age" }));
+    await waitFor(() => expect(held).toHaveLength(2));
+    // Back to CA ascending while its superseded request is still in flight.
+    await user.click(within(table).getByRole("button", { name: "CA" }));
+    act(() => held[0].reject(SUPERSEDED));
+
+    await waitFor(() => expect(held).toHaveLength(3));
+    expect(held[2].args).toMatchObject({ sortBy: "ca", sortDir: "asc" });
+    act(() => held[2].resolve());
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "CA" }),
+      ).toHaveAttribute("aria-sort", "ascending"),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("keeps the canonical My Staff overview virtualized", async () => {

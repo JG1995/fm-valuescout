@@ -13,6 +13,20 @@ import { completeStaffFilterRules } from "../utils/staff-filter-registry";
 
 export const STAFF_PAGE_SIZE = 50;
 
+/**
+ * Names the table whose newest request may stop an older one in Rust. Only the
+ * Staff Search panel's requested first page passes it.
+ */
+export type StaffTableId = "staff-search";
+
+/** Rust's error for a table request that a newer one superseded. */
+const SUPERSEDED_MESSAGE = "Superseded by a newer request";
+
+/** A superseded request is never shown as a failure. */
+export function isSupersededError(error: unknown): boolean {
+  return error instanceof Error && error.message === SUPERSEDED_MESSAGE;
+}
+
 export function fetchStaff(
   offset = 0,
   limit = STAFF_PAGE_SIZE,
@@ -24,6 +38,7 @@ export function fetchStaff(
   shortlistOnly = false,
   preferredJob?: string,
   unemployedOnly = false,
+  tableId?: StaffTableId,
 ) {
   return fetchStaffCommand(
     "search_staff",
@@ -37,6 +52,7 @@ export function fetchStaff(
     shortlistOnly,
     preferredJob,
     unemployedOnly,
+    tableId,
   );
 }
 
@@ -75,6 +91,7 @@ function fetchStaffCommand(
   shortlistOnly = false,
   preferredJob?: string,
   unemployedOnly = false,
+  tableId?: StaffTableId,
 ) {
   const applied = completeStaffFilterRules(filters);
   return invokeCommand<StaffPage>(command, {
@@ -86,6 +103,7 @@ function fetchStaffCommand(
     shortlistOnly,
     preferredJob,
     unemployedOnly,
+    ...(tableId ? { tableId } : {}),
     ...(applied.length > 0
       ? {
           filters: applied.map(staffFilterRuleToIpc),
