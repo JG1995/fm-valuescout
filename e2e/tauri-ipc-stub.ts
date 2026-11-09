@@ -1083,8 +1083,12 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               const filterRules = Array.isArray(args?.filters)
                 ? args.filters
                 : [];
+              // Shortlist On restricts Moneyball to the even players 002, 004, and 006.
+              const cohort = args?.shortlistOnly === true
+                ? moneyballPlayers.filter((player) => [2, 4, 6].includes(player.uid))
+                : moneyballPlayers;
               const filtered = filterRules.length > 0
-                ? moneyballPlayers.filter((player) => {
+                ? cohort.filter((player) => {
                     const matches = filterRules.map((rule) => {
                       const value = player.dynamicValues?.[rule.field];
                       if (
@@ -1121,7 +1125,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                       ? matches.some(Boolean)
                       : matches.every(Boolean);
                   })
-                : moneyballPlayers;
+                : cohort;
               const sorted = [...filtered];
               if (
                 typeof args?.sortBy === "string" &&
