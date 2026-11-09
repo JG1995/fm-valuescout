@@ -29,6 +29,7 @@ import {
 } from "@/stores/use-player-table-store";
 import { formatCount, formatMissable, formatMoney } from "@/utils/format";
 import { boostMyStaffCurrentAbility } from "../api/boost-my-staff-current-ability";
+import { isSupersededError, type StaffTableId } from "../api/fetch-staff";
 import { staffKeys } from "../api/staff-keys";
 import {
   STAFF_PAGE_SIZE,
@@ -298,6 +299,7 @@ function staffResultsPageOptions(
   params: StaffResultsQueryParams,
   offset: number,
   limit: number,
+  tableId?: StaffTableId,
 ) {
   // `shortlistOnly` doubles as the shortlist flag: it is only read on the
   // search scope, where it equals `isShortlist`.
@@ -320,6 +322,8 @@ function staffResultsPageOptions(
         params.shortlistOnly,
         params.preferredJob,
         params.unemployedOnly,
+        null,
+        tableId,
       );
 }
 
@@ -650,12 +654,24 @@ export function StaffSearchResultsPanel({
     0,
     STAFF_PAGE_SIZE,
   );
-  const requestedOptions = staffResultsPageOptions(
+  // Only Staff Search's requested first page names its table, so only a newer
+  // user request can stop an older one in Rust.
+  const namedRequestOptions = staffResultsPageOptions(
     scope,
     requested,
     0,
     STAFF_PAGE_SIZE,
+    scope === "search" ? "staff-search" : undefined,
   );
+  const requestMatchesCommitted =
+    JSON.stringify(committedOptions.queryKey) ===
+    JSON.stringify(namedRequestOptions.queryKey);
+  // A shared key shares one Query whose options the last observer sets, so a
+  // request matching the committed page must not name the table: a refetch
+  // of the committed page could otherwise be superseded.
+  const requestedOptions = requestMatchesCommitted
+    ? committedOptions
+    : namedRequestOptions;
   const committedQuery = useQuery(committedOptions);
   const requestedQuery = useQuery(requestedOptions);
   const requestedKey = JSON.stringify(requestedOptions.queryKey);
@@ -671,9 +687,6 @@ export function StaffSearchResultsPanel({
       dataUpdateCount: requestedDataUpdateCount,
     };
   }
-  const requestMatchesCommitted =
-    JSON.stringify(committedOptions.queryKey) ===
-    JSON.stringify(requestedOptions.queryKey);
   const isSameListReplacement =
     !requestMatchesCommitted &&
     JSON.stringify({
@@ -705,10 +718,15 @@ export function StaffSearchResultsPanel({
   const isReplacementActive = !requestMatchesCommitted;
   const isReplacementPending =
     isSameListReplacement && isSortChanged && requestedQuery.isFetching;
-  const replacementError =
-    isSameListReplacement && isSortChanged && requestedQuery.isError
+  // A newer request stopped this one in Rust; it is pending again, never failed.
+  const isRequestedSuperseded =
+    requestedQuery.isError && isSupersededError(requestedQuery.error);
+  const requestedError =
+    requestedQuery.isError && !isRequestedSuperseded
       ? requestedQuery.error
       : null;
+  const replacementError =
+    isSameListReplacement && isSortChanged ? requestedError : null;
   const isFieldReplacement = isSameListReplacement && !fieldsMatch;
   const unresolvedFieldIds = isFieldReplacement
     ? new Set(
@@ -717,8 +735,18 @@ export function StaffSearchResultsPanel({
         ),
       )
     : new Set<string>();
-  const fieldReplacementError =
-    isFieldReplacement && requestedQuery.isError ? requestedQuery.error : null;
+  const fieldReplacementError = isFieldReplacement ? requestedError : null;
+
+  // The user came back to a query whose request was superseded while it ran.
+  useEffect(() => {
+    if (isRequestedSuperseded && !requestedQuery.isFetching) {
+      void requestedQuery.refetch();
+    }
+  }, [
+    isRequestedSuperseded,
+    requestedQuery.isFetching,
+    requestedQuery.refetch,
+  ]);
 
   useEffect(() => {
     if (
@@ -859,11 +887,9 @@ export function StaffSearchResultsPanel({
         {renderToolbar()}
         <EmptyState
           icon={SearchX}
-          title={
-            requestedQuery.isError ? "Could not load staff" : "Loading staff"
-          }
+          title={requestedError ? "Could not load staff" : "Loading staff"}
           action={
-            requestedQuery.isError ? (
+            requestedError ? (
               <button
                 type="button"
                 onClick={() => void requestedQuery.refetch()}
@@ -873,9 +899,7 @@ export function StaffSearchResultsPanel({
             ) : undefined
           }
         >
-          {requestedQuery.isError
-            ? requestedQuery.error.message
-            : "Loading staff results…"}
+          {requestedError ? requestedError.message : "Loading staff results…"}
         </EmptyState>
       </Panel>
     );

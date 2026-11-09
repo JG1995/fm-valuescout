@@ -1,4 +1,5 @@
 pub mod migrations;
+pub mod result_cache;
 
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
@@ -40,6 +41,11 @@ impl Db {
         Self(WriterLock::new(conn, Arc::default()), None)
     }
 
+    /// The current data generation. A result cache looks up with it before any reader is held.
+    pub fn generation(&self) -> u64 {
+        self.0.generation.load(Ordering::Acquire)
+    }
+
     /// Hands out a read connection inside one deferred read transaction, so every statement
     /// of one request sees the same committed data. Blocks while every reader is in use.
     pub fn read(&self) -> Result<Reader<'_>, String> {
@@ -66,6 +72,9 @@ impl Db {
             },
             generation,
         };
+        // The boxed connection keeps its address while the reader moves, so the record stays
+        // findable from the connection.
+        reader_generations().insert(connection_key(&reader), generation);
         reader
             .execute_batch("BEGIN DEFERRED")
             .map_err(|error| error.to_string())?;
@@ -149,14 +158,15 @@ impl Drop for WriterGuard<'_> {
 struct ReaderPool {
     path: PathBuf,
     /// `None` is a free slot whose connection was discarded; the next acquire reopens it.
-    idle: Mutex<Vec<Option<Connection>>>,
+    /// Boxed, so a connection's address identifies it for `data_generation`.
+    idle: Mutex<Vec<Option<Box<Connection>>>>,
     returned: Condvar,
 }
 
 impl ReaderPool {
     fn open(path: &Path) -> Result<Self, String> {
         let idle = (0..READER_COUNT)
-            .map(|_| open_reader(path).map(Some))
+            .map(|_| open_reader(path).map(|conn| Some(Box::new(conn))))
             .collect::<Result<_, _>>()?;
         Ok(Self {
             path: path.to_path_buf(),
@@ -165,7 +175,7 @@ impl ReaderPool {
         })
     }
 
-    fn acquire(&self) -> Result<Connection, String> {
+    fn acquire(&self) -> Result<Box<Connection>, String> {
         let mut idle = self.idle.lock().unwrap_or_else(PoisonError::into_inner);
         let slot = loop {
             if let Some(slot) = idle.pop() {
@@ -180,11 +190,13 @@ impl ReaderPool {
 
         match slot {
             Some(conn) => Ok(conn),
-            None => open_reader(&self.path).inspect_err(|_| self.release(None)),
+            None => open_reader(&self.path)
+                .map(Box::new)
+                .inspect_err(|_| self.release(None)),
         }
     }
 
-    fn release(&self, conn: Option<Connection>) {
+    fn release(&self, conn: Option<Box<Connection>>) {
         self.idle
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -196,7 +208,7 @@ impl ReaderPool {
 enum ReadSource<'a> {
     Pooled {
         /// Present until drop returns it to the pool.
-        conn: Option<Connection>,
+        conn: Option<Box<Connection>>,
         pool: &'a ReaderPool,
     },
     Writer(WriterGuard<'a>),
@@ -211,7 +223,6 @@ pub struct Reader<'a> {
 
 impl Reader<'_> {
     /// The data generation read before this request's read transaction began.
-    #[cfg_attr(not(test), allow(dead_code))] // PR `cached-table-results` keys its caches by it.
     pub fn generation(&self) -> u64 {
         self.generation
     }
@@ -233,6 +244,9 @@ impl Deref for Reader<'_> {
 impl Drop for Reader<'_> {
     fn drop(&mut self) {
         if let ReadSource::Pooled { conn, pool } = &mut self.source {
+            if let Some(conn) = conn.as_deref() {
+                reader_generations().remove(&connection_key(conn));
+            }
             // Statements borrow the reader, so none is running. A connection that cannot
             // leave its transaction would pin an old snapshot, so it is discarded instead.
             let conn = conn.take().filter(|conn| {
@@ -334,10 +348,28 @@ fn registered_generation(path: PathBuf) -> Arc<AtomicU64> {
         .clone()
 }
 
-/// The current data generation of the file behind `conn`, or `None` for a connection
-/// without a file or one whose file `open` never registered.
-#[cfg_attr(not(test), allow(dead_code))] // PR `cached-table-results` reads it at check time.
+/// Generations that pooled readers read before their read transactions began, by
+/// `connection_key`. A reader keeps its entry until it returns its connection to the pool.
+fn reader_generations() -> MutexGuard<'static, HashMap<usize, u64>> {
+    static READER_GENERATIONS: OnceLock<Mutex<HashMap<usize, u64>>> = OnceLock::new();
+    READER_GENERATIONS
+        .get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
+
+fn connection_key(conn: &Connection) -> usize {
+    std::ptr::from_ref(conn) as usize
+}
+
+/// The data generation that `conn`'s data belongs to. A read-only connection gets the
+/// generation its `Db::read` request read before its read transaction began, or `None`
+/// outside such a request. Any other connection gets its file's current generation, or
+/// `None` without a file or for a file that `open` never registered.
 pub fn data_generation(conn: &Connection) -> Option<u64> {
+    if conn.is_readonly(rusqlite::MAIN_DB).ok()? {
+        return reader_generations().get(&connection_key(conn)).copied();
+    }
     let path = conn.path().filter(|path| !path.is_empty())?;
     let path = std::fs::canonicalize(path).ok()?;
     generations()

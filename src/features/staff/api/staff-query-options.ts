@@ -6,7 +6,12 @@ import {
   DEFAULT_STAFF_SORT_DIR,
   DEFAULT_STAFF_SORT_FIELD,
 } from "../types/staff-sort";
-import { fetchMyStaff, fetchStaff, STAFF_PAGE_SIZE } from "./fetch-staff";
+import {
+  fetchMyStaff,
+  fetchStaff,
+  STAFF_PAGE_SIZE,
+  type StaffTableId,
+} from "./fetch-staff";
 import { staffKeys } from "./staff-keys";
 
 export { STAFF_PAGE_SIZE };
@@ -23,6 +28,7 @@ export function staffSearchQueryOptions(
   preferredJob?: string,
   unemployedOnly = false,
   context: StaffAssignmentContext | null = null,
+  tableId?: StaffTableId,
 ) {
   return queryOptions({
     queryKey: staffKeys.list(
@@ -51,6 +57,7 @@ export function staffSearchQueryOptions(
         shortlistOnly,
         preferredJob,
         unemployedOnly,
+        tableId,
       ),
   });
 }

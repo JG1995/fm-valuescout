@@ -61,6 +61,9 @@ pub fn run() {
                     .map_err(|error| format!("graphics runtime initialization failed: {error}"))?
             };
             app.manage(db);
+            app.manage(features::search::commands::SearchCaches::default());
+            app.manage(features::staff::commands::StaffCaches::default());
+            app.manage(db::result_cache::TableRegistry::default());
             app.manage(graphics_runtime);
             app.state::<features::graphics::runtime::GraphicsRuntime>()
                 .start_worker();

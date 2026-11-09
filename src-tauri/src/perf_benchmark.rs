@@ -16,6 +16,7 @@ use std::time::Instant;
 use rusqlite::{params, Connection};
 use serde_json::{json, Map, Value};
 
+use crate::db::result_cache::TableRegistry;
 use crate::db::{self, Db};
 use crate::features::memory_read::service::DumpRequestResult;
 use crate::features::moneyball::persistence::{replace_snapshot_cohort, CohortRow};
@@ -28,9 +29,10 @@ use crate::features::player_metrics::resolver::{
 use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
 use crate::features::search::filter::{parse_filter_ast, FilterAst, FilterRule, FilterValue};
 use crate::features::search::query::{
-    search_players_in_view, suggest_players, ComparisonPool, SearchPlayersRequest, SearchView,
-    SortDir, SortField, DEFAULT_PAGE_LIMIT, DEFAULT_SUGGEST_LIMIT,
+    search_general_players, search_players_in_view, ComparisonPool, GeneralOrderCache,
+    SearchPlayersRequest, SearchView, SortDir, SortField, DEFAULT_PAGE_LIMIT,
 };
+use crate::features::search::suggest::{suggest_players, SuggestionCache, DEFAULT_SUGGEST_LIMIT};
 use crate::features::snapshot::{load_data, service};
 use crate::features::staff;
 
@@ -532,6 +534,7 @@ fn later_window_offset(total: usize, deep: bool) -> usize {
     offset - offset % DEFAULT_PAGE_LIMIT
 }
 
+#[derive(Clone)]
 struct PlayerShape {
     name: &'static str,
     view: SearchView,
@@ -540,6 +543,8 @@ struct PlayerShape {
     fields: Vec<String>,
     filters: Option<FilterAst>,
     deep_window: bool,
+    /// Fields of an already computed query whose order the first page reuses.
+    warm_base_fields: Option<Vec<String>>,
 }
 
 impl PlayerShape {
@@ -552,6 +557,7 @@ impl PlayerShape {
             fields,
             filters: None,
             deep_window: false,
+            warm_base_fields: None,
         }
     }
 
@@ -565,6 +571,7 @@ impl PlayerShape {
             fields,
             filters: None,
             deep_window: false,
+            warm_base_fields: None,
         }
     }
 }
@@ -611,11 +618,14 @@ fn player_shapes() -> Vec<PlayerShape> {
 
     vec![
         PlayerShape::general("general_ca", "ca", default_fields.clone()),
-        PlayerShape::general(
-            "general_added_column",
-            "ca",
-            [default_fields.clone(), fields(&["attr.Passing"])].concat(),
-        ),
+        PlayerShape {
+            warm_base_fields: Some(default_fields.clone()),
+            ..PlayerShape::general(
+                "general_added_column",
+                "ca",
+                [default_fields.clone(), fields(&["attr.Passing"])].concat(),
+            )
+        },
         PlayerShape::general(
             "general_role_position_tactic_columns",
             "ca",
@@ -666,33 +676,62 @@ fn player_shapes() -> Vec<PlayerShape> {
     ]
 }
 
-fn search_player_page(db: &Db, shape: &PlayerShape, offset: usize) -> usize {
-    search_players_in_view(
-        &db.read().expect("read connection"),
-        SearchPlayersRequest {
-            offset,
-            limit: DEFAULT_PAGE_LIMIT,
-            sort_by: shape.sort.clone(),
-            sort_dir: SortDir::Desc,
-            filter_ast: shape.filters.as_ref(),
-            requested_fields: &shape.fields,
-            view: shape.view,
-            comparison_pool: shape.pool,
-            shortlist_only: false,
-        },
-    )
+/// Requests one page as `search_players` does: General through its computed orders in
+/// `orders`, Moneyball uncached.
+fn search_player_page(
+    db: &Db,
+    orders: &GeneralOrderCache,
+    shape: &PlayerShape,
+    offset: usize,
+) -> usize {
+    let request = SearchPlayersRequest {
+        offset,
+        limit: DEFAULT_PAGE_LIMIT,
+        sort_by: shape.sort.clone(),
+        sort_dir: SortDir::Desc,
+        filter_ast: shape.filters.as_ref(),
+        requested_fields: &shape.fields,
+        view: shape.view,
+        comparison_pool: shape.pool,
+        shortlist_only: false,
+    };
+    match shape.view {
+        SearchView::General => {
+            search_general_players(db, orders, &TableRegistry::default(), None, request)
+        }
+        SearchView::Moneyball => {
+            search_players_in_view(&db.read().expect("read connection"), request)
+        }
+    }
     .unwrap_or_else(|error| panic!("{} request failed: {error}", shape.name))
     .total as usize
 }
 
 fn measure_player_shape(db: &Db, shape: &PlayerShape) -> Value {
-    let first_page = time_repeated(|| {
-        search_player_page(db, shape, 0);
-    });
-    let total = search_player_page(db, shape, 0);
+    let first_page = match &shape.warm_base_fields {
+        // A column change keeps the query's fingerprint, so the app reuses its computed order.
+        Some(base_fields) => {
+            let orders = GeneralOrderCache::new(4);
+            let base = PlayerShape {
+                fields: base_fields.clone(),
+                ..shape.clone()
+            };
+            search_player_page(db, &orders, &base, 0);
+            time_repeated(|| {
+                search_player_page(db, &orders, shape, 0);
+            })
+        }
+        // Every other first page computes its query afresh, as after a sort or filter change.
+        None => time_repeated(|| {
+            search_player_page(db, &GeneralOrderCache::new(4), shape, 0);
+        }),
+    };
+    // Later windows reuse the query computed by its first page.
+    let orders = GeneralOrderCache::new(4);
+    let total = search_player_page(db, &orders, shape, 0);
     let offset = later_window_offset(total, shape.deep_window);
     let later_window = time_repeated(|| {
-        search_player_page(db, shape, offset);
+        search_player_page(db, &orders, shape, offset);
     });
     json!({
         "total": total,
@@ -702,19 +741,25 @@ fn measure_player_shape(db: &Db, shape: &PlayerShape) -> Value {
     })
 }
 
-fn search_staff_page(db: &Db, offset: usize) -> usize {
-    staff::query::list_staff(
-        &db.read().expect("read connection"),
-        staff::query::StaffScope::Search,
-        offset,
-        DEFAULT_PAGE_LIMIT,
-        staff::query::SortField::parse("role.coach_fitness").expect("staff sort"),
-        staff::query::SortDir::Desc,
+/// Requests one Staff Search page as `search_staff` does, through its computed orders in
+/// `orders`.
+fn search_staff_page(db: &Db, orders: &staff::query::StaffOrderCache, offset: usize) -> usize {
+    staff::query::search_staff_page(
+        db,
+        orders,
+        &TableRegistry::default(),
         None,
-        false,
-        None,
-        false,
-        &fields(&["role.coach_fitness"]),
+        staff::query::StaffSearchRequest {
+            offset,
+            limit: DEFAULT_PAGE_LIMIT,
+            sort: staff::query::SortField::parse("role.coach_fitness").expect("staff sort"),
+            direction: staff::query::SortDir::Desc,
+            filters: None,
+            shortlist_only: false,
+            preferred_job: None,
+            unemployed_only: false,
+            requested_fields: &fields(&["role.coach_fitness"]),
+        },
     )
     .expect("staff request")
     .total as usize
@@ -727,13 +772,15 @@ fn measure_requests(db: &Db) -> Map<String, Value> {
         requests.insert(shape.name.to_string(), measure_player_shape(db, &shape));
     }
 
+    // Every first page computes its query afresh; later windows reuse the first page's.
     let first_page = time_repeated(|| {
-        search_staff_page(db, 0);
+        search_staff_page(db, &staff::query::StaffOrderCache::new(4), 0);
     });
-    let total = search_staff_page(db, 0);
+    let orders = staff::query::StaffOrderCache::new(4);
+    let total = search_staff_page(db, &orders, 0);
     let offset = later_window_offset(total, false);
     let later_window = time_repeated(|| {
-        search_staff_page(db, offset);
+        search_staff_page(db, &orders, offset);
     });
     requests.insert(
         "staff_role_sort".to_string(),
@@ -745,15 +792,13 @@ fn measure_requests(db: &Db) -> Map<String, Value> {
         }),
     );
 
+    // The first request builds the name list; later ones reuse it, as the app does.
+    let suggestions = SuggestionCache::new(1);
     requests.insert(
         "suggest_three_letters".to_string(),
         time_repeated(|| {
-            suggest_players(
-                &db.read().expect("read connection"),
-                "smi",
-                DEFAULT_SUGGEST_LIMIT,
-            )
-            .expect("suggest request");
+            suggest_players(db, &suggestions, "smi", DEFAULT_SUGGEST_LIMIT)
+                .expect("suggest request");
         }),
     );
     requests

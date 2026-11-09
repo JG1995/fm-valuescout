@@ -15,6 +15,20 @@ import {
 /** Matches Rust `DEFAULT_PAGE_LIMIT` — window size for virtualized fetch. */
 export const SEARCH_PAGE_SIZE = 50;
 
+/**
+ * Names the table whose newest request may stop an older one in Rust. Only a
+ * panel's requested first page passes it.
+ */
+export type SearchTableId = "search" | "moneyball-search";
+
+/** Rust's error for a table request that a newer one superseded. */
+const SUPERSEDED_MESSAGE = "Superseded by a newer request";
+
+/** A superseded request is never shown as a failure. */
+export function isSupersededError(error: unknown): boolean {
+  return error instanceof Error && error.message === SUPERSEDED_MESSAGE;
+}
+
 export function fetchSearchPlayers(
   offset = 0,
   limit = SEARCH_PAGE_SIZE,
@@ -26,6 +40,7 @@ export function fetchSearchPlayers(
   searchView: SearchView = "general",
   comparisonPool: ComparisonPool = "filtered",
   shortlistOnly = false,
+  tableId?: SearchTableId,
 ) {
   const applied = completeFilterRules(filters, searchView);
   return invokeCommand<SearchPlayersPage>("search_players", {
@@ -37,6 +52,7 @@ export function fetchSearchPlayers(
     searchView,
     comparisonPool,
     shortlistOnly,
+    ...(tableId ? { tableId } : {}),
     ...(applied.length > 0
       ? {
           filters: applied.map((rule) =>

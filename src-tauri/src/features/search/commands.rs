@@ -2,14 +2,35 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::blocking;
+use crate::db::result_cache::{parse_table_id, TableRegistry, TableTicket};
 use crate::db::Db;
 
-use super::filter::{self, FilterRule};
+use super::filter::{self, FilterAst, FilterRule};
 use super::query::{
-    self, ComparisonPool, DynamicValue, PlayerSuggestHit, PlayerSummary, SearchPlayersPage,
+    self, ComparisonPool, DynamicValue, GeneralOrderCache, PlayerSummary, SearchPlayersPage,
     SearchPlayersPageState, SearchPlayersRequest, SearchView, SortDir, SortField,
-    DEFAULT_PAGE_LIMIT, DEFAULT_SUGGEST_LIMIT, MAX_PAGE_LIMIT, MAX_SUGGEST_LIMIT,
+    DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
 };
+use super::suggest::{
+    self, PlayerSuggestHit, SuggestionCache, DEFAULT_SUGGEST_LIMIT, MAX_SUGGEST_LIMIT,
+};
+
+/// Search's in-memory results, kept as app state. Clones share them.
+#[derive(Clone)]
+pub struct SearchCaches {
+    pub suggestions: SuggestionCache,
+    /// General table orders: at most four queries, about 8 MB each at 1,000,000 players.
+    pub general_orders: GeneralOrderCache,
+}
+
+impl Default for SearchCaches {
+    fn default() -> Self {
+        Self {
+            suggestions: SuggestionCache::new(1),
+            general_orders: GeneralOrderCache::new(4),
+        }
+    }
+}
 
 #[derive(Deserialize)]
 pub struct FilterRuleInput {
@@ -131,82 +152,126 @@ pub async fn search_players(
     search_view: Option<String>,
     comparison_pool: Option<String>,
     shortlist_only: Option<bool>,
+    table_id: Option<String>,
     db: State<'_, Db>,
+    caches: State<'_, SearchCaches>,
+    registry: State<'_, TableRegistry>,
 ) -> Result<SearchPlayersPageDto, String> {
+    let search = PlayerSearch::parse(
+        offset,
+        limit,
+        sort_by,
+        sort_dir,
+        filters,
+        filter_combine,
+        requested_fields,
+        search_view,
+        comparison_pool,
+        shortlist_only,
+    )?;
+    let table = table_id.as_deref().map(parse_table_id).transpose()?;
+    // Moneyball keeps its uncached path, which nothing supersedes yet.
+    let ticket = table
+        .filter(|_| search.view == SearchView::General)
+        .map(|table| registry.arrive(table, &query::general_query_fingerprint(&search.request())));
     let db = db.inner().clone();
-    blocking::run(move || {
-        read_players_page(
-            &db,
-            offset,
-            limit,
-            sort_by,
-            sort_dir,
-            filters,
-            filter_combine,
-            requested_fields,
-            search_view,
-            comparison_pool,
-            shortlist_only,
-        )
-    })
-    .await
+    let orders = caches.general_orders.clone();
+    let registry = registry.inner().clone();
+    blocking::run(move || read_players_page(&db, &orders, &registry, ticket.as_ref(), &search))
+        .await
 }
 
-#[allow(clippy::too_many_arguments)]
-fn read_players_page(
-    db: &Db,
-    offset: Option<u32>,
-    limit: Option<u32>,
-    sort_by: Option<String>,
-    sort_dir: Option<String>,
-    filters: Option<Vec<FilterRuleInput>>,
-    filter_combine: Option<String>,
-    requested_fields: Option<Vec<String>>,
-    search_view: Option<String>,
-    comparison_pool: Option<String>,
-    shortlist_only: Option<bool>,
-) -> Result<SearchPlayersPageDto, String> {
-    let conn = db.read()?;
-    let offset = offset.unwrap_or(0) as usize;
-    let limit = limit
-        .map(|value| value as usize)
-        .unwrap_or(DEFAULT_PAGE_LIMIT)
-        .clamp(1, MAX_PAGE_LIMIT);
-    let view = parse_search_view(search_view.as_deref())?;
-    let comparison_pool = parse_comparison_pool(comparison_pool.as_deref(), view)?;
-    let sort_by = parse_search_sort_for_view(sort_by.as_deref(), view)?;
-    let sort_dir = match sort_dir.as_deref() {
-        None => SortDir::DEFAULT,
-        Some(value) => SortDir::parse(value)?,
-    };
-    let filter_ast = match filters {
-        None => None,
-        Some(rules) => {
-            let parsed_rules = rules
-                .into_iter()
-                .map(FilterRule::try_from)
-                .collect::<Result<Vec<_>, _>>()?;
-            Some(filter::parse_filter_ast(
-                parsed_rules,
-                filter_combine.as_deref(),
-            )?)
-        }
-    };
-    let requested_fields = requested_fields.unwrap_or_default();
-    let page = query::search_players_in_view(
-        &conn,
-        SearchPlayersRequest {
-            offset,
-            limit,
+/// A validated `search_players` request.
+struct PlayerSearch {
+    offset: usize,
+    limit: usize,
+    sort_by: SortField,
+    sort_dir: SortDir,
+    filter_ast: Option<FilterAst>,
+    requested_fields: Vec<String>,
+    view: SearchView,
+    comparison_pool: ComparisonPool,
+    shortlist_only: bool,
+}
+
+impl PlayerSearch {
+    #[allow(clippy::too_many_arguments)]
+    fn parse(
+        offset: Option<u32>,
+        limit: Option<u32>,
+        sort_by: Option<String>,
+        sort_dir: Option<String>,
+        filters: Option<Vec<FilterRuleInput>>,
+        filter_combine: Option<String>,
+        requested_fields: Option<Vec<String>>,
+        search_view: Option<String>,
+        comparison_pool: Option<String>,
+        shortlist_only: Option<bool>,
+    ) -> Result<Self, String> {
+        let view = parse_search_view(search_view.as_deref())?;
+        let comparison_pool = parse_comparison_pool(comparison_pool.as_deref(), view)?;
+        let sort_by = parse_search_sort_for_view(sort_by.as_deref(), view)?;
+        let sort_dir = match sort_dir.as_deref() {
+            None => SortDir::DEFAULT,
+            Some(value) => SortDir::parse(value)?,
+        };
+        let filter_ast = match filters {
+            None => None,
+            Some(rules) => {
+                let parsed_rules = rules
+                    .into_iter()
+                    .map(FilterRule::try_from)
+                    .collect::<Result<Vec<_>, _>>()?;
+                Some(filter::parse_filter_ast(
+                    parsed_rules,
+                    filter_combine.as_deref(),
+                )?)
+            }
+        };
+        Ok(Self {
+            offset: offset.unwrap_or(0) as usize,
+            limit: limit
+                .map(|value| value as usize)
+                .unwrap_or(DEFAULT_PAGE_LIMIT)
+                .clamp(1, MAX_PAGE_LIMIT),
             sort_by,
             sort_dir,
-            filter_ast: filter_ast.as_ref(),
-            requested_fields: &requested_fields,
+            filter_ast,
+            requested_fields: requested_fields.unwrap_or_default(),
             view,
             comparison_pool,
             shortlist_only: shortlist_only.unwrap_or(false),
-        },
-    )?;
+        })
+    }
+
+    fn request(&self) -> SearchPlayersRequest<'_> {
+        SearchPlayersRequest {
+            offset: self.offset,
+            limit: self.limit,
+            sort_by: self.sort_by.clone(),
+            sort_dir: self.sort_dir,
+            filter_ast: self.filter_ast.as_ref(),
+            requested_fields: &self.requested_fields,
+            view: self.view,
+            comparison_pool: self.comparison_pool,
+            shortlist_only: self.shortlist_only,
+        }
+    }
+}
+
+fn read_players_page(
+    db: &Db,
+    orders: &GeneralOrderCache,
+    registry: &TableRegistry,
+    ticket: Option<&TableTicket>,
+    search: &PlayerSearch,
+) -> Result<SearchPlayersPageDto, String> {
+    let page = match search.view {
+        SearchView::General => {
+            query::search_general_players(db, orders, registry, ticket, search.request())?
+        }
+        SearchView::Moneyball => query::search_players_in_view(&*db.read()?, search.request())?,
+    };
     Ok(SearchPlayersPageDto::from(page))
 }
 
@@ -266,22 +331,24 @@ pub async fn suggest_players(
     query: String,
     limit: Option<u32>,
     db: State<'_, Db>,
+    caches: State<'_, SearchCaches>,
 ) -> Result<Vec<PlayerSuggestHitDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || read_suggestions(&db, &query, limit)).await
+    let cache = caches.suggestions.clone();
+    blocking::run(move || read_suggestions(&db, &cache, &query, limit)).await
 }
 
 fn read_suggestions(
     db: &Db,
+    cache: &SuggestionCache,
     query: &str,
     limit: Option<u32>,
 ) -> Result<Vec<PlayerSuggestHitDto>, String> {
-    let conn = db.read()?;
     let limit = limit
         .map(|value| value as usize)
         .unwrap_or(DEFAULT_SUGGEST_LIMIT)
         .clamp(1, MAX_SUGGEST_LIMIT);
-    let hits = query::suggest_players(&conn, query, limit)?;
+    let hits = suggest::suggest_players(db, cache, query, limit)?;
     Ok(hits.into_iter().map(PlayerSuggestHitDto::from).collect())
 }
 
@@ -389,8 +456,7 @@ mod tests {
 
         let (general, moneyball, hits) = crate::db::read_while_writer_is_held(&db, |db| {
             let page = |view: &str, field: &str| {
-                read_players_page(
-                    db,
+                let search = PlayerSearch::parse(
                     None,
                     None,
                     None,
@@ -401,12 +467,21 @@ mod tests {
                     Some(view.to_string()),
                     None,
                     None,
+                )?;
+                let registry = TableRegistry::default();
+                let ticket = registry.arrive("search", "first page");
+                read_players_page(
+                    db,
+                    &GeneralOrderCache::new(4),
+                    &registry,
+                    Some(&ticket),
+                    &search,
                 )
             };
             (
                 page("general", "tactic_current.goalkeeper"),
                 page("moneyball", "tactic_custom.goalkeeper"),
-                read_suggestions(db, "golden", None),
+                read_suggestions(db, &SuggestionCache::new(1), "golden", None),
             )
         });
 

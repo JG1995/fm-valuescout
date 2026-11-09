@@ -1,6 +1,9 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Row};
+
+use crate::db::result_cache::{Cancellation, ResultCache, TableRegistry, TableTicket};
+use crate::db::Db;
 
 use super::filter::{compile_filters, FilterAst};
 use super::metrics::{parse_requested_fields, MetricField};
@@ -396,6 +399,80 @@ fn list_staff_with_shortlist(
     unemployed_only: bool,
     requested_fields: &[String],
 ) -> Result<StaffPage, String> {
+    let shortlisted = shortlisted_query(scope, &sort, shortlist_only)?;
+    let dynamic_fields = parse_requested_fields(requested_fields)?;
+    let has_role_field = dynamic_fields
+        .iter()
+        .any(|field| matches!(field, MetricField::Role(_)));
+    let query = match plan_staff_query(
+        conn,
+        scope,
+        &sort,
+        direction,
+        filters,
+        shortlisted,
+        preferred_jobs,
+        unemployed_only,
+        has_role_field,
+    )? {
+        Ok(query) => query,
+        Err(state) => return Ok(empty(state)),
+    };
+    let StaffQuery {
+        save_id,
+        from_sql,
+        where_sql,
+        mut binds,
+        order_sql,
+        ..
+    } = query;
+
+    let total: i64 = conn
+        .query_row(
+            &format!("SELECT COUNT(*) FROM {from_sql} WHERE {where_sql}"),
+            params_from_iter(binds.iter()),
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    let limit = i64::try_from(limit.clamp(1, MAX_PAGE_LIMIT))
+        .map_err(|_| "staff limit out of range".to_string())?;
+    let offset = i64::try_from(offset).map_err(|_| "staff offset out of range".to_string())?;
+    let mut sql = staff_select_sql(&dynamic_fields, shortlisted);
+    let limit_index = binds.len() + 1;
+    let offset_index = binds.len() + 2;
+    sql.push_str(&format!(
+        " FROM {from_sql} WHERE {where_sql} {order_sql} LIMIT ?{limit_index} OFFSET ?{offset_index}"
+    ));
+    binds.push(Value::Integer(limit));
+    binds.push(Value::Integer(offset));
+    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
+    let staff = statement
+        .query_map(params_from_iter(binds.iter()), |row| {
+            map_staff(row, &dynamic_fields, shortlisted)
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let preferred_job_options = if shortlisted {
+        read_preferred_job_options(conn, save_id)?
+    } else {
+        Vec::new()
+    };
+    Ok(StaffPage {
+        state: StaffPageState::Ready,
+        staff,
+        total,
+        preferred_job_options,
+    })
+}
+
+/// Whether a query reads the shortlist. Only a shortlisted query may sort by a shortlist CSV
+/// column.
+fn shortlisted_query(
+    scope: StaffScope,
+    sort: &SortField,
+    shortlist_only: bool,
+) -> Result<bool, String> {
     // The flagged core path reuses the Shortlist composition: shortlist JOIN,
     // shortlist predicates, then general filters, before count, sort, paging.
     let shortlisted = scope == StaffScope::Shortlist || shortlist_only;
@@ -406,7 +483,34 @@ fn list_staff_with_shortlist(
     {
         return Err("shortlist CSV columns can only sort Shortlist".to_string());
     }
-    let dynamic_fields = parse_requested_fields(requested_fields)?;
+    Ok(shortlisted)
+}
+
+/// The SQL that decides one Staff table query's rows and their order, before paging.
+struct StaffQuery {
+    snapshot_id: i64,
+    save_id: i64,
+    from_sql: String,
+    where_sql: String,
+    binds: Vec<Value>,
+    order_sql: String,
+}
+
+/// Builds a query's source, predicate, and order for the active save's current snapshot, or
+/// the setup state that leaves it empty. `join_metrics` joins compact role metrics for the
+/// caller's requested fields; the sort and filters join them on their own.
+#[allow(clippy::too_many_arguments)]
+fn plan_staff_query(
+    conn: &Connection,
+    scope: StaffScope,
+    sort: &SortField,
+    direction: SortDir,
+    filters: Option<&FilterAst>,
+    shortlisted: bool,
+    preferred_jobs: &[&str],
+    unemployed_only: bool,
+    join_metrics: bool,
+) -> Result<Result<StaffQuery, StaffPageState>, String> {
     // Filter placeholders follow the shortlist binds: one for the shortlist
     // save plus one for the Preferred Job predicate when each applies.
     let filter_start = (if scope == StaffScope::MyStaff { 3 } else { 2 })
@@ -420,15 +524,12 @@ fn list_staff_with_shortlist(
         [], |row| Ok((row.get(0)?, row.get(1)?)),
     ).optional().map_err(|error| error.to_string())?;
     let Some((snapshot_id, save_id)) = context else {
-        return Ok(empty(StaffPageState::NoCurrentSnapshot));
+        return Ok(Err(StaffPageState::NoCurrentSnapshot));
     };
-    let has_role_field = dynamic_fields
-        .iter()
-        .any(|field| matches!(field, MetricField::Role(_)));
     let sort_needs_metrics = matches!(sort, SortField::Dynamic(MetricField::Role(_)));
     let filter_needs_metrics =
         filters.is_some_and(|ast| ast.rules.iter().any(|rule| rule.field.starts_with("role.")));
-    let needs_metrics = has_role_field || sort_needs_metrics || filter_needs_metrics;
+    let needs_metrics = join_metrics || sort_needs_metrics || filter_needs_metrics;
     // Every staff table read requires a complete compact snapshot: a missing or
     // wrong-version `staff_role_metrics` row for the effective current snapshot
     // must surface as an error instead of silently returning raw staff rows,
@@ -444,7 +545,7 @@ fn list_staff_with_shortlist(
             )
             .map_err(|error| error.to_string())?;
         if !configured {
-            return Ok(empty(StaffPageState::NoManagedClub));
+            return Ok(Err(StaffPageState::NoManagedClub));
         }
     }
 
@@ -469,7 +570,7 @@ fn list_staff_with_shortlist(
             )
             .map_err(|error| error.to_string())?;
         if !has_shortlist {
-            return Ok(empty(StaffPageState::NoShortlist));
+            return Ok(Err(StaffPageState::NoShortlist));
         }
         binds.push(Value::Integer(save_id));
         from_sql.push_str(&format!(
@@ -494,65 +595,252 @@ fn list_staff_with_shortlist(
             binds.extend(compiled.params);
         }
     }
-
-    let total: i64 = conn
-        .query_row(
-            &format!("SELECT COUNT(*) FROM {from_sql} WHERE {where_sql}"),
-            params_from_iter(binds.iter()),
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    let limit = i64::try_from(limit.clamp(1, MAX_PAGE_LIMIT))
-        .map_err(|_| "staff limit out of range".to_string())?;
-    let offset = i64::try_from(offset).map_err(|_| "staff offset out of range".to_string())?;
     let expr = sort.expr();
-    let order = format!(
+    let order_sql = format!(
         "ORDER BY ({expr}) IS NULL ASC, {expr} {}, staff.uid ASC",
         direction.sql()
     );
+    Ok(Ok(StaffQuery {
+        snapshot_id,
+        save_id,
+        from_sql,
+        where_sql,
+        binds,
+        order_sql,
+    }))
+}
+
+/// Today's display columns, the requested fields, and the shortlist metadata, in
+/// [`map_staff`]'s order.
+fn staff_select_sql(dynamic_fields: &[MetricField], shortlisted: bool) -> String {
     let mut sql = String::from("SELECT staff.uid, staff.name, staff.age, staff.birth_year, staff.birth_day_of_year, staff.nationalities_json, staff.nation_uid, staff.gender, staff.club, staff.division, staff.ca, staff.pa, staff.job_id, staff.weekly_wage_gbp, staff.contract_expiry_year, staff.contract_expiry_day_of_year");
-    for field in &dynamic_fields {
+    for field in dynamic_fields {
         sql.push_str(", ");
         sql.push_str(&field.sql_expression("staff"));
     }
-    let limit_index = binds.len() + 1;
-    let offset_index = binds.len() + 2;
     if shortlisted {
         sql.push_str(
             ", shortlist.preferred_job, shortlist.club_job, shortlist.coaching_qualifications",
         );
     }
-    sql.push_str(&format!(
-        " FROM {from_sql} WHERE {where_sql} {order} LIMIT ?{limit_index} OFFSET ?{offset_index}"
-    ));
-    binds.push(Value::Integer(limit));
-    binds.push(Value::Integer(offset));
-    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
-    let staff = statement
-        .query_map(params_from_iter(binds.iter()), |row| {
-            map_staff(row, &dynamic_fields, shortlisted)
-        })
+    sql
+}
+
+fn read_preferred_job_options(conn: &Connection, save_id: i64) -> Result<Vec<String>, String> {
+    conn.prepare("SELECT DISTINCT preferred_job FROM staff_shortlist_entries WHERE save_id = ?1 ORDER BY preferred_job COLLATE NOCASE ASC")
+        .map_err(|error| error.to_string())?
+        .query_map([save_id], |row| row.get(0))
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
+/// One Staff Search page request: the query that decides rows and order, and the window and
+/// fields to read.
+pub struct StaffSearchRequest<'a> {
+    pub offset: usize,
+    pub limit: usize,
+    pub sort: SortField,
+    pub direction: SortDir,
+    pub filters: Option<&'a FilterAst>,
+    pub shortlist_only: bool,
+    pub preferred_job: Option<&'a str>,
+    pub unemployed_only: bool,
+    pub requested_fields: &'a [String],
+}
+
+/// One Staff Search query's complete ordering, computed once per data generation.
+pub struct StaffOrder {
+    /// The data generation of the reader that computed it.
+    generation: u64,
+    state: StaffPageState,
+    snapshot_id: i64,
+    save_id: i64,
+    shortlisted: bool,
+    uids: Vec<i64>,
+    preferred_job_options: Vec<String>,
+}
+
+/// Staff Search's computed orders, keyed by [`staff_query_fingerprint`].
+pub type StaffOrderCache = ResultCache<StaffOrder>;
+
+/// Identifies a Staff Search query by every input that changes its rows or their order. The
+/// offset, limit, and requested fields only choose which rows and columns a window shows.
+pub fn staff_query_fingerprint(request: &StaffSearchRequest<'_>) -> String {
+    format!(
+        "{:?}|{:?}|{:?}|{}|{:?}|{}",
+        request.sort,
+        request.direction,
+        request.filters,
+        request.shortlist_only,
+        request.preferred_job,
+        request.unemployed_only,
+    )
+}
+
+/// Serves one Staff Search window from its query's computed order, computing the order on a
+/// miss. With a ticket, the computation is its table's in `registry`, so a newer request for
+/// the table can supersede it. Returns the same page as [`list_staff`] with the Search scope.
+pub fn search_staff_page(
+    db: &Db,
+    orders: &StaffOrderCache,
+    registry: &TableRegistry,
+    ticket: Option<&TableTicket>,
+    request: StaffSearchRequest<'_>,
+) -> Result<StaffPage, String> {
+    // Fields are validated before the query, as `list_staff` does.
+    let dynamic_fields = parse_requested_fields(request.requested_fields)?;
+    let fingerprint = staff_query_fingerprint(&request);
+    let mut generation = db.generation();
+    loop {
+        let order = orders.get_or_compute(&fingerprint, generation, || {
+            let reader = db.read()?;
+            let order = registry.run(ticket, &reader, |cancellation| {
+                compute_staff_order(&reader, reader.generation(), &request, cancellation)
+            })?;
+            Ok::<_, String>((reader.generation(), order))
+        })?;
+        let reader = db.read()?;
+        if reader.generation() > order.generation {
+            // Data changed since the order was read, so the window reads a fresh order.
+            generation = reader.generation();
+            continue;
+        }
+        return read_staff_window(&reader, &order, &request, &dynamic_fields);
+    }
+}
+
+/// Computes a Staff Search query's complete key-only ordering with `list_staff`'s snapshot,
+/// shortlist, filter, join, and sort SQL.
+fn compute_staff_order(
+    conn: &Connection,
+    generation: u64,
+    request: &StaffSearchRequest<'_>,
+    cancellation: &Cancellation,
+) -> Result<StaffOrder, String> {
+    #[cfg(test)]
+    tests::ORDER_COMPUTATIONS.with(|count| count.set(count.get() + 1));
+    let shortlisted = shortlisted_query(StaffScope::Search, &request.sort, request.shortlist_only)?;
+    let preferred_jobs = request.preferred_job.into_iter().collect::<Vec<_>>();
+    let empty = |state| StaffOrder {
+        generation,
+        state,
+        snapshot_id: 0,
+        save_id: 0,
+        shortlisted,
+        uids: Vec::new(),
+        preferred_job_options: Vec::new(),
+    };
+    let query = match plan_staff_query(
+        conn,
+        StaffScope::Search,
+        &request.sort,
+        request.direction,
+        request.filters,
+        shortlisted,
+        &preferred_jobs,
+        request.unemployed_only,
+        false,
+    )? {
+        Ok(query) => query,
+        Err(state) => return Ok(empty(state)),
+    };
+
+    #[cfg(test)]
+    if let Some(hook) = tests::BEFORE_ORDER_QUERY.with(|hook| hook.borrow_mut().take()) {
+        hook();
+    }
+    cancellation.check()?;
+    let StaffQuery {
+        snapshot_id,
+        save_id,
+        from_sql,
+        where_sql,
+        binds,
+        order_sql,
+    } = query;
+    let uids = conn
+        .prepare(&format!(
+            "SELECT staff.uid FROM {from_sql} WHERE {where_sql} {order_sql}"
+        ))
+        .map_err(|error| error.to_string())?
+        .query_map(params_from_iter(binds.iter()), |row| row.get(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<i64>, _>>()
         .map_err(|error| error.to_string())?;
+    cancellation.check()?;
     let preferred_job_options = if shortlisted {
-        let mut statement = conn
-            .prepare("SELECT DISTINCT preferred_job FROM staff_shortlist_entries WHERE save_id = ?1 ORDER BY preferred_job COLLATE NOCASE ASC")
-            .map_err(|error| error.to_string())?;
-        let options = statement
-            .query_map([save_id], |row| row.get(0))
-            .map_err(|error| error.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
-        options
+        read_preferred_job_options(conn, save_id)?
     } else {
         Vec::new()
     };
+    Ok(StaffOrder {
+        generation,
+        state: StaffPageState::Ready,
+        snapshot_id,
+        save_id,
+        shortlisted,
+        uids,
+        preferred_job_options,
+    })
+}
+
+/// Reads today's display columns, the requested fields, and each row's shortlist metadata for
+/// one window of a computed order, in the order's sequence. The order's reader checked the
+/// compact snapshot, and this reader reads the same generation.
+fn read_staff_window(
+    conn: &Connection,
+    order: &StaffOrder,
+    request: &StaffSearchRequest<'_>,
+    dynamic_fields: &[MetricField],
+) -> Result<StaffPage, String> {
+    if order.state != StaffPageState::Ready {
+        return Ok(empty(order.state));
+    }
+    let limit = request.limit.clamp(1, MAX_PAGE_LIMIT);
+    let start = request.offset.min(order.uids.len());
+    let window = &order.uids[start..(start + limit).min(order.uids.len())];
+
+    let mut sql = staff_select_sql(dynamic_fields, order.shortlisted);
+    sql.push_str(" FROM staff");
+    if dynamic_fields
+        .iter()
+        .any(|field| matches!(field, MetricField::Role(_)))
+    {
+        sql.push_str(&staff_metrics_join("staff"));
+    }
+    let mut binds = vec![Value::Integer(order.snapshot_id)];
+    if order.shortlisted {
+        binds.push(Value::Integer(order.save_id));
+        sql.push_str(
+            " INNER JOIN staff_shortlist_entries shortlist ON shortlist.staff_uid = staff.uid AND shortlist.save_id = ?2",
+        );
+    }
+    let first_uid_index = binds.len() + 1;
+    let uid_placeholders = (0..window.len())
+        .map(|index| format!("?{}", first_uid_index + index))
+        .collect::<Vec<_>>()
+        .join(", ");
+    binds.extend(window.iter().map(|uid| Value::Integer(*uid)));
+    sql.push_str(&format!(
+        " WHERE staff.snapshot_id = ?1 AND staff.uid IN ({uid_placeholders})"
+    ));
+
+    let mut rows = conn
+        .prepare(&sql)
+        .map_err(|error| error.to_string())?
+        .query_map(params_from_iter(binds.iter()), |row| {
+            map_staff(row, dynamic_fields, order.shortlisted)
+        })
+        .map_err(|error| error.to_string())?
+        .map(|row| row.map(|staff| (staff.uid, staff)))
+        .collect::<Result<HashMap<_, _>, _>>()
+        .map_err(|error| error.to_string())?;
     Ok(StaffPage {
         state: StaffPageState::Ready,
-        staff,
-        total,
-        preferred_job_options,
+        staff: window.iter().filter_map(|uid| rows.remove(uid)).collect(),
+        total: i64::try_from(order.uids.len()).map_err(|error| error.to_string())?,
+        preferred_job_options: order.preferred_job_options.clone(),
     })
 }
 
@@ -616,6 +904,16 @@ mod tests {
         player::{query as player_query, service as player_service},
         player_metrics::potential_scores::rebuild_snapshot,
     };
+    use std::cell::{Cell, RefCell};
+
+    thread_local! {
+        /// Staff Search order computations run on this thread.
+        pub(super) static ORDER_COMPUTATIONS: Cell<usize> = const { Cell::new(0) };
+        /// Runs once, just before the next Staff Search order query on this thread.
+        pub(super) static BEFORE_ORDER_QUERY: RefCell<Option<Box<dyn FnOnce()>>> =
+            const { RefCell::new(None) };
+    }
+
     fn open() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.pragma_update(None, "foreign_keys", true).unwrap();
@@ -1497,5 +1795,299 @@ mod tests {
             )
             .expect("count compact join");
         assert_eq!(total, 3);
+    }
+
+    struct StaffShape {
+        name: &'static str,
+        sort: &'static str,
+        dir: SortDir,
+        filters: Option<FilterAst>,
+        fields: Vec<String>,
+        shortlist_only: bool,
+        preferred_job: Option<&'static str>,
+        unemployed_only: bool,
+    }
+
+    impl StaffShape {
+        fn new(name: &'static str, sort: &'static str, dir: SortDir, fields: &[&str]) -> Self {
+            Self {
+                name,
+                sort,
+                dir,
+                filters: None,
+                fields: fields.iter().map(|field| field.to_string()).collect(),
+                shortlist_only: false,
+                preferred_job: None,
+                unemployed_only: false,
+            }
+        }
+
+        fn filtered(self, rules: Vec<(&str, &str, FilterValue)>, combine: &str) -> Self {
+            let rules = rules
+                .into_iter()
+                .map(|(field, op, value)| FilterRule {
+                    field: field.into(),
+                    op: op.into(),
+                    value,
+                })
+                .collect();
+            Self {
+                filters: Some(parse_filter_ast(rules, Some(combine)).expect("filters")),
+                ..self
+            }
+        }
+
+        fn shortlisted(self, preferred_job: Option<&'static str>, unemployed_only: bool) -> Self {
+            Self {
+                shortlist_only: true,
+                preferred_job,
+                unemployed_only,
+                ..self
+            }
+        }
+
+        fn request(&self, offset: usize, limit: usize) -> StaffSearchRequest<'_> {
+            StaffSearchRequest {
+                offset,
+                limit,
+                sort: SortField::parse(self.sort).expect("sort"),
+                direction: self.dir,
+                filters: self.filters.as_ref(),
+                shortlist_only: self.shortlist_only,
+                preferred_job: self.preferred_job,
+                unemployed_only: self.unemployed_only,
+                requested_fields: &self.fields,
+            }
+        }
+
+        fn uncached(&self, db: &Db, offset: usize, limit: usize) -> Result<StaffPage, String> {
+            list_staff(
+                &db.read().expect("reader"),
+                StaffScope::Search,
+                offset,
+                limit,
+                SortField::parse(self.sort).expect("sort"),
+                self.dir,
+                self.filters.as_ref(),
+                self.shortlist_only,
+                self.preferred_job,
+                self.unemployed_only,
+                &self.fields,
+            )
+        }
+    }
+
+    /// A database file with readers whose staff tie and miss values across the Staff sorts,
+    /// beside an older snapshot and an inactive save's shortlist.
+    fn open_staff_equivalence_db() -> (tempfile::TempDir, Db) {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = crate::db::open(&temp_dir.path().join(crate::db::APP_DB_FILE)).expect("open db");
+        let writer = db.0.lock().expect("lock writer");
+        seed(&writer, false);
+        writer
+            .execute_batch(
+                r#"INSERT INTO staff (
+                    snapshot_id, uid, name, age, nationalities_json, gender, ca, pa,
+                    staff_attributes_json, club
+                 ) VALUES
+                    (1, 4, 'alpha', 40, '["ENG"]', 'male', 110, 120, '{"Authority":12}', NULL),
+                    (1, 5, 'Delta', 39, '[]', 'male', 100, 140, '{"Authority":12}', 'Club B'),
+                    (1, 6, 'echo', 38, '["DEN"]', 'female', 90, 90, '{}', 'Club A'),
+                    (1, 7, 'Foxtrot', 37, '[]', 'male', 110, 110, '{"Authority":20}', NULL),
+                    (1, 8, 'golf', 36, '[]', 'unknown', 120, 125, '{"Authority":5}', 'Other');
+                 INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_fitness)
+                 VALUES (1, 4, 1, 80), (1, 5, 1, NULL), (1, 6, 1, 55), (1, 7, 1, 70), (1, 8, 1, 80);
+                 INSERT INTO saves (id, name, is_active) VALUES (2, 'Inactive', 0);
+                 INSERT INTO staff_shortlist_entries (
+                    save_id, staff_uid, preferred_job, club_job, coaching_qualifications
+                 ) VALUES (2, 4, 'Wrong save', '-', 'Wrong qualification');"#,
+            )
+            .expect("seed staff");
+        drop(writer);
+        (temp_dir, db)
+    }
+
+    /// Joins three-row cached windows and compares each with the uncached page at its offset.
+    fn assert_cached_windows_match(db: &Db, orders: &StaffOrderCache, shape: &StaffShape) {
+        let registry = TableRegistry::default();
+        let complete = shape
+            .uncached(db, 0, MAX_PAGE_LIMIT)
+            .expect("uncached complete page");
+        let mut joined = Vec::new();
+        for offset in (0..complete.staff.len() + 3).step_by(3) {
+            let cached = search_staff_page(db, orders, &registry, None, shape.request(offset, 3))
+                .unwrap_or_else(|error| panic!("{}: {error}", shape.name));
+            let uncached = shape.uncached(db, offset, 3).expect("uncached page");
+            assert_eq!(cached, uncached, "{} at offset {offset}", shape.name);
+            joined.extend(cached.staff);
+        }
+        assert_eq!(joined, complete.staff, "{} joined windows", shape.name);
+    }
+
+    #[test]
+    fn cached_staff_windows_equal_uncached_pages_for_every_shape() {
+        let (_temp_dir, db) = open_staff_equivalence_db();
+        // The name-sorted shapes differ only in the shortlist flag, Preferred Job, and the
+        // unemployed filter, so one cache holding them all proves each is in the fingerprint.
+        let orders = StaffOrderCache::new(32);
+        let shortlist_shapes = [
+            StaffShape::new("shortlist by name", "name", SortDir::Asc, &[])
+                .shortlisted(None, false),
+            StaffShape::new("unemployed by name", "name", SortDir::Asc, &[])
+                .shortlisted(None, true),
+            StaffShape::new("shortlist", "ca", SortDir::Desc, &["role.coach_fitness"])
+                .shortlisted(None, false),
+            StaffShape::new("Preferred Job sort", "preferred_job", SortDir::Asc, &[])
+                .shortlisted(None, false),
+            StaffShape::new("Preferred Job", "name", SortDir::Asc, &["attr.Authority"])
+                .shortlisted(Some("scout"), false),
+            StaffShape::new("unemployed only", "club_job", SortDir::Desc, &[])
+                .shortlisted(None, true),
+            StaffShape::new("shortlist filters", "ca", SortDir::Asc, &[])
+                .shortlisted(Some("Scout"), true)
+                .filtered(vec![("ca", "gt", FilterValue::Integer(95))], "and"),
+        ];
+        let shapes = [
+            StaffShape::new("CA", "ca", SortDir::Desc, &[]),
+            StaffShape::new("name", "name", SortDir::Asc, &["role.coach_fitness"]),
+            StaffShape::new(
+                "role",
+                "role.coach_fitness",
+                SortDir::Desc,
+                &["role.coach_fitness", "attr.Authority"],
+            ),
+            StaffShape::new("attribute", "attr.Authority", SortDir::Asc, &[]),
+            StaffShape::new("club", "club", SortDir::Asc, &[]),
+            StaffShape::new("AND filter", "pa", SortDir::Desc, &[]).filtered(
+                vec![
+                    ("ca", "gt", FilterValue::Integer(95)),
+                    ("role.coach_fitness", "gt", FilterValue::Integer(60)),
+                ],
+                "and",
+            ),
+            StaffShape::new("OR filter", "age", SortDir::Asc, &["role.coach_fitness"]).filtered(
+                vec![
+                    ("ca", "eq", FilterValue::Integer(90)),
+                    ("role.coach_fitness", "gt", FilterValue::Integer(75)),
+                ],
+                "or",
+            ),
+            StaffShape::new("empty", "ca", SortDir::Desc, &[])
+                .filtered(vec![("ca", "gt", FilterValue::Integer(999))], "and"),
+        ];
+        // Without entries, every shortlist shape reports the missing shortlist.
+        for shape in shapes.iter().chain(&shortlist_shapes) {
+            assert_cached_windows_match(&db, &orders, shape);
+        }
+
+        db.0.lock()
+            .expect("lock writer")
+            .execute_batch(
+                "INSERT INTO staff_shortlist_entries (
+                    save_id, staff_uid, preferred_job, club_job, coaching_qualifications
+                 ) VALUES
+                    (1, 1, 'Physio', '-', 'Continental Pro'),
+                    (1, 2, 'Scout', '', 'National C'),
+                    (1, 3, 'scout', 'Chief Scout', 'National B'),
+                    (1, 4, 'Scout', '-', 'National B'),
+                    (1, 7, 'Analyst', ' ', 'None'),
+                    (1, 99, 'Scout', '-', 'Departed');",
+            )
+            .expect("seed shortlist");
+        for shape in shapes.iter().chain(&shortlist_shapes) {
+            assert_cached_windows_match(&db, &orders, shape);
+        }
+
+        let csv_sort_without_shortlist = StaffShape::new("CSV sort", "club_job", SortDir::Asc, &[]);
+        assert_eq!(
+            search_staff_page(
+                &db,
+                &orders,
+                &TableRegistry::default(),
+                None,
+                csv_sort_without_shortlist.request(0, 3)
+            ),
+            csv_sort_without_shortlist.uncached(&db, 0, 3)
+        );
+    }
+
+    #[test]
+    fn later_staff_windows_reuse_the_order_until_a_write() {
+        let (_temp_dir, db) = open_staff_equivalence_db();
+        let orders = StaffOrderCache::new(4);
+        let registry = TableRegistry::default();
+        let shape = StaffShape::new("CA", "ca", SortDir::Desc, &[]);
+        let with_column = StaffShape::new("CA", "ca", SortDir::Desc, &["role.coach_fitness"]);
+        ORDER_COMPUTATIONS.with(|count| count.set(0));
+
+        search_staff_page(&db, &orders, &registry, None, shape.request(0, 3))
+            .expect("first window");
+        search_staff_page(&db, &orders, &registry, None, shape.request(6, 3))
+            .expect("later window");
+        search_staff_page(&db, &orders, &registry, None, with_column.request(3, 3))
+            .expect("window with another column");
+        assert_eq!(ORDER_COMPUTATIONS.with(Cell::get), 1);
+
+        db.0.lock()
+            .expect("lock writer")
+            .execute("UPDATE staff SET ca = 200 WHERE uid = 6", [])
+            .expect("change a staff member");
+        let fresh = search_staff_page(&db, &orders, &registry, None, shape.request(0, 3))
+            .expect("window after a write");
+        assert_eq!(ORDER_COMPUTATIONS.with(Cell::get), 2);
+        assert_eq!(fresh.staff[0].uid, 6);
+        assert_eq!(fresh, shape.uncached(&db, 0, 3).expect("uncached page"));
+    }
+
+    #[test]
+    fn a_newer_staff_query_supersedes_a_running_one_and_completes() {
+        let (_temp_dir, db) = open_staff_equivalence_db();
+        let orders = StaffOrderCache::new(4);
+        let registry = TableRegistry::default();
+        let older = StaffShape::new("CA", "ca", SortDir::Desc, &[]);
+        let newer = || StaffShape::new("name", "name", SortDir::Asc, &[]);
+        let older_ticket = registry.arrive(
+            "staff-search",
+            &staff_query_fingerprint(&older.request(0, 3)),
+        );
+
+        let (sender, receiver) = std::sync::mpsc::channel();
+        {
+            let (db, orders, registry) = (db.clone(), orders.clone(), registry.clone());
+            BEFORE_ORDER_QUERY.with(|hook| {
+                *hook.borrow_mut() = Some(Box::new(move || {
+                    let newer = newer();
+                    let ticket = registry.arrive(
+                        "staff-search",
+                        &staff_query_fingerprint(&newer.request(0, 3)),
+                    );
+                    sender
+                        .send(search_staff_page(
+                            &db,
+                            &orders,
+                            &registry,
+                            Some(&ticket),
+                            newer.request(0, 3),
+                        ))
+                        .expect("send newer page");
+                }));
+            });
+        }
+
+        let superseded = search_staff_page(
+            &db,
+            &orders,
+            &registry,
+            Some(&older_ticket),
+            older.request(0, 3),
+        );
+        assert_eq!(
+            superseded,
+            Err(crate::db::result_cache::SUPERSEDED.to_string())
+        );
+        assert_eq!(
+            receiver.recv().expect("newer page"),
+            newer().uncached(&db, 0, 3)
+        );
     }
 }
