@@ -774,8 +774,20 @@ fn compute_general_order(
         .flatten();
     let club_dna_sort = sort_by.club_dna_sort_identity(club_dna_definition_version);
 
+    // Without statistics, SQLite seeks an unfiltered snapshot through `idx_players_snapshot_ca`
+    // and visits its rows in CA order, one random table read each. Unless a covering index
+    // already holds the sort key and UID, an unfiltered order reads the snapshot in primary-key
+    // order, which follows storage order. Filters keep the planner's choice, which can use
+    // their own indexes.
+    let reads_in_key_order = compiled.is_none()
+        && !matches!(
+            sort_by,
+            SortField::Pa | SortField::Age | SortField::Value | SortField::Club
+        );
     let mut from_sql = if *shortlist_only {
         GENERAL_SHORTLIST_FROM_SQL.to_string()
+    } else if reads_in_key_order {
+        "FROM players INDEXED BY sqlite_autoindex_players_1".to_string()
     } else {
         "FROM players".to_string()
     };
@@ -6431,6 +6443,12 @@ mod tests {
                 let mut player = player_template(uid, names[index], abilities[index]);
                 player["age"] = json!(18 + (uid as i64 * 5) % 14);
                 player["marketValueGbp"] = json!((uid as i64 % 4) * 500_000);
+                player["currentClub"] = match uid % 4 {
+                    0 => json!("alpha FC"),
+                    1 => json!("Alpha FC"),
+                    2 => json!("Beta"),
+                    _ => json!(null),
+                };
                 player["attributes"] = if uid % 5 == 0 {
                     json!({})
                 } else {
@@ -6527,6 +6545,10 @@ mod tests {
         let shapes = vec![
             GeneralShape::new("CA", "ca", SortDir::Desc, &["height"]),
             GeneralShape::new("name", "name", SortDir::Asc, &[]),
+            GeneralShape::new("PA", "pa", SortDir::Asc, &[]),
+            GeneralShape::new("age", "age", SortDir::Desc, &[]),
+            GeneralShape::new("value", "value", SortDir::Desc, &[]),
+            GeneralShape::new("club", "club", SortDir::Asc, &[]),
             GeneralShape::new(
                 "current role",
                 "role.goalkeeper_ip",
