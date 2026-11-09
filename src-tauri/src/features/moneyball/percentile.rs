@@ -25,50 +25,50 @@ pub(crate) fn numeric_statistics(statistics: &MoneyballStatistics) -> MoneyballN
 pub(crate) fn calculate_percentiles(
     statistics_by_player: &BTreeMap<i64, MoneyballNumericStatistics>,
 ) -> BTreeMap<i64, MoneyballPercentiles> {
-    let mut scores: BTreeMap<i64, MoneyballPercentiles> = statistics_by_player
-        .keys()
-        .map(|player_uid| {
-            (
-                *player_uid,
-                MONEYBALL_STATISTIC_KEYS
-                    .iter()
-                    .map(|key| ((*key).to_string(), None))
-                    .collect(),
-            )
+    let columns = MONEYBALL_STATISTIC_KEYS
+        .iter()
+        .map(|key| {
+            let values = statistics_by_player
+                .values()
+                .map(|statistics| statistics.get(*key).copied().flatten())
+                .collect::<Vec<_>>();
+            rank_column(&values, key)
         })
-        .collect::<BTreeMap<_, _>>();
+        .collect::<Vec<_>>();
 
-    for key in MONEYBALL_STATISTIC_KEYS {
-        let mut population = statistics_by_player
-            .values()
-            .filter_map(|statistics| {
-                statistics
-                    .get(key)
-                    .copied()
-                    .flatten()
-                    .filter(|value| value.is_finite())
-            })
-            .collect::<Vec<_>>();
-        population.sort_by(f64::total_cmp);
+    statistics_by_player
+        .keys()
+        .enumerate()
+        .map(|(position, player_uid)| {
+            let percentiles = MONEYBALL_STATISTIC_KEYS
+                .iter()
+                .zip(&columns)
+                .map(|(key, column)| ((*key).to_string(), column[position]))
+                .collect();
+            (*player_uid, percentiles)
+        })
+        .collect()
+}
 
-        for (player_uid, statistics) in statistics_by_player {
-            let Some(value) = statistics
-                .get(key)
-                .copied()
-                .flatten()
+/// Ranks one metric's values against each other, returning their percentiles in the same
+/// order. Absent and non-finite values are not ranked and score `None`.
+pub(crate) fn rank_column(values: &[Option<f64>], key: &str) -> Vec<Option<u8>> {
+    let mut population = values
+        .iter()
+        .flatten()
+        .copied()
+        .filter(|value| value.is_finite())
+        .collect::<Vec<_>>();
+    population.sort_by(f64::total_cmp);
+
+    values
+        .iter()
+        .map(|value| {
+            value
                 .filter(|value| value.is_finite())
-            else {
-                continue;
-            };
-            let score = percentile_score(&population, value, key);
-            scores
-                .get_mut(player_uid)
-                .expect("scores are initialized from statistic player IDs")
-                .insert((*key).to_string(), score);
-        }
-    }
-
-    scores
+                .and_then(|value| percentile_score(&population, value, key))
+        })
+        .collect()
 }
 
 /// One player's percentiles against `cohort`, which includes that player. Both hold values
@@ -140,7 +140,154 @@ fn ranked_score(below: usize, population: usize, uniform: bool, key: &str) -> Op
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::calculate_percentiles;
+    use super::{calculate_percentiles, MoneyballNumericStatistics, MoneyballPercentiles};
+    use crate::features::moneyball::{
+        catalog::LOWER_IS_BETTER_STATISTIC_KEYS, MONEYBALL_STATISTIC_KEYS,
+    };
+
+    // The pre-column implementation, copied verbatim as the equivalence oracle.
+    fn previous_calculate_percentiles(
+        statistics_by_player: &BTreeMap<i64, MoneyballNumericStatistics>,
+    ) -> BTreeMap<i64, MoneyballPercentiles> {
+        let mut scores: BTreeMap<i64, MoneyballPercentiles> = statistics_by_player
+            .keys()
+            .map(|player_uid| {
+                (
+                    *player_uid,
+                    MONEYBALL_STATISTIC_KEYS
+                        .iter()
+                        .map(|key| ((*key).to_string(), None))
+                        .collect(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        for key in MONEYBALL_STATISTIC_KEYS {
+            let mut population = statistics_by_player
+                .values()
+                .filter_map(|statistics| {
+                    statistics
+                        .get(key)
+                        .copied()
+                        .flatten()
+                        .filter(|value| value.is_finite())
+                })
+                .collect::<Vec<_>>();
+            population.sort_by(f64::total_cmp);
+
+            for (player_uid, statistics) in statistics_by_player {
+                let Some(value) = statistics
+                    .get(key)
+                    .copied()
+                    .flatten()
+                    .filter(|value| value.is_finite())
+                else {
+                    continue;
+                };
+                let score = previous_percentile_score(&population, value, key);
+                scores
+                    .get_mut(player_uid)
+                    .expect("scores are initialized from statistic player IDs")
+                    .insert((*key).to_string(), score);
+            }
+        }
+
+        scores
+    }
+
+    fn previous_percentile_score(population: &[f64], value: f64, key: &str) -> Option<u8> {
+        previous_ranked_score(
+            population.partition_point(|candidate| *candidate < value),
+            population.len(),
+            population.first() == population.last(),
+            key,
+        )
+    }
+
+    fn previous_ranked_score(
+        below: usize,
+        population: usize,
+        uniform: bool,
+        key: &str,
+    ) -> Option<u8> {
+        if population == 0 {
+            return None;
+        }
+        if population == 1 || uniform {
+            return Some(50);
+        }
+
+        let score = ((below as f64 / (population - 1) as f64) * 100.0)
+            .round()
+            .clamp(0.0, 100.0) as u8;
+        Some(if LOWER_IS_BETTER_STATISTIC_KEYS.contains(&key) {
+            100 - score
+        } else {
+            score
+        })
+    }
+
+    /// SplitMix64, so the randomized comparison is reproducible without a dependency.
+    struct Generator(u64);
+
+    impl Generator {
+        fn next(&mut self) -> u64 {
+            self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = self.0;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        }
+
+        fn below(&mut self, bound: u64) -> u64 {
+            self.next() % bound
+        }
+    }
+
+    #[test]
+    fn column_ranking_matches_the_previous_algorithm_on_random_cohorts() {
+        const SPECIAL: [f64; 6] = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -0.0, 0.0, 1e300];
+        let mut generator = Generator(0x5EED_2026);
+
+        for cohort in 0..300 {
+            let players = generator.below(64) as usize;
+            // Per metric: varied values with ties, nulls, missing keys, and non-finite values;
+            // a uniform population; one reported value; or no values.
+            let shapes = MONEYBALL_STATISTIC_KEYS
+                .iter()
+                .map(|_| (generator.below(4), generator.below(6) as f64 - 1.5))
+                .collect::<Vec<_>>();
+            let lone_player = generator.below(players.max(1) as u64) as usize;
+
+            let mut statistics_by_player = BTreeMap::new();
+            for position in 0..players {
+                let mut statistics = MoneyballNumericStatistics::new();
+                for (key, (shape, shared)) in MONEYBALL_STATISTIC_KEYS.iter().zip(&shapes) {
+                    let value = match shape {
+                        0 => match generator.below(10) {
+                            0 => continue,
+                            1 => None,
+                            2 => Some(SPECIAL[generator.below(6) as usize]),
+                            3 => Some(generator.next() as f64 / 1e15),
+                            _ => Some(generator.below(7) as f64 / 2.0),
+                        },
+                        1 => (generator.below(5) != 0).then_some(*shared),
+                        2 => (position == lone_player).then_some(*shared),
+                        _ => None,
+                    };
+                    statistics.insert((*key).to_string(), value);
+                }
+                let uid = generator.next() as i64;
+                statistics_by_player.insert(uid, statistics);
+            }
+
+            assert_eq!(
+                calculate_percentiles(&statistics_by_player),
+                previous_calculate_percentiles(&statistics_by_player),
+                "cohort {cohort}"
+            );
+        }
+    }
 
     #[test]
     fn ranks_matched_values_with_lower_bounds_ties_and_inversion() {
