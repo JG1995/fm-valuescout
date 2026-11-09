@@ -25,9 +25,9 @@ export type SearchPlayersPageState =
   | "no_shortlist";
 
 export type SearchPlayersPage = {
-  /** Response state mirrors StaffPage: the shortlist probe needs it to tell
-   * a save with no stored shortlist apart from a stored shortlist whose
-   * entries match no current-snapshot player (both page as empty). */
+  /** `no_shortlist` means the requested shortlist is not one of the save's
+   * shortlists. A shortlist whose players are not in the snapshot pages as
+   * an empty `ready`. */
   state: SearchPlayersPageState;
   players: PlayerSummary[];
   total: number;

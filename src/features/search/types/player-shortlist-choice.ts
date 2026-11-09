@@ -1,5 +1,7 @@
 /** Matches the Rust `PlayerShortlistChoice` IPC shape (camelCase). */
 export type PlayerShortlistChoice = {
+  /** The added or updated shortlist, which the route selects. */
+  id: number;
   name: string;
   fileName: string;
   totalPlayers: number;

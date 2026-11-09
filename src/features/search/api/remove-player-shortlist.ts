@@ -1,12 +1,14 @@
 import { invokeCommand } from "@/lib/tauri-client";
 
-/** Unlinks the save's shortlist file and clears its stored players. */
+/** Deletes one of the save's shortlists with its stored players. */
 export function removePlayerShortlist(
   saveId: number,
   contextToken: string,
+  shortlistId: number,
 ): Promise<void> {
   return invokeCommand<void>("remove_player_shortlist", {
     saveId,
     contextToken,
+    shortlistId,
   });
 }

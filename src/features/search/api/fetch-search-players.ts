@@ -39,7 +39,7 @@ export function fetchSearchPlayers(
   requestedFields: string[] = [],
   searchView: SearchView = "general",
   comparisonPool: ComparisonPool = "filtered",
-  shortlistOnly = false,
+  shortlistId: number | null = null,
   tableId?: SearchTableId,
 ) {
   const applied = completeFilterRules(filters, searchView);
@@ -51,7 +51,7 @@ export function fetchSearchPlayers(
     requestedFields,
     searchView,
     comparisonPool,
-    shortlistOnly,
+    shortlistId,
     ...(tableId ? { tableId } : {}),
     ...(applied.length > 0
       ? {

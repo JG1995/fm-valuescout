@@ -9,52 +9,47 @@ describe("useShortlistFilterStore", () => {
     useShortlistFilterStore.getState().reset();
   });
 
-  const choice = (
-    surface: "player" | "staff",
-    context: { saveId: number; contextToken: string },
-  ) =>
+  const choice = (context: { saveId: number; contextToken: string }) =>
     useShortlistFilterStore.getState().choices[
-      shortlistFilterKey(surface, context)
+      shortlistFilterKey("staff", context)
     ];
 
   it("treats an unset choice as uninitialized", () => {
     const context = { saveId: 1, contextToken: "one" };
-    expect(choice("player", context)).toBeUndefined();
+    expect(choice(context)).toBeUndefined();
   });
 
   it("initializes from presence only once and never overwrites a manual choice", () => {
     const context = { saveId: 1, contextToken: "one" };
-    useShortlistFilterStore.getState().initialize("player", context, true);
-    expect(choice("player", context)).toBe(true);
+    useShortlistFilterStore.getState().initialize("staff", context, true);
+    expect(choice(context)).toBe(true);
 
     // A later presence refresh must not overwrite the initialized choice.
-    useShortlistFilterStore.getState().initialize("player", context, false);
-    expect(choice("player", context)).toBe(true);
+    useShortlistFilterStore.getState().initialize("staff", context, false);
+    expect(choice(context)).toBe(true);
 
     // A manual toggle always wins, and later refreshes stay no-ops.
-    useShortlistFilterStore.getState().set("player", context, false);
-    expect(choice("player", context)).toBe(false);
-    useShortlistFilterStore.getState().initialize("player", context, true);
-    expect(choice("player", context)).toBe(false);
+    useShortlistFilterStore.getState().set("staff", context, false);
+    expect(choice(context)).toBe(false);
+    useShortlistFilterStore.getState().initialize("staff", context, true);
+    expect(choice(context)).toBe(false);
   });
 
-  it("scopes choices by save context and surface so state cannot leak", () => {
+  it("scopes choices by save context so state cannot leak", () => {
     const saveOne = { saveId: 1, contextToken: "one" };
     const saveTwo = { saveId: 2, contextToken: "two" };
-    useShortlistFilterStore.getState().set("player", saveOne, true);
-    useShortlistFilterStore.getState().set("staff", saveOne, false);
-    useShortlistFilterStore.getState().initialize("player", saveTwo, false);
+    useShortlistFilterStore.getState().set("staff", saveOne, true);
+    useShortlistFilterStore.getState().initialize("staff", saveTwo, false);
 
-    expect(choice("player", saveOne)).toBe(true);
-    expect(choice("staff", saveOne)).toBe(false);
-    expect(choice("player", saveTwo)).toBe(false);
-    expect(choice("staff", saveTwo)).toBeUndefined();
+    expect(choice(saveOne)).toBe(true);
+    expect(choice(saveTwo)).toBe(false);
+    expect(choice({ saveId: 1, contextToken: "replaced" })).toBeUndefined();
   });
 
   it("reset clears every scoped choice", () => {
     useShortlistFilterStore
       .getState()
-      .set("player", { saveId: 1, contextToken: "one" }, true);
+      .set("staff", { saveId: 1, contextToken: "one" }, true);
     useShortlistFilterStore
       .getState()
       .set("staff", { saveId: 2, contextToken: "two" }, false);

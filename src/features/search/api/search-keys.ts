@@ -25,7 +25,7 @@ export const searchKeys = {
     requestedFields: string[] = [],
     searchView: SearchView = "general",
     comparisonPool: ComparisonPool = "filtered",
-    shortlistOnly = false,
+    shortlistId: number | null = null,
     context: SearchPlayerPageContext = {
       activeSave: null,
       currentSnapshot: null,
@@ -43,7 +43,7 @@ export const searchKeys = {
         requestedFields,
         searchView,
         comparisonPool,
-        shortlistOnly,
+        shortlistId,
         context,
       },
     ] as const,

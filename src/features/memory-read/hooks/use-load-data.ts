@@ -143,12 +143,11 @@ export function useLoadData(options: UseLoadDataOptions) {
           return;
         }
         options.invalidateHistoryOwners(captured.id);
-        // Stats attach to the save's current snapshot, and the shortlist belongs to the save,
+        // Stats attach to the save's current snapshot, and the shortlists belong to the save,
         // even when the loaded snapshot is older. Its roots stay valid, so refresh current
         // views without clearing them.
         if (
-          (data.stats.status === "attached" ||
-            data.shortlist.status === "read") &&
+          (data.stats.status === "attached" || data.shortlists.read > 0) &&
           sameContext(captured, activeSaveContextRef.current)
         ) {
           options.invalidateCurrentOwners();

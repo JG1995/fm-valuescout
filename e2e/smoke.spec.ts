@@ -2512,10 +2512,14 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
-  test("Moneyball Shortlist restricts rows and carries to General", async ({
+  test("Moneyball restricts rows to the selected shortlist and carries it to General", async ({
     page,
   }) => {
-    await stubTauriIpc(page, { moneyballSearch: true, plannerSnapshot: true });
+    await stubTauriIpc(page, {
+      moneyballSearch: true,
+      plannerSnapshot: true,
+      shortlistSearch: true,
+    });
     await page.goto("/search?view=moneyball");
 
     const main = page.getByRole("main");
@@ -2524,23 +2528,28 @@ test.describe("application smoke", () => {
     const toolbar = main.getByRole("toolbar", {
       name: "Player results toolbar",
     });
-    await toolbar.getByRole("switch", { name: "Shortlist: Off" }).click();
-    await expect(
-      toolbar.getByRole("switch", { name: "Shortlist: On" }),
-    ).toBeVisible();
+    const shortlist = toolbar.getByRole("combobox", { name: "Shortlist" });
+    await expect(shortlist).toHaveValue("");
+    await shortlist.selectOption({ label: "Targets" });
     await expect(table.getByText("Moneyball player 002")).toBeVisible();
     await expect(table.getByText("Moneyball player 006")).toBeVisible();
     await expect(table.getByText("Moneyball player 001")).toHaveCount(0);
     await expect(table.locator("tbody tr[data-index]")).toHaveCount(3);
+
+    await shortlist.selectOption({ label: "Loans" });
+    await expect(table.getByText("Moneyball player 003")).toBeVisible();
+    await expect(table.getByText("Moneyball player 002")).toHaveCount(0);
+    await expect(table.locator("tbody tr[data-index]")).toHaveCount(2);
 
     await page
       .getByTestId("app-nav-bar")
       .getByRole("link", { name: "Search", exact: true })
       .click();
     await expect(page).toHaveURL(/\/search\?.*view=general/);
-    await expect(
-      page.getByRole("switch", { name: "Shortlist: On" }),
-    ).toBeVisible();
+    await expect(page).not.toHaveURL(/shortlist/);
+    await expect(page.getByRole("combobox", { name: "Shortlist" })).toHaveValue(
+      "2",
+    );
   });
 
   test("Moneyball Search exposes role scores and restores its analysis state", async ({
@@ -5986,36 +5995,37 @@ test.describe("application smoke", () => {
     await expect(page).toHaveURL(/\/search\?.*view=general/);
     await expect(searchLink).toHaveAttribute("aria-current", "page");
 
-    await page.getByRole("button", { name: "Choose FM Shortlist" }).click();
+    const shortlist = page.getByRole("combobox", { name: "Shortlist" });
+    await expect(shortlist).toHaveCount(0);
+    await page.getByRole("button", { name: "Add FM Shortlist" }).click();
     await expect(
       page.getByText("Smoke Targets: 3 players, 2 in this snapshot."),
     ).toBeVisible();
-    await expect(
-      page.getByRole("switch", { name: "Shortlist: On" }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("Smoke Targets", { exact: true }),
-    ).toHaveAttribute("title", "Smoke Targets.fmf");
+    await expect(shortlist).toHaveValue("3");
+    await expect(shortlist.locator("option:checked")).toHaveText(
+      "Smoke Targets",
+    );
     await page.getByRole("button", { name: "Remove shortlist" }).click();
-    await expect(
-      page.getByRole("switch", { name: "Shortlist: Off" }),
-    ).toBeVisible();
+    await expect(shortlist).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Remove shortlist" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText("Smoke Targets: 3 players, 2 in this snapshot."),
     ).toHaveCount(0);
 
     await page.goto("/search?view=shortlist");
     await expect(searchLink).toHaveAttribute("aria-current", "page");
-    await expect(
-      page.getByRole("switch", { name: "Shortlist: On" }),
-    ).toBeVisible();
+    await expect(page).toHaveURL(/\/search\?.*view=general/);
+    await expect(page).not.toHaveURL(/shortlist/);
+    await expect(shortlist).toHaveCount(0);
     await expect(page.getByText("No shortlist yet")).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Go to Moneyball" }),
     ).toHaveCount(0);
   });
 
-  test("Shortlist toggle filters General rows with virtual paging and desktop layout", async ({
+  test("Shortlist selection filters General rows with virtual paging and desktop layout", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
@@ -6024,14 +6034,20 @@ test.describe("application smoke", () => {
       shortlistSearch: true,
     });
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/search?shortlistOnly=true");
+    await page.goto("/search");
 
     const main = page.getByRole("main");
     const scroller = main.getByTestId("search-results-scroller");
     const table = scroller.getByRole("table", {
       name: "Player search results",
     });
+    const shortlist = page.getByRole("combobox", { name: "Shortlist" });
+    await shortlist.selectOption({ label: "Loans" });
+    await expect(table.getByText("Shortlist player 003")).toBeVisible();
+    await expect(table.locator("tbody tr[data-index]")).toHaveCount(3);
+    await shortlist.selectOption({ label: "Targets" });
     await expect(table.getByText("Shortlist player 001")).toBeVisible();
+    await expect(table.getByText("Shortlist player 004")).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Upload Moneyball CSV" }),
     ).toHaveCount(0);
@@ -6044,14 +6060,11 @@ test.describe("application smoke", () => {
       page.getByRole("heading", { name: "Shortlist player 001" }),
     ).toHaveCount(0);
 
-    await page.goto("/search?shortlistOnly=true");
+    await page.goBack();
     await expect(table.getByText("Shortlist player 001")).toBeVisible();
-    const toggle = page.getByRole("switch", { name: "Shortlist: On" });
-    await expect(toggle).toHaveAttribute("aria-checked", "true");
-    await toggle.click();
-    await expect(
-      page.getByRole("switch", { name: "Shortlist: Off" }),
-    ).toBeVisible();
+    await expect(shortlist).toHaveValue("1");
+    await shortlist.selectOption({ label: "No shortlist" });
+    await expect(table.getByText("Shortlist player 001")).toHaveCount(0);
     const [mainBox, scrollerBox, mainDimensions] = await Promise.all([
       main.boundingBox(),
       scroller.boundingBox(),

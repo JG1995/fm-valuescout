@@ -50,6 +50,35 @@ ALTER TABLE saves ADD COLUMN player_shortlist_name TEXT;
 DELETE FROM player_shortlist_entries;
 ";
 
+/// A save keeps several linked shortlist files. Each save's linked file becomes its first
+/// shortlist with the same path, name, and players, and the `saves` link columns are dropped.
+pub const MULTIPLE_PLAYER_SHORTLISTS_V52_SQL: &str = "
+CREATE TABLE player_shortlists (
+    id INTEGER PRIMARY KEY,
+    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    file_path TEXT NOT NULL CHECK (trim(file_path) <> ''),
+    name TEXT NOT NULL,
+    UNIQUE (save_id, file_path)
+);
+INSERT INTO player_shortlists (save_id, file_path, name)
+SELECT id, player_shortlist_file_path, COALESCE(player_shortlist_name, '')
+FROM saves
+WHERE player_shortlist_file_path IS NOT NULL;
+CREATE TABLE player_shortlist_entries_v52 (
+    shortlist_id INTEGER NOT NULL REFERENCES player_shortlists(id) ON DELETE CASCADE,
+    player_uid INTEGER NOT NULL,
+    PRIMARY KEY (shortlist_id, player_uid)
+);
+INSERT INTO player_shortlist_entries_v52 (shortlist_id, player_uid)
+SELECT shortlist.id, entry.player_uid
+FROM player_shortlist_entries entry
+JOIN player_shortlists shortlist ON shortlist.save_id = entry.save_id;
+DROP TABLE player_shortlist_entries;
+ALTER TABLE player_shortlist_entries_v52 RENAME TO player_shortlist_entries;
+ALTER TABLE saves DROP COLUMN player_shortlist_file_path;
+ALTER TABLE saves DROP COLUMN player_shortlist_name;
+";
+
 /// Projected attributes move to a current-only table, so a repeat load deletes the displaced
 /// snapshot's rows instead of rewriting its `players` rows. Only current snapshots held them
 /// (ADR-0028); the retired `players` columns stay in place, always null and unread.
@@ -1352,6 +1381,11 @@ pub fn all() -> &'static [Migration] {
             description: "link_player_shortlist_files",
             sql: PLAYER_SHORTLIST_FILE_V51_SQL,
         },
+        Migration {
+            version: 52,
+            description: "multiple_player_shortlists",
+            sql: MULTIPLE_PLAYER_SHORTLISTS_V52_SQL,
+        },
     ]
 }
 
@@ -1678,7 +1712,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .expect("read v45 version"),
-            51
+            52
         );
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
@@ -1778,7 +1812,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .expect("read v45 version"),
-            51
+            52
         );
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM planner_tactic_lanes", [], |row| {
@@ -1803,7 +1837,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .expect("read reapplied version"),
-            51
+            52
         );
         assert_eq!(
             tactic::get_tactic(&conn, 1).expect("read preserved tactic"),
@@ -1901,7 +1935,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .expect("read v45 version"),
-            51
+            52
         );
         let senior_labels = conn
             .prepare(
@@ -2018,7 +2052,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         assert_player_sort_index_inventory(&conn);
 
         let demo_value_exists: bool = conn
@@ -2136,7 +2170,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         assert_player_sort_index_inventory(&conn);
         assert_eq!(
             conn.query_row(
@@ -2217,7 +2251,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         let player_columns = table_columns(&conn, "players");
         assert!(player_columns.contains(&"potential_attributes_json".to_string()));
         assert!(player_columns.contains(&"potential_projection_model_version".to_string()));
@@ -2749,7 +2783,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         let settings: Vec<(i64, String, String)> = conn
             .prepare(
                 "SELECT save_id, team, display_name
@@ -2983,7 +3017,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         type MoneyballRow = (
             Option<String>,
             Option<i64>,
@@ -3166,7 +3200,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated user version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         let existing: i64 = conn
             .query_row("SELECT reveal_hidden_information FROM saves", [], |row| {
                 row.get(0)
@@ -3266,7 +3300,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         let demo_value_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -3346,7 +3380,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         // v39 drops normalized tables
         for table in ["player_role_scores", "player_potential_role_scores"] {
             let exists: bool = conn
@@ -3905,7 +3939,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         let (save_name, is_current, primary_club): (String, i32, String) = conn
             .query_row(
                 "SELECT saves.name, snapshots.is_current, managed_club_settings.club_name
@@ -3976,7 +4010,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         let rows: Vec<LegacyMoneyballRow> = conn
             .prepare(
                 "SELECT save_id, player_uid, asking_price_kind, asking_price_lower_eur,
@@ -4163,7 +4197,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         let primary_club: String = conn
             .query_row(
                 "SELECT club_name FROM managed_club_settings WHERE save_id = ?1",
@@ -4211,7 +4245,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -4452,7 +4486,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -4567,7 +4601,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
 
         for table in [
             "player_role_scores",
@@ -4723,18 +4757,23 @@ mod tests {
     }
 
     #[test]
-    fn player_shortlist_entries_are_save_owned_without_a_redundant_save_index() {
+    fn player_shortlists_are_save_owned_and_unique_by_path() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = open_migrated(&temp_dir.path().join("player-shortlist.db"));
 
         assert_eq!(
+            table_columns(&conn, "player_shortlists"),
+            ["id", "save_id", "file_path", "name"]
+        );
+        assert_eq!(
             table_columns(&conn, "player_shortlist_entries"),
-            ["save_id", "player_uid"]
+            ["shortlist_id", "player_uid"]
         );
         let shortlist_indexes: Vec<String> = conn
             .prepare(
                 "SELECT name FROM sqlite_master
-                 WHERE type = 'index' AND tbl_name = 'player_shortlist_entries'
+                 WHERE type = 'index'
+                   AND tbl_name IN ('player_shortlists', 'player_shortlist_entries')
                  ORDER BY name",
             )
             .expect("prepare shortlist index inventory")
@@ -4744,71 +4783,132 @@ mod tests {
             .expect("read shortlist index inventory");
         assert_eq!(
             shortlist_indexes,
-            ["sqlite_autoindex_player_shortlist_entries_1"],
-            "the composite primary key prefix serves per-save lookups"
+            [
+                "sqlite_autoindex_player_shortlist_entries_1",
+                "sqlite_autoindex_player_shortlists_1",
+            ],
+            "the key prefixes serve per-save and per-shortlist lookups"
         );
 
         conn.execute_batch(
             "INSERT INTO saves (id, name, is_active) VALUES (1, 'First save', 1), (2, 'Second save', 0);
-             INSERT INTO snapshots (
-                 id, save_id, is_current, schema_version, generated_at_utc, game_version,
-                 supported_game_version, bridge_version, protocol_version, game_date,
-                 game_date_source, scan_truncated, max_accepted, player_count
-             ) VALUES (
-                 1, 1, 1, 8, '2026-08-16T00:00:00Z', '26.3', '26.3', '0.4.0', 1,
-                 NULL, 'unavailable', 0, NULL, 0
-             );",
+             INSERT INTO player_shortlists (id, save_id, file_path, name) VALUES
+                 (1, 1, '/lists/Targets.fmf', 'Targets'),
+                 (2, 1, '/lists/Loans.fmf', 'Loans'),
+                 (3, 2, '/lists/Targets.fmf', 'Targets');
+             INSERT INTO player_shortlist_entries (shortlist_id, player_uid)
+             VALUES (1, 77), (2, 77), (3, 77);",
         )
-        .expect("seed shortlist owners");
-
-        conn.execute(
-            "INSERT INTO player_shortlist_entries (save_id, player_uid) VALUES (1, 77)",
-            [],
-        )
-        .expect("insert first save entry");
-        conn.execute(
-            "INSERT INTO player_shortlist_entries (save_id, player_uid) VALUES (2, 77)",
-            [],
-        )
-        .expect("allow same UID in another save");
+        .expect("seed shortlists");
         assert!(
             conn.execute(
-                "INSERT INTO player_shortlist_entries (save_id, player_uid) VALUES (1, 77)",
+                "INSERT INTO player_shortlists (save_id, file_path, name)
+                 VALUES (1, '/lists/Targets.fmf', 'Again')",
                 [],
             )
             .is_err(),
-            "duplicate (save_id, player_uid) must be rejected"
+            "a save links each path once"
         );
-
-        conn.execute("DELETE FROM snapshots WHERE id = 1", [])
-            .expect("delete snapshot");
-        assert_eq!(
+        for blank in ["", "   "] {
+            assert!(
+                conn.execute(
+                    "INSERT INTO player_shortlists (save_id, file_path, name) VALUES (1, ?1, '')",
+                    [blank],
+                )
+                .is_err(),
+                "blank path {blank:?} is rejected"
+            );
+        }
+        assert!(
+            conn.execute(
+                "INSERT INTO player_shortlist_entries (shortlist_id, player_uid) VALUES (1, 77)",
+                [],
+            )
+            .is_err(),
+            "duplicate (shortlist_id, player_uid) must be rejected"
+        );
+        let entry_count = |conn: &Connection| -> i64 {
             conn.query_row("SELECT COUNT(*) FROM player_shortlist_entries", [], |row| {
-                row.get::<_, i64>(0)
+                row.get(0)
             })
-            .expect("count shortlist entries after snapshot deletion"),
-            2,
-            "snapshot replacement must not clear the save-owned list"
-        );
+            .expect("count shortlist entries")
+        };
+
+        conn.execute("DELETE FROM player_shortlists WHERE id = 2", [])
+            .expect("delete one shortlist");
+        assert_eq!(entry_count(&conn), 2, "only its own entries are deleted");
 
         conn.execute("DELETE FROM saves WHERE id = 1", [])
             .expect("delete first save");
+        assert_eq!(entry_count(&conn), 1);
         assert_eq!(
-            conn.query_row("SELECT COUNT(*) FROM player_shortlist_entries", [], |row| {
-                row.get::<_, i64>(0)
-            })
-            .expect("count shortlist entries after save deletion"),
-            1
+            conn.query_row("SELECT save_id FROM player_shortlists", [], |row| row
+                .get::<_, i64>(0))
+                .expect("read the remaining shortlist"),
+            2
         );
+    }
+
+    #[test]
+    fn v52_upgrade_keeps_each_linked_shortlist_as_the_save_first_shortlist() {
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|m| m.version <= 51) {
+            conn.execute_batch(migration.sql)
+                .expect("apply v51 migration");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("record v51 migration");
+        }
+        conn.execute_batch(
+            "INSERT INTO saves (id, name, is_active, player_shortlist_file_path, player_shortlist_name)
+             VALUES (1, 'Linked', 1, '/lists/Targets.fmf', 'Targets'),
+                    (2, 'Unlinked', 0, NULL, NULL),
+                    (3, 'Unnamed', 0, '/lists/Unnamed.fmf', NULL);
+             INSERT INTO player_shortlist_entries (save_id, player_uid)
+             VALUES (1, 77), (1, 12345), (3, 88);",
+        )
+        .expect("seed v51 shortlists");
+
+        apply(&conn).expect("apply v52");
+
+        let shortlists: Vec<(i64, String, String)> = conn
+            .prepare("SELECT save_id, file_path, name FROM player_shortlists ORDER BY save_id")
+            .expect("prepare shortlists")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .expect("query shortlists")
+            .collect::<Result<_, _>>()
+            .expect("read shortlists");
         assert_eq!(
-            conn.query_row(
-                "SELECT COUNT(*) FROM player_shortlist_entries WHERE save_id = 2",
-                [],
-                |row| row.get::<_, i64>(0),
+            shortlists,
+            [
+                (1, "/lists/Targets.fmf".to_string(), "Targets".to_string()),
+                (3, "/lists/Unnamed.fmf".to_string(), String::new()),
+            ]
+        );
+        let entries: Vec<(i64, i64)> = conn
+            .prepare(
+                "SELECT shortlist.save_id, entry.player_uid
+                 FROM player_shortlist_entries entry
+                 JOIN player_shortlists shortlist ON shortlist.id = entry.shortlist_id
+                 ORDER BY shortlist.save_id, entry.player_uid",
             )
-            .expect("count second save shortlist entries"),
-            1
-        );
+            .expect("prepare entries")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("query entries")
+            .collect::<Result<_, _>>()
+            .expect("read entries");
+        assert_eq!(entries, [(1, 77), (1, 12345), (3, 88)]);
+        let saves_columns = table_columns(&conn, "saves");
+        assert!(!saves_columns
+            .iter()
+            .any(|column| column.starts_with("player_shortlist")));
+        let foreign_key_violations: i64 = conn
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })
+            .expect("check foreign keys");
+        assert_eq!(foreign_key_violations, 0);
     }
 
     #[test]
@@ -4842,7 +4942,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
                 .expect("count retained saves"),
@@ -4895,7 +4995,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
                 .expect("count retained saves"),
@@ -4961,7 +5061,7 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("check normalized absence");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         assert_eq!(staff_count, 1);
         assert!(!normalized_exists);
     }
@@ -4983,8 +5083,6 @@ mod tests {
                 "context_token",
                 "reveal_hidden_information",
                 "linked_save_file_path",
-                "player_shortlist_file_path",
-                "player_shortlist_name",
             ]
         );
         assert_eq!(
@@ -5222,7 +5320,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
     }
 
     #[test]
@@ -5256,7 +5354,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -5296,7 +5394,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 51, "legacy version {legacy_version}");
+            assert_eq!(version, 52, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -5373,7 +5471,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 51);
+        assert_eq!(migrations.len(), 52);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -5591,7 +5689,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .expect("read v45 version"),
-            51
+            52
         );
         let targets = conn
             .prepare(
@@ -5951,7 +6049,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read v42 version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         assert_eq!(table_columns(&conn, "player_role_metrics").len(), 162);
         let row_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM player_role_metrics", [], |row| {
@@ -6348,7 +6446,8 @@ mod tests {
         )
         .expect("seed v50 CSV shortlists");
 
-        apply(&conn).expect("apply v51");
+        conn.execute_batch(PLAYER_SHORTLIST_FILE_V51_SQL)
+            .expect("apply v51");
 
         let entries: i64 = conn
             .query_row("SELECT COUNT(*) FROM player_shortlist_entries", [], |row| {
@@ -6623,7 +6722,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 51);
+        assert_eq!(version, 52);
         // Complete current rows are copied; a partial row and the complete historical row are not.
         assert_eq!(
             query_json_rows(

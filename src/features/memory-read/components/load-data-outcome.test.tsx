@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type {
   LoadDataProgress,
   LoadDataResult,
-  PlayerShortlistOutcome,
+  PlayerShortlistsOutcome,
   SeasonStatsOutcome,
 } from "../types/load-data";
 import { LoadDataOutcome, loadDataPhaseLabels } from "./load-data-outcome";
@@ -57,7 +57,7 @@ function resultWithHistoricalStoredSnapshot(): LoadDataResult {
       ingestMs: 400,
     },
     stats: { status: "notLinked", elapsedMs: 100 },
-    shortlist: { status: "notLinked" },
+    shortlists: { read: 0, failed: [] },
   };
 }
 
@@ -110,7 +110,7 @@ function successResult(): LoadDataResult {
       ingestMs: 400,
     },
     stats: { status: "notLinked", elapsedMs: 100 },
-    shortlist: { status: "notLinked" },
+    shortlists: { read: 0, failed: [] },
   };
 }
 
@@ -570,56 +570,58 @@ describe("LoadDataOutcome", () => {
   const statsSentence =
     "No FM save file is linked, so no season stats were read. Link one in Settings.";
 
-  it.each<[string, PlayerShortlistOutcome, string]>([
+  it.each<[string, PlayerShortlistsOutcome, string, boolean]>([
     [
-      "a re-read shortlist with its counts",
+      "one re-read shortlist",
+      { read: 1, failed: [] },
+      "Read 1 shortlist.",
+      false,
+    ],
+    [
+      "several re-read shortlists",
+      { read: 3, failed: [] },
+      "Read 3 shortlists.",
+      false,
+    ],
+    [
+      "each failed file by name with its reason",
       {
-        status: "read",
-        name: "Targets",
-        totalPlayers: 9,
-        matchedPlayers: 7,
+        read: 1,
+        failed: [
+          { kind: "unreadable", fileName: "Targets.fmf" },
+          { kind: "not_player_shortlist", fileName: "View.fmf" },
+          { kind: "database", fileName: "Loans.fmf" },
+        ],
       },
-      "Read the shortlist Targets: 9 players, 7 in this snapshot.",
+      "Read 1 shortlist. Targets.fmf could not be found or opened, so its previous players are kept. View.fmf is not a player shortlist, so its previous players are kept. Loans.fmf could not be stored, so its previous players are kept.",
+      true,
     ],
     [
-      "a discarded stale re-read",
-      { status: "staleContext" },
-      "The save or its shortlist changed while the shortlist was read, so it was not updated.",
+      "shortlists that could not be updated at all",
+      { read: 0, failed: [{ kind: "database", fileName: null }] },
+      "Read 0 shortlists. The shortlists could not be updated, so their previous players are kept.",
+      true,
     ],
-    [
-      "a missing or unopenable file by name",
-      { status: "failed", kind: "unreadable", fileName: "Targets.fmf" },
-      "The shortlist was not read: Targets.fmf could not be found or opened. The previous shortlist is kept.",
-    ],
-    [
-      "a file that is not a player shortlist",
-      {
-        status: "failed",
-        kind: "not_player_shortlist",
-        fileName: "View.fmf",
-      },
-      "The shortlist was not read: View.fmf is not a player shortlist. The previous shortlist is kept.",
-    ],
-    [
-      "a failed write",
-      { status: "failed", kind: "database", fileName: null },
-      "The shortlist could not be stored, so the previous shortlist is kept.",
-    ],
-  ])("reports %s after the season stats", (_case, shortlist, expected) => {
-    render(
-      <LoadDataOutcome
-        error={null}
-        result={{ ...successResult(), shortlist }}
-        onDismiss={() => undefined}
-      />,
-    );
+  ])(
+    "reports %s after the season stats",
+    (_case, shortlists, expected, isProblem) => {
+      render(
+        <LoadDataOutcome
+          error={null}
+          result={{ ...successResult(), shortlists }}
+          onDismiss={() => undefined}
+        />,
+      );
 
-    expect(
-      screen.getByText(/Loaded 3 players into the database/i),
-    ).toHaveTextContent(`${statsSentence} ${expected}`);
-  });
+      const outcome = screen.getByText(/Loaded 3 players into the database/i);
+      expect(outcome).toHaveTextContent(`${statsSentence} ${expected}`);
+      expect(outcome.parentElement?.parentElement).toHaveClass(
+        isProblem ? "bg-warning-container" : "bg-success-container",
+      );
+    },
+  );
 
-  it("reports nothing about a shortlist when none is linked", () => {
+  it("reports nothing about shortlists when the save has none", () => {
     render(
       <LoadDataOutcome
         error={null}

@@ -105,7 +105,10 @@ type SearchResultsPanelProps = {
   datasetToggles?: ReactNode;
   view: SearchView;
   comparisonPool: ComparisonPool;
-  shortlistOnly: boolean;
+  /** The selected shortlist, or null for no shortlist restriction. */
+  shortlistId: number | null;
+  /** Called with a requested shortlist that the save no longer has. */
+  onShortlistMissing?: (shortlistId: number) => void;
   pageContext: SearchPlayerPageContext;
   orderedLaneIds: readonly string[];
   laneLabels: ReadonlyMap<string, TacticLaneLabel>;
@@ -243,7 +246,7 @@ function SearchResultsVirtualTable({
   onFilterColumn,
   view,
   comparisonPool,
-  shortlistOnly,
+  shortlistId,
   pageContext,
   firstPageQueryOptions,
   isReplacementActive,
@@ -265,7 +268,7 @@ function SearchResultsVirtualTable({
   onFilterColumn: (metricId: string) => void;
   view: SearchView;
   comparisonPool: ComparisonPool;
-  shortlistOnly: boolean;
+  shortlistId: number | null;
   pageContext: SearchPlayerPageContext;
   firstPageQueryOptions: ReturnType<typeof searchPlayersQueryOptions>;
   isReplacementActive: boolean;
@@ -342,7 +345,7 @@ function SearchResultsVirtualTable({
         requestedFields,
         view,
         comparisonPool,
-        shortlistOnly,
+        shortlistId,
         pageContext,
       ),
     [
@@ -351,7 +354,7 @@ function SearchResultsVirtualTable({
       filters,
       pageContext,
       requestedFields,
-      shortlistOnly,
+      shortlistId,
       sortBy,
       sortDir,
       view,
@@ -529,7 +532,8 @@ export function SearchResultsPanel({
   datasetToggles,
   view,
   comparisonPool,
-  shortlistOnly,
+  shortlistId,
+  onShortlistMissing,
   pageContext,
   orderedLaneIds,
   laneLabels,
@@ -602,7 +606,7 @@ export function SearchResultsPanel({
       requestedFields,
       view,
       comparisonPool,
-      shortlistOnly,
+      shortlistId,
       pageContext,
     }),
     [
@@ -611,7 +615,7 @@ export function SearchResultsPanel({
       filters,
       pageContext,
       requestedFields,
-      shortlistOnly,
+      shortlistId,
       sortBy,
       sortDir,
       view,
@@ -631,7 +635,7 @@ export function SearchResultsPanel({
     committed.requestedFields,
     committed.view,
     committed.comparisonPool,
-    committed.shortlistOnly,
+    committed.shortlistId,
     committed.pageContext,
   );
   const namedRequestOptions = searchPlayersQueryOptions(
@@ -644,7 +648,7 @@ export function SearchResultsPanel({
     requested.requestedFields,
     requested.view,
     requested.comparisonPool,
-    requested.shortlistOnly,
+    requested.shortlistId,
     requested.pageContext,
     tableId,
   );
@@ -686,13 +690,13 @@ export function SearchResultsPanel({
           committed.filters,
           committed.filterCombine,
           committed.comparisonPool,
-          committed.shortlistOnly,
+          committed.shortlistId,
         ]) !==
         JSON.stringify([
           requested.filters,
           requested.filterCombine,
           requested.comparisonPool,
-          requested.shortlistOnly,
+          requested.shortlistId,
         ])
       ? "filter"
       : committed.sortBy !== requested.sortBy ||
@@ -789,12 +793,23 @@ export function SearchResultsPanel({
     requestedQuery.isSuccess,
   ]);
 
+  // The requested shortlist is no longer one of the save's shortlists.
+  const missingShortlistId =
+    requestedQuery.data?.state === "no_shortlist"
+      ? requested.shortlistId
+      : null;
+  useEffect(() => {
+    if (missingShortlistId !== null) {
+      onShortlistMissing?.(missingShortlistId);
+    }
+  }, [missingShortlistId, onShortlistMissing]);
+
   const listKey = useMemo(
     () =>
       [
         committed.view,
         committed.comparisonPool,
-        String(committed.shortlistOnly),
+        String(committed.shortlistId),
         committed.filterCombine,
         ...committed.filters.map(
           (rule) =>
@@ -993,28 +1008,24 @@ export function SearchResultsPanel({
       committed.filters,
       committed.view,
     );
-    const shortlistEmpty = committed.shortlistOnly;
+    const shortlistEmpty = committed.shortlistId !== null;
     const emptyTitle = shortlistEmpty
-      ? page.state === "no_shortlist"
-        ? "No shortlist linked"
-        : appliedFilters.length > 0
-          ? "No shortlisted players match these filters"
-          : committed.view === "moneyball"
-            ? "No shortlisted player has season stats"
-            : "No shortlisted player in this snapshot"
+      ? appliedFilters.length > 0
+        ? "No shortlisted players match these filters"
+        : committed.view === "moneyball"
+          ? "No shortlisted player has season stats"
+          : "No shortlisted player in this snapshot"
       : appliedFilters.length > 0
         ? "No players match these filters"
         : committed.view === "moneyball"
           ? "No Moneyball stats for this snapshot"
           : "No players in snapshot";
     const emptyBody = shortlistEmpty
-      ? page.state === "no_shortlist"
-        ? "Use Choose FM Shortlist to link a shortlist file exported from Football Manager, or turn Shortlist off to browse every snapshot player."
-        : appliedFilters.length > 0
-          ? "Adjust or clear filters in the toolbar above, or turn Shortlist off to widen the result set."
-          : committed.view === "moneyball"
-            ? "None of the shortlist's players have season stats in this snapshot. Turn Shortlist off to compare every player with season stats."
-            : "None of the shortlist's players are in this snapshot. Turn Shortlist off to browse every snapshot player."
+      ? appliedFilters.length > 0
+        ? "Adjust or clear filters in the toolbar above, or select No shortlist to widen the result set."
+        : committed.view === "moneyball"
+          ? "None of the shortlist's players have season stats in this snapshot. Select No shortlist to compare every player with season stats."
+          : "None of the shortlist's players are in this snapshot. Select No shortlist to browse every snapshot player."
       : appliedFilters.length > 0
         ? "Adjust or clear filters in the toolbar above to widen the result set."
         : committed.view === "moneyball"
@@ -1056,7 +1067,7 @@ export function SearchResultsPanel({
         requestedFields={committed.requestedFields}
         view={committed.view}
         comparisonPool={committed.comparisonPool}
-        shortlistOnly={committed.shortlistOnly}
+        shortlistId={committed.shortlistId}
         pageContext={committed.pageContext}
         firstPageQueryOptions={committedOptions}
         isReplacementActive={isReplacementActive}

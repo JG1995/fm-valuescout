@@ -30,14 +30,14 @@ import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
+  playerShortlistSelectionKey,
+  usePlayerShortlistSelectionStore,
+} from "@/stores/use-player-shortlist-selection-store";
+import {
   PLAYER_TABLE_LAYOUT_STORAGE_KEY,
   usePlayerTableStore,
 } from "@/stores/use-player-table-store";
 import { useSearchViewMemory } from "@/stores/use-search-view-memory";
-import {
-  shortlistFilterKey,
-  useShortlistFilterStore,
-} from "@/stores/use-shortlist-filter-store";
 import {
   getLastRefreshSeasonStatsIpcArgs,
   resolvePendingRefreshSeasonStats,
@@ -55,6 +55,7 @@ import {
   getLastChoosePlayerShortlistIpcArgs,
   getLastRemovePlayerShortlistIpcArgs,
   setPlayerShortlistChoiceIpcMockError,
+  setPlayerShortlistRemoveIpcMockError,
 } from "@/testing/player-shortlist-ipc-mock";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
@@ -62,7 +63,6 @@ import {
   getSearchPlayersCallCount,
   rejectPendingSearchPlayersPageIpcMock,
   resolvePendingSearchPlayersPageIpcMock,
-  setPlayerShortlistPresent,
   setSearchPlayersOverride,
   setSearchPlayersPageIpcMockMode,
 } from "@/testing/search-ipc-mock";
@@ -72,7 +72,7 @@ import {
   resolveLoadDataIpcMock,
   resolveSetActiveSaveIpcMock,
   setLoadDataIpcMockMode,
-  setSavePlayerShortlistIpcMock,
+  setSavePlayerShortlistsIpcMock,
 } from "@/testing/snapshot-ipc-mock";
 
 const { openFileDialog } = vi.hoisted(() => ({
@@ -201,6 +201,55 @@ function holdNamedSearchRequests(): HeldSearchRequest[] {
     });
   };
   return held;
+}
+
+/**
+ * Holds every `list_saves` request until the returned release runs. Other
+ * requests keep the shared IPC mock.
+ */
+function holdSaveListRequests(): () => void {
+  const internals = (
+    window as unknown as {
+      __TAURI_INTERNALS__: {
+        invoke: (
+          cmd: string,
+          args?: Record<string, unknown>,
+          options?: unknown,
+        ) => Promise<unknown>;
+      };
+    }
+  ).__TAURI_INTERNALS__;
+  const invoke = internals.invoke;
+  const held: (() => void)[] = [];
+  let holding = true;
+  internals.invoke = (cmd, args, options) => {
+    if (cmd !== "list_saves" || !holding) {
+      return invoke(cmd, args, options);
+    }
+    return new Promise((resolve) => {
+      held.push(() => resolve(invoke(cmd, args, options)));
+    });
+  };
+  return () => {
+    holding = false;
+    for (const release of held) release();
+  };
+}
+
+const TARGETS = { id: 1, name: "Targets", fileName: "Targets.fmf" };
+const LOANS = { id: 2, name: "Loans", fileName: "Loans.fmf" };
+
+/** The default save's stored shortlist selection. */
+function storedShortlistSelection() {
+  return usePlayerShortlistSelectionStore.getState().selections[
+    playerShortlistSelectionKey({ saveId: 1, contextToken: "save-token-1" })
+  ];
+}
+
+function selectStoredShortlist(shortlistId: number) {
+  usePlayerShortlistSelectionStore
+    .getState()
+    .select({ saveId: 1, contextToken: "save-token-1" }, shortlistId);
 }
 
 /** Records the arguments of every `search_players` request. */
@@ -2376,14 +2425,15 @@ describe("search route", () => {
     ]);
   });
 
-  it("keeps Search rows through a shortlist switch, then shows its rows from the top", async () => {
+  it("keeps Search rows through a shortlist selection, then shows its rows from the top", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
+    setSavePlayerShortlistsIpcMock(1, [TARGETS]);
     setSearchPlayersOverride(manyPlayers(120));
     renderSearchRoute();
 
-    const toggleOff = await screen.findByRole("switch", {
-      name: "Shortlist: Off",
+    const shortlistSelect = await screen.findByRole("combobox", {
+      name: "Shortlist",
     });
     const table = await screen.findByRole("table", {
       name: "Player search results",
@@ -2394,7 +2444,7 @@ describe("search route", () => {
     expect(await within(table).findByText("Player 060")).toBeInTheDocument();
     const held = holdNamedSearchRequests();
 
-    await user.click(toggleOff);
+    await user.selectOptions(shortlistSelect, "Targets");
 
     await waitFor(() => expect(held).toHaveLength(1));
     expect(screen.getByRole("status")).toHaveTextContent("Filtering…");
@@ -2407,7 +2457,7 @@ describe("search route", () => {
     const switchedScroller = screen.getByTestId("search-results-scroller");
     expect(switchedScroller).not.toBe(scroller);
     expect(switchedScroller.scrollTop).toBe(0);
-    expect(getLastSearchPlayersArgs()).toMatchObject({ shortlistOnly: true });
+    expect(getLastSearchPlayersArgs()).toMatchObject({ shortlistId: 1 });
   });
 
   it("clears Search rows when Load Data replaces the snapshot", async () => {
@@ -3336,7 +3386,7 @@ describe("search route", () => {
       JSON.stringify([{ field: "ca", op: "gte", value: 150 }]),
     );
     const { router } = renderSearchRoute(
-      `/search?view=general&sort=pa&dir=asc&combine=or&filters=${encodedFilters}&shortlistOnly=true`,
+      `/search?view=general&sort=pa&dir=asc&combine=or&filters=${encodedFilters}`,
     );
     await screen.findByText("High CA");
     const generalState = {
@@ -3345,7 +3395,6 @@ describe("search route", () => {
       dir: "asc",
       combine: "or",
       filters: [expect.objectContaining({ field: "ca" })],
-      shortlistOnly: true,
     };
     expect(router.state.location.search).toMatchObject(generalState);
 
@@ -3359,7 +3408,6 @@ describe("search route", () => {
         combine: "and",
         filters: [],
         comparisonPool: "filtered",
-        shortlistOnly: true,
       });
     });
 
@@ -3499,240 +3547,206 @@ describe("search route", () => {
     );
   });
 
-  it("defaults the player shortlist filter on when the save has a stored shortlist", async () => {
+  it("lists No shortlist and each shortlist, adds file names to shared names, and starts with none", async () => {
     await resolveLoadDataIpcMock();
-    setPlayerShortlistPresent(true);
+    setSavePlayerShortlistsIpcMock(1, [
+      LOANS,
+      { id: 3, name: "Targets", fileName: "First.fmf" },
+      { id: 4, name: "Targets", fileName: "Second.fmf" },
+      { id: 5, name: "", fileName: "Unnamed.fmf" },
+    ]);
     setSearchPlayersOverride([playerNamed("General Scout", 160)]);
     renderSearchRoute("/search");
 
+    const select = await screen.findByRole("combobox", { name: "Shortlist" });
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
-    ).toHaveAttribute("aria-checked", "true");
+      within(select)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual([
+      "No shortlist",
+      "Loans",
+      "Targets (First.fmf)",
+      "Targets (Second.fmf)",
+      "Unnamed.fmf",
+    ]);
+    expect(select).toHaveValue("");
+    expect(
+      screen.queryByRole("button", { name: "Remove shortlist" }),
+    ).toBeNull();
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         searchView: "general",
-        shortlistOnly: true,
+        shortlistId: null,
       });
     });
   });
 
-  it("defaults the player shortlist filter off when the save has no stored shortlist", async () => {
+  it("hides the shortlist dropdown when the save has no shortlists", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("General Scout", 160)]);
     renderSearchRoute("/search");
 
+    await screen.findByText("General Scout");
+    expect(screen.queryByRole("combobox", { name: "Shortlist" })).toBeNull();
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
+      screen.getByRole("button", { name: "Add FM Shortlist" }),
+    ).toBeEnabled();
+  });
+
+  it("restricts both views to the selected shortlist and starts each save context with none", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSavePlayerShortlistsIpcMock(1, [LOANS, TARGETS]);
+    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+    const { router, queryClient } = renderSearchRoute("/search");
+
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Shortlist" }),
+      "Targets",
+    );
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         searchView: "general",
-        shortlistOnly: false,
+        shortlistId: 1,
       });
     });
-  });
+    expect(router.state.location.search).not.toHaveProperty("shortlistOnly");
 
-  it("keeps a manual shortlist toggle across navigation away and back", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlayerShortlistPresent(true);
-    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
-    const { router } = renderSearchRoute("/search");
-
-    const toggleOn = await screen.findByRole("switch", {
-      name: "Shortlist: On",
+    // Moneyball keeps the selection, with the dropdown and remove beside
+    // Percentiles vs and only page actions in the header.
+    await user.click(screen.getByRole("link", { name: "Moneyball" }));
+    const toolbar = await screen.findByRole("toolbar", {
+      name: "Player results toolbar",
     });
-    await user.click(toggleOn);
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
-    expect(
-      useShortlistFilterStore.getState().choices[
-        shortlistFilterKey("player", {
-          saveId: 1,
-          contextToken: "save-token-1",
-        })
-      ],
-    ).toBe(false);
-
-    router.history.push("/staff");
-    expect(
-      await screen.findByRole("heading", { name: "Staff Search" }),
-    ).toBeInTheDocument();
-    router.history.back();
-    expect(
-      await screen.findByRole("heading", { name: "Player Search" }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
-  });
-
-  it("honors an explicit false shortlist URL override over a present shortlist", async () => {
-    await resolveLoadDataIpcMock();
-    setPlayerShortlistPresent(true);
-    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
-    const { router } = renderSearchRoute("/search?shortlistOnly=false");
-
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
-    expect(router.state.location.search.shortlistOnly).toBe(false);
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "general",
-        shortlistOnly: false,
+        searchView: "moneyball",
+        shortlistId: 1,
       });
     });
-  });
+    expect(
+      within(toolbar).getByRole("combobox", { name: "Shortlist" }),
+    ).toHaveValue("1");
+    expect(
+      within(toolbar).getByRole("button", { name: "Remove shortlist" }),
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar).getByRole("group", { name: "Percentiles vs" }),
+    ).toBeInTheDocument();
+    const header = screen.getByTestId("search-page-header");
+    expect(
+      within(header).queryByRole("button", { name: "Remove shortlist" }),
+    ).toBeNull();
 
-  it("scopes the shortlist choice to the save context across save switches", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlayerShortlistPresent(true);
-    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
-    const { queryClient } = renderSearchRoute("/search");
-
-    const toggleOn = await screen.findByRole("switch", {
-      name: "Shortlist: On",
+    await user.selectOptions(
+      within(toolbar).getByRole("combobox", { name: "Shortlist" }),
+      "No shortlist",
+    );
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "moneyball",
+        shortlistId: null,
+      });
     });
-    await user.click(toggleOn);
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
-    expect(
-      useShortlistFilterStore.getState().choices[
-        shortlistFilterKey("player", {
-          saveId: 1,
-          contextToken: "save-token-1",
-        })
-      ],
-    ).toBe(false);
+    expect(storedShortlistSelection()).toBeUndefined();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Shortlist" }),
+      "Loans",
+    );
 
-    // A second save with the same presence re-derives its default instead
-    // of inheriting the first save's manual toggle.
+    // Another save context starts with no shortlist selected.
     await resolveCreateSaveIpcMock({ name: "Save B" });
     await resolveSetActiveSaveIpcMock({ saveId: 2 });
     await resolveLoadDataIpcMock();
+    setSavePlayerShortlistsIpcMock(2, [{ ...LOANS, id: 7 }]);
     await act(async () => {
       await queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
       await queryClient.invalidateQueries({ queryKey: searchKeys.all });
     });
 
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
-    ).toHaveAttribute("aria-checked", "true");
-    expect(
-      useShortlistFilterStore.getState().choices[
-        shortlistFilterKey("player", {
-          saveId: 1,
-          contextToken: "save-token-1",
-        })
-      ],
-    ).toBe(false);
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Shortlist" })).toHaveValue(
+        "",
+      ),
+    );
+    expect(storedShortlistSelection()).toBe(LOANS.id);
   });
 
-  it("replace-normalizes a legacy shortlist view to General with filtering on", async () => {
+  it("selects nothing for a stored shortlist the save does not list and clears one Search no longer finds", async () => {
     await resolveLoadDataIpcMock();
+    setSavePlayerShortlistsIpcMock(1, [TARGETS]);
+    selectStoredShortlist(9);
     setSearchPlayersOverride([playerNamed("General Scout", 160)]);
-    const { router } = renderSearchRoute("/search?view=shortlist");
+    const { queryClient } = renderSearchRoute("/search");
 
+    const select = await screen.findByRole("combobox", { name: "Shortlist" });
+    expect(select).toHaveValue("");
     await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        view: "general",
-        shortlistOnly: true,
-      });
+      expect(getLastSearchPlayersArgs()).toMatchObject({ shortlistId: null });
     });
-    // The legacy history entry itself is replaced with the canonical URL.
-    await waitFor(() => {
-      expect(router.state.location.href).not.toContain("view=shortlist");
-      expect(router.state.location.href).toContain("shortlistOnly");
+    // A stored ID is never cleared merely because the save does not list it.
+    expect(storedShortlistSelection()).toBe(9);
+
+    // The shortlist was removed elsewhere, but the saves list is stale.
+    act(() => selectStoredShortlist(TARGETS.id));
+    await waitFor(() => expect(select).toHaveValue("1"));
+    setSavePlayerShortlistsIpcMock(1, []);
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: searchKeys.all });
     });
-    expect(router.history.canGoBack()).toBe(false);
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "general",
-        shortlistOnly: true,
-      });
-    });
-    expect(screen.queryByText("No shortlist yet")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Go to Moneyball" }),
-    ).not.toBeInTheDocument();
+
+    await waitFor(() => expect(storedShortlistSelection()).toBeUndefined());
   });
 
-  it("toggles shortlist filtering beside the result count and refetches", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([
-      playerNamed("High CA", 180),
-      playerNamed("Low CA", 100),
-    ]);
-    const { router } = renderSearchRoute("/search");
+  it.each([
+    ["a legacy shortlistOnly URL", "/search?shortlistOnly=true"],
+    ["a legacy shortlist view", "/search?view=shortlist"],
+  ])(
+    "opens %s as General with no shortlist selected and a clean URL",
+    async (_case, url) => {
+      await resolveLoadDataIpcMock();
+      setSavePlayerShortlistsIpcMock(1, [TARGETS]);
+      selectStoredShortlist(TARGETS.id);
+      setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+      const { router } = renderSearchRoute(url);
 
-    await screen.findByText("High CA");
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
-
-    const toggleOff = await screen.findByRole("switch", {
-      name: "Shortlist: Off",
-    });
-    toggleOff.focus();
-    await user.keyboard(" ");
-    // The per-save choice records the toggle; normal URLs stay clean.
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
-    ).toHaveAttribute("aria-checked", "true");
-    expect(router.state.location.search.shortlistOnly).toBeUndefined();
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "general",
-        shortlistOnly: true,
+      await waitFor(() => {
+        expect(router.state.location.href).not.toContain("shortlist");
       });
-    });
+      expect(router.history.canGoBack()).toBe(false);
+      expect(storedShortlistSelection()).toBeUndefined();
+      expect(
+        await screen.findByRole("heading", { name: "Player Search" }),
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByRole("combobox", { name: "Shortlist" }),
+      ).toHaveValue("");
+      await waitFor(() => {
+        expect(getLastSearchPlayersArgs()).toMatchObject({
+          searchView: "general",
+          shortlistId: null,
+        });
+      });
+    },
+  );
 
-    // Toggling remounts the results panel, so re-query the switch.
-    const toggleOn = await screen.findByRole("switch", {
-      name: "Shortlist: On",
-    });
-    await user.click(toggleOn);
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
-    expect(router.state.location.search.shortlistOnly).toBeUndefined();
-    // Off records the per-save choice; the revisit is cache-served inside
-    // the query client's 60s stale window, so no second page query fires
-    // and last-args still reads the ON refetch above.
-    expect(
-      useShortlistFilterStore.getState().choices[
-        shortlistFilterKey("player", {
-          saveId: 1,
-          contextToken: "save-token-1",
-        })
-      ],
-    ).toBe(false);
-    // Off shows all current General players again.
-    expect(await screen.findByText("High CA")).toBeInTheDocument();
-    expect(await screen.findByText("Low CA")).toBeInTheDocument();
-  });
-
-  it("links a chosen FM shortlist, turns filtering on, and refreshes the save and General", async () => {
+  it("adds a chosen FM shortlist, selects it once the save lists it, and refreshes the save and General", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
+    setSavePlayerShortlistsIpcMock(1, [LOANS]);
     setSearchPlayersOverride([playerNamed("High CA", 180)]);
     openFileDialog.mockResolvedValue("C:\\FM\\shortlists\\Targets.fmf");
-    const { router, queryClient } = renderSearchRoute("/search");
+    const { queryClient } = renderSearchRoute("/search");
     await screen.findByText("High CA");
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const releaseSaves = holdSaveListRequests();
 
-    await user.click(
-      screen.getByRole("button", { name: "Choose FM Shortlist" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Add FM Shortlist" }));
 
-    expect(
-      await screen.findByText("Targets: 9 players, 7 in this snapshot."),
-    ).toBeInTheDocument();
+    // The selection is stored while the saves list still lacks the new
+    // shortlist, and it survives until the refetched list contains it.
+    await waitFor(() => expect(storedShortlistSelection()).toBe(3));
     expect(openFileDialog).toHaveBeenCalledWith({
       multiple: false,
       directory: false,
@@ -3743,36 +3757,50 @@ describe("search route", () => {
       contextToken: "save-token-1",
       path: "C:\\FM\\shortlists\\Targets.fmf",
     });
-    // The choice forces the filter on through the per-save choice while the
-    // URL stays clean.
+
+    act(() => releaseSaves());
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
-    ).toHaveAttribute("aria-checked", "true");
-    expect(router.state.location.search.shortlistOnly).toBeUndefined();
-    expect(
-      useShortlistFilterStore.getState().choices[
-        shortlistFilterKey("player", {
-          saveId: 1,
-          contextToken: "save-token-1",
-        })
-      ],
-    ).toBe(true);
+      await screen.findByText("Targets: 9 players, 7 in this snapshot."),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Shortlist" })).toHaveValue(
+        "3",
+      ),
+    );
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({ shortlistId: 3 });
+    });
     for (const queryKey of [snapshotKeys.saves(), searchKeys.playerPages()]) {
       expect(invalidate).toHaveBeenCalledWith({ queryKey });
     }
-    // The refreshed save shows the list name with its file name as the title.
-    expect(await screen.findByText("Targets")).toHaveAttribute(
-      "title",
-      "Targets.fmf",
-    );
     expect(
       screen.getByRole("button", { name: "Remove shortlist" }),
     ).toBeInTheDocument();
   });
 
-  it("states why a chosen file was rejected and keeps the shortlist switch", async () => {
+  it("clears the add confirmation when the current snapshot changes", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    openFileDialog.mockResolvedValue("C:\\FM\\shortlists\\Targets.fmf");
+    renderSearchRoute("/search");
+    await screen.findByText("High CA");
+
+    await user.click(screen.getByRole("button", { name: "Add FM Shortlist" }));
+    const confirmation = await screen.findByText(
+      "Targets: 9 players, 7 in this snapshot.",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Load Data" }));
+
+    await waitFor(() => expect(confirmation).not.toBeInTheDocument());
+  });
+
+  it("states why a chosen file was rejected and keeps every shortlist and the selection", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSavePlayerShortlistsIpcMock(1, [TARGETS]);
+    selectStoredShortlist(TARGETS.id);
     setSearchPlayersOverride([playerNamed("High CA", 180)]);
     openFileDialog.mockResolvedValue("C:\\FM\\views\\Scouting.fmf");
     setPlayerShortlistChoiceIpcMockError({
@@ -3781,21 +3809,19 @@ describe("search route", () => {
     });
     renderSearchRoute("/search");
     await screen.findByText("High CA");
-    await screen.findByRole("switch", { name: "Shortlist: Off" });
 
-    await user.click(
-      screen.getByRole("button", { name: "Choose FM Shortlist" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Add FM Shortlist" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Scouting.fmf is not a player shortlist.",
     );
+    const select = screen.getByRole("combobox", { name: "Shortlist" });
+    expect(select).toHaveValue("1");
     expect(
-      screen.getByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
-    expect(
-      screen.queryByRole("button", { name: "Remove shortlist" }),
-    ).toBeNull();
+      within(select)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["No shortlist", "Targets"]);
   });
 
   it("does nothing when the shortlist picker is cancelled", async () => {
@@ -3806,32 +3832,28 @@ describe("search route", () => {
     renderSearchRoute("/search");
     await screen.findByText("High CA");
 
-    await user.click(
-      screen.getByRole("button", { name: "Choose FM Shortlist" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Add FM Shortlist" }));
 
     await waitFor(() => expect(openFileDialog).toHaveBeenCalled());
     expect(getLastChoosePlayerShortlistIpcArgs()).toBeUndefined();
-    expect(
-      screen.getByRole("switch", { name: "Shortlist: Off" }),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Shortlist" })).toBeNull();
   });
 
-  it("removes the linked shortlist, turns filtering off, and refreshes the save and General", async () => {
+  it("removes the selected shortlist, selects none, clears the add confirmation, and refreshes the save and General", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setSavePlayerShortlistIpcMock(1, {
-      name: "Targets",
-      fileName: "Targets.fmf",
-    });
-    setPlayerShortlistPresent(true);
+    setSavePlayerShortlistsIpcMock(1, [LOANS]);
     setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    openFileDialog.mockResolvedValue("C:\\FM\\shortlists\\Targets.fmf");
     const { queryClient } = renderSearchRoute("/search");
-    expect(await screen.findByText("Targets")).toHaveAttribute(
-      "title",
-      "Targets.fmf",
+    await screen.findByText("High CA");
+    await user.click(screen.getByRole("button", { name: "Add FM Shortlist" }));
+    const confirmation = await screen.findByText(
+      "Targets: 9 players, 7 in this snapshot.",
     );
-    await screen.findByRole("switch", { name: "Shortlist: On" });
+    const shortlistSelect = () =>
+      screen.getByRole("combobox", { name: "Shortlist" });
+    await waitFor(() => expect(shortlistSelect()).toHaveValue("3"));
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
     await user.click(screen.getByRole("button", { name: "Remove shortlist" }));
@@ -3839,181 +3861,116 @@ describe("search route", () => {
     expect(getLastRemovePlayerShortlistIpcArgs()).toEqual({
       saveId: 1,
       contextToken: "save-token-1",
+      shortlistId: 3,
     });
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
-    await waitFor(() => expect(screen.queryByText("Targets")).toBeNull());
+    await waitFor(() =>
+      expect(
+        within(shortlistSelect())
+          .getAllByRole("option")
+          .map((option) => option.textContent),
+      ).toEqual(["No shortlist", "Loans"]),
+    );
+    expect(shortlistSelect()).toHaveValue("");
+    expect(storedShortlistSelection()).toBeUndefined();
+    expect(confirmation).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Remove shortlist" }),
     ).toBeNull();
     for (const queryKey of [snapshotKeys.saves(), searchKeys.playerPages()]) {
       expect(invalidate).toHaveBeenCalledWith({ queryKey });
     }
+
+    // Removing the last shortlist hides the dropdown.
+    await user.selectOptions(shortlistSelect(), "Loans");
+    await user.click(
+      await screen.findByRole("button", { name: "Remove shortlist" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("combobox", { name: "Shortlist" })).toBeNull(),
+    );
   });
 
-  it("composes shortlist filtering with a General filter in one fetch", async () => {
+  it("states that a shortlist could not be removed and keeps it selected", async () => {
+    const user = userEvent.setup();
     await resolveLoadDataIpcMock();
+    setSavePlayerShortlistsIpcMock(1, [TARGETS]);
+    selectStoredShortlist(TARGETS.id);
+    setPlayerShortlistRemoveIpcMockError({ kind: "database", fileName: null });
+    setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    renderSearchRoute("/search");
+    await screen.findByText("High CA");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Remove shortlist" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The shortlist could not be removed. Try again.",
+    );
+    expect(screen.getByRole("combobox", { name: "Shortlist" })).toHaveValue(
+      "1",
+    );
+    expect(storedShortlistSelection()).toBe(TARGETS.id);
+  });
+
+  it("composes the selected shortlist with a General filter in one fetch", async () => {
+    await resolveLoadDataIpcMock();
+    setSavePlayerShortlistsIpcMock(1, [TARGETS]);
+    selectStoredShortlist(TARGETS.id);
     setSearchPlayersOverride([playerNamed("General Scout", 160)]);
     const encoded = encodeURIComponent(
       JSON.stringify([{ field: "ca", op: "gte", value: 150 }]),
     );
-    renderSearchRoute(`/search?shortlistOnly=true&filters=${encoded}`);
+    renderSearchRoute(`/search?filters=${encoded}`);
 
     await screen.findByText("General Scout");
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         searchView: "general",
-        shortlistOnly: true,
+        shortlistId: 1,
         filters: [expect.objectContaining({ field: "ca" })],
-      });
-    });
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
-    ).toHaveAttribute("aria-checked", "true");
-  });
-
-  it("keeps the shortlist switch beside zero shortlist results with shortlist feedback", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([]);
-    const { router } = renderSearchRoute("/search?shortlistOnly=true");
-
-    expect(await screen.findByText("No shortlist linked")).toBeInTheDocument();
-    expect(
-      screen.queryByText("No players in snapshot"),
-    ).not.toBeInTheDocument();
-    const toggleOn = await screen.findByRole("switch", {
-      name: "Shortlist: On",
-    });
-    expect(toggleOn).toHaveAttribute("aria-checked", "true");
-    expect(
-      screen.getByText(/Use Choose FM Shortlist to link a shortlist file/),
-    ).toBeInTheDocument();
-
-    await user.click(toggleOn);
-    await waitFor(() => {
-      expect(router.state.location.search.shortlistOnly).toBeUndefined();
-    });
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
-    expect(
-      await screen.findByText("No players in snapshot"),
-    ).toBeInTheDocument();
-  });
-
-  it("explains a linked shortlist with no player in the current snapshot", async () => {
-    await resolveLoadDataIpcMock();
-    setPlayerShortlistPresent(true);
-    setSearchPlayersOverride([]);
-    renderSearchRoute("/search?shortlistOnly=true");
-
-    expect(
-      await screen.findByText("No shortlisted player in this snapshot"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "None of the shortlist's players are in this snapshot. Turn Shortlist off to browse every snapshot player.",
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it("shares the Shortlist switch between Moneyball and General with the shortlist in the Moneyball header", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setSavePlayerShortlistIpcMock(1, {
-      name: "Targets",
-      fileName: "Targets.fmf",
-    });
-    setPlayerShortlistPresent(true);
-    setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
-    const { router } = renderSearchRoute("/search?view=moneyball");
-
-    await screen.findByText("Moneyball Scout");
-    const toolbar = screen.getByRole("toolbar", {
-      name: "Player results toolbar",
-    });
-    const header = screen.getByTestId("search-page-header");
-    expect(within(header).getByText("Targets")).toHaveAttribute(
-      "title",
-      "Targets.fmf",
-    );
-    for (const name of [
-      "Choose FM Shortlist",
-      "Remove shortlist",
-      "Refresh stats",
-    ]) {
-      expect(within(header).getByRole("button", { name })).toBeInTheDocument();
-    }
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "moneyball",
-        shortlistOnly: true,
-      });
-    });
-
-    await user.click(
-      within(toolbar).getByRole("switch", { name: "Shortlist: On" }),
-    );
-    // The Off page was fetched before presence turned the switch On, so it is
-    // cache-served; the per-save choice records the toggle.
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
-
-    router.history.push("/search?view=general");
-    expect(
-      await screen.findByRole("heading", { name: "Player Search" }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "general",
-        shortlistOnly: false,
       });
     });
   });
 
   it.each([
     {
-      state: "no linked shortlist",
-      linked: false,
+      state: "no shortlisted player in the General snapshot",
+      route: "/search?view=general",
       filters: "",
-      title: "No shortlist linked",
-      body: /Use Choose FM Shortlist to link a shortlist file/,
+      title: "No shortlisted player in this snapshot",
+      body: "None of the shortlist's players are in this snapshot. Select No shortlist to browse every snapshot player.",
     },
     {
       state: "no shortlisted player with season stats",
-      linked: true,
+      route: "/search?view=moneyball",
       filters: "",
       title: "No shortlisted player has season stats",
-      body: "None of the shortlist's players have season stats in this snapshot. Turn Shortlist off to compare every player with season stats.",
+      body: "None of the shortlist's players have season stats in this snapshot. Select No shortlist to compare every player with season stats.",
     },
     {
       state: "no shortlisted player matching the filters",
-      linked: true,
+      route: "/search?view=moneyball",
       filters: `&filters=${encodeURIComponent(
         JSON.stringify([{ field: "ca", op: "gte", value: 150 }]),
       )}`,
       title: "No shortlisted players match these filters",
-      body: /turn Shortlist off to widen the result set/,
+      body: "Adjust or clear filters in the toolbar above, or select No shortlist to widen the result set.",
     },
   ])(
-    "explains a Moneyball shortlist with $state",
-    async ({ linked, filters, title, body }) => {
+    "explains a selected shortlist with $state",
+    async ({ route, filters, title, body }) => {
       await resolveLoadDataIpcMock();
-      setPlayerShortlistPresent(linked);
+      setSavePlayerShortlistsIpcMock(1, [TARGETS]);
+      selectStoredShortlist(TARGETS.id);
       setSearchPlayersOverride([]);
-      renderSearchRoute(`/search?view=moneyball&shortlistOnly=true${filters}`);
+      renderSearchRoute(`${route}${filters}`);
 
       expect(await screen.findByText(title)).toBeInTheDocument();
       expect(screen.getByText(body)).toBeInTheDocument();
-      expect(
-        screen.getByRole("switch", { name: "Shortlist: On" }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("combobox", { name: "Shortlist" })).toHaveValue(
+        "1",
+      );
     },
   );
 
@@ -4119,13 +4076,13 @@ describe("search route", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps Choose FM Shortlist unavailable without a current snapshot", async () => {
+  it("keeps Add FM Shortlist unavailable without a current snapshot", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("High CA", 180)]);
     const { queryClient } = renderSearchRoute("/search");
     await screen.findByText("High CA");
     expect(
-      screen.getByRole("button", { name: "Choose FM Shortlist" }),
+      screen.getByRole("button", { name: "Add FM Shortlist" }),
     ).toBeEnabled();
 
     await act(async () => {
@@ -4134,7 +4091,7 @@ describe("search route", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Choose FM Shortlist" }),
+        screen.getByRole("button", { name: "Add FM Shortlist" }),
       ).toBeDisabled(),
     );
   });
@@ -4142,6 +4099,7 @@ describe("search route", () => {
   describe("search table toolbar", () => {
     it("associates summary, chips, edit, columns, and dataset toggles in one table toolbar", async () => {
       await resolveLoadDataIpcMock();
+      setSavePlayerShortlistsIpcMock(1, [TARGETS]);
       setSearchPlayersOverride([playerNamed("High CA", 180)]);
       renderSearchRoute();
 
@@ -4159,7 +4117,7 @@ describe("search route", () => {
         within(toolbar).getByRole("button", { name: "Columns" }),
       ).toBeInTheDocument();
       expect(
-        within(toolbar).getByRole("switch", { name: "Shortlist: Off" }),
+        within(toolbar).getByRole("combobox", { name: "Shortlist" }),
       ).toBeInTheDocument();
       const table = screen.getByRole("table", {
         name: "Player search results",
@@ -4170,7 +4128,7 @@ describe("search route", () => {
       ).toBeTruthy();
     });
 
-    it("keeps Add Tactic and Choose FM Shortlist outside the generic toolbar", async () => {
+    it("keeps Add Tactic and Add FM Shortlist outside the generic toolbar", async () => {
       await resolveLoadDataIpcMock();
       setSearchPlayersOverride([playerNamed("High CA", 180)]);
       renderSearchRoute("/search?view=general");
@@ -4192,7 +4150,7 @@ describe("search route", () => {
       for (const name of [
         "Add Tactic (Current)",
         "Add Tactic (Potential)",
-        "Choose FM Shortlist",
+        "Add FM Shortlist",
       ]) {
         expect(screen.getByRole("button", { name })).toBeInTheDocument();
         expect(

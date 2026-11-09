@@ -2,9 +2,10 @@ import { create } from "zustand";
 
 /**
  * Search surfaces that can restrict their results to a stored shortlist.
- * Player Search and Staff Search keep independent choices.
+ * Player Search selects among several shortlists in
+ * `usePlayerShortlistSelectionStore` instead.
  */
-export type ShortlistSurface = "player" | "staff";
+export type ShortlistSurface = "staff";
 
 /** The save identity that scopes a shortlist filter choice. */
 export type ShortlistSaveContext = {

@@ -29,10 +29,17 @@ pub struct SaveSummary {
     pub updated_at_utc: String,
     /// The linked FM save's file name. The stored path's directory never leaves the database.
     pub linked_save_file_name: Option<String>,
-    /// The linked FM shortlist's list name.
-    pub player_shortlist_name: Option<String>,
-    /// The linked FM shortlist's file name, which marks a save as having a shortlist.
-    pub player_shortlist_file_name: Option<String>,
+    /// The save's linked FM shortlists, by name case-insensitively, then by file name.
+    pub player_shortlists: Vec<PlayerShortlistSummary>,
+}
+
+/// One linked FM shortlist of a save. The stored path's directory never leaves the database.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayerShortlistSummary {
+    pub id: i64,
+    /// The list name from the file's last successful read.
+    pub name: String,
+    pub file_name: String,
 }
 
 /// A WebView-supplied path that read as a supported FM27 save when it was validated.
@@ -250,7 +257,7 @@ pub fn list_saves(conn: &Connection) -> Result<Vec<SaveSummary>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT id, context_token, name, is_active, created_at_utc, updated_at_utc,
-                    linked_save_file_path, player_shortlist_name, player_shortlist_file_path
+                    linked_save_file_path
              FROM saves
              ORDER BY id",
         )
@@ -262,7 +269,10 @@ pub fn list_saves(conn: &Connection) -> Result<Vec<SaveSummary>, String> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
 
-    Ok(saves)
+    saves
+        .into_iter()
+        .map(|save| with_player_shortlists(conn, save))
+        .collect()
 }
 
 pub fn list_snapshot_metadata(
@@ -633,15 +643,17 @@ fn set_active_save_in_transaction(tx: &Transaction<'_>, save_id: i64) -> Result<
 }
 
 fn get_save_by_id(conn: &Connection, save_id: i64) -> Result<SaveSummary, String> {
-    conn.query_row(
-        "SELECT id, context_token, name, is_active, created_at_utc, updated_at_utc,
-                linked_save_file_path, player_shortlist_name, player_shortlist_file_path
-         FROM saves
-         WHERE id = ?1",
-        params![save_id],
-        map_save_row,
-    )
-    .map_err(|error| error.to_string())
+    let save = conn
+        .query_row(
+            "SELECT id, context_token, name, is_active, created_at_utc, updated_at_utc,
+                    linked_save_file_path
+             FROM saves
+             WHERE id = ?1",
+            params![save_id],
+            map_save_row,
+        )
+        .map_err(|error| error.to_string())?;
+    with_player_shortlists(conn, save)
 }
 
 fn map_save_row(row: &Row<'_>) -> rusqlite::Result<SaveSummary> {
@@ -653,9 +665,32 @@ fn map_save_row(row: &Row<'_>) -> rusqlite::Result<SaveSummary> {
         created_at_utc: row.get(4)?,
         updated_at_utc: row.get(5)?,
         linked_save_file_name: file_name(row.get::<_, Option<String>>(6)?.as_deref()),
-        player_shortlist_name: row.get(7)?,
-        player_shortlist_file_name: file_name(row.get::<_, Option<String>>(8)?.as_deref()),
+        player_shortlists: Vec::new(),
     })
+}
+
+/// Fills in the save's linked shortlists, ordered by name case-insensitively, then by file
+/// name.
+fn with_player_shortlists(conn: &Connection, mut save: SaveSummary) -> Result<SaveSummary, String> {
+    let mut shortlists = conn
+        .prepare("SELECT id, name, file_path FROM player_shortlists WHERE save_id = ?1")
+        .and_then(|mut statement| {
+            statement
+                .query_map([save.id], |row| {
+                    Ok(PlayerShortlistSummary {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        file_name: file_name(Some(&row.get::<_, String>(2)?)).unwrap_or_default(),
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|error| error.to_string())?;
+    shortlists.sort_by_cached_key(|shortlist| {
+        (shortlist.name.to_lowercase(), shortlist.file_name.clone())
+    });
+    save.player_shortlists = shortlists;
+    Ok(save)
 }
 
 /// The last component of a stored path; the directory never leaves the database.
@@ -981,6 +1016,52 @@ mod tests {
         assert_eq!(
             listed[1].linked_save_file_name.as_deref(),
             Some("Career One.fm")
+        );
+    }
+
+    #[test]
+    fn saves_list_their_shortlists_by_name_then_file_name_without_paths() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("save-shortlists.db"));
+        let save = list_saves(&conn).expect("list saves").remove(0);
+        let other = create_save(&conn, "Other").expect("create other save");
+        for (save_id, path, name) in [
+            (save.id, "/lists/b/Zeta.fmf", "targets"),
+            (save.id, "/lists/a/Alpha.fmf", "Targets"),
+            (save.id, "/lists/Loans.fmf", "Loans"),
+            (other.id, "/lists/Elsewhere.fmf", "Elsewhere"),
+        ] {
+            conn.execute(
+                "INSERT INTO player_shortlists (save_id, file_path, name) VALUES (?1, ?2, ?3)",
+                params![save_id, path, name],
+            )
+            .expect("insert shortlist");
+        }
+
+        let listed = |save_id| {
+            get_save_by_id(&conn, save_id)
+                .expect("read save")
+                .player_shortlists
+                .into_iter()
+                .map(|shortlist| (shortlist.name, shortlist.file_name))
+                .collect::<Vec<_>>()
+        };
+
+        let pair = |name: &str, file_name: &str| (name.to_string(), file_name.to_string());
+        assert_eq!(
+            listed(save.id),
+            [
+                pair("Loans", "Loans.fmf"),
+                pair("Targets", "Alpha.fmf"),
+                pair("targets", "Zeta.fmf"),
+            ]
+        );
+        assert_eq!(listed(other.id), [pair("Elsewhere", "Elsewhere.fmf")]);
+        assert_eq!(
+            list_saves(&conn).expect("list saves")[0]
+                .player_shortlists
+                .len(),
+            3
         );
     }
 

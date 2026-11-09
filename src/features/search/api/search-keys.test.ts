@@ -14,7 +14,7 @@ describe("searchKeys.players", () => {
       [],
       "general",
       "filtered",
-      false,
+      null,
       {
         activeSave: { id: 1, contextToken: "save-token" },
         currentSnapshot: { id: 2, saveId: 1 },
@@ -49,7 +49,7 @@ describe("searchKeys.players", () => {
       ["position", "role.goalkeeper_ip"],
       "general",
       "filtered",
-      false,
+      null,
       contextOne,
     );
     const roleThenPosition = searchKeys.players(
@@ -62,7 +62,7 @@ describe("searchKeys.players", () => {
       ["role.goalkeeper_ip", "position"],
       "general",
       "filtered",
-      false,
+      null,
       contextOne,
     );
 
@@ -78,7 +78,7 @@ describe("searchKeys.players", () => {
         [],
         "general",
         "filtered",
-        false,
+        null,
         contextTwo,
       ),
     );
@@ -90,38 +90,27 @@ describe("searchKeys.players", () => {
     expect(options.queryKey).toEqual(searchKeys.players(0, 50, "name", "asc"));
   });
 
-  it("keeps the shortlist restriction in the page cache identity", () => {
+  it("keeps the selected shortlist in the page cache identity", () => {
     const context = {
       activeSave: { id: 1, contextToken: "one" },
       currentSnapshot: { id: 2, saveId: 1 },
     };
-    const unrestricted = searchKeys.players(
-      0,
-      50,
-      "ca",
-      "desc",
-      [],
-      "and",
-      [],
-      "general",
-      "filtered",
-      false,
-      context,
-    );
-    const restricted = searchKeys.players(
-      0,
-      50,
-      "ca",
-      "desc",
-      [],
-      "and",
-      [],
-      "general",
-      "filtered",
-      true,
-      context,
-    );
+    const pageKey = (shortlistId: number | null) =>
+      searchKeys.players(
+        0,
+        50,
+        "ca",
+        "desc",
+        [],
+        "and",
+        [],
+        "general",
+        "filtered",
+        shortlistId,
+        context,
+      );
 
-    expect(restricted).not.toEqual(unrestricted);
+    expect(pageKey(1)).not.toEqual(pageKey(null));
+    expect(pageKey(1)).not.toEqual(pageKey(2));
   });
 });

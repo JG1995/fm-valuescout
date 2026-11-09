@@ -7,7 +7,7 @@ import {
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { DatabaseZap, FolderOpen, RefreshCw, X } from "lucide-react";
-import { Suspense, useEffect, useMemo } from "react";
+import { Suspense, useCallback, useEffect, useMemo } from "react";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
@@ -35,7 +35,6 @@ import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { choosePlayerShortlist } from "@/features/search/api/choose-player-shortlist";
 import { removePlayerShortlist } from "@/features/search/api/remove-player-shortlist";
 import { searchKeys } from "@/features/search/api/search-keys";
-import { playerShortlistProbeQueryOptions } from "@/features/search/api/search-players-query-options";
 import { SearchFilterBar } from "@/features/search/components/search-filter-bar";
 import type { TacticLaneLabel } from "@/features/search/components/search-results-panel";
 import { SearchResultsPanel } from "@/features/search/components/search-results-panel";
@@ -75,14 +74,15 @@ import { buildTacticColumnOrder } from "@/features/search/utils/tactic-columns";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import type { PlayerShortlistSummary } from "@/features/snapshot/types/save";
 import { TauriCommandError } from "@/lib/tauri-client";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
+import {
+  playerShortlistSelectionKey,
+  usePlayerShortlistSelectionStore,
+} from "@/stores/use-player-shortlist-selection-store";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { useSearchViewMemory } from "@/stores/use-search-view-memory";
-import {
-  shortlistFilterKey,
-  useShortlistFilterStore,
-} from "@/stores/use-shortlist-filter-store";
 import { cn } from "@/utils/cn";
 import { moneyballMetric } from "@/utils/moneyball-metrics";
 import {
@@ -136,8 +136,9 @@ export type SearchRouteSearch = {
 
 export const Route = createFileRoute("/search")({
   validateSearch: (search: Record<string, unknown>): SearchRouteSearch => {
-    // Legacy Player Shortlist links resolve to General with filtering on
-    // without inspecting persistence.
+    // Legacy Player Shortlist links resolve to General and keep
+    // `shortlistOnly` as a marker; the page then clears the shortlist
+    // selection and removes the marker.
     const legacyShortlist = search.view === "shortlist";
     const parsedView = parseSearchView(search.view);
     const explicitView = legacyShortlist
@@ -185,8 +186,8 @@ export const Route = createFileRoute("/search")({
   },
   beforeLoad: ({ location, search }) => {
     // Legacy Player Shortlist links replace the history entry with the
-    // canonical General + shortlistOnly URL instead of only normalizing
-    // parsed state. location.search is the raw query; search is validated.
+    // General + shortlistOnly marker URL instead of only normalizing parsed
+    // state. location.search is the raw query; search is validated.
     if (
       (location.search as Record<string, unknown> | undefined)?.view ===
       "shortlist"
@@ -271,7 +272,13 @@ function tacticLaneLabels(
 
 type SeasonStatsRefreshContext = { saveId: number; contextToken: string };
 
-type ShortlistChoiceRequest = SeasonStatsRefreshContext & { path: string };
+/** The save context and current snapshot an added file's confirmation belongs to. */
+type ShortlistChoiceRequest = SeasonStatsRefreshContext & {
+  snapshotId: number;
+  path: string;
+};
+
+type ShortlistRemoval = SeasonStatsRefreshContext & { shortlistId: number };
 
 /** Opens the native picker for one FM shortlist file. Resolves to null when cancelled. */
 async function chooseShortlistFile() {
@@ -297,15 +304,15 @@ const shortlistChoiceFailureReasons: Record<
   not_player_shortlist: (fileName) => `${fileName} is not a player shortlist.`,
   unsupported_format: (fileName) =>
     `${fileName} uses a shortlist format that is not supported.`,
-  no_snapshot: () => "Use Load Data before choosing a shortlist.",
+  no_snapshot: () => "Use Load Data before adding a shortlist.",
   no_matching_players: (fileName) =>
     `${fileName} does not match this save: none of its players are in the current snapshot.`,
   stale_context: () =>
-    "The save changed while the shortlist was read. Choose the file again.",
+    "The save changed while the shortlist was read. Add the file again.",
   database: () => "The shortlist could not be saved. Try again.",
 };
 
-/** The reason a choice was rejected; the previous shortlist is unchanged. */
+/** The reason an add was rejected; every shortlist is unchanged. */
 function shortlistChoiceFailureCopy(error: Error, path: string) {
   const reason =
     error instanceof TauriCommandError
@@ -326,6 +333,27 @@ function refreshSeasonStatsCopy(result: RefreshSeasonStatsResult): {
     };
   }
   return seasonStatsCopy(result);
+}
+
+/**
+ * Dropdown labels: the list name, or the file name when the name is empty,
+ * with the file name added when another shortlist shares the name.
+ */
+function shortlistOptionLabels(shortlists: PlayerShortlistSummary[]) {
+  return shortlists.map((shortlist) => {
+    const shared = shortlists.some(
+      (other) => other.id !== shortlist.id && other.name === shortlist.name,
+    );
+    return {
+      id: shortlist.id,
+      label:
+        shortlist.name === ""
+          ? shortlist.fileName
+          : shared
+            ? `${shortlist.name} (${shortlist.fileName})`
+            : shortlist.name,
+    };
+  });
 }
 
 function SearchPageContent() {
@@ -367,63 +395,61 @@ function SearchPageContent() {
       comparisonPool: routeComparisonPool,
     });
   }, [combine, dir, filterUrls, routeComparisonPool, sort, view]);
-  // The save context that scopes the shortlist choice: only a matching
-  // active-save + current-snapshot pair exposes the shortlist toggle.
-  // Keying by the mounted save/snapshot context prevents a switched save
-  // from initializing its choice from a previous save's data.
-  const shortlistContext =
+  // Only a matching active-save + current-snapshot pair shows results, and
+  // its save context scopes the shortlist selection.
+  const resultContext =
     snapshot && activeSave && snapshot.saveId === activeSave.id
-      ? {
-          activeSave: {
-            id: activeSave.id,
-            contextToken: activeSave.contextToken,
-          },
-          currentSnapshot: {
-            id: snapshot.id,
-            saveId: snapshot.saveId,
-          },
-        }
+      ? { snapshot, activeSave }
       : null;
-  const activeSaveId = shortlistContext?.activeSave.id ?? null;
-  const activeSaveContextToken =
-    shortlistContext?.activeSave.contextToken ?? null;
-  const shortlistProbe = useQuery({
-    ...playerShortlistProbeQueryOptions(shortlistContext ?? undefined),
-    enabled: shortlistContext !== null,
-  });
-  const shortlistChoice = useShortlistFilterStore((state) =>
+  const activeSaveId = resultContext?.activeSave.id ?? null;
+  const activeSaveContextToken = resultContext?.activeSave.contextToken ?? null;
+  const shortlists = resultContext?.activeSave.playerShortlists ?? [];
+  const storedShortlistId = usePlayerShortlistSelectionStore((state) =>
     activeSaveId === null || activeSaveContextToken === null
       ? undefined
-      : state.choices[
-          shortlistFilterKey("player", {
+      : state.selections[
+          playerShortlistSelectionKey({
             saveId: activeSaveId,
             contextToken: activeSaveContextToken,
           })
         ],
   );
-  useEffect(() => {
-    // Unset = uninitialized: derive the default from actual shortlist
-    // presence once. Later probe refreshes stay no-ops, so a manual toggle
-    // is never overwritten by query state.
-    if (
-      activeSaveId === null ||
-      activeSaveContextToken === null ||
-      shortlistProbe.data === undefined
-    ) {
-      return;
-    }
-    useShortlistFilterStore
-      .getState()
-      .initialize(
-        "player",
-        { saveId: activeSaveId, contextToken: activeSaveContextToken },
-        shortlistProbe.data.state === "ready",
-      );
-  }, [activeSaveId, activeSaveContextToken, shortlistProbe.data]);
-  const shortlistOnly = (routeShortlistOnly ?? shortlistChoice) === true;
+  // A stored shortlist the save does not list yet, such as one just added
+  // while the saves refetch, selects nothing until it is listed.
+  const shortlistId =
+    storedShortlistId !== undefined &&
+    shortlists.some((shortlist) => shortlist.id === storedShortlistId)
+      ? storedShortlistId
+      : null;
   const tableId = view === "moneyball" ? "moneyball-search" : "search";
   const layout = usePlayerTableStore((state) => state.layouts[tableId]);
   const navigate = Route.useNavigate();
+  // A legacy shortlist URL opens Search with no shortlist selected; the URL
+  // never carries the selection.
+  useEffect(() => {
+    if (routeShortlistOnly === undefined) return;
+    if (activeSaveId !== null && activeSaveContextToken !== null) {
+      usePlayerShortlistSelectionStore
+        .getState()
+        .clear({ saveId: activeSaveId, contextToken: activeSaveContextToken });
+    }
+    void navigate({
+      search: (previous) => ({ ...previous, shortlistOnly: undefined }),
+      replace: true,
+    });
+  }, [activeSaveId, activeSaveContextToken, navigate, routeShortlistOnly]);
+  const clearMissingShortlist = useCallback(
+    (missingShortlistId: number) => {
+      if (activeSaveId === null || activeSaveContextToken === null) return;
+      usePlayerShortlistSelectionStore
+        .getState()
+        .clear(
+          { saveId: activeSaveId, contextToken: activeSaveContextToken },
+          missingShortlistId,
+        );
+    },
+    [activeSaveId, activeSaveContextToken],
+  );
   const filters = useMemo(
     () => parseSearchFilters(filterUrls, view),
     [filterUrls, view],
@@ -456,10 +482,6 @@ function SearchPageContent() {
           ? refreshSeasonStatsCopy(refreshStats.data)
           : null
       : null;
-  const resultContext =
-    snapshot && activeSave && snapshot.saveId === activeSave.id
-      ? { snapshot, activeSave }
-      : null;
 
   const updateSearch = (
     patch: Partial<{
@@ -469,7 +491,6 @@ function SearchPageContent() {
       combine: FilterCombineMode;
       view: SearchView | undefined;
       comparisonPool: ComparisonPool | undefined;
-      shortlistOnly: boolean | undefined;
       replace: boolean;
     }>,
   ) =>
@@ -487,10 +508,6 @@ function SearchPageContent() {
           "comparisonPool" in patch
             ? patch.comparisonPool
             : previous.comparisonPool,
-        shortlistOnly:
-          "shortlistOnly" in patch
-            ? patch.shortlistOnly
-            : previous.shortlistOnly,
       }),
       replace: patch.replace ?? true,
     });
@@ -505,37 +522,53 @@ function SearchPageContent() {
   const chooseShortlist = useMutation({
     mutationFn: ({ saveId, contextToken, path }: ShortlistChoiceRequest) =>
       choosePlayerShortlist(saveId, contextToken, path),
-    onSuccess: async (_choice, { saveId, contextToken }) => {
-      useShortlistFilterStore
+    onSuccess: async (choice, { saveId, contextToken }) => {
+      usePlayerShortlistSelectionStore
         .getState()
-        .set("player", { saveId, contextToken }, true);
-      await updateSearch({ shortlistOnly: undefined });
+        .select({ saveId, contextToken }, choice.id);
       await refreshShortlistQueries();
     },
   });
   const removeShortlist = useMutation({
-    mutationFn: ({ saveId, contextToken }: SeasonStatsRefreshContext) =>
-      removePlayerShortlist(saveId, contextToken),
-    onSuccess: async (_result, { saveId, contextToken }) => {
-      useShortlistFilterStore
+    mutationFn: ({ saveId, contextToken, shortlistId }: ShortlistRemoval) =>
+      removePlayerShortlist(saveId, contextToken, shortlistId),
+    onSuccess: async (_result, { saveId, contextToken, shortlistId }) => {
+      usePlayerShortlistSelectionStore
         .getState()
-        .set("player", { saveId, contextToken }, false);
-      await updateSearch({ shortlistOnly: undefined });
+        .clear({ saveId, contextToken }, shortlistId);
+      chooseShortlist.reset();
       await refreshShortlistQueries();
     },
   });
   const pickShortlistFile = async () => {
     if (!resultContext) return;
     const { id: saveId, contextToken } = resultContext.activeSave;
+    const snapshotId = resultContext.snapshot.id;
     const path = await chooseShortlistFile();
     if (path) {
-      chooseShortlist.mutate({ saveId, contextToken, path });
+      chooseShortlist.mutate({ saveId, contextToken, snapshotId, path });
     }
   };
-  // The outcome belongs to the save context it chose for; a switched save hides it.
+  const selectShortlist = (value: string) => {
+    if (activeSaveId === null || activeSaveContextToken === null) return;
+    const context = {
+      saveId: activeSaveId,
+      contextToken: activeSaveContextToken,
+    };
+    const store = usePlayerShortlistSelectionStore.getState();
+    if (value === "") {
+      store.clear(context);
+    } else {
+      store.select(context, Number(value));
+    }
+    removeShortlist.reset();
+  };
+  // The outcome belongs to the save context and snapshot it added for; a
+  // switched save or a new snapshot hides it.
   const shortlistChoiceOutcome =
     chooseShortlist.variables?.saveId === activeSaveId &&
-    chooseShortlist.variables.contextToken === activeSaveContextToken
+    chooseShortlist.variables.contextToken === activeSaveContextToken &&
+    chooseShortlist.variables.snapshotId === resultContext?.snapshot.id
       ? chooseShortlist.isError
         ? {
             text: shortlistChoiceFailureCopy(
@@ -551,10 +584,10 @@ function SearchPageContent() {
             }
           : null
       : null;
-  const linkedShortlistSave =
-    resultContext?.activeSave.playerShortlistFileName != null
-      ? resultContext.activeSave
-      : null;
+  const removeFailed =
+    removeShortlist.isError &&
+    removeShortlist.variables.saveId === activeSaveId &&
+    removeShortlist.variables.contextToken === activeSaveContextToken;
 
   const handleRulesChange = (rules: FilterRule[]) => {
     updateSearch({ filters: rules });
@@ -571,54 +604,42 @@ function SearchPageContent() {
       );
     });
   };
-  const shortlistSwitch = (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={shortlistOnly}
-      onClick={() => {
-        if (activeSaveId === null || activeSaveContextToken === null) {
-          return;
-        }
-        // The per-save Zustand choice owns normal page revisits; the URL
-        // keeps only explicit deep-link overrides after the toggle clears it.
-        useShortlistFilterStore
-          .getState()
-          .set(
-            "player",
-            { saveId: activeSaveId, contextToken: activeSaveContextToken },
-            !shortlistOnly,
-          );
-        updateSearch({ shortlistOnly: undefined });
-      }}
-      className="inline-flex h-8 items-center gap-2 rounded-md border border-outline px-3 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-    >
-      Shortlist: {shortlistOnly ? "On" : "Off"}
-    </button>
-  );
-  const linkedShortlist = linkedShortlistSave ? (
-    <>
-      <span
-        className="max-w-48 truncate text-label-md text-on-surface-variant"
-        title={linkedShortlistSave.playerShortlistFileName ?? undefined}
-      >
-        {linkedShortlistSave.playerShortlistName}
-      </span>
-      <Button
-        variant="ghost"
-        size="icon"
-        icon={X}
-        aria-label="Remove shortlist"
-        disabled={removeShortlist.isPending}
-        onClick={() =>
-          removeShortlist.mutate({
-            saveId: linkedShortlistSave.id,
-            contextToken: linkedShortlistSave.contextToken,
-          })
-        }
-      />
-    </>
-  ) : null;
+  const shortlistControl =
+    resultContext && shortlists.length > 0 ? (
+      <>
+        <label className="flex items-center gap-2 text-body-md text-on-surface">
+          Shortlist
+          <select
+            className="h-8 max-w-64 rounded-md border border-outline bg-surface-container-high px-2 text-body-md text-on-surface"
+            value={shortlistId ?? ""}
+            onChange={(event) => selectShortlist(event.target.value)}
+          >
+            <option value="">No shortlist</option>
+            {shortlistOptionLabels(shortlists).map(({ id, label }) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {shortlistId !== null ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            icon={X}
+            aria-label="Remove shortlist"
+            disabled={removeShortlist.isPending}
+            onClick={() =>
+              removeShortlist.mutate({
+                saveId: resultContext.activeSave.id,
+                contextToken: resultContext.activeSave.contextToken,
+                shortlistId,
+              })
+            }
+          />
+        ) : null}
+      </>
+    ) : null;
   const comparisonPoolToggle = (
     <>
       {resultContext ? (
@@ -654,17 +675,12 @@ function SearchPageContent() {
       </fieldset>
     </>
   );
-  // General keeps the shortlist name and remove beside the switch; Moneyball
-  // shows them in the page header with Refresh stats.
   const datasetToggles =
     view === "general" ? (
-      <>
-        {shortlistSwitch}
-        {linkedShortlist}
-      </>
+      shortlistControl
     ) : (
       <>
-        {shortlistSwitch}
+        {shortlistControl}
         {comparisonPoolToggle}
       </>
     );
@@ -771,7 +787,7 @@ function SearchPageContent() {
     };
 
     // Page-header owns the title and every page action (Add Tactic groups,
-    // Choose FM Shortlist, Moneyball Refresh stats): the generic table toolbar
+    // Add FM Shortlist, Moneyball Refresh stats): the generic table toolbar
     // below owns only dataset slots and never hosts these controls.
     const pageHeader = (
       <header
@@ -809,8 +825,13 @@ function SearchPageContent() {
             disabled={!resultContext || chooseShortlist.isPending}
             onClick={() => void pickShortlistFile()}
           >
-            Choose FM Shortlist
+            Add FM Shortlist
           </Button>
+          {removeFailed ? (
+            <p role="alert" className="text-body-sm text-error">
+              The shortlist could not be removed. Try again.
+            </p>
+          ) : null}
           {shortlistChoiceOutcome ? (
             <p
               role={shortlistChoiceOutcome.isProblem ? "alert" : "status"}
@@ -826,7 +847,6 @@ function SearchPageContent() {
           ) : null}
           {view === "moneyball" ? (
             <>
-              {linkedShortlist}
               <Button
                 variant="secondary"
                 icon={RefreshCw}
@@ -907,7 +927,8 @@ function SearchPageContent() {
               filterCombine={combine}
               view={view}
               comparisonPool={comparisonPool}
-              shortlistOnly={shortlistOnly}
+              shortlistId={shortlistId}
+              onShortlistMissing={clearMissingShortlist}
               pageContext={{
                 activeSave: {
                   id: resultContext.activeSave.id,

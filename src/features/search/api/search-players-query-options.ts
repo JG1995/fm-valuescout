@@ -25,7 +25,7 @@ export function searchPlayersQueryOptions(
   requestedFields: string[] = [],
   searchView: SearchView = "general",
   comparisonPool: ComparisonPool = "filtered",
-  shortlistOnly = false,
+  shortlistId: number | null = null,
   context?: SearchPlayerPageContext,
   tableId?: SearchTableId,
 ) {
@@ -40,7 +40,7 @@ export function searchPlayersQueryOptions(
       requestedFields,
       searchView,
       comparisonPool,
-      shortlistOnly,
+      shortlistId,
       context,
     ),
     queryFn: () =>
@@ -54,34 +54,8 @@ export function searchPlayersQueryOptions(
         requestedFields,
         searchView,
         comparisonPool,
-        shortlistOnly,
+        shortlistId,
         tableId,
       ),
   });
-}
-
-/**
- * One-row General+shortlist probe reusing the player search query surface.
- * Its response `state` distinguishes a save with no stored shortlist
- * (`no_shortlist`) from a stored shortlist with no current-snapshot matches
- * (`ready`), so the route can derive the shortlist filter default from
- * actual presence. Keying by the mounted save/snapshot context keeps a
- * switched save from initializing the choice from a previous save's data.
- */
-export function playerShortlistProbeQueryOptions(
-  context?: SearchPlayerPageContext,
-) {
-  return searchPlayersQueryOptions(
-    0,
-    1,
-    DEFAULT_SEARCH_SORT_FIELD,
-    DEFAULT_SEARCH_SORT_DIR,
-    [],
-    "and",
-    [],
-    "general",
-    "filtered",
-    true,
-    context,
-  );
 }

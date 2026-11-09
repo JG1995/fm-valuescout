@@ -10,7 +10,7 @@ use crate::db::Db;
 use crate::features::memory_read::service::{DumpRequestResult, DumpWaitConfig};
 use crate::features::moneyball::save_stats_import::{self, SeasonStatsOutcome};
 use crate::features::player::boost_gate;
-use crate::features::player_shortlist::{self, PlayerShortlistOutcome};
+use crate::features::player_shortlist::{self, PlayerShortlistsOutcome};
 use crate::features::save_stats::SaveStatsError;
 
 use super::ingest::{self, SnapshotSummary};
@@ -30,8 +30,15 @@ pub struct SaveSummaryDto {
     pub created_at_utc: String,
     pub updated_at_utc: String,
     pub linked_save_file_name: Option<String>,
-    pub player_shortlist_name: Option<String>,
-    pub player_shortlist_file_name: Option<String>,
+    pub player_shortlists: Vec<PlayerShortlistSummaryDto>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerShortlistSummaryDto {
+    pub id: i64,
+    pub name: String,
+    pub file_name: String,
 }
 
 impl From<SaveSummary> for SaveSummaryDto {
@@ -44,8 +51,15 @@ impl From<SaveSummary> for SaveSummaryDto {
             created_at_utc: save.created_at_utc,
             updated_at_utc: save.updated_at_utc,
             linked_save_file_name: save.linked_save_file_name,
-            player_shortlist_name: save.player_shortlist_name,
-            player_shortlist_file_name: save.player_shortlist_file_name,
+            player_shortlists: save
+                .player_shortlists
+                .into_iter()
+                .map(|shortlist| PlayerShortlistSummaryDto {
+                    id: shortlist.id,
+                    name: shortlist.name,
+                    file_name: shortlist.file_name,
+                })
+                .collect(),
         }
     }
 }
@@ -504,8 +518,8 @@ pub struct LoadDataResultDto {
     pub timings: LoadDataTimingsDto,
     /// The season stats step, which never fails Load Data.
     pub stats: SeasonStatsOutcome,
-    /// The linked shortlist re-read, which never fails Load Data.
-    pub shortlist: PlayerShortlistOutcome,
+    /// The re-read of every linked shortlist, which never fails Load Data.
+    pub shortlists: PlayerShortlistsOutcome,
 }
 
 impl From<load_data::LoadDataTimings> for LoadDataTimingsDto {
@@ -527,7 +541,7 @@ impl LoadDataResultDto {
     fn new(
         result: LoadDataResult,
         stats: SeasonStatsOutcome,
-        shortlist: PlayerShortlistOutcome,
+        shortlists: PlayerShortlistsOutcome,
     ) -> Self {
         Self {
             request_id: result.request_id,
@@ -536,7 +550,7 @@ impl LoadDataResultDto {
             effective_snapshot: SnapshotSummaryDto::from(result.effective_snapshot),
             timings: LoadDataTimingsDto::from(result.timings),
             stats,
-            shortlist,
+            shortlists,
         }
     }
 }
@@ -750,7 +764,7 @@ where
         &save_context.context_token,
         now_ms,
     );
-    let shortlist = player_shortlist::refresh_linked_player_shortlist(
+    let shortlists = player_shortlist::refresh_player_shortlists(
         db,
         save_context.id,
         &save_context.context_token,
@@ -767,7 +781,7 @@ where
         total_ms,
         ingest_ms,
     };
-    Ok(LoadDataResultDto::new(result, stats, shortlist))
+    Ok(LoadDataResultDto::new(result, stats, shortlists))
 }
 
 #[tauri::command]
@@ -1052,7 +1066,7 @@ mod tests {
             save_stats_import::SeasonStatsResult::NotLinked,
             "an unlinked save still publishes"
         );
-        assert_eq!(result.shortlist, PlayerShortlistOutcome::NotLinked);
+        assert_eq!(result.shortlists, PlayerShortlistsOutcome::default());
         assert_eq!(
             result.timings.total_ms, 350,
             "total_ms must be exact wall-clock"
@@ -1831,9 +1845,12 @@ mod tests {
                 result: save_stats_import::SeasonStatsResult::NotLinked,
                 elapsed_ms: 1,
             },
-            shortlist: PlayerShortlistOutcome::Failed {
-                kind: player_shortlist::PlayerShortlistErrorKind::Unreadable,
-                file_name: Some("Targets.fmf".to_string()),
+            shortlists: PlayerShortlistsOutcome {
+                read: 1,
+                failed: vec![player_shortlist::PlayerShortlistError {
+                    kind: player_shortlist::PlayerShortlistErrorKind::Unreadable,
+                    file_name: Some("Targets.fmf".to_string()),
+                }],
             },
         })
         .expect("serialize Load Data result");
@@ -1853,11 +1870,10 @@ mod tests {
         assert_eq!(load_data["stats"]["status"], "notLinked");
         assert_eq!(load_data["stats"]["elapsedMs"], 1);
         assert_eq!(
-            load_data["shortlist"],
+            load_data["shortlists"],
             serde_json::json!({
-                "status": "failed",
-                "kind": "unreadable",
-                "fileName": "Targets.fmf",
+                "read": 1,
+                "failed": [{ "kind": "unreadable", "fileName": "Targets.fmf" }],
             })
         );
         assert_eq!(load_data["timings"]["ingestMs"], 2);
@@ -2151,8 +2167,11 @@ mod tests {
                 created_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
                 updated_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
                 linked_save_file_name: Some("Career.fm".to_string()),
-                player_shortlist_name: Some("Targets".to_string()),
-                player_shortlist_file_name: Some("Targets.fmf".to_string()),
+                player_shortlists: vec![service::PlayerShortlistSummary {
+                    id: 5,
+                    name: "Targets".to_string(),
+                    file_name: "Targets.fmf".to_string(),
+                }],
             },
         });
         let deleted_save_value =
@@ -2165,12 +2184,8 @@ mod tests {
             "Career.fm"
         );
         assert_eq!(
-            deleted_save_value["activeSave"]["playerShortlistName"],
-            "Targets"
-        );
-        assert_eq!(
-            deleted_save_value["activeSave"]["playerShortlistFileName"],
-            "Targets.fmf"
+            deleted_save_value["activeSave"]["playerShortlists"],
+            serde_json::json!([{ "id": 5, "name": "Targets", "fileName": "Targets.fmf" }])
         );
     }
 
