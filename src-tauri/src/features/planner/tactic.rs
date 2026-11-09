@@ -196,14 +196,7 @@ pub fn default_tactic() -> PlannerTactic {
 pub fn get_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String> {
     ensure_save_exists(conn, save_id)?;
 
-    let tactic_exists: bool = conn
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM planner_tactic_lanes WHERE save_id = ?1)",
-            params![save_id],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if !tactic_exists {
+    if !tactic_exists(conn, save_id)? {
         let tactic = default_tactic();
         save_tactic(conn, save_id, &tactic)?;
     }
@@ -216,18 +209,22 @@ pub fn get_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, Stri
 pub fn read_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String> {
     ensure_save_exists(conn, save_id)?;
 
-    let tactic_exists: bool = conn
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM planner_tactic_lanes WHERE save_id = ?1)",
-            params![save_id],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if tactic_exists {
+    if tactic_exists(conn, save_id)? {
         load_tactic(conn, save_id)
     } else {
         Ok(default_tactic())
     }
+}
+
+/// Whether the save has stored lanes. Without them, `get_tactic` and
+/// `load_or_initialize_tactic_in_tx` store the default tactic.
+pub(crate) fn tactic_exists(conn: &Connection, save_id: i64) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM planner_tactic_lanes WHERE save_id = ?1)",
+        params![save_id],
+        |row| row.get(0),
+    )
+    .map_err(|error| error.to_string())
 }
 
 pub fn save_tactic(conn: &Connection, save_id: i64, tactic: &PlannerTactic) -> Result<(), String> {
@@ -244,14 +241,7 @@ pub(crate) fn load_or_initialize_tactic_in_tx(
     tx: &Transaction<'_>,
     save_id: i64,
 ) -> Result<PlannerTactic, String> {
-    let tactic_exists: bool = tx
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM planner_tactic_lanes WHERE save_id = ?1)",
-            params![save_id],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if !tactic_exists {
+    if !tactic_exists(tx, save_id)? {
         let tactic = default_tactic();
         save_tactic_in_tx(tx, save_id, &tactic)?;
     }

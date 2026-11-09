@@ -53,6 +53,10 @@ pub fn run() {
             })?;
             let graphics_runtime = {
                 let conn = db.0.lock().map_err(|_| "database lock poisoned")?;
+                // Read connections cannot create the default save, so it exists before any read.
+                features::snapshot::service::ensure_default_save(&conn).inspect_err(|_error| {
+                    log::error!("default save initialization failed during startup");
+                })?;
                 features::graphics::runtime::GraphicsRuntime::new(&conn, app.handle())
                     .map_err(|error| format!("graphics runtime initialization failed: {error}"))?
             };

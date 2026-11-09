@@ -163,6 +163,20 @@ pub fn ensure_baseline_class(conn: &Connection, save_id: i64) -> Result<(), Stri
     ensure_automatic_class(conn, save_id, BASELINE_CLASS_YEAR)
 }
 
+/// Whether `ensure_baseline_class` would leave the save unchanged.
+pub fn has_baseline_class(conn: &Connection, save_id: i64) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(
+             SELECT 1
+             FROM academy_classes
+             WHERE save_id = ?1 AND class_year = ?2 AND is_automatic = 1
+         )",
+        params![save_id, BASELINE_CLASS_YEAR],
+        |row| row.get(0),
+    )
+    .map_err(|error| error.to_string())
+}
+
 pub fn ensure_class_for_game_date(
     conn: &Connection,
     save_id: i64,

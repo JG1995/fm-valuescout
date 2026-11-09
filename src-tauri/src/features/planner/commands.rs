@@ -430,6 +430,26 @@ impl From<PlannerDepth> for PlannerDepthDto {
     }
 }
 
+/// Answers on a read connection when `has_defaults` finds every default `answer` would create,
+/// and otherwise on the writer, where `answer` creates them. Creation is idempotent, so two
+/// first reads that both miss create the defaults once.
+fn answer_without_creating_defaults_on_a_reader<T>(
+    db: &Db,
+    has_defaults: impl FnOnce(&Connection) -> Result<bool, String>,
+    answer: impl Fn(&Connection) -> Result<T, String>,
+) -> Result<T, String> {
+    {
+        let conn = db.read()?;
+        if has_defaults(&conn)? {
+            return answer(&conn);
+        }
+    }
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    answer(&conn)
+}
+
 #[tauri::command]
 pub async fn list_squad_players(
     offset: Option<u32>,
@@ -441,42 +461,55 @@ pub async fn list_squad_players(
 ) -> Result<SquadPlayersPageDto, String> {
     let db = db.inner().clone();
     blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let save_id = service::active_save_id(&conn)?;
-        let offset = offset.unwrap_or(0) as usize;
-        let limit = limit
-            .map(|value| value as usize)
-            .unwrap_or(DEFAULT_SQUAD_PAGE_LIMIT)
-            .clamp(1, MAX_SQUAD_PAGE_LIMIT);
-        let sort_by = match sort_by.as_deref() {
-            None => SquadSortField::DEFAULT,
-            Some(value) => SquadSortField::parse(value)?,
-        };
-        let sort_dir = match sort_dir.as_deref() {
-            None => SquadSortDir::DEFAULT,
-            Some(value) => SquadSortDir::parse(value)?,
-        };
-        let requested_fields = requested_fields.unwrap_or_default();
-        Ok(squad_service::list_squad_players(
-            &conn,
-            save_id,
-            offset,
-            limit,
-            sort_by,
-            sort_dir,
-            &requested_fields,
-        )?
-        .into())
+        read_squad_players(&db, offset, limit, sort_by, sort_dir, requested_fields)
     })
     .await
+}
+
+fn read_squad_players(
+    db: &Db,
+    offset: Option<u32>,
+    limit: Option<u32>,
+    sort_by: Option<String>,
+    sort_dir: Option<String>,
+    requested_fields: Option<Vec<String>>,
+) -> Result<SquadPlayersPageDto, String> {
+    let conn = db.read()?;
+    let save_id = service::active_save_id(&conn)?;
+    let offset = offset.unwrap_or(0) as usize;
+    let limit = limit
+        .map(|value| value as usize)
+        .unwrap_or(DEFAULT_SQUAD_PAGE_LIMIT)
+        .clamp(1, MAX_SQUAD_PAGE_LIMIT);
+    let sort_by = match sort_by.as_deref() {
+        None => SquadSortField::DEFAULT,
+        Some(value) => SquadSortField::parse(value)?,
+    };
+    let sort_dir = match sort_dir.as_deref() {
+        None => SquadSortDir::DEFAULT,
+        Some(value) => SquadSortDir::parse(value)?,
+    };
+    let requested_fields = requested_fields.unwrap_or_default();
+    Ok(squad_service::list_squad_players(
+        &conn,
+        save_id,
+        offset,
+        limit,
+        sort_by,
+        sort_dir,
+        &requested_fields,
+    )?
+    .into())
 }
 
 fn get_planner_tactic_for_context(
     conn: &Connection,
     context: &service::SaveContext,
 ) -> Result<PlannerTactic, String> {
+    service::ensure_save_context(conn, context)?;
+    if tactic_service::tactic_exists(conn, context.id)? {
+        return tactic_service::load_tactic(conn, context.id);
+    }
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
@@ -490,13 +523,8 @@ fn get_planner_tactic_options_for_context(
     conn: &Connection,
     context: &service::SaveContext,
 ) -> Result<TacticOptions, String> {
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|error| error.to_string())?;
-    service::ensure_save_context(&tx, context)?;
-    let options = tactic_service::get_tactic_options();
-    tx.commit().map_err(|error| error.to_string())?;
-    Ok(options)
+    service::ensure_save_context(conn, context)?;
+    Ok(tactic_service::get_tactic_options())
 }
 
 fn save_planner_tactic_for_context(
@@ -520,16 +548,25 @@ pub async fn get_planner_tactic(
 ) -> Result<PlannerTacticDto, String> {
     let db = db.inner().clone();
     blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
         let context = service::SaveContext {
             id: save_id,
             context_token,
         };
-        Ok(get_planner_tactic_for_context(&conn, &context)?.into())
+        read_planner_tactic(&db, &context)
     })
     .await
+}
+
+fn read_planner_tactic(
+    db: &Db,
+    context: &service::SaveContext,
+) -> Result<PlannerTacticDto, String> {
+    answer_without_creating_defaults_on_a_reader(
+        db,
+        |conn| tactic_service::tactic_exists(conn, context.id),
+        |conn| get_planner_tactic_for_context(conn, context),
+    )
+    .map(Into::into)
 }
 
 #[tauri::command]
@@ -539,16 +576,19 @@ pub async fn get_planner_role_reference(
     db: State<'_, Db>,
 ) -> Result<PlannerRoleReferenceDto, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let phase = RoleReferencePhase::parse(&phase)?;
-        let score_basis = RoleReferenceBasis::parse(&score_basis)?;
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let save_id = service::active_save_id(&conn)?;
-        Ok(role_reference_service::get_role_reference(&conn, save_id, phase, score_basis)?.into())
-    })
-    .await
+    blocking::run(move || read_planner_role_reference(&db, &phase, &score_basis)).await
+}
+
+fn read_planner_role_reference(
+    db: &Db,
+    phase: &str,
+    score_basis: &str,
+) -> Result<PlannerRoleReferenceDto, String> {
+    let phase = RoleReferencePhase::parse(phase)?;
+    let score_basis = RoleReferenceBasis::parse(score_basis)?;
+    let conn = db.read()?;
+    let save_id = service::active_save_id(&conn)?;
+    Ok(role_reference_service::get_role_reference(&conn, save_id, phase, score_basis)?.into())
 }
 
 #[tauri::command]
@@ -559,16 +599,21 @@ pub async fn get_planner_tactic_options(
 ) -> Result<TacticOptionsDto, String> {
     let db = db.inner().clone();
     blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
         let context = service::SaveContext {
             id: save_id,
             context_token,
         };
-        Ok(get_planner_tactic_options_for_context(&conn, &context)?.into())
+        read_planner_tactic_options(&db, &context)
     })
     .await
+}
+
+fn read_planner_tactic_options(
+    db: &Db,
+    context: &service::SaveContext,
+) -> Result<TacticOptionsDto, String> {
+    let conn = db.read()?;
+    Ok(get_planner_tactic_options_for_context(&conn, context)?.into())
 }
 
 #[tauri::command]
@@ -597,14 +642,16 @@ pub async fn save_planner_tactic(
 #[tauri::command]
 pub async fn get_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let save_id = service::active_save_id(&conn)?;
-        Ok(depth_service::get_depth(&conn, save_id)?.into())
-    })
-    .await
+    blocking::run(move || read_planner_depth(&db)).await
+}
+
+fn read_planner_depth(db: &Db) -> Result<PlannerDepthDto, String> {
+    answer_without_creating_defaults_on_a_reader(
+        db,
+        |conn| depth_service::depth_exists(conn, service::active_save_id(conn)?),
+        |conn| depth_service::get_depth(conn, service::active_save_id(conn)?),
+    )
+    .map(Into::into)
 }
 
 #[derive(Deserialize)]
@@ -714,18 +761,27 @@ pub async fn get_planner_team_removal_impacts(
 ) -> Result<Vec<PlannerTeamRemovalImpactDto>, String> {
     let db = db.inner().clone();
     blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let save_id = service::active_save_id(&conn)?;
         let teams = teams
             .into_iter()
             .map(PlannerTeamInput::from)
             .collect::<Vec<_>>();
-        teams_service::planner_team_removal_impacts(&conn, save_id, &teams)
-            .map(|impacts| impacts.into_iter().map(Into::into).collect())
+        read_planner_team_removal_impacts(&db, &teams)
     })
     .await
+}
+
+fn read_planner_team_removal_impacts(
+    db: &Db,
+    teams: &[PlannerTeamInput],
+) -> Result<Vec<PlannerTeamRemovalImpactDto>, String> {
+    answer_without_creating_defaults_on_a_reader(
+        db,
+        |conn| teams_service::team_settings_exist(conn, service::active_save_id(conn)?),
+        |conn| {
+            teams_service::planner_team_removal_impacts(conn, service::active_save_id(conn)?, teams)
+        },
+    )
+    .map(|impacts| impacts.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]
@@ -776,22 +832,30 @@ pub async fn get_planner_slot_candidates(
     db: State<'_, Db>,
 ) -> Result<Vec<PlannerSlotCandidateDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let team = PlannerTeam::parse(&team)?;
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let save_id = service::active_save_id(&conn)?;
-        depth_service::get_slot_candidates(&conn, save_id, team, &lane_id, &search).map(
-            |candidates| {
-                candidates
-                    .into_iter()
-                    .map(PlannerSlotCandidateDto::from)
-                    .collect()
-            },
-        )
+    blocking::run(move || read_planner_slot_candidates(&db, &team, &lane_id, &search)).await
+}
+
+fn read_planner_slot_candidates(
+    db: &Db,
+    team: &str,
+    lane_id: &str,
+    search: &str,
+) -> Result<Vec<PlannerSlotCandidateDto>, String> {
+    let team = PlannerTeam::parse(team)?;
+    answer_without_creating_defaults_on_a_reader(
+        db,
+        |conn| depth_service::depth_exists(conn, service::active_save_id(conn)?),
+        |conn| {
+            let save_id = service::active_save_id(conn)?;
+            depth_service::get_slot_candidates(conn, save_id, team, lane_id, search)
+        },
+    )
+    .map(|candidates| {
+        candidates
+            .into_iter()
+            .map(PlannerSlotCandidateDto::from)
+            .collect()
     })
-    .await
 }
 
 #[tauri::command]
@@ -914,6 +978,156 @@ mod tests {
         let active = save_context(&conn, active_id);
         let inactive = save_context(&conn, inactive_id);
         (temp_dir, conn, active, inactive)
+    }
+
+    fn planner_row_counts(db: &Db) -> (i64, i64, i64) {
+        let conn = db.read().expect("acquire reader");
+        let count = |table: &str| -> i64 {
+            conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                row.get(0)
+            })
+            .expect("count planner rows")
+        };
+        (
+            count("planner_tactic_lanes"),
+            count("planner_teams"),
+            count("planner_strings"),
+        )
+    }
+
+    #[test]
+    fn planner_reads_answer_on_a_reader_once_the_writer_created_the_defaults() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+        let context = {
+            let conn = db.0.lock().expect("lock writer");
+            let context = service::capture_active_save_context(&conn).expect("active save");
+            crate::features::managed_club::service::set_managed_club(
+                &conn,
+                context.id,
+                "Loan FC",
+                Some(1000),
+            )
+            .expect("configure managed club");
+            let attributes = crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS
+                .iter()
+                .map(|key| ((*key).to_string(), serde_json::Value::from(10)))
+                .collect::<serde_json::Map<_, _>>();
+            conn.execute(
+                "UPDATE players SET attributes_json = ?1 WHERE uid = 77",
+                [serde_json::Value::Object(attributes).to_string()],
+            )
+            .expect("give the golden player every attribute Squad training needs");
+            context
+        };
+
+        let generation = || db.read().expect("acquire reader").generation();
+        let fresh = generation();
+        let depth = read_planner_depth(&db).expect("depth creates its defaults on the writer");
+        assert_eq!(generation(), fresh + 1, "one write creates every default");
+        assert_eq!(planner_row_counts(&db), (11, 3, 3));
+        read_planner_depth(&db).expect("depth again");
+        assert_eq!(
+            generation(),
+            fresh + 1,
+            "existing defaults are not written again"
+        );
+
+        let senior_string = depth.teams[0].strings[0].id;
+        depth_service::assign_player(
+            &db.0.lock().expect("lock writer"),
+            context.id,
+            senior_string,
+            "centre_forward",
+            77,
+        )
+        .expect("assign the golden player");
+        let kept = depth
+            .teams
+            .iter()
+            .filter(|team| team.team != "youth")
+            .map(|team| PlannerTeamInput {
+                team: team.team.clone(),
+                display_name: team.display_name.clone(),
+                strings: team
+                    .strings
+                    .iter()
+                    .map(|string| PlannerStringInput {
+                        id: Some(string.id),
+                        display_name: string.display_name.clone(),
+                    })
+                    .collect(),
+            })
+            .collect::<Vec<_>>();
+        teams_service::save_team_settings(
+            &db.0.lock().expect("lock writer"),
+            context.id,
+            &kept,
+            false,
+        )
+        .expect("remove the youth team");
+        let removed = generation();
+
+        let (tactic, options, depth, reference, candidates, impacts, squad) =
+            crate::db::read_while_writer_is_held(&db, move |db| {
+                (
+                    read_planner_tactic(db, &context),
+                    read_planner_tactic_options(db, &context),
+                    read_planner_depth(db),
+                    read_planner_role_reference(db, "in_possession", "current"),
+                    read_planner_slot_candidates(db, "senior", "goalkeeper", ""),
+                    read_planner_team_removal_impacts(db, &kept[..1]),
+                    read_squad_players(db, None, None, None, None, None),
+                )
+            });
+
+        assert_eq!(tactic.expect("tactic on a reader").lanes.len(), 11);
+        assert!(!options.expect("options on a reader").placements.is_empty());
+        assert_eq!(
+            depth
+                .expect("depth on a reader")
+                .teams
+                .iter()
+                .map(|team| team.team.as_str())
+                .collect::<Vec<_>>(),
+            vec!["senior", "reserves"],
+            "a removed team stays removed"
+        );
+        assert_eq!(
+            reference.expect("role reference on a reader").lanes.len(),
+            11
+        );
+        assert_eq!(
+            candidates
+                .expect("slot candidates on a reader")
+                .iter()
+                .map(|candidate| candidate.player_uid)
+                .collect::<Vec<_>>(),
+            vec![77]
+        );
+        assert_eq!(
+            impacts
+                .expect("removal impacts on a reader")
+                .iter()
+                .map(|impact| impact.team.as_str())
+                .collect::<Vec<_>>(),
+            vec!["reserves"]
+        );
+        assert!(squad.expect("Squad on a reader").players[0]
+            .suggested_training
+            .is_some());
+        assert_eq!(generation(), removed);
+        assert_eq!(planner_row_counts(&db), (11, 2, 2));
+
+        db.0.lock()
+            .expect("lock writer")
+            .execute("DELETE FROM planner_tactic_lanes", [])
+            .expect("remove the tactic lanes");
+        let squad = crate::db::read_while_writer_is_held(&db, |db| {
+            read_squad_players(db, None, None, None, None, None)
+        })
+        .expect("Squad on a reader without tactic lanes");
+        assert_eq!(squad.players[0].suggested_training, None);
+        assert_eq!(planner_row_counts(&db), (0, 2, 2));
     }
 
     #[test]

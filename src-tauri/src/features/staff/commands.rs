@@ -287,13 +287,26 @@ pub async fn get_staff_assignment_targets(
     db: State<'_, Db>,
 ) -> Result<StaffAssignmentTargetsDto, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        assignment_targets::get_targets(&conn, &expected_save_context_token).map(Into::into)
-    })
-    .await
+    blocking::run(move || read_staff_assignment_targets(&db, &expected_save_context_token)).await
+}
+
+/// Answers on a read connection unless the Planner team rows are missing; then the writer
+/// creates them, idempotently.
+fn read_staff_assignment_targets(
+    db: &Db,
+    expected_save_context_token: &str,
+) -> Result<StaffAssignmentTargetsDto, String> {
+    {
+        let conn = db.read()?;
+        if assignment_targets::targets_have_defaults(&conn)? {
+            return assignment_targets::get_targets(&conn, expected_save_context_token)
+                .map(Into::into);
+        }
+    }
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    assignment_targets::get_targets(&conn, expected_save_context_token).map(Into::into)
 }
 
 #[tauri::command]
@@ -1027,6 +1040,41 @@ mod tests {
             .expect("staff profile on a reader")
             .expect("current staff");
         assert_eq!(detail.uid, 88);
+    }
+
+    #[test]
+    fn assignment_targets_answer_on_a_reader_once_the_writer_created_the_teams() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+        let token: String =
+            db.0.lock()
+                .expect("lock writer")
+                .query_row(
+                    "SELECT context_token FROM saves WHERE is_active = 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("active save token");
+        let generation = || db.read().expect("acquire reader").generation();
+        let fresh = generation();
+
+        let created =
+            read_staff_assignment_targets(&db, &token).expect("targets create the team rows");
+        assert_eq!(generation(), fresh + 1);
+        let (targets, stale) = crate::db::read_while_writer_is_held(&db, move |db| {
+            (
+                read_staff_assignment_targets(db, &token),
+                read_staff_assignment_targets(db, "stale-token"),
+            )
+        });
+
+        let targets = targets.expect("targets on a reader");
+        assert_eq!(targets.teams.len(), 3);
+        assert_eq!(targets.targets.len(), created.targets.len());
+        assert_eq!(
+            stale.err().as_deref(),
+            Some("Save changed or no longer exists")
+        );
+        assert_eq!(generation(), fresh + 1);
     }
 
     #[test]

@@ -160,14 +160,13 @@ impl From<SaveDeleteResult> for SaveDeleteResultDto {
 #[tauri::command]
 pub async fn list_saves(db: State<'_, Db>) -> Result<Vec<SaveSummaryDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let saves = service::list_saves(&conn)?;
-        Ok(saves.into_iter().map(SaveSummaryDto::from).collect())
-    })
-    .await
+    blocking::run(move || read_saves(&db)).await
+}
+
+fn read_saves(db: &Db) -> Result<Vec<SaveSummaryDto>, String> {
+    let conn = db.read()?;
+    let saves = service::list_saves(&conn)?;
+    Ok(saves.into_iter().map(SaveSummaryDto::from).collect())
 }
 
 #[tauri::command]
@@ -272,17 +271,16 @@ pub async fn list_snapshots(
     db: State<'_, Db>,
 ) -> Result<Vec<SnapshotMetadataDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let snapshots = service::list_snapshot_metadata(&conn, save_id)?;
-        Ok(snapshots
-            .into_iter()
-            .map(SnapshotMetadataDto::from)
-            .collect())
-    })
-    .await
+    blocking::run(move || read_snapshots(&db, save_id)).await
+}
+
+fn read_snapshots(db: &Db, save_id: Option<i64>) -> Result<Vec<SnapshotMetadataDto>, String> {
+    let conn = db.read()?;
+    let snapshots = service::list_snapshot_metadata(&conn, save_id)?;
+    Ok(snapshots
+        .into_iter()
+        .map(SnapshotMetadataDto::from)
+        .collect())
 }
 
 #[tauri::command]
@@ -534,14 +532,13 @@ impl LoadDataResultDto {
 #[tauri::command]
 pub async fn get_current_snapshot(db: State<'_, Db>) -> Result<Option<SnapshotSummaryDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let snapshot = query::get_current_snapshot(&conn)?;
-        Ok(snapshot.map(SnapshotSummaryDto::from))
-    })
-    .await
+    blocking::run(move || read_current_snapshot(&db)).await
+}
+
+fn read_current_snapshot(db: &Db) -> Result<Option<SnapshotSummaryDto>, String> {
+    let conn = db.read()?;
+    let snapshot = query::get_current_snapshot(&conn)?;
+    Ok(snapshot.map(SnapshotSummaryDto::from))
 }
 
 fn ch_send_best_effort(
@@ -2293,5 +2290,28 @@ mod tests {
                 .expect("edit succeeds once the gate is free");
         assert_eq!(result.snapshot.game_date.as_deref(), Some("2026-03-01"));
         assert_eq!(result.current_snapshot_id, Some(snapshot_id));
+    }
+
+    #[test]
+    fn save_and_snapshot_reads_answer_on_a_reader() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+
+        let (saves, snapshots, current) = crate::db::read_while_writer_is_held(&db, |db| {
+            (
+                read_saves(db),
+                read_snapshots(db, None),
+                read_current_snapshot(db),
+            )
+        });
+
+        let saves = saves.expect("saves on a reader");
+        assert_eq!(saves.len(), 1);
+        let current = current
+            .expect("current snapshot on a reader")
+            .expect("golden snapshot is current");
+        assert_eq!(current.save_id, saves[0].id);
+        let snapshots = snapshots.expect("snapshots on a reader");
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].id, current.id);
     }
 }

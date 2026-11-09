@@ -169,15 +169,14 @@ impl From<AcademyClassDetail> for AcademyClassDetailDto {
 #[tauri::command]
 pub async fn list_academy_classes(db: State<'_, Db>) -> Result<Vec<AcademyClassDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let save_id = snapshot_service::active_save_id(&conn)?;
-        service::list_classes(&conn, save_id)
-            .map(|classes| classes.into_iter().map(AcademyClassDto::from).collect())
-    })
-    .await
+    blocking::run(move || read_classes(&db)).await
+}
+
+fn read_classes(db: &Db) -> Result<Vec<AcademyClassDto>, String> {
+    let conn = db.read()?;
+    let save_id = snapshot_service::active_save_id(&conn)?;
+    service::list_classes(&conn, save_id)
+        .map(|classes| classes.into_iter().map(AcademyClassDto::from).collect())
 }
 
 #[tauri::command]
@@ -186,14 +185,13 @@ pub async fn get_academy_class(
     db: State<'_, Db>,
 ) -> Result<AcademyClassDetailDto, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let save_id = snapshot_service::active_save_id(&conn)?;
-        service::get_class(&conn, save_id, class_id).map(AcademyClassDetailDto::from)
-    })
-    .await
+    blocking::run(move || read_class(&db, class_id)).await
+}
+
+fn read_class(db: &Db, class_id: i64) -> Result<AcademyClassDetailDto, String> {
+    let conn = db.read()?;
+    let save_id = snapshot_service::active_save_id(&conn)?;
+    service::get_class(&conn, save_id, class_id).map(AcademyClassDetailDto::from)
 }
 
 #[tauri::command]
@@ -235,19 +233,18 @@ pub async fn list_academy_candidates(
     db: State<'_, Db>,
 ) -> Result<Vec<AcademyCandidateDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
-        let save_id = snapshot_service::active_save_id(&conn)?;
-        service::list_candidates(&conn, save_id, &search).map(|candidates| {
-            candidates
-                .into_iter()
-                .map(AcademyCandidateDto::from)
-                .collect()
-        })
+    blocking::run(move || read_candidates(&db, &search)).await
+}
+
+fn read_candidates(db: &Db, search: &str) -> Result<Vec<AcademyCandidateDto>, String> {
+    let conn = db.read()?;
+    let save_id = snapshot_service::active_save_id(&conn)?;
+    service::list_candidates(&conn, save_id, search).map(|candidates| {
+        candidates
+            .into_iter()
+            .map(AcademyCandidateDto::from)
+            .collect()
     })
-    .await
 }
 
 #[tauri::command]
@@ -306,4 +303,46 @@ pub async fn set_academy_member_outcome(
         )
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn academy_reads_answer_on_a_reader() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+        {
+            let conn = db.0.lock().expect("lock writer");
+            let save_id = snapshot_service::active_save_id(&conn).expect("active save");
+            crate::features::managed_club::service::set_managed_club(
+                &conn,
+                save_id,
+                "Loan FC",
+                Some(1000),
+            )
+            .expect("configure managed club");
+        }
+
+        let classes =
+            crate::db::read_while_writer_is_held(&db, read_classes).expect("classes on a reader");
+        let baseline = classes
+            .iter()
+            .find(|class| class.class_year == 2025)
+            .expect("baseline class")
+            .id;
+        let (class, candidates) = crate::db::read_while_writer_is_held(&db, move |db| {
+            (read_class(db, baseline), read_candidates(db, "golden"))
+        });
+
+        assert!(class.expect("class on a reader").is_automatic);
+        let candidates = candidates.expect("candidates on a reader");
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|candidate| candidate.player_uid)
+                .collect::<Vec<_>>(),
+            vec![77]
+        );
+    }
 }
