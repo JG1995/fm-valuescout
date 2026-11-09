@@ -201,6 +201,30 @@ function holdNamedSearchRequests(): HeldSearchRequest[] {
   return held;
 }
 
+/** Records the arguments of every `search_players` request. */
+function recordSearchRequests(): Record<string, unknown>[] {
+  const internals = (
+    window as unknown as {
+      __TAURI_INTERNALS__: {
+        invoke: (
+          cmd: string,
+          args?: Record<string, unknown>,
+          options?: unknown,
+        ) => Promise<unknown>;
+      };
+    }
+  ).__TAURI_INTERNALS__;
+  const invoke = internals.invoke;
+  const requests: Record<string, unknown>[] = [];
+  internals.invoke = (cmd, args, options) => {
+    if (cmd === "search_players" && args) {
+      requests.push(args);
+    }
+    return invoke(cmd, args, options);
+  };
+  return requests;
+}
+
 function retainedRow(table: HTMLElement): HTMLElement {
   const row = within(table)
     .getAllByRole("row")
@@ -1608,7 +1632,8 @@ describe("search route", () => {
         dynamicValues: { "attr.Acceleration": 16, "attr.Agility": 15 },
       })),
     );
-    const { router } = renderSearchRoute();
+    const requests = recordSearchRequests();
+    const { queryClient, router } = renderSearchRoute();
 
     const table = await screen.findByRole("table", {
       name: "Player search results",
@@ -1616,11 +1641,18 @@ describe("search route", () => {
     const scroller = screen.getByTestId("search-results-scroller");
     mockScrollerScrollTo(scroller);
     fireEvent.scroll(scroller, { target: { scrollTop: 1_950 } });
+    // The visible window and its prefetched neighbour both settle before the
+    // reorder, so any later request would come from the reorder itself.
     await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        offset: 50,
-        requestedFields: ["attr.Acceleration", "attr.Agility", "height"],
-      });
+      for (const offset of [50, 100]) {
+        expect(requests).toContainEqual(
+          expect.objectContaining({
+            offset,
+            requestedFields: ["attr.Acceleration", "attr.Agility", "height"],
+          }),
+        );
+      }
+      expect(queryClient.isFetching()).toBe(0);
     });
     const focusedRow = await waitFor(() => {
       const row = scroller.querySelector<HTMLElement>('[data-index="49"]');

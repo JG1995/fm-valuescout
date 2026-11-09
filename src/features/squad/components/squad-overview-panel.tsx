@@ -4,6 +4,7 @@ import { UsersRound } from "lucide-react";
 import {
   type ReactNode,
   type RefObject,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -26,6 +27,7 @@ import type { TableGroupInput } from "@/components/player-table/table-groups";
 import { TableToolbar } from "@/components/player-table/table-toolbar";
 import {
   type ConfigurableTableIdentity,
+  type ConfigurableTableRenderHeader,
   VirtualizedPlayerTable,
 } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
@@ -246,6 +248,151 @@ function SquadOverviewTable({
   unresolvedFieldIds: ReadonlySet<string>;
 }) {
   const navigate = useNavigate();
+  // Stable inputs keep the memoized header and rows from re-rendering on
+  // scroll; each hook lists every value its output reads.
+  const handleHeaderSort = useCallback(
+    (metricId: SquadSortField) => {
+      const next = nextSort(sortBy, sortDir, metricId);
+      onSortChange(next.sortBy, next.sortDir);
+    },
+    [onSortChange, sortBy, sortDir],
+  );
+  const renderHeader = useCallback<ConfigurableTableRenderHeader<SquadPlayer>>(
+    ({ identity, columns: tableColumns, fixedColumns }) => (
+      <PlayerTableHeader
+        columns={tableColumns}
+        fixedColumns={fixedColumns}
+        groups={SQUAD_TABLE_GROUPS}
+        identity={identity}
+        metrics={SQUAD_CONFIGURABLE_METRICS}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={handleHeaderSort}
+        onAddColumn={onAddColumn}
+        onRemoveColumn={onRemoveColumn}
+        onMoveColumn={onMoveColumn}
+        onResizeColumn={onResizeColumn}
+      />
+    ),
+    [
+      handleHeaderSort,
+      onAddColumn,
+      onMoveColumn,
+      onRemoveColumn,
+      onResizeColumn,
+      sortBy,
+      sortDir,
+    ],
+  );
+  const pageQueryOptions = useCallback(
+    (offset: number, limit: number) =>
+      squadPlayersQueryOptions(
+        offset,
+        limit,
+        sortBy,
+        sortDir,
+        requestedFields,
+        pageContext,
+      ),
+    [pageContext, requestedFields, sortBy, sortDir],
+  );
+  const handlePlayerActivate = useCallback(
+    (player: SquadPlayer) => {
+      void navigate({
+        to: "/players/$uid",
+        params: { uid: String(player.uid) },
+        search: {},
+      });
+    },
+    [navigate],
+  );
+  const renderCells = useCallback(
+    (row: SquadPlayer | undefined) =>
+      columns.map((column) => {
+        // Fields the replacement query has not delivered yet render as
+        // loading, never as truthful-missing.
+        const player = unresolvedFieldIds.has(column.id) ? undefined : row;
+        if (column.id === SUGGESTED_TRAINING_COLUMN_ID) {
+          if (player === undefined) {
+            return (
+              <td key={column.id} className={`${TEXT_CELL} text-on-surface`}>
+                …
+              </td>
+            );
+          }
+          const suggestion = player.suggestedTraining;
+          return (
+            <td
+              key={column.id}
+              className={`${TEXT_CELL} text-on-surface`}
+              aria-label={suggestion ?? "No suggested training"}
+            >
+              {suggestion ?? "—"}
+            </td>
+          );
+        }
+        if (!(SQUAD_SORT_FIELDS as readonly string[]).includes(column.id)) {
+          if (
+            column.id === "club_dna" ||
+            column.id.startsWith("role.") ||
+            column.id.startsWith("potential_role.")
+          ) {
+            const score = player?.dynamicValues?.[column.id];
+            return (
+              <td key={column.id} className={NUM_CELL}>
+                <TableScoreContent
+                  score={score}
+                  roleName={column.label}
+                  isLoading={player === undefined}
+                />
+              </td>
+            );
+          }
+          const text = formatDynamicCell(player, column.id);
+          return (
+            <td
+              key={column.id}
+              className={
+                column.align === "right"
+                  ? NUM_CELL
+                  : `${TEXT_CELL} text-on-surface`
+              }
+              title={text !== "—" && text !== "…" ? text : undefined}
+            >
+              {text}
+            </td>
+          );
+        }
+        if (column.id === "nationality" && player) {
+          return (
+            <td
+              key={column.id}
+              className="h-table-row-height-two-line px-2 align-middle text-on-surface"
+            >
+              <NationalityCell nationalities={player.nationalities} />
+            </td>
+          );
+        }
+        const cell = formatPlayerBasicCell(
+          player,
+          column.id as BasicSquadSortField,
+        );
+        return (
+          <td
+            key={column.id}
+            className={
+              cell.numeric
+                ? NUM_CELL
+                : `${TEXT_CELL} ${column.id === "age" || column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
+            }
+            title={cell.title}
+          >
+            {cell.text}
+          </td>
+        );
+      }),
+    [columns, unresolvedFieldIds],
+  );
 
   return (
     <VirtualizedPlayerTable
@@ -253,132 +400,15 @@ function SquadOverviewTable({
       columnCount={columns.length}
       columns={columns}
       identity={identity}
-      renderHeader={({ identity, columns: tableColumns, fixedColumns }) => (
-        <PlayerTableHeader
-          columns={tableColumns}
-          fixedColumns={fixedColumns}
-          groups={SQUAD_TABLE_GROUPS}
-          identity={identity}
-          metrics={SQUAD_CONFIGURABLE_METRICS}
-          sortBy={sortBy}
-          sortDir={sortDir}
-          onSortChange={(metricId) => {
-            const next = nextSort(sortBy, sortDir, metricId);
-            onSortChange(next.sortBy, next.sortDir);
-          }}
-          onAddColumn={onAddColumn}
-          onRemoveColumn={onRemoveColumn}
-          onMoveColumn={onMoveColumn}
-          onResizeColumn={onResizeColumn}
-        />
-      )}
+      renderHeader={renderHeader}
       firstPageQueryOptions={firstPageQueryOptions}
       isReplacementActive={isReplacementActive}
-      pageQueryOptions={(offset, limit) =>
-        squadPlayersQueryOptions(
-          offset,
-          limit,
-          sortBy,
-          sortDir,
-          requestedFields,
-          pageContext,
-        )
-      }
+      pageQueryOptions={pageQueryOptions}
       pageSize={SQUAD_PAGE_SIZE}
-      renderCells={(row) =>
-        columns.map((column) => {
-          // Fields the replacement query has not delivered yet render as
-          // loading, never as truthful-missing.
-          const player = unresolvedFieldIds.has(column.id) ? undefined : row;
-          if (column.id === SUGGESTED_TRAINING_COLUMN_ID) {
-            if (player === undefined) {
-              return (
-                <td key={column.id} className={`${TEXT_CELL} text-on-surface`}>
-                  …
-                </td>
-              );
-            }
-            const suggestion = player.suggestedTraining;
-            return (
-              <td
-                key={column.id}
-                className={`${TEXT_CELL} text-on-surface`}
-                aria-label={suggestion ?? "No suggested training"}
-              >
-                {suggestion ?? "—"}
-              </td>
-            );
-          }
-          if (!(SQUAD_SORT_FIELDS as readonly string[]).includes(column.id)) {
-            if (
-              column.id === "club_dna" ||
-              column.id.startsWith("role.") ||
-              column.id.startsWith("potential_role.")
-            ) {
-              const score = player?.dynamicValues?.[column.id];
-              return (
-                <td key={column.id} className={NUM_CELL}>
-                  <TableScoreContent
-                    score={score}
-                    roleName={column.label}
-                    isLoading={player === undefined}
-                  />
-                </td>
-              );
-            }
-            const text = formatDynamicCell(player, column.id);
-            return (
-              <td
-                key={column.id}
-                className={
-                  column.align === "right"
-                    ? NUM_CELL
-                    : `${TEXT_CELL} text-on-surface`
-                }
-                title={text !== "—" && text !== "…" ? text : undefined}
-              >
-                {text}
-              </td>
-            );
-          }
-          if (column.id === "nationality" && player) {
-            return (
-              <td
-                key={column.id}
-                className="h-table-row-height-two-line px-2 align-middle text-on-surface"
-              >
-                <NationalityCell nationalities={player.nationalities} />
-              </td>
-            );
-          }
-          const cell = formatPlayerBasicCell(
-            player,
-            column.id as BasicSquadSortField,
-          );
-          return (
-            <td
-              key={column.id}
-              className={
-                cell.numeric
-                  ? NUM_CELL
-                  : `${TEXT_CELL} ${column.id === "age" || column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
-              }
-              title={cell.title}
-            >
-              {cell.text}
-            </td>
-          );
-        })
-      }
+      renderCells={renderCells}
       testId="squad-overview-scroller"
       total={total}
-      onPlayerActivate={(player) => {
-        void navigate({
-          to: "/players/$uid",
-          params: { uid: String(player.uid) },
-          search: {},
-        });
-      }}
+      onPlayerActivate={handlePlayerActivate}
     />
   );
 }
@@ -396,7 +426,7 @@ export function SquadOverviewPanel({
   const layout = usePlayerTableStore((state) => state.layouts.squad);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const removeStoredColumn = usePlayerTableStore((state) => state.removeColumn);
-  const moveColumn = usePlayerTableStore((state) => state.moveColumn);
+  const moveStoredColumn = usePlayerTableStore((state) => state.moveColumn);
   const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
   const identityWidth = usePlayerTableStore(
     (state) => state.layouts.squad.identityWidth,
@@ -494,12 +524,20 @@ export function SquadOverviewPanel({
         committed.sortDir !== requested.sortDir
       ? "sort"
       : "columns";
-  const unresolvedFieldIds = new Set(
-    isRetainedReplacement
-      ? requested.requestedFields.filter(
-          (field) => !committed.requestedFields.includes(field),
-        )
-      : [],
+  const unresolvedFieldIds = useMemo(
+    () =>
+      new Set(
+        isRetainedReplacement
+          ? requested.requestedFields.filter(
+              (field) => !committed.requestedFields.includes(field),
+            )
+          : [],
+      ),
+    [
+      committed.requestedFields,
+      isRetainedReplacement,
+      requested.requestedFields,
+    ],
   );
   const isReplacementActive = !requestMatchesCommitted;
   const replacementFeedback =
@@ -554,6 +592,43 @@ export function SquadOverviewPanel({
     requestedQuery.isSuccess,
   ]);
 
+  const addColumn = useCallback(
+    (metricId: string) => addColumns("squad", [metricId]),
+    [addColumns],
+  );
+  const removeColumn = useCallback(
+    (metricId: string) => {
+      const remainingColumns = columns.filter(
+        (column) => column.id !== metricId,
+      );
+      if (remainingColumns.length === columns.length) {
+        return;
+      }
+      removeStoredColumn("squad", metricId);
+      if (requested.sortBy !== metricId) {
+        return;
+      }
+      const nextColumn =
+        remainingColumns.find((column) => column.id === "ca") ??
+        remainingColumns[0];
+      if (!nextColumn) {
+        return;
+      }
+      onSortChange(nextColumn.id, defaultDirForSquadSortField(nextColumn.id));
+    },
+    [columns, onSortChange, removeStoredColumn, requested.sortBy],
+  );
+  const moveColumn = useCallback(
+    (metricId: string, targetIndex: number) =>
+      moveStoredColumn("squad", metricId, targetIndex),
+    [moveStoredColumn],
+  );
+  const resizeColumn = useCallback(
+    (metricId: string, width: number) =>
+      setColumnWidth("squad", metricId, width),
+    [setColumnWidth],
+  );
+
   const dirLabel = committed.sortDir === "asc" ? "ascending" : "descending";
   const sortMetric = getPlayerMetric(committed.sortBy);
   const sortLabel = sortMetric ? sortMetric.label : committed.sortBy;
@@ -562,7 +637,7 @@ export function SquadOverviewPanel({
       groups={SQUAD_TABLE_GROUPS}
       metrics={SQUAD_CONFIGURABLE_METRICS}
       visibleColumnIds={layout.columnIds}
-      onAddColumn={(metricId) => addColumns("squad", [metricId])}
+      onAddColumn={addColumn}
       onRemoveColumn={removeColumn}
     />
   );
@@ -627,24 +702,6 @@ export function SquadOverviewPanel({
     );
   }
 
-  function removeColumn(metricId: string) {
-    const remainingColumns = columns.filter((column) => column.id !== metricId);
-    if (remainingColumns.length === columns.length) {
-      return;
-    }
-    removeStoredColumn("squad", metricId);
-    if (requested.sortBy !== metricId) {
-      return;
-    }
-    const nextColumn =
-      remainingColumns.find((column) => column.id === "ca") ??
-      remainingColumns[0];
-    if (!nextColumn) {
-      return;
-    }
-    onSortChange(nextColumn.id, defaultDirForSquadSortField(nextColumn.id));
-  }
-
   return (
     <Panel
       actions={actions}
@@ -673,14 +730,10 @@ export function SquadOverviewPanel({
         isReplacementActive={isReplacementActive}
         unresolvedFieldIds={unresolvedFieldIds}
         onSortChange={onSortChange}
-        onAddColumn={(metricId) => addColumns("squad", [metricId])}
+        onAddColumn={addColumn}
         onRemoveColumn={removeColumn}
-        onMoveColumn={(metricId, targetIndex) =>
-          moveColumn("squad", metricId, targetIndex)
-        }
-        onResizeColumn={(metricId, width) =>
-          setColumnWidth("squad", metricId, width)
-        }
+        onMoveColumn={moveColumn}
+        onResizeColumn={resizeColumn}
       />
     </Panel>
   );

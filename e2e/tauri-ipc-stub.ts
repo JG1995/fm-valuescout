@@ -685,7 +685,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           marketValueGbp: 16000000,
         }));
       }
-      let squadPageFailureTriggered = false;
       const managedClubOptions = [
         { clubName: "Barcelona", clubUid: 100 },
         { clubName: "Barca Athletic", clubUid: 101 },
@@ -1814,12 +1813,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             const limit = Number.isInteger(args?.limit)
               ? Math.min(200, Math.max(1, args.limit))
               : 50;
-            if (
-              squadPageFailure &&
-              offset >= 50 &&
-              !squadPageFailureTriggered
-            ) {
-              squadPageFailureTriggered = true;
+            if (squadPageFailure && offset >= 50) {
               throw new Error("Could not load the next squad page.");
             }
             const sorted = [...squadPlayers].sort((left, right) => {

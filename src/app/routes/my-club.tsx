@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { CircleAlert, DatabaseZap, Shield, UsersRound } from "lucide-react";
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useCallback, useRef, useState } from "react";
 import { clearPlayerResultContext } from "@/app/player-result-context";
 import { ErrorBoundary } from "@/components/error-boundary/error-boundary";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
@@ -167,6 +167,15 @@ function SquadIdentityGraphics({
       }}
     />
   );
+}
+
+// Module-level so Squad's memoized rows keep their identity cell input while
+// the route re-renders for every Squad window fetch.
+function squadIdentityGraphics(player: SquadPlayer | undefined) {
+  return {
+    portrait: <SquadIdentityGraphics player={player} kind="portrait" />,
+    crest: <SquadIdentityGraphics player={player} kind="crest" />,
+  };
 }
 
 export const Route = createFileRoute("/my-club")({
@@ -500,19 +509,19 @@ function MyClubPageContent() {
         }
       />
     ) : null;
-  const onSquadSortChange = (
-    nextSort: SquadSortField,
-    nextDir: SquadSortDir,
-  ) => {
-    void navigate({
-      search: (previous) => ({
-        ...previous,
-        squadSort: nextSort,
-        squadDir: nextDir,
-      }),
-      replace: true,
-    });
-  };
+  const onSquadSortChange = useCallback(
+    (nextSort: SquadSortField, nextDir: SquadSortDir) => {
+      void navigate({
+        search: (previous) => ({
+          ...previous,
+          squadSort: nextSort,
+          squadDir: nextDir,
+        }),
+        replace: true,
+      });
+    },
+    [navigate],
+  );
   const myClubHeader = (
     <header className="flex flex-col items-start gap-2">
       <div className="flex w-full flex-wrap items-center justify-between gap-4">
@@ -603,12 +612,7 @@ function MyClubPageContent() {
             ) : (
               <SquadOverviewPanel
                 key={`${activeSave?.id}:${activeSave?.contextToken}:${snapshot.id}:${snapshot.saveId}:${managedClub.clubName}:${managedClub.status}`}
-                identityGraphics={(player) => ({
-                  portrait: (
-                    <SquadIdentityGraphics player={player} kind="portrait" />
-                  ),
-                  crest: <SquadIdentityGraphics player={player} kind="crest" />,
-                })}
+                identityGraphics={squadIdentityGraphics}
                 pageContext={{
                   activeSave: activeSave
                     ? {

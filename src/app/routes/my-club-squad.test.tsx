@@ -238,6 +238,41 @@ function mockScrollerScrollTo(scroller: HTMLElement) {
   });
 }
 
+/**
+ * Records the arguments of every `list_squad_players` request and rejects
+ * those for `failingOffset` while it is set. Other requests keep the shared
+ * IPC mock, which the test setup registers again after each test.
+ */
+function recordSquadPageRequests() {
+  const internals = (
+    window as unknown as {
+      __TAURI_INTERNALS__: {
+        invoke: (
+          cmd: string,
+          args?: Record<string, unknown>,
+          options?: unknown,
+        ) => Promise<unknown>;
+      };
+    }
+  ).__TAURI_INTERNALS__;
+  const invoke = internals.invoke;
+  const recorder = {
+    requests: [] as Record<string, unknown>[],
+    failingOffset: null as number | null,
+    offsets: () => new Set(recorder.requests.map((args) => args.offset)),
+  };
+  internals.invoke = (cmd, args, options) => {
+    if (cmd === "list_squad_players" && args) {
+      recorder.requests.push(args);
+      if (args.offset === recorder.failingOffset) {
+        return Promise.reject(new Error("Could not load the next squad page."));
+      }
+    }
+    return invoke(cmd, args, options);
+  };
+  return recorder;
+}
+
 const CLUB_DNA_CONTEXT = { saveId: 1, contextToken: "save-token-1" };
 const SECOND_SAVE: SaveSummary = {
   id: 2,
@@ -1508,17 +1543,25 @@ describe("My Club route", () => {
         dynamicValues: { "attr.Acceleration": 16, "attr.Agility": 15 },
       })),
     );
-    renderMyClubRoute({ initialEntry: "/my-club" });
+    const squadPages = recordSquadPageRequests();
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", { name: "Squad overview" });
     const scroller = screen.getByTestId("squad-overview-scroller");
     mockScrollerScrollTo(scroller);
     fireEvent.scroll(scroller, { target: { scrollTop: 1_950 } });
+    // The visible window and its prefetched neighbour both settle before the
+    // reorder, so any later request would come from the reorder itself.
     await waitFor(() => {
-      expect(getLastSquadPlayersArgs()).toMatchObject({
-        offset: 50,
-        requestedFields: ["attr.Acceleration", "attr.Agility", "height"],
-      });
+      for (const offset of [50, 100]) {
+        expect(squadPages.requests).toContainEqual(
+          expect.objectContaining({
+            offset,
+            requestedFields: ["attr.Acceleration", "attr.Agility", "height"],
+          }),
+        );
+      }
+      expect(queryClient.isFetching()).toBe(0);
     });
     const focusedRow = await waitFor(() => {
       const row = scroller.querySelector<HTMLElement>('[data-index="49"]');
@@ -2489,7 +2532,9 @@ describe("My Club route", () => {
       primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
-    setSquadPlayersOverride(manySquadPlayers(101));
+    // Enough rows for windows beyond the visible range and its neighbours.
+    setSquadPlayersOverride(manySquadPlayers(401));
+    const squadPages = recordSquadPageRequests();
     renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", {
@@ -2511,23 +2556,20 @@ describe("My Club route", () => {
 
     fireEvent.scroll(scroller, { target: { scrollTop: 2_000 } });
 
-    await waitFor(() => {
-      expect(getLastSquadPlayersArgs()).toMatchObject({
-        offset: 50,
-        limit: 50,
-      });
-    });
+    // Windows 0 and 50 hold the visible rows; 100 is the next neighbour.
     expect(await screen.findByText("Squad player 051")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(squadPages.offsets()).toEqual(new Set([0, 50, 100]));
+    });
 
     fireEvent.scroll(scroller, { target: { scrollTop: 4_000 } });
 
-    await waitFor(() => {
-      expect(getLastSquadPlayersArgs()).toMatchObject({
-        offset: 100,
-        limit: 50,
-      });
-    });
+    // Windows 50 and 100 hold the visible rows; 0 and 150 are neighbours.
     expect(await screen.findByText("Squad player 101")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(squadPages.offsets()).toEqual(new Set([0, 50, 100, 150]));
+    });
+    expect(squadPages.requests.every((args) => args.limit === 50)).toBe(true);
   });
 
   it("keeps ArrowDown focus pending while a virtual Squad page loads", async () => {
@@ -2616,17 +2658,24 @@ describe("My Club route", () => {
       sources: [],
     });
     setSquadPlayersOverride(manySquadPlayers(101));
-    setSquadPlayersPageIpcMockMode("rejectSecondPageOnce");
+    // The second window fails both as a prefetch and once it is visible.
+    const squadPages = recordSquadPageRequests();
+    squadPages.failingOffset = 50;
     renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     const scroller = screen.getByTestId("squad-overview-scroller");
     mockScrollerScrollTo(scroller);
+    await waitFor(() => {
+      expect(squadPages.offsets()).toContain(50);
+    });
     fireEvent.scroll(scroller, { target: { scrollTop: 2_000 } });
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Couldn't load this part of the table.",
     );
+    expect(screen.queryByText("Squad player 051")).not.toBeInTheDocument();
+    squadPages.failingOffset = null;
     await user.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(await screen.findByText("Squad player 051")).toBeInTheDocument();

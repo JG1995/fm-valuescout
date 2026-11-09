@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { DatabaseZap, SearchX, UsersRound } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { NationalityCell } from "@/components/player-table/nationality-cell";
 import {
   ConfigurableColumnsControl,
@@ -18,6 +25,7 @@ import type { TableGroupInput } from "@/components/player-table/table-groups";
 import { TableToolbar } from "@/components/player-table/table-toolbar";
 import {
   type ConfigurableTableIdentity,
+  type ConfigurableTableRenderHeader,
   ConfigurableVirtualizedTable,
 } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
@@ -371,6 +379,130 @@ function StaffSearchTable({
   shortlist: boolean;
   configurable: boolean;
 }) {
+  // Stable inputs keep the memoized header and rows from re-rendering on
+  // scroll; each hook lists every value its output reads.
+  const handleHeaderSort = useCallback(
+    (metricId: StaffSortField) => {
+      const next = nextSort(sortBy, sortDir, metricId);
+      onSortChange(next.sortBy, next.sortDir);
+    },
+    [onSortChange, sortBy, sortDir],
+  );
+  const renderHeader = useCallback<ConfigurableTableRenderHeader<StaffSummary>>(
+    ({ identity, columns: tableColumns, fixedColumns }) => (
+      <ConfigurableTableHeader
+        columns={tableColumns}
+        configurable={configurable}
+        fixedColumns={fixedColumns}
+        groups={shortlist ? STAFF_SHORTLIST_TABLE_GROUPS : STAFF_TABLE_GROUPS}
+        identity={identity}
+        sortable
+        metrics={
+          shortlist
+            ? STAFF_SHORTLIST_CONFIGURABLE_METRICS
+            : STAFF_CONFIGURABLE_METRICS
+        }
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={handleHeaderSort}
+        onAddColumn={onAddColumn}
+        onRemoveColumn={onRemoveColumn}
+        onMoveColumn={onMoveColumn}
+        onResizeColumn={onResizeColumn}
+      />
+    ),
+    [
+      configurable,
+      handleHeaderSort,
+      onAddColumn,
+      onMoveColumn,
+      onRemoveColumn,
+      onResizeColumn,
+      shortlist,
+      sortBy,
+      sortDir,
+    ],
+  );
+  const renderCells = useCallback(
+    (staff: StaffSummary | undefined) =>
+      columns.map((column) => {
+        // Dynamic fields the replacement query has not delivered yet
+        // render as loading, never as truthful-missing.
+        const unresolvedDynamic =
+          staff !== undefined && (unresolvedFieldIds?.has(column.id) ?? false);
+        if (!STAFF_BASIC_METRIC_IDS.includes(column.id)) {
+          if (
+            column.id === "preferred_job" ||
+            column.id === "club_job" ||
+            column.id === "coaching_qualifications"
+          ) {
+            const value =
+              column.id === "preferred_job"
+                ? staff?.shortlist?.preferredJob
+                : column.id === "club_job"
+                  ? staff?.shortlist?.clubJob
+                  : staff?.shortlist?.coachingQualifications;
+            return (
+              <td key={column.id} className={`${TEXT_CELL} text-on-surface`}>
+                {value || (staff === undefined ? "…" : "—")}
+              </td>
+            );
+          }
+          if (column.id.startsWith("role.")) {
+            const score = staff?.dynamicValues?.[column.id];
+            return (
+              <td key={column.id} className={NUM_CELL}>
+                <TableScoreContent
+                  score={score}
+                  roleName={`${column.label} role score`}
+                  isLoading={staff === undefined || unresolvedDynamic}
+                />
+              </td>
+            );
+          }
+          const text = unresolvedDynamic ? "…" : dynamicCell(staff, column.id);
+          return (
+            <td
+              key={column.id}
+              className={
+                column.align === "right"
+                  ? NUM_CELL
+                  : `${TEXT_CELL} text-on-surface`
+              }
+              title={text !== "—" && text !== "…" ? text : undefined}
+            >
+              {text}
+            </td>
+          );
+        }
+        if (column.id === "nationality" && staff) {
+          return (
+            <td
+              key={column.id}
+              className="h-table-row-height-two-line px-2 align-middle text-on-surface"
+            >
+              <NationalityCell nationalities={staff.nationalities} />
+            </td>
+          );
+        }
+        const cell = basicCell(staff, column.id);
+        return (
+          <td
+            key={column.id}
+            className={
+              cell.numeric
+                ? NUM_CELL
+                : `${TEXT_CELL} ${column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
+            }
+            title={cell.title}
+          >
+            {cell.text}
+          </td>
+        );
+      }),
+    [columns, unresolvedFieldIds],
+  );
+
   return (
     <ConfigurableVirtualizedTable<
       StaffPage,
@@ -384,115 +516,12 @@ function StaffSearchTable({
       getRowKey={(staff) => staff.uid}
       identity={identity}
       onRowActivate={onRowActivate}
-      renderHeader={({ identity, columns: tableColumns, fixedColumns }) => (
-        <ConfigurableTableHeader
-          columns={tableColumns}
-          configurable={configurable}
-          fixedColumns={fixedColumns}
-          groups={shortlist ? STAFF_SHORTLIST_TABLE_GROUPS : STAFF_TABLE_GROUPS}
-          identity={identity}
-          sortable
-          metrics={
-            shortlist
-              ? STAFF_SHORTLIST_CONFIGURABLE_METRICS
-              : STAFF_CONFIGURABLE_METRICS
-          }
-          sortBy={sortBy}
-          sortDir={sortDir}
-          onSortChange={(metricId) => {
-            const next = nextSort(sortBy, sortDir, metricId);
-            onSortChange(next.sortBy, next.sortDir);
-          }}
-          onAddColumn={onAddColumn}
-          onRemoveColumn={onRemoveColumn}
-          onMoveColumn={onMoveColumn}
-          onResizeColumn={onResizeColumn}
-        />
-      )}
+      renderHeader={renderHeader}
       pageQueryOptions={pageQueryOptions}
       firstPageQueryOptions={firstPageQueryOptions}
       isReplacementActive={isReplacementActive}
       pageSize={STAFF_PAGE_SIZE}
-      renderCells={(staff) =>
-        columns.map((column) => {
-          // Dynamic fields the replacement query has not delivered yet
-          // render as loading, never as truthful-missing.
-          const unresolvedDynamic =
-            staff !== undefined &&
-            (unresolvedFieldIds?.has(column.id) ?? false);
-          if (!STAFF_BASIC_METRIC_IDS.includes(column.id)) {
-            if (
-              column.id === "preferred_job" ||
-              column.id === "club_job" ||
-              column.id === "coaching_qualifications"
-            ) {
-              const value =
-                column.id === "preferred_job"
-                  ? staff?.shortlist?.preferredJob
-                  : column.id === "club_job"
-                    ? staff?.shortlist?.clubJob
-                    : staff?.shortlist?.coachingQualifications;
-              return (
-                <td key={column.id} className={`${TEXT_CELL} text-on-surface`}>
-                  {value || (staff === undefined ? "…" : "—")}
-                </td>
-              );
-            }
-            if (column.id.startsWith("role.")) {
-              const score = staff?.dynamicValues?.[column.id];
-              return (
-                <td key={column.id} className={NUM_CELL}>
-                  <TableScoreContent
-                    score={score}
-                    roleName={`${column.label} role score`}
-                    isLoading={staff === undefined || unresolvedDynamic}
-                  />
-                </td>
-              );
-            }
-            const text = unresolvedDynamic
-              ? "…"
-              : dynamicCell(staff, column.id);
-            return (
-              <td
-                key={column.id}
-                className={
-                  column.align === "right"
-                    ? NUM_CELL
-                    : `${TEXT_CELL} text-on-surface`
-                }
-                title={text !== "—" && text !== "…" ? text : undefined}
-              >
-                {text}
-              </td>
-            );
-          }
-          if (column.id === "nationality" && staff) {
-            return (
-              <td
-                key={column.id}
-                className="h-table-row-height-two-line px-2 align-middle text-on-surface"
-              >
-                <NationalityCell nationalities={staff.nationalities} />
-              </td>
-            );
-          }
-          const cell = basicCell(staff, column.id);
-          return (
-            <td
-              key={column.id}
-              className={
-                cell.numeric
-                  ? NUM_CELL
-                  : `${TEXT_CELL} ${column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
-              }
-              title={cell.title}
-            >
-              {cell.text}
-            </td>
-          );
-        })
-      }
+      renderCells={renderCells}
       testId={testId}
       total={total}
     />
@@ -539,12 +568,14 @@ export function StaffSearchResultsPanel({
   onRowActivate?: (staff: StaffSummary) => void;
 }) {
   const isShortlist = scope === "search" && shortlistOnly;
-  const shortlistPresentation = isShortlist
-    ? staffShortlistPresentation(preferredJob)
-    : undefined;
-  const fixedColumnIds = shortlistPresentation
-    ? withoutIdentityColumnIds(shortlistPresentation.columnIds)
-    : undefined;
+  const fixedColumnIds = useMemo(() => {
+    const shortlistPresentation = isShortlist
+      ? staffShortlistPresentation(preferredJob)
+      : undefined;
+    return shortlistPresentation
+      ? withoutIdentityColumnIds(shortlistPresentation.columnIds)
+      : undefined;
+  }, [isShortlist, preferredJob]);
   const layoutId: StaffLayoutId =
     scope === "my-staff"
       ? "my-staff"
@@ -722,12 +753,20 @@ export function StaffSearchResultsPanel({
     requestedQuery.isError && !isRequestedSuperseded
       ? requestedQuery.error
       : null;
-  const unresolvedFieldIds = new Set(
-    isRetainedReplacement
-      ? requested.requestedFields.filter(
-          (field) => !committed.requestedFields.includes(field),
-        )
-      : [],
+  const unresolvedFieldIds = useMemo(
+    () =>
+      new Set(
+        isRetainedReplacement
+          ? requested.requestedFields.filter(
+              (field) => !committed.requestedFields.includes(field),
+            )
+          : [],
+      ),
+    [
+      committed.requestedFields,
+      isRetainedReplacement,
+      requested.requestedFields,
+    ],
   );
   const replacementFeedback =
     replacementKind === null ? null : requestedError ? (
@@ -810,17 +849,51 @@ export function StaffSearchResultsPanel({
     requestMatchesCommitted || isRetainedReplacement
       ? committedQuery.data
       : undefined;
-  const removeStoredColumn = (metricId: string) => {
-    if (isShortlist && fixedColumnIds) return;
-    if (!columns.some((column) => column.id === metricId)) return;
-    removeColumn(layoutId, metricId);
-    if (sortBy === metricId) {
-      const next = columns.find((column) => column.id !== metricId);
-      if (next) {
-        onSortChange(next.id, defaultDirForStaffSortField(next.id));
+  const removeStoredColumn = useCallback(
+    (metricId: string) => {
+      if (isShortlist && fixedColumnIds) return;
+      if (!columns.some((column) => column.id === metricId)) return;
+      removeColumn(layoutId, metricId);
+      if (sortBy === metricId) {
+        const next = columns.find((column) => column.id !== metricId);
+        if (next) {
+          onSortChange(next.id, defaultDirForStaffSortField(next.id));
+        }
       }
-    }
-  };
+    },
+    [
+      columns,
+      fixedColumnIds,
+      isShortlist,
+      layoutId,
+      onSortChange,
+      removeColumn,
+      sortBy,
+    ],
+  );
+  const addStoredColumn = useCallback(
+    (id: string) => {
+      if (!fixedColumnIds) addColumns(layoutId, [id]);
+    },
+    [addColumns, fixedColumnIds, layoutId],
+  );
+  const moveStoredColumn = useCallback(
+    (id: string, target: number) => {
+      if (!fixedColumnIds) moveColumn(layoutId, id, target);
+    },
+    [fixedColumnIds, layoutId, moveColumn],
+  );
+  const resizeStoredColumn = useCallback(
+    (id: string, width: number) => {
+      if (!fixedColumnIds) setColumnWidth(layoutId, id, width);
+    },
+    [fixedColumnIds, layoutId, setColumnWidth],
+  );
+  const pageQueryOptions = useCallback(
+    (offset: number, limit: number) =>
+      staffResultsPageOptions(scope, committed, offset, limit),
+    [committed, scope],
+  );
   const columnsControl = (
     <ConfigurableColumnsControl
       groups={isShortlist ? STAFF_SHORTLIST_TABLE_GROUPS : STAFF_TABLE_GROUPS}
@@ -831,9 +904,7 @@ export function StaffSearchResultsPanel({
       }
       visibleColumnIds={fixedColumnIds ?? layout.columnIds}
       configurable={!fixedColumnIds}
-      onAddColumn={(id) => {
-        if (!fixedColumnIds) addColumns(layoutId, [id]);
-      }}
+      onAddColumn={addStoredColumn}
       onRemoveColumn={removeStoredColumn}
     />
   );
@@ -1109,9 +1180,7 @@ export function StaffSearchResultsPanel({
         sortDir={committed.sortDir}
         columns={columns}
         identity={identity}
-        pageQueryOptions={(offset, limit) =>
-          staffResultsPageOptions(scope, committed, offset, limit)
-        }
+        pageQueryOptions={pageQueryOptions}
         firstPageQueryOptions={committedOptions}
         isReplacementActive={isReplacementActive}
         unresolvedFieldIds={unresolvedFieldIds}
@@ -1124,16 +1193,10 @@ export function StaffSearchResultsPanel({
         }
         testId={`${layoutId}-results-scroller`}
         onSortChange={onSortChange}
-        onAddColumn={(id) => {
-          if (!fixedColumnIds) addColumns(layoutId, [id]);
-        }}
+        onAddColumn={addStoredColumn}
         onRemoveColumn={removeStoredColumn}
-        onMoveColumn={(id, target) => {
-          if (!fixedColumnIds) moveColumn(layoutId, id, target);
-        }}
-        onResizeColumn={(id, width) => {
-          if (!fixedColumnIds) setColumnWidth(layoutId, id, width);
-        }}
+        onMoveColumn={moveStoredColumn}
+        onResizeColumn={resizeStoredColumn}
         onRowActivate={onRowActivate}
         shortlist={isShortlist}
         configurable={!fixedColumnIds}
