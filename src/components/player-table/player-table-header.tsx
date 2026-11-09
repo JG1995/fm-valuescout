@@ -10,7 +10,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { fieldClasses } from "@/components/ui/field/field-styles";
 import {
   groupsForMetrics,
@@ -213,7 +213,7 @@ function ColumnResizeHandle({
   );
 }
 
-export function ConfigurableTableHeader({
+function ConfigurableTableHeaderView({
   columns,
   fixedColumns = [],
   groups,
@@ -680,6 +680,12 @@ export function ConfigurableTableHeader({
     </thead>
   );
 }
+
+/**
+ * Memoized so a table scroll, which re-renders the table but none of the
+ * header's inputs, never re-renders the header. Callers pass stable inputs.
+ */
+export const ConfigurableTableHeader = memo(ConfigurableTableHeaderView);
 
 /** Compatibility wrapper for existing player Search and Squad callers. */
 export function PlayerTableHeader({

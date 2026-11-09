@@ -1,7 +1,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { SearchX } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { NationalityCell } from "@/components/player-table/nationality-cell";
 import {
   ConfigurableColumnsControl,
@@ -17,6 +24,7 @@ import {
 } from "@/components/player-table/table-cells";
 import {
   type ConfigurableTableIdentity,
+  type ConfigurableTableRenderHeader,
   VirtualizedPlayerTable,
 } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
@@ -239,6 +247,7 @@ function SearchResultsVirtualTable({
   pageContext,
   firstPageQueryOptions,
   isReplacementActive,
+  unresolvedFieldIds,
 }: {
   total: number;
   sortBy: SearchSortField;
@@ -260,8 +269,234 @@ function SearchResultsVirtualTable({
   pageContext: SearchPlayerPageContext;
   firstPageQueryOptions: ReturnType<typeof searchPlayersQueryOptions>;
   isReplacementActive: boolean;
+  unresolvedFieldIds: ReadonlySet<string>;
 }) {
   const navigate = useNavigate();
+  // Stable inputs keep the memoized header and rows from re-rendering on
+  // scroll; each hook lists every value its output reads.
+  const handleHeaderSort = useCallback(
+    (metricId: SearchSortField) => {
+      const next = nextSort(sortBy, sortDir, metricId);
+      onSortChange(next.sortBy, next.sortDir);
+    },
+    [onSortChange, sortBy, sortDir],
+  );
+  const handleSortDirection = useCallback(
+    (metricId: SearchSortField, dir: SearchSortDir) =>
+      onSortChange(metricId, dir),
+    [onSortChange],
+  );
+  const canFilterColumn = useCallback(
+    (metricId: string) => getFilterField(metricId, view) !== undefined,
+    [view],
+  );
+  const renderHeader = useCallback<
+    ConfigurableTableRenderHeader<PlayerSummary>
+  >(
+    ({ identity, columns: tableColumns, fixedColumns }) => (
+      <PlayerTableHeader
+        columns={tableColumns}
+        fixedColumns={fixedColumns}
+        groups={searchTableGroups(view)}
+        identity={identity}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={handleHeaderSort}
+        onAddColumn={onAddColumn}
+        onRemoveColumn={onRemoveColumn}
+        onMoveColumn={onMoveColumn}
+        onResizeColumn={onResizeColumn}
+        onSortDirection={handleSortDirection}
+        onFilterColumn={onFilterColumn}
+        canFilterColumn={canFilterColumn}
+        metrics={
+          view === "moneyball"
+            ? MONEYBALL_HEADER_METRICS
+            : SEARCH_HEADER_METRICS
+        }
+      />
+    ),
+    [
+      canFilterColumn,
+      handleHeaderSort,
+      handleSortDirection,
+      onAddColumn,
+      onFilterColumn,
+      onMoveColumn,
+      onRemoveColumn,
+      onResizeColumn,
+      sortBy,
+      sortDir,
+      view,
+    ],
+  );
+  const pageQueryOptions = useCallback(
+    (offset: number, limit: number) =>
+      searchPlayersQueryOptions(
+        offset,
+        limit,
+        sortBy,
+        sortDir,
+        filters,
+        filterCombine,
+        requestedFields,
+        view,
+        comparisonPool,
+        shortlistOnly,
+        pageContext,
+      ),
+    [
+      comparisonPool,
+      filterCombine,
+      filters,
+      pageContext,
+      requestedFields,
+      shortlistOnly,
+      sortBy,
+      sortDir,
+      view,
+    ],
+  );
+  const handlePlayerActivate = useCallback(
+    (player: PlayerSummary) => {
+      void navigate({
+        to: "/players/$uid",
+        params: { uid: String(player.uid) },
+        search: { view },
+      });
+    },
+    [navigate, view],
+  );
+  const renderCells = useCallback(
+    (row: PlayerSummary | undefined) =>
+      columns.map((column) => {
+        // Fields the replacement query has not delivered yet render as
+        // loading, never as truthful-missing.
+        const player = unresolvedFieldIds.has(column.id) ? undefined : row;
+        if (isValidTacticColumnId(column.id)) {
+          const score = player?.dynamicValues?.[column.id];
+          const roleName = column.accessibleLabel ?? column.label;
+          return (
+            <td key={column.id} className={NUM_CELL}>
+              <TableScoreContent
+                score={score}
+                roleName={roleName}
+                isLoading={player === undefined}
+              />
+            </td>
+          );
+        }
+        const moneyballMetric =
+          view === "moneyball"
+            ? getMoneyballSearchMetric(column.id)
+            : undefined;
+        if (moneyballMetric?.metric || moneyballMetric?.context) {
+          const raw = player?.dynamicValues?.[column.id];
+          const value = typeof raw === "number" ? raw : null;
+          const text =
+            player === undefined
+              ? "…"
+              : moneyballMetric.metric
+                ? formatMoneyballMetric(moneyballMetric.metric, value)
+                : value === null
+                  ? "—"
+                  : formatCount(value);
+          const score = player?.moneyballPercentiles?.[column.id];
+          return (
+            <td
+              key={column.id}
+              className={NUM_CELL}
+              title={text !== "—" && text !== "…" ? text : undefined}
+            >
+              <span className="inline-flex items-center justify-end gap-2">
+                <span
+                  className={
+                    value === null ? "text-on-surface-variant" : undefined
+                  }
+                >
+                  {text}
+                </span>
+                {moneyballMetric.metric && typeof score === "number" ? (
+                  <ScoreBadge score={score} roleName={column.label} />
+                ) : null}
+              </span>
+            </td>
+          );
+        }
+        if (moneyballMetric?.role) {
+          const score = player?.dynamicValues?.[column.id];
+          return (
+            <td key={column.id} className={NUM_CELL}>
+              <TableScoreContent
+                score={score}
+                roleName={`Moneyball role · ${column.label}`}
+                isLoading={player === undefined}
+              />
+            </td>
+          );
+        }
+        if (!isBasicSearchSortField(column.id)) {
+          if (
+            column.id === "club_dna" ||
+            column.id.startsWith("role.") ||
+            column.id.startsWith("potential_role.")
+          ) {
+            const score = player?.dynamicValues?.[column.id];
+            return (
+              <td key={column.id} className={NUM_CELL}>
+                <TableScoreContent
+                  score={score}
+                  roleName={column.label}
+                  isLoading={player === undefined}
+                />
+              </td>
+            );
+          }
+          const text = formatDynamicCell(player, column.id);
+          return (
+            <td
+              key={column.id}
+              className={
+                column.align === "right"
+                  ? NUM_CELL
+                  : `${TEXT_CELL} text-on-surface`
+              }
+              title={text !== "—" && text !== "…" ? text : undefined}
+            >
+              {text}
+            </td>
+          );
+        }
+        if (column.id === "nationality" && player) {
+          return (
+            <td
+              key={column.id}
+              className="h-table-row-height-two-line px-2 align-middle text-on-surface"
+            >
+              <NationalityCell nationalities={player.nationalities} />
+            </td>
+          );
+        }
+        const cell = formatPlayerBasicCell(
+          player,
+          column.id as (typeof BASIC_SEARCH_SORT_FIELDS)[number],
+        );
+        return (
+          <td
+            key={column.id}
+            className={
+              cell.numeric
+                ? NUM_CELL
+                : `${TEXT_CELL} ${column.id === "age" || column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
+            }
+            title={cell.title}
+          >
+            {cell.text}
+          </td>
+        );
+      }),
+    [columns, unresolvedFieldIds, view],
+  );
 
   return (
     <VirtualizedPlayerTable
@@ -269,185 +504,15 @@ function SearchResultsVirtualTable({
       columnCount={columns.length}
       columns={columns}
       identity={identity}
-      renderHeader={({ identity, columns: tableColumns, fixedColumns }) => (
-        <PlayerTableHeader
-          columns={tableColumns}
-          fixedColumns={fixedColumns}
-          groups={searchTableGroups(view)}
-          identity={identity}
-          sortBy={sortBy}
-          sortDir={sortDir}
-          onSortChange={(metricId) => {
-            const next = nextSort(sortBy, sortDir, metricId);
-            onSortChange(next.sortBy, next.sortDir);
-          }}
-          onAddColumn={onAddColumn}
-          onRemoveColumn={onRemoveColumn}
-          onMoveColumn={onMoveColumn}
-          onResizeColumn={onResizeColumn}
-          onSortDirection={(metricId, dir) => onSortChange(metricId, dir)}
-          onFilterColumn={onFilterColumn}
-          canFilterColumn={(metricId) =>
-            getFilterField(metricId, view) !== undefined
-          }
-          metrics={
-            view === "moneyball"
-              ? MONEYBALL_HEADER_METRICS
-              : SEARCH_HEADER_METRICS
-          }
-        />
-      )}
+      renderHeader={renderHeader}
       firstPageQueryOptions={firstPageQueryOptions}
       isReplacementActive={isReplacementActive}
-      pageQueryOptions={(offset, limit) =>
-        searchPlayersQueryOptions(
-          offset,
-          limit,
-          sortBy,
-          sortDir,
-          filters,
-          filterCombine,
-          requestedFields,
-          view,
-          comparisonPool,
-          shortlistOnly,
-          pageContext,
-        )
-      }
+      pageQueryOptions={pageQueryOptions}
       pageSize={SEARCH_PAGE_SIZE}
-      renderCells={(player) =>
-        columns.map((column) => {
-          if (isValidTacticColumnId(column.id)) {
-            const score = player?.dynamicValues?.[column.id];
-            const roleName = column.accessibleLabel ?? column.label;
-            return (
-              <td key={column.id} className={NUM_CELL}>
-                <TableScoreContent
-                  score={score}
-                  roleName={roleName}
-                  isLoading={player === undefined}
-                />
-              </td>
-            );
-          }
-          const moneyballMetric =
-            view === "moneyball"
-              ? getMoneyballSearchMetric(column.id)
-              : undefined;
-          if (moneyballMetric?.metric || moneyballMetric?.context) {
-            const raw = player?.dynamicValues?.[column.id];
-            const value = typeof raw === "number" ? raw : null;
-            const text = moneyballMetric.metric
-              ? formatMoneyballMetric(moneyballMetric.metric, value)
-              : value === null
-                ? player === undefined
-                  ? "…"
-                  : "—"
-                : formatCount(value);
-            const score = player?.moneyballPercentiles?.[column.id];
-            return (
-              <td
-                key={column.id}
-                className={NUM_CELL}
-                title={text !== "—" && text !== "…" ? text : undefined}
-              >
-                <span className="inline-flex items-center justify-end gap-2">
-                  <span
-                    className={
-                      value === null ? "text-on-surface-variant" : undefined
-                    }
-                  >
-                    {text}
-                  </span>
-                  {moneyballMetric.metric && typeof score === "number" ? (
-                    <ScoreBadge score={score} roleName={column.label} />
-                  ) : null}
-                </span>
-              </td>
-            );
-          }
-          if (moneyballMetric?.role) {
-            const score = player?.dynamicValues?.[column.id];
-            return (
-              <td key={column.id} className={NUM_CELL}>
-                <TableScoreContent
-                  score={score}
-                  roleName={`Moneyball role · ${column.label}`}
-                  isLoading={player === undefined}
-                />
-              </td>
-            );
-          }
-          if (!isBasicSearchSortField(column.id)) {
-            if (
-              column.id === "club_dna" ||
-              column.id.startsWith("role.") ||
-              column.id.startsWith("potential_role.")
-            ) {
-              const score = player?.dynamicValues?.[column.id];
-              return (
-                <td key={column.id} className={NUM_CELL}>
-                  <TableScoreContent
-                    score={score}
-                    roleName={column.label}
-                    isLoading={player === undefined}
-                  />
-                </td>
-              );
-            }
-            const text = formatDynamicCell(player, column.id);
-            return (
-              <td
-                key={column.id}
-                className={
-                  column.align === "right"
-                    ? NUM_CELL
-                    : `${TEXT_CELL} text-on-surface`
-                }
-                title={text !== "—" && text !== "…" ? text : undefined}
-              >
-                {text}
-              </td>
-            );
-          }
-          if (column.id === "nationality" && player) {
-            return (
-              <td
-                key={column.id}
-                className="h-table-row-height-two-line px-2 align-middle text-on-surface"
-              >
-                <NationalityCell nationalities={player.nationalities} />
-              </td>
-            );
-          }
-          const cell = formatPlayerBasicCell(
-            player,
-            column.id as (typeof BASIC_SEARCH_SORT_FIELDS)[number],
-          );
-          return (
-            <td
-              key={column.id}
-              className={
-                cell.numeric
-                  ? NUM_CELL
-                  : `${TEXT_CELL} ${column.id === "age" || column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
-              }
-              title={cell.title}
-            >
-              {cell.text}
-            </td>
-          );
-        })
-      }
+      renderCells={renderCells}
       testId="search-results-scroller"
       total={total}
-      onPlayerActivate={(player) => {
-        void navigate({
-          to: "/players/$uid",
-          params: { uid: String(player.uid) },
-          search: { view },
-        });
-      }}
+      onPlayerActivate={handlePlayerActivate}
     />
   );
 }
@@ -480,7 +545,7 @@ export function SearchResultsPanel({
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const removeStoredColumn = usePlayerTableStore((state) => state.removeColumn);
   const replaceLayout = usePlayerTableStore((state) => state.replaceLayout);
-  const moveColumn = usePlayerTableStore((state) => state.moveColumn);
+  const moveStoredColumn = usePlayerTableStore((state) => state.moveColumn);
   const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
   const identityWidth = usePlayerTableStore(
     (state) => state.layouts[tableId].identityWidth,
@@ -608,26 +673,48 @@ export function SearchResultsPanel({
       dataUpdateCount: requestedDataUpdateCount,
     };
   }
-  const isSortReplacement =
+  // The committed rows stay rendered, inactive, for every change inside the
+  // same view and page context; a view or context change clears them.
+  const isRetainedReplacement =
     !requestMatchesCommitted &&
-    JSON.stringify({
-      filters: committed.filters,
-      filterCombine: committed.filterCombine,
-      requestedFields: committed.requestedFields,
-      view: committed.view,
-      comparisonPool: committed.comparisonPool,
-      pageContext: committed.pageContext,
-    }) ===
-      JSON.stringify({
-        filters: requested.filters,
-        filterCombine: requested.filterCombine,
-        requestedFields: requested.requestedFields,
-        view: requested.view,
-        comparisonPool: requested.comparisonPool,
-        pageContext: requested.pageContext,
-      });
+    committed.view === requested.view &&
+    JSON.stringify(committed.pageContext) ===
+      JSON.stringify(requested.pageContext);
+  const replacementKind = !isRetainedReplacement
+    ? null
+    : JSON.stringify([
+          committed.filters,
+          committed.filterCombine,
+          committed.comparisonPool,
+          committed.shortlistOnly,
+        ]) !==
+        JSON.stringify([
+          requested.filters,
+          requested.filterCombine,
+          requested.comparisonPool,
+          requested.shortlistOnly,
+        ])
+      ? "filter"
+      : committed.sortBy !== requested.sortBy ||
+          committed.sortDir !== requested.sortDir
+        ? "sort"
+        : "columns";
+  const unresolvedFieldIds = useMemo(
+    () =>
+      new Set(
+        isRetainedReplacement
+          ? requested.requestedFields.filter(
+              (field) => !committed.requestedFields.includes(field),
+            )
+          : [],
+      ),
+    [
+      committed.requestedFields,
+      isRetainedReplacement,
+      requested.requestedFields,
+    ],
+  );
   const isReplacementActive = !requestMatchesCommitted;
-  const isReplacementPending = isSortReplacement && requestedQuery.isFetching;
   // A newer request stopped this one in Rust; it is pending again, never failed.
   const isRequestedSuperseded =
     requestedQuery.isError && isSupersededError(requestedQuery.error);
@@ -635,10 +722,42 @@ export function SearchResultsPanel({
     requestedQuery.isError && !isRequestedSuperseded
       ? requestedQuery.error
       : null;
-  const replacementError = isSortReplacement ? requestedError : null;
-  const replacementLabel = requested.sortBy.startsWith("potential_role.")
-    ? "Calculating and sorting…"
-    : "Sorting…";
+  const replacementFeedback =
+    replacementKind === null ? null : requestedError ? (
+      <div
+        className="flex shrink-0 items-center justify-between gap-3 px-4 pb-3 text-body-sm text-error"
+        role="alert"
+      >
+        <span>
+          {replacementKind === "filter"
+            ? "Could not filter players."
+            : replacementKind === "sort"
+              ? "Could not sort players."
+              : "Could not load player columns."}{" "}
+          {requestedError.message}
+        </span>
+        <button
+          type="button"
+          className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          onClick={() => void requestedQuery.refetch()}
+        >
+          Retry
+        </button>
+      </div>
+    ) : (
+      <p
+        className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
+        role="status"
+      >
+        {replacementKind === "filter"
+          ? "Filtering…"
+          : replacementKind === "columns"
+            ? "Loading columns…"
+            : requested.sortBy.startsWith("potential_role.")
+              ? "Calculating and sorting…"
+              : "Sorting…"}
+      </p>
+    );
 
   // The user came back to a query whose request was superseded while it ran.
   useEffect(() => {
@@ -675,6 +794,7 @@ export function SearchResultsPanel({
       [
         committed.view,
         committed.comparisonPool,
+        String(committed.shortlistOnly),
         committed.filterCombine,
         ...committed.filters.map(
           (rule) =>
@@ -683,8 +803,89 @@ export function SearchResultsPanel({
       ].join("|"),
     [committed],
   );
+  const addColumn = useCallback(
+    (metricId: string) =>
+      addColumns(tableId, [metricId], searchTableGroups(view)),
+    [addColumns, tableId, view],
+  );
+  const removeColumn = useCallback(
+    (metricId: string) => {
+      let nextColumnIds = layout.columnIds.filter((id) => id !== metricId);
+      if (nextColumnIds.length === layout.columnIds.length) {
+        return;
+      }
+      if (isTacticColumnId(metricId)) {
+        const survivingGroups = tacticColumnGroupsForTable(tableId).filter(
+          (group) => isFullTacticGroup(nextColumnIds, group),
+        );
+        const persistedLaneIds = nextColumnIds.flatMap((id) => {
+          const laneId = tacticLaneIdForId(id);
+          return laneId && tacticGroupForId(id) === survivingGroups[0]
+            ? [laneId]
+            : [];
+        });
+        const removalOrder =
+          orderedLaneIds.length === TACTIC_LANE_IDS.length
+            ? orderedLaneIds
+            : [...new Set(persistedLaneIds)];
+        nextColumnIds = [
+          ...nextColumnIds.filter((id) => !isTacticColumnId(id)),
+          ...buildTacticColumnOrder(removalOrder, survivingGroups),
+        ];
+        if (nextColumnIds.length === 0) {
+          // Identity-only is valid and never rolls to defaults: emptying the
+          // last tactic leaf must persist `columnIds: []`. `replaceLayout`
+          // treats an empty list as malformed and restores defaults, so remove
+          // through the existing per-column store path instead.
+          for (const id of layout.columnIds) {
+            removeStoredColumn(tableId, id);
+          }
+        } else {
+          replaceLayout(tableId, nextColumnIds);
+        }
+      } else {
+        removeStoredColumn(tableId, metricId);
+      }
+      const persistedColumnIds =
+        usePlayerTableStore.getState().layouts[tableId].columnIds;
+      if (persistedColumnIds.includes(requested.sortBy)) {
+        return;
+      }
+      const nextSort = persistedColumnIds.includes(defaultSearchSort(view))
+        ? defaultSearchSort(view)
+        : persistedColumnIds[0];
+      if (!nextSort) {
+        return;
+      }
+      onSortChange(nextSort, defaultDirForSortField(nextSort));
+    },
+    [
+      layout.columnIds,
+      onSortChange,
+      orderedLaneIds,
+      removeStoredColumn,
+      replaceLayout,
+      requested.sortBy,
+      tableId,
+      view,
+    ],
+  );
+  const moveColumn = useCallback(
+    (metricId: string, targetIndex: number) =>
+      moveStoredColumn(tableId, metricId, targetIndex),
+    [moveStoredColumn, tableId],
+  );
+  const resizeColumn = useCallback(
+    (metricId: string, width: number) =>
+      setColumnWidth(tableId, metricId, width),
+    [setColumnWidth, tableId],
+  );
+  const filterColumn = useCallback(
+    (field: string) => setFieldRequest({ field, key: Date.now() }),
+    [],
+  );
   const page =
-    requestMatchesCommitted || isSortReplacement
+    requestMatchesCommitted || isRetainedReplacement
       ? committedQuery.data
       : undefined;
   const columnsControl = (
@@ -694,9 +895,7 @@ export function SearchResultsPanel({
         view === "moneyball" ? MONEYBALL_HEADER_METRICS : SEARCH_HEADER_METRICS
       }
       visibleColumnIds={layout.columnIds}
-      onAddColumn={(metricId) =>
-        addColumns(tableId, [metricId], searchTableGroups(view))
-      }
+      onAddColumn={addColumn}
       onRemoveColumn={removeColumn}
     />
   );
@@ -789,15 +988,20 @@ export function SearchResultsPanel({
     </div>
   );
   if (page.total === 0) {
-    const appliedFilters = completeFilterRules(filters, view);
-    const shortlistEmpty = view === "general" && shortlistOnly;
+    // The copy describes the committed rows, not a request still loading.
+    const appliedFilters = completeFilterRules(
+      committed.filters,
+      committed.view,
+    );
+    const shortlistEmpty =
+      committed.view === "general" && committed.shortlistOnly;
     const emptyTitle = shortlistEmpty
       ? appliedFilters.length > 0
         ? "No shortlisted players match these filters"
         : "No players in shortlist"
       : appliedFilters.length > 0
         ? "No players match these filters"
-        : view === "moneyball"
+        : committed.view === "moneyball"
           ? "No Moneyball stats for this snapshot"
           : "No players in snapshot";
     const emptyBody = shortlistEmpty
@@ -806,7 +1010,7 @@ export function SearchResultsPanel({
         : "Upload a shortlist CSV for this save, or turn Shortlist off to browse every snapshot player."
       : appliedFilters.length > 0
         ? "Adjust or clear filters in the toolbar above to widen the result set."
-        : view === "moneyball"
+        : committed.view === "moneyball"
           ? "Moneyball stats come from the FM save file linked to this save. Use Refresh stats to read it, or link a save file in Settings."
           : "The snapshot exists but holds no player rows. Run Load Data again with Football Manager in an active save.";
 
@@ -817,62 +1021,12 @@ export function SearchResultsPanel({
         contentClassName="flex min-h-0 flex-1 flex-col"
       >
         {renderToolbar(summary)}
+        {replacementFeedback}
         <EmptyState icon={SearchX} title={emptyTitle}>
           {emptyBody}
         </EmptyState>
       </Panel>
     );
-  }
-
-  function removeColumn(metricId: string) {
-    let nextColumnIds = layout.columnIds.filter((id) => id !== metricId);
-    if (nextColumnIds.length === layout.columnIds.length) {
-      return;
-    }
-    if (isTacticColumnId(metricId)) {
-      const survivingGroups = tacticColumnGroupsForTable(tableId).filter(
-        (group) => isFullTacticGroup(nextColumnIds, group),
-      );
-      const persistedLaneIds = nextColumnIds.flatMap((id) => {
-        const laneId = tacticLaneIdForId(id);
-        return laneId && tacticGroupForId(id) === survivingGroups[0]
-          ? [laneId]
-          : [];
-      });
-      const removalOrder =
-        orderedLaneIds.length === TACTIC_LANE_IDS.length
-          ? orderedLaneIds
-          : [...new Set(persistedLaneIds)];
-      nextColumnIds = [
-        ...nextColumnIds.filter((id) => !isTacticColumnId(id)),
-        ...buildTacticColumnOrder(removalOrder, survivingGroups),
-      ];
-      if (nextColumnIds.length === 0) {
-        // Identity-only is valid and never rolls to defaults: emptying the
-        // last tactic leaf must persist `columnIds: []`. `replaceLayout`
-        // treats an empty list as malformed and restores defaults, so remove
-        // through the existing per-column store path instead.
-        for (const id of layout.columnIds) {
-          removeStoredColumn(tableId, id);
-        }
-      } else {
-        replaceLayout(tableId, nextColumnIds);
-      }
-    } else {
-      removeStoredColumn(tableId, metricId);
-    }
-    const persistedColumnIds =
-      usePlayerTableStore.getState().layouts[tableId].columnIds;
-    if (persistedColumnIds.includes(requested.sortBy)) {
-      return;
-    }
-    const nextSort = persistedColumnIds.includes(defaultSearchSort(view))
-      ? defaultSearchSort(view)
-      : persistedColumnIds[0];
-    if (!nextSort) {
-      return;
-    }
-    onSortChange(nextSort, defaultDirForSortField(nextSort));
   }
 
   return (
@@ -882,29 +1036,7 @@ export function SearchResultsPanel({
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
       {renderToolbar(summary)}
-      {isReplacementPending ? (
-        <p
-          className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
-          role="status"
-        >
-          {replacementLabel}
-        </p>
-      ) : null}
-      {replacementError ? (
-        <div
-          className="flex shrink-0 items-center justify-between gap-3 px-4 pb-3 text-body-sm text-error"
-          role="alert"
-        >
-          <span>Could not sort players. {replacementError.message}</span>
-          <button
-            type="button"
-            className="h-8 shrink-0 rounded-md border border-outline px-3 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            onClick={() => void requestedQuery.refetch()}
-          >
-            Retry
-          </button>
-        </div>
-      ) : null}
+      {replacementFeedback}
       <SearchResultsVirtualTable
         key={listKey}
         total={page.total}
@@ -921,18 +1053,13 @@ export function SearchResultsPanel({
         pageContext={committed.pageContext}
         firstPageQueryOptions={committedOptions}
         isReplacementActive={isReplacementActive}
+        unresolvedFieldIds={unresolvedFieldIds}
         onSortChange={onSortChange}
-        onAddColumn={(metricId) =>
-          addColumns(tableId, [metricId], searchTableGroups(view))
-        }
+        onAddColumn={addColumn}
         onRemoveColumn={removeColumn}
-        onMoveColumn={(metricId, targetIndex) =>
-          moveColumn(tableId, metricId, targetIndex)
-        }
-        onFilterColumn={(field) => setFieldRequest({ field, key: Date.now() })}
-        onResizeColumn={(metricId, width) =>
-          setColumnWidth(tableId, metricId, width)
-        }
+        onMoveColumn={moveColumn}
+        onFilterColumn={filterColumn}
+        onResizeColumn={resizeColumn}
       />
     </Panel>
   );

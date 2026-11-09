@@ -238,6 +238,41 @@ function mockScrollerScrollTo(scroller: HTMLElement) {
   });
 }
 
+/**
+ * Records the arguments of every `list_squad_players` request and rejects
+ * those for `failingOffset` while it is set. Other requests keep the shared
+ * IPC mock, which the test setup registers again after each test.
+ */
+function recordSquadPageRequests() {
+  const internals = (
+    window as unknown as {
+      __TAURI_INTERNALS__: {
+        invoke: (
+          cmd: string,
+          args?: Record<string, unknown>,
+          options?: unknown,
+        ) => Promise<unknown>;
+      };
+    }
+  ).__TAURI_INTERNALS__;
+  const invoke = internals.invoke;
+  const recorder = {
+    requests: [] as Record<string, unknown>[],
+    failingOffset: null as number | null,
+    offsets: () => new Set(recorder.requests.map((args) => args.offset)),
+  };
+  internals.invoke = (cmd, args, options) => {
+    if (cmd === "list_squad_players" && args) {
+      recorder.requests.push(args);
+      if (args.offset === recorder.failingOffset) {
+        return Promise.reject(new Error("Could not load the next squad page."));
+      }
+    }
+    return invoke(cmd, args, options);
+  };
+  return recorder;
+}
+
 const CLUB_DNA_CONTEXT = { saveId: 1, contextToken: "save-token-1" };
 const SECOND_SAVE: SaveSummary = {
   id: 2,
@@ -438,17 +473,11 @@ describe("My Club route", () => {
       within(squadTable).getByRole("columnheader", { name: "Player" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", {
-        name: "Squad depth",
-        hidden: true,
-      }),
-    ).not.toBeVisible();
+      screen.queryByRole("heading", { name: "Squad depth", hidden: true }),
+    ).toBeNull();
     expect(
-      screen.getByRole("region", {
-        name: "Tactic controls",
-        hidden: true,
-      }),
-    ).not.toBeVisible();
+      screen.queryByRole("region", { name: "Tactic controls", hidden: true }),
+    ).toBeNull();
 
     await user.click(workspaceLink("Planner"));
     await waitFor(() =>
@@ -463,6 +492,7 @@ describe("My Club route", () => {
     expect(
       await screen.findByRole("heading", { name: "Squad depth" }),
     ).toBeVisible();
+    expect(workspaceLink("Planner")).toHaveFocus();
     expect(squadTable).not.toBeVisible();
 
     await user.click(workspaceLink("Tactic"));
@@ -499,6 +529,12 @@ describe("My Club route", () => {
     expect(
       within(squadTable).getByRole("columnheader", { name: "Player" }),
     ).toBeInTheDocument();
+    const plannerHeading = screen.getByRole("heading", {
+      name: "Squad depth",
+      hidden: true,
+    });
+    expect(plannerHeading.closest("[hidden]")).not.toBeNull();
+    expect(plannerHeading).not.toBeVisible();
   });
 
   it.each([
@@ -1210,7 +1246,7 @@ describe("My Club route", () => {
     });
   });
 
-  it("defaults to Squad and keeps Planner and Tactic mounted", async () => {
+  it("defaults to Squad and keeps a visited Tactic draft mounted", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
     renderMyClubRoute({ initialEntry: "/my-club" });
@@ -1237,22 +1273,15 @@ describe("My Club route", () => {
     expect(
       screen.getByRole("link", { name: "Open Managed Club" }),
     ).toHaveAttribute("href", "/my-club#managed-club");
-    const tacticRegion = await screen.findByRole("region", {
-      name: "Tactic controls",
-      hidden: true,
-    });
-    const depthHeading = await screen.findByRole("heading", {
-      level: 2,
-      name: "Squad depth",
-      hidden: true,
-    });
-    expect(tacticRegion.closest("[hidden]")).not.toBeNull();
-    expect(depthHeading.closest("[hidden]")).not.toBeNull();
-    expect(tacticRegion).not.toBeVisible();
-    expect(depthHeading).not.toBeVisible();
+    expect(
+      screen.queryByRole("region", { name: "Tactic controls", hidden: true }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "Squad depth", hidden: true }),
+    ).toBeNull();
 
     await openMyClubWorkspace(user, "tactic");
-    const tacticEditor = screen.getByRole("region", {
+    const tacticEditor = await screen.findByRole("region", {
       name: "Tactic controls",
     });
     const weight = screen.getByRole("slider", {
@@ -1514,17 +1543,25 @@ describe("My Club route", () => {
         dynamicValues: { "attr.Acceleration": 16, "attr.Agility": 15 },
       })),
     );
-    renderMyClubRoute({ initialEntry: "/my-club" });
+    const squadPages = recordSquadPageRequests();
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", { name: "Squad overview" });
     const scroller = screen.getByTestId("squad-overview-scroller");
     mockScrollerScrollTo(scroller);
     fireEvent.scroll(scroller, { target: { scrollTop: 1_950 } });
+    // The visible window and its prefetched neighbour both settle before the
+    // reorder, so any later request would come from the reorder itself.
     await waitFor(() => {
-      expect(getLastSquadPlayersArgs()).toMatchObject({
-        offset: 50,
-        requestedFields: ["attr.Acceleration", "attr.Agility", "height"],
-      });
+      for (const offset of [50, 100]) {
+        expect(squadPages.requests).toContainEqual(
+          expect.objectContaining({
+            offset,
+            requestedFields: ["attr.Acceleration", "attr.Agility", "height"],
+          }),
+        );
+      }
+      expect(queryClient.isFetching()).toBe(0);
     });
     const focusedRow = await waitFor(() => {
       const row = scroller.querySelector<HTMLElement>('[data-index="49"]');
@@ -2089,16 +2126,21 @@ describe("My Club route", () => {
     expect(getSquadPlayersCallCount()).toBeGreaterThan(callsAfterFailure);
   });
 
-  it("clears Squad rows while a visible-field projection loads", async () => {
+  it("keeps Squad rows inactive with loading cells while a column change loads", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
       primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
-    setSquadPlayersOverride([squadPlayerNamed("Projected Squad", 1)]);
-    renderMyClubRoute({ initialEntry: "/my-club" });
+    setSquadPlayersOverride([
+      {
+        ...squadPlayerNamed("Projected Squad", 1),
+        dynamicValues: { "attr.Acceleration": 16 },
+      },
+    ]);
+    const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
 
-    expect(await screen.findByText("Projected Squad")).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "Squad overview" });
     const callsBeforeProjection = getSquadPlayersCallCount();
     setSquadPlayersPageIpcMockMode("pendingProjection");
     act(() => {
@@ -2108,15 +2150,73 @@ describe("My Club route", () => {
     await waitFor(() =>
       expect(getSquadPlayersCallCount()).toBe(callsBeforeProjection + 1),
     );
-    expect(screen.getByText("Loading squad overview…")).toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: "Squad overview" })).toBeNull();
-    expect(screen.queryByText("Projected Squad")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading columns…");
+    const squadRow = () => {
+      const row = within(table)
+        .getAllByRole("row")
+        .find((candidate) => candidate.hasAttribute("data-index"));
+      if (!row) {
+        throw new Error("expected a retained Squad row");
+      }
+      return row;
+    };
+    const accelerationCell = () => {
+      const headerLabels = within(table)
+        .getAllByRole("columnheader")
+        .filter((header) => header.getAttribute("scope") === "col")
+        .map((header) => header.getAttribute("aria-label"));
+      return within(squadRow()).getAllByRole("cell")[
+        headerLabels.indexOf("Acceleration")
+      ];
+    };
+    expect(within(squadRow()).getByText("Projected Squad")).toBeInTheDocument();
+    // The committed row never requested Acceleration, so its cell waits.
+    expect(accelerationCell()).toHaveTextContent("…");
+    expect(squadRow()).not.toHaveAttribute("tabindex");
+    fireEvent.click(squadRow());
+    fireEvent.keyDown(squadRow(), { key: "Enter" });
+    expect(router.state.location.pathname).toBe("/my-club");
 
     resolvePendingSquadPlayersPageIpcMock();
-    expect(await screen.findByText("Projected Squad")).toBeInTheDocument();
+    await waitFor(() => expect(accelerationCell()).toHaveTextContent("16"));
+    expect(screen.queryByRole("status")).toBeNull();
     act(() => {
       usePlayerTableStore.getState().removeColumn("squad", "attr.Acceleration");
     });
+  });
+
+  it("clears Squad rows when the current snapshot is replaced", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Old Snapshot Scout", 1)]);
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
+
+    expect(await screen.findByText("Old Snapshot Scout")).toBeInTheDocument();
+    setSquadPlayersPageIpcMockMode("pendingProjection");
+    setSquadPlayersOverride([squadPlayerNamed("New Snapshot Scout", 2)]);
+    const snapshot = queryClient.getQueryData<SnapshotSummary>(
+      currentSnapshotQueryOptions.queryKey,
+    );
+    if (!snapshot) {
+      throw new Error("Expected a current snapshot");
+    }
+    act(() => {
+      queryClient.setQueryData<SnapshotSummary>(
+        currentSnapshotQueryOptions.queryKey,
+        { ...snapshot, id: snapshot.id + 1 },
+      );
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByText("Old Snapshot Scout")).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("table", { name: "Squad overview" })).toBeNull();
+
+    resolvePendingSquadPlayersPageIpcMock();
+    expect(await screen.findByText("New Snapshot Scout")).toBeInTheDocument();
   });
 
   it("sorts the Squad table through the URL and backend query", async () => {
@@ -2432,7 +2532,9 @@ describe("My Club route", () => {
       primaryClub: { clubName: "Metro FC", clubUid: 1 },
       sources: [],
     });
-    setSquadPlayersOverride(manySquadPlayers(101));
+    // Enough rows for windows beyond the visible range and its neighbours.
+    setSquadPlayersOverride(manySquadPlayers(401));
+    const squadPages = recordSquadPageRequests();
     renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", {
@@ -2454,23 +2556,20 @@ describe("My Club route", () => {
 
     fireEvent.scroll(scroller, { target: { scrollTop: 2_000 } });
 
-    await waitFor(() => {
-      expect(getLastSquadPlayersArgs()).toMatchObject({
-        offset: 50,
-        limit: 50,
-      });
-    });
+    // Windows 0 and 50 hold the visible rows; 100 is the next neighbour.
     expect(await screen.findByText("Squad player 051")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(squadPages.offsets()).toEqual(new Set([0, 50, 100]));
+    });
 
     fireEvent.scroll(scroller, { target: { scrollTop: 4_000 } });
 
-    await waitFor(() => {
-      expect(getLastSquadPlayersArgs()).toMatchObject({
-        offset: 100,
-        limit: 50,
-      });
-    });
+    // Windows 50 and 100 hold the visible rows; 0 and 150 are neighbours.
     expect(await screen.findByText("Squad player 101")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(squadPages.offsets()).toEqual(new Set([0, 50, 100, 150]));
+    });
+    expect(squadPages.requests.every((args) => args.limit === 50)).toBe(true);
   });
 
   it("keeps ArrowDown focus pending while a virtual Squad page loads", async () => {
@@ -2559,17 +2658,24 @@ describe("My Club route", () => {
       sources: [],
     });
     setSquadPlayersOverride(manySquadPlayers(101));
-    setSquadPlayersPageIpcMockMode("rejectSecondPageOnce");
+    // The second window fails both as a prefetch and once it is visible.
+    const squadPages = recordSquadPageRequests();
+    squadPages.failingOffset = 50;
     renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     const scroller = screen.getByTestId("squad-overview-scroller");
     mockScrollerScrollTo(scroller);
+    await waitFor(() => {
+      expect(squadPages.offsets()).toContain(50);
+    });
     fireEvent.scroll(scroller, { target: { scrollTop: 2_000 } });
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Couldn't load this part of the table.",
     );
+    expect(screen.queryByText("Squad player 051")).not.toBeInTheDocument();
+    squadPages.failingOffset = null;
     await user.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(await screen.findByText("Squad player 051")).toBeInTheDocument();
@@ -3464,6 +3570,48 @@ describe("My Club route", () => {
     ]);
   });
 
+  it("refreshes Squad suggested training after saving a tactic", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
+      sources: [],
+    });
+    setSquadPlayersOverride([
+      {
+        ...squadPlayerNamed("Focused Scout", 42),
+        suggestedTraining: "Quickness",
+      },
+    ]);
+    renderMyClubRoute({ staleTime: 60_000, initialEntry: "/my-club" });
+
+    const table = await screen.findByRole("table", { name: "Squad overview" });
+    expect(within(table).getByText("Quickness")).toBeInTheDocument();
+    await openMyClubWorkspace(user, "tactic");
+    await screen.findByRole("region", { name: "Tactic controls" });
+    setSquadPlayersOverride([
+      {
+        ...squadPlayerNamed("Focused Scout", 42),
+        suggestedTraining: "Attacking",
+      },
+    ]);
+    const callsBeforeSave = getSquadPlayersCallCount();
+    const weight = screen.getByRole("slider", {
+      name: "IP/OOP score weight",
+    });
+    weight.focus();
+    await user.keyboard("{ArrowRight}");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    await waitFor(() =>
+      expect(getSquadPlayersCallCount()).toBeGreaterThan(callsBeforeSave),
+    );
+    await openMyClubWorkspace(user, "squad");
+    const refreshed = screen.getByRole("table", { name: "Squad overview" });
+    expect(await within(refreshed).findByText("Attacking")).toBeInTheDocument();
+    expect(within(refreshed).queryByText("Quickness")).toBeNull();
+  });
+
   it("saves an explicit midfield side without clearing its compatible role", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -4151,9 +4299,11 @@ describe("My Club route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     const { queryClient } = renderMyClubRoute({
-      initialEntry: "/my-club?view=tactic",
+      initialEntry: "/my-club?view=planner",
     });
 
+    await screen.findByRole("region", { name: "Squad depth board" });
+    await openMyClubWorkspace(user, "tactic");
     await screen.findByRole("region", { name: "Tactic controls" });
     const weight = screen.getByRole("slider", {
       name: "IP/OOP score weight",

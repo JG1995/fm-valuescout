@@ -166,6 +166,75 @@ function mockScrollerScrollTo(scroller: HTMLElement) {
   });
 }
 
+type HeldSearchRequest = {
+  /** Answers from the shared IPC mock. */
+  resolve: () => void;
+};
+
+/**
+ * Holds every `search_players` request that names its table (a panel's
+ * requested first page) until the test settles it. Other requests keep the
+ * shared IPC mock, which the test setup registers again after each test.
+ */
+function holdNamedSearchRequests(): HeldSearchRequest[] {
+  const internals = (
+    window as unknown as {
+      __TAURI_INTERNALS__: {
+        invoke: (
+          cmd: string,
+          args?: Record<string, unknown>,
+          options?: unknown,
+        ) => Promise<unknown>;
+      };
+    }
+  ).__TAURI_INTERNALS__;
+  const invoke = internals.invoke;
+  const held: HeldSearchRequest[] = [];
+  internals.invoke = (cmd, args, options) => {
+    if (cmd !== "search_players" || !args?.tableId) {
+      return invoke(cmd, args, options);
+    }
+    return new Promise((resolve) => {
+      held.push({ resolve: () => resolve(invoke(cmd, args, options)) });
+    });
+  };
+  return held;
+}
+
+/** Records the arguments of every `search_players` request. */
+function recordSearchRequests(): Record<string, unknown>[] {
+  const internals = (
+    window as unknown as {
+      __TAURI_INTERNALS__: {
+        invoke: (
+          cmd: string,
+          args?: Record<string, unknown>,
+          options?: unknown,
+        ) => Promise<unknown>;
+      };
+    }
+  ).__TAURI_INTERNALS__;
+  const invoke = internals.invoke;
+  const requests: Record<string, unknown>[] = [];
+  internals.invoke = (cmd, args, options) => {
+    if (cmd === "search_players" && args) {
+      requests.push(args);
+    }
+    return invoke(cmd, args, options);
+  };
+  return requests;
+}
+
+function retainedRow(table: HTMLElement): HTMLElement {
+  const row = within(table)
+    .getAllByRole("row")
+    .find((candidate) => candidate.hasAttribute("data-index"));
+  if (!row) {
+    throw new Error("expected a retained results row");
+  }
+  return row;
+}
+
 describe("search route", () => {
   beforeEach(() => {
     openCsvDialog.mockReset();
@@ -1563,7 +1632,8 @@ describe("search route", () => {
         dynamicValues: { "attr.Acceleration": 16, "attr.Agility": 15 },
       })),
     );
-    const { router } = renderSearchRoute();
+    const requests = recordSearchRequests();
+    const { queryClient, router } = renderSearchRoute();
 
     const table = await screen.findByRole("table", {
       name: "Player search results",
@@ -1571,11 +1641,18 @@ describe("search route", () => {
     const scroller = screen.getByTestId("search-results-scroller");
     mockScrollerScrollTo(scroller);
     fireEvent.scroll(scroller, { target: { scrollTop: 1_950 } });
+    // The visible window and its prefetched neighbour both settle before the
+    // reorder, so any later request would come from the reorder itself.
     await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        offset: 50,
-        requestedFields: ["attr.Acceleration", "attr.Agility", "height"],
-      });
+      for (const offset of [50, 100]) {
+        expect(requests).toContainEqual(
+          expect.objectContaining({
+            offset,
+            requestedFields: ["attr.Acceleration", "attr.Agility", "height"],
+          }),
+        );
+      }
+      expect(queryClient.isFetching()).toBe(0);
     });
     const focusedRow = await waitFor(() => {
       const row = scroller.querySelector<HTMLElement>('[data-index="49"]');
@@ -2191,12 +2268,19 @@ describe("search route", () => {
     expect(within(firstAfter).queryByText("Zara")).not.toBeInTheDocument();
   });
 
-  it("clears Search rows while a visible-field projection loads", async () => {
+  it("keeps Search rows inactive with loading cells while a column change loads", async () => {
     await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([playerNamed("Projected Search", 160)]);
-    renderSearchRoute();
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Projected Search", 160),
+        dynamicValues: { "attr.Acceleration": 16 },
+      },
+    ]);
+    const { router } = renderSearchRoute();
 
-    expect(await screen.findByText("Projected Search")).toBeInTheDocument();
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
     const callsBeforeProjection = getSearchPlayersCallCount();
     setSearchPlayersPageIpcMockMode("pendingProjection");
     act(() => {
@@ -2208,19 +2292,142 @@ describe("search route", () => {
     await waitFor(() =>
       expect(getSearchPlayersCallCount()).toBe(callsBeforeProjection + 1),
     );
-    expect(screen.getByText("Loading player results…")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("table", { name: "Player search results" }),
-    ).toBeNull();
-    expect(screen.queryByText("Projected Search")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading columns…");
+    const row = retainedRow(table);
+    expect(within(row).getByText("Projected Search")).toBeInTheDocument();
+    const accelerationCell = () => {
+      const headerLabels = within(table)
+        .getAllByRole("columnheader")
+        .filter((header) => header.getAttribute("scope") === "col")
+        .map((header) => header.getAttribute("aria-label"));
+      return within(retainedRow(table)).getAllByRole("cell")[
+        headerLabels.indexOf("Acceleration")
+      ];
+    };
+    // The committed row never requested Acceleration, so its cell waits.
+    expect(accelerationCell()).toHaveTextContent("…");
+    expect(row).not.toHaveAttribute("tabindex");
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(router.state.location.pathname).toBe("/search");
 
     resolvePendingSearchPlayersPageIpcMock();
-    expect(await screen.findByText("Projected Search")).toBeInTheDocument();
+    await waitFor(() => expect(accelerationCell()).toHaveTextContent("16"));
+    expect(screen.queryByRole("status")).toBeNull();
     act(() => {
       usePlayerTableStore
         .getState()
         .removeColumn("search", "attr.Acceleration");
     });
+  });
+
+  it("keeps Search rows while a filter loads, then shows the filtered rows from the top", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride(manyPlayers(120));
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const scroller = screen.getByTestId("search-results-scroller");
+    mockScrollerScrollTo(scroller);
+    fireEvent.scroll(scroller, { target: { scrollTop: 1_950 } });
+    expect(await within(table).findByText("Player 060")).toBeInTheDocument();
+    const held = holdNamedSearchRequests();
+
+    await user.click(screen.getByRole("button", { name: "Add filter" }));
+    const dialog = screen.getByRole("form", { name: "Add filter" });
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "ca",
+    );
+    await user.click(within(dialog).getByRole("option", { name: "CA" }));
+    fireEvent.change(within(dialog).getByLabelText("Value"), {
+      target: { value: "150" },
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Add" }));
+
+    await waitFor(() => expect(held).toHaveLength(1));
+    expect(screen.getByRole("status")).toHaveTextContent("Filtering…");
+    expect(screen.getByTestId("search-results-scroller")).toBe(scroller);
+    expect(scroller.scrollTop).toBe(1_950);
+    expect(within(table).getByText("Player 060")).toBeInTheDocument();
+    expect(retainedRow(table)).not.toHaveAttribute("tabindex");
+    expect(screen.getByTestId("search-results-summary")).toHaveTextContent(
+      /^120 players/,
+    );
+
+    act(() => held[0].resolve());
+    await waitFor(() =>
+      expect(screen.getByTestId("search-results-summary")).toHaveTextContent(
+        /^51 players/,
+      ),
+    );
+    const filteredScroller = screen.getByTestId("search-results-scroller");
+    expect(filteredScroller).not.toBe(scroller);
+    expect(filteredScroller.scrollTop).toBe(0);
+    expect(screen.getByText("Player 001")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(router.state.location.search.filters).toEqual([
+      expect.objectContaining({ field: "ca", op: "gte", value: 150 }),
+    ]);
+  });
+
+  it("keeps Search rows through a shortlist switch, then shows its rows from the top", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride(manyPlayers(120));
+    renderSearchRoute();
+
+    const toggleOff = await screen.findByRole("switch", {
+      name: "Shortlist: Off",
+    });
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const scroller = screen.getByTestId("search-results-scroller");
+    mockScrollerScrollTo(scroller);
+    fireEvent.scroll(scroller, { target: { scrollTop: 1_950 } });
+    expect(await within(table).findByText("Player 060")).toBeInTheDocument();
+    const held = holdNamedSearchRequests();
+
+    await user.click(toggleOff);
+
+    await waitFor(() => expect(held).toHaveLength(1));
+    expect(screen.getByRole("status")).toHaveTextContent("Filtering…");
+    expect(screen.getByTestId("search-results-scroller")).toBe(scroller);
+    expect(within(table).getByText("Player 060")).toBeInTheDocument();
+    expect(retainedRow(table)).not.toHaveAttribute("tabindex");
+
+    act(() => held[0].resolve());
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    const switchedScroller = screen.getByTestId("search-results-scroller");
+    expect(switchedScroller).not.toBe(scroller);
+    expect(switchedScroller.scrollTop).toBe(0);
+    expect(getLastSearchPlayersArgs()).toMatchObject({ shortlistOnly: true });
+  });
+
+  it("clears Search rows when Load Data replaces the snapshot", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Before Reload", 180)]);
+    renderSearchRoute();
+
+    expect(await screen.findByText("Before Reload")).toBeInTheDocument();
+    setSearchPlayersPageIpcMockMode("pendingProjection");
+    setSearchPlayersOverride([playerNamed("After Reload", 190)]);
+    await user.click(screen.getByRole("button", { name: "Load Data" }));
+
+    await waitFor(() =>
+      expect(screen.queryByText("Before Reload")).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("table", { name: "Player search results" }),
+    ).toBeNull();
+
+    resolvePendingSearchPlayersPageIpcMock();
+    expect(await screen.findByText("After Reload")).toBeInTheDocument();
   });
 
   it("retains A until a stale cached Search sort refetch succeeds", async () => {
@@ -2570,8 +2777,10 @@ describe("search route", () => {
     await waitFor(() =>
       expect(getSearchPlayersCallCount()).toBe(callsBeforeProjection + 2),
     );
-    expect(screen.getByText("Loading player results…")).toBeInTheDocument();
-    expect(screen.queryByText("Could not load players")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading columns…");
+    expect(screen.getByText("Projected Search")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText(/Superseded/)).toBeNull();
 
     resolvePendingSearchPlayersPageIpcMock();
     expect(await screen.findByText("Projected Search")).toBeInTheDocument();
@@ -2730,6 +2939,8 @@ describe("search route", () => {
         name: /Remove filter Potential role · Goalkeeper \(IP\) ≥ 50/i,
       }),
     );
+    // The retained table remounts once the unfiltered page commits.
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
 
     expect(
       await screen.findByRole("columnheader", {
@@ -2769,6 +2980,36 @@ describe("search route", () => {
       await screen.findByText("No players match these filters"),
     ).toBeInTheDocument();
     expect(screen.queryByText("High CA")).not.toBeInTheDocument();
+  });
+
+  it("keeps the committed no-matches empty state while a cleared filter loads", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    const encodedFilters = encodeURIComponent(
+      JSON.stringify([{ id: "seed", field: "ca", op: "gte", value: 250 }]),
+    );
+    renderSearchRoute(
+      `/search?sort=ca&dir=desc&combine=and&filters=${encodedFilters}`,
+    );
+    expect(
+      await screen.findByText("No players match these filters"),
+    ).toBeInTheDocument();
+    const held = holdNamedSearchRequests();
+
+    await user.click(
+      screen.getByRole("button", { name: /Remove filter CA ≥ 250/i }),
+    );
+
+    await waitFor(() => expect(held).toHaveLength(1));
+    expect(screen.getByRole("status")).toHaveTextContent("Filtering…");
+    expect(
+      screen.getByText("No players match these filters"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No players in snapshot")).toBeNull();
+
+    act(() => held[0].resolve());
+    expect(await screen.findByText("High CA")).toBeInTheDocument();
   });
 
   it("shows the filtered empty state for Moneyball when filters exclude every player", async () => {

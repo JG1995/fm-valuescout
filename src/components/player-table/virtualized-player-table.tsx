@@ -2,10 +2,11 @@ import {
   type QueryKey,
   type UseQueryOptions,
   useQueries,
+  useQueryClient,
 } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   type ConfigurableTableColumn,
   type ConfigurableTableFixedColumn,
@@ -120,6 +121,104 @@ function isRowActionTarget(target: EventTarget | null) {
   );
 }
 
+const NO_FIXED_COLUMNS: readonly ConfigurableTableFixedColumn[] = [];
+
+type TableRowProps<TRow> = {
+  row: TRow | undefined;
+  index: number;
+  height: number;
+  isInteractive: boolean;
+  isTabStop: boolean;
+  identity: ConfigurableTableIdentity<TRow> | undefined;
+  renderCells: (row: TRow | undefined) => ReactNode;
+  renderFixedCells: ((row: TRow | undefined) => ReactNode) | undefined;
+  onRowFocus: (index: number) => void;
+  onRowBlur: () => void;
+  focusRow: (index: number) => void;
+  onRowActivate: ((row: TRow) => void) | undefined;
+};
+
+function TableRowView<TRow>({
+  row,
+  index,
+  height,
+  isInteractive,
+  isTabStop,
+  identity,
+  renderCells,
+  renderFixedCells,
+  onRowFocus,
+  onRowBlur,
+  focusRow,
+  onRowActivate,
+}: TableRowProps<TRow>) {
+  const activate =
+    isInteractive && row !== undefined && onRowActivate
+      ? () => onRowActivate(row)
+      : undefined;
+  return (
+    <tr
+      data-index={index}
+      tabIndex={isInteractive ? (isTabStop ? 0 : -1) : undefined}
+      className={
+        isInteractive
+          ? "cursor-pointer border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+          : "border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high"
+      }
+      style={{ height: `${height}px` }}
+      onFocus={isInteractive ? () => onRowFocus(index) : undefined}
+      onBlur={isInteractive ? onRowBlur : undefined}
+      onClick={
+        activate
+          ? (event) => {
+              if (isRowActionTarget(event.target)) return;
+              activate();
+            }
+          : undefined
+      }
+      onKeyDown={
+        isInteractive
+          ? (event) => {
+              if (isRowActionTarget(event.target)) return;
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                focusRow(index + 1);
+                return;
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                focusRow(index - 1);
+                return;
+              }
+              if (event.key === "Enter" && activate) {
+                event.preventDefault();
+                activate();
+              }
+            }
+          : undefined
+      }
+    >
+      {identity ? (
+        <td
+          key={identity.id}
+          className="sticky left-0 z-[1] bg-surface-container"
+        >
+          {identity.renderCell(row)}
+        </td>
+      ) : null}
+      {renderCells(row)}
+      {renderFixedCells?.(row)}
+    </tr>
+  );
+}
+
+/**
+ * Re-renders only when the row's data, position, or focus flags change, or
+ * when the caller's memoized render inputs do, so scrolling renders just the
+ * rows that enter the view.
+ */
+const TableRow = memo(TableRowView) as typeof TableRowView;
+
 export function ConfigurableVirtualizedTable<
   TPage extends TablePage,
   TRow,
@@ -128,7 +227,7 @@ export function ConfigurableVirtualizedTable<
   caption,
   columnCount,
   columns,
-  fixedColumns = [],
+  fixedColumns = NO_FIXED_COLUMNS,
   getPageRows,
   identity,
   renderHeader,
@@ -208,22 +307,33 @@ export function ConfigurableVirtualizedTable<
     }
   }, [isReplacementActive, total, virtualizer]);
 
-  const focusRow = (index: number) => {
-    if (isReplacementActive || index < 0 || index >= total) {
-      return;
-    }
-    if (!parentRef.current?.querySelector(`[data-index="${index}"]`)) {
-      virtualizer.scrollToIndex(index, { align: "auto" });
-    }
-    setPendingFocusIndex(index);
-  };
+  const focusRow = useCallback(
+    (index: number) => {
+      if (isReplacementActive || index < 0 || index >= total) {
+        return;
+      }
+      if (!parentRef.current?.querySelector(`[data-index="${index}"]`)) {
+        virtualizer.scrollToIndex(index, { align: "auto" });
+      }
+      setPendingFocusIndex(index);
+    },
+    [isReplacementActive, total, virtualizer],
+  );
+  const handleRowFocus = useCallback((index: number) => {
+    setPendingFocusIndex(null);
+    setKeyboardFocusIndex(index);
+  }, []);
+  const handleRowBlur = useCallback(() => {
+    setPendingFocusIndex(null);
+  }, []);
 
   const virtualRows = virtualizer.getVirtualItems();
   const rangeStart = virtualRows[0]?.index ?? 0;
   const rangeEnd = virtualRows[virtualRows.length - 1]?.index ?? 0;
+  const visiblePages = pageIndexesForRange(rangeStart, rangeEnd, pageSize);
   const pages = Array.from(
     new Set([
-      ...pageIndexesForRange(rangeStart, rangeEnd, pageSize),
+      ...visiblePages,
       ...(pendingFocusIndex === null
         ? []
         : [Math.floor(pendingFocusIndex / pageSize)]),
@@ -242,6 +352,38 @@ export function ConfigurableVirtualizedTable<
       ? getPageRows(pageQueries[index].data)
       : undefined,
   }));
+
+  // Once the visible windows have loaded, fetch the window on each side so a
+  // scroll in either direction finds its rows waiting. Window options never
+  // name the table, so a prefetch can neither interrupt a requested first
+  // page nor be interrupted by one.
+  const queryClient = useQueryClient();
+  const visiblePagesLoaded = visiblePages.every(
+    (page) => pageQueries[pages.indexOf(page)]?.data !== undefined,
+  );
+  const previousPage = visiblePages[0] - 1;
+  const nextPage = visiblePages[visiblePages.length - 1] + 1;
+  useEffect(() => {
+    if (isReplacementActive || !visiblePagesLoaded) {
+      return;
+    }
+    for (const page of [previousPage, nextPage]) {
+      if (page >= 0 && page * pageSize < total) {
+        void queryClient.prefetchQuery(
+          pageQueryOptions(page * pageSize, pageSize),
+        );
+      }
+    }
+  }, [
+    isReplacementActive,
+    nextPage,
+    pageQueryOptions,
+    pageSize,
+    previousPage,
+    queryClient,
+    total,
+    visiblePagesLoaded,
+  ]);
 
   useEffect(() => {
     if (isReplacementActive || pendingFocusIndex === null) {
@@ -328,81 +470,30 @@ export function ConfigurableVirtualizedTable<
             ) : null}
             {virtualRows.map((virtualRow) => {
               const row = rowAtIndex(pageData, pageSize, virtualRow.index);
-              const isInteractive =
-                !isReplacementActive && row !== undefined && onRowActivate;
-              const isTabStop = virtualRow.index === tabStopIndex;
-
               return (
-                <tr
+                <TableRow
                   key={
                     row && getRowKey
                       ? getRowKey(row, virtualRow.index)
                       : virtualRow.key
                   }
-                  data-index={virtualRow.index}
-                  tabIndex={isInteractive ? (isTabStop ? 0 : -1) : undefined}
-                  className={
-                    isInteractive
-                      ? "cursor-pointer border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-                      : "border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high"
+                  row={row}
+                  index={virtualRow.index}
+                  height={virtualRow.size}
+                  isInteractive={
+                    !isReplacementActive &&
+                    row !== undefined &&
+                    onRowActivate !== undefined
                   }
-                  style={{ height: `${virtualRow.size}px` }}
-                  onFocus={
-                    isInteractive
-                      ? () => {
-                          setPendingFocusIndex(null);
-                          setKeyboardFocusIndex(virtualRow.index);
-                        }
-                      : undefined
-                  }
-                  onBlur={
-                    isInteractive
-                      ? () => {
-                          setPendingFocusIndex(null);
-                        }
-                      : undefined
-                  }
-                  onClick={
-                    isInteractive && row
-                      ? (event) => {
-                          if (isRowActionTarget(event.target)) return;
-                          onRowActivate(row);
-                        }
-                      : undefined
-                  }
-                  onKeyDown={
-                    isInteractive
-                      ? (event) => {
-                          if (isRowActionTarget(event.target)) return;
-                          if (event.key === "ArrowDown") {
-                            event.preventDefault();
-                            focusRow(virtualRow.index + 1);
-                            return;
-                          }
-                          if (event.key === "ArrowUp") {
-                            event.preventDefault();
-                            focusRow(virtualRow.index - 1);
-                            return;
-                          }
-                          if (event.key === "Enter" && row) {
-                            event.preventDefault();
-                            onRowActivate(row);
-                          }
-                        }
-                      : undefined
-                  }
-                >
-                  {identity ? (
-                    <td
-                      key={identity.id}
-                      className="sticky left-0 z-[1] bg-surface-container"
-                    >
-                      {identity.renderCell(row)}
-                    </td>
-                  ) : null}
-                  {renderCells(row)}
-                  {renderFixedCells?.(row)}
-                </tr>
+                  isTabStop={virtualRow.index === tabStopIndex}
+                  identity={identity}
+                  renderCells={renderCells}
+                  renderFixedCells={renderFixedCells}
+                  onRowFocus={handleRowFocus}
+                  onRowBlur={handleRowBlur}
+                  focusRow={focusRow}
+                  onRowActivate={onRowActivate}
+                />
               );
             })}
             {paddingBottom > 0 ? (
