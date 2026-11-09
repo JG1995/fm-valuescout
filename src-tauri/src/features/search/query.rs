@@ -25,6 +25,11 @@ use crate::features::player_metrics::{
     },
 };
 
+use super::moneyball_cohort::{
+    tactic_metric_keys, tactic_score, MoneyballCohort, MoneyballCohortCache, PlayerFit,
+    MONEYBALL_FROM_SQL,
+};
+
 use super::filter::{
     compile_filters, compile_filters_for_moneyball, compile_filters_with_club_dna,
     current_role_ids_from_ast, has_post_cohort_rules, moneyball_percentile_keys_from_ast,
@@ -86,7 +91,7 @@ impl SortField {
         }
     }
 
-    fn sql_expr(&self, club_dna_bindings: Option<ClubDnaSqlBindings>) -> String {
+    pub(super) fn sql_expr(&self, club_dna_bindings: Option<ClubDnaSqlBindings>) -> String {
         match self {
             Self::Name => "name COLLATE NOCASE".to_string(),
             Self::Age => "age".to_string(),
@@ -132,14 +137,14 @@ impl SortField {
         }
     }
 
-    fn moneyball_role_id(&self) -> Option<&str> {
+    pub(super) fn moneyball_role_id(&self) -> Option<&str> {
         match self {
             Self::Dynamic(field) => field.moneyball_role_id(),
             _ => None,
         }
     }
 
-    fn is_tactic(&self) -> bool {
+    pub(super) fn is_tactic(&self) -> bool {
         matches!(self, Self::Dynamic(field) if field.is_tactic_field())
     }
 
@@ -198,7 +203,7 @@ impl SortDir {
         }
     }
 
-    fn sql_keyword(self) -> &'static str {
+    pub(super) fn sql_keyword(self) -> &'static str {
         match self {
             Self::Asc => "ASC",
             Self::Desc => "DESC",
@@ -616,7 +621,7 @@ pub fn search_players_in_view(
 /// adds no bind, so every other parameter index stays unchanged.
 const GENERAL_SHORTLIST_FROM_SQL: &str = "FROM players INNER JOIN player_shortlist_entries shortlist ON shortlist.player_uid = players.uid AND shortlist.save_id = (SELECT save_id FROM snapshots WHERE id = ?1)";
 
-fn active_current_snapshot_id(conn: &Connection) -> Result<Option<i64>, String> {
+pub(super) fn active_current_snapshot_id(conn: &Connection) -> Result<Option<i64>, String> {
     conn.query_row(
         "SELECT s.id
          FROM snapshots s
@@ -651,12 +656,13 @@ pub struct GeneralOrder {
     uids: Vec<i64>,
 }
 
-/// General Search's computed orders, keyed by [`general_query_fingerprint`].
+/// General Search's computed orders, keyed by [`search_query_fingerprint`].
 pub type GeneralOrderCache = ResultCache<GeneralOrder>;
 
-/// Identifies a General table query by every input that changes its rows or their order. The
-/// offset, limit, and requested fields only choose which rows and columns a window shows.
-pub fn general_query_fingerprint(request: &SearchPlayersRequest<'_>) -> String {
+/// Identifies a General or Moneyball table query by every input that changes its rows, their
+/// order, or a Moneyball comparison pool. The offset, limit, and requested fields only choose
+/// which rows and columns a window shows.
+pub fn search_query_fingerprint(request: &SearchPlayersRequest<'_>) -> String {
     format!(
         "{:?}|{:?}|{:?}|{:?}|{:?}|{}",
         request.view,
@@ -682,7 +688,7 @@ pub fn search_general_players(
         // Moneyball-only queries keep failing on the uncached path, as they always have.
         return search_players_in_view(&*db.read()?, request);
     }
-    let fingerprint = general_query_fingerprint(&request);
+    let fingerprint = search_query_fingerprint(&request);
     let mut generation = db.generation();
     loop {
         let order = orders.get_or_compute(&fingerprint, generation, || {
@@ -1030,6 +1036,197 @@ fn read_general_window(
     })
 }
 
+/// Serves one Moneyball Search window from its query's computed cohort, computing the cohort
+/// on a miss. With a ticket, the computation is its table's in `registry`, so a newer request
+/// for the table can supersede it. Returns the same page as [`search_players_in_view`].
+pub fn search_moneyball_players(
+    db: &Db,
+    cohorts: &MoneyballCohortCache,
+    registry: &TableRegistry,
+    ticket: Option<&TableTicket>,
+    request: SearchPlayersRequest<'_>,
+) -> Result<SearchPlayersPage, String> {
+    if !request.sort_by.is_available_in_moneyball() {
+        return Err("unsupported Moneyball sort field".to_string());
+    }
+    let dynamic_fields = parse_requested_fields_for_moneyball(request.requested_fields, true)?
+        .into_iter()
+        .filter(|field| !field.is_basic_table_field())
+        .collect::<Vec<_>>();
+    let fingerprint = search_query_fingerprint(&request);
+    let mut generation = db.generation();
+    loop {
+        let cohort = cohorts.get_or_compute(&fingerprint, generation, || {
+            let reader = db.read()?;
+            let cohort = registry.run(ticket, &reader, |cancellation| {
+                MoneyballCohort::compute(&reader, reader.generation(), &request, cancellation)
+            })?;
+            Ok::<_, String>((reader.generation(), cohort))
+        })?;
+        let reader = db.read()?;
+        if reader.generation() > cohort.generation {
+            // Data changed since the cohort was read, so the window reads a fresh cohort.
+            generation = reader.generation();
+            continue;
+        }
+        return read_moneyball_window(&reader, &cohort, &request, &dynamic_fields);
+    }
+}
+
+/// Reads today's display columns for one window of a computed cohort, and fills its
+/// percentiles, role scores, and tactic scores from the cohort's percentile columns.
+fn read_moneyball_window(
+    conn: &Connection,
+    cohort: &MoneyballCohort,
+    request: &SearchPlayersRequest<'_>,
+    dynamic_fields: &[MetricField],
+) -> Result<SearchPlayersPage, String> {
+    if cohort.state != SearchPlayersPageState::Ready {
+        return Ok(SearchPlayersPage {
+            players: Vec::new(),
+            total: 0,
+            state: cohort.state,
+        });
+    }
+    let sql_fields = dynamic_fields
+        .iter()
+        .filter(|field| field.moneyball_role_id().is_none() && !field.is_tactic_field())
+        .cloned()
+        .collect::<Vec<_>>();
+    let moneyball_fields = sql_fields
+        .iter()
+        .filter_map(|field| field.moneyball_key().map(|key| (field.id(), key)))
+        .collect::<Vec<_>>();
+    let catalog = builtin_catalog()?;
+    let role_fields = dynamic_fields
+        .iter()
+        .filter_map(|field| field.moneyball_role_id().map(|role_id| (field, role_id)))
+        .map(|(field, role_id)| {
+            catalog
+                .definitions
+                .iter()
+                .find(|definition| definition.id == role_id)
+                .map(|definition| (field.id(), definition))
+                .ok_or_else(|| format!("unknown Moneyball role: {role_id}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let tactic_fields = dynamic_fields
+        .iter()
+        .filter(|field| field.is_tactic_field())
+        .collect::<Vec<_>>();
+    let tactic = (!tactic_fields.is_empty())
+        .then(|| read_tactic(conn, snapshot_save_id(conn, cohort.snapshot_id)?))
+        .transpose()?;
+
+    let mut keys = moneyball_fields
+        .iter()
+        .map(|(_, key)| key.to_string())
+        .collect::<BTreeSet<_>>();
+    for (_, definition) in &role_fields {
+        keys.extend(definition.metrics.iter().map(|metric| metric.key.clone()));
+    }
+    if let Some(tactic) = &tactic {
+        for field in &tactic_fields {
+            keys.extend(tactic_metric_keys(field, tactic));
+        }
+    }
+    let columns = cohort.percentile_columns(conn, &keys.into_iter().collect::<Vec<_>>())?;
+
+    let mut select_sql = String::from(
+        "SELECT
+                players.uid,
+                players.name,
+                players.age,
+                players.birth_year,
+                players.birth_day_of_year,
+                players.nationalities_json,
+                players.current_club,
+                players.current_club_uid,
+                players.division,
+                players.ca,
+                players.pa,
+                players.market_value_gbp",
+    );
+    for field in &sql_fields {
+        select_sql.push_str(", ");
+        select_sql.push_str(&field.sql_expression("players"));
+    }
+    if tactic.is_some() {
+        select_sql.push_str(", players.positions_json, players.preferred_foot");
+    }
+    let members = cohort.window(request.offset, request.limit.clamp(1, MAX_PAGE_LIMIT));
+    let uid_placeholders = (0..members.len())
+        .map(|index| format!("?{}", index + 2))
+        .collect::<Vec<_>>()
+        .join(", ");
+    select_sql.push_str(&format!(
+        " {MONEYBALL_FROM_SQL} WHERE players.snapshot_id = ?1 AND players.uid IN ({uid_placeholders})"
+    ));
+    let mut bind_values = vec![Value::Integer(cohort.snapshot_id)];
+    bind_values.extend(
+        members
+            .iter()
+            .map(|&member| Value::Integer(cohort.uid(member))),
+    );
+    let fit_index = 12 + sql_fields.len();
+    let mut rows = conn
+        .prepare(&select_sql)
+        .map_err(|error| error.to_string())?
+        .query_map(params_from_iter(bind_values.iter()), |row| {
+            let player = map_player_summary(row, &sql_fields, &[], false)?;
+            let fit = if tactic.is_some() {
+                Some(PlayerFit::from_columns(
+                    &row.get::<_, String>(fit_index)?,
+                    row.get(fit_index + 1)?,
+                ))
+            } else {
+                None
+            };
+            Ok((player.uid, (player, fit)))
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<HashMap<_, _>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    let players = members
+        .iter()
+        .filter_map(|&member| {
+            let (mut player, fit) = rows.remove(&cohort.uid(member))?;
+            let percentiles = columns.member(member);
+            player.moneyball_percentiles = moneyball_fields
+                .iter()
+                .map(|(field_id, key)| {
+                    (
+                        field_id.to_string(),
+                        percentiles.get(*key).copied().flatten(),
+                    )
+                })
+                .collect();
+            let score_value = |score: Option<u8>| score.map(i64::from).map(DynamicValue::Integer);
+            for (field_id, definition) in &role_fields {
+                let score = score_role(definition, &percentiles).map(|role| role.score);
+                player
+                    .dynamic_values
+                    .insert(field_id.to_string(), score_value(score));
+            }
+            if let (Some(tactic), Some(fit)) = (&tactic, &fit) {
+                for field in &tactic_fields {
+                    let score = tactic_score(field, tactic, &percentiles, fit);
+                    player
+                        .dynamic_values
+                        .insert(field.id().to_string(), score_value(score));
+                }
+            }
+            Some(player)
+        })
+        .collect();
+    Ok(SearchPlayersPage {
+        players,
+        total: i64::try_from(cohort.total()).map_err(|error| error.to_string())?,
+        state: SearchPlayersPageState::Ready,
+    })
+}
+
 fn current_club_dna_definition_version(
     conn: &Connection,
     snapshot_id: i64,
@@ -1053,7 +1250,7 @@ fn request_uses_tactic(request: &SearchPlayersRequest<'_>) -> bool {
     }) || request.sort_by.is_tactic()
 }
 
-fn snapshot_save_id(conn: &Connection, snapshot_id: i64) -> Result<i64, String> {
+pub(super) fn snapshot_save_id(conn: &Connection, snapshot_id: i64) -> Result<i64, String> {
     conn.query_row(
         "SELECT save_id FROM snapshots WHERE id = ?1",
         [snapshot_id],
@@ -1062,7 +1259,7 @@ fn snapshot_save_id(conn: &Connection, snapshot_id: i64) -> Result<i64, String> 
     .map_err(|error| error.to_string())
 }
 
-fn moneyball_definition_for_role_and_position(
+pub(super) fn moneyball_definition_for_role_and_position(
     role_id: &str,
     base_pos: &str,
 ) -> Option<&'static crate::features::moneyball::role_catalog::RoleDefinition> {
@@ -1298,6 +1495,10 @@ fn search_players_with_cohort_scoring(
         }
         role_metric_keys.extend(extra_keys);
     }
+    // A Filtered pool ranks the displayed statistics with the cohort's other percentiles.
+    if comparison_pool == ComparisonPool::Filtered {
+        role_metric_keys.extend(moneyball_fields.iter().map(|(_, key)| key.to_string()));
+    }
     let role_metric_keys: Vec<String> = role_metric_keys.into_iter().collect();
 
     let limit = limit.clamp(1, MAX_PAGE_LIMIT);
@@ -1323,22 +1524,11 @@ fn search_players_with_cohort_scoring(
     if let Some(compiled) = &compiled_non_role {
         non_role_bind_values.extend(compiled.params.clone());
     }
-    let (candidate_where_sql, candidate_bind_values, cohort_where_sql, cohort_bind_values) =
-        if mixed_or {
-            (
-                base_where_sql.clone(),
-                vec![Value::Integer(snapshot_id)],
-                base_where_sql,
-                vec![Value::Integer(snapshot_id)],
-            )
-        } else {
-            (
-                non_role_where_sql.clone(),
-                non_role_bind_values.clone(),
-                non_role_where_sql.clone(),
-                non_role_bind_values.clone(),
-            )
-        };
+    let (candidate_where_sql, candidate_bind_values) = if mixed_or {
+        (base_where_sql, vec![Value::Integer(snapshot_id)])
+    } else {
+        (non_role_where_sql.clone(), non_role_bind_values.clone())
+    };
     let non_role_uids = if mixed_or && compiled_non_role.is_some() {
         query_matching_uids(conn, &from_sql, &non_role_where_sql, &non_role_bind_values)?
     } else {
@@ -1539,18 +1729,15 @@ fn search_players_with_cohort_scoring(
         }
     }
 
-    if comparison_pool == ComparisonPool::Filtered && !moneyball_fields.is_empty() {
-        let mut percentiles = filtered_moneyball_percentiles(
-            conn,
-            &from_sql,
-            &cohort_where_sql,
-            &cohort_bind_values,
-            &moneyball_fields,
-        )?;
+    if comparison_pool == ComparisonPool::Filtered {
         for candidate in &mut candidates {
-            candidate.player.moneyball_percentiles = percentiles
-                .remove(&candidate.player.uid)
-                .unwrap_or_default();
+            candidate.player.moneyball_percentiles = moneyball_fields
+                .iter()
+                .map(|(field_id, key)| {
+                    let percentile = candidate.role_percentiles.get(*key).copied().flatten();
+                    ((*field_id).to_string(), percentile)
+                })
+                .collect();
         }
     }
 
@@ -1601,14 +1788,14 @@ fn search_players_with_cohort_scoring(
     })
 }
 
-fn where_sql_with_filter(base: &str, compiled: Option<&CompiledFilter>) -> String {
+pub(super) fn where_sql_with_filter(base: &str, compiled: Option<&CompiledFilter>) -> String {
     compiled.map_or_else(
         || base.to_string(),
         |compiled| format!("{base} AND {}", compiled.sql),
     )
 }
 
-fn query_matching_uids(
+pub(super) fn query_matching_uids(
     conn: &Connection,
     from_sql: &str,
     where_sql: &str,
@@ -1699,7 +1886,11 @@ fn map_role_search_candidate(
     })
 }
 
-fn compare_role_scores(left: Option<u8>, right: Option<u8>, direction: SortDir) -> Ordering {
+pub(super) fn compare_role_scores(
+    left: Option<u8>,
+    right: Option<u8>,
+    direction: SortDir,
+) -> Ordering {
     match (left, right) {
         (None, None) => Ordering::Equal,
         (None, Some(_)) => Ordering::Greater,
@@ -6662,7 +6853,7 @@ mod tests {
         let older = GeneralShape::new("CA", "ca", SortDir::Desc, &[]);
         let newer = || GeneralShape::new("name", "name", SortDir::Asc, &[]);
         let older_ticket =
-            registry.arrive("search", &general_query_fingerprint(&older.request(0, 3)));
+            registry.arrive("search", &search_query_fingerprint(&older.request(0, 3)));
 
         let (sender, receiver) = std::sync::mpsc::channel();
         {
@@ -6671,7 +6862,7 @@ mod tests {
                 *hook.borrow_mut() = Some(Box::new(move || {
                     let newer = newer();
                     let ticket =
-                        registry.arrive("search", &general_query_fingerprint(&newer.request(0, 3)));
+                        registry.arrive("search", &search_query_fingerprint(&newer.request(0, 3)));
                     sender
                         .send(search_general_players(
                             &db,
@@ -6688,6 +6879,588 @@ mod tests {
         let superseded = search_general_players(
             &db,
             &orders,
+            &registry,
+            Some(&older_ticket),
+            older.request(0, 3),
+        );
+        assert_eq!(
+            superseded,
+            Err(crate::db::result_cache::SUPERSEDED.to_string())
+        );
+        let newer = newer();
+        assert_eq!(
+            receiver.recv().expect("newer page"),
+            search_players_in_view(&db.read().expect("reader"), newer.request(0, 3))
+        );
+    }
+
+    const MONEYBALL_ROLE: &str = "mc_central_midfielder_ip";
+
+    fn moneyball_role_field() -> String {
+        format!("moneyball_role.{MONEYBALL_ROLE}")
+    }
+
+    struct MoneyballShape {
+        name: &'static str,
+        sort: String,
+        dir: SortDir,
+        pool: ComparisonPool,
+        filters: Option<FilterAst>,
+        fields: Vec<String>,
+    }
+
+    impl MoneyballShape {
+        fn new(name: &'static str, sort: &str, dir: SortDir, fields: &[&str]) -> Self {
+            Self {
+                name,
+                sort: sort.to_string(),
+                dir,
+                pool: ComparisonPool::Filtered,
+                filters: None,
+                fields: fields.iter().map(|field| field.to_string()).collect(),
+            }
+        }
+
+        fn filtered(self, rules: Vec<FilterRule>, combine: &str) -> Self {
+            Self {
+                filters: Some(parse_filter_ast(rules, Some(combine)).expect("filters")),
+                ..self
+            }
+        }
+
+        fn in_pool(&self, pool: ComparisonPool) -> Self {
+            Self {
+                name: self.name,
+                sort: self.sort.clone(),
+                dir: self.dir,
+                pool,
+                filters: self.filters.clone(),
+                fields: self.fields.clone(),
+            }
+        }
+
+        fn request(&self, offset: usize, limit: usize) -> SearchPlayersRequest<'_> {
+            SearchPlayersRequest {
+                offset,
+                limit,
+                sort_by: SortField::parse_for_moneyball(&self.sort, true).expect("sort"),
+                sort_dir: self.dir,
+                filter_ast: self.filters.as_ref(),
+                requested_fields: &self.fields,
+                view: SearchView::Moneyball,
+                comparison_pool: self.pool,
+                shortlist_only: false,
+            }
+        }
+    }
+
+    /// A database with readers whose Moneyball statistics and stored percentiles tie and miss
+    /// values, with a custom goalkeeper slot and an uncovered centre-forward slot.
+    fn open_moneyball_equivalence_db() -> (tempfile::TempDir, Db) {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = crate::db::open(&temp_dir.path().join(crate::db::APP_DB_FILE)).expect("open db");
+        let names = [
+            "Zed", "alpha", "Bravo", "charlie", "Delta", "echo", "Alpha", "foxtrot", "Golf",
+            "hotel", "India", "Juliet",
+        ];
+        let abilities = [150, 120, 150, 90, 120, 150, 180, 90, 120, 150, 100, 110];
+        let players = (1..=12)
+            .map(|uid| {
+                let index = uid as usize - 1;
+                let mut player = player_template(uid, names[index], abilities[index]);
+                player["age"] = json!(18 + (uid as i64 * 5) % 14);
+                player["positions"] = match uid % 4 {
+                    0 => json!({ "GK": 18, "MC": 18 }),
+                    1 => json!({ "GK": 14, "MC": 12 }),
+                    2 => json!({ "GK": 10, "ST": 18 }),
+                    _ => json!({ "GK": 18, "ST": 16 }),
+                };
+                player["preferredFoot"] = json!(if uid % 3 == 0 { "left" } else { "right" });
+                player
+            })
+            .collect();
+        ingest_players(&mut db.0.lock().expect("lock writer"), players);
+
+        let writer = db.0.lock().expect("lock writer");
+        let snapshot_id = current_snapshot_id(&writer);
+        let save_id = snapshot_save_id(&writer, snapshot_id).expect("save");
+        let mut tactic =
+            crate::features::planner::tactic::get_tactic(&writer, save_id).expect("tactic");
+        tactic.lanes[0].custom_metric_keys = vec![
+            "save_ratio".to_string(),
+            "goals_conceded_per_90".to_string(),
+        ];
+        let centre_forward = tactic
+            .lanes
+            .iter()
+            .position(|lane| lane.lane_id == "centre_forward")
+            .expect("centre-forward lane");
+        tactic.lanes[centre_forward].ip_role_id = "second_striker_ip".to_string();
+        tactic.lanes[centre_forward].ip_position = "ST".to_string();
+        crate::features::planner::tactic::save_tactic(&writer, save_id, &tactic)
+            .expect("save tactic");
+
+        let catalog = builtin_catalog().expect("catalog");
+        let mut keys = BTreeSet::from(
+            [
+                "goals",
+                "minutes_per_goal",
+                "save_ratio",
+                "goals_conceded_per_90",
+                "xg",
+            ]
+            .map(str::to_string),
+        );
+        for definition in catalog.definitions.iter().filter(|definition| {
+            definition.id == MONEYBALL_ROLE
+                || (definition.position_tags.contains(&"GK".to_string())
+                    && matches!(
+                        definition.attribute_role_id.as_deref(),
+                        Some("goalkeeper_ip" | "line_holding_keeper_oop")
+                    ))
+        }) {
+            keys.extend(definition.metrics.iter().map(|metric| metric.key.clone()));
+        }
+        // UID 11 has no stored percentiles and UID 12 no statistics, so neither is in a cohort.
+        for uid in 1..=11_usize {
+            let mut statistics = Map::new();
+            let mut percentiles = Map::new();
+            for (index, key) in keys.iter().enumerate() {
+                let seed = uid * 7 + index * 3;
+                statistics.insert(
+                    key.clone(),
+                    if seed % 6 == 0 {
+                        Value::Null
+                    } else {
+                        json!((seed % 5) as f64 * 1.5)
+                    },
+                );
+                percentiles.insert(
+                    key.clone(),
+                    if (uid + index) % 7 == 0 {
+                        Value::Null
+                    } else {
+                        json!((uid * 13 + index * 7) % 101)
+                    },
+                );
+            }
+            let percentiles = Value::Object(percentiles).to_string();
+            insert_moneyball_statistics(
+                &writer,
+                snapshot_id,
+                uid as i64,
+                &Value::Object(statistics).to_string(),
+                (uid != 11).then_some(percentiles.as_str()),
+            );
+        }
+        drop(writer);
+        (temp_dir, db)
+    }
+
+    /// Joins three-row cached windows and compares each with the uncached page at its offset.
+    fn assert_cached_moneyball_windows_match(
+        db: &Db,
+        cohorts: &MoneyballCohortCache,
+        shape: &MoneyballShape,
+    ) {
+        let registry = TableRegistry::default();
+        let name = format!("{} ({:?})", shape.name, shape.pool);
+        let complete = search_players_in_view(
+            &db.read().expect("reader"),
+            shape.request(0, MAX_PAGE_LIMIT),
+        )
+        .unwrap_or_else(|error| panic!("{name} uncached: {error}"));
+        let mut joined = Vec::new();
+        for offset in (0..complete.players.len() + 3).step_by(3) {
+            let cached =
+                search_moneyball_players(db, cohorts, &registry, None, shape.request(offset, 3))
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+            let uncached =
+                search_players_in_view(&db.read().expect("reader"), shape.request(offset, 3))
+                    .expect("uncached page");
+            assert_eq!(cached, uncached, "{name} at offset {offset}");
+            joined.extend(cached.players);
+        }
+        assert_eq!(joined, complete.players, "{name} joined windows");
+    }
+
+    #[test]
+    fn cached_moneyball_windows_equal_uncached_pages_for_every_shape() {
+        let (_temp_dir, db) = open_moneyball_equivalence_db();
+        let cohorts = MoneyballCohortCache::new(2);
+        let role = moneyball_role_field();
+        let role = role.as_str();
+        let shapes = vec![
+            MoneyballShape::new(
+                "statistic sort",
+                "moneyball.goals",
+                SortDir::Desc,
+                &[
+                    "moneyball.goals",
+                    "moneyball.minutes_per_goal",
+                    "moneyball.xg",
+                    "height",
+                ],
+            ),
+            MoneyballShape::new(
+                "lower-is-better sort",
+                "moneyball.minutes_per_goal",
+                SortDir::Asc,
+                &["moneyball.minutes_per_goal"],
+            ),
+            MoneyballShape::new("CA ties", "ca", SortDir::Desc, &[]),
+            MoneyballShape::new("role column", "name", SortDir::Asc, &[role]),
+            MoneyballShape::new(
+                "name filter",
+                "name",
+                SortDir::Asc,
+                &[role, "moneyball.goals"],
+            )
+            .filtered(
+                vec![filter_rule(
+                    "name",
+                    "contains",
+                    FilterValue::Text("a".to_string()),
+                )],
+                "and",
+            ),
+            MoneyballShape::new("role sort and filter", role, SortDir::Desc, &[role]).filtered(
+                vec![
+                    filter_rule("name", "contains", FilterValue::Text("a".to_string())),
+                    filter_rule(role, "gt", FilterValue::Integer(10)),
+                ],
+                "and",
+            ),
+            MoneyballShape::new("mixed OR", role, SortDir::Desc, &[role, "moneyball.goals"])
+                .filtered(
+                    vec![
+                        filter_rule("name", "contains", FilterValue::Text("alpha".to_string())),
+                        filter_rule(role, "gt", FilterValue::Integer(60)),
+                    ],
+                    "or",
+                ),
+            MoneyballShape::new("role nulls", role, SortDir::Asc, &[role]).filtered(
+                vec![filter_rule(role, "neq", FilterValue::Integer(50))],
+                "and",
+            ),
+            MoneyballShape::new("pct_gte", "name", SortDir::Asc, &["moneyball.goals"]).filtered(
+                vec![
+                    filter_rule("ca", "gte", FilterValue::Integer(100)),
+                    filter_rule("moneyball.goals", "pct_gte", FilterValue::Integer(50)),
+                ],
+                "and",
+            ),
+            MoneyballShape::new(
+                "pct_lte",
+                "moneyball.goals",
+                SortDir::Desc,
+                &["moneyball.goals"],
+            )
+            .filtered(
+                vec![filter_rule(
+                    "moneyball.goals",
+                    "pct_lte",
+                    FilterValue::Integer(40),
+                )],
+                "and",
+            ),
+            MoneyballShape::new("pct_between", "name", SortDir::Desc, &["moneyball.xg"]).filtered(
+                vec![filter_rule(
+                    "moneyball.xg",
+                    "pct_between",
+                    FilterValue::List(vec![FilterValue::Integer(20), FilterValue::Integer(70)]),
+                )],
+                "and",
+            ),
+            MoneyballShape::new("lower-is-better OR", "name", SortDir::Asc, &[]).filtered(
+                vec![
+                    filter_rule("name", "contains", FilterValue::Text("Zed".to_string())),
+                    filter_rule(
+                        "moneyball.minutes_per_goal",
+                        "pct_gte",
+                        FilterValue::Integer(70),
+                    ),
+                ],
+                "or",
+            ),
+            MoneyballShape::new(
+                "tactic sort",
+                "tactic_current.goalkeeper",
+                SortDir::Asc,
+                &["tactic_current.goalkeeper", "tactic_current.centre_forward"],
+            ),
+            MoneyballShape::new(
+                "custom tactic sort",
+                "tactic_custom.goalkeeper",
+                SortDir::Desc,
+                &["tactic_custom.goalkeeper", "moneyball.save_ratio"],
+            ),
+            MoneyballShape::new(
+                "uncovered tactic sort",
+                "tactic_current.centre_forward",
+                SortDir::Desc,
+                &["tactic_current.centre_forward"],
+            ),
+            MoneyballShape::new(
+                "display-only scores",
+                "moneyball.xg",
+                SortDir::Desc,
+                &[
+                    "tactic_current.goalkeeper",
+                    "tactic_custom.goalkeeper",
+                    role,
+                ],
+            ),
+            MoneyballShape::new(
+                "statistic filter with tactic sort",
+                "tactic_current.goalkeeper",
+                SortDir::Desc,
+                &["tactic_current.goalkeeper", "moneyball.goals"],
+            )
+            .filtered(
+                vec![filter_rule(
+                    "moneyball.goals",
+                    "gt",
+                    FilterValue::Integer(1),
+                )],
+                "and",
+            ),
+            MoneyballShape::new("empty", "ca", SortDir::Desc, &[role]).filtered(
+                vec![filter_rule("ca", "gte", FilterValue::Integer(999))],
+                "and",
+            ),
+        ];
+        for shape in &shapes {
+            for pool in [ComparisonPool::Filtered, ComparisonPool::FullCsv] {
+                assert_cached_moneyball_windows_match(&db, &cohorts, &shape.in_pool(pool));
+            }
+        }
+
+        let (_empty_dir, empty_db) = {
+            let temp_dir = tempfile::tempdir().expect("temp dir");
+            let db =
+                crate::db::open(&temp_dir.path().join(crate::db::APP_DB_FILE)).expect("open db");
+            (temp_dir, db)
+        };
+        assert_cached_moneyball_windows_match(
+            &empty_db,
+            &MoneyballCohortCache::new(2),
+            &MoneyballShape::new("no snapshot", "ca", SortDir::Desc, &[role]),
+        );
+    }
+
+    #[test]
+    fn cached_moneyball_windows_equal_uncached_pages_across_several_scan_chunks() {
+        // More cohort members than two of the Moneyball scan's 1,024-row chunks, so workers
+        // scan full chunks whose values merge back by member.
+        const PLAYERS: usize = 2_100;
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = crate::db::open(&temp_dir.path().join(crate::db::APP_DB_FILE)).expect("open db");
+        // UIDs start past the golden dump's staff UID.
+        const FIRST_UID: usize = 1_000;
+        let uids = FIRST_UID..FIRST_UID + PLAYERS;
+        let players = uids
+            .clone()
+            .map(|uid| {
+                player_template(uid as u64, &format!("P{uid}"), 80 + (uid as i64 * 37) % 100)
+            })
+            .collect();
+        ingest_players(&mut db.0.lock().expect("lock writer"), players);
+
+        let writer = db.0.lock().expect("lock writer");
+        let snapshot_id = current_snapshot_id(&writer);
+        let catalog = builtin_catalog().expect("catalog");
+        let mut keys = BTreeSet::from(["goals", "minutes_per_goal", "xg"].map(str::to_string));
+        let role_definition = catalog
+            .definitions
+            .iter()
+            .find(|definition| definition.id == MONEYBALL_ROLE)
+            .expect("role");
+        keys.extend(
+            role_definition
+                .metrics
+                .iter()
+                .map(|metric| metric.key.clone()),
+        );
+        let transaction = writer.unchecked_transaction().expect("transaction");
+        // The last UID has no stored percentiles and the one before it no row, so the scans
+        // skip both mid-chunk.
+        let last = uids.end - 1;
+        for uid in uids.filter(|&uid| uid != last - 1) {
+            let mut statistics = Map::new();
+            let mut percentiles = Map::new();
+            for (index, key) in keys.iter().enumerate() {
+                let seed = uid * 7 + index * 3;
+                statistics.insert(
+                    key.clone(),
+                    if (uid + index * 5) % 9 == 0 {
+                        Value::Null
+                    } else {
+                        json!((seed % 23) as f64 * 0.5)
+                    },
+                );
+                percentiles.insert(
+                    key.clone(),
+                    if (uid + index) % 7 == 0 {
+                        Value::Null
+                    } else {
+                        json!((uid * 13 + index * 7) % 101)
+                    },
+                );
+            }
+            let percentiles = Value::Object(percentiles).to_string();
+            insert_moneyball_statistics(
+                &transaction,
+                snapshot_id,
+                uid as i64,
+                &Value::Object(statistics).to_string(),
+                (uid != last).then_some(percentiles.as_str()),
+            );
+        }
+        transaction.commit().expect("commit Moneyball rows");
+        drop(writer);
+
+        let cohorts = MoneyballCohortCache::new(2);
+        let registry = TableRegistry::default();
+        let role = moneyball_role_field();
+        let shapes = [
+            MoneyballShape::new(
+                "statistic sort",
+                "moneyball.goals",
+                SortDir::Desc,
+                &["moneyball.goals", "moneyball.minutes_per_goal"],
+            ),
+            MoneyballShape::new("role sort", &role, SortDir::Desc, &[&role]),
+        ];
+        for shape in &shapes {
+            for pool in [ComparisonPool::Filtered, ComparisonPool::FullCsv] {
+                let shape = shape.in_pool(pool);
+                let name = format!("{} ({pool:?})", shape.name);
+                let mut joined = 0;
+                for offset in (0..PLAYERS).step_by(MAX_PAGE_LIMIT) {
+                    let cached = search_moneyball_players(
+                        &db,
+                        &cohorts,
+                        &registry,
+                        None,
+                        shape.request(offset, MAX_PAGE_LIMIT),
+                    )
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+                    let uncached = search_players_in_view(
+                        &db.read().expect("reader"),
+                        shape.request(offset, MAX_PAGE_LIMIT),
+                    )
+                    .expect("uncached page");
+                    assert_eq!(cached, uncached, "{name} at offset {offset}");
+                    joined += cached.players.len();
+                }
+                assert_eq!(joined, PLAYERS - 2, "{name} rows");
+            }
+        }
+    }
+
+    #[test]
+    fn moneyball_windows_reuse_the_cohort_and_rank_an_added_column_once() {
+        use crate::features::search::moneyball_cohort::{
+            COHORT_COMPUTATIONS, PERCENTILE_COLUMN_COMPUTATIONS,
+        };
+        let (_temp_dir, db) = open_moneyball_equivalence_db();
+        let cohorts = MoneyballCohortCache::new(2);
+        let registry = TableRegistry::default();
+        let shape = MoneyballShape::new(
+            "statistic sort",
+            "moneyball.goals",
+            SortDir::Desc,
+            &["moneyball.goals"],
+        );
+        let with_column = MoneyballShape::new(
+            "statistic sort",
+            "moneyball.goals",
+            SortDir::Desc,
+            &["moneyball.goals", "moneyball.xg"],
+        );
+        COHORT_COMPUTATIONS.with(|count| count.set(0));
+        PERCENTILE_COLUMN_COMPUTATIONS.with(|count| count.set(0));
+
+        search_moneyball_players(&db, &cohorts, &registry, None, shape.request(0, 3))
+            .expect("first window");
+        search_moneyball_players(&db, &cohorts, &registry, None, shape.request(6, 3))
+            .expect("later window");
+        assert_eq!(COHORT_COMPUTATIONS.with(Cell::get), 1);
+        assert_eq!(PERCENTILE_COLUMN_COMPUTATIONS.with(Cell::get), 1);
+
+        // Adding a column ranks it once; later windows reuse it.
+        for offset in [3, 0, 6] {
+            search_moneyball_players(
+                &db,
+                &cohorts,
+                &registry,
+                None,
+                with_column.request(offset, 3),
+            )
+            .expect("window with another column");
+        }
+        assert_eq!(COHORT_COMPUTATIONS.with(Cell::get), 1);
+        assert_eq!(PERCENTILE_COLUMN_COMPUTATIONS.with(Cell::get), 2);
+
+        db.0.lock()
+            .expect("lock writer")
+            .execute(
+                "UPDATE player_moneyball_stats SET statistics_json = json_set(statistics_json, '$.goals', 99) WHERE player_uid = 4",
+                [],
+            )
+            .expect("change a statistic");
+        let fresh = search_moneyball_players(&db, &cohorts, &registry, None, shape.request(0, 3))
+            .expect("window after a write");
+        assert_eq!(COHORT_COMPUTATIONS.with(Cell::get), 2);
+        assert_eq!(fresh.players[0].uid, 4);
+        assert_eq!(
+            fresh,
+            search_players_in_view(&db.read().expect("reader"), shape.request(0, 3))
+                .expect("uncached page")
+        );
+    }
+
+    #[test]
+    fn a_newer_moneyball_query_supersedes_a_running_one_and_completes() {
+        use crate::features::search::moneyball_cohort::BEFORE_COHORT_QUERY;
+        let (_temp_dir, db) = open_moneyball_equivalence_db();
+        let cohorts = MoneyballCohortCache::new(2);
+        let registry = TableRegistry::default();
+        let role = moneyball_role_field();
+        let older = MoneyballShape::new("role sort", &role, SortDir::Desc, &[&role]);
+        let newer = || MoneyballShape::new("name", "name", SortDir::Asc, &[]);
+        let older_ticket = registry.arrive(
+            "moneyball-search",
+            &search_query_fingerprint(&older.request(0, 3)),
+        );
+
+        let (sender, receiver) = std::sync::mpsc::channel();
+        {
+            let (db, cohorts, registry) = (db.clone(), cohorts.clone(), registry.clone());
+            BEFORE_COHORT_QUERY.with(|hook| {
+                *hook.borrow_mut() = Some(Box::new(move || {
+                    let newer = newer();
+                    let ticket = registry.arrive(
+                        "moneyball-search",
+                        &search_query_fingerprint(&newer.request(0, 3)),
+                    );
+                    sender
+                        .send(search_moneyball_players(
+                            &db,
+                            &cohorts,
+                            &registry,
+                            Some(&ticket),
+                            newer.request(0, 3),
+                        ))
+                        .expect("send newer page");
+                }));
+            });
+        }
+
+        let superseded = search_moneyball_players(
+            &db,
+            &cohorts,
             &registry,
             Some(&older_ticket),
             older.request(0, 3),
