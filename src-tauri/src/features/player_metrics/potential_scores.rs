@@ -3,9 +3,7 @@ use std::collections::HashMap;
 #[cfg(test)]
 use std::cell::Cell;
 
-use rusqlite::{
-    params, params_from_iter, types::Value, Connection, OptionalExtension, Transaction,
-};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
 use crate::features::player_metrics::compact;
 use crate::features::scoring::{
@@ -40,6 +38,12 @@ fn project_attributes_call_count() -> usize {
     PROJECT_ATTRIBUTES_CALLS.with(Cell::get)
 }
 
+/// Inserts one current player's projected attributes. Rows live only on current snapshots
+/// (ADR-0028); the retired `players` projection columns are never written.
+const INSERT_PROJECTED_ATTRIBUTES_SQL: &str = "INSERT INTO player_projected_attributes (
+     snapshot_id, uid, attributes_json, projection_model_version
+ ) VALUES (?1, ?2, ?3, ?4)";
+
 /// Rebuilds every potential-derived value for one snapshot: the current-only
 /// compact rows and the projected player attributes.
 pub(crate) fn rebuild_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(), String> {
@@ -62,9 +66,7 @@ pub(crate) fn replace_player(
     let player = load_player(tx, snapshot_id, player_uid)?
         .ok_or_else(|| "Potential-score player does not exist".to_string())?;
     tx.execute(
-        "UPDATE players
-         SET potential_attributes_json = NULL, potential_projection_model_version = NULL
-         WHERE snapshot_id = ?1 AND uid = ?2",
+        "DELETE FROM player_projected_attributes WHERE snapshot_id = ?1 AND uid = ?2",
         params![snapshot_id, player_uid],
     )
     .map_err(|error| error.to_string())?;
@@ -76,9 +78,7 @@ pub(crate) fn replace_player(
 pub(crate) fn clear_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(), String> {
     compact::clear_snapshot(tx, snapshot_id)?;
     tx.execute(
-        "UPDATE players
-         SET potential_attributes_json = NULL, potential_projection_model_version = NULL
-         WHERE snapshot_id = ?1",
+        "DELETE FROM player_projected_attributes WHERE snapshot_id = ?1",
         [snapshot_id],
     )
     .map_err(|error| error.to_string())?;
@@ -94,8 +94,7 @@ pub(crate) fn clear_non_current_snapshots(
 ) -> Result<(), String> {
     compact::clear_non_current_snapshots(tx, save_id)?;
     tx.execute(
-        "UPDATE players
-         SET potential_attributes_json = NULL, potential_projection_model_version = NULL
+        "DELETE FROM player_projected_attributes
          WHERE snapshot_id IN (
              SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0
          )",
@@ -103,6 +102,47 @@ pub(crate) fn clear_non_current_snapshots(
     )
     .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+/// Inserts one projected-attributes row per prepared player of a current snapshot with one
+/// prepared statement. Each JSON map comes from `projected_attributes_json`, which validated it.
+pub(crate) fn persist_projected_rows<'a>(
+    tx: &Transaction<'_>,
+    snapshot_id: i64,
+    rows: impl IntoIterator<Item = (i64, &'a str)>,
+) -> Result<(), String> {
+    let mut statement = tx
+        .prepare(INSERT_PROJECTED_ATTRIBUTES_SQL)
+        .map_err(|error| error.to_string())?;
+    for (uid, attributes_json) in rows {
+        statement
+            .execute(params![
+                snapshot_id,
+                uid,
+                attributes_json,
+                PROJECTION_MODEL_VERSION
+            ])
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+/// Serializes one player's projected attributes after checking the stored contract: exactly
+/// the dump attribute keys, each null or 1 to 20. Writers store only maps that pass, so the
+/// completeness check only needs to count rows.
+pub(crate) fn projected_attributes_json(
+    uid: i64,
+    projected: &HashMap<String, Option<u8>>,
+) -> Result<String, String> {
+    let valid = projected.len() == DUMP_ATTRIBUTE_KEYS.len()
+        && DUMP_ATTRIBUTE_KEYS
+            .iter()
+            .all(|key| matches!(projected.get(*key), Some(None | Some(1..=20))));
+    if !valid {
+        return Err(format!("player {uid} projected attributes are invalid"));
+    }
+    serde_json::to_string(projected)
+        .map_err(|error| format!("serialize player {uid} projected attributes: {error}"))
 }
 
 /// Clears every non-current snapshot and materializes a newly selected current snapshot.
@@ -121,90 +161,28 @@ pub(crate) fn reconcile_current_selection(
     Ok(())
 }
 
-/// Verifies that an already-resolved current snapshot has complete persisted potential state.
+/// Verifies that every player of an already-resolved current snapshot has one projected row
+/// with the checked-in projection model. The `(snapshot_id, uid)` primary key and the foreign
+/// key to `players` make equal counts equivalent to "every player has one such row"; writers
+/// validate each map before insert, and the table accepts only JSON objects.
 pub(crate) fn assert_current_snapshot_complete(
     conn: &Connection,
     snapshot_id: i64,
 ) -> Result<(), String> {
-    let attribute_placeholders = (1..=DUMP_ATTRIBUTE_KEYS.len())
-        .map(|index| format!("(?{index})"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let snapshot_parameter = DUMP_ATTRIBUTE_KEYS.len() + 1;
-    let version_parameter = snapshot_parameter + 1;
-    let sql = format!(
-        "WITH expected_attributes(attribute_key) AS (VALUES {attribute_placeholders})
-         SELECT
-             NOT EXISTS(
-                 SELECT 1 FROM snapshots WHERE id = ?{snapshot_parameter} AND is_current = 1
-             )
-             OR EXISTS(
-                 SELECT 1
-                 FROM players p
-                 WHERE p.snapshot_id = ?{snapshot_parameter}
-                   AND (
-                       p.potential_attributes_json IS NULL
-                       OR CASE
-                           WHEN json_valid(p.potential_attributes_json) = 1
-                           THEN json_type(p.potential_attributes_json) <> 'object'
-                           ELSE 1
-                       END
-                       OR EXISTS(
-                           SELECT 1
-                           FROM expected_attributes attribute
-                           WHERE NOT EXISTS(
-                               SELECT 1
-                               FROM json_each(CASE
-                                   WHEN json_valid(p.potential_attributes_json) = 1 THEN
-                                       CASE json_type(p.potential_attributes_json)
-                                           WHEN 'object' THEN p.potential_attributes_json
-                                           ELSE '{{}}'
-                                       END
-                                   ELSE '{{}}'
-                               END) projected
-                               WHERE projected.key = attribute.attribute_key
-                           )
-                       )
-                       OR EXISTS(
-                           SELECT 1
-                           FROM json_each(CASE
-                               WHEN json_valid(p.potential_attributes_json) = 1 THEN
-                                   CASE json_type(p.potential_attributes_json)
-                                       WHEN 'object' THEN p.potential_attributes_json
-                                       ELSE '{{}}'
-                                   END
-                               ELSE '{{}}'
-                           END) projected
-                           WHERE NOT EXISTS(
-                               SELECT 1
-                               FROM expected_attributes attribute
-                               WHERE attribute.attribute_key = projected.key
-                           )
-                           OR (
-                               projected.type <> 'null'
-                               AND (
-                                   projected.type <> 'integer'
-                                   OR projected.value NOT BETWEEN 1 AND 20
-                               )
-                           )
-                       )
-                       OR p.potential_projection_model_version IS NOT ?{version_parameter}
-                   )
-             )",
-    );
-    let mut values = DUMP_ATTRIBUTE_KEYS
-        .iter()
-        .map(|key| Value::Text((*key).to_string()))
-        .collect::<Vec<_>>();
-    values.push(Value::Integer(snapshot_id));
-    values.push(Value::Integer(PROJECTION_MODEL_VERSION));
-    let incomplete: bool = conn
-        .query_row(&sql, params_from_iter(values.iter()), |row| row.get(0))
+    let complete: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM snapshots WHERE id = ?1 AND is_current = 1)
+                 AND (SELECT COUNT(*) FROM players WHERE snapshot_id = ?1)
+                   = (SELECT COUNT(*) FROM player_projected_attributes
+                      WHERE snapshot_id = ?1 AND projection_model_version = ?2)",
+            params![snapshot_id, PROJECTION_MODEL_VERSION],
+            |row| row.get(0),
+        )
         .map_err(|error| error.to_string())?;
-    if incomplete {
-        Err("Current potential snapshot is incomplete".to_string())
-    } else {
+    if complete {
         Ok(())
+    } else {
+        Err("Current potential snapshot is incomplete".to_string())
     }
 }
 
@@ -272,11 +250,7 @@ fn persist_players(
     players: &[PlayerForProjection],
 ) -> Result<Vec<compact::CompactPlayerRow>, String> {
     let mut attributes_statement = tx
-        .prepare(
-            "UPDATE players
-             SET potential_attributes_json = ?3, potential_projection_model_version = ?4
-             WHERE snapshot_id = ?1 AND uid = ?2",
-        )
+        .prepare(INSERT_PROJECTED_ATTRIBUTES_SQL)
         .map_err(|error| error.to_string())?;
     let mut compact_rows = Vec::with_capacity(players.len());
 
@@ -319,12 +293,7 @@ fn persist_players(
                 .iter()
                 .map(|(position, familiarity)| (position.as_str(), *familiarity)),
         );
-        let projected_json = serde_json::to_string(&projected).map_err(|error| {
-            format!(
-                "serialize player {} projected attributes: {error}",
-                player.uid
-            )
-        })?;
+        let projected_json = projected_attributes_json(player.uid, &projected)?;
         attributes_statement
             .execute(params![
                 snapshot_id,
@@ -351,7 +320,6 @@ fn persist_players(
 #[cfg(test)]
 mod tests {
     use rusqlite::Connection;
-    use serde_json::{Map, Value as JsonValue};
 
     use super::*;
     use crate::{db::migrations, features::scoring::catalog::DUMP_ATTRIBUTE_KEYS};
@@ -436,8 +404,11 @@ mod tests {
     fn derived_state(conn: &Connection, snapshot_id: i64) -> DerivedState {
         let fields = conn
             .query_row(
-                "SELECT potential_attributes_json, potential_projection_model_version
-                 FROM players WHERE snapshot_id = ?1 AND uid = 42",
+                "SELECT a.attributes_json, a.projection_model_version
+                 FROM players p
+                 LEFT JOIN player_projected_attributes a
+                   ON a.snapshot_id = p.snapshot_id AND a.uid = p.uid
+                 WHERE p.snapshot_id = ?1 AND p.uid = 42",
                 [snapshot_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
@@ -449,8 +420,14 @@ mod tests {
 
     fn deny_derived_writes(conn: &Connection) {
         conn.execute_batch(
-            "CREATE TRIGGER deny_projected_player_updates
-             BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
+            "CREATE TRIGGER deny_projected_inserts
+             BEFORE INSERT ON player_projected_attributes
+             BEGIN SELECT RAISE(ABORT, 'derived player writes are forbidden'); END;
+             CREATE TRIGGER deny_projected_updates
+             BEFORE UPDATE ON player_projected_attributes
+             BEGIN SELECT RAISE(ABORT, 'derived player writes are forbidden'); END;
+             CREATE TRIGGER deny_projected_deletes
+             BEFORE DELETE ON player_projected_attributes
              BEGIN SELECT RAISE(ABORT, 'derived player writes are forbidden'); END;
              CREATE TRIGGER deny_compact_inserts
              BEFORE INSERT ON player_role_metrics
@@ -477,38 +454,6 @@ mod tests {
         );
         tx.commit().expect("commit read-only assertion");
         assert_eq!(derived_state(conn, snapshot_id), before);
-    }
-
-    fn mutate_projected_json(
-        projected_json: &str,
-        mutate: impl FnOnce(&mut Map<String, JsonValue>),
-    ) -> String {
-        let mut projected = serde_json::from_str(projected_json).expect("parse projected map");
-        mutate(&mut projected);
-        serde_json::to_string(&projected).expect("serialize corrupted projected map")
-    }
-
-    fn assert_projected_corruption_rejected(
-        model_version: Option<i64>,
-        corrupt_json: impl FnOnce(&str) -> Option<String>,
-    ) {
-        let (conn, snapshot_id) = snapshot_with_persisted_scores();
-        let complete_projected_json = derived_state(&conn, snapshot_id)
-            .0
-            .expect("complete projected map");
-        conn.execute(
-            "UPDATE players
-             SET potential_attributes_json = ?3, potential_projection_model_version = ?4
-             WHERE snapshot_id = ?1 AND uid = ?2",
-            params![
-                snapshot_id,
-                42,
-                corrupt_json(&complete_projected_json),
-                model_version
-            ],
-        )
-        .expect("corrupt projected map");
-        assert_rejected_without_writes(&conn, snapshot_id);
     }
 
     #[test]
@@ -611,15 +556,29 @@ mod tests {
     }
 
     #[test]
-    fn replace_player_replaces_only_that_players_compact_row() {
+    fn replace_player_replaces_only_that_players_derived_rows() {
         let (conn, snapshot_id) = snapshot_with_players(&[42, 43]);
         let tx = conn
             .unchecked_transaction()
             .expect("start writer transaction");
         rebuild_snapshot(&tx, snapshot_id).expect("persist compact rows");
         tx.commit().expect("commit initial materialization");
+        let projected_rows = |conn: &Connection| -> Vec<(i64, String, i64)> {
+            conn.prepare(
+                "SELECT uid, attributes_json, projection_model_version
+                 FROM player_projected_attributes WHERE snapshot_id = ?1 ORDER BY uid",
+            )
+            .expect("prepare projected rows")
+            .query_map([snapshot_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .expect("query projected rows")
+            .collect::<Result<_, _>>()
+            .expect("read projected rows")
+        };
 
         let other_before = compact_row(&conn, snapshot_id, 43).expect("row for unchanged player");
+        let other_projection_before = projected_rows(&conn)[1].clone();
         let upgraded_attributes = DUMP_ATTRIBUTE_KEYS
             .iter()
             .map(|key| ((*key).to_string(), Some(20_u8)))
@@ -658,6 +617,15 @@ mod tests {
             compact_row(&conn, snapshot_id, 43).as_ref(),
             Some(&other_before)
         );
+        let projected = projected_rows(&conn);
+        assert_eq!(projected.len(), 2);
+        assert_eq!(
+            serde_json::from_str::<HashMap<String, Option<u8>>>(&projected[0].1)
+                .expect("parse replaced projection"),
+            upgraded_attributes
+        );
+        assert_eq!(projected[0].2, PROJECTION_MODEL_VERSION);
+        assert_eq!(projected[1], other_projection_before);
     }
 
     #[test]
@@ -669,8 +637,7 @@ mod tests {
         rebuild_snapshot(&initial_tx, snapshot_id).expect("persist initial derived state");
         initial_tx.commit().expect("commit initial derived state");
         conn.execute_batch(&format!(
-            "UPDATE players
-             SET potential_attributes_json = NULL, potential_projection_model_version = NULL
+            "DELETE FROM player_projected_attributes
              WHERE snapshot_id = {snapshot_id} AND uid = 43;
              UPDATE player_role_metrics
              SET score_model_version = 1, projection_model_version = 1
@@ -686,15 +653,15 @@ mod tests {
         replacement_tx.commit().expect("commit replacement");
 
         assert!(compact_row(&conn, snapshot_id, 42).is_some());
-        let unrelated_projection: Option<String> = conn
+        let unrelated_projections: i64 = conn
             .query_row(
-                "SELECT potential_attributes_json
-                 FROM players WHERE snapshot_id = ?1 AND uid = 43",
+                "SELECT COUNT(*) FROM player_projected_attributes
+                 WHERE snapshot_id = ?1 AND uid = 43",
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .expect("read unrelated projected attributes");
-        assert_eq!(unrelated_projection, None);
+            .expect("count unrelated projected attributes");
+        assert_eq!(unrelated_projections, 0);
     }
 
     #[test]
@@ -739,37 +706,57 @@ mod tests {
     }
 
     #[test]
-    fn assertion_rejects_independently_corrupt_projected_maps_without_writes() {
-        assert_projected_corruption_rejected(Some(PROJECTION_MODEL_VERSION), |_| None);
-        assert_projected_corruption_rejected(Some(PROJECTION_MODEL_VERSION), |_| {
-            Some("not-json".to_string())
-        });
-        assert_projected_corruption_rejected(Some(PROJECTION_MODEL_VERSION), |json| {
-            Some(mutate_projected_json(json, |map| {
-                map.remove(DUMP_ATTRIBUTE_KEYS[0]);
-            }))
-        });
-        assert_projected_corruption_rejected(Some(PROJECTION_MODEL_VERSION), |json| {
-            Some(mutate_projected_json(json, |map| {
-                map.insert(
-                    DUMP_ATTRIBUTE_KEYS[0].to_string(),
-                    JsonValue::String("fast".to_string()),
-                );
-            }))
-        });
-        assert_projected_corruption_rejected(Some(PROJECTION_MODEL_VERSION), |json| {
-            Some(mutate_projected_json(json, |map| {
-                map.insert(DUMP_ATTRIBUTE_KEYS[0].to_string(), JsonValue::from(21));
-            }))
-        });
-        assert_projected_corruption_rejected(Some(PROJECTION_MODEL_VERSION), |json| {
-            Some(mutate_projected_json(json, |map| {
-                map.insert("unexpected".to_string(), JsonValue::from(10));
-            }))
-        });
-        assert_projected_corruption_rejected(Some(PROJECTION_MODEL_VERSION - 1), |json| {
-            Some(json.to_string())
-        });
+    fn assertion_rejects_a_missing_or_wrong_version_projected_row_without_writes() {
+        let (conn, snapshot_id) = snapshot_with_persisted_scores();
+        conn.execute(
+            "DELETE FROM player_projected_attributes WHERE snapshot_id = ?1 AND uid = 42",
+            [snapshot_id],
+        )
+        .expect("delete projected row");
+        assert_rejected_without_writes(&conn, snapshot_id);
+
+        let (conn, snapshot_id) = snapshot_with_persisted_scores();
+        conn.execute(
+            "UPDATE player_projected_attributes SET projection_model_version = ?2
+             WHERE snapshot_id = ?1 AND uid = 42",
+            params![snapshot_id, PROJECTION_MODEL_VERSION - 1],
+        )
+        .expect("make projected row stale");
+        assert_rejected_without_writes(&conn, snapshot_id);
+    }
+
+    #[test]
+    fn projected_maps_hold_every_attribute_once_with_null_or_one_to_twenty() {
+        let complete = DUMP_ATTRIBUTE_KEYS
+            .iter()
+            .map(|key| ((*key).to_string(), Some(20_u8)))
+            .collect::<HashMap<_, _>>();
+        let mut with_null = complete.clone();
+        with_null.insert(DUMP_ATTRIBUTE_KEYS[0].to_string(), None);
+        for valid in [&complete, &with_null] {
+            let json = projected_attributes_json(42, valid).expect("valid projected map");
+            assert_eq!(
+                serde_json::from_str::<HashMap<String, Option<u8>>>(&json).expect("parse map"),
+                *valid
+            );
+        }
+
+        let mut missing = complete.clone();
+        missing.remove(DUMP_ATTRIBUTE_KEYS[0]);
+        let mut renamed = missing.clone();
+        renamed.insert("unexpected".to_string(), Some(10));
+        let mut extra = complete.clone();
+        extra.insert("unexpected".to_string(), Some(10));
+        let mut zero = complete.clone();
+        zero.insert(DUMP_ATTRIBUTE_KEYS[0].to_string(), Some(0));
+        let mut above_twenty = complete.clone();
+        above_twenty.insert(DUMP_ATTRIBUTE_KEYS[0].to_string(), Some(21));
+        for invalid in [missing, renamed, extra, zero, above_twenty] {
+            assert_eq!(
+                projected_attributes_json(42, &invalid),
+                Err("player 42 projected attributes are invalid".to_string())
+            );
+        }
     }
 
     #[test]

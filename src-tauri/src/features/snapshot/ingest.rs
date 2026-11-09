@@ -1,6 +1,8 @@
 //! Validates and ingests `dump.json` into the active save, then selects its effective current snapshot.
 
 use std::fs;
+use std::io::Read;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::time::Instant;
 
@@ -8,7 +10,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::Value;
 
 use crate::features::academy::service as academy_service;
-use crate::features::memory_read::dump_validation::parse_and_validate_dump;
+use crate::features::memory_read::dump_validation::read_validated_dump;
 use crate::features::moneyball::persistence as moneyball_persistence;
 use crate::features::player_metrics::club_dna as club_dna_scores;
 use crate::features::player_metrics::compact as player_compact;
@@ -23,100 +25,27 @@ use crate::features::staff::scoring::score_all_staff_roles;
 
 use super::service::{self, SaveContext};
 
-/// Bounded owned preparation of one dump, proportional to one dump's
-/// `players` + `staff` vectors. It owns parsed raw rows plus derived
-/// projected JSON and compact scores, but no `rusqlite` connection,
-/// transaction, or row. Built outside the `Db(Mutex<Connection>)` lock;
+/// Bounded owned preparation of one dump: its validated raw rows plus each
+/// row's derived projected JSON and compact scores, kept beside the rows so
+/// scoring never copies them. It owns no `rusqlite` connection, transaction,
+/// or row. Built outside the `Db(Mutex<Connection>)` lock;
 /// `publish_prepared_snapshot` revalidates the captured `SaveContext`
 /// first and publishes it in one final transaction.
 #[derive(Debug)]
 pub struct PreparedSnapshot {
-    pub(crate) schema_version: i64,
-    pub(crate) generated_at_utc: String,
-    pub(crate) game_version: String,
-    pub(crate) supported_game_version: String,
-    pub(crate) bridge_version: String,
-    pub(crate) protocol_version: i64,
-    pub(crate) game_date: Option<String>,
-    pub(crate) game_date_source: String,
-    pub(crate) game_date_basis: String,
-    pub(crate) player_database_scope: String,
-    pub(crate) scan_truncated: bool,
-    pub(crate) max_accepted: Option<i64>,
-    pub(crate) player_count: i64,
-    pub(crate) staff_count: i64,
-    pub(crate) manager_uid: Option<i64>,
-    pub(crate) manager_name: Option<String>,
-    pub(crate) manager_club: Option<String>,
-    pub(crate) manager_club_reputation: Option<i64>,
-    pub(crate) manager_club_uid: Option<i64>,
-    pub(crate) players: Vec<PreparedPlayer>,
-    pub(crate) staff: Vec<PreparedStaff>,
+    pub(crate) raw: RawPreparedSnapshot,
+    /// One entry per player, in `raw.players` order.
+    pub(crate) player_scores: Vec<PlayerScores>,
+    /// Each staff member's compact role scores, in `raw.staff` order.
+    pub(crate) staff_scores: Vec<Vec<Option<u8>>>,
 }
 
-#[derive(Debug)]
-pub struct PreparedPlayer {
-    pub(crate) uid: i64,
-    pub(crate) ca: i64,
-    pub(crate) pa: i64,
-    pub(crate) name: String,
-    pub(crate) birth_year: i64,
-    pub(crate) birth_day_of_year: i64,
-    pub(crate) age: Option<i64>,
-    pub(crate) nationalities_json: String,
-    pub(crate) height_cm: Option<i64>,
-    pub(crate) preferred_foot: String,
-    pub(crate) positions_json: String,
-    pub(crate) attributes_json: String,
-    pub(crate) hidden_attributes_json: String,
-    pub(crate) personality_json: String,
-    pub(crate) weekly_wage_gbp: Option<i64>,
-    pub(crate) contract_expiry_year: Option<i64>,
-    pub(crate) contract_expiry_day_of_year: Option<i64>,
-    pub(crate) transfer_listed: Option<i32>,
-    pub(crate) loan_listed: Option<i32>,
-    pub(crate) not_for_sale: Option<i32>,
-    pub(crate) set_for_release: Option<i32>,
-    pub(crate) market_value_gbp: Option<i64>,
-    pub(crate) reputation_current: Option<i64>,
-    pub(crate) reputation_world: Option<i64>,
-    pub(crate) current_club: Option<String>,
-    pub(crate) current_club_uid: Option<i64>,
-    pub(crate) parent_club: Option<String>,
-    pub(crate) parent_club_uid: Option<i64>,
-    pub(crate) on_loan: Option<i32>,
-    pub(crate) division: Option<String>,
-    pub(crate) team_level: Option<String>,
-    pub(crate) nation_uid: Option<i64>,
-    pub(crate) gender: String,
-    pub(crate) club_reputation: Option<i64>,
-    pub(crate) team_type: Option<i64>,
+/// One player's projected attributes and compact current and potential role scores.
+#[derive(Debug, PartialEq)]
+pub(crate) struct PlayerScores {
     pub(crate) projected_attributes_json: String,
-    pub(crate) compact_current: Vec<Option<i64>>,
-    pub(crate) compact_potential: Vec<Option<i64>>,
-}
-
-#[derive(Debug)]
-pub struct PreparedStaff {
-    pub(crate) uid: i64,
-    pub(crate) name: Option<String>,
-    pub(crate) birth_year: Option<i64>,
-    pub(crate) birth_day_of_year: Option<i64>,
-    pub(crate) age: Option<i64>,
-    pub(crate) nationalities_json: String,
-    pub(crate) nation_uid: Option<i64>,
-    pub(crate) gender: String,
-    pub(crate) ca: i64,
-    pub(crate) pa: i64,
-    pub(crate) staff_attributes_json: String,
-    pub(crate) job_id: Option<i64>,
-    pub(crate) weekly_wage_gbp: Option<i64>,
-    pub(crate) contract_expiry_year: Option<i64>,
-    pub(crate) contract_expiry_day_of_year: Option<i64>,
-    pub(crate) club: Option<String>,
-    pub(crate) club_uid: Option<i64>,
-    pub(crate) division: Option<String>,
-    pub(crate) compact_scores: Vec<Option<i64>>,
+    pub(crate) current: Vec<Option<u8>>,
+    pub(crate) potential: Vec<Option<u8>>,
 }
 
 /// Intermediate raw snapshot without derived projection/scoring. Owns validated raw rows only.
@@ -204,7 +133,6 @@ pub(crate) struct RawPreparedStaff {
     pub(crate) club: Option<String>,
     pub(crate) club_uid: Option<i64>,
     pub(crate) division: Option<String>,
-    pub(crate) attributes_map: std::collections::HashMap<String, Option<u8>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -316,12 +244,12 @@ pub fn ingest_dump_file_for_save_timed(
 }
 
 /// First sub-phase: validation + raw normalization (no projection/scoring).
-/// Returns bounded owned raw state proportional to one dump.
-pub(crate) fn prepare_dump_json_raw(json: &str) -> Result<RawPreparedSnapshot, String> {
-    let root = parse_and_validate_dump(json).map_err(|error| error.to_string())?;
-    let object = root
-        .as_object()
-        .ok_or_else(|| "dump root must be a JSON object".to_string())?;
+/// Streams the dump one record at a time and returns owned raw rows only once the whole
+/// document is valid.
+pub(crate) fn prepare_dump_raw(reader: impl Read) -> Result<RawPreparedSnapshot, String> {
+    let dump =
+        read_validated_dump(reader, raw_player, raw_staff).map_err(|error| error.to_string())?;
+    let object = &dump.header;
     let schema_version = require_i64(object, "schemaVersion")?;
     let generated_at_utc = require_string(object, "generatedAtUtc")?;
     let game_version = require_string(object, "gameVersion")?;
@@ -341,140 +269,6 @@ pub(crate) fn prepare_dump_json_raw(json: &str) -> Result<RawPreparedSnapshot, S
     let manager_club = optional_string(manager_field(object, "club")?)?;
     let manager_club_reputation = optional_i64(manager_field(object, "clubReputation")?)?;
     let manager_club_uid = optional_positive_i64(manager_field(object, "clubUid")?)?;
-    let players_value = object
-        .get("players")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "dump players must be an array".to_string())?;
-    let staff_value = object
-        .get("staff")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "dump staff must be an array".to_string())?;
-    let mut players = Vec::with_capacity(players_value.len());
-    for player in players_value {
-        let player = player
-            .as_object()
-            .ok_or_else(|| "each player must be a JSON object".to_string())?;
-        let uid = require_u64(player, "uid")? as i64;
-        let ca = require_i64(player, "ca")?;
-        let pa = require_i64(player, "pa")?;
-        let name = require_string(player, "name")?;
-        let birth_year = require_i64(player, "birthYear")?;
-        let birth_day_of_year = require_i64(player, "birthDayOfYear")?;
-        let age = optional_i64(player.get("age"))?;
-        let nationalities_json = json_string(required_value(player, "nationalities")?)?;
-        let height_cm = optional_i64(player.get("heightCm"))?;
-        let preferred_foot = require_string(player, "preferredFoot")?;
-        let positions_json = json_string(required_value(player, "positions")?)?;
-        let attributes_json = json_string(required_value(player, "attributes")?)?;
-        let hidden_attributes_json = json_string(required_value(player, "hiddenAttributes")?)?;
-        let personality_json = json_string(required_value(player, "personality")?)?;
-        let weekly_wage_gbp = optional_i64(player.get("weeklyWageGbp"))?;
-        let contract_expiry_year = optional_i64(player.get("contractExpiryYear"))?;
-        let contract_expiry_day_of_year = optional_i64(player.get("contractExpiryDayOfYear"))?;
-        let transfer_listed = optional_bool(player.get("transferListed"))?;
-        let loan_listed = optional_bool(player.get("loanListed"))?;
-        let not_for_sale = optional_bool(player.get("notForSale"))?;
-        let set_for_release = optional_bool(player.get("setForRelease"))?;
-        let market_value_gbp = optional_i64(player.get("marketValueGbp"))?;
-        let reputation_current = reputation_field(player, "current")?;
-        let reputation_world = reputation_field(player, "world")?;
-        let current_club = optional_string(player.get("currentClub"))?;
-        let current_club_uid = optional_positive_i64(player.get("currentClubUid"))?;
-        let parent_club = optional_string(player.get("parentClub"))?;
-        let parent_club_uid = optional_positive_i64(player.get("parentClubUid"))?;
-        let on_loan = optional_bool(player.get("onLoan"))?;
-        let division = optional_string(player.get("division"))?;
-        let team_level = optional_string(player.get("teamLevel"))?;
-        let nation_uid = optional_i64(player.get("nationUid"))?;
-        let gender = require_string(player, "gender")?;
-        let club_reputation = optional_i64(player.get("clubReputation"))?;
-        let team_type = optional_i64(player.get("teamType"))?;
-        players.push(RawPreparedPlayer {
-            uid,
-            ca,
-            pa,
-            name,
-            birth_year,
-            birth_day_of_year,
-            age,
-            nationalities_json,
-            height_cm,
-            preferred_foot,
-            positions_json,
-            attributes_json,
-            hidden_attributes_json,
-            personality_json,
-            weekly_wage_gbp,
-            contract_expiry_year,
-            contract_expiry_day_of_year,
-            transfer_listed,
-            loan_listed,
-            not_for_sale,
-            set_for_release,
-            market_value_gbp,
-            reputation_current,
-            reputation_world,
-            current_club,
-            current_club_uid,
-            parent_club,
-            parent_club_uid,
-            on_loan,
-            division,
-            team_level,
-            nation_uid,
-            gender,
-            club_reputation,
-            team_type,
-        });
-    }
-    let mut staff = Vec::with_capacity(staff_value.len());
-    for staff_record in staff_value {
-        let staff_record = staff_record
-            .as_object()
-            .ok_or_else(|| "each staff record must be a JSON object".to_string())?;
-        let uid = require_u64(staff_record, "uid")? as i64;
-        let name = optional_string(staff_record.get("name"))?;
-        let birth_year = optional_i64(staff_record.get("birthYear"))?;
-        let birth_day_of_year = optional_i64(staff_record.get("birthDayOfYear"))?;
-        let age = optional_i64(staff_record.get("age"))?;
-        let nationalities_json = json_string(required_value(staff_record, "nationalities")?)?;
-        let nation_uid = optional_i64(staff_record.get("nationUid"))?;
-        let gender = require_string(staff_record, "gender")?;
-        let ca = require_i64(staff_record, "ca")?;
-        let pa = require_i64(staff_record, "pa")?;
-        let raw_attributes = required_value(staff_record, "attributes")?;
-        let staff_attributes_json = json_string(raw_attributes)?;
-        let attributes_map = attributes_map(raw_attributes)?;
-        let job_id = optional_i64(staff_record.get("jobId"))?;
-        let weekly_wage_gbp = optional_i64(staff_record.get("weeklyWageGbp"))?;
-        let contract_expiry_year = optional_i64(staff_record.get("contractExpiryYear"))?;
-        let contract_expiry_day_of_year =
-            optional_i64(staff_record.get("contractExpiryDayOfYear"))?;
-        let club = optional_string(staff_record.get("club"))?;
-        let club_uid = optional_positive_i64(staff_record.get("clubUid"))?;
-        let division = optional_string(staff_record.get("division"))?;
-        staff.push(RawPreparedStaff {
-            uid,
-            name,
-            birth_year,
-            birth_day_of_year,
-            age,
-            nationalities_json,
-            nation_uid,
-            gender,
-            ca,
-            pa,
-            staff_attributes_json,
-            job_id,
-            weekly_wage_gbp,
-            contract_expiry_year,
-            contract_expiry_day_of_year,
-            club,
-            club_uid,
-            division,
-            attributes_map,
-        });
-    }
     Ok(RawPreparedSnapshot {
         schema_version,
         generated_at_utc,
@@ -495,17 +289,137 @@ pub(crate) fn prepare_dump_json_raw(json: &str) -> Result<RawPreparedSnapshot, S
         manager_club,
         manager_club_reputation,
         manager_club_uid,
-        players,
-        staff,
+        players: dump.players,
+        staff: dump.staff,
+    })
+}
+
+/// Converts one validated player record into its raw row.
+fn raw_player(player: &serde_json::Map<String, Value>) -> Result<RawPreparedPlayer, String> {
+    let uid = require_u64(player, "uid")? as i64;
+    let ca = require_i64(player, "ca")?;
+    let pa = require_i64(player, "pa")?;
+    let name = require_string(player, "name")?;
+    let birth_year = require_i64(player, "birthYear")?;
+    let birth_day_of_year = require_i64(player, "birthDayOfYear")?;
+    let age = optional_i64(player.get("age"))?;
+    let nationalities_json = json_string(required_value(player, "nationalities")?)?;
+    let height_cm = optional_i64(player.get("heightCm"))?;
+    let preferred_foot = require_string(player, "preferredFoot")?;
+    let positions_json = json_string(required_value(player, "positions")?)?;
+    let attributes_json = json_string(required_value(player, "attributes")?)?;
+    let hidden_attributes_json = json_string(required_value(player, "hiddenAttributes")?)?;
+    let personality_json = json_string(required_value(player, "personality")?)?;
+    let weekly_wage_gbp = optional_i64(player.get("weeklyWageGbp"))?;
+    let contract_expiry_year = optional_i64(player.get("contractExpiryYear"))?;
+    let contract_expiry_day_of_year = optional_i64(player.get("contractExpiryDayOfYear"))?;
+    let transfer_listed = optional_bool(player.get("transferListed"))?;
+    let loan_listed = optional_bool(player.get("loanListed"))?;
+    let not_for_sale = optional_bool(player.get("notForSale"))?;
+    let set_for_release = optional_bool(player.get("setForRelease"))?;
+    let market_value_gbp = optional_i64(player.get("marketValueGbp"))?;
+    let reputation_current = reputation_field(player, "current")?;
+    let reputation_world = reputation_field(player, "world")?;
+    let current_club = optional_string(player.get("currentClub"))?;
+    let current_club_uid = optional_positive_i64(player.get("currentClubUid"))?;
+    let parent_club = optional_string(player.get("parentClub"))?;
+    let parent_club_uid = optional_positive_i64(player.get("parentClubUid"))?;
+    let on_loan = optional_bool(player.get("onLoan"))?;
+    let division = optional_string(player.get("division"))?;
+    let team_level = optional_string(player.get("teamLevel"))?;
+    let nation_uid = optional_i64(player.get("nationUid"))?;
+    let gender = require_string(player, "gender")?;
+    let club_reputation = optional_i64(player.get("clubReputation"))?;
+    let team_type = optional_i64(player.get("teamType"))?;
+    Ok(RawPreparedPlayer {
+        uid,
+        ca,
+        pa,
+        name,
+        birth_year,
+        birth_day_of_year,
+        age,
+        nationalities_json,
+        height_cm,
+        preferred_foot,
+        positions_json,
+        attributes_json,
+        hidden_attributes_json,
+        personality_json,
+        weekly_wage_gbp,
+        contract_expiry_year,
+        contract_expiry_day_of_year,
+        transfer_listed,
+        loan_listed,
+        not_for_sale,
+        set_for_release,
+        market_value_gbp,
+        reputation_current,
+        reputation_world,
+        current_club,
+        current_club_uid,
+        parent_club,
+        parent_club_uid,
+        on_loan,
+        division,
+        team_level,
+        nation_uid,
+        gender,
+        club_reputation,
+        team_type,
+    })
+}
+
+/// Converts one validated staff record into its raw row.
+fn raw_staff(staff_record: &serde_json::Map<String, Value>) -> Result<RawPreparedStaff, String> {
+    let uid = require_u64(staff_record, "uid")? as i64;
+    let name = optional_string(staff_record.get("name"))?;
+    let birth_year = optional_i64(staff_record.get("birthYear"))?;
+    let birth_day_of_year = optional_i64(staff_record.get("birthDayOfYear"))?;
+    let age = optional_i64(staff_record.get("age"))?;
+    let nationalities_json = json_string(required_value(staff_record, "nationalities")?)?;
+    let nation_uid = optional_i64(staff_record.get("nationUid"))?;
+    let gender = require_string(staff_record, "gender")?;
+    let ca = require_i64(staff_record, "ca")?;
+    let pa = require_i64(staff_record, "pa")?;
+    let raw_attributes = required_value(staff_record, "attributes")?;
+    let staff_attributes_json = json_string(raw_attributes)?;
+    let job_id = optional_i64(staff_record.get("jobId"))?;
+    let weekly_wage_gbp = optional_i64(staff_record.get("weeklyWageGbp"))?;
+    let contract_expiry_year = optional_i64(staff_record.get("contractExpiryYear"))?;
+    let contract_expiry_day_of_year = optional_i64(staff_record.get("contractExpiryDayOfYear"))?;
+    let club = optional_string(staff_record.get("club"))?;
+    let club_uid = optional_positive_i64(staff_record.get("clubUid"))?;
+    let division = optional_string(staff_record.get("division"))?;
+    Ok(RawPreparedStaff {
+        uid,
+        name,
+        birth_year,
+        birth_day_of_year,
+        age,
+        nationalities_json,
+        nation_uid,
+        gender,
+        ca,
+        pa,
+        staff_attributes_json,
+        job_id,
+        weekly_wage_gbp,
+        contract_expiry_year,
+        contract_expiry_day_of_year,
+        club,
+        club_uid,
+        division,
     })
 }
 
 /// Second sub-phase: scoring (projection + compact scores) using already
-/// validated raw state. No re-parsing, bounded sequential work.
+/// validated raw state, on every available core. The raw rows move into the
+/// result unchanged. A failure reports the first failing record in dump order.
 pub(crate) fn score_raw_snapshot(raw: RawPreparedSnapshot) -> Result<PreparedSnapshot, String> {
-    let mut players = Vec::with_capacity(raw.players.len());
-    for p in raw.players {
-        let (projected_attributes_json, compact_current, compact_potential) =
+    let threads = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
+    let player_scores = map_in_ordered_chunks(&raw.players, threads, |p| {
+        let (projected_attributes_json, current, potential) =
             player_compact::prepare_player_derived(
                 p.uid,
                 &p.attributes_json,
@@ -514,108 +428,66 @@ pub(crate) fn score_raw_snapshot(raw: RawPreparedSnapshot) -> Result<PreparedSna
                 p.pa,
                 p.age,
             )?;
-        players.push(PreparedPlayer {
-            uid: p.uid,
-            ca: p.ca,
-            pa: p.pa,
-            name: p.name,
-            birth_year: p.birth_year,
-            birth_day_of_year: p.birth_day_of_year,
-            age: p.age,
-            nationalities_json: p.nationalities_json,
-            height_cm: p.height_cm,
-            preferred_foot: p.preferred_foot,
-            positions_json: p.positions_json,
-            attributes_json: p.attributes_json,
-            hidden_attributes_json: p.hidden_attributes_json,
-            personality_json: p.personality_json,
-            weekly_wage_gbp: p.weekly_wage_gbp,
-            contract_expiry_year: p.contract_expiry_year,
-            contract_expiry_day_of_year: p.contract_expiry_day_of_year,
-            transfer_listed: p.transfer_listed,
-            loan_listed: p.loan_listed,
-            not_for_sale: p.not_for_sale,
-            set_for_release: p.set_for_release,
-            market_value_gbp: p.market_value_gbp,
-            reputation_current: p.reputation_current,
-            reputation_world: p.reputation_world,
-            current_club: p.current_club,
-            current_club_uid: p.current_club_uid,
-            parent_club: p.parent_club,
-            parent_club_uid: p.parent_club_uid,
-            on_loan: p.on_loan,
-            division: p.division,
-            team_level: p.team_level,
-            nation_uid: p.nation_uid,
-            gender: p.gender,
-            club_reputation: p.club_reputation,
-            team_type: p.team_type,
+        Ok(PlayerScores {
             projected_attributes_json,
-            compact_current,
-            compact_potential,
-        });
-    }
-    let mut staff = Vec::with_capacity(raw.staff.len());
-    for s in raw.staff {
-        let compact_scores = score_all_staff_roles(&s.attributes_map);
-        staff.push(PreparedStaff {
-            uid: s.uid,
-            name: s.name,
-            birth_year: s.birth_year,
-            birth_day_of_year: s.birth_day_of_year,
-            age: s.age,
-            nationalities_json: s.nationalities_json,
-            nation_uid: s.nation_uid,
-            gender: s.gender,
-            ca: s.ca,
-            pa: s.pa,
-            staff_attributes_json: s.staff_attributes_json,
-            job_id: s.job_id,
-            weekly_wage_gbp: s.weekly_wage_gbp,
-            contract_expiry_year: s.contract_expiry_year,
-            contract_expiry_day_of_year: s.contract_expiry_day_of_year,
-            club: s.club,
-            club_uid: s.club_uid,
-            division: s.division,
-            compact_scores,
-        });
-    }
+            current,
+            potential,
+        })
+    })?;
+    let staff_scores = map_in_ordered_chunks(&raw.staff, threads, score_staff)?;
     Ok(PreparedSnapshot {
-        schema_version: raw.schema_version,
-        generated_at_utc: raw.generated_at_utc,
-        game_version: raw.game_version,
-        supported_game_version: raw.supported_game_version,
-        bridge_version: raw.bridge_version,
-        protocol_version: raw.protocol_version,
-        game_date: raw.game_date,
-        game_date_source: raw.game_date_source,
-        game_date_basis: raw.game_date_basis,
-        player_database_scope: raw.player_database_scope,
-        scan_truncated: raw.scan_truncated,
-        max_accepted: raw.max_accepted,
-        player_count: raw.player_count,
-        staff_count: raw.staff_count,
-        manager_uid: raw.manager_uid,
-        manager_name: raw.manager_name,
-        manager_club: raw.manager_club,
-        manager_club_reputation: raw.manager_club_reputation,
-        manager_club_uid: raw.manager_club_uid,
-        players,
-        staff,
+        raw,
+        player_scores,
+        staff_scores,
     })
+}
+
+/// Scores one staff member from the attribute map that validation checked.
+fn score_staff(staff: &RawPreparedStaff) -> Result<Vec<Option<u8>>, String> {
+    let attributes = serde_json::from_str(&staff.staff_attributes_json)
+        .map_err(|error| format!("invalid staff {} attributes JSON: {error}", staff.uid))?;
+    Ok(score_all_staff_roles(&attributes))
+}
+
+/// Maps `items` on up to `threads` scoped threads, each taking one contiguous chunk, and
+/// returns the results in input order. The first error in input order is returned, and a
+/// panic resumes from the earliest panicking chunk, so the outcome never depends on timing.
+fn map_in_ordered_chunks<T: Sync, U: Send>(
+    items: &[T],
+    threads: usize,
+    map: impl Fn(&T) -> Result<U, String> + Sync,
+) -> Result<Vec<U>, String> {
+    let chunk_len = items.len().div_ceil(threads.max(1)).max(1);
+    let map = &map;
+    // Joining every chunk before inspecting any keeps the scope from panicking on its own.
+    let chunk_results: Vec<_> = std::thread::scope(|scope| {
+        let handles: Vec<_> = items
+            .chunks(chunk_len)
+            .map(|chunk| scope.spawn(move || chunk.iter().map(map).collect::<Result<Vec<U>, _>>()))
+            .collect();
+        handles.into_iter().map(|handle| handle.join()).collect()
+    });
+    let mut mapped = Vec::with_capacity(items.len());
+    for chunk_result in chunk_results {
+        match chunk_result {
+            Ok(chunk) => mapped.extend(chunk?),
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
+    Ok(mapped)
 }
 
 /// Pure preparation: validates dump JSON and builds owned raw + derived state
 /// without any database read/write. Delegates to the split phases without duplicate work.
 pub fn prepare_dump_json(json: &str) -> Result<PreparedSnapshot, String> {
-    let raw = prepare_dump_json_raw(json)?;
+    let raw = prepare_dump_raw(json.as_bytes())?;
     score_raw_snapshot(raw)
 }
 
 #[cfg(test)]
 pub fn prepare_dump_file(path: &Path) -> Result<PreparedSnapshot, String> {
-    let json = fs::read_to_string(path).map_err(|error| error.to_string())?;
-    prepare_dump_json(&json)
+    let file = fs::File::open(path).map_err(|error| error.to_string())?;
+    score_raw_snapshot(prepare_dump_raw(file)?)
 }
 
 /// Final publication: one canonical transaction. Revalidates the captured
@@ -637,9 +509,10 @@ pub(crate) fn publish_prepared_snapshot_canonical(
     service::ensure_save_context(&tx, save_context)?;
     let save_id = save_context.id;
     let save_started = now_ms();
-    let snapshot_id = insert_prepared_snapshot(&tx, save_id, &prepared, bridge_source_request_id)?;
-    insert_prepared_players_raw(&tx, snapshot_id, &prepared.players)?;
-    insert_prepared_staff_raw(&tx, snapshot_id, &prepared.staff)?;
+    let raw = &prepared.raw;
+    let snapshot_id = insert_prepared_snapshot(&tx, save_id, raw, bridge_source_request_id)?;
+    insert_prepared_players_raw(&tx, snapshot_id, &raw.players)?;
+    insert_prepared_staff_raw(&tx, snapshot_id, &raw.staff)?;
     let save_ms = now_ms().saturating_sub(save_started);
     // Non-cancelling phase boundary: raw save complete, finalize start.
     on_save_boundary();
@@ -666,39 +539,26 @@ pub(crate) fn publish_prepared_snapshot_canonical(
             )
             .map_err(|e| e.to_string())?;
         }
-        player_compact::clear_non_current_snapshots(&tx, save_id)?;
+        potential_scores::clear_non_current_snapshots(&tx, save_id)?;
         moneyball_persistence::clear_non_current_snapshots(&tx, save_id)?;
-        tx.execute(
-            "UPDATE players SET potential_attributes_json = NULL, potential_projection_model_version = NULL WHERE snapshot_id IN (SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0) AND (potential_attributes_json IS NOT NULL OR potential_projection_model_version IS NOT NULL)",
-            rusqlite::params![save_id],
-        )
-        .map_err(|e| e.to_string())?;
         crate::features::staff::scoring::clear_non_current_snapshots(&tx, save_id)?;
         if let Some(effective) = current_id {
             if effective == snapshot_id {
-                let mut statement = tx
-                    .prepare(
-                        "UPDATE players SET potential_attributes_json = ?3, potential_projection_model_version = ?4 WHERE snapshot_id = ?1 AND uid = ?2",
-                    )
-                    .map_err(|e| e.to_string())?;
-                for player in &prepared.players {
-                    statement
-                        .execute(rusqlite::params![
-                            snapshot_id,
-                            player.uid,
-                            player.projected_attributes_json,
-                            potential_scores::PROJECTION_MODEL_VERSION
-                        ])
-                        .map_err(|e| e.to_string())?;
-                }
+                let player_scores = || raw.players.iter().zip(&prepared.player_scores);
+                potential_scores::persist_projected_rows(
+                    &tx,
+                    snapshot_id,
+                    player_scores()
+                        .map(|(p, scores)| (p.uid, scores.projected_attributes_json.as_str())),
+                )?;
                 player_compact::persist_rows_borrowed(
                     &tx,
                     snapshot_id,
-                    prepared.players.iter().map(|p| {
+                    player_scores().map(|(p, scores)| {
                         (
                             p.uid,
-                            p.compact_current.as_slice(),
-                            p.compact_potential.as_slice(),
+                            scores.current.as_slice(),
+                            scores.potential.as_slice(),
                         )
                     }),
                 )?;
@@ -707,17 +567,17 @@ pub(crate) fn publish_prepared_snapshot_canonical(
                 crate::features::staff::scoring::persist_rows_borrowed(
                     &tx,
                     snapshot_id,
-                    prepared
-                        .staff
+                    raw.staff
                         .iter()
-                        .map(|s| (s.uid, s.compact_scores.as_slice())),
+                        .zip(&prepared.staff_scores)
+                        .map(|(s, scores)| (s.uid, scores.as_slice())),
                 )?;
                 crate::features::staff::scoring::assert_snapshot_complete(&tx, snapshot_id)?;
                 academy_service::ensure_class_for_game_date(
                     &tx,
                     save_id,
-                    prepared.game_date.as_deref(),
-                    &prepared.game_date_source,
+                    raw.game_date.as_deref(),
+                    &raw.game_date_source,
                 )?;
             }
         }
@@ -768,7 +628,7 @@ pub(crate) fn publish_prepared_snapshot(
 fn insert_prepared_snapshot(
     tx: &Transaction<'_>,
     save_id: i64,
-    prepared: &PreparedSnapshot,
+    prepared: &RawPreparedSnapshot,
     bridge_source_request_id: Option<&str>,
 ) -> Result<i64, String> {
     tx.execute(
@@ -830,7 +690,7 @@ fn insert_prepared_snapshot(
 fn insert_prepared_players_raw(
     tx: &Transaction<'_>,
     snapshot_id: i64,
-    players: &[PreparedPlayer],
+    players: &[RawPreparedPlayer],
 ) -> Result<(), String> {
     let mut stmt = tx
         .prepare(
@@ -925,7 +785,7 @@ fn insert_prepared_players_raw(
 fn insert_prepared_staff_raw(
     tx: &Transaction<'_>,
     snapshot_id: i64,
-    staff: &[PreparedStaff],
+    staff: &[RawPreparedStaff],
 ) -> Result<(), String> {
     let mut stmt = tx
         .prepare(
@@ -1004,32 +864,6 @@ fn ingest_dump_json_for_save(
             total_ms,
         },
     ))
-}
-
-fn attributes_map(value: &Value) -> Result<std::collections::HashMap<String, Option<u8>>, String> {
-    let object = value
-        .as_object()
-        .ok_or_else(|| "attributes must be an object".to_string())?;
-    let mut attributes = std::collections::HashMap::with_capacity(object.len());
-    for (key, raw) in object {
-        let parsed = match raw {
-            Value::Null => None,
-            Value::Number(number) => {
-                let as_i64 = number
-                    .as_i64()
-                    .ok_or_else(|| format!("attribute `{key}` must be an integer or null"))?;
-                Some(
-                    u8::try_from(as_i64)
-                        .map_err(|_| format!("attribute `{key}` out of u8 range"))?,
-                )
-            }
-            _ => {
-                return Err(format!("attribute `{key}` must be an integer or null"));
-            }
-        };
-        attributes.insert(key.clone(), parsed);
-    }
-    Ok(attributes)
 }
 
 fn get_snapshot_by_id(tx: &Transaction<'_>, snapshot_id: i64) -> Result<SnapshotSummary, String> {
@@ -1155,8 +989,12 @@ fn manager_field<'a>(
     }
 }
 
+/// Serializes one stored JSON column. Serialization grows its buffer by doubling, and every
+/// prepared row is held until publication, so the slack is released.
 fn json_string(value: &Value) -> Result<String, String> {
-    serde_json::to_string(value).map_err(|error| error.to_string())
+    let mut json = serde_json::to_string(value).map_err(|error| error.to_string())?;
+    json.shrink_to_fit();
+    Ok(json)
 }
 
 fn required_value<'a>(
@@ -1249,8 +1087,11 @@ mod tests {
     fn potential_state(conn: &Connection, snapshot_id: i64) -> (Option<String>, Option<i64>, i64) {
         let fields = conn
             .query_row(
-                "SELECT potential_attributes_json, potential_projection_model_version
-                 FROM players WHERE snapshot_id = ?1 ORDER BY uid LIMIT 1",
+                "SELECT a.attributes_json, a.projection_model_version
+                 FROM players p
+                 LEFT JOIN player_projected_attributes a
+                   ON a.snapshot_id = p.snapshot_id AND a.uid = p.uid
+                 WHERE p.snapshot_id = ?1 ORDER BY p.uid LIMIT 1",
                 [snapshot_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
@@ -1288,8 +1129,8 @@ mod tests {
         assert!(current.iter().all(|score| *score == Some(50)));
         let projected_json: String = conn
             .query_row(
-                "SELECT potential_attributes_json
-                 FROM players WHERE snapshot_id = ?1 AND uid = ?2",
+                "SELECT attributes_json
+                 FROM player_projected_attributes WHERE snapshot_id = ?1 AND uid = ?2",
                 params![snapshot_id, uid],
                 |row| row.get(0),
             )
@@ -1318,6 +1159,25 @@ mod tests {
 
     fn assert_empty_potential_state(conn: &Connection, snapshot_id: i64) {
         assert_eq!(potential_state(conn, snapshot_id), (None, None, 0));
+        let projected_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_projected_attributes WHERE snapshot_id = ?1",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("count projected rows");
+        assert_eq!(projected_rows, 0);
+        let retired_values: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM players
+                 WHERE snapshot_id = ?1
+                   AND (potential_attributes_json IS NOT NULL
+                        OR potential_projection_model_version IS NOT NULL)",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("count retired projected values");
+        assert_eq!(retired_values, 0);
     }
 
     fn club_dna_score_rows(
@@ -2127,8 +1987,8 @@ mod tests {
 
         let projected_states: Vec<(i64, Option<String>, Option<i64>)> = conn
             .prepare(
-                "SELECT uid, potential_attributes_json, potential_projection_model_version
-                 FROM players WHERE snapshot_id = ?1 ORDER BY uid",
+                "SELECT a.uid, a.attributes_json, a.projection_model_version
+                 FROM player_projected_attributes a WHERE a.snapshot_id = ?1 ORDER BY a.uid",
             )
             .expect("prepare projected state query")
             .query_map([snapshot.id], |row| {
@@ -2137,7 +1997,13 @@ mod tests {
             .expect("query projected states")
             .collect::<Result<Vec<_>, _>>()
             .expect("read projected states");
-        assert_eq!(projected_states.len(), 2);
+        assert_eq!(
+            projected_states
+                .iter()
+                .map(|(uid, _, _)| *uid)
+                .collect::<Vec<_>>(),
+            [77, 78]
+        );
         assert!(projected_states
             .iter()
             .all(|(_, projected, version)| projected.is_some()
@@ -2145,7 +2011,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_projected_attribute_update_rolls_back_ingest_and_keeps_prior_current_visible() {
+    fn failed_projected_attribute_insert_rolls_back_ingest_and_keeps_prior_current_visible() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("ingest-projection-rollback.db"));
         let first_path = write_dump(
@@ -2155,14 +2021,12 @@ mod tests {
         );
         let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
         let first_potential_state = potential_state(&conn, first.id);
-        conn.execute_batch(&format!(
-            "CREATE TRIGGER reject_projected_attribute_update
-             BEFORE UPDATE OF potential_attributes_json ON players
-             WHEN NEW.snapshot_id <> {}
-             BEGIN SELECT RAISE(ABORT, 'projected attribute update failure'); END;",
-            first.id
-        ))
-        .expect("reject projected attribute updates");
+        conn.execute_batch(
+            "CREATE TRIGGER reject_projected_attribute_insert
+             BEFORE INSERT ON player_projected_attributes
+             BEGIN SELECT RAISE(ABORT, 'projected attribute insert failure'); END;",
+        )
+        .expect("reject projected attribute inserts");
         let later_path = write_dump(
             &temp_dir,
             "later.json",
@@ -2171,7 +2035,7 @@ mod tests {
 
         assert!(ingest_dump_file(&mut conn, &later_path)
             .expect_err("roll back projected attribute materialization")
-            .contains("projected attribute update failure"));
+            .contains("projected attribute insert failure"));
         assert_eq!(snapshot_count(&conn, first.save_id), 1);
         assert_eq!(current_snapshot_id(&conn, first.save_id), Some(first.id));
         assert_eq!(potential_state(&conn, first.id), first_potential_state);
@@ -2933,8 +2797,8 @@ mod tests {
         assert_eq!(before_snapshots, 0);
         // Preparation must succeed without holding the Db mutex and must not write.
         let prepared = prepare_dump_json(GOLDEN_FIXTURE).expect("prepare without db");
-        assert_eq!(prepared.players.len(), 1);
-        assert_eq!(prepared.staff.len(), 1);
+        assert_eq!(prepared.raw.players.len(), 1);
+        assert_eq!(prepared.raw.staff.len(), 1);
         let after_prepare_snapshots: i64 =
             db.0.lock()
                 .expect("lock db")
@@ -2946,9 +2810,9 @@ mod tests {
         let guard = db.0.lock().expect("hold db mutex");
         let _ = prepare_dump_json(GOLDEN_FIXTURE).expect("prepare while db mutex is held");
         drop(guard);
-        assert_eq!(prepared.players[0].compact_current.len(), 79);
-        assert_eq!(prepared.players[0].compact_potential.len(), 79);
-        assert_eq!(prepared.staff[0].compact_scores.len(), 21);
+        assert_eq!(prepared.player_scores[0].current.len(), 79);
+        assert_eq!(prepared.player_scores[0].potential.len(), 79);
+        assert_eq!(prepared.staff_scores[0].len(), 21);
     }
 
     #[test]
@@ -3045,101 +2909,85 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_skips_noop_historical_projection_updates_and_clears_partial_state() {
+    fn repeat_load_deletes_displaced_projected_rows_without_rewriting_player_rows() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("projection-cleanup.db"));
         let save_context = service::capture_active_save_context(&conn).expect("capture");
         conn.execute_batch(
-            "CREATE TABLE projection_update_observations (snapshot_id INTEGER NOT NULL, uid INTEGER NOT NULL);
-             CREATE TRIGGER observe_projection_cleanup AFTER UPDATE OF potential_attributes_json, potential_projection_model_version ON players
-             WHEN (SELECT is_current FROM snapshots WHERE id = OLD.snapshot_id) = 0
+            "CREATE TABLE player_update_observations (snapshot_id INTEGER NOT NULL);
+             CREATE TRIGGER observe_player_updates AFTER UPDATE ON players
              BEGIN
-                 INSERT INTO projection_update_observations (snapshot_id, uid) VALUES (OLD.snapshot_id, OLD.uid);
+                 INSERT INTO player_update_observations (snapshot_id) VALUES (OLD.snapshot_id);
              END;",
         )
-        .expect("create projection observation seam");
+        .expect("create player update observation seam");
+        let mut publish = |game_date: &str, name: &str| {
+            publish_prepared_snapshot(
+                &mut conn,
+                &save_context,
+                prepare_dump_json(&dump_with_game_date(Some(game_date), name))
+                    .expect("prepare dump"),
+                Some(name),
+            )
+            .expect("publish dump")
+            .stored_snapshot
+        };
 
-        let first = publish_prepared_snapshot(
-            &mut conn,
-            &save_context,
-            prepare_dump_json(&dump_with_game_date(Some("2026-08-16"), "First"))
-                .expect("prepare first"),
-            Some("first"),
-        )
-        .expect("publish first")
-        .stored_snapshot;
-        let raw_history = publish_prepared_snapshot(
-            &mut conn,
-            &save_context,
-            prepare_dump_json(&dump_with_game_date(Some("2025-08-16"), "Raw history"))
-                .expect("prepare raw history"),
-            Some("raw-history"),
-        )
-        .expect("publish raw history")
-        .stored_snapshot;
-        assert_empty_potential_state(&conn, raw_history.id);
+        let first = publish("2026-08-16", "First");
+        let raw_history = publish("2025-08-16", "Raw history");
+        let second = publish("2027-08-16", "Second");
 
-        let second = publish_prepared_snapshot(
-            &mut conn,
-            &save_context,
-            prepare_dump_json(&dump_with_game_date(Some("2027-08-16"), "Second"))
-                .expect("prepare second"),
-            Some("second"),
-        )
-        .expect("publish second")
-        .stored_snapshot;
         assert_eq!(current_snapshot_id(&conn, save_context.id), Some(second.id));
+        assert_complete_potential_state(&conn, second.id);
         assert_empty_potential_state(&conn, first.id);
+        assert_empty_potential_state(&conn, raw_history.id);
         assert_eq!(player_count_for_snapshot(&conn, first.id), 1);
         assert_eq!(player_count_for_snapshot(&conn, raw_history.id), 1);
-        let updates_after_displacement: i64 = conn
+        let player_updates: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM projection_update_observations WHERE snapshot_id = ?1",
-                [first.id],
+                "SELECT COUNT(*) FROM player_update_observations",
+                [],
                 |row| row.get(0),
             )
-            .expect("count displaced updates");
-        assert_eq!(updates_after_displacement, 1);
-        let raw_history_updates: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM projection_update_observations WHERE snapshot_id = ?1",
-                [raw_history.id],
-                |row| row.get(0),
-            )
-            .expect("count raw history updates");
-        assert_eq!(raw_history_updates, 0);
+            .expect("count player updates");
+        assert_eq!(player_updates, 0);
+    }
 
-        conn.execute(
-            "UPDATE players SET potential_projection_model_version = ?2 WHERE snapshot_id = ?1 AND uid = 77",
-            params![raw_history.id, potential_scores::PROJECTION_MODEL_VERSION],
-        )
-        .expect("seed partial stale state");
-        conn.execute(
-            "DELETE FROM projection_update_observations WHERE snapshot_id = ?1",
-            [raw_history.id],
-        )
-        .expect("reset projection observation");
-        let third = publish_prepared_snapshot(
+    #[test]
+    fn a_missing_projected_row_fails_publication_and_keeps_prior_current_visible() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("projection-postcondition.db"));
+        let first = ingest_dump_file(
             &mut conn,
-            &save_context,
-            prepare_dump_json(&dump_with_game_date(Some("2028-08-16"), "Third"))
-                .expect("prepare third"),
-            Some("third"),
+            &write_dump(
+                &temp_dir,
+                "first.json",
+                &dump_with_game_date(Some("2026-08-14"), "Earlier player"),
+            ),
         )
-        .expect("publish third")
-        .stored_snapshot;
-        assert_eq!(current_snapshot_id(&conn, save_context.id), Some(third.id));
-        assert_empty_potential_state(&conn, second.id);
-        assert_empty_potential_state(&conn, raw_history.id);
-        assert_eq!(player_count_for_snapshot(&conn, raw_history.id), 1);
-        let raw_history_updates: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM projection_update_observations WHERE snapshot_id = ?1",
-                [raw_history.id],
-                |row| row.get(0),
-            )
-            .expect("count cleared partial update");
-        assert_eq!(raw_history_updates, 1);
+        .expect("first ingest");
+        let first_potential_state = potential_state(&conn, first.id);
+        conn.execute_batch(
+            "CREATE TRIGGER skip_projected_rows
+             BEFORE INSERT ON player_projected_attributes
+             BEGIN SELECT RAISE(IGNORE); END;",
+        )
+        .expect("skip projected rows");
+
+        let error = ingest_dump_file(
+            &mut conn,
+            &write_dump(
+                &temp_dir,
+                "later.json",
+                &dump_with_game_date(Some("2027-08-16"), "Later player"),
+            ),
+        )
+        .expect_err("reject a winner without projected rows");
+
+        assert_eq!(error, "Current potential snapshot is incomplete");
+        assert_eq!(snapshot_count(&conn, first.save_id), 1);
+        assert_eq!(current_snapshot_id(&conn, first.save_id), Some(first.id));
+        assert_eq!(potential_state(&conn, first.id), first_potential_state);
     }
 
     #[test]
@@ -3151,5 +2999,149 @@ mod tests {
         let result =
             publish_prepared_snapshot(&mut conn, &save_context, prepared, None).expect("publish");
         assert_eq!(result.stored_snapshot.player_count, 1);
+    }
+
+    /// The golden dump with `count` players whose attributes differ by index.
+    fn dump_with_varied_players(count: usize) -> Value {
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse golden dump");
+        let template = root["players"][0].clone();
+        let players = (0..count)
+            .map(|index| {
+                let mut player = template.clone();
+                player["uid"] = Value::from(10_000 + index);
+                for (offset, key) in crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS
+                    .iter()
+                    .enumerate()
+                {
+                    player["attributes"][*key] = Value::from(1 + (index * 7 + offset) % 20);
+                }
+                player["age"] = Value::from(16 + index % 20);
+                player
+            })
+            .collect();
+        root["players"] = Value::Array(players);
+        root["playerCount"] = Value::from(count);
+        root
+    }
+
+    #[test]
+    fn late_record_defects_reject_the_dump_with_nothing_prepared() {
+        let count = 200;
+        let mut duplicate = dump_with_varied_players(count);
+        duplicate["players"][count - 1]["uid"] = Value::from(10_000);
+        let mut miscounted = dump_with_varied_players(count);
+        miscounted["playerCount"] = Value::from(count + 1);
+        let mut malformed = dump_with_varied_players(count);
+        malformed["players"][count - 1]["ca"] = Value::from("high");
+
+        for (dump, expected) in [
+            (duplicate, "duplicate player uid 10000".to_string()),
+            (
+                miscounted,
+                format!(
+                    "playerCount ({}) does not match players length ({count})",
+                    count + 1
+                ),
+            ),
+            (
+                malformed,
+                format!(
+                    "field `players[{}].ca` has wrong type: expected number",
+                    count - 1
+                ),
+            ),
+        ] {
+            let error = prepare_dump_raw(dump.to_string().as_bytes()).expect_err("late defect");
+            assert_eq!(error, expected);
+        }
+    }
+
+    #[test]
+    fn parallel_scoring_matches_sequential_scoring_in_dump_order() {
+        // Projected JSON comes from a `HashMap`, so its key order varies; compare it parsed.
+        let comparable = |scores: PlayerScores| {
+            let projected: Value =
+                serde_json::from_str(&scores.projected_attributes_json).expect("projected JSON");
+            (projected, scores.current, scores.potential)
+        };
+        let dump = dump_with_varied_players(500).to_string();
+        let raw = prepare_dump_raw(dump.as_bytes()).expect("prepare");
+        let expected_players = raw
+            .players
+            .iter()
+            .map(|p| {
+                let (projected_attributes_json, current, potential) =
+                    player_compact::prepare_player_derived(
+                        p.uid,
+                        &p.attributes_json,
+                        &p.positions_json,
+                        p.ca,
+                        p.pa,
+                        p.age,
+                    )
+                    .expect("score player");
+                comparable(PlayerScores {
+                    projected_attributes_json,
+                    current,
+                    potential,
+                })
+            })
+            .collect::<Vec<_>>();
+        let expected_staff = raw
+            .staff
+            .iter()
+            .map(|s| score_staff(s).expect("score staff"))
+            .collect::<Vec<_>>();
+        let uids = raw.players.iter().map(|p| p.uid).collect::<Vec<_>>();
+
+        let prepared = score_raw_snapshot(raw).expect("score");
+
+        assert_eq!(
+            prepared
+                .raw
+                .players
+                .iter()
+                .map(|p| p.uid)
+                .collect::<Vec<_>>(),
+            uids
+        );
+        let players = prepared
+            .player_scores
+            .into_iter()
+            .map(comparable)
+            .collect::<Vec<_>>();
+        assert_eq!(players, expected_players);
+        assert_eq!(prepared.staff_scores, expected_staff);
+    }
+
+    #[test]
+    fn ordered_chunks_report_the_earliest_failure_whatever_the_timing() {
+        let items: Vec<usize> = (0..100).collect();
+        let mapped = map_in_ordered_chunks(&items, 4, |item| Ok(item * 2)).expect("map");
+        assert_eq!(mapped, (0..100).map(|item| item * 2).collect::<Vec<_>>());
+
+        let error = map_in_ordered_chunks(&items, 4, |&item| {
+            if item == 30 || item == 80 {
+                Err(format!("item {item}"))
+            } else {
+                Ok(item)
+            }
+        })
+        .expect_err("failing items");
+        assert_eq!(error, "item 30");
+
+        let panic = std::panic::catch_unwind(|| {
+            map_in_ordered_chunks(&items, 4, |&item| {
+                if item == 10 || item == 90 {
+                    panic!("item {item}");
+                }
+                Ok(item)
+            })
+        })
+        .expect_err("panicking items");
+        assert_eq!(
+            panic.downcast_ref::<String>().map(String::as_str),
+            Some("item 10")
+        );
     }
 }

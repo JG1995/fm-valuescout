@@ -225,16 +225,15 @@ fn load_potential_attributes(
 ) -> Result<BTreeMap<String, Option<i64>>, String> {
     let projected_attributes_json: Option<String> = conn
         .query_row(
-            "SELECT potential_attributes_json
-             FROM players
+            "SELECT attributes_json
+             FROM player_projected_attributes
              WHERE snapshot_id = ?1 AND uid = ?2
-               AND potential_projection_model_version = ?3",
+               AND projection_model_version = ?3",
             params![snapshot_id, uid, PROJECTION_MODEL_VERSION],
             |row| row.get(0),
         )
         .optional()
-        .map_err(|error| error.to_string())?
-        .flatten();
+        .map_err(|error| error.to_string())?;
     let Some(projected_attributes_json) = projected_attributes_json else {
         return Err("Current potential snapshot is incomplete".to_string());
     };
@@ -588,8 +587,11 @@ mod tests {
             .expect("snapshot id");
         let fields = conn
             .query_row(
-                "SELECT potential_attributes_json, potential_projection_model_version
-                 FROM players WHERE snapshot_id = ?1 AND uid = ?2",
+                "SELECT a.attributes_json, a.projection_model_version
+                 FROM players p
+                 LEFT JOIN player_projected_attributes a
+                   ON a.snapshot_id = p.snapshot_id AND a.uid = p.uid
+                 WHERE p.snapshot_id = ?1 AND p.uid = ?2",
                 params![snapshot_id, uid],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
@@ -604,8 +606,14 @@ mod tests {
 
     fn deny_potential_writes(conn: &Connection) {
         conn.execute_batch(
-            "CREATE TRIGGER deny_projected_player_updates
-             BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
+            "CREATE TRIGGER deny_projected_inserts
+             BEFORE INSERT ON player_projected_attributes
+             BEGIN SELECT RAISE(ABORT, 'potential player writes are forbidden'); END;
+             CREATE TRIGGER deny_projected_updates
+             BEFORE UPDATE ON player_projected_attributes
+             BEGIN SELECT RAISE(ABORT, 'potential player writes are forbidden'); END;
+             CREATE TRIGGER deny_projected_deletes
+             BEFORE DELETE ON player_projected_attributes
              BEGIN SELECT RAISE(ABORT, 'potential player writes are forbidden'); END;
              CREATE TRIGGER deny_compact_role_inserts
              BEFORE INSERT ON player_role_metrics
@@ -789,7 +797,7 @@ mod tests {
         .expect("parse persisted projected attributes");
         stored_attributes.insert("Acceleration".to_string(), Some(1));
         conn.execute(
-            "UPDATE players SET potential_attributes_json = ?3
+            "UPDATE player_projected_attributes SET attributes_json = ?3
              WHERE snapshot_id = ?1 AND uid = ?2",
             params![
                 snapshot_id,
@@ -897,7 +905,7 @@ mod tests {
     }
 
     #[test]
-    fn profile_rejects_null_potential_attributes_without_rebuild() {
+    fn profile_rejects_missing_potential_attributes_without_rebuild() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("null-potential-attributes.db"));
         ingest_players(
@@ -912,11 +920,10 @@ mod tests {
             )
             .expect("snapshot id");
         conn.execute(
-            "UPDATE players SET potential_attributes_json = NULL
-             WHERE snapshot_id = ?1 AND uid = 1",
+            "DELETE FROM player_projected_attributes WHERE snapshot_id = ?1 AND uid = 1",
             [snapshot_id],
         )
-        .expect("clear projected attributes");
+        .expect("delete projected attributes");
 
         assert_profile_rejects_corrupt_potential_state(&conn, 1);
     }
@@ -941,7 +948,7 @@ mod tests {
             )
             .expect("snapshot id");
         conn.execute(
-            "UPDATE players SET potential_projection_model_version = ?2
+            "UPDATE player_projected_attributes SET projection_model_version = ?2
              WHERE snapshot_id = ?1 AND uid = 1",
             params![snapshot_id, PROJECTION_MODEL_VERSION - 1],
         )

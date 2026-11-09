@@ -1,5 +1,8 @@
-use serde_json::Value;
+use serde::de::{self, DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
+use serde_json::error::Category;
+use serde_json::{Map, Value};
 use std::collections::HashSet;
+use std::io::{BufReader, Read};
 
 pub const DUMP_SCHEMA_VERSION: i64 = 9;
 pub const DUMP_PROTOCOL_VERSION: i64 = 1;
@@ -26,6 +29,9 @@ const REQUIRED_TOP_LEVEL_KEYS: &[&str] = &[
     "staff",
     "manager",
 ];
+
+/// Top-level fields a dump may omit.
+const OPTIONAL_TOP_LEVEL_KEYS: &[&str] = &["gameDate", "emptySave"];
 
 const REQUIRED_PLAYER_KEYS: &[&str] = &[
     "uid",
@@ -214,167 +220,391 @@ impl std::error::Error for DumpValidationError {}
 /// Validates that `dump.json` content is ingestible without importing into SQLite.
 #[allow(dead_code)]
 pub fn validate_dump_json(json: &str) -> Result<(), DumpValidationError> {
-    parse_and_validate_dump(json).map(|_| ())
+    read_validated_dump(json.as_bytes(), |_| Ok(()), |_| Ok(())).map(|_| ())
 }
 
-/// Parses and validates dump JSON once, returning the root value for reuse by ingest.
-pub fn parse_and_validate_dump(json: &str) -> Result<Value, DumpValidationError> {
-    if json.trim().is_empty() {
-        return Err(DumpValidationError::Corrupt("dump is empty".to_string()));
+/// A dump that passed every validation rule: its known top-level fields other than the
+/// record arrays, and each record as the caller converted it, in dump order.
+pub(crate) struct ValidatedDump<P, S> {
+    pub(crate) header: Map<String, Value>,
+    pub(crate) players: Vec<P>,
+    pub(crate) staff: Vec<S>,
+}
+
+/// Reads and validates a dump one record at a time, so the document is never held in memory.
+///
+/// Each header field is checked as soon as it is read, so an outdated bridge, which writes
+/// `schemaVersion` first, fails before any record is examined. Each record is validated,
+/// handed to its converter, and dropped. The checks that need later data (required fields,
+/// counts, duplicate UIDs, and the manager) run when the root object closes. Nothing is
+/// returned unless the whole document is valid. A conversion error, which validation makes
+/// unreachable, is reported as a corrupt dump.
+pub(crate) fn read_validated_dump<R: Read, P, S>(
+    reader: R,
+    mut convert_player: impl FnMut(&Map<String, Value>) -> Result<P, String>,
+    mut convert_staff: impl FnMut(&Map<String, Value>) -> Result<S, String>,
+) -> Result<ValidatedDump<P, S>, DumpValidationError> {
+    let mut input = BufReader::new(ContentProbe {
+        inner: reader,
+        has_content: false,
+    });
+    let mut dump = DumpReader {
+        convert_player: &mut convert_player,
+        convert_staff: &mut convert_staff,
+        header: Map::new(),
+        players: None,
+        staff: None,
+        failure: None,
+        expected_type: ("(root)", "expected JSON object"),
+    };
+    let parsed = {
+        let mut deserializer = serde_json::Deserializer::from_reader(&mut input);
+        serde::Deserializer::deserialize_map(&mut deserializer, &mut dump)
+            .and_then(|()| deserializer.end())
+    };
+    if let Err(error) = parsed {
+        if let Some(failure) = dump.failure {
+            return Err(failure);
+        }
+        // A read failure keeps its own message, as reading the whole file did before.
+        if error.classify() == Category::Io {
+            return Err(DumpValidationError::Corrupt(error.to_string()));
+        }
+        if !input.get_ref().has_content {
+            return Err(DumpValidationError::Corrupt("dump is empty".to_string()));
+        }
+        // Header fields and records parse into `Value` and unknown fields into `IgnoredAny`,
+        // which accept any JSON, so a data error can only be the root or a record array
+        // having the wrong JSON type.
+        if error.classify() == Category::Data {
+            let (field, detail) = dump.expected_type;
+            return Err(DumpValidationError::WrongType {
+                field: field.to_string(),
+                detail: detail.to_string(),
+            });
+        }
+        return Err(DumpValidationError::Corrupt(format!(
+            "dump is not valid JSON: {error}"
+        )));
+    }
+    dump.finish()
+}
+
+/// Records whether any non-whitespace byte was read, so an empty dump keeps its own message.
+struct ContentProbe<R> {
+    inner: R,
+    has_content: bool,
+}
+
+impl<R: Read> Read for ContentProbe<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buf)?;
+        if !self.has_content {
+            self.has_content = buf[..read].iter().any(|byte| !byte.is_ascii_whitespace());
+        }
+        Ok(read)
+    }
+}
+
+type Converter<'a, T> = &'a mut dyn FnMut(&Map<String, Value>) -> Result<T, String>;
+
+/// One record array's validated records: their UIDs and converted values, in dump order.
+struct Records<T> {
+    uids: Vec<u64>,
+    items: Vec<T>,
+}
+
+impl<T> Records<T> {
+    fn new() -> Self {
+        Self {
+            uids: Vec::new(),
+            items: Vec::new(),
+        }
+    }
+}
+
+struct DumpReader<'a, P, S> {
+    convert_player: Converter<'a, P>,
+    convert_staff: Converter<'a, S>,
+    header: Map<String, Value>,
+    players: Option<Records<P>>,
+    staff: Option<Records<S>>,
+    /// The validation error that stopped parsing.
+    failure: Option<DumpValidationError>,
+    /// The field whose JSON type the parser checks next, and the error detail for it.
+    expected_type: (&'static str, &'static str),
+}
+
+/// Keeps `error` as the reason parsing stopped and returns a parser error that stops it.
+fn stop<E: de::Error>(failure: &mut Option<DumpValidationError>, error: DumpValidationError) -> E {
+    *failure = Some(error);
+    E::custom("dump validation failed")
+}
+
+impl<'de, P, S> Visitor<'de> for &mut DumpReader<'_, P, S> {
+    type Value = ();
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a dump object")
     }
 
-    let root: Value = serde_json::from_str(json).map_err(|error| {
-        DumpValidationError::Corrupt(format!("dump is not valid JSON: {error}"))
-    })?;
-    validate_dump_value(&root)?;
-    Ok(root)
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+        while let Some(key) = map.next_key::<String>()? {
+            let duplicate = match key.as_str() {
+                "players" => self.players.is_some(),
+                "staff" => self.staff.is_some(),
+                _ => self.header.contains_key(&key),
+            };
+            if duplicate {
+                return Err(stop(
+                    &mut self.failure,
+                    DumpValidationError::Corrupt(format!("duplicate top-level field `{key}`")),
+                ));
+            }
+            match key.as_str() {
+                "players" => {
+                    self.expected_type = ("players", "expected array");
+                    map.next_value_seed(RecordsSeed {
+                        records: self.players.insert(Records::new()),
+                        failure: &mut self.failure,
+                        validate: validate_player_object,
+                        convert: &mut *self.convert_player,
+                    })?;
+                }
+                "staff" => {
+                    self.expected_type = ("staff", "expected array");
+                    map.next_value_seed(RecordsSeed {
+                        records: self.staff.insert(Records::new()),
+                        failure: &mut self.failure,
+                        validate: validate_staff_object,
+                        convert: &mut *self.convert_staff,
+                    })?;
+                }
+                known
+                    if REQUIRED_TOP_LEVEL_KEYS.contains(&known)
+                        || OPTIONAL_TOP_LEVEL_KEYS.contains(&known) =>
+                {
+                    let value = map.next_value::<Value>()?;
+                    self.header.insert(key.clone(), value);
+                    check_header_field(&self.header, &key)
+                        .map_err(|error| stop(&mut self.failure, error))?;
+                }
+                _ => {
+                    map.next_value::<IgnoredAny>()?;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
-/// Validates an already-parsed dump document.
-pub fn validate_dump_value(root: &Value) -> Result<(), DumpValidationError> {
-    let object = root
-        .as_object()
-        .ok_or_else(|| DumpValidationError::WrongType {
-            field: "(root)".to_string(),
-            detail: "expected JSON object".to_string(),
-        })?;
+impl<P, S> DumpReader<'_, P, S> {
+    /// Runs the checks that need the whole document, in the order the dump has always been
+    /// validated, then releases the records.
+    fn finish(self) -> Result<ValidatedDump<P, S>, DumpValidationError> {
+        let header = &self.header;
+        check_schema_version(header)?;
+        for key in REQUIRED_TOP_LEVEL_KEYS {
+            let present = match *key {
+                "players" => self.players.is_some(),
+                "staff" => self.staff.is_some(),
+                _ => header.contains_key(*key),
+            };
+            if !present {
+                return Err(DumpValidationError::MissingField((*key).to_string()));
+            }
+        }
+        check_protocol_version(header)?;
+        require_non_empty_string(header, "generatedAtUtc")?;
+        require_string(header, "gameVersion")?;
+        require_string(header, "supportedGameVersion")?;
+        require_string(header, "bridgeVersion")?;
+        require_optional_game_date(header, "gameDate")?;
+        require_game_date_source(header, "gameDateSource")?;
+        require_game_date_basis(header, "gameDateBasis")?;
+        require_player_database_scope(header, "playerDatabaseScope")?;
+        check_scan_truncation(header)?;
 
-    let schema_version = require_i64(object, "schemaVersion")?;
+        let player_count = require_count(header, "playerCount")?;
+        let players = self.players.expect("required fields checked above");
+        if player_count as usize != players.items.len() {
+            return Err(DumpValidationError::PlayerCountMismatch {
+                player_count,
+                players_len: players.items.len(),
+            });
+        }
+
+        let staff_count = require_count(header, "staffCount")?;
+        let staff = self.staff.expect("required fields checked above");
+        if staff_count as usize != staff.items.len() {
+            return Err(DumpValidationError::StaffCountMismatch {
+                staff_count,
+                staff_len: staff.items.len(),
+            });
+        }
+
+        let empty_save = header
+            .get("emptySave")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        if players.items.is_empty() {
+            if empty_save
+                && player_count == 0
+                && staff.items.is_empty()
+                && header.get("manager") == Some(&Value::Null)
+            {
+                return Ok(ValidatedDump {
+                    header: self.header,
+                    players: players.items,
+                    staff: staff.items,
+                });
+            }
+            return Err(DumpValidationError::EmptyPlayers);
+        }
+
+        let mut player_uids = HashSet::with_capacity(players.uids.len());
+        for &uid in &players.uids {
+            if !player_uids.insert(uid) {
+                return Err(DumpValidationError::DuplicateUid {
+                    entity: "player".to_string(),
+                    uid,
+                });
+            }
+        }
+
+        let mut staff_uids = HashSet::with_capacity(staff.uids.len());
+        for &uid in &staff.uids {
+            if !staff_uids.insert(uid) {
+                return Err(DumpValidationError::DuplicateUid {
+                    entity: "staff".to_string(),
+                    uid,
+                });
+            }
+            if player_uids.contains(&uid) {
+                return Err(DumpValidationError::PlayerStaffUidOverlap { uid });
+            }
+        }
+
+        validate_manager(header.get("manager"), &staff_uids)?;
+
+        Ok(ValidatedDump {
+            header: self.header,
+            players: players.items,
+            staff: staff.items,
+        })
+    }
+}
+
+/// Streams one record array: each element is validated, converted, and dropped in turn.
+struct RecordsSeed<'a, T> {
+    records: &'a mut Records<T>,
+    failure: &'a mut Option<DumpValidationError>,
+    validate: fn(&Value, usize) -> Result<u64, DumpValidationError>,
+    convert: Converter<'a, T>,
+}
+
+impl<'de, T> DeserializeSeed<'de> for RecordsSeed<'_, T> {
+    type Value = ();
+
+    fn deserialize<D: de::Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
+        deserializer.deserialize_seq(self)
+    }
+}
+
+impl<'de, T> Visitor<'de> for RecordsSeed<'_, T> {
+    type Value = ();
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("an array of records")
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
+        while let Some(record) = seq.next_element::<Value>()? {
+            let index = self.records.items.len();
+            let converted = (self.validate)(&record, index).and_then(|uid| {
+                let object = record.as_object().expect("validated records are objects");
+                (self.convert)(object)
+                    .map(|item| (uid, item))
+                    .map_err(DumpValidationError::Corrupt)
+            });
+            let (uid, item) = converted.map_err(|error| stop(self.failure, error))?;
+            self.records.uids.push(uid);
+            self.records.items.push(item);
+        }
+        Ok(())
+    }
+}
+
+/// Checks one header field as soon as it is read, with the rule the whole document gets.
+/// The manager is checked when the root closes, because it must name a staff record.
+fn check_header_field(header: &Map<String, Value>, key: &str) -> Result<(), DumpValidationError> {
+    match key {
+        "schemaVersion" => check_schema_version(header),
+        "protocolVersion" => check_protocol_version(header),
+        "generatedAtUtc" => require_non_empty_string(header, key),
+        "gameVersion" | "supportedGameVersion" | "bridgeVersion" => require_string(header, key),
+        "gameDate" => require_optional_game_date(header, key),
+        "gameDateSource" => require_game_date_source(header, key),
+        "gameDateBasis" => require_game_date_basis(header, key),
+        "playerDatabaseScope" => require_player_database_scope(header, key),
+        "scanTruncated" | "maxAccepted" => check_scan_truncation(header),
+        "playerCount" | "staffCount" => require_count(header, key).map(|_| ()),
+        _ => Ok(()),
+    }
+}
+
+fn check_schema_version(header: &Map<String, Value>) -> Result<(), DumpValidationError> {
+    let schema_version = require_i64(header, "schemaVersion")?;
     if schema_version != DUMP_SCHEMA_VERSION {
         return Err(DumpValidationError::UnsupportedSchemaVersion {
             found: schema_version,
             expected: DUMP_SCHEMA_VERSION,
         });
     }
+    Ok(())
+}
 
-    for key in REQUIRED_TOP_LEVEL_KEYS {
-        if !object.contains_key(*key) {
-            return Err(DumpValidationError::MissingField((*key).to_string()));
-        }
-    }
-
-    let protocol_version = require_i64(object, "protocolVersion")?;
+fn check_protocol_version(header: &Map<String, Value>) -> Result<(), DumpValidationError> {
+    let protocol_version = require_i64(header, "protocolVersion")?;
     if protocol_version != DUMP_PROTOCOL_VERSION {
         return Err(DumpValidationError::UnsupportedProtocolVersion {
             found: protocol_version,
             expected: DUMP_PROTOCOL_VERSION,
         });
     }
-
-    require_non_empty_string(object, "generatedAtUtc")?;
-    require_string(object, "gameVersion")?;
-    require_string(object, "supportedGameVersion")?;
-    require_string(object, "bridgeVersion")?;
-    require_optional_game_date(object, "gameDate")?;
-    require_game_date_source(object, "gameDateSource")?;
-    require_game_date_basis(object, "gameDateBasis")?;
-    require_player_database_scope(object, "playerDatabaseScope")?;
-    let scan_truncated = require_bool_value(object, "scanTruncated")?;
-    require_nullable_non_negative_i64(object, "maxAccepted")?;
-    if scan_truncated {
-        match object.get("maxAccepted") {
-            Some(Value::Number(number)) if number.as_i64().is_some_and(|n| n >= 0) => {}
-            _ => {
-                return Err(DumpValidationError::WrongType {
-                    field: "maxAccepted".to_string(),
-                    detail: "must be a non-negative number when scanTruncated is true".to_string(),
-                });
-            }
-        }
-    }
-
-    let player_count = require_i64(object, "playerCount")?;
-    if player_count < 0 {
-        return Err(DumpValidationError::WrongType {
-            field: "playerCount".to_string(),
-            detail: "must be >= 0".to_string(),
-        });
-    }
-
-    let players = object
-        .get("players")
-        .ok_or_else(|| DumpValidationError::MissingField("players".to_string()))?;
-    let players_array = players
-        .as_array()
-        .ok_or_else(|| DumpValidationError::WrongType {
-            field: "players".to_string(),
-            detail: "expected array".to_string(),
-        })?;
-
-    if player_count as usize != players_array.len() {
-        return Err(DumpValidationError::PlayerCountMismatch {
-            player_count,
-            players_len: players_array.len(),
-        });
-    }
-
-    let staff_count = require_i64(object, "staffCount")?;
-    if staff_count < 0 {
-        return Err(DumpValidationError::WrongType {
-            field: "staffCount".to_string(),
-            detail: "must be >= 0".to_string(),
-        });
-    }
-    let staff = object
-        .get("staff")
-        .ok_or_else(|| DumpValidationError::MissingField("staff".to_string()))?;
-    let staff_array = staff
-        .as_array()
-        .ok_or_else(|| DumpValidationError::WrongType {
-            field: "staff".to_string(),
-            detail: "expected array".to_string(),
-        })?;
-    if staff_count as usize != staff_array.len() {
-        return Err(DumpValidationError::StaffCountMismatch {
-            staff_count,
-            staff_len: staff_array.len(),
-        });
-    }
-
-    let empty_save = object
-        .get("emptySave")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-
-    if players_array.is_empty() {
-        if empty_save
-            && player_count == 0
-            && staff_array.is_empty()
-            && object.get("manager") == Some(&Value::Null)
-        {
-            return Ok(());
-        }
-        return Err(DumpValidationError::EmptyPlayers);
-    }
-
-    let mut player_uids = HashSet::with_capacity(players_array.len());
-    for (index, player) in players_array.iter().enumerate() {
-        let uid = validate_player_object(player, index)?;
-        if !player_uids.insert(uid) {
-            return Err(DumpValidationError::DuplicateUid {
-                entity: "player".to_string(),
-                uid,
-            });
-        }
-    }
-
-    let mut staff_uids = HashSet::with_capacity(staff_array.len());
-    for (index, staff) in staff_array.iter().enumerate() {
-        let uid = validate_staff_object(staff, index)?;
-        if !staff_uids.insert(uid) {
-            return Err(DumpValidationError::DuplicateUid {
-                entity: "staff".to_string(),
-                uid,
-            });
-        }
-        if player_uids.contains(&uid) {
-            return Err(DumpValidationError::PlayerStaffUidOverlap { uid });
-        }
-    }
-
-    validate_manager(object.get("manager"), &staff_uids)?;
-
     Ok(())
+}
+
+/// Checks whichever of `scanTruncated` and `maxAccepted` has been read, and their combined
+/// rule once both have.
+fn check_scan_truncation(header: &Map<String, Value>) -> Result<(), DumpValidationError> {
+    let scan_truncated = match header.get("scanTruncated") {
+        Some(_) => require_bool_value(header, "scanTruncated")?,
+        None => false,
+    };
+    let Some(max_accepted) = header.get("maxAccepted") else {
+        return Ok(());
+    };
+    require_nullable_non_negative_i64(header, "maxAccepted")?;
+    if scan_truncated && max_accepted.is_null() {
+        return Err(DumpValidationError::WrongType {
+            field: "maxAccepted".to_string(),
+            detail: "must be a non-negative number when scanTruncated is true".to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn require_count(header: &Map<String, Value>, field: &str) -> Result<i64, DumpValidationError> {
+    let count = require_i64(header, field)?;
+    if count < 0 {
+        return Err(DumpValidationError::WrongType {
+            field: field.to_string(),
+            detail: "must be >= 0".to_string(),
+        });
+    }
+    Ok(count)
 }
 
 fn validate_player_object(player: &Value, index: usize) -> Result<u64, DumpValidationError> {
@@ -1158,13 +1388,71 @@ mod tests {
     }
 
     #[test]
+    fn rejects_malformed_documents_with_whole_document_messages() {
+        let with_field = |field: &str, value: Value| {
+            let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
+            root[field] = value;
+            root.to_string()
+        };
+        let truncated = &GOLDEN_FIXTURE[..GOLDEN_FIXTURE.find("\"attributes\"").unwrap()];
+        let trailing = format!("{GOLDEN_FIXTURE}x");
+        let cases = [
+            ("", "dump is empty"),
+            (" \n", "dump is empty"),
+            ("[]", "field `(root)` has wrong type: expected JSON object"),
+            (
+                "null",
+                "field `(root)` has wrong type: expected JSON object",
+            ),
+            ("5", "field `(root)` has wrong type: expected JSON object"),
+            (
+                &with_field("players", serde_json::json!({})),
+                "field `players` has wrong type: expected array",
+            ),
+            (
+                &with_field("staff", Value::Null),
+                "field `staff` has wrong type: expected array",
+            ),
+            (
+                truncated,
+                "dump is not valid JSON: EOF while parsing a value at line 46 column 6",
+            ),
+            (
+                &trailing,
+                "dump is not valid JSON: trailing characters at line 135 column 1",
+            ),
+        ];
+        for (json, expected) in cases {
+            let error = validate_dump_json(json).expect_err("malformed dump");
+            assert_eq!(error.to_string(), expected, "input {json:?}");
+        }
+    }
+
+    #[test]
+    fn reports_a_failed_read_as_the_read_error() {
+        struct FailingReader;
+        impl Read for FailingReader {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("disk unavailable"))
+            }
+        }
+        let error = read_validated_dump(FailingReader, |_| Ok(()), |_| Ok(()))
+            .err()
+            .expect("read failure");
+        assert_eq!(
+            error,
+            DumpValidationError::Corrupt("disk unavailable".to_string())
+        );
+    }
+
+    #[test]
     fn accepts_nullable_club_uids_and_rejects_non_positive_values() {
         let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
         root["players"][0]["currentClubUid"] = Value::Null;
         root["players"][0]["parentClubUid"] = Value::Null;
         root["staff"][0]["clubUid"] = Value::Null;
         root["manager"]["clubUid"] = Value::Null;
-        validate_dump_value(&root).expect("null club UIDs should validate");
+        validate_dump_json(&root.to_string()).expect("null club UIDs should validate");
 
         for (path, value) in [
             ("currentClubUid", Value::from(0)),
@@ -1172,7 +1460,8 @@ mod tests {
         ] {
             let mut invalid = root.clone();
             invalid["players"][0][path] = value;
-            let error = validate_dump_value(&invalid).expect_err("non-positive club UID");
+            let error =
+                validate_dump_json(&invalid.to_string()).expect_err("non-positive club UID");
             assert!(
                 matches!(error, DumpValidationError::WrongType { field, .. } if field == format!("players[0].{path}"))
             );
@@ -1181,6 +1470,10 @@ mod tests {
 
     #[test]
     fn rejects_stale_schema_v8_with_plugin_update_and_rescan_instruction() {
+        // The v8 records fail today's record rules, so the version must be checked first.
+        let stale: Value = serde_json::from_str(STALE_V8_FIXTURE).expect("parse v8 fixture");
+        assert!(validate_player_object(&stale["players"][0], 0).is_err());
+
         let error = validate_dump_json(STALE_V8_FIXTURE).expect_err("stale schema v8");
         assert!(error
             .to_string()
@@ -1238,6 +1531,46 @@ mod tests {
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 5,
                 expected: 9
+            }
+        ));
+    }
+
+    #[test]
+    fn validates_a_dump_whose_header_follows_its_records() {
+        let golden: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
+        let header_last = |root: &Value| {
+            let fields = root.as_object().expect("fixture object");
+            let header = fields
+                .iter()
+                .filter(|(key, _)| !matches!(key.as_str(), "players" | "staff"))
+                .map(|(key, value)| format!("{}:{value}", Value::from(key.as_str())))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(
+                r#"{{"players":{},"staff":{},{header}}}"#,
+                root["players"], root["staff"]
+            )
+        };
+
+        validate_dump_json(&header_last(&golden)).expect("header after records validates");
+
+        let mut stale = golden.clone();
+        stale["schemaVersion"] = Value::from(8);
+        assert!(matches!(
+            validate_dump_json(&header_last(&stale)).expect_err("stale schema after records"),
+            DumpValidationError::UnsupportedSchemaVersion {
+                found: 8,
+                expected: 9
+            }
+        ));
+
+        let mut miscounted = golden;
+        miscounted["staffCount"] = Value::from(2);
+        assert!(matches!(
+            validate_dump_json(&header_last(&miscounted)).expect_err("count after records"),
+            DumpValidationError::StaffCountMismatch {
+                staff_count: 2,
+                staff_len: 1
             }
         ));
     }

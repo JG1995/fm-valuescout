@@ -747,8 +747,11 @@ mod tests {
     fn potential_state(conn: &Connection, snapshot_id: i64) -> (Option<String>, Option<i64>, i64) {
         let fields = conn
             .query_row(
-                "SELECT potential_attributes_json, potential_projection_model_version
-                 FROM players WHERE snapshot_id = ?1 ORDER BY uid LIMIT 1",
+                "SELECT a.attributes_json, a.projection_model_version
+                 FROM players p
+                 LEFT JOIN player_projected_attributes a
+                   ON a.snapshot_id = p.snapshot_id AND a.uid = p.uid
+                 WHERE p.snapshot_id = ?1 ORDER BY p.uid LIMIT 1",
                 [snapshot_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
@@ -767,6 +770,18 @@ mod tests {
 
     fn assert_empty_potential_state(conn: &Connection, snapshot_id: i64) {
         assert_eq!(potential_state(conn, snapshot_id), (None, None, 0));
+        let leftovers: i64 = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM player_projected_attributes WHERE snapshot_id = ?1)
+                      + (SELECT COUNT(*) FROM players
+                         WHERE snapshot_id = ?1
+                           AND (potential_attributes_json IS NOT NULL
+                                OR potential_projection_model_version IS NOT NULL))",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("count projected leftovers");
+        assert_eq!(leftovers, 0);
     }
 
     fn compact_row_count(conn: &Connection, snapshot_id: i64) -> i64 {
@@ -787,8 +802,14 @@ mod tests {
 
     fn deny_potential_writes(conn: &Connection) {
         conn.execute_batch(
-            "CREATE TRIGGER deny_projected_player_updates
-             BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
+            "CREATE TRIGGER deny_projected_inserts
+             BEFORE INSERT ON player_projected_attributes
+             BEGIN SELECT RAISE(ABORT, 'potential player writes are forbidden'); END;
+             CREATE TRIGGER deny_projected_updates
+             BEFORE UPDATE ON player_projected_attributes
+             BEGIN SELECT RAISE(ABORT, 'potential player writes are forbidden'); END;
+             CREATE TRIGGER deny_projected_deletes
+             BEFORE DELETE ON player_projected_attributes
              BEGIN SELECT RAISE(ABORT, 'potential player writes are forbidden'); END;
              CREATE TRIGGER deny_compact_row_inserts
              BEFORE INSERT ON player_role_metrics

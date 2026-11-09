@@ -268,8 +268,11 @@ pub(super) fn planner_potential_state(
         .expect("collect assignments");
     let projections = conn
         .prepare(
-            "SELECT uid, potential_attributes_json, potential_projection_model_version
-             FROM players WHERE snapshot_id = ?1 ORDER BY uid",
+            "SELECT p.uid, a.attributes_json, a.projection_model_version
+             FROM players p
+             LEFT JOIN player_projected_attributes a
+               ON a.snapshot_id = p.snapshot_id AND a.uid = p.uid
+             WHERE p.snapshot_id = ?1 ORDER BY p.uid",
         )
         .expect("prepare projections")
         .query_map([snapshot_id], |row| {
@@ -308,8 +311,14 @@ pub(super) fn planner_potential_state(
 
 pub(super) fn deny_potential_writes(conn: &Connection) {
     conn.execute_batch(
-        "CREATE TRIGGER deny_potential_player_update
-         BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
+        "CREATE TRIGGER deny_projected_inserts
+         BEFORE INSERT ON player_projected_attributes
+         BEGIN SELECT RAISE(ABORT, 'potential writes are forbidden'); END;
+         CREATE TRIGGER deny_projected_updates
+         BEFORE UPDATE ON player_projected_attributes
+         BEGIN SELECT RAISE(ABORT, 'potential writes are forbidden'); END;
+         CREATE TRIGGER deny_projected_deletes
+         BEFORE DELETE ON player_projected_attributes
          BEGIN SELECT RAISE(ABORT, 'potential writes are forbidden'); END;
          CREATE TRIGGER deny_compact_role_inserts
          BEFORE INSERT ON player_role_metrics

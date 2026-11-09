@@ -112,16 +112,15 @@ pub fn load_data_after_scan(
     load_data_after_scan_with_context(conn, captured_dump_path, dump_result, &save_context)
 }
 
-/// Adapter: raw file read + validation (no scoring). Production raw read belongs here,
-/// not hardcoded in commands. Used by the orchestrator's raw-prepare callback.
+/// Adapter: streamed raw file read + validation (no scoring). Production raw read belongs
+/// here, not hardcoded in commands. Used by the orchestrator's raw-prepare callback.
 pub(crate) fn prepare_raw_for_publish(
     captured_dump_path: &Path,
 ) -> Result<ingest::RawPreparedSnapshot, LoadDataError> {
-    let json =
-        std::fs::read_to_string(captured_dump_path).map_err(|error| LoadDataError::Ingest {
-            message: error.to_string(),
-        })?;
-    ingest::prepare_dump_json_raw(&json).map_err(|message| LoadDataError::Ingest { message })
+    let dump = fs::File::open(captured_dump_path).map_err(|error| LoadDataError::Ingest {
+        message: error.to_string(),
+    })?;
+    ingest::prepare_dump_raw(dump).map_err(|message| LoadDataError::Ingest { message })
 }
 
 /// Adapter: scoring using already validated raw state. No re-parsing.

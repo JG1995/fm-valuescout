@@ -4,14 +4,16 @@
 //! Moneyball seams, times the table and suggestion requests through the functions their
 //! commands call, and prints one path-free JSON report. `FM_VALUESCOUT_PERF_SCALE` selects
 //! `250k` (the default) or `1m`. `FM_VALUESCOUT_PERF_LOAD=1` or `0` turns the timed Load Data
-//! section on or off; it defaults to on at `250k` and off at `1m`, where a real load needs
-//! streaming dump preparation. Without it, the `1m` query snapshot replicates the loaded
-//! `250k` snapshot four times.
+//! section on or off; it defaults to on at `250k` and off at `1m`. Without it, the `1m` query
+//! snapshot replicates the loaded `250k` snapshot four times.
 
 use std::collections::BTreeMap;
 use std::io::{BufWriter, Write};
 use std::path::Path;
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use rusqlite::{params, Connection};
 use serde_json::{json, Map, Value};
@@ -19,7 +21,9 @@ use serde_json::{json, Map, Value};
 use crate::db::result_cache::TableRegistry;
 use crate::db::{self, Db};
 use crate::features::memory_read::service::DumpRequestResult;
-use crate::features::moneyball::persistence::{replace_snapshot_cohort, CohortRow};
+use crate::features::moneyball::persistence::{
+    prepare_snapshot_cohort, replace_snapshot_cohort, CohortRow,
+};
 use crate::features::moneyball::{
     MoneyballMetricValue, MoneyballStatistics, MONEYBALL_STATISTIC_KEYS,
 };
@@ -283,21 +287,59 @@ fn reset_peak_memory() {
     }
 }
 
-/// The peak resident set size since the last reset, in MiB, or `None` off Linux.
-fn peak_memory_mib() -> Option<u64> {
+/// One `/proc/self/status` figure in KiB, or `None` off Linux.
+fn status_kib(field: &str) -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
-    let kib: u64 = status
+    status
         .lines()
-        .find_map(|line| line.strip_prefix("VmHWM:"))?
+        .find_map(|line| line.strip_prefix(field))?
         .split_whitespace()
         .next()?
         .parse()
-        .ok()?;
-    Some(kib / 1024)
+        .ok()
 }
 
-/// Runs one Load Data publication the way `execute_load_data_with` does, timing and
-/// measuring the peak memory of each phase.
+/// The peak resident set size since the last reset, in MiB, or `None` off Linux. It includes
+/// memory-mapped database pages.
+fn peak_memory_mib() -> Option<u64> {
+    status_kib("VmHWM:").map(|kib| kib / 1024)
+}
+
+/// Samples the process's anonymous resident memory (`RssAnon`) every 10 ms until stopped.
+/// Its peak covers heap, thread stacks, and SQLite's page caches, but not memory-mapped
+/// database pages, which are the operating system's file cache.
+struct AnonMemorySampler {
+    stop: Arc<AtomicBool>,
+    thread: JoinHandle<Option<u64>>,
+}
+
+impl AnonMemorySampler {
+    fn start() -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let thread = std::thread::spawn({
+            let stop = Arc::clone(&stop);
+            move || {
+                let mut peak = status_kib("RssAnon:");
+                while !stop.load(Ordering::Acquire) {
+                    std::thread::sleep(Duration::from_millis(10));
+                    peak = peak.max(status_kib("RssAnon:"));
+                }
+                peak
+            }
+        });
+        Self { stop, thread }
+    }
+
+    /// Stops sampling and returns the peak in MiB, or `None` off Linux.
+    fn peak_mib(self) -> Option<u64> {
+        self.stop.store(true, Ordering::Release);
+        let peak = self.thread.join().expect("memory sampler");
+        peak.max(status_kib("RssAnon:")).map(|kib| kib / 1024)
+    }
+}
+
+/// Runs one Load Data publication the way `execute_load_data_with` does, timing each phase
+/// and measuring its peak anonymous and total resident memory.
 fn load_dump(db: &Db, dump: &Path, request_id: &str) -> Value {
     let started = Instant::now();
     let save_context = {
@@ -306,16 +348,20 @@ fn load_dump(db: &Db, dump: &Path, request_id: &str) -> Value {
     };
 
     reset_peak_memory();
+    let sampler = AnonMemorySampler::start();
     let phase_started = Instant::now();
     let raw = load_data::prepare_raw_for_publish(dump).expect("prepare dump");
     let prepare_ms = phase_started.elapsed().as_millis() as u64;
     let prepare_peak = peak_memory_mib();
+    let prepare_anon_peak = sampler.peak_mib();
 
     reset_peak_memory();
+    let sampler = AnonMemorySampler::start();
     let phase_started = Instant::now();
     let prepared = load_data::score_raw_for_publish(raw).expect("score dump");
     let scoring_ms = phase_started.elapsed().as_millis() as u64;
     let scoring_peak = peak_memory_mib();
+    let scoring_anon_peak = sampler.peak_mib();
 
     let dump_result = DumpRequestResult {
         request_id: request_id.to_string(),
@@ -327,12 +373,16 @@ fn load_dump(db: &Db, dump: &Path, request_id: &str) -> Value {
     let mut conn = db.0.lock().expect("database lock");
     let clock = Instant::now();
     let mut now_ms = move || clock.elapsed().as_millis() as u64;
+    reset_peak_memory();
+    let mut sampler = Some(AnonMemorySampler::start());
     let mut save_peak = None;
+    let mut save_anon_peak = None;
     let mut on_save_boundary = || {
         save_peak = peak_memory_mib();
+        save_anon_peak = sampler.take().and_then(AnonMemorySampler::peak_mib);
         reset_peak_memory();
+        sampler = Some(AnonMemorySampler::start());
     };
-    reset_peak_memory();
     let (_result, save_ms, finalize_ms) = load_data::publish_prepared_with_progress(
         &mut conn,
         &save_context,
@@ -343,13 +393,25 @@ fn load_dump(db: &Db, dump: &Path, request_id: &str) -> Value {
     )
     .expect("publish snapshot");
     let finalize_peak = peak_memory_mib();
+    let finalize_anon_peak = sampler.take().and_then(AnonMemorySampler::peak_mib);
+
+    // As in Load Data, the checkpoint runs once the publishing guard has released the writer.
+    drop(conn);
+    let phase_started = Instant::now();
+    db::checkpoint_wal(&db.0.lock().expect("database lock")).expect("checkpoint WAL");
+    let checkpoint_ms = phase_started.elapsed().as_millis() as u64;
 
     json!({
         "prepare_ms": prepare_ms,
         "scoring_ms": scoring_ms,
         "save_ms": save_ms,
         "finalize_ms": finalize_ms,
+        "checkpoint_ms": checkpoint_ms,
         "total_ms": started.elapsed().as_millis() as u64,
+        "prepare_anon_peak_mib": prepare_anon_peak,
+        "scoring_anon_peak_mib": scoring_anon_peak,
+        "save_anon_peak_mib": save_anon_peak,
+        "finalize_anon_peak_mib": finalize_anon_peak,
         "prepare_peak_mib": prepare_peak,
         "scoring_peak_mib": scoring_peak,
         "save_peak_mib": save_peak,
@@ -368,8 +430,10 @@ fn current_snapshot(conn: &Connection) -> (i64, String) {
     .expect("current snapshot")
 }
 
-/// Seeds the Moneyball cohort through the production replacement and times its write
-/// transaction, which also ranks the cohort's percentiles.
+/// Seeds the Moneyball cohort through the production preparation and replacement. It times
+/// the preparation, which ranks percentiles and serializes every row before any transaction,
+/// apart from the write transaction, which spans begin to commit and only deletes, inserts,
+/// and sets the as-of date.
 fn seed_moneyball_cohort(conn: &mut Connection, cohort: usize) -> Value {
     let (snapshot_id, game_date) = current_snapshot(conn);
     let player_uids: Vec<i64> = conn
@@ -410,11 +474,15 @@ fn seed_moneyball_cohort(conn: &mut Connection, cohort: usize) -> Value {
         .collect();
 
     let started = Instant::now();
+    let prepared = prepare_snapshot_cohort(&rows).expect("prepare cohort");
+    let prepare_ms = started.elapsed().as_millis() as u64;
+    let started = Instant::now();
     let tx = conn.transaction().expect("begin cohort write");
-    replace_snapshot_cohort(&tx, snapshot_id, &rows, &game_date).expect("replace cohort");
+    replace_snapshot_cohort(&tx, snapshot_id, &prepared, &game_date).expect("replace cohort");
     tx.commit().expect("commit cohort write");
     json!({
         "cohort": rows.len(),
+        "prepare_ms": prepare_ms,
         "write_transaction_ms": started.elapsed().as_millis() as u64,
     })
 }
@@ -452,8 +520,9 @@ fn copy_rows(
 }
 
 /// Builds a current snapshot four times the size of the current one in one writer
-/// transaction, copying its players, staff, compact metric rows, and Moneyball cohort with
-/// UIDs offset per copy. The displaced snapshot keeps raw facts only, as after a load.
+/// transaction, copying its players, projected attributes, staff, compact metric rows, and
+/// Moneyball cohort with UIDs offset per copy, then checkpoints the WAL. The displaced
+/// snapshot keeps raw facts only, as after a load.
 fn replicate_current_snapshot(conn: &mut Connection) -> Value {
     let started = Instant::now();
     let (source, _) = current_snapshot(conn);
@@ -481,6 +550,7 @@ fn replicate_current_snapshot(conn: &mut Connection) -> Value {
         let offset = copy * REPLICA_UID_OFFSET;
         for (table, uid_column) in [
             ("players", "uid"),
+            ("player_projected_attributes", "uid"),
             ("player_role_metrics", "uid"),
             ("player_moneyball_stats", "player_uid"),
             ("staff", "uid"),
@@ -495,13 +565,13 @@ fn replicate_current_snapshot(conn: &mut Connection) -> Value {
          DELETE FROM player_role_metrics WHERE snapshot_id = {source};
          DELETE FROM staff_role_metrics WHERE snapshot_id = {source};
          DELETE FROM player_moneyball_stats WHERE snapshot_id = {source};
-         UPDATE snapshots SET moneyball_stats_game_date = NULL WHERE id = {source};
-         UPDATE players SET potential_attributes_json = NULL,
-                            potential_projection_model_version = NULL
-          WHERE snapshot_id = {source};"
+         DELETE FROM player_projected_attributes WHERE snapshot_id = {source};
+         UPDATE snapshots SET moneyball_stats_game_date = NULL WHERE id = {source};"
     ))
     .expect("promote replica snapshot");
     tx.commit().expect("commit replication");
+    // Reads should use the database file rather than a WAL of several gigabytes.
+    db::checkpoint_wal(conn).expect("checkpoint WAL");
     json!({ "copies": REPLICA_COPIES, "ms": started.elapsed().as_millis() as u64 })
 }
 
