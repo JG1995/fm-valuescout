@@ -1,5 +1,7 @@
 mod db;
 mod features;
+#[cfg(test)]
+mod perf_benchmark;
 
 use tauri::Manager;
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
