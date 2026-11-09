@@ -14,7 +14,10 @@ use crate::features::csv_import::service::{
 };
 use crate::features::save_stats::{self, SaveSeasonStats};
 
-use super::persistence::{replace_snapshot_cohort, CohortRow};
+use super::persistence::{
+    prepare_snapshot_cohort, replace_snapshot_cohort, CohortRow, MoneyballPersistenceError,
+    PreparedCohort,
+};
 use super::save_statistics::cohort_row;
 
 /// What one stats read did, and how long it took.
@@ -109,10 +112,11 @@ fn attach(db: &Db, save_id: i64, context_token: &str) -> SeasonStatsResult {
         };
     }
 
+    let cohort = prepare_snapshot_cohort(&rows);
     let Ok(mut conn) = db.0.lock() else {
         return database_failure();
     };
-    match persist(&mut conn, &captured, &rows, &game_date) {
+    match persist(&mut conn, &captured, &cohort, &game_date) {
         Ok(()) => SeasonStatsResult::Attached {
             matched_players: rows.len(),
             unmatched_players,
@@ -181,11 +185,13 @@ fn match_cohort(stats: &SaveSeasonStats, player_uids: &HashSet<i64>) -> (Vec<Coh
     (rows, unmatched_players)
 }
 
-/// Writes the cohort only if the captured save, snapshot, and link are all still current.
+/// Writes the prepared cohort only if the captured save, snapshot, and link are all still
+/// current. A cohort that could not be prepared fails only once the context is known to be
+/// current, as it did when preparation ran inside the transaction.
 fn persist(
     conn: &mut Connection,
     captured: &CapturedContext,
-    rows: &[CohortRow],
+    cohort: &Result<PreparedCohort, MoneyballPersistenceError>,
     game_date: &str,
 ) -> Result<(), SeasonStatsResult> {
     let tx = conn.transaction().map_err(|_| database_failure())?;
@@ -206,7 +212,10 @@ fn persist(
     if !same_link {
         return Err(SeasonStatsResult::StaleContext);
     }
-    replace_snapshot_cohort(&tx, active.snapshot_id, rows, game_date)
+    let Ok(cohort) = cohort else {
+        return Err(database_failure());
+    };
+    replace_snapshot_cohort(&tx, active.snapshot_id, cohort, game_date)
         .map_err(|_| database_failure())?;
     tx.commit().map_err(|_| database_failure())
 }
@@ -232,6 +241,7 @@ mod tests {
     use super::*;
     use crate::db::migrations;
     use crate::features::moneyball::persistence::test_support::{cohort_state, seed_cohort};
+    use crate::features::moneyball::persistence::PREPARED_HOOK;
     use crate::features::save_stats::synthetic::{write_season_stats_save, GAME_DATE};
     use crate::features::snapshot::service::{self as snapshot_service, LinkedSaveFile};
 
@@ -372,8 +382,9 @@ mod tests {
         }
 
         fn persist(&self, captured: &CapturedContext, rows: &[CohortRow]) -> SeasonStatsResult {
+            let cohort = prepare_snapshot_cohort(rows);
             let mut conn = self.db.0.lock().expect("lock");
-            persist(&mut conn, captured, rows, GAME_DATE).expect_err("write is rejected")
+            persist(&mut conn, captured, &cohort, GAME_DATE).expect_err("write is rejected")
         }
     }
 
@@ -395,6 +406,26 @@ mod tests {
             vec![(10, Some(1), Some(0)), (20, Some(3), Some(100))]
         );
         assert_eq!(fixture.state(), (2, Some(GAME_DATE.to_string())));
+    }
+
+    #[test]
+    fn the_cohort_is_scored_and_serialized_before_the_writer_is_taken() {
+        let fixture = fixture();
+        fixture.link_matching_save();
+        let writer = fixture.db.0.clone();
+        let writer_free = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let observed = writer_free.clone();
+        PREPARED_HOOK.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move || {
+                observed.borrow_mut().push(writer.try_lock().is_ok());
+            }));
+        });
+
+        let result = fixture.attach();
+        PREPARED_HOOK.with(|hook| hook.borrow_mut().take());
+
+        assert!(matches!(result, SeasonStatsResult::Attached { .. }));
+        assert_eq!(*writer_free.borrow(), vec![true]);
     }
 
     #[test]

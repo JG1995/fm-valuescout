@@ -19,7 +19,9 @@ use serde_json::{json, Map, Value};
 use crate::db::result_cache::TableRegistry;
 use crate::db::{self, Db};
 use crate::features::memory_read::service::DumpRequestResult;
-use crate::features::moneyball::persistence::{replace_snapshot_cohort, CohortRow};
+use crate::features::moneyball::persistence::{
+    prepare_snapshot_cohort, replace_snapshot_cohort, CohortRow,
+};
 use crate::features::moneyball::{
     MoneyballMetricValue, MoneyballStatistics, MONEYBALL_STATISTIC_KEYS,
 };
@@ -368,8 +370,10 @@ fn current_snapshot(conn: &Connection) -> (i64, String) {
     .expect("current snapshot")
 }
 
-/// Seeds the Moneyball cohort through the production replacement and times its write
-/// transaction, which also ranks the cohort's percentiles.
+/// Seeds the Moneyball cohort through the production preparation and replacement. It times
+/// the preparation, which ranks percentiles and serializes every row before any transaction,
+/// apart from the write transaction, which spans begin to commit and only deletes, inserts,
+/// and sets the as-of date.
 fn seed_moneyball_cohort(conn: &mut Connection, cohort: usize) -> Value {
     let (snapshot_id, game_date) = current_snapshot(conn);
     let player_uids: Vec<i64> = conn
@@ -410,11 +414,15 @@ fn seed_moneyball_cohort(conn: &mut Connection, cohort: usize) -> Value {
         .collect();
 
     let started = Instant::now();
+    let prepared = prepare_snapshot_cohort(&rows).expect("prepare cohort");
+    let prepare_ms = started.elapsed().as_millis() as u64;
+    let started = Instant::now();
     let tx = conn.transaction().expect("begin cohort write");
-    replace_snapshot_cohort(&tx, snapshot_id, &rows, &game_date).expect("replace cohort");
+    replace_snapshot_cohort(&tx, snapshot_id, &prepared, &game_date).expect("replace cohort");
     tx.commit().expect("commit cohort write");
     json!({
         "cohort": rows.len(),
+        "prepare_ms": prepare_ms,
         "write_transaction_ms": started.elapsed().as_millis() as u64,
     })
 }
