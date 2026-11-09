@@ -6,10 +6,26 @@ use crate::db::Db;
 
 use super::filter::{self, FilterRule};
 use super::query::{
-    self, ComparisonPool, DynamicValue, PlayerSuggestHit, PlayerSummary, SearchPlayersPage,
-    SearchPlayersPageState, SearchPlayersRequest, SearchView, SortDir, SortField,
-    DEFAULT_PAGE_LIMIT, DEFAULT_SUGGEST_LIMIT, MAX_PAGE_LIMIT, MAX_SUGGEST_LIMIT,
+    self, ComparisonPool, DynamicValue, PlayerSummary, SearchPlayersPage, SearchPlayersPageState,
+    SearchPlayersRequest, SearchView, SortDir, SortField, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
 };
+use super::suggest::{
+    self, PlayerSuggestHit, SuggestionCache, DEFAULT_SUGGEST_LIMIT, MAX_SUGGEST_LIMIT,
+};
+
+/// Search's in-memory results, kept as app state. Clones share them.
+#[derive(Clone)]
+pub struct SearchCaches {
+    pub suggestions: SuggestionCache,
+}
+
+impl Default for SearchCaches {
+    fn default() -> Self {
+        Self {
+            suggestions: SuggestionCache::new(1),
+        }
+    }
+}
 
 #[derive(Deserialize)]
 pub struct FilterRuleInput {
@@ -266,22 +282,24 @@ pub async fn suggest_players(
     query: String,
     limit: Option<u32>,
     db: State<'_, Db>,
+    caches: State<'_, SearchCaches>,
 ) -> Result<Vec<PlayerSuggestHitDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || read_suggestions(&db, &query, limit)).await
+    let cache = caches.suggestions.clone();
+    blocking::run(move || read_suggestions(&db, &cache, &query, limit)).await
 }
 
 fn read_suggestions(
     db: &Db,
+    cache: &SuggestionCache,
     query: &str,
     limit: Option<u32>,
 ) -> Result<Vec<PlayerSuggestHitDto>, String> {
-    let conn = db.read()?;
     let limit = limit
         .map(|value| value as usize)
         .unwrap_or(DEFAULT_SUGGEST_LIMIT)
         .clamp(1, MAX_SUGGEST_LIMIT);
-    let hits = query::suggest_players(&conn, query, limit)?;
+    let hits = suggest::suggest_players(db, cache, query, limit)?;
     Ok(hits.into_iter().map(PlayerSuggestHitDto::from).collect())
 }
 
@@ -406,7 +424,7 @@ mod tests {
             (
                 page("general", "tactic_current.goalkeeper"),
                 page("moneyball", "tactic_custom.goalkeeper"),
-                read_suggestions(db, "golden", None),
+                read_suggestions(db, &SuggestionCache::new(1), "golden", None),
             )
         });
 

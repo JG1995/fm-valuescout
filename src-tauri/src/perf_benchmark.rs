@@ -28,9 +28,10 @@ use crate::features::player_metrics::resolver::{
 use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
 use crate::features::search::filter::{parse_filter_ast, FilterAst, FilterRule, FilterValue};
 use crate::features::search::query::{
-    search_players_in_view, suggest_players, ComparisonPool, SearchPlayersRequest, SearchView,
-    SortDir, SortField, DEFAULT_PAGE_LIMIT, DEFAULT_SUGGEST_LIMIT,
+    search_players_in_view, ComparisonPool, SearchPlayersRequest, SearchView, SortDir, SortField,
+    DEFAULT_PAGE_LIMIT,
 };
+use crate::features::search::suggest::{suggest_players, SuggestionCache, DEFAULT_SUGGEST_LIMIT};
 use crate::features::snapshot::{load_data, service};
 use crate::features::staff;
 
@@ -745,15 +746,13 @@ fn measure_requests(db: &Db) -> Map<String, Value> {
         }),
     );
 
+    // The first request builds the name list; later ones reuse it, as the app does.
+    let suggestions = SuggestionCache::new(1);
     requests.insert(
         "suggest_three_letters".to_string(),
         time_repeated(|| {
-            suggest_players(
-                &db.read().expect("read connection"),
-                "smi",
-                DEFAULT_SUGGEST_LIMIT,
-            )
-            .expect("suggest request");
+            suggest_players(db, &suggestions, "smi", DEFAULT_SUGGEST_LIMIT)
+                .expect("suggest request");
         }),
     );
     requests

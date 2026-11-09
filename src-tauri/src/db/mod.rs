@@ -1,4 +1,5 @@
 pub mod migrations;
+pub mod result_cache;
 
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
@@ -38,6 +39,11 @@ impl Db {
     #[cfg(test)]
     pub fn new(conn: Connection) -> Self {
         Self(WriterLock::new(conn, Arc::default()), None)
+    }
+
+    /// The current data generation. A result cache looks up with it before any reader is held.
+    pub fn generation(&self) -> u64 {
+        self.0.generation.load(Ordering::Acquire)
     }
 
     /// Hands out a read connection inside one deferred read transaction, so every statement
@@ -211,7 +217,6 @@ pub struct Reader<'a> {
 
 impl Reader<'_> {
     /// The data generation read before this request's read transaction began.
-    #[cfg_attr(not(test), allow(dead_code))] // PR `cached-table-results` keys its caches by it.
     pub fn generation(&self) -> u64 {
         self.generation
     }
