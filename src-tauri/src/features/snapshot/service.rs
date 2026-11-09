@@ -135,7 +135,24 @@ fn create_default_save_in_transaction(tx: &Transaction<'_>) -> Result<i64, Strin
     Ok(save_id)
 }
 
+/// Creates the default save when no save exists, and the active save's baseline class when it
+/// is missing. It writes only then, so read connections can run it once the app's startup
+/// ensure has run on the writer.
 pub fn ensure_default_save(conn: &Connection) -> Result<(), String> {
+    let active_save_id: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM saves WHERE is_active = 1 LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    if let Some(save_id) = active_save_id {
+        if academy_service::has_baseline_class(conn, save_id)? {
+            return Ok(());
+        }
+    }
+
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
@@ -195,11 +212,8 @@ pub(crate) fn save_context_for_id(conn: &Connection, save_id: i64) -> Result<Sav
     .ok_or_else(|| format!("Save {save_id} not found"))
 }
 
-pub(crate) fn ensure_save_context(
-    tx: &Transaction<'_>,
-    context: &SaveContext,
-) -> Result<(), String> {
-    let exists: bool = tx
+pub(crate) fn ensure_save_context(conn: &Connection, context: &SaveContext) -> Result<(), String> {
+    let exists: bool = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM saves WHERE id = ?1)",
             params![context.id],
@@ -210,7 +224,7 @@ pub(crate) fn ensure_save_context(
         return Err(format!("Save {} not found", context.id));
     }
 
-    let matches: bool = tx
+    let matches: bool = conn
         .query_row(
             "SELECT EXISTS(
                 SELECT 1 FROM saves
@@ -846,6 +860,40 @@ mod tests {
         assert_eq!(saves[0].name, DEFAULT_SAVE_NAME);
         assert!(saves[0].is_active);
         assert_eq!(active_save_count(&conn).expect("count active"), 1);
+    }
+
+    #[test]
+    fn default_save_ensure_writes_only_when_the_save_or_its_baseline_class_is_missing() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = crate::db::open(&temp_dir.path().join(crate::db::APP_DB_FILE)).expect("open db");
+        let baseline_classes = |conn: &Connection| -> i64 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM academy_classes WHERE class_year = 2025 AND is_automatic = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count baseline classes")
+        };
+        let generation = || db.read().expect("acquire reader").generation();
+
+        ensure_default_save(&db.0.lock().expect("lock writer"))
+            .expect("create on a fresh database");
+        let reader = db.read().expect("acquire reader");
+        assert_eq!(save_count(&reader), Ok(1));
+        assert_eq!(baseline_classes(&reader), 1);
+        ensure_default_save(&reader).expect("an ensured save needs no write on a reader");
+        drop(reader);
+        let ensured = generation();
+        ensure_default_save(&db.0.lock().expect("lock writer")).expect("ensure again");
+        assert_eq!(generation(), ensured, "an ensured save changes nothing");
+
+        db.0.lock()
+            .expect("lock writer")
+            .execute("DELETE FROM academy_classes", [])
+            .expect("remove the baseline class");
+        ensure_default_save(&db.0.lock().expect("lock writer")).expect("restore the baseline");
+        assert_eq!(baseline_classes(&db.read().expect("acquire reader")), 1);
+        assert_eq!(save_count(&db.read().expect("acquire reader")), Ok(1));
     }
 
     #[test]

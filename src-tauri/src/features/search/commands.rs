@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::blocking;
 use crate::db::Db;
 
 use super::filter::{self, FilterRule};
@@ -119,7 +120,7 @@ impl From<SearchPlayersPage> for SearchPlayersPageDto {
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Tauri deserializes this established flat query payload.
-pub fn search_players(
+pub async fn search_players(
     offset: Option<u32>,
     limit: Option<u32>,
     sort_by: Option<String>,
@@ -132,9 +133,40 @@ pub fn search_players(
     shortlist_only: Option<bool>,
     db: State<'_, Db>,
 ) -> Result<SearchPlayersPageDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
+    let db = db.inner().clone();
+    blocking::run(move || {
+        read_players_page(
+            &db,
+            offset,
+            limit,
+            sort_by,
+            sort_dir,
+            filters,
+            filter_combine,
+            requested_fields,
+            search_view,
+            comparison_pool,
+            shortlist_only,
+        )
+    })
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+fn read_players_page(
+    db: &Db,
+    offset: Option<u32>,
+    limit: Option<u32>,
+    sort_by: Option<String>,
+    sort_dir: Option<String>,
+    filters: Option<Vec<FilterRuleInput>>,
+    filter_combine: Option<String>,
+    requested_fields: Option<Vec<String>>,
+    search_view: Option<String>,
+    comparison_pool: Option<String>,
+    shortlist_only: Option<bool>,
+) -> Result<SearchPlayersPageDto, String> {
+    let conn = db.read()?;
     let offset = offset.unwrap_or(0) as usize;
     let limit = limit
         .map(|value| value as usize)
@@ -230,19 +262,26 @@ impl From<PlayerSuggestHit> for PlayerSuggestHitDto {
 }
 
 #[tauri::command]
-pub fn suggest_players(
+pub async fn suggest_players(
     query: String,
     limit: Option<u32>,
     db: State<'_, Db>,
 ) -> Result<Vec<PlayerSuggestHitDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
+    let db = db.inner().clone();
+    blocking::run(move || read_suggestions(&db, &query, limit)).await
+}
+
+fn read_suggestions(
+    db: &Db,
+    query: &str,
+    limit: Option<u32>,
+) -> Result<Vec<PlayerSuggestHitDto>, String> {
+    let conn = db.read()?;
     let limit = limit
         .map(|value| value as usize)
         .unwrap_or(DEFAULT_SUGGEST_LIMIT)
         .clamp(1, MAX_SUGGEST_LIMIT);
-    let hits = query::suggest_players(&conn, &query, limit)?;
+    let hits = query::suggest_players(&conn, query, limit)?;
     Ok(hits.into_iter().map(PlayerSuggestHitDto::from).collect())
 }
 
@@ -342,6 +381,47 @@ mod tests {
         }))
         .expect("serialize no snapshot page");
         assert_eq!(no_snapshot["state"], "no_current_snapshot");
+    }
+
+    #[test]
+    fn player_search_and_suggestions_answer_on_a_reader() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+
+        let (general, moneyball, hits) = crate::db::read_while_writer_is_held(&db, |db| {
+            let page = |view: &str, field: &str| {
+                read_players_page(
+                    db,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(vec![field.to_string()]),
+                    Some(view.to_string()),
+                    None,
+                    None,
+                )
+            };
+            (
+                page("general", "tactic_current.goalkeeper"),
+                page("moneyball", "tactic_custom.goalkeeper"),
+                read_suggestions(db, "golden", None),
+            )
+        });
+
+        let general = general.expect("General page on a reader");
+        assert_eq!(general.state, "ready");
+        assert_eq!(general.players.len(), 1);
+        assert!(general.players[0]
+            .dynamic_values
+            .contains_key("tactic_current.goalkeeper"));
+        assert_eq!(
+            moneyball.expect("Moneyball page on a reader").state,
+            "ready"
+        );
+        let hits = hits.expect("suggestions on a reader");
+        assert_eq!(hits.iter().map(|hit| hit.uid).collect::<Vec<_>>(), vec![77]);
     }
 
     #[test]

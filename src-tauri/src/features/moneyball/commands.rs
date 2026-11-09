@@ -4,6 +4,7 @@ use std::time::Instant;
 use serde::Serialize;
 use tauri::State;
 
+use crate::blocking;
 use crate::db::Db;
 use crate::features::player::boost_gate;
 
@@ -140,15 +141,17 @@ impl From<MoneyballProfile> for MoneyballProfileDto {
 }
 
 /// Reads the active save's current Moneyball cohort for one current player UID.
-/// Async keeps the cohort read off the main thread, so the window stays responsive.
 #[tauri::command]
 pub async fn get_player_moneyball(
     uid: i64,
     db: State<'_, Db>,
 ) -> Result<Option<MoneyballProfileDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
+    let db = db.inner().clone();
+    blocking::run(move || read_player_moneyball(&db, uid)).await
+}
+
+fn read_player_moneyball(db: &Db, uid: i64) -> Result<Option<MoneyballProfileDto>, String> {
+    let conn = db.read()?;
     query::get_player_moneyball(&conn, uid).map(|profile| profile.map(MoneyballProfileDto::from))
 }
 
@@ -173,9 +176,13 @@ pub async fn refresh_season_stats(
     db: State<'_, Db>,
 ) -> Result<SeasonStatsOutcome, RefreshSeasonStatsError> {
     let start = Instant::now();
-    refresh_season_stats_with(db.inner(), save_id, &context_token, &mut || {
-        start.elapsed().as_millis() as u64
+    let db = db.inner().clone();
+    blocking::run(move || {
+        refresh_season_stats_with(&db, save_id, &context_token, &mut || {
+            start.elapsed().as_millis() as u64
+        })
     })
+    .await
 }
 
 /// The check does not hold the load gate during the read, so a Load Data that starts
@@ -197,7 +204,6 @@ fn refresh_season_stats_with(
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
-    use std::sync::Mutex;
 
     use rusqlite::{params, Connection};
     use serde_json::json;
@@ -229,6 +235,28 @@ mod tests {
             role_scores: Some(Vec::new()),
             comparison_basis: Some(comparison_basis),
         }
+    }
+
+    #[test]
+    fn moneyball_profile_answers_on_a_reader() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+        {
+            let conn = db.0.lock().expect("lock writer");
+            let snapshot_id: i64 = conn
+                .query_row("SELECT id FROM snapshots WHERE is_current = 1", [], |row| {
+                    row.get(0)
+                })
+                .expect("current snapshot");
+            seed_cohort(&conn, snapshot_id, 77, PRIOR_AS_OF);
+        }
+
+        let profile =
+            crate::db::read_while_writer_is_held(&db, |db| super::read_player_moneyball(db, 77))
+                .expect("Moneyball profile on a reader")
+                .expect("cohort player");
+
+        // The seeded cohort row has no statistics, which the profile reports for reimport.
+        assert_eq!(profile.state, "needsReimport");
     }
 
     #[test]
@@ -356,7 +384,7 @@ mod tests {
         }
         seed_cohort(&conn, snapshot_id, 20, PRIOR_AS_OF);
         RefreshFixture {
-            db: Db(Mutex::new(conn)),
+            db: Db::new(conn),
             save_id: save.id,
             save_token: save.context_token,
             snapshot_id,

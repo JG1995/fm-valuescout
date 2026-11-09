@@ -83,11 +83,13 @@ pub(crate) fn ensure_team_settings(
     save_id: i64,
 ) -> Result<Vec<PlannerTeamSetting>, String> {
     ensure_save_exists(conn, save_id)?;
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|error| error.to_string())?;
-    ensure_team_rows(&tx, save_id)?;
-    tx.commit().map_err(|error| error.to_string())?;
+    if !team_settings_exist(conn, save_id)? {
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|error| error.to_string())?;
+        ensure_team_rows(&tx, save_id)?;
+        tx.commit().map_err(|error| error.to_string())?;
+    }
     load_team_settings(conn, save_id)
 }
 
@@ -372,15 +374,19 @@ fn load_team_settings_from_query(
     settings
 }
 
+/// Whether the save has team rows. Without any, `ensure_team_settings` creates the defaults;
+/// removed teams are never recreated while another remains.
+pub(crate) fn team_settings_exist(conn: &Connection, save_id: i64) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM planner_teams WHERE save_id = ?1)",
+        params![save_id],
+        |row| row.get(0),
+    )
+    .map_err(|error| error.to_string())
+}
+
 fn ensure_team_rows(tx: &Transaction<'_>, save_id: i64) -> Result<(), String> {
-    let has_settings: bool = tx
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM planner_teams WHERE save_id = ?1)",
-            params![save_id],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if has_settings {
+    if team_settings_exist(tx, save_id)? {
         return Ok(());
     }
     for (team, display_name) in DEFAULT_TEAM_NAMES {

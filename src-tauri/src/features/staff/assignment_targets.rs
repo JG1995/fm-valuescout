@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use rusqlite::{params, Connection, Transaction};
 
-use crate::features::planner::teams::ensure_team_settings;
+use crate::features::planner::teams::{ensure_team_settings, team_settings_exist};
 use crate::features::snapshot::service::{capture_active_save_context, ensure_save_context};
 
 pub(crate) const CLUB_SCOPE: &str = "club";
@@ -111,6 +111,13 @@ pub(crate) fn get_targets(
         return Err("Save changed or no longer exists".to_string());
     }
     read_targets(conn, context.id)
+}
+
+/// Whether `get_targets` would find the active save's Planner team rows, the only defaults it
+/// creates, so it can answer on a read connection.
+pub(crate) fn targets_have_defaults(conn: &Connection) -> Result<bool, String> {
+    let context = capture_active_save_context(conn)?;
+    team_settings_exist(conn, context.id)
 }
 
 pub(crate) fn save_targets(

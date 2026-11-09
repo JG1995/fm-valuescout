@@ -1,52 +1,64 @@
 use super::index::GraphicsKind;
 use super::runtime::{picker, GraphicsRuntime, GraphicsStatus, ImageLookupResult};
+use crate::blocking;
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
-use tauri::{http, AppHandle, State};
+use tauri::{http, AppHandle, Manager, State};
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_graphics_status(runtime: State<'_, GraphicsRuntime>) -> GraphicsStatus {
     runtime.status()
 }
 
 #[tauri::command]
-pub fn choose_graphics_root(
+pub async fn choose_graphics_root(
     app: AppHandle,
     db: State<'_, Db>,
-    runtime: State<'_, GraphicsRuntime>,
 ) -> Result<GraphicsStatus, String> {
-    let Some(root) = picker(&app)? else {
-        return Ok(runtime.status());
-    };
-    if root.as_os_str().is_empty() {
-        return Ok(runtime.status());
-    }
-    if let Some(target) = runtime.persist_transition(&db.0, Some(root))? {
-        runtime.enqueue(target);
-    }
-    Ok(runtime.status())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let runtime = app.state::<GraphicsRuntime>();
+        let Some(root) = picker(&app)? else {
+            return Ok(runtime.status());
+        };
+        if root.as_os_str().is_empty() {
+            return Ok(runtime.status());
+        }
+        if let Some(target) = runtime.persist_transition(&db.0, Some(root))? {
+            runtime.enqueue(target);
+        }
+        Ok(runtime.status())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn clear_graphics_root(
+pub async fn clear_graphics_root(
+    app: AppHandle,
     db: State<'_, Db>,
-    runtime: State<'_, GraphicsRuntime>,
 ) -> Result<GraphicsStatus, String> {
-    if runtime.persist_transition(&db.0, None)?.is_some() {
-        runtime.cancel_pending();
-    }
-    Ok(runtime.status())
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let runtime = app.state::<GraphicsRuntime>();
+        if runtime.persist_transition(&db.0, None)?.is_some() {
+            runtime.cancel_pending();
+        }
+        Ok(runtime.status())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn rescan_graphics(
-    db: State<'_, Db>,
-    runtime: State<'_, GraphicsRuntime>,
-) -> Result<GraphicsStatus, String> {
-    if let Some(target) = runtime.begin_rescan(&db.0)? {
-        runtime.enqueue(target);
-    }
-    Ok(runtime.status())
+pub async fn rescan_graphics(app: AppHandle, db: State<'_, Db>) -> Result<GraphicsStatus, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let runtime = app.state::<GraphicsRuntime>();
+        if let Some(target) = runtime.begin_rescan(&db.0)? {
+            runtime.enqueue(target);
+        }
+        Ok(runtime.status())
+    })
+    .await
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

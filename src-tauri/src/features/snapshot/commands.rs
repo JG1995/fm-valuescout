@@ -5,6 +5,7 @@ use serde::Serialize;
 use tauri::State;
 use tempfile::TempPath;
 
+use crate::blocking;
 use crate::db::Db;
 use crate::features::memory_read::service::{DumpRequestResult, DumpWaitConfig};
 use crate::features::moneyball::save_stats_import::{self, SeasonStatsOutcome};
@@ -157,21 +158,28 @@ impl From<SaveDeleteResult> for SaveDeleteResultDto {
 }
 
 #[tauri::command]
-pub fn list_saves(db: State<'_, Db>) -> Result<Vec<SaveSummaryDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
+pub async fn list_saves(db: State<'_, Db>) -> Result<Vec<SaveSummaryDto>, String> {
+    let db = db.inner().clone();
+    blocking::run(move || read_saves(&db)).await
+}
+
+fn read_saves(db: &Db) -> Result<Vec<SaveSummaryDto>, String> {
+    let conn = db.read()?;
     let saves = service::list_saves(&conn)?;
     Ok(saves.into_iter().map(SaveSummaryDto::from).collect())
 }
 
 #[tauri::command]
-pub fn create_save(
+pub async fn create_save(
     name: String,
     save_file_path: Option<String>,
     db: State<'_, Db>,
 ) -> Result<SaveSummaryDto, SaveCommandError> {
-    create_save_for_command(db.inner(), &name, save_file_path.as_deref()).map(SaveSummaryDto::from)
+    let db = db.inner().clone();
+    blocking::run(move || {
+        create_save_for_command(&db, &name, save_file_path.as_deref()).map(SaveSummaryDto::from)
+    })
+    .await
 }
 
 /// Validates the save file before taking the database lock, so a rejected file creates no
@@ -193,14 +201,18 @@ pub(crate) fn create_save_for_command(
 }
 
 #[tauri::command]
-pub fn set_save_file_link(
+pub async fn set_save_file_link(
     save_id: i64,
     context_token: String,
     path: Option<String>,
     db: State<'_, Db>,
 ) -> Result<SaveSummaryDto, SaveCommandError> {
-    set_save_file_link_for_command(db.inner(), save_id, &context_token, path.as_deref())
-        .map(SaveSummaryDto::from)
+    let db = db.inner().clone();
+    blocking::run(move || {
+        set_save_file_link_for_command(&db, save_id, &context_token, path.as_deref())
+            .map(SaveSummaryDto::from)
+    })
+    .await
 }
 
 /// Validates a new file before taking the database lock; `None` removes the link.
@@ -223,21 +235,26 @@ pub(crate) fn set_save_file_link_for_command(
 }
 
 #[tauri::command]
-pub fn rename_save(
+pub async fn rename_save(
     save_id: i64,
     name: String,
     db: State<'_, Db>,
 ) -> Result<SaveSummaryDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save = service::rename_save(&conn, save_id, &name)?;
-    Ok(SaveSummaryDto::from(save))
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save = service::rename_save(&conn, save_id, &name)?;
+        Ok(SaveSummaryDto::from(save))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn set_active_save(save_id: i64, db: State<'_, Db>) -> Result<SaveSummaryDto, String> {
-    set_active_save_for_command(db.inner(), save_id).map(SaveSummaryDto::from)
+pub async fn set_active_save(save_id: i64, db: State<'_, Db>) -> Result<SaveSummaryDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || set_active_save_for_command(&db, save_id).map(SaveSummaryDto::from)).await
 }
 
 pub(crate) fn set_active_save_for_command(db: &Db, save_id: i64) -> Result<SaveSummary, String> {
@@ -249,13 +266,16 @@ pub(crate) fn set_active_save_for_command(db: &Db, save_id: i64) -> Result<SaveS
 }
 
 #[tauri::command]
-pub fn list_snapshots(
+pub async fn list_snapshots(
     save_id: Option<i64>,
     db: State<'_, Db>,
 ) -> Result<Vec<SnapshotMetadataDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
+    let db = db.inner().clone();
+    blocking::run(move || read_snapshots(&db, save_id)).await
+}
+
+fn read_snapshots(db: &Db, save_id: Option<i64>) -> Result<Vec<SnapshotMetadataDto>, String> {
+    let conn = db.read()?;
     let snapshots = service::list_snapshot_metadata(&conn, save_id)?;
     Ok(snapshots
         .into_iter()
@@ -264,42 +284,54 @@ pub fn list_snapshots(
 }
 
 #[tauri::command]
-pub fn rename_snapshot(
+pub async fn rename_snapshot(
     snapshot_id: i64,
     context_token: String,
     custom_name: Option<String>,
     db: State<'_, Db>,
 ) -> Result<SnapshotMetadataDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let snapshot =
-        service::rename_snapshot(&conn, snapshot_id, &context_token, custom_name.as_deref())?;
-    Ok(SnapshotMetadataDto::from(snapshot))
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let snapshot =
+            service::rename_snapshot(&conn, snapshot_id, &context_token, custom_name.as_deref())?;
+        Ok(SnapshotMetadataDto::from(snapshot))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn delete_snapshot(
+pub async fn delete_snapshot(
     snapshot_id: i64,
     context_token: String,
     db: State<'_, Db>,
 ) -> Result<SnapshotDeleteResultDto, String> {
-    let _boost_guard = boost_gate::acquire_boost_gate()?;
-    let mut conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let result = service::delete_snapshot(&mut conn, snapshot_id, &context_token)?;
-    Ok(SnapshotDeleteResultDto::from(result))
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let _boost_guard = boost_gate::acquire_boost_gate()?;
+        let mut conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let result = service::delete_snapshot(&mut conn, snapshot_id, &context_token)?;
+        Ok(SnapshotDeleteResultDto::from(result))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn update_snapshot_game_date(
+pub async fn update_snapshot_game_date(
     snapshot_id: i64,
     context_token: String,
     game_date: String,
     db: State<'_, Db>,
 ) -> Result<SnapshotGameDateUpdateResultDto, String> {
-    update_snapshot_game_date_for_command(db.inner(), snapshot_id, &context_token, &game_date)
+    let db = db.inner().clone();
+    blocking::run(move || {
+        update_snapshot_game_date_for_command(&db, snapshot_id, &context_token, &game_date)
+    })
+    .await
 }
 
 pub(crate) fn update_snapshot_game_date_for_command(
@@ -318,17 +350,21 @@ pub(crate) fn update_snapshot_game_date_for_command(
 }
 
 #[tauri::command]
-pub fn delete_save(
+pub async fn delete_save(
     save_id: i64,
     context_token: String,
     db: State<'_, Db>,
 ) -> Result<SaveDeleteResultDto, String> {
-    let _boost_guard = boost_gate::acquire_boost_gate()?;
-    let mut conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let result = service::delete_save(&mut conn, save_id, &context_token)?;
-    Ok(SaveDeleteResultDto::from(result))
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let _boost_guard = boost_gate::acquire_boost_gate()?;
+        let mut conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let result = service::delete_save(&mut conn, save_id, &context_token)?;
+        Ok(SaveDeleteResultDto::from(result))
+    })
+    .await
 }
 
 #[derive(Debug, Serialize)]
@@ -494,10 +530,13 @@ impl LoadDataResultDto {
 }
 
 #[tauri::command]
-pub fn get_current_snapshot(db: State<'_, Db>) -> Result<Option<SnapshotSummaryDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
+pub async fn get_current_snapshot(db: State<'_, Db>) -> Result<Option<SnapshotSummaryDto>, String> {
+    let db = db.inner().clone();
+    blocking::run(move || read_current_snapshot(&db)).await
+}
+
+fn read_current_snapshot(db: &Db) -> Result<Option<SnapshotSummaryDto>, String> {
+    let conn = db.read()?;
     let snapshot = query::get_current_snapshot(&conn)?;
     Ok(snapshot.map(SnapshotSummaryDto::from))
 }
@@ -709,33 +748,37 @@ pub async fn load_data(
     on_progress: tauri::ipc::Channel<LoadDataProgressDto>,
 ) -> Result<LoadDataResultDto, LoadDataError> {
     let start = Instant::now();
-    let mut now_ms = move || start.elapsed().as_millis() as u64;
-    let mut on_progress_cb = move |dto: LoadDataProgressDto| -> Result<(), ()> {
-        ch_send_best_effort(&on_progress, dto)
-    };
-    let requested = service::SaveContext {
-        id: save_id,
-        context_token,
-    };
-    execute_load_data_with(
-        db.inner(),
-        requested,
-        || load_data::scan_dump_from_local_app_data(DumpWaitConfig::default()),
-        load_data::prepare_raw_for_publish,
-        load_data::score_raw_for_publish,
-        |conn, save_context, prepared, dump_result, now_ms, boundary| {
-            load_data::publish_prepared_with_progress(
-                conn,
-                save_context,
-                prepared,
-                dump_result,
-                now_ms,
-                boundary,
-            )
-        },
-        &mut now_ms,
-        &mut on_progress_cb,
-    )
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let mut now_ms = move || start.elapsed().as_millis() as u64;
+        let mut on_progress_cb = move |dto: LoadDataProgressDto| -> Result<(), ()> {
+            ch_send_best_effort(&on_progress, dto)
+        };
+        let requested = service::SaveContext {
+            id: save_id,
+            context_token,
+        };
+        execute_load_data_with(
+            &db,
+            requested,
+            || load_data::scan_dump_from_local_app_data(DumpWaitConfig::default()),
+            load_data::prepare_raw_for_publish,
+            load_data::score_raw_for_publish,
+            |conn, save_context, prepared, dump_result, now_ms, boundary| {
+                load_data::publish_prepared_with_progress(
+                    conn,
+                    save_context,
+                    prepared,
+                    dump_result,
+                    now_ms,
+                    boundary,
+                )
+            },
+            &mut now_ms,
+            &mut on_progress_cb,
+        )
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -745,7 +788,6 @@ mod tests {
     use std::collections::VecDeque;
     use std::io::Write;
     use std::rc::Rc;
-    use std::sync::Mutex;
 
     use rusqlite::Connection;
     use tempfile::TempPath;
@@ -760,7 +802,7 @@ mod tests {
         conn.pragma_update(None, "foreign_keys", true)
             .expect("enable foreign keys");
         migrations::apply(&conn).expect("apply migrations");
-        Db(Mutex::new(conn))
+        Db::new(conn)
     }
 
     fn active_save_context(db: &Db) -> service::SaveContext {
@@ -2248,5 +2290,28 @@ mod tests {
                 .expect("edit succeeds once the gate is free");
         assert_eq!(result.snapshot.game_date.as_deref(), Some("2026-03-01"));
         assert_eq!(result.current_snapshot_id, Some(snapshot_id));
+    }
+
+    #[test]
+    fn save_and_snapshot_reads_answer_on_a_reader() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+
+        let (saves, snapshots, current) = crate::db::read_while_writer_is_held(&db, |db| {
+            (
+                read_saves(db),
+                read_snapshots(db, None),
+                read_current_snapshot(db),
+            )
+        });
+
+        let saves = saves.expect("saves on a reader");
+        assert_eq!(saves.len(), 1);
+        let current = current
+            .expect("current snapshot on a reader")
+            .expect("golden snapshot is current");
+        assert_eq!(current.save_id, saves[0].id);
+        let snapshots = snapshots.expect("snapshots on a reader");
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].id, current.id);
     }
 }

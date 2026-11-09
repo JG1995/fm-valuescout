@@ -1,5 +1,8 @@
+mod blocking;
 mod db;
 mod features;
+#[cfg(test)]
+mod perf_benchmark;
 
 use tauri::Manager;
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
@@ -50,6 +53,10 @@ pub fn run() {
             })?;
             let graphics_runtime = {
                 let conn = db.0.lock().map_err(|_| "database lock poisoned")?;
+                // Read connections cannot create the default save, so it exists before any read.
+                features::snapshot::service::ensure_default_save(&conn).inspect_err(|_error| {
+                    log::error!("default save initialization failed during startup");
+                })?;
                 features::graphics::runtime::GraphicsRuntime::new(&conn, app.handle())
                     .map_err(|error| format!("graphics runtime initialization failed: {error}"))?
             };
@@ -135,8 +142,25 @@ pub fn run() {
             features::graphics::commands::clear_graphics_root,
             features::graphics::commands::rescan_graphics,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                checkpoint_database_at_exit(&app.state::<db::Db>());
+            }
+        });
+}
+
+/// Folds the WAL into the database file. A writer still busy at exit, such as Load Data,
+/// keeps its WAL, which SQLite recovers on the next open.
+fn checkpoint_database_at_exit(db: &db::Db) {
+    let Ok(conn) = db.0.try_lock() else {
+        log::info!("database checkpoint skipped at exit: the writer is busy");
+        return;
+    };
+    if let Err(error) = db::checkpoint_wal(&conn) {
+        log::warn!("database checkpoint failed at exit: {error}");
+    }
 }
 
 #[cfg(test)]

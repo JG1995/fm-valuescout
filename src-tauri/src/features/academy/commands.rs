@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::blocking;
 use crate::db::Db;
 use crate::features::snapshot::service as snapshot_service;
 
@@ -166,59 +167,79 @@ impl From<AcademyClassDetail> for AcademyClassDetailDto {
 }
 
 #[tauri::command]
-pub fn list_academy_classes(db: State<'_, Db>) -> Result<Vec<AcademyClassDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
+pub async fn list_academy_classes(db: State<'_, Db>) -> Result<Vec<AcademyClassDto>, String> {
+    let db = db.inner().clone();
+    blocking::run(move || read_classes(&db)).await
+}
+
+fn read_classes(db: &Db) -> Result<Vec<AcademyClassDto>, String> {
+    let conn = db.read()?;
     let save_id = snapshot_service::active_save_id(&conn)?;
     service::list_classes(&conn, save_id)
         .map(|classes| classes.into_iter().map(AcademyClassDto::from).collect())
 }
 
 #[tauri::command]
-pub fn get_academy_class(
+pub async fn get_academy_class(
     class_id: i64,
     db: State<'_, Db>,
 ) -> Result<AcademyClassDetailDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
+    let db = db.inner().clone();
+    blocking::run(move || read_class(&db, class_id)).await
+}
+
+fn read_class(db: &Db, class_id: i64) -> Result<AcademyClassDetailDto, String> {
+    let conn = db.read()?;
     let save_id = snapshot_service::active_save_id(&conn)?;
     service::get_class(&conn, save_id, class_id).map(AcademyClassDetailDto::from)
 }
 
 #[tauri::command]
-pub fn create_academy_class(class_year: i64, db: State<'_, Db>) -> Result<AcademyClassDto, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = snapshot_service::active_save_id(&conn)?;
-    service::create_class(&conn, save_id, class_year).map(AcademyClassDto::from)
+pub async fn create_academy_class(
+    class_year: i64,
+    db: State<'_, Db>,
+) -> Result<AcademyClassDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = snapshot_service::active_save_id(&conn)?;
+        service::create_class(&conn, save_id, class_year).map(AcademyClassDto::from)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn delete_academy_class(
+pub async fn delete_academy_class(
     class_id: i64,
     confirmed: bool,
     db: State<'_, Db>,
 ) -> Result<(), String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = snapshot_service::active_save_id(&conn)?;
-    service::delete_class(&conn, save_id, class_id, confirmed)
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = snapshot_service::active_save_id(&conn)?;
+        service::delete_class(&conn, save_id, class_id, confirmed)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn list_academy_candidates(
+pub async fn list_academy_candidates(
     search: String,
     db: State<'_, Db>,
 ) -> Result<Vec<AcademyCandidateDto>, String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
+    let db = db.inner().clone();
+    blocking::run(move || read_candidates(&db, &search)).await
+}
+
+fn read_candidates(db: &Db, search: &str) -> Result<Vec<AcademyCandidateDto>, String> {
+    let conn = db.read()?;
     let save_id = snapshot_service::active_save_id(&conn)?;
-    service::list_candidates(&conn, save_id, &search).map(|candidates| {
+    service::list_candidates(&conn, save_id, search).map(|candidates| {
         candidates
             .into_iter()
             .map(AcademyCandidateDto::from)
@@ -227,47 +248,101 @@ pub fn list_academy_candidates(
 }
 
 #[tauri::command]
-pub fn assign_academy_member(
+pub async fn assign_academy_member(
     class_id: i64,
     player_uid: i64,
     db: State<'_, Db>,
 ) -> Result<(), String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = snapshot_service::active_save_id(&conn)?;
-    service::assign_member(&conn, save_id, class_id, player_uid)
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = snapshot_service::active_save_id(&conn)?;
+        service::assign_member(&conn, save_id, class_id, player_uid)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn remove_academy_member(
+pub async fn remove_academy_member(
     class_id: i64,
     player_uid: i64,
     db: State<'_, Db>,
 ) -> Result<(), String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = snapshot_service::active_save_id(&conn)?;
-    service::remove_member(&conn, save_id, class_id, player_uid)
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = snapshot_service::active_save_id(&conn)?;
+        service::remove_member(&conn, save_id, class_id, player_uid)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn set_academy_member_outcome(
+pub async fn set_academy_member_outcome(
     class_id: i64,
     player_uid: i64,
     outcome: Option<AcademyMemberOutcomeInputDto>,
     db: State<'_, Db>,
 ) -> Result<(), String> {
-    let conn =
-        db.0.lock()
-            .map_err(|_| "database lock poisoned".to_string())?;
-    let save_id = snapshot_service::active_save_id(&conn)?;
-    service::set_member_outcome(
-        &conn,
-        save_id,
-        class_id,
-        player_uid,
-        outcome.map(AcademyMemberOutcomeInput::from),
-    )
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = snapshot_service::active_save_id(&conn)?;
+        service::set_member_outcome(
+            &conn,
+            save_id,
+            class_id,
+            player_uid,
+            outcome.map(AcademyMemberOutcomeInput::from),
+        )
+    })
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn academy_reads_answer_on_a_reader() {
+        let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
+        {
+            let conn = db.0.lock().expect("lock writer");
+            let save_id = snapshot_service::active_save_id(&conn).expect("active save");
+            crate::features::managed_club::service::set_managed_club(
+                &conn,
+                save_id,
+                "Loan FC",
+                Some(1000),
+            )
+            .expect("configure managed club");
+        }
+
+        let classes =
+            crate::db::read_while_writer_is_held(&db, read_classes).expect("classes on a reader");
+        let baseline = classes
+            .iter()
+            .find(|class| class.class_year == 2025)
+            .expect("baseline class")
+            .id;
+        let (class, candidates) = crate::db::read_while_writer_is_held(&db, move |db| {
+            (read_class(db, baseline), read_candidates(db, "golden"))
+        });
+
+        assert!(class.expect("class on a reader").is_automatic);
+        let candidates = candidates.expect("candidates on a reader");
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|candidate| candidate.player_uid)
+                .collect::<Vec<_>>(),
+            vec![77]
+        );
+    }
 }

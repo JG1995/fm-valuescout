@@ -446,7 +446,35 @@ fn normalize_candidate_search(search: &str) -> Result<String, String> {
     Ok(search.to_lowercase())
 }
 
+/// Whether `ensure_depth` would find everything it creates: the tactic lanes, the team rows,
+/// and a string for every team.
+pub(super) fn depth_exists(conn: &Connection, save_id: i64) -> Result<bool, String> {
+    if !tactic::tactic_exists(conn, save_id)? || !teams::team_settings_exist(conn, save_id)? {
+        return Ok(false);
+    }
+    let team_without_string: bool = conn
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1
+                 FROM planner_teams team
+                 WHERE team.save_id = ?1
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM planner_strings
+                       WHERE save_id = ?1 AND team = team.team
+                   )
+             )",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(!team_without_string)
+}
+
 pub(super) fn ensure_depth(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String> {
+    if depth_exists(conn, save_id)? {
+        return tactic::load_tactic(conn, save_id);
+    }
     let tactic = tactic::get_tactic(conn, save_id)?;
     let settings = teams::ensure_team_settings(conn, save_id)?;
     let tx = conn

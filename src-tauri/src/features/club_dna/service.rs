@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::features::player_metrics::{
     club_dna as club_dna_scores,
@@ -25,31 +25,24 @@ pub fn get_club_dna(
     save_id: i64,
     context_token: &str,
 ) -> Result<Option<ClubDnaDefinition>, String> {
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|_| "Unable to access Club DNA".to_string())?;
-    ensure_active_save_context(&tx, save_id, context_token)?;
-    let definition = tx
-        .query_row(
-            "SELECT attribute_ids_json, definition_version
+    ensure_active_save_context(conn, save_id, context_token)?;
+    conn.query_row(
+        "SELECT attribute_ids_json, definition_version
              FROM club_dna_definitions WHERE save_id = ?1",
-            [save_id],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-        )
-        .optional()
-        .map_err(|_| "Unable to access Club DNA".to_string())?
-        .map(|(attribute_ids_json, version)| {
-            serde_json::from_str::<Vec<String>>(&attribute_ids_json)
-                .map(|attribute_ids| ClubDnaDefinition {
-                    attribute_ids,
-                    version,
-                })
-                .map_err(|_| "Stored Club DNA definition is invalid".to_string())
-        })
-        .transpose()?;
-    tx.commit()
-        .map_err(|_| "Unable to access Club DNA".to_string())?;
-    Ok(definition)
+        [save_id],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+    )
+    .optional()
+    .map_err(|_| "Unable to access Club DNA".to_string())?
+    .map(|(attribute_ids_json, version)| {
+        serde_json::from_str::<Vec<String>>(&attribute_ids_json)
+            .map(|attribute_ids| ClubDnaDefinition {
+                attribute_ids,
+                version,
+            })
+            .map_err(|_| "Stored Club DNA definition is invalid".to_string())
+    })
+    .transpose()
 }
 
 pub fn set_club_dna(
@@ -137,11 +130,11 @@ pub fn remove_club_dna(
 }
 
 fn ensure_active_save_context(
-    tx: &Transaction<'_>,
+    conn: &Connection,
     save_id: i64,
     context_token: &str,
 ) -> Result<(), String> {
-    let matches: bool = tx
+    let matches: bool = conn
         .query_row(
             "SELECT EXISTS(
                 SELECT 1 FROM saves
