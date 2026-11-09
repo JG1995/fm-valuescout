@@ -19,9 +19,10 @@ use super::filter::{
     moneyball_role_ids_from_ast, post_cohort_rules_match, without_post_cohort_rules, CombineMode,
 };
 use super::query::{
-    active_current_snapshot_id, compare_role_scores, moneyball_definition_for_role_and_position,
-    query_matching_uids, snapshot_save_id, where_sql_with_filter, ComparisonPool,
-    SearchPlayersPageState, SearchPlayersRequest, SortField,
+    active_current_snapshot_id, compare_role_scores, has_player_shortlist,
+    moneyball_base_where_sql, moneyball_definition_for_role_and_position, query_matching_uids,
+    snapshot_save_id, where_sql_with_filter, ComparisonPool, SearchPlayersPageState,
+    SearchPlayersRequest, SortField,
 };
 
 /// Moneyball Search's players: the current snapshot's players with stored percentiles.
@@ -102,6 +103,7 @@ impl MoneyballCohort {
             sort_dir,
             filter_ast,
             comparison_pool,
+            shortlist_only,
             ..
         } = request;
         let catalog = builtin_catalog()?;
@@ -136,8 +138,12 @@ impl MoneyballCohort {
         let Some(snapshot_id) = active_current_snapshot_id(conn)? else {
             return Ok(cohort);
         };
-        cohort.state = SearchPlayersPageState::Ready;
         cohort.snapshot_id = snapshot_id;
+        if *shortlist_only && !has_player_shortlist(conn, snapshot_id)? {
+            cohort.state = SearchPlayersPageState::NoShortlist;
+            return Ok(cohort);
+        }
+        cohort.state = SearchPlayersPageState::Ready;
         let sort_tactic = match sort_by {
             SortField::Dynamic(field) if field.is_tactic_field() => Some((
                 field,
@@ -156,7 +162,7 @@ impl MoneyballCohort {
             .as_ref()
             .map(|ast| compile_filters_for_moneyball(ast, 2, true))
             .transpose()?;
-        let base_where_sql = "players.snapshot_id = ?1";
+        let base_where_sql = moneyball_base_where_sql(*shortlist_only);
         let non_role_where_sql = where_sql_with_filter(base_where_sql, compiled_non_role.as_ref());
         let mut non_role_bind_values = vec![Value::Integer(snapshot_id)];
         if let Some(compiled) = &compiled_non_role {

@@ -2512,6 +2512,37 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
+  test("Moneyball Shortlist restricts rows and carries to General", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { moneyballSearch: true, plannerSnapshot: true });
+    await page.goto("/search?view=moneyball");
+
+    const main = page.getByRole("main");
+    const table = main.getByRole("table", { name: "Player search results" });
+    await expect(table.getByText("Moneyball player 001")).toBeVisible();
+    const toolbar = main.getByRole("toolbar", {
+      name: "Player results toolbar",
+    });
+    await toolbar.getByRole("switch", { name: "Shortlist: Off" }).click();
+    await expect(
+      toolbar.getByRole("switch", { name: "Shortlist: On" }),
+    ).toBeVisible();
+    await expect(table.getByText("Moneyball player 002")).toBeVisible();
+    await expect(table.getByText("Moneyball player 006")).toBeVisible();
+    await expect(table.getByText("Moneyball player 001")).toHaveCount(0);
+    await expect(table.locator("tbody tr[data-index]")).toHaveCount(3);
+
+    await page
+      .getByTestId("app-nav-bar")
+      .getByRole("link", { name: "Search", exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/search\?.*view=general/);
+    await expect(
+      page.getByRole("switch", { name: "Shortlist: On" }),
+    ).toBeVisible();
+  });
+
   test("Moneyball Search exposes role scores and restores its analysis state", async ({
     page,
   }) => {

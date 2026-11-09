@@ -596,34 +596,29 @@ function SearchPageContent() {
       Shortlist: {shortlistOnly ? "On" : "Off"}
     </button>
   );
-  const shortlistControl = (
+  const linkedShortlist = linkedShortlistSave ? (
     <>
-      {shortlistSwitch}
-      {linkedShortlistSave ? (
-        <>
-          <span
-            className="max-w-48 truncate text-label-md text-on-surface-variant"
-            title={linkedShortlistSave.playerShortlistFileName ?? undefined}
-          >
-            {linkedShortlistSave.playerShortlistName}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            icon={X}
-            aria-label="Remove shortlist"
-            disabled={removeShortlist.isPending}
-            onClick={() =>
-              removeShortlist.mutate({
-                saveId: linkedShortlistSave.id,
-                contextToken: linkedShortlistSave.contextToken,
-              })
-            }
-          />
-        </>
-      ) : null}
+      <span
+        className="max-w-48 truncate text-label-md text-on-surface-variant"
+        title={linkedShortlistSave.playerShortlistFileName ?? undefined}
+      >
+        {linkedShortlistSave.playerShortlistName}
+      </span>
+      <Button
+        variant="ghost"
+        size="icon"
+        icon={X}
+        aria-label="Remove shortlist"
+        disabled={removeShortlist.isPending}
+        onClick={() =>
+          removeShortlist.mutate({
+            saveId: linkedShortlistSave.id,
+            contextToken: linkedShortlistSave.contextToken,
+          })
+        }
+      />
     </>
-  );
+  ) : null;
   const comparisonPoolToggle = (
     <>
       {resultContext ? (
@@ -659,8 +654,20 @@ function SearchPageContent() {
       </fieldset>
     </>
   );
+  // General keeps the shortlist name and remove beside the switch; Moneyball
+  // shows them in the page header with Refresh stats.
   const datasetToggles =
-    view === "general" ? shortlistControl : comparisonPoolToggle;
+    view === "general" ? (
+      <>
+        {shortlistSwitch}
+        {linkedShortlist}
+      </>
+    ) : (
+      <>
+        {shortlistSwitch}
+        {comparisonPoolToggle}
+      </>
+    );
 
   const renderSearchBody = (tacticState: TacticContextBoundaryState | null) => {
     const tactic = tacticState?.tactic;
@@ -764,7 +771,7 @@ function SearchPageContent() {
     };
 
     // Page-header owns the title and every page action (Add Tactic groups,
-    // General Choose FM Shortlist, Moneyball Refresh stats): the generic table toolbar
+    // Choose FM Shortlist, Moneyball Refresh stats): the generic table toolbar
     // below owns only dataset slots and never hosts these controls.
     const pageHeader = (
       <header
@@ -796,33 +803,30 @@ function SearchPageContent() {
               .
             </p>
           ) : null}
-          {view === "general" ? (
-            <>
-              <Button
-                variant="secondary"
-                icon={FolderOpen}
-                disabled={!resultContext || chooseShortlist.isPending}
-                onClick={() => void pickShortlistFile()}
-              >
-                Choose FM Shortlist
-              </Button>
-              {shortlistChoiceOutcome ? (
-                <p
-                  role={shortlistChoiceOutcome.isProblem ? "alert" : "status"}
-                  className={cn(
-                    "text-body-sm",
-                    shortlistChoiceOutcome.isProblem
-                      ? "text-error"
-                      : "text-on-surface-variant",
-                  )}
-                >
-                  {shortlistChoiceOutcome.text}
-                </p>
-              ) : null}
-            </>
+          <Button
+            variant="secondary"
+            icon={FolderOpen}
+            disabled={!resultContext || chooseShortlist.isPending}
+            onClick={() => void pickShortlistFile()}
+          >
+            Choose FM Shortlist
+          </Button>
+          {shortlistChoiceOutcome ? (
+            <p
+              role={shortlistChoiceOutcome.isProblem ? "alert" : "status"}
+              className={cn(
+                "text-body-sm",
+                shortlistChoiceOutcome.isProblem
+                  ? "text-error"
+                  : "text-on-surface-variant",
+              )}
+            >
+              {shortlistChoiceOutcome.text}
+            </p>
           ) : null}
           {view === "moneyball" ? (
             <>
+              {linkedShortlist}
               <Button
                 variant="secondary"
                 icon={RefreshCw}

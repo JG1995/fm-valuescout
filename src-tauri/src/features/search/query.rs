@@ -237,8 +237,8 @@ pub struct SearchPlayersPage {
     /// Response state mirrors `StaffPageState`: the frontend shortlist probe
     /// needs it to tell a save with no stored shortlist (`NoShortlist`) apart
     /// from a stored shortlist whose entries match no current-snapshot player
-    /// (both page as empty `Ready`). Only the General+shortlist-only path can
-    /// report `NoShortlist`; other views stay `Ready`.
+    /// (both page as empty `Ready`). Only a shortlist-only request can report
+    /// `NoShortlist`.
     pub state: SearchPlayersPageState,
 }
 
@@ -258,8 +258,7 @@ pub struct SearchPlayersRequest<'a> {
     pub requested_fields: &'a [String],
     pub view: SearchView,
     pub comparison_pool: ComparisonPool,
-    /// Restrict General results to the save-owned player shortlist (Commit 3).
-    /// Only the General path applies it; other views ignore the flag.
+    /// Restrict General and Moneyball results to the save-owned player shortlist.
     pub shortlist_only: bool,
 }
 
@@ -339,7 +338,7 @@ pub fn search_players_in_view(
     // Save-owned shortlist presence is checked before the current-snapshot
     // join, so a shortlist probe can distinguish `no_shortlist` from a stored
     // shortlist that happens to match no current player (empty `ready`).
-    if view == SearchView::General && shortlist_only && !has_player_shortlist(conn, snapshot_id)? {
+    if shortlist_only && !has_player_shortlist(conn, snapshot_id)? {
         return Ok(SearchPlayersPage {
             players: Vec::new(),
             total: 0,
@@ -462,7 +461,11 @@ pub fn search_players_in_view(
             bindings.definition_version, bindings.score_model_version
         ));
     }
-    let mut where_sql = "players.snapshot_id = ?1".to_string();
+    let mut where_sql = match view {
+        SearchView::General => "players.snapshot_id = ?1",
+        SearchView::Moneyball => moneyball_base_where_sql(shortlist_only),
+    }
+    .to_string();
     if let Some(compiled) = &compiled {
         where_sql.push_str(" AND ");
         where_sql.push_str(&compiled.sql);
@@ -621,6 +624,17 @@ pub fn search_players_in_view(
 /// adds no bind, so every other parameter index stays unchanged.
 const GENERAL_SHORTLIST_FROM_SQL: &str = "FROM players INNER JOIN player_shortlist_entries shortlist ON shortlist.player_uid = players.uid AND shortlist.save_id = (SELECT save_id FROM snapshots WHERE id = ?1)";
 
+/// Moneyball's base condition: the snapshot `?1`, restricted to the save-owned shortlist by
+/// UID when `shortlist_only` is set. The restriction reuses `?1`, so it adds no bind. As the
+/// base, it bounds the rows, a mixed OR filter's cohort, and Filtered cohort percentiles.
+pub(super) fn moneyball_base_where_sql(shortlist_only: bool) -> &'static str {
+    if shortlist_only {
+        "players.snapshot_id = ?1 AND players.uid IN (SELECT player_uid FROM player_shortlist_entries WHERE save_id = (SELECT save_id FROM snapshots WHERE id = ?1))"
+    } else {
+        "players.snapshot_id = ?1"
+    }
+}
+
 pub(super) fn active_current_snapshot_id(conn: &Connection) -> Result<Option<i64>, String> {
     conn.query_row(
         "SELECT s.id
@@ -636,7 +650,7 @@ pub(super) fn active_current_snapshot_id(conn: &Connection) -> Result<Option<i64
 }
 
 /// Whether the snapshot's save has a linked shortlist file, even one that lists no player.
-fn has_player_shortlist(conn: &Connection, snapshot_id: i64) -> Result<bool, String> {
+pub(super) fn has_player_shortlist(conn: &Connection, snapshot_id: i64) -> Result<bool, String> {
     conn.query_row(
         "SELECT EXISTS(
             SELECT 1 FROM saves
@@ -1360,7 +1374,7 @@ fn search_players_with_cohort_scoring(
         requested_fields,
         view,
         comparison_pool,
-        shortlist_only: _,
+        shortlist_only,
     } = request;
     if view != SearchView::Moneyball {
         return Err("Moneyball role fields require Moneyball search view".to_string());
@@ -1461,6 +1475,13 @@ fn search_players_with_cohort_scoring(
             state: SearchPlayersPageState::NoCurrentSnapshot,
         });
     };
+    if shortlist_only && !has_player_shortlist(conn, snapshot_id)? {
+        return Ok(SearchPlayersPage {
+            players: Vec::new(),
+            total: 0,
+            state: SearchPlayersPageState::NoShortlist,
+        });
+    }
     // Load tactic for Moneyball tactic scoring if needed and extend metric keys
     let tactic_for_moneyball: Option<crate::features::planner::tactic::PlannerTactic> =
         if uses_tactic_moneyball {
@@ -1516,7 +1537,7 @@ fn search_players_with_cohort_scoring(
         .as_ref()
         .map(|ast| compile_filters_for_moneyball(ast, 2, true))
         .transpose()?;
-    let base_where_sql = "players.snapshot_id = ?1".to_string();
+    let base_where_sql = moneyball_base_where_sql(shortlist_only).to_string();
     let non_role_where_sql = where_sql_with_filter(&base_where_sql, compiled_non_role.as_ref());
     let has_post_cohort_rules = filter_ast.is_some_and(has_post_cohort_rules);
     let mixed_or = has_post_cohort_rules
@@ -6895,6 +6916,7 @@ mod tests {
         pool: ComparisonPool,
         filters: Option<FilterAst>,
         fields: Vec<String>,
+        shortlist_only: bool,
     }
 
     impl MoneyballShape {
@@ -6906,6 +6928,14 @@ mod tests {
                 pool: ComparisonPool::Filtered,
                 filters: None,
                 fields: fields.iter().map(|field| field.to_string()).collect(),
+                shortlist_only: false,
+            }
+        }
+
+        fn shortlisted(self) -> Self {
+            Self {
+                shortlist_only: true,
+                ..self
             }
         }
 
@@ -6924,6 +6954,7 @@ mod tests {
                 pool,
                 filters: self.filters.clone(),
                 fields: self.fields.clone(),
+                shortlist_only: self.shortlist_only,
             }
         }
 
@@ -6937,7 +6968,7 @@ mod tests {
                 requested_fields: &self.fields,
                 view: SearchView::Moneyball,
                 comparison_pool: self.pool,
-                shortlist_only: false,
+                shortlist_only: self.shortlist_only,
             }
         }
     }
@@ -7224,6 +7255,36 @@ mod tests {
             }
         }
 
+        // Shortlist shapes report no_shortlist alike before a link, then restrict alike.
+        let shortlist_shapes = [
+            MoneyballShape::new("shortlist", "ca", SortDir::Desc, &["moneyball.goals"]),
+            MoneyballShape::new("shortlist role sort", role, SortDir::Desc, &[role]),
+            MoneyballShape::new("shortlist mixed OR", role, SortDir::Desc, &[role]).filtered(
+                vec![
+                    filter_rule("name", "contains", FilterValue::Text("a".to_string())),
+                    filter_rule(role, "gt", FilterValue::Integer(40)),
+                ],
+                "or",
+            ),
+            MoneyballShape::new(
+                "shortlist tactic sort",
+                "tactic_custom.goalkeeper",
+                SortDir::Desc,
+                &["tactic_custom.goalkeeper", "moneyball.save_ratio"],
+            ),
+        ]
+        .map(MoneyballShape::shortlisted);
+        let assert_shortlist_shapes = || {
+            for shape in &shortlist_shapes {
+                for pool in [ComparisonPool::Filtered, ComparisonPool::FullCsv] {
+                    assert_cached_moneyball_windows_match(&db, &cohorts, &shape.in_pool(pool));
+                }
+            }
+        };
+        assert_shortlist_shapes();
+        seed_player_shortlist(&db.0.lock().expect("lock writer"), &[1, 2, 4, 7, 9, 11, 99]);
+        assert_shortlist_shapes();
+
         let (_empty_dir, empty_db) = {
             let temp_dir = tempfile::tempdir().expect("temp dir");
             let db =
@@ -7235,6 +7296,77 @@ mod tests {
             &MoneyballCohortCache::new(2),
             &MoneyballShape::new("no snapshot", "ca", SortDir::Desc, &[role]),
         );
+    }
+
+    #[test]
+    fn moneyball_shortlist_restricts_rows_and_the_filtered_cohort() {
+        let (_temp_dir, db) = open_moneyball_equivalence_db();
+        let cohorts = MoneyballCohortCache::new(4);
+        let registry = TableRegistry::default();
+        let role = moneyball_role_field();
+        let fields = [role.as_str(), "moneyball.goals", "moneyball.xg"];
+        let shape = |filters: Vec<FilterRule>, combine: &str, pool: ComparisonPool| {
+            MoneyballShape::new("shortlist", "ca", SortDir::Desc, &fields)
+                .filtered(filters, combine)
+                .in_pool(pool)
+        };
+        let page = |shape: &MoneyballShape| {
+            search_moneyball_players(&db, &cohorts, &registry, None, shape.request(0, 50))
+                .expect("Moneyball page")
+        };
+        let ca = |op: &str, value: i64| vec![filter_rule("ca", op, FilterValue::Integer(value))];
+
+        let unlinked = page(&shape(ca("lte", 120), "and", ComparisonPool::Filtered).shortlisted());
+        assert_eq!(unlinked.state, SearchPlayersPageState::NoShortlist);
+        assert!(unlinked.players.is_empty());
+
+        // UID 11 has no stored percentiles and UID 99 is not in the snapshot. Of the
+        // shortlist, CA 120 or less leaves UIDs 2, 5, and 9: exactly the players with CA 120.
+        let shortlist = [1, 2, 5, 7, 9, 11, 99];
+        seed_player_shortlist(&db.0.lock().expect("lock writer"), &shortlist);
+        let in_shortlist = |page: SearchPlayersPage| {
+            page.players
+                .into_iter()
+                .filter(|player| shortlist.contains(&player.uid))
+                .collect::<Vec<_>>()
+        };
+
+        let filtered = page(&shape(ca("lte", 120), "and", ComparisonPool::Filtered).shortlisted());
+        assert_eq!(filtered.state, SearchPlayersPageState::Ready);
+        assert_eq!(
+            filtered
+                .players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            vec![2, 5, 9]
+        );
+        assert_eq!(filtered.total, 3);
+        // Filtered cohort percentiles and role scores rank exactly the shortlisted rows.
+        let same_players = page(&shape(ca("eq", 120), "and", ComparisonPool::Filtered));
+        assert_eq!(filtered.players, same_players.players);
+        let unrestricted = page(&shape(ca("lte", 120), "and", ComparisonPool::Filtered));
+        assert_ne!(filtered.players, in_shortlist(unrestricted));
+
+        // All players keeps the stored full-cohort percentiles; only rows are restricted.
+        let all_players =
+            page(&shape(ca("lte", 120), "and", ComparisonPool::FullCsv).shortlisted());
+        let shortlist_off = page(&shape(ca("lte", 120), "and", ComparisonPool::FullCsv));
+        assert_eq!(all_players.players, in_shortlist(shortlist_off));
+
+        // A mixed OR filter keeps the shortlist as its base.
+        let mixed_or = vec![
+            filter_rule("name", "contains", FilterValue::Text("e".to_string())),
+            filter_rule(&role, "gt", FilterValue::Integer(40)),
+        ];
+        let mixed = page(&shape(mixed_or.clone(), "or", ComparisonPool::FullCsv).shortlisted());
+        let mixed_off = page(&shape(mixed_or, "or", ComparisonPool::FullCsv));
+        assert!(mixed_off
+            .players
+            .iter()
+            .any(|player| !shortlist.contains(&player.uid)));
+        assert!(!mixed.players.is_empty());
+        assert_eq!(mixed.players, in_shortlist(mixed_off));
     }
 
     #[test]

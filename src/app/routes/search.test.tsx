@@ -3919,6 +3919,104 @@ describe("search route", () => {
     ).toBeInTheDocument();
   });
 
+  it("shares the Shortlist switch between Moneyball and General with the shortlist in the Moneyball header", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSavePlayerShortlistIpcMock(1, {
+      name: "Targets",
+      fileName: "Targets.fmf",
+    });
+    setPlayerShortlistPresent(true);
+    setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
+    const { router } = renderSearchRoute("/search?view=moneyball");
+
+    await screen.findByText("Moneyball Scout");
+    const toolbar = screen.getByRole("toolbar", {
+      name: "Player results toolbar",
+    });
+    const header = screen.getByTestId("search-page-header");
+    expect(within(header).getByText("Targets")).toHaveAttribute(
+      "title",
+      "Targets.fmf",
+    );
+    for (const name of [
+      "Choose FM Shortlist",
+      "Remove shortlist",
+      "Refresh stats",
+    ]) {
+      expect(within(header).getByRole("button", { name })).toBeInTheDocument();
+    }
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "moneyball",
+        shortlistOnly: true,
+      });
+    });
+
+    await user.click(
+      within(toolbar).getByRole("switch", { name: "Shortlist: On" }),
+    );
+    // The Off page was fetched before presence turned the switch On, so it is
+    // cache-served; the per-save choice records the toggle.
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+
+    router.history.push("/search?view=general");
+    expect(
+      await screen.findByRole("heading", { name: "Player Search" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+    ).toHaveAttribute("aria-checked", "false");
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "general",
+        shortlistOnly: false,
+      });
+    });
+  });
+
+  it.each([
+    {
+      state: "no linked shortlist",
+      linked: false,
+      filters: "",
+      title: "No shortlist linked",
+      body: /Use Choose FM Shortlist to link a shortlist file/,
+    },
+    {
+      state: "no shortlisted player with season stats",
+      linked: true,
+      filters: "",
+      title: "No shortlisted player has season stats",
+      body: "None of the shortlist's players have season stats in this snapshot. Turn Shortlist off to compare every player with season stats.",
+    },
+    {
+      state: "no shortlisted player matching the filters",
+      linked: true,
+      filters: `&filters=${encodeURIComponent(
+        JSON.stringify([{ field: "ca", op: "gte", value: 150 }]),
+      )}`,
+      title: "No shortlisted players match these filters",
+      body: /turn Shortlist off to widen the result set/,
+    },
+  ])(
+    "explains a Moneyball shortlist with $state",
+    async ({ linked, filters, title, body }) => {
+      await resolveLoadDataIpcMock();
+      setPlayerShortlistPresent(linked);
+      setSearchPlayersOverride([]);
+      renderSearchRoute(`/search?view=moneyball&shortlistOnly=true${filters}`);
+
+      expect(await screen.findByText(title)).toBeInTheDocument();
+      expect(screen.getByText(body)).toBeInTheDocument();
+      expect(
+        screen.getByRole("switch", { name: "Shortlist: On" }),
+      ).toBeInTheDocument();
+    },
+  );
+
   it("refreshes Moneyball stats for the save context and reloads their as-of date", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
