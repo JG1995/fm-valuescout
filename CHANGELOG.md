@@ -6,6 +6,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-10
+
+### Added
+
+- Each save can link its FM27 save file in Settings. Load Data reads that file's season statistics for Moneyball, and **Refresh stats** in Moneyball Search re-reads it on demand. Moneyball Search and the Moneyball Profile show the date the stats are from.
+- Each save can keep several linked FM player shortlist files (`.fmf`). **Add FM Shortlist** links a file, a **Shortlist** select in Search and Moneyball switches between them, and Load Data re-reads every linked shortlist.
+- Moneyball Search can be restricted to the selected shortlist, including its Filtered cohort percentiles.
+- Moneyball metric filters can compare by percentile as well as by value.
+- The Tactic editor can choose up to five Moneyball metrics for each slot, and Moneyball Search adds **Add Tactic (Custom)** columns that score players by those metrics.
+- Moneyball Search can filter, sort, and show CA, PA, reputation, wage, contract, transfer and loan, and team level fields.
+- Settings lists open-source notices.
+
+### Changed
+
+- Filters in Search and Moneyball are edited directly from their chips, with **Match All | Any**, range and multi-choice operators, and percentage statistics compared on their displayed scale. Columns and field pickers share one grouping, sorting is available from column menus and the sort summary, and each view remembers its filters and sort for the session.
+- Search, Squad, and Staff keep their rows visible while a sort, filter, or column change loads, and scrolling large tables is smoother.
+- Large saves load and search much faster, the window stays responsive during Load Data and long searches, and Load Data uses much less memory.
+- Opening a player's Moneyball profile is faster and no longer freezes the window.
+- The Moneyball comparison pool **Full CSV** is now **All players**.
+- My Club keeps Planner and Tactic drafts when you switch between workspaces.
+- The window enforces a 1280×800 minimum size, and interface copy, icons, cursors, headings, and table headers are more consistent.
+- The Dashboard shows an empty state, and unexpected errors show a page with **Retry**.
+- Updated compatible Rust and frontend dependencies.
+
+### Removed
+
+- The Moneyball CSV import. Moneyball stats come only from the linked FM save file, and metrics that saves do not provide are hidden. The ten pressing roles are scored from their remaining metrics, and role-fit breakdowns mark the missing ones as not available from the save.
+- The player shortlist CSV upload, replaced by linked FM shortlist files. Previously imported CSV shortlist entries are deleted on upgrade.
+- Moneyball data is kept only on each save's current snapshot. Older snapshots' Moneyball data is deleted on upgrade and whenever a newer snapshot becomes current.
+- Moneyball's Potential tactic columns, which matched the Current scores. Moneyball's tactic buttons are now **Add Tactic (Roles)** and **Add Tactic (Custom)**.
+
+### Fixed
+
+- The Position filter now matches players with real familiarity (16 or more) at that position, and Moneyball's Position filter accepts the same position choices as General Search.
+- Saving a tactic now refreshes Squad's suggested training and Search's tactic columns.
+- The navigation bar no longer clips Dashboard and Settings under display scaling.
+
 ## [0.22.0] - 2026-11-07
 
 ### Changed
