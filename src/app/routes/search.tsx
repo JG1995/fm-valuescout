@@ -439,8 +439,16 @@ function SearchPageContent() {
     });
   }, [activeSaveId, activeSaveContextToken, navigate, routeShortlistOnly]);
   const clearMissingShortlist = useCallback(
-    (missingShortlistId: number) => {
+    async (missingShortlistId: number) => {
       if (activeSaveId === null || activeSaveContextToken === null) return;
+      // Search checks the shortlist against the backend's current snapshot,
+      // which may already belong to another save while this one's views
+      // refresh. Only that save's answer may clear its selection; a failed
+      // check keeps it.
+      const current = await queryClient
+        .fetchQuery({ ...currentSnapshotQueryOptions, staleTime: 0 })
+        .catch(() => null);
+      if (current?.saveId !== activeSaveId) return;
       usePlayerShortlistSelectionStore
         .getState()
         .clear(
@@ -448,7 +456,7 @@ function SearchPageContent() {
           missingShortlistId,
         );
     },
-    [activeSaveId, activeSaveContextToken],
+    [activeSaveId, activeSaveContextToken, queryClient],
   );
   const filters = useMemo(
     () => parseSearchFilters(filterUrls, view),
