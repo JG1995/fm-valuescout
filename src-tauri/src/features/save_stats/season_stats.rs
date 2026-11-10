@@ -507,6 +507,10 @@ mod tests {
             ("goals", 1.0),
             ("expected_goals", 0.45),
             ("distance_km", 10.5),
+            ("pressures_attempted", 7.0),
+            ("pressures_completed", 2.0),
+            ("team_goals", 3.0),
+            ("games_won", 1.0),
         ]);
         let cup = stat_line(&[
             ("minutes", 30.0),
@@ -528,6 +532,9 @@ mod tests {
             ("assists", 1.0),
             ("expected_goals", 0.2),
             ("distance_km", 9.2),
+            ("pressures_attempted", 5.0),
+            ("team_goals", 1.0),
+            ("games_lost", 1.0),
         ]);
         let overall = stat_line(&[
             ("minutes", 120.0),
@@ -569,6 +576,11 @@ mod tests {
         assert!((expected_goals - 0.75).abs() < 1e-9);
         let distance = player.total(SeasonStat::DistanceKm).expect("distance");
         assert!((distance - 19.7).abs() < 1e-9);
+        assert_eq!(player.total(SeasonStat::PressuresAttempted), Some(12.0));
+        assert_eq!(player.total(SeasonStat::PressuresCompleted), Some(2.0));
+        assert_eq!(player.total(SeasonStat::TeamGoals), Some(4.0));
+        assert_eq!(player.total(SeasonStat::GamesWon), Some(1.0));
+        assert_eq!(player.total(SeasonStat::GamesLost), Some(1.0));
     }
 
     #[test]
@@ -620,6 +632,8 @@ mod tests {
             stat_line(&[
                 ("minutes", 90.0),
                 ("starts", 1.0),
+                ("word_31", 5.0),
+                ("word_33", 1.0),
                 ("word_35", 4.0),
                 ("word_37", 3.0),
                 ("word_69", 2.0),
@@ -646,6 +660,9 @@ mod tests {
             SeasonStat::SavesParried,
             SeasonStat::SavesTipped,
             SeasonStat::ShotsOnTargetFaced,
+            SeasonStat::PenaltiesFaced,
+            SeasonStat::PenaltiesSaved,
+            SeasonStat::ExpectedGoalsFaced,
         ];
         let outfield = [
             SeasonStat::AerialChallengesAttempted,
@@ -655,16 +672,26 @@ mod tests {
             SeasonStat::Clearances,
         ];
         let (goalkeeper, outfielder) = (&stats.players[0], &stats.players[1]);
+        // The xG faced is stored in hundredths.
         assert_eq!(
             totals(goalkeeper, &goalkeeping),
-            [Some(4.0), Some(3.0), Some(2.0), Some(10.0)]
+            [
+                Some(4.0),
+                Some(3.0),
+                Some(2.0),
+                Some(10.0),
+                Some(5.0),
+                Some(1.0),
+                Some(0.06)
+            ]
         );
         assert_eq!(totals(goalkeeper, &outfield), [None; 5]);
         assert_eq!(
             totals(outfielder, &outfield),
             [Some(4.0), Some(3.0), Some(6.0), Some(10.0), Some(7.0)]
         );
-        assert_eq!(totals(outfielder, &goalkeeping), [None; 4]);
+        assert_eq!(totals(outfielder, &goalkeeping), [None; 7]);
+        assert_eq!(outfielder.total(SeasonStat::TacklesAttempted), Some(5.0));
     }
 
     #[test]
@@ -688,7 +715,7 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_statistics_are_none_and_stored_zeros_are_zero() {
+    fn an_unsupported_statistic_is_none_and_stored_zeros_are_zero() {
         let player = ExamplePlayer::outfield(10, 1_000, Some(1_500));
         let record = ExampleRecord::with_lines(
             11,
@@ -698,21 +725,14 @@ mod tests {
                     ("minutes", 90.0),
                     ("starts", 1.0),
                     ("goals_outside_box", 3.0),
-                    ("pressures_attempted", 7.0),
-                    ("pressures_completed", 5.0),
                 ]),
             )],
         );
 
         let player = only_player(read(FM27_BUILD, &[player], &[record]).expect("stats"));
 
-        for stat in [
-            SeasonStat::GoalsOutsideBox,
-            SeasonStat::PressuresAttempted,
-            SeasonStat::PressuresCompleted,
-        ] {
-            assert_eq!(player.total(stat), None, "{}", stat.name());
-        }
+        assert_eq!(player.total(SeasonStat::GoalsOutsideBox), None);
+        assert_eq!(player.total(SeasonStat::PressuresCompleted), Some(0.0));
         assert_eq!(player.total(SeasonStat::Offsides), Some(0.0));
         assert_eq!(player.total(SeasonStat::ExpectedGoalsPrevented), Some(0.0));
     }

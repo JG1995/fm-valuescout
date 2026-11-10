@@ -828,8 +828,8 @@ mod tests {
                 "Lane `goalkeeper` references unknown Moneyball metric `not_a_metric`",
             ),
             (
-                keys(&["pressures_attempted"]),
-                "Lane `goalkeeper` uses Moneyball metric `pressures_attempted`, which save files do not provide",
+                keys(&["goals_from_outside_the_box"]),
+                "Lane `goalkeeper` uses Moneyball metric `goals_from_outside_the_box`, which save files do not provide",
             ),
         ] {
             let mut attempted = stored.clone();
@@ -849,7 +849,7 @@ mod tests {
         get_tactic(&conn, save_id).expect("initialize tactic");
         conn.execute(
             "UPDATE planner_tactic_lanes
-             SET custom_metric_keys_json = '[\"save_ratio\",\"retired_metric\",\"pressures_attempted\",\"clean_sheets_ratio\",\"save_ratio\"]'
+             SET custom_metric_keys_json = '[\"save_ratio\",\"retired_metric\",\"goals_from_outside_the_box\",\"clean_sheets_ratio\",\"save_ratio\"]'
              WHERE save_id = ?1 AND lane_id = 'goalkeeper'",
             params![save_id],
         )

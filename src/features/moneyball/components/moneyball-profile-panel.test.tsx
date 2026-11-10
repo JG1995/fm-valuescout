@@ -37,11 +37,10 @@ describe("MoneyballProfilePanel", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("xGP")).toBeInTheDocument();
+    expect(screen.getByText("xG Overperformance")).toBeInTheDocument();
     for (const hiddenLabel of [
-      "Expected Save %",
-      "Pressures Completed / 90",
-      "Games Won",
-      "Team Goals",
+      "Goals From Outside The Box",
+      "Goals From Outside The Box / 90",
     ]) {
       expect(screen.queryByText(hiddenLabel)).not.toBeInTheDocument();
     }
@@ -66,11 +65,9 @@ describe("MoneyballProfilePanel", () => {
     expect(
       screen.getByRole("tab", { name: "Results", selected: true }),
     ).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("tabpanel", { name: "Results" })).getByText(
-        "Average Rating",
-      ),
-    ).toBeInTheDocument();
+    const results = within(screen.getByRole("tabpanel", { name: "Results" }));
+    expect(results.getByText("Average Rating")).toBeInTheDocument();
+    expect(results.getByText("Games Won")).toBeInTheDocument();
 
     rerender(
       <MoneyballProfilePanel

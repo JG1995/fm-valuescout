@@ -360,7 +360,8 @@ pub(super) enum SlotKind {
 /// a `line_bytes` line starting with `line_marker`.
 ///
 /// `outfield_fields` and `goalkeeper_fields` share their words: a line reads one set or the
-/// other depending on whether its player is a natural goalkeeper. `rating_sum_offset` holds
+/// other depending on whether its player is a natural goalkeeper. A goalkeeper's penalty
+/// words are also the tackle words `fields` reads for every player. `rating_sum_offset` holds
 /// `rating_scale` times the sum of the player's match ratings. `slot_kinds` names each own
 /// slot; another team's slots are the first `other_team_slots` of them.
 #[derive(Debug, PartialEq, Eq)]
@@ -408,6 +409,12 @@ const fn scaled(stat: SeasonStat, offset: usize, width: FieldWidth, unit: u32) -
 
 /// The FM26 line fields, at the same offsets on FM27's longer line. Minutes, starts,
 /// substitute appearances, and rated appearances sit at the layout's own offsets.
+///
+/// fmsave reads no team results. Among players who appeared in every league match of their
+/// team on an FM27 `27.0.0+2493426` save, games won and games lost equalled the league
+/// table's on 98%, and team goals equalled its goals for on 97% of those who played every
+/// minute. Team goals are the goals the team scored while the player was on the pitch. A
+/// line stores no draws.
 const SEASON_LINE_FIELDS: &[LineField] = {
     use FieldWidth::{I16, U16, U8};
     use SeasonStat::*;
@@ -421,6 +428,9 @@ const SEASON_LINE_FIELDS: &[LineField] = {
         count(RedCards, 15, U8),
         count(YellowCards, 16, U8),
         count(CleanSheets, 17, U8),
+        count(TeamGoals, 19, U16),
+        count(GamesWon, 23, U16),
+        count(GamesLost, 25, U16),
         count(PassesAttempted, 27, U16),
         count(PassesCompleted, 29, U16),
         count(TacklesAttempted, 31, U16),
@@ -467,15 +477,24 @@ const SEASON_OUTFIELD_FIELDS: &[LineField] = &[
     count(SeasonStat::Clearances, 95, FieldWidth::U16),
 ];
 
+/// fmsave reads the saves and shots faced. On 2026-11-10 the other three matched the game on
+/// build `27.0.0+2493426`: a goalkeeper's tackle words hold penalties faced and saved, which
+/// the game also shows as that goalkeeper's tackles, and the open-play-crosses-completed word
+/// holds the summed xG of the on-target shots faced.
 const SEASON_GOALKEEPER_FIELDS: &[LineField] = &[
+    count(SeasonStat::PenaltiesFaced, 31, FieldWidth::U16),
+    count(SeasonStat::PenaltiesSaved, 33, FieldWidth::U16),
     count(SeasonStat::SavesHeld, 35, FieldWidth::U16),
     count(SeasonStat::SavesParried, 37, FieldWidth::U16),
     count(SeasonStat::SavesTipped, 69, FieldWidth::U16),
+    scaled(SeasonStat::ExpectedGoalsFaced, 71, FieldWidth::U16, 100),
     count(SeasonStat::ShotsOnTargetFaced, 83, FieldWidth::U16),
 ];
 
-/// FM26's layout with FM27's line marker and line length. fmsave withholds goals from outside
-/// the box on every game, and both pressure counts on FM27 because their location is unknown.
+/// FM26's layout with FM27's line marker and line length. Goals from outside the box stay
+/// unsupported, as in fmsave: the word counts them only in matches the game plays in full
+/// detail. fmsave also withholds both FM27 pressure counts as unconfirmed. This reader reads
+/// them: on 2026-11-10 they matched the game's player statistics on build `27.0.0+2493426`.
 pub(super) const FM27_SEASON_STATS: SeasonStatsLayout = SeasonStatsLayout {
     section_schema: 15,
     header_bytes: 16,
@@ -500,11 +519,7 @@ pub(super) const FM27_SEASON_STATS: SeasonStatsLayout = SeasonStatsLayout {
     fields: SEASON_LINE_FIELDS,
     outfield_fields: SEASON_OUTFIELD_FIELDS,
     goalkeeper_fields: SEASON_GOALKEEPER_FIELDS,
-    unsupported: &[
-        SeasonStat::GoalsOutsideBox,
-        SeasonStat::PressuresAttempted,
-        SeasonStat::PressuresCompleted,
-    ],
+    unsupported: &[SeasonStat::GoalsOutsideBox],
     // A match runs at most 120 minutes plus stoppage time.
     maximum_minutes_per_appearance: 130,
     slot_kinds: &[

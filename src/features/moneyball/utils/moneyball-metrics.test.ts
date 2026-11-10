@@ -146,29 +146,10 @@ const CANONICAL_MONEYBALL_METRIC_IDS = [
   "team_goals_per_90",
 ] as const;
 
-// The 21 canonical metrics the linked FM save cannot provide.
+// The 2 canonical metrics the linked FM save cannot provide.
 const SAVE_UNAVAILABLE_IDS = new Set<string>([
   "goals_from_outside_the_box",
   "goals_from_outside_the_box_per_90",
-  "xg-op",
-  "xg-op_per_90",
-  "expected_save_percentage",
-  "penalties_faced",
-  "penalties_faced_per_90",
-  "penalties_saved",
-  "penalties_saved_per_90",
-  "penalties_saved_ratio",
-  "games_won",
-  "games_drawn",
-  "games_lost",
-  "game_win_ratio",
-  "team_goals",
-  "team_goals_per_90",
-  "pressures_attempted",
-  "pressures_attempted_per_90",
-  "pressures_completed",
-  "pressures_completed_per_90",
-  "pressure_success_ratio",
 ]);
 
 describe("Moneyball metric presentation catalogue", () => {
@@ -178,7 +159,7 @@ describe("Moneyball metric presentation catalogue", () => {
     );
 
     expect(CANONICAL_MONEYBALL_METRIC_IDS).toHaveLength(138);
-    expect(SAVE_UNAVAILABLE_IDS.size).toBe(21);
+    expect(SAVE_UNAVAILABLE_IDS.size).toBe(2);
     expect(MONEYBALL_METRIC_CATEGORIES).toHaveLength(8);
     expect(
       MONEYBALL_METRIC_CATEGORIES.every(
@@ -193,10 +174,25 @@ describe("Moneyball metric presentation catalogue", () => {
   });
 
   it("keeps label metadata for metrics the save cannot provide", () => {
-    expect(moneyballMetric("pressures_completed_per_90")).toMatchObject({
-      label: "Pressures Completed / 90",
+    expect(moneyballMetric("goals_from_outside_the_box_per_90")).toMatchObject({
+      label: "Goals From Outside The Box / 90",
       kind: "decimal",
     });
+  });
+
+  it("shows Expected Save % as the whole number the game shows", () => {
+    expect(moneyballMetric("expected_save_percentage")).toMatchObject({
+      kind: "percentage",
+      precision: 0,
+      percentageScale: "percent",
+    });
+  });
+
+  it("labels xG-OP as overperformance: goals minus xG", () => {
+    expect(moneyballMetric("xg-op").label).toBe("xG Overperformance");
+    expect(moneyballMetric("xg-op_per_90").label).toBe(
+      "xG Overperformance / 90",
+    );
   });
 
   it("declares raw presentation metadata without colliding with General attribute IDs", () => {

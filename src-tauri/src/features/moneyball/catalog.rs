@@ -163,28 +163,9 @@ pub(crate) const LOWER_IS_BETTER_STATISTIC_KEYS: [&str; 19] = [
 
 /// Canonical keys that FM27 save files provide no source for. Role scoring
 /// skips them and rescales the remaining weights.
-pub(crate) const SAVE_UNAVAILABLE_STATISTIC_KEYS: [&str; 21] = [
+pub(crate) const SAVE_UNAVAILABLE_STATISTIC_KEYS: [&str; 2] = [
     "goals_from_outside_the_box",
     "goals_from_outside_the_box_per_90",
-    "xg-op",
-    "xg-op_per_90",
-    "expected_save_percentage",
-    "penalties_faced",
-    "penalties_faced_per_90",
-    "penalties_saved",
-    "penalties_saved_per_90",
-    "penalties_saved_ratio",
-    "games_won",
-    "games_drawn",
-    "games_lost",
-    "game_win_ratio",
-    "team_goals",
-    "team_goals_per_90",
-    "pressures_attempted",
-    "pressures_attempted_per_90",
-    "pressures_completed",
-    "pressures_completed_per_90",
-    "pressure_success_ratio",
 ];
 
 pub(crate) fn is_save_unavailable_statistic_key(key: &str) -> bool {
