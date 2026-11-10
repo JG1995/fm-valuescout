@@ -3699,6 +3699,33 @@ describe("search route", () => {
     await waitFor(() => expect(storedShortlistSelection()).toBeUndefined());
   });
 
+  it("keeps the selection when Search answers for another save's snapshot", async () => {
+    await resolveLoadDataIpcMock();
+    setSavePlayerShortlistsIpcMock(1, [LOANS]);
+    selectStoredShortlist(LOANS.id);
+    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+    const { queryClient } = renderSearchRoute("/search");
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        shortlistId: LOANS.id,
+      });
+    });
+
+    // Another save becomes current before this panel's views refresh, so
+    // Search checks the shortlist against that save.
+    await resolveCreateSaveIpcMock({ name: "Save B" });
+    await resolveSetActiveSaveIpcMock({ saveId: 2 });
+    await resolveLoadDataIpcMock();
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: searchKeys.all });
+    });
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
+    });
+
+    expect(storedShortlistSelection()).toBe(LOANS.id);
+  });
+
   it.each([
     ["a legacy shortlistOnly URL", "/search?shortlistOnly=true"],
     ["a legacy shortlist view", "/search?view=shortlist"],
