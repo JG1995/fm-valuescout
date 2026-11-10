@@ -130,12 +130,12 @@ describe("usePlayerTableStore", () => {
             "moneyball-search": {
               columnIds: [
                 "age",
-                "moneyball.pressures_completed_per_90",
+                "moneyball.goals_from_outside_the_box_per_90",
                 "moneyball.xgp",
-                "moneyball.team_goals",
+                "moneyball.goals_from_outside_the_box",
               ],
               widths: {
-                "moneyball.pressures_completed_per_90": 140,
+                "moneyball.goals_from_outside_the_box_per_90": 140,
                 "moneyball.xgp": 120,
               },
               identityWidth: 300,

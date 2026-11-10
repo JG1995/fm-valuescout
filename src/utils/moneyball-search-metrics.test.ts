@@ -91,15 +91,17 @@ describe("Moneyball Search metrics", () => {
   it("offers no column, filter, or sort for metrics the save cannot provide", () => {
     for (const id of [
       "goals_from_outside_the_box",
-      "xg-op_per_90",
-      "expected_save_percentage",
-      "penalties_saved_ratio",
-      "game_win_ratio",
-      "team_goals",
-      "pressures_completed_per_90",
-      "pressure_success_ratio",
+      "goals_from_outside_the_box_per_90",
     ]) {
       expect(getMoneyballSearchMetric(`moneyball.${id}`)).toBeUndefined();
+    }
+    for (const [id, label] of [
+      ["pressures_completed_per_90", "Pressures Completed / 90"],
+      ["expected_save_percentage", "Expected Save %"],
+    ]) {
+      expect(getMoneyballSearchMetric(`moneyball.${id}`)?.metric?.label).toBe(
+        label,
+      );
     }
     expect(getMoneyballSearchMetric("moneyball.xgp")?.metric?.label).toBe(
       "xGP",

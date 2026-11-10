@@ -326,7 +326,7 @@ mod tests {
             position_tags: vec!["MC".to_owned()],
             score: Some(60),
             contributions: vec![
-                contribution("pressures_completed_per_90", None),
+                contribution("goals_from_outside_the_box_per_90", None),
                 contribution("tackles_completed_per_90", Some(60)),
             ],
         }]);

@@ -263,9 +263,9 @@ mod tests {
         assert_eq!(result.contributions[1].weighted_contribution, None);
     }
 
-    fn pressing_role() -> RoleDefinition {
+    fn role_with_an_unavailable_metric() -> RoleDefinition {
         definition(vec![
-            metric("pressures_completed_per_90", 0.35, false),
+            metric("goals_from_outside_the_box_per_90", 0.35, false),
             metric("high_intensity_sprints_per_90", 0.25, false),
             metric("possession_won_per_90", 0.2, false),
             metric("tackles_completed_per_90", 0.15, false),
@@ -273,9 +273,9 @@ mod tests {
         ])
     }
 
-    fn pressing_percentiles() -> BTreeMap<String, Option<u8>> {
+    fn percentiles_without_the_unavailable_metric() -> BTreeMap<String, Option<u8>> {
         BTreeMap::from([
-            ("pressures_completed_per_90".to_owned(), None),
+            ("goals_from_outside_the_box_per_90".to_owned(), None),
             ("high_intensity_sprints_per_90".to_owned(), Some(90)),
             ("possession_won_per_90".to_owned(), Some(60)),
             ("tackles_completed_per_90".to_owned(), Some(40)),
@@ -285,16 +285,19 @@ mod tests {
 
     #[test]
     fn scores_a_role_without_unavailable_metrics_by_rescaling_remaining_weights() {
-        let result = score_role(&pressing_role(), &pressing_percentiles())
-            .expect("remaining metrics should score");
+        let result = score_role(
+            &role_with_an_unavailable_metric(),
+            &percentiles_without_the_unavailable_metric(),
+        )
+        .expect("remaining metrics should score");
 
         // (0.25 * 90 + 0.2 * 60 + 0.15 * 40 + 0.05 * 20) / 0.65 = 63.85
         assert_eq!(result.score, 64);
-        let pressures = &result.contributions[0];
-        assert!(!pressures.available_from_source);
-        assert_eq!(pressures.weight, 0.35);
-        assert_eq!(pressures.percentile, None);
-        assert_eq!(pressures.weighted_contribution, None);
+        let unavailable = &result.contributions[0];
+        assert!(!unavailable.available_from_source);
+        assert_eq!(unavailable.weight, 0.35);
+        assert_eq!(unavailable.percentile, None);
+        assert_eq!(unavailable.weighted_contribution, None);
         let sprints = &result.contributions[1];
         assert!(sprints.available_from_source);
         assert_eq!(sprints.weight, 0.25);
@@ -310,10 +313,10 @@ mod tests {
 
     #[test]
     fn ignores_a_stored_percentile_for_an_unavailable_metric() {
-        let mut percentiles = pressing_percentiles();
-        percentiles.insert("pressures_completed_per_90".to_owned(), Some(100));
+        let mut percentiles = percentiles_without_the_unavailable_metric();
+        percentiles.insert("goals_from_outside_the_box_per_90".to_owned(), Some(100));
 
-        let result = score_role(&pressing_role(), &percentiles).expect("score");
+        let result = score_role(&role_with_an_unavailable_metric(), &percentiles).expect("score");
 
         assert_eq!(result.score, 64);
         assert_eq!(result.contributions[0].percentile, None);
@@ -321,23 +324,24 @@ mod tests {
 
     #[test]
     fn a_missing_available_percentile_still_withholds_the_score() {
-        let mut percentiles = pressing_percentiles();
+        let mut percentiles = percentiles_without_the_unavailable_metric();
         percentiles.insert("tackles_completed_per_90".to_owned(), None);
+        let role = role_with_an_unavailable_metric();
 
-        assert!(score_role(&pressing_role(), &percentiles).is_none());
-        let details = explain_role(&pressing_role(), &percentiles).expect("valid definition");
+        assert!(score_role(&role, &percentiles).is_none());
+        let details = explain_role(&role, &percentiles).expect("valid definition");
         assert_eq!(details.score, None);
     }
 
     #[test]
     fn a_role_of_only_unavailable_metrics_has_no_score() {
         let definition = definition(vec![
-            metric("pressures_attempted_per_90", 0.5, false),
-            metric("pressures_completed_per_90", 0.5, false),
+            metric("goals_from_outside_the_box", 0.5, false),
+            metric("goals_from_outside_the_box_per_90", 0.5, false),
         ]);
         let percentiles = BTreeMap::from([
-            ("pressures_attempted_per_90".to_owned(), Some(70)),
-            ("pressures_completed_per_90".to_owned(), Some(70)),
+            ("goals_from_outside_the_box".to_owned(), Some(70)),
+            ("goals_from_outside_the_box_per_90".to_owned(), Some(70)),
         ]);
 
         assert!(score_role(&definition, &percentiles).is_none());

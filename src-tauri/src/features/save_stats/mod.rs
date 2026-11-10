@@ -118,12 +118,13 @@ pub(crate) fn read_save_info(path: &Path) -> Result<SaveInfo, SaveStatsError> {
     })
 }
 
-/// Defines `SeasonStat` with each statistic's fmsave `PlayerSeasonStats` field name.
+/// Defines `SeasonStat` with each statistic's report name: its fmsave `PlayerSeasonStats`
+/// field name, or this reader's own name for a statistic fmsave does not read.
 macro_rules! season_stats {
     ($($stat:ident => $name:literal,)+) => {
-        /// A season statistic fmsave's `PlayerSeasonStats` exposes as a raw total. Starts,
-        /// substitute appearances, minutes, rated appearances, and ratings are fields of
-        /// `SavePlayerSeasonStats` instead.
+        /// A season statistic a line stores as a raw total. Starts, substitute appearances,
+        /// minutes, rated appearances, and ratings are fields of `SavePlayerSeasonStats`
+        /// instead.
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub(crate) enum SeasonStat {
             $($stat,)+
@@ -133,7 +134,7 @@ macro_rules! season_stats {
             pub(crate) const ALL: [SeasonStat; [$($name),+].len()] = [$(SeasonStat::$stat),+];
             pub(crate) const COUNT: usize = Self::ALL.len();
 
-            /// The fmsave field name, which only the reference report and tests print.
+            /// The report name, which only the reference report and tests print.
             #[cfg(test)]
             pub(crate) fn name(self) -> &'static str {
                 match self {
@@ -198,6 +199,12 @@ season_stats! {
     SavesTipped => "saves_tipped",
     ShotsOnTargetFaced => "shots_on_target_faced",
     ExpectedGoalsPrevented => "expected_goals_prevented",
+    PenaltiesFaced => "penalties_faced",
+    PenaltiesSaved => "penalties_saved",
+    ExpectedGoalsFaced => "expected_goals_faced",
+    TeamGoals => "team_goals",
+    GamesWon => "games_won",
+    GamesLost => "games_lost",
 }
 
 /// One player's current-season totals over league, cup, and continental lines for every team

@@ -30,25 +30,6 @@ export type MoneyballMetricCategory = {
 const SAVE_UNAVAILABLE_METRIC_IDS: ReadonlySet<string> = new Set([
   "goals_from_outside_the_box",
   "goals_from_outside_the_box_per_90",
-  "xg-op",
-  "xg-op_per_90",
-  "expected_save_percentage",
-  "penalties_faced",
-  "penalties_faced_per_90",
-  "penalties_saved",
-  "penalties_saved_per_90",
-  "penalties_saved_ratio",
-  "games_won",
-  "games_drawn",
-  "games_lost",
-  "game_win_ratio",
-  "team_goals",
-  "team_goals_per_90",
-  "pressures_attempted",
-  "pressures_attempted_per_90",
-  "pressures_completed",
-  "pressures_completed_per_90",
-  "pressure_success_ratio",
 ]);
 
 /**
@@ -316,8 +297,8 @@ const PERCENTAGE_IDS = new Set([
 const SPECIAL_LABELS: Record<string, string> = {
   "np-xg": "NP-xG",
   "np-xg_per_90": "NP-xG / 90",
-  "xg-op": "xG Open Play",
-  "xg-op_per_90": "xG Open Play / 90",
+  "xg-op": "xG Overperformance",
+  "xg-op_per_90": "xG Overperformance / 90",
   xg: "xG",
   xg_per_90: "xG / 90",
   xg_per_shot: "xG / Shot",
@@ -357,7 +338,10 @@ function definition(categoryId: string, id: string): MoneyballMetric {
       : kind === "rating"
         ? 2
         : kind === "percentage"
-          ? 1
+          ? // Stored as the whole number the game shows.
+            id === "expected_save_percentage"
+            ? 0
+            : 1
           : kind === "distance"
             ? 1
             : 2;
