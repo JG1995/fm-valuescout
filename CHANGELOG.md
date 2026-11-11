@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-11-11
+
+### Fixed
+
+- Load Data and **Refresh stats** read staff shortlists that 0.25.0 rejected with "this FM27 build is not supported yet". The FM27 build was not the cause: the save stores some staff in ways 0.25.0 did not read.
+- One shortlisted staff member the app cannot read no longer drops the whole staff shortlist. That person is left out, and the Load Data banner says how many staff were read and how many were not.
+
 ## [0.25.0] - 2026-11-11
 
 ### Added
