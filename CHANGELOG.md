@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-11
+
+### Added
+
+- Moneyball role and tactic scores account for league strength. Load Data measures each league from the current ability of its clubs' best elevens, and a player's scores move by half a point for every point his league is weaker or stronger than your managed club's league, or than the strongest league when you manage no club. This applies in Moneyball Search, in the Moneyball Profile's role fit, which names both leagues and the change, and in the Dashboard's Moneyball signings. Statistics and percentiles are unchanged. Run Load Data once to measure the leagues.
+- **Scores: League-adjusted | Raw** in Moneyball Search turns the league adjustment on or off for the save.
+- Staff Search reads your staff shortlists from the linked FM save. Load Data and **Refresh stats** read who is listed, the job each person prefers, and their coaching qualifications, so nothing has to be exported from the game. The Load Data banner says how many staff were read. When a person rates several jobs equally highest, the Preferred Job shown can differ from FM's.
+
+### Changed
+
+- **Only unemployed** in Staff Search now lists shortlisted staff who have no club in the loaded data.
+
+### Removed
+
+- The staff shortlist CSV upload and the Club Job column, because FM27 cannot export staff views. Staff imported from CSV earlier stay on the shortlist until Load Data reads the staff shortlists of a linked FM save.
+
+### Fixed
+
+- A named staff shortlist in the FM save no longer hides that save's player shortlists.
+
 ## [0.24.0] - 2026-11-11
 
 ### Added
