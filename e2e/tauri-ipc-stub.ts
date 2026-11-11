@@ -2326,6 +2326,34 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             return plannerDepth;
           }
 
+          if (cmd === "get_planner_unassigned_players") {
+            const placed = new Set(
+              plannerDepth.teams.flatMap((team) =>
+                team.strings.flatMap((plannerString) =>
+                  plannerString.assignments.map(
+                    (assignment) => assignment.playerUid,
+                  ),
+                ),
+              ),
+            );
+            // [uid, name, age, lane, current, expected].
+            return [
+              [501, "Senior Keeper", 29, "goalkeeper", 78, 78],
+              [503, "Left-Footed Keeper", 24, "goalkeeper", 70, 73],
+              [502, "Young Keeper", 17, "goalkeeper", 61, 80],
+              [504, "Surplus Player", 31, null, null, null],
+            ]
+              .filter((player) => !placed.has(player[0]))
+              .map((player) => ({
+                playerUid: player[0],
+                name: player[1],
+                age: player[2],
+                laneId: player[3],
+                currentScore: player[4],
+                expectedScore: player[5],
+              }));
+          }
+
           if (cmd === "get_planner_slot_candidates") {
             const team = plannerDepth.teams.find(
               (candidate) => candidate.team === args?.team,

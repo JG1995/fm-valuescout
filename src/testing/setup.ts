@@ -82,6 +82,7 @@ import {
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
   resolvePlannerTeamRemovalImpactsIpcMock,
+  resolvePlannerUnassignedPlayersIpcMock,
   resolveSavePlannerTacticIpcMock,
   resolveSavePlannerTeamsIpcMock,
   resolveSetManagedClubIpcMock,
@@ -425,6 +426,10 @@ function registerIpcMocks() {
 
     if (cmd === "set_planner_assignment_pinned") {
       return resolveSetPlannerAssignmentPinnedIpcMock(args);
+    }
+
+    if (cmd === "get_planner_unassigned_players") {
+      return resolvePlannerUnassignedPlayersIpcMock();
     }
 
     if (cmd === "move_planner_player") {

@@ -1,7 +1,9 @@
 use rusqlite::params;
 
 use super::depth::{assign_player, get_depth, set_assignment_pinned, PlannerTeam};
-use super::optimizer::{fill_key, match_lanes, optimize_depth, OptimizerCandidate};
+use super::optimizer::{
+    fill_key, match_lanes, optimize_depth, unassigned_players, OptimizerCandidate,
+};
 use super::tactic;
 use super::teams::{save_team_settings, PlannerStringInput, PlannerTeamInput};
 use super::test_support::{
@@ -942,6 +944,54 @@ fn optimizer_keeps_a_pinned_pick_and_replaces_it_once_unpinned() {
     assert_eq!(
         assigned_player_uid(&unpinned, PlannerTeam::Senior, "right_winger"),
         Some(78)
+    );
+}
+
+#[test]
+fn unassigned_players_list_everyone_left_out_with_his_best_slot() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    clear_current_scores_except(
+        &conn,
+        save_id,
+        &[77, 78, 79, 80],
+        &["winger_ip", "tracking_wide_midfielder_oop"],
+    );
+    set_right_winger(&conn, save_id, 77, 90, 90);
+    set_right_winger(&conn, save_id, 78, 60, 80);
+    set_development(&conn, save_id, 78, 20, [15, 15, 15]);
+    set_right_winger(&conn, save_id, 79, 70, 70);
+    set_right_winger_scores(&conn, save_id, 80, None);
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let senior_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    assign_player(&conn, save_id, senior_string_id, "right_winger", 77)
+        .expect("place the best winger");
+
+    let unassigned = unassigned_players(&conn, save_id).expect("list unassigned players");
+
+    // The placed player is gone, the rest come best first, and a player who suits no lane
+    // comes last without a slot. At 20 with a drive of 15, uid 78 closes 85% of his gap.
+    assert_eq!(
+        unassigned
+            .iter()
+            .map(|player| {
+                (
+                    player.player_uid,
+                    player.best_lane.as_ref().map(|lane| {
+                        (
+                            lane.lane_id.as_str(),
+                            lane.current_score,
+                            lane.expected_score,
+                        )
+                    }),
+                )
+            })
+            .collect::<Vec<_>>(),
+        [
+            (79, Some(("right_winger", 70, 70))),
+            (78, Some(("right_winger", 60, 77))),
+            (80, None),
+        ]
     );
 }
 

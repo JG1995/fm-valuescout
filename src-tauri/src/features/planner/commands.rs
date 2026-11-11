@@ -912,6 +912,54 @@ pub async fn clear_planner_assignment(
     .await
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerUnassignedPlayerDto {
+    pub player_uid: i64,
+    pub name: String,
+    pub age: Option<i64>,
+    /// The tactic lane the player fits best now; absent when he suits none.
+    pub lane_id: Option<String>,
+    pub current_score: Option<u8>,
+    pub expected_score: Option<u8>,
+}
+
+/// The managed club's players in no squad, best current fit first.
+#[tauri::command]
+pub async fn get_planner_unassigned_players(
+    db: State<'_, Db>,
+) -> Result<Vec<PlannerUnassignedPlayerDto>, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        Ok(optimizer::unassigned_players(&conn, save_id)?
+            .into_iter()
+            .map(|player| {
+                let (lane_id, current_score, expected_score) = match player.best_lane {
+                    Some(lane) => (
+                        Some(lane.lane_id),
+                        Some(lane.current_score),
+                        Some(lane.expected_score),
+                    ),
+                    None => (None, None, None),
+                };
+                PlannerUnassignedPlayerDto {
+                    player_uid: player.player_uid,
+                    name: player.name,
+                    age: player.age,
+                    lane_id,
+                    current_score,
+                    expected_score,
+                }
+            })
+            .collect())
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn set_planner_assignment_pinned(
     string_id: i64,

@@ -15,7 +15,7 @@ use super::depth::{
     PlannerDepth, PlannerTeam,
 };
 use super::fit::lane_fit_score;
-use super::outlook::{slot_value, Development};
+use super::outlook::{expected_score, slot_value, Development};
 use super::tactic::{base_position, PlannerTactic, TACTIC_LANE_COUNT};
 use super::teams;
 
@@ -476,9 +476,78 @@ struct ClubPlayer {
     lane_scores: Vec<Option<(u8, u8)>>,
 }
 
+/// A managed-club player whom no squad holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct UnassignedPlayer {
+    pub(super) player_uid: i64,
+    pub(super) name: String,
+    pub(super) age: Option<i64>,
+    /// The lane he fits best now, or `None` when he suits no lane of the tactic.
+    pub(super) best_lane: Option<UnassignedPlayerLane>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct UnassignedPlayerLane {
+    pub(super) lane_id: String,
+    /// His fit score in the lane now, and the one he is expected to reach.
+    pub(super) current_score: u8,
+    pub(super) expected_score: u8,
+}
+
+/// The managed club's players in no squad, best current fit first: who is surplus to the plan.
+pub(super) fn unassigned_players(
+    conn: &Connection,
+    save_id: i64,
+) -> Result<Vec<UnassignedPlayer>, String> {
+    let snapshot_id = preflight_depth_snapshot(conn, save_id)?
+        .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
+    let tactic = ensure_depth(conn, save_id)?;
+    let assigned_uids = conn
+        .prepare("SELECT player_uid FROM planner_assignments WHERE save_id = ?1")
+        .map_err(|error| error.to_string())?
+        .query_map(params![save_id], |row| row.get::<_, i64>(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<HashSet<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    let mut players = load_club_players(conn, save_id, snapshot_id, &tactic)?
+        .into_iter()
+        .filter(|player| !assigned_uids.contains(&player.uid))
+        .map(|player| {
+            let best_lane = player
+                .lane_scores
+                .iter()
+                .enumerate()
+                .filter_map(|(lane_index, scores)| Some((lane_index, (*scores)?)))
+                .max_by_key(|&(lane_index, (current, _))| (current, Reverse(lane_index)))
+                .map(|(lane_index, (current, potential))| UnassignedPlayerLane {
+                    lane_id: tactic.lanes[lane_index].lane_id.clone(),
+                    current_score: current,
+                    expected_score: expected_score(current, potential, &player.development).round()
+                        as u8,
+                });
+            UnassignedPlayer {
+                player_uid: player.uid,
+                name: player.name,
+                age: player.development.age,
+                best_lane,
+            }
+        })
+        .collect::<Vec<_>>();
+    players.sort_by(|left, right| {
+        let score =
+            |player: &UnassignedPlayer| player.best_lane.as_ref().map(|lane| lane.current_score);
+        score(right)
+            .cmp(&score(left))
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+            .then_with(|| left.player_uid.cmp(&right.player_uid))
+    });
+    Ok(players)
+}
+
 /// The managed club's players with their fit scores for every lane of the tactic.
 fn load_club_players(
-    tx: &rusqlite::Transaction<'_>,
+    conn: &Connection,
     save_id: i64,
     snapshot_id: i64,
     tactic: &PlannerTactic,
@@ -511,7 +580,7 @@ fn load_club_players(
         Development::columns("p"),
         player_metrics_join("p", true, true)
     );
-    let mut statement = tx.prepare(&sql).map_err(|error| error.to_string())?;
+    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let players = statement
         .query_map(params![snapshot_id, save_id], |row| {
             let scores = (0..metric_columns.len())

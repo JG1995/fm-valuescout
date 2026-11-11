@@ -97,6 +97,7 @@ import {
   setPlannerTeamRemovalImpacts,
   setPlannerTeamSaveError,
   setPlannerTeamSavePending,
+  setPlannerUnassignedPlayersIpcMock,
 } from "@/testing/planner-ipc-mock";
 import {
   resolveCreateSaveIpcMock,
@@ -6584,6 +6585,58 @@ describe("My Club route", () => {
     expect(optimizeButton).toBeDisabled();
     expect(screen.getByRole("button", { name: "Clear all" })).toBeDisabled();
     expect(optimizeButton).toHaveAccessibleName("Optimizing…");
+  });
+
+  it("counts the players in no squad and lists them with their best slot", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
+    setPlannerUnassignedPlayersIpcMock([
+      {
+        playerUid: 91,
+        name: "Spare Keeper",
+        age: 29,
+        laneId: "goalkeeper",
+        currentScore: 71,
+        expectedScore: 71,
+      },
+      {
+        playerUid: 92,
+        name: "Unsuited Player",
+        age: null,
+        laneId: null,
+        currentScore: null,
+        expectedScore: null,
+      },
+    ]);
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Unassigned (2)" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Unassigned players",
+    });
+    const spare = within(dialog).getByRole("row", { name: /Spare Keeper/ });
+    expect(spare).toHaveTextContent("29");
+    expect(spare).toHaveTextContent(KEEPER_POSITION);
+    expect(
+      within(spare).getByRole("link", { name: "Spare Keeper" }),
+    ).toHaveAttribute("href", "/players/91");
+    expect(
+      within(dialog).getByRole("row", { name: /Unsuited Player/ }),
+    ).toHaveTextContent("Suits no slot");
+  });
+
+  it("disables the unassigned list when every player is placed", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
+    renderMyClubRoute();
+
+    expect(
+      await screen.findByRole("button", { name: "Unassigned (0)" }),
+    ).toBeDisabled();
   });
 
   it("opens the Youth XI from the squad controls", async () => {

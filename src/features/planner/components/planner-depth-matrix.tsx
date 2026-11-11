@@ -25,6 +25,7 @@ import {
 import { PlannerSquadBoard } from "./planner-squad-board";
 import { PlannerStringEditor } from "./planner-string-editor";
 import { PlannerTeamManagement } from "./planner-team-management";
+import { PlannerUnassignedPlayers } from "./planner-unassigned-players";
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -290,6 +291,11 @@ export function PlannerDepthMatrix({
               Best role fit
             </Button>
             {actions}
+            <PlannerUnassignedPlayers
+              activeSaveId={activeSaveId}
+              tactic={tactic}
+              options={options}
+            />
             <ControlDivider />
             <PlannerTeamManagement
               depth={depth}

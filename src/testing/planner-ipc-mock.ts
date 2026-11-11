@@ -5,6 +5,7 @@ import type {
 import type {
   PlannerDepth,
   PlannerSlotCandidate,
+  PlannerUnassignedPlayer,
 } from "@/features/planner/types/depth";
 import type {
   PlannerRoleReference,
@@ -301,6 +302,7 @@ let roleReferenceCalls: Array<{
 let depthFetchCount = 0;
 let tacticSaveError: string | null = null;
 let slotCandidates: PlannerSlotCandidate[] = [];
+let unassignedPlayers: PlannerUnassignedPlayer[] = [];
 let assignmentError: string | null = null;
 let clearAllError: string | null = null;
 let clearAllPending = false;
@@ -496,6 +498,7 @@ export function resetPlannerIpcMock() {
   depthFetchCount = 0;
   tacticSaveError = null;
   slotCandidates = [];
+  unassignedPlayers = [];
   assignmentError = null;
   clearAllError = null;
   clearAllPending = false;
@@ -901,6 +904,16 @@ export function resolveClearPlannerAssignmentIpcMock(args: unknown) {
     (assignment) => assignment.laneId !== laneId,
   );
   return cloneDepth(depth);
+}
+
+export function setPlannerUnassignedPlayersIpcMock(
+  players: PlannerUnassignedPlayer[],
+) {
+  unassignedPlayers = players.map((player) => ({ ...player }));
+}
+
+export function resolvePlannerUnassignedPlayersIpcMock() {
+  return unassignedPlayers.map((player) => ({ ...player }));
 }
 
 export function resolveSetPlannerAssignmentPinnedIpcMock(args: unknown) {

@@ -41,6 +41,18 @@ export type PlannerDepth = {
   teams: PlannerDepthTeam[];
 };
 
+/** A managed-club player whom no squad holds. */
+export type PlannerUnassignedPlayer = {
+  playerUid: number;
+  name: string;
+  age: number | null;
+  /** The tactic lane he fits best now; null when he suits none. */
+  laneId: string | null;
+  currentScore: number | null;
+  /** The score he is expected to reach in that lane. */
+  expectedScore: number | null;
+};
+
 export type PlannerAssignmentLocation = {
   team: PlannerTeam;
   stringId: number;

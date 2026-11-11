@@ -143,6 +143,7 @@ pub fn run() {
             features::planner::commands::clear_planner_depth,
             features::planner::commands::clear_planner_assignment,
             features::planner::commands::set_planner_assignment_pinned,
+            features::planner::commands::get_planner_unassigned_players,
             features::planner::commands::assign_planner_player,
             features::planner::commands::move_planner_player,
             features::graphics::commands::get_graphics_status,

@@ -5290,7 +5290,7 @@ test.describe("application smoke", () => {
     ).toBeLessThanOrEqual(3440);
   });
 
-  test("planner picker replaces a placed player in one step and unpins him", async ({
+  test("planner lists unassigned players, replaces a placed player in one step, and unpins him", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
@@ -5300,6 +5300,20 @@ test.describe("application smoke", () => {
     await page.goto("/my-club?view=planner");
 
     const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Unassigned (4)" }).click();
+    const unassigned = page.getByRole("dialog", {
+      name: "Unassigned players",
+    });
+    await expect(
+      unassigned.getByRole("row", { name: /Surplus Player/ }),
+    ).toContainText("Suits no slot");
+    // The modal listens for Escape once it has taken focus.
+    await expect(
+      unassigned.getByRole("button", { name: "Close" }),
+    ).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(unassigned).toBeHidden();
+
     await main
       .getByRole("button", {
         name: /Senior, 1st string, IP: GK .* Potential Keeper, Resolved/,
@@ -5319,6 +5333,10 @@ test.describe("application smoke", () => {
     ).toContainText("Unfamiliar position");
     await picker.getByRole("option", { name: /Left-Footed Keeper/ }).click();
     await expect(picker).toBeHidden();
+    // Placing a player takes him off the unassigned list.
+    await expect(
+      main.getByRole("button", { name: "Unassigned (3)" }),
+    ).toBeVisible();
 
     const replaced = main.getByRole("button", {
       name: /Senior, 1st string, IP: GK .* Left-Footed Keeper, Resolved, .* pinned$/,
