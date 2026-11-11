@@ -484,7 +484,7 @@ describe("useLoadData", () => {
           status: "noMatches",
           unmatchedPlayers: 3,
           gameDate: "2027-01-01",
-          shortlists: { status: "read", count: 2 },
+          shortlists: { status: "read", count: 2, unread: 0 },
           staffShortlist: { status: "notRead" },
           elapsedMs: 0,
         },

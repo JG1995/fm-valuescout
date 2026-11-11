@@ -14,7 +14,7 @@ use crate::features::csv_import::service::{
 };
 use crate::features::player_shortlist::replace_save_file_shortlists;
 use crate::features::save_stats::{
-    self, SaveSeasonStats, SaveShortlist, SaveShortlistedStaff, SaveStatsError,
+    self, SaveSeasonStats, SaveShortlist, SaveStaffShortlist, SaveStatsError,
 };
 use crate::features::staff::shortlist::replace_save_file_shortlist;
 
@@ -41,8 +41,10 @@ pub(crate) struct SeasonStatsOutcome {
 #[serde(tag = "status", rename_all = "camelCase")]
 pub(crate) enum SaveShortlistsOutcome {
     /// What the save holds replaced what was stored. `count` is how many player shortlists
-    /// hold players and are kept, or how many staff are now shortlisted.
-    Read { count: usize },
+    /// hold players and are kept, or how many staff are now shortlisted. `unread` is how
+    /// many listed staff were left out because their record could not be read; it is 0 for
+    /// player shortlists.
+    Read { count: usize, unread: usize },
     /// The save was not read, or its context changed before the write.
     NotRead,
     /// The save was read but its shortlists were not. `kind` is a save-file error kind, or
@@ -155,7 +157,7 @@ fn store_lists(
     db: &Db,
     captured: &CapturedContext,
     shortlists: &Result<Vec<SaveShortlist>, SaveStatsError>,
-    staff_shortlist: &Result<Vec<SaveShortlistedStaff>, SaveStatsError>,
+    staff_shortlist: &Result<SaveStaffShortlist, SaveStatsError>,
 ) -> StoredLists {
     let unread = |error: &SaveStatsError| SaveShortlistsOutcome::Failed { kind: error.kind() };
     let written = if shortlists.is_ok() || staff_shortlist.is_ok() {
@@ -181,7 +183,7 @@ fn write_lists(
     db: &Db,
     captured: &CapturedContext,
     shortlists: &Result<Vec<SaveShortlist>, SaveStatsError>,
-    staff_shortlist: &Result<Vec<SaveShortlistedStaff>, SaveStatsError>,
+    staff_shortlist: &Result<SaveStaffShortlist, SaveStatsError>,
 ) -> Result<StoredLists, SaveShortlistsOutcome> {
     let database_failure = SaveShortlistsOutcome::Failed { kind: "database" };
     let mut conn = db.0.lock().map_err(|_| database_failure.clone())?;
@@ -197,13 +199,15 @@ fn write_lists(
             Ok(shortlists) => SaveShortlistsOutcome::Read {
                 count: replace_save_file_shortlists(&tx, save_id, shortlists)
                     .map_err(|_| database_failure.clone())?,
+                unread: 0,
             },
             Err(error) => SaveShortlistsOutcome::Failed { kind: error.kind() },
         },
         staff_shortlist: match staff_shortlist {
-            Ok(staff) => SaveShortlistsOutcome::Read {
-                count: replace_save_file_shortlist(&tx, save_id, staff)
+            Ok(shortlist) => SaveShortlistsOutcome::Read {
+                count: replace_save_file_shortlist(&tx, save_id, &shortlist.staff)
                     .map_err(|_| database_failure.clone())?,
+                unread: shortlist.unread,
             },
             Err(error) => SaveShortlistsOutcome::Failed { kind: error.kind() },
         },
@@ -364,6 +368,7 @@ mod tests {
         write_save_with_shortlists, write_save_with_staff_shortlist, write_season_stats_save,
         GAME_DATE,
     };
+    use crate::features::save_stats::SaveShortlistedStaff;
     use crate::features::snapshot::service::{self as snapshot_service, LinkedSaveFile};
 
     const PRIOR_AS_OF: &str = "2030-01-01";
@@ -607,7 +612,13 @@ mod tests {
         let outcome = fixture.attach_outcome();
 
         assert!(matches!(outcome.result, SeasonStatsResult::Attached { .. }));
-        assert_eq!(outcome.shortlists, SaveShortlistsOutcome::Read { count: 2 });
+        assert_eq!(
+            outcome.shortlists,
+            SaveShortlistsOutcome::Read {
+                count: 2,
+                unread: 0,
+            }
+        );
         assert_eq!(
             fixture.save_shortlists(),
             [
@@ -621,7 +632,10 @@ mod tests {
 
         assert_eq!(
             fixture.attach_outcome().shortlists,
-            SaveShortlistsOutcome::Read { count: 1 }
+            SaveShortlistsOutcome::Read {
+                count: 1,
+                unread: 0,
+            }
         );
         assert_eq!(
             fixture.save_shortlists(),
@@ -647,7 +661,13 @@ mod tests {
             outcome.result,
             SeasonStatsResult::NoMatches { .. }
         ));
-        assert_eq!(outcome.shortlists, SaveShortlistsOutcome::Read { count: 1 });
+        assert_eq!(
+            outcome.shortlists,
+            SaveShortlistsOutcome::Read {
+                count: 1,
+                unread: 0,
+            }
+        );
         let stored = vec![("Targets".to_string(), vec![99])];
         assert_eq!(fixture.save_shortlists(), stored);
 
@@ -686,7 +706,10 @@ mod tests {
         assert!(matches!(outcome.result, SeasonStatsResult::Attached { .. }));
         assert_eq!(
             outcome.staff_shortlist,
-            SaveShortlistsOutcome::Read { count: 2 }
+            SaveShortlistsOutcome::Read {
+                count: 2,
+                unread: 0,
+            }
         );
         let no_qualifications = "No Qualifications".to_string();
         let stored = vec![
@@ -725,9 +748,46 @@ mod tests {
 
         assert_eq!(
             fixture.attach_outcome().staff_shortlist,
-            SaveShortlistsOutcome::Read { count: 0 }
+            SaveShortlistsOutcome::Read {
+                count: 0,
+                unread: 0,
+            }
         );
         assert_eq!(fixture.staff_shortlist(), []);
+    }
+
+    #[test]
+    fn a_staff_shortlist_read_in_part_stores_who_was_read_and_reports_the_rest() {
+        let fixture = fixture();
+        fixture.link_matching_save();
+        let (captured, _) = fixture.capture_and_read();
+        let staff_shortlist = Ok(SaveStaffShortlist {
+            staff: vec![SaveShortlistedStaff {
+                unique_id: 9_001,
+                preferred_job: "Physio",
+                coaching_qualifications: "No Qualifications",
+            }],
+            unread: 2,
+        });
+
+        let stored = store_lists(
+            &fixture.db,
+            &captured,
+            &Err(SaveStatsError::Corrupt),
+            &staff_shortlist,
+        );
+
+        assert_eq!(
+            stored.staff_shortlist,
+            SaveShortlistsOutcome::Read {
+                count: 1,
+                unread: 2
+            }
+        );
+        assert_eq!(
+            fixture.staff_shortlist(),
+            [(9_001, "Physio".to_string(), "No Qualifications".to_string())]
+        );
     }
 
     #[test]
@@ -740,11 +800,14 @@ mod tests {
             name: "Targets".to_string(),
             player_unique_ids: vec![10],
         }]);
-        let staff_shortlist = Ok(vec![SaveShortlistedStaff {
-            unique_id: 9_001,
-            preferred_job: "Physio",
-            coaching_qualifications: "No Qualifications",
-        }]);
+        let staff_shortlist = Ok(SaveStaffShortlist {
+            staff: vec![SaveShortlistedStaff {
+                unique_id: 9_001,
+                preferred_job: "Physio",
+                coaching_qualifications: "No Qualifications",
+            }],
+            unread: 0,
+        });
 
         assert_eq!(
             store_lists(&fixture.db, &captured, &shortlists, &staff_shortlist),
@@ -940,8 +1003,14 @@ mod tests {
                 unmatched_players: 1,
                 game_date: GAME_DATE.to_string(),
             },
-            shortlists: SaveShortlistsOutcome::Read { count: 3 },
-            staff_shortlist: SaveShortlistsOutcome::Read { count: 13 },
+            shortlists: SaveShortlistsOutcome::Read {
+                count: 3,
+                unread: 0,
+            },
+            staff_shortlist: SaveShortlistsOutcome::Read {
+                count: 13,
+                unread: 0,
+            },
             elapsed_ms: 12,
         };
 
@@ -952,8 +1021,8 @@ mod tests {
                 "matchedPlayers": 2,
                 "unmatchedPlayers": 1,
                 "gameDate": GAME_DATE,
-                "shortlists": { "status": "read", "count": 3 },
-                "staffShortlist": { "status": "read", "count": 13 },
+                "shortlists": { "status": "read", "count": 3, "unread": 0 },
+                "staffShortlist": { "status": "read", "count": 13, "unread": 0 },
                 "elapsedMs": 12,
             })
         );

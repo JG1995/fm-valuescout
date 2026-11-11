@@ -2,10 +2,10 @@
 //!
 //! It reads the save named by `FM_VALUESCOUT_SAVE_FILE` and prints one JSON report of the
 //! save's facts, each shortlist's name and player count, each shortlisted staff member's
-//! Unique ID, Preferred Job, and Coaching Qualifications, and every player's totals, keyed by
-//! Unique ID with fmsave's field names, so the totals can be compared with fmsave's outside
-//! the repository. The report never holds the path, and a missing or unreadable file fails
-//! without printing it.
+//! Unique ID, Preferred Job, and Coaching Qualifications, how many listed staff could not be
+//! read, and every player's totals, keyed by Unique ID with fmsave's field names, so the
+//! totals can be compared with fmsave's outside the repository. The report never holds the
+//! path, and a missing or unreadable file fails without printing it.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -91,7 +91,8 @@ fn save_stats_reference_harness() {
             Err(error) => json!({ "error": error.kind() }),
         },
         "staff_shortlist": match &stats.staff_shortlist {
-            Ok(staff) => staff
+            Ok(shortlist) => shortlist
+                .staff
                 .iter()
                 .map(|person| json!({
                     "unique_id": person.unique_id,
@@ -101,6 +102,10 @@ fn save_stats_reference_harness() {
                 .collect(),
             Err(error) => json!({ "error": error.kind() }),
         },
+        "staff_shortlist_unread": stats
+            .staff_shortlist
+            .as_ref()
+            .map_or(0, |shortlist| shortlist.unread),
         "players": players,
     });
     let json = serde_json::to_string(&report).expect("reference report serializes");
