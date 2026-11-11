@@ -253,6 +253,10 @@ pub struct ProspectDto {
     pub name: String,
     pub age: i64,
     pub lane_id: String,
+    pub ip_position: String,
+    pub ip_role_id: String,
+    pub oop_position: String,
+    pub oop_role_id: String,
     pub current_score: u8,
     pub potential_score: u8,
 }
@@ -263,7 +267,11 @@ impl From<Prospect> for ProspectDto {
             uid: value.uid,
             name: value.name,
             age: value.age,
-            lane_id: value.lane_id,
+            lane_id: value.lane.lane_id,
+            ip_position: value.lane.ip_position,
+            ip_role_id: value.lane.ip_role_id,
+            oop_position: value.lane.oop_position,
+            oop_role_id: value.lane.oop_role_id,
             current_score: value.current_score,
             potential_score: value.potential_score,
         }

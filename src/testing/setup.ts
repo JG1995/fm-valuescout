@@ -52,6 +52,12 @@ import {
   resolveCsvImportIpcMock,
 } from "@/testing/csv-import-ipc-mock";
 import {
+  resetDashboardIpcMock,
+  resolveDashboardExpiringContractsIpcMock,
+  resolveDashboardProspectsIpcMock,
+  resolveDashboardSigningsIpcMock,
+} from "@/testing/dashboard-ipc-mock";
+import {
   resetManagedClubBoostIpcMock,
   resolveManagedClubBoostIpcMock,
 } from "@/testing/managed-club-boost-ipc-mock";
@@ -336,6 +342,18 @@ function registerIpcMocks() {
       return resolveManagedClubIpcMock();
     }
 
+    if (cmd === "get_dashboard_signings") {
+      return resolveDashboardSigningsIpcMock(args);
+    }
+
+    if (cmd === "get_dashboard_expiring_contracts") {
+      return resolveDashboardExpiringContractsIpcMock();
+    }
+
+    if (cmd === "get_dashboard_prospects") {
+      return resolveDashboardProspectsIpcMock();
+    }
+
     if (cmd === "list_squad_players") {
       return resolveSquadPlayersIpcMock(args);
     }
@@ -451,6 +469,7 @@ afterEach(() => {
   resetGraphicsIpcMock();
   resetSnapshotIpcMock();
   resetCsvImportIpcMock();
+  resetDashboardIpcMock();
   resetPlayerShortlistIpcMock();
   resetStaffShortlistImportIpcMock();
   resetClubDnaIpcMock();

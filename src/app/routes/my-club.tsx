@@ -7,10 +7,12 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CircleAlert, DatabaseZap, Shield, UsersRound } from "lucide-react";
+import { DatabaseZap, UsersRound } from "lucide-react";
 import { Suspense, useCallback, useRef, useState } from "react";
-import { clearPlayerResultContext } from "@/app/player-result-context";
-import { ErrorBoundary } from "@/components/error-boundary/error-boundary";
+import {
+  ManagedClubLogo,
+  ManagedClubSetup,
+} from "@/app/components/managed-club-setup";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
@@ -30,8 +32,6 @@ import {
   managedClubOptionsQueryOptions,
   managedClubQueryOptions,
 } from "@/features/managed-club/api/managed-club-query-options";
-import { ManagedClubSelector } from "@/features/managed-club/components/managed-club-selector";
-import type { ManagedClubStatus } from "@/features/managed-club/types/managed-club";
 import { plannerDepthQueryOptions } from "@/features/planner/api/planner-depth-query-options";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { PlannerDepthMatrix } from "@/features/planner/components/planner-depth-matrix";
@@ -65,7 +65,6 @@ import {
   isSquadSortDir,
   isSquadSortField,
 } from "@/features/squad/types/squad-sort";
-import { staffKeys } from "@/features/staff/api/staff-keys";
 import {
   DEFAULT_STAFF_SORT_FIELD,
   defaultDirForStaffSortField,
@@ -111,39 +110,6 @@ type SquadBoostMutationVariables = {
   snapshotId: number;
   onProgress: (progress: SquadPlayerBoostProgress) => void;
 };
-
-function ManagedClubLogo({
-  clubUid,
-  managedClubStatus,
-}: {
-  clubUid: number | null;
-  managedClubStatus: ManagedClubStatus["status"];
-}) {
-  return managedClubStatus === "available" ? (
-    <GraphicsImage
-      kind="clubLogo"
-      uid={clubUid ?? 0}
-      slot={{
-        alt: "",
-        ariaHidden: true,
-        className: "size-6 shrink-0 object-contain",
-        fallback: (
-          <Shield
-            aria-hidden="true"
-            className="size-6 shrink-0 text-on-surface-variant"
-            strokeWidth={1.5}
-          />
-        ),
-      }}
-    />
-  ) : (
-    <Shield
-      aria-hidden="true"
-      className="size-6 shrink-0 text-on-surface-variant"
-      strokeWidth={1.5}
-    />
-  );
-}
 
 function SquadIdentityGraphics({
   player,
@@ -281,38 +247,6 @@ export const Route = createFileRoute("/my-club")({
   component: MyClubPage,
 });
 
-function ManagedClubError({
-  error,
-  reset,
-}: {
-  error: Error;
-  reset: () => void;
-}) {
-  const queryClient = useQueryClient();
-
-  return (
-    <Panel>
-      <EmptyState
-        icon={CircleAlert}
-        title="Could not load managed club"
-        action={
-          <Button
-            variant="secondary"
-            onClick={() => {
-              queryClient.resetQueries({ queryKey: managedClubKeys.all });
-              reset();
-            }}
-          >
-            Retry
-          </Button>
-        }
-      >
-        {error.message}
-      </EmptyState>
-    </Panel>
-  );
-}
-
 function TacticQueryError({
   error,
   title,
@@ -376,12 +310,6 @@ function MyClubPageContent() {
       queryClient.invalidateQueries({ queryKey: plannerKeys.all }),
       queryClient.invalidateQueries({ queryKey: academyKeys.all }),
     ]);
-  };
-  const clearResults = () => clearPlayerResultContext(queryClient);
-  const onManagedClubSaved = () => {
-    void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
-    void queryClient.resetQueries({ queryKey: academyKeys.all });
-    void queryClient.invalidateQueries({ queryKey: staffKeys.all });
   };
   const clubDnaContextIsCurrent = (context: ClubDnaContext) =>
     activeClubDnaContextRef.current?.saveId === context.saveId &&
@@ -541,39 +469,23 @@ function MyClubPageContent() {
         </div>
         <div className="min-w-0" id="managed-club">
           {snapshot ? (
-            <ErrorBoundary
-              fallback={({ error, reset }) => (
-                <ManagedClubError error={error} reset={reset} />
-              )}
-            >
-              <Suspense
-                fallback={
-                  <div className="flex min-h-16 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-sm text-on-surface-variant">
-                    Loading managed club…
-                  </div>
-                }
-              >
-                <ManagedClubSelector
-                  action={
-                    activeClubDnaContext ? (
-                      <ClubDnaDefinition
-                        key={`${activeClubDnaContext.saveId}:${activeClubDnaContext.contextToken}`}
-                        context={activeClubDnaContext}
-                        available={clubDnaAvailable}
-                        onSaved={onClubDnaSaved}
-                        onRemoved={onClubDnaRemoved}
-                      />
-                    ) : (
-                      <Button variant="secondary" disabled>
-                        Define DNA
-                      </Button>
-                    )
-                  }
-                  onBeforeContextChange={clearResults}
-                  onSaved={onManagedClubSaved}
-                />
-              </Suspense>
-            </ErrorBoundary>
+            <ManagedClubSetup
+              action={
+                activeClubDnaContext ? (
+                  <ClubDnaDefinition
+                    key={`${activeClubDnaContext.saveId}:${activeClubDnaContext.contextToken}`}
+                    context={activeClubDnaContext}
+                    available={clubDnaAvailable}
+                    onSaved={onClubDnaSaved}
+                    onRemoved={onClubDnaRemoved}
+                  />
+                ) : (
+                  <Button variant="secondary" disabled>
+                    Define DNA
+                  </Button>
+                )
+              }
+            />
           ) : null}
         </div>
       </div>

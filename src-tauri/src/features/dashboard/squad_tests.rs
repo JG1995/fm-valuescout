@@ -93,7 +93,7 @@ fn ranks_young_players_by_potential_in_their_best_tactic_slot() {
             .iter()
             .map(|prospect| (
                 prospect.uid,
-                prospect.lane_id.as_str(),
+                prospect.lane.lane_id.as_str(),
                 prospect.current_score,
                 prospect.potential_score
             ))

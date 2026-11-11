@@ -199,7 +199,88 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
-  test("Dashboard stays minimal and Settings hosts app management", async ({
+  test("Dashboard asks for the managed club, then recommends signings", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      moneyballSearch: true,
+      plannerSnapshot: true,
+      shortlistSearch: true,
+    });
+    await page.goto("/");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("heading", { name: "Choose your club" }),
+    ).toBeVisible();
+    await expect(
+      main.getByRole("heading", { name: "Recommended signings" }),
+    ).toHaveCount(0);
+
+    await main.getByRole("combobox", { name: "Managed club" }).fill("Bar");
+    await page.getByRole("option", { name: "Barcelona", exact: true }).click();
+    await main.getByRole("button", { name: "Save managed club" }).click();
+
+    await expect(
+      main.getByText("Managed club: Barcelona", { exact: true }),
+    ).toBeVisible();
+    const signings = main.getByRole("table", {
+      name: /Shortlisted players ranked by improvement/,
+    });
+    const firstRow = signings.getByRole("row").nth(1);
+    await expect(firstRow).toContainText("Viktor Gyökeres");
+    await expect(firstRow).toContainText("Empty slot");
+    await expect(firstRow).toContainText("+87");
+
+    // Moneyball mode rescores the XI and the candidates together.
+    await main.getByRole("button", { name: "Moneyball", exact: true }).click();
+    await expect(page).toHaveURL(/\?mode=moneyball$/);
+    await expect(firstRow).toContainText("2,890 min");
+    await expect(firstRow).toContainText("+91");
+    const lineup = main.getByRole("list", {
+      name: "Starting XI by tactic slot",
+    });
+    await expect(
+      lineup.getByRole("button", { name: /Marc-André ter Stegen/ }),
+    ).toContainText("78");
+
+    // A slot of the XI narrows the list to the players who would improve it.
+    await lineup.getByRole("button", { name: /Alejandro Balde/ }).click();
+    await expect(
+      main.getByText("3 shortlisted players would improve DL"),
+    ).toBeVisible();
+    await expect(signings.getByRole("row")).toHaveCount(4);
+    await main.getByRole("button", { name: "Show all slots" }).click();
+    await expect(signings.getByRole("row")).toHaveCount(11);
+
+    await expect(
+      main
+        .getByRole("table", {
+          name: "Your players by contract end date, soonest first",
+        })
+        .getByRole("row", { name: /Jules Koundé/ }),
+    ).toContainText("31 Dec 2026");
+    await expect(
+      main
+        .getByRole("table", {
+          name: "Your young players by potential score in their best tactic slot",
+        })
+        .getByRole("row", { name: /Marc Bernal/ }),
+    ).toContainText("+24");
+    await expect
+      .poll(() =>
+        main.evaluate((element) => {
+          const region = element as unknown as {
+            scrollWidth: number;
+            clientWidth: number;
+          };
+          return region.scrollWidth <= region.clientWidth;
+        }),
+      )
+      .toBe(true);
+  });
+
+  test("Dashboard names Load Data and Settings hosts app management", async ({
     page,
   }) => {
     await page.goto("/");
@@ -210,7 +291,7 @@ test.describe("application smoke", () => {
     await expect(
       main.getByRole("heading", { level: 1, name: "Dashboard" }),
     ).toBeVisible();
-    await expect(main.getByText("Dashboard is not built yet")).toBeVisible();
+    await expect(main.getByText("No data loaded for this save")).toBeVisible();
     await expect(main.getByRole("heading", { name: "Saves" })).toHaveCount(0);
     await expect(
       header.getByRole("combobox", { name: "Active save" }),
@@ -6108,7 +6189,7 @@ test.describe("application smoke", () => {
       });
       await page.goto("/");
       await expect(
-        page.getByText("Dashboard is not built yet", { exact: true }),
+        page.getByRole("heading", { name: "Recommended signings" }),
       ).toBeVisible();
       await page.evaluate(`(() => {
         const original = window.__TAURI_INTERNALS__.invoke;

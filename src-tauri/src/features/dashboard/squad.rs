@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use rusqlite::{params, Connection};
 
 use crate::features::planner::fit::tactic_adjusted_score;
-use crate::features::planner::tactic::read_tactic;
+use crate::features::planner::tactic::{read_tactic, TacticLane};
 use crate::features::player_metrics::compact::{
     assert_read_models_complete, player_current_column, player_metrics_join,
     player_potential_column, PLAYER_METRICS_ALIAS,
@@ -107,13 +107,13 @@ pub(crate) fn get_expiring_contracts(
     }))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Prospect {
     pub(crate) uid: i64,
     pub(crate) name: String,
     pub(crate) age: i64,
     /// The tactic slot where the player's potential score is highest.
-    pub(crate) lane_id: String,
+    pub(crate) lane: TacticLane,
     pub(crate) current_score: u8,
     pub(crate) potential_score: u8,
 }
@@ -193,7 +193,7 @@ pub(crate) fn get_prospects(
                 uid: row.get(0).map_err(read)?,
                 name: row.get(1).map_err(read)?,
                 age: row.get(2).map_err(read)?,
-                lane_id: tactic.lanes[lane_index].lane_id.clone(),
+                lane: tactic.lanes[lane_index].clone(),
                 current_score,
                 potential_score,
             });

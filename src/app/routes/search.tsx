@@ -74,7 +74,7 @@ import { buildTacticColumnOrder } from "@/features/search/utils/tactic-columns";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
-import type { PlayerShortlistSummary } from "@/features/snapshot/types/save";
+import { shortlistOptionLabels } from "@/features/snapshot/utils/shortlist-option-labels";
 import { TauriCommandError } from "@/lib/tauri-client";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
@@ -333,29 +333,6 @@ function refreshSeasonStatsCopy(result: RefreshSeasonStatsResult): {
     };
   }
   return seasonStatsCopy(result);
-}
-
-/**
- * Dropdown labels: the list name, or the file name when the name is empty.
- * When another shortlist shares the name, the file name is added, or "FM save"
- * for a list read from the linked save.
- */
-function shortlistOptionLabels(shortlists: PlayerShortlistSummary[]) {
-  return shortlists.map((shortlist) => {
-    const shared = shortlists.some(
-      (other) => other.id !== shortlist.id && other.name === shortlist.name,
-    );
-    const source = shortlist.fileName ?? "FM save";
-    return {
-      id: shortlist.id,
-      label:
-        shortlist.name === ""
-          ? source
-          : shared
-            ? `${shortlist.name} (${source})`
-            : shortlist.name,
-    };
-  });
 }
 
 function SearchPageContent() {

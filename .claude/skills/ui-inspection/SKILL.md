@@ -135,6 +135,7 @@ Use the same viewport before and after an edit. Add another supported viewport o
 The inspection spec combines existing browser fixtures and generated rows. It provides representative data for:
 
 - active save and current snapshot metadata;
+- the Dashboard's starting XI, recommended signings, expiring contracts, and prospects;
 - snapshot history;
 - player Search, Moneyball, Shortlist, and Squad tables;
 - Player Profile attributes, role fit, and Moneyball data;

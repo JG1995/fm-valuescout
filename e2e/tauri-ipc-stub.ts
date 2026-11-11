@@ -700,6 +700,168 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         ? { clubName: "Barcelona", clubUid: 100 }
         : null;
 
+      // The dashboard's XI and candidates: [laneId, IP position, IP role, OOP
+      // position, OOP role, incumbent, General score, Moneyball score, cover].
+      const dashboardSlots = [
+        ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop", "Marc-André ter Stegen", 86, 78, "Iñaki Peña"],
+        ["right_back", "DR", "full_back_ip", "DR", "holding_full_back_oop", "Jules Koundé", 82, 74, "Héctor Fort"],
+        ["right_centre_back", "DCL", "centre_back_ip", "DCL", "covering_centre_back_oop", "Ronald Araújo", 84, 71, "Andreas Christensen"],
+        ["left_centre_back", "DCR", "centre_back_ip", "DCR", "covering_centre_back_oop", "Pau Cubarsí", 79, 69, null],
+        ["left_back", "DL", "full_back_ip", "DL", "holding_full_back_oop", "Alejandro Balde", 68, 58, "Gerard Martín"],
+        ["defensive_midfielder", "DM", "defensive_midfielder_ip", "DM", "screening_defensive_midfielder_oop", "Marc Casadó", 74, 66, "Marc Bernal"],
+        ["right_central_midfielder", "MCL", "central_midfielder_ip", "MCL", "pressing_central_midfielder_oop", "Pedri", 91, 88, "Fermín López"],
+        ["left_central_midfielder", "MCR", "central_midfielder_ip", "MCR", "pressing_central_midfielder_oop", "Frenkie de Jong", 85, 80, "Gavi"],
+        ["right_winger", "AMR", "winger_ip", "MR", "tracking_wide_midfielder_oop", "Lamine Yamal", 93, 95, "Ferran Torres"],
+        ["left_winger", "AML", "winger_ip", "ML", "tracking_wide_midfielder_oop", "Raphinha", 88, 90, "Ansu Fati"],
+        ["centre_forward", "STC", "centre_forward_ip", "STC", "central_outlet_centre_forward_oop", null, null, null, null],
+      ];
+      // [uid, name, club, age, value, lane, General score, Moneyball score, minutes, shortlist].
+      const dashboardTargets = [
+        [501, "Viktor Gyökeres", "Sporting CP", 27, 62000000, "centre_forward", 87, 91, 2890, 1],
+        [502, "Nuno Mendes", "Paris Saint-Germain", 23, 54000000, "left_back", 84, 79, 2410, 1],
+        [503, "Alejandro Grimaldo García", "Bayer 04 Leverkusen", 29, 31000000, "left_back", 81, 83, 2975, 1],
+        [504, "Martín Zubimendi", "Real Sociedad", 26, 51000000, "defensive_midfielder", 83, 77, 3012, 1],
+        [505, "Jonathan Tah", "Bayer 04 Leverkusen", 29, 24000000, "left_centre_back", 85, 76, 2760, 2],
+        [506, "Benjamin Šeško", "RB Leipzig", 22, 58000000, "centre_forward", 82, 74, 2104, 2],
+        [507, "Giorgi Mamardashvili", "Valencia", 24, 38000000, "goalkeeper", 88, 81, 3240, 2],
+        [508, "Ђорђе Петровић", "Chelsea", 25, 19500000, "goalkeeper", 87, 72, 1620, 1],
+        [509, "Jeremie Frimpong", "Bayer 04 Leverkusen", 24, 43000000, "right_back", 85, 86, 2688, 1],
+        [510, "Κωνσταντίνος Κουλιεράκης", "PAOK", 21, 12500000, "left_centre_back", 81, 73, 2455, 2],
+        [511, "Rayan Aït-Nouri", "Wolverhampton Wanderers", 23, 33000000, "left_back", 80, 75, 2890, 2],
+        [512, "Nguyễn Đình Bắc", null, 20, 750000, "centre_forward", 61, null, null, 2],
+      ];
+      const dashboardSigningsFor = (request) => {
+        const moneyball = request?.mode === "moneyball";
+        if (moneyball && moneyballStatsGameDate === null) {
+          return {
+            tacticIsDefault: true,
+            scoresAvailable: false,
+            slots: [],
+            shortlistedPlayers: 0,
+            totalRecommendations: 0,
+            recommendations: [],
+          };
+        }
+        const slots = dashboardSlots.map((slot, index) => {
+          const score = moneyball ? slot[7] : slot[6];
+          return {
+            laneId: slot[0],
+            ipPosition: slot[1],
+            ipRoleId: slot[2],
+            oopPosition: slot[3],
+            oopRoleId: slot[4],
+            scoreBasis: moneyball
+              ? slot[0] === "centre_forward" ? "moneyball_custom" : "moneyball_roles"
+              : "attributes",
+            incumbent: slot[5] === null ? null : {
+              uid: 300 + index,
+              name: slot[5],
+              score,
+              source: index < 4 ? "planner" : "best_fit",
+            },
+            cover: slot[8] === null ? null : {
+              uid: 400 + index,
+              name: slot[8],
+              score: Math.max(1, score - 9 - index),
+            },
+            unscoredPlannerPlayer:
+              moneyball && slot[0] === "left_centre_back" ? "Iñigo Martínez" : null,
+          };
+        });
+        const incumbentScore = (laneId) =>
+          slots.find((slot) => slot.laneId === laneId)?.incumbent?.score ?? 0;
+        const shortlistHasTargets = saves
+          .find((save) => save.isActive)
+          ?.playerShortlists.some(
+            (shortlist) =>
+              request?.shortlistId == null || shortlist.id === request.shortlistId,
+          );
+        const candidates = shortlistHasTargets
+          ? dashboardTargets.filter(
+              (target) =>
+                request?.shortlistId == null || target[9] === request.shortlistId,
+            )
+          : [];
+        const recommendations = candidates
+          .map((target) => {
+            const score = moneyball ? target[7] : target[6];
+            return score === null ? null : {
+              uid: target[0],
+              name: target[1],
+              age: target[3],
+              club: target[2],
+              clubUid: target[2] === null ? null : 9000 + target[0],
+              marketValueGbp: target[4],
+              minutes: moneyball ? target[8] : null,
+              laneId: target[5],
+              score,
+              improvement: score - incumbentScore(target[5]),
+              otherLanes:
+                target[5] === "left_centre_back" && score > incumbentScore("right_centre_back")
+                  ? [{ laneId: "right_centre_back", improvement: score - incumbentScore("right_centre_back") }]
+                  : [],
+            };
+          })
+          .filter(
+            (target) =>
+              target !== null &&
+              target.improvement > 0 &&
+              (request?.laneId == null || target.laneId === request.laneId),
+          )
+          .sort(
+            (left, right) =>
+              right.improvement - left.improvement || right.score - left.score,
+          );
+        return {
+          tacticIsDefault: true,
+          scoresAvailable: true,
+          slots,
+          shortlistedPlayers: candidates.length,
+          totalRecommendations: recommendations.length,
+          recommendations,
+        };
+      };
+      const dashboardExpiringContracts = {
+        windowMonths: 12,
+        total: 7,
+        players: [
+          [301, "Jules Koundé", 27, 158, 52000000, 210000, "2026-12-31", 153],
+          [401, "Héctor Fort", 19, 121, 8500000, 14000, "2027-01-31", 184],
+          [304, "Alejandro Balde", 22, 149, 41000000, 95000, "2027-06-30", 334],
+          [408, "Ferran Torres", 26, 151, 27000000, 180000, "2027-06-30", 334],
+          [409, "Ansu Fati", 23, 144, null, 230000, "2027-06-30", 334],
+          [410, "Wojciech Szczęsny", 36, 139, 750000, null, "2027-06-30", 334],
+        ].map((player) => ({
+          uid: player[0],
+          name: player[1],
+          age: player[2],
+          ca: player[3],
+          marketValueGbp: player[4],
+          weeklyWageGbp: player[5],
+          expiryDate: player[6],
+          daysRemaining: player[7],
+        })),
+      };
+      const dashboardProspects = [
+        [308, "Lamine Yamal", 18, 8, 93, 97],
+        [303, "Pau Cubarsí", 19, 3, 79, 92],
+        [405, "Marc Bernal", 18, 5, 62, 86],
+        [401, "Héctor Fort", 19, 1, 64, 81],
+        [411, "Toni Fernández Casino", 17, 9, 48, 79],
+        [412, "Guille Fernández", 17, 6, 51, 77],
+      ].map((prospect) => ({
+        uid: prospect[0],
+        name: prospect[1],
+        age: prospect[2],
+        laneId: dashboardSlots[prospect[3]][0],
+        ipPosition: dashboardSlots[prospect[3]][1],
+        ipRoleId: dashboardSlots[prospect[3]][2],
+        oopPosition: dashboardSlots[prospect[3]][3],
+        oopRoleId: dashboardSlots[prospect[3]][4],
+        currentScore: prospect[4],
+        potentialScore: prospect[5],
+      }));
+
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
           if (cmd === "plugin:dialog|open") {
@@ -1859,6 +2021,18 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   status: "unconfigured",
                   unclassifiedPlayerCount: 0,
                 };
+          }
+
+          if (cmd === "get_dashboard_signings") {
+            return managedClub ? dashboardSigningsFor(args) : null;
+          }
+
+          if (cmd === "get_dashboard_expiring_contracts") {
+            return managedClub ? dashboardExpiringContracts : null;
+          }
+
+          if (cmd === "get_dashboard_prospects") {
+            return managedClub ? dashboardProspects : null;
           }
 
           if (cmd === "list_squad_players") {

@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   formatAbsoluteUtc,
   formatCount,
+  formatDaysRemaining,
   formatMissable,
   formatMoney,
   formatPlayerDob,
   formatPreferredFoot,
   formatRelativeAge,
+  formatShortDate,
 } from "@/utils/format";
 
 const now = Date.parse("2026-07-29T20:00:00.000Z");
@@ -81,5 +83,29 @@ describe("formatPlayerDob", () => {
 
   it("omits age when unknown", () => {
     expect(formatPlayerDob(2001, 80, null)).toBe("21/03/2001");
+  });
+});
+
+describe("formatShortDate", () => {
+  it("renders a canonical date with a short month", () => {
+    expect(formatShortDate("2027-06-30")).toBe("30 Jun 2027");
+  });
+
+  it("returns a value that is not a real calendar date unchanged", () => {
+    expect(formatShortDate("2027-02-30")).toBe("2027-02-30");
+    expect(formatShortDate("next summer")).toBe("next summer");
+  });
+});
+
+describe("formatDaysRemaining", () => {
+  it.each([
+    [-3, "expired"],
+    [0, "today"],
+    [1, "in 1 day"],
+    [60, "in 60 days"],
+    [61, "in 2 months"],
+    [320, "in 10 months"],
+  ])("renders %i days as %s", (days, expected) => {
+    expect(formatDaysRemaining(days)).toBe(expected);
   });
 });
