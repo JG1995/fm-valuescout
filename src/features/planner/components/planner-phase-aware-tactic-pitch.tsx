@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
+import type { PitchOrientation } from "@/utils/tactic-pitch-geometry";
 import type { TacticLane, TacticOptions } from "../types/tactic";
 import { TACTIC_PHASES, type TacticView } from "../utils/tactic-editor";
-import type { PitchOrientation } from "../utils/tactic-pitch-geometry";
 import {
   PlannerTacticPitch,
   pitchMarkersForView,

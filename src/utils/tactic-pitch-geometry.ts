@@ -1,4 +1,5 @@
-// Normalized pitch geometry shared by the tactical pitch canvas.
+// Normalized pitch geometry shared by the tactical pitch canvas and the
+// dashboard's youth XI.
 //
 // Portrait space is attack-up: x runs 0 (left) to 1 (right) from the
 // viewer's perspective and y runs 0 (attack) to 1 (own goal), matching the

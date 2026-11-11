@@ -18,7 +18,7 @@ export function DashboardSetupNotes({
   return (
     <section
       aria-label="Setup"
-      className="rounded-lg border border-outline-variant bg-surface-container px-4 py-2"
+      className="shrink-0 rounded-lg border border-outline-variant bg-surface-container px-4 py-2"
     >
       <ul className="divide-y divide-outline-variant">
         {notes.map((note) => (

@@ -1,115 +1,186 @@
 import { useQuery } from "@tanstack/react-query";
 import { CircleAlert, TrendingUp } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
+import { cn } from "@/utils/cn";
 import { dashboardProspectsQueryOptions } from "../api/dashboard-query-options";
-import type { DashboardContext, DashboardProspect } from "../types/dashboard";
+import type {
+  DashboardContext,
+  DashboardGraphics,
+  DashboardProspect,
+} from "../types/dashboard";
 import { slotLabel } from "../utils/slot-label";
+import { CardGrid } from "./card-grid";
 import {
-  DashboardTable,
-  Gain,
-  PlayerCell,
-  rowClass,
-  Score,
-  SlotCell,
-} from "./dashboard-table";
+  cardPanelSummaryClass,
+  dashboardArea,
+  dashboardPanelClass,
+  dashboardPanelContentClass,
+} from "./dashboard-grid";
+import { Gain } from "./dashboard-table";
+import { expandablePanelClass, PanelExpandButton } from "./panel-expand-button";
+import {
+  CardSlotLine,
+  cardDetailClass,
+  cardGridMinHeightClass,
+  PLAYER_CARD_MIN,
+  PlayerCard,
+} from "./player-card";
+import { YouthXiModal } from "./youth-xi-modal";
 
-function ProspectRow({ prospect }: { prospect: DashboardProspect }) {
+// The oldest player Rust counts as young.
+const MAX_AGE = 21;
+// Two rows of five: the most prospects one read returns.
+const MAX_PROSPECT_COLUMNS = 5;
+
+function ProspectCard({
+  prospect,
+  graphics,
+}: {
+  prospect: DashboardProspect;
+  graphics: DashboardGraphics;
+}) {
   const label = slotLabel(prospect);
   return (
-    <tr className={rowClass}>
-      <PlayerCell
-        uid={prospect.uid}
-        name={prospect.name}
-        detail={`${prospect.age} years`}
+    <PlayerCard
+      uid={prospect.uid}
+      name={prospect.name}
+      portrait={graphics.portrait(prospect.uid, prospect.name)}
+      details={<p className={cardDetailClass}>{prospect.age} years</p>}
+      metricLabel="Potential"
+      metric={
+        <ScoreBadge
+          variant="hero"
+          className="size-auto!"
+          score={prospect.potentialScore}
+          roleName={`${prospect.name} potential at ${label.compact}`}
+        />
+      }
+    >
+      <CardSlotLine
+        placement={label.compact}
+        context={label.context}
+        title={label.full}
       />
-      <SlotCell label={label} />
-      <td className="px-2">
-        <span className="flex items-center justify-end gap-1">
-          <Score
+      <p className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-body-sm text-on-surface-variant">
+          Now
+          <ScoreBadge
+            variant="card"
             score={prospect.currentScore}
-            name={`${prospect.name} now at ${label.compact}`}
-          />
-          <span
-            aria-hidden="true"
-            className="text-label-sm text-on-surface-variant"
-          >
-            →
-          </span>
-          <Score
-            score={prospect.potentialScore}
-            name={`${prospect.name} potential at ${label.compact}`}
+            roleName={`${prospect.name} now at ${label.compact}`}
           />
         </span>
-      </td>
-      <td className="px-2 text-right">
-        <Gain points={prospect.potentialScore - prospect.currentScore} />
-      </td>
-    </tr>
+        <span className="flex items-center gap-1.5 text-body-sm text-on-surface-variant">
+          Room to grow
+          <Gain points={prospect.potentialScore - prospect.currentScore} />
+        </span>
+      </p>
+    </PlayerCard>
   );
 }
 
-/** Young club players with the highest potential in the tactic. */
+/**
+ * The club's young players with the highest potential in the tactic as cards,
+ * and the XI its young players form behind them.
+ */
 export function DevelopmentProspectsPanel({
   context,
+  graphics,
 }: {
   context: DashboardContext;
+  graphics: DashboardGraphics;
 }) {
+  const [youthXiOpen, setYouthXiOpen] = useState(false);
   const query = useQuery(dashboardProspectsQueryOptions(context));
-  const prospects = query.data?.players ?? null;
+  const prospects = query.data ?? null;
+  // The XI opens once any slot has a young player.
+  const expandable =
+    prospects?.youthXi.some((slot) => slot.player !== null) ?? false;
   return (
-    <Panel
-      title="Development prospects"
-      flush
-      actions={
-        <p className="text-body-sm text-on-surface-variant">
-          Aged 21 or younger
-        </p>
-      }
-    >
-      {query.isError ? (
-        <EmptyState
-          icon={CircleAlert}
-          title="Could not load development prospects"
-          action={
-            <Button
-              variant="secondary"
-              className="mt-2"
-              onClick={() => void query.refetch()}
-            >
-              Retry
-            </Button>
-          }
-        >
-          {query.error.message}
-        </EmptyState>
-      ) : query.isPending ? (
-        <p className="p-4 text-body-md text-on-surface-variant" role="status">
-          Loading development prospects…
-        </p>
-      ) : prospects === null || prospects.length === 0 ? (
-        <EmptyState icon={TrendingUp} title="No prospects with room to grow">
-          No player aged 21 or younger is projected to improve in a slot of your
-          tactic.
-        </EmptyState>
-      ) : (
-        <div className="max-h-[22.5rem] overflow-auto border-t border-outline-variant">
-          <DashboardTable
-            caption="Your young players by potential score in their best tactic slot"
-            headings={[
-              { label: "Player" },
-              { label: "Best slot", width: "w-44" },
-              { label: "Now → Potential", numeric: true, width: "w-36" },
-              { label: "Gain", numeric: true, width: "w-14" },
-            ]}
+    <>
+      <Panel
+        title="Development prospects"
+        flush
+        actions={
+          expandable ? (
+            <PanelExpandButton onClick={() => setYouthXiOpen(true)}>
+              Youth XI
+            </PanelExpandButton>
+          ) : null
+        }
+        className={cn(
+          dashboardArea.prospects,
+          dashboardPanelClass,
+          expandablePanelClass,
+        )}
+        contentClassName={dashboardPanelContentClass}
+      >
+        {query.isError ? (
+          <EmptyState
+            icon={CircleAlert}
+            title="Could not load development prospects"
+            action={
+              <Button
+                variant="secondary"
+                className="mt-2"
+                onClick={() => void query.refetch()}
+              >
+                Retry
+              </Button>
+            }
           >
-            {prospects.map((prospect) => (
-              <ProspectRow key={prospect.uid} prospect={prospect} />
-            ))}
-          </DashboardTable>
-        </div>
-      )}
-    </Panel>
+            {query.error.message}
+          </EmptyState>
+        ) : query.isPending ? (
+          <p className="p-4 text-body-md text-on-surface-variant" role="status">
+            Loading development prospects…
+          </p>
+        ) : prospects === null || prospects.players.length === 0 ? (
+          <div className="flex flex-1 items-center justify-center overflow-y-auto">
+            <EmptyState
+              icon={TrendingUp}
+              title="No prospects with room to grow"
+            >
+              No player aged {MAX_AGE} or younger is projected to improve in a
+              slot of your tactic.
+            </EmptyState>
+          </div>
+        ) : (
+          <>
+            <p className={cardPanelSummaryClass}>
+              Aged {MAX_AGE} or younger with room to grow · highest potential
+              first
+            </p>
+            <div className="flex flex-1 border-t border-outline-variant">
+              <CardGrid
+                label="Development prospects, highest potential first"
+                items={prospects.players}
+                min={PLAYER_CARD_MIN}
+                maxColumns={MAX_PROSPECT_COLUMNS}
+                className={cardGridMinHeightClass}
+                itemKey={(prospect) => prospect.uid}
+              >
+                {(prospect) => (
+                  <ProspectCard prospect={prospect} graphics={graphics} />
+                )}
+              </CardGrid>
+            </div>
+          </>
+        )}
+      </Panel>
+      {prospects ? (
+        <YouthXiModal
+          open={youthXiOpen}
+          onClose={() => setYouthXiOpen(false)}
+          slots={prospects.youthXi}
+          maxAge={MAX_AGE}
+          graphics={graphics}
+        />
+      ) : null}
+    </>
   );
 }

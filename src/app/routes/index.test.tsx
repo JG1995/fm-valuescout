@@ -142,14 +142,16 @@ function renderDashboard(entry = "/") {
   return renderWithProviders({ initialEntries: [entry] });
 }
 
-function signingRows() {
-  const table = screen.getByRole("table", {
-    name: /Shortlisted players ranked by improvement/,
-  });
-  return within(table)
-    .getAllByRole("row")
-    .slice(1)
-    .map((row) => within(row).getByRole("rowheader").textContent);
+function signingCards() {
+  return within(
+    screen.getByRole("list", { name: "Recommended signings, best first" }),
+  ).getAllByRole("listitem");
+}
+
+function signingNames() {
+  return signingCards().map(
+    (card) => within(card).getByRole("link").textContent,
+  );
 }
 
 describe("Dashboard", () => {
@@ -203,23 +205,24 @@ describe("Dashboard", () => {
     renderDashboard();
 
     await waitFor(() =>
-      expect(signingRows()).toEqual([
-        "Better Left BackOther FC · 24 years",
-        "Better KeeperOther FC · 24 years",
-      ]),
+      expect(signingNames()).toEqual(["Better Left Back", "Better Keeper"]),
     );
     expect(
-      screen.getByText("2 of 6 shortlisted players would improve your XI"),
+      screen.getByText(/^2 of 6 shortlisted players would improve your XI/),
     ).toBeInTheDocument();
-    const best = screen.getByRole("row", { name: /Better Left Back/ });
-    expect(within(best).getByText("Home Left Back")).toBeInTheDocument();
+    const [best] = signingCards();
+    expect(best).toHaveTextContent("Other FC · 24 years");
+    expect(best).toHaveTextContent("€12.5M");
+    expect(best).toHaveTextContent("Replaces Home Left Back");
+    expect(
+      within(best).getByRole("img", { name: /^Home Left Back at DL: 60,/ }),
+    ).toBeInTheDocument();
     expect(
       within(best).getByRole("img", {
         name: "Better Left Back at DL: 80, Good",
       }),
     ).toBeInTheDocument();
     expect(within(best).getByText("+20")).toBeInTheDocument();
-    expect(within(best).getByText("€12.5M")).toBeInTheDocument();
     expect(
       within(best).getByRole("link", { name: "Better Left Back" }),
     ).toHaveAttribute("href", "/players/11?view=general");
@@ -242,15 +245,12 @@ describe("Dashboard", () => {
     const user = userEvent.setup();
     await seedManagedClub();
     const { router } = renderDashboard();
-    await waitFor(() => expect(signingRows()).toHaveLength(2));
+    await waitFor(() => expect(signingCards()).toHaveLength(2));
 
     await user.click(screen.getByRole("button", { name: "Moneyball" }));
 
-    await waitFor(() =>
-      expect(signingRows()).toEqual([
-        "Better KeeperOther FC · 24 years · 1,240 min",
-      ]),
-    );
+    await waitFor(() => expect(signingNames()).toEqual(["Better Keeper"]));
+    expect(signingCards()[0]).toHaveTextContent("€12.5M · 1,240 min");
     expect(screen.getByRole("button", { name: "Moneyball" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -267,7 +267,7 @@ describe("Dashboard", () => {
     await seedManagedClub();
     renderDashboard();
 
-    await waitFor(() => expect(signingRows()).toHaveLength(1));
+    await waitFor(() => expect(signingCards()).toHaveLength(1));
     expect(getDashboardSigningsIpcRequests()).toEqual([
       { mode: "moneyball", shortlistId: null, laneId: null },
     ]);
@@ -277,13 +277,13 @@ describe("Dashboard", () => {
     const user = userEvent.setup();
     await seedManagedClub();
     renderDashboard();
-    await waitFor(() => expect(signingRows()).toHaveLength(2));
+    await waitFor(() => expect(signingCards()).toHaveLength(2));
 
     await user.click(screen.getByRole("button", { name: /Home Keeper/ }));
 
-    await waitFor(() => expect(signingRows()).toHaveLength(1));
+    await waitFor(() => expect(signingCards()).toHaveLength(1));
     expect(
-      screen.getByText("1 shortlisted player would improve GK"),
+      screen.getByText(/^1 shortlisted player would improve GK/),
     ).toBeInTheDocument();
     expect(getDashboardSigningsIpcRequests().at(-1)).toEqual({
       mode: "general",
@@ -292,13 +292,13 @@ describe("Dashboard", () => {
     });
 
     await user.click(screen.getByRole("button", { name: "Show all slots" }));
-    await waitFor(() => expect(signingRows()).toHaveLength(2));
+    await waitFor(() => expect(signingCards()).toHaveLength(2));
 
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Shortlist" }),
       "Targets",
     );
-    await waitFor(() => expect(signingRows()).toHaveLength(1));
+    await waitFor(() => expect(signingCards()).toHaveLength(1));
     expect(getDashboardSigningsIpcRequests().at(-1)).toEqual({
       mode: "general",
       shortlistId: 7,
@@ -327,6 +327,9 @@ describe("Dashboard", () => {
       screen.getByRole("link", { name: "Set up your tactic" }),
     ).toHaveAttribute("href", "/my-club?view=tactic");
     expect(screen.queryByRole("combobox", { name: "Shortlist" })).toBeNull();
+    // With no signing and no young player there is no fuller view to open.
+    expect(screen.queryByRole("button", { name: "Best per slot" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Youth XI" })).toBeNull();
   });
 
   it("offers General scores when Moneyball mode has no season stats", async () => {
@@ -347,7 +350,7 @@ describe("Dashboard", () => {
       screen.getByRole("button", { name: "Use General scores" }),
     );
 
-    await waitFor(() => expect(signingRows()).toHaveLength(2));
+    await waitFor(() => expect(signingCards()).toHaveLength(2));
   });
 
   it("keeps a failed signings read retryable without blanking the other panels", async () => {
@@ -404,10 +407,11 @@ describe("Dashboard", () => {
     expect(contracts).toHaveTextContent("€900k");
     expect(screen.getByText("2 more end later in this period.")).toBeVisible();
     const prospect = within(
-      screen.getByRole("table", {
-        name: "Your young players by potential score in their best tactic slot",
+      screen.getByRole("list", {
+        name: "Development prospects, highest potential first",
       }),
-    ).getByRole("row", { name: /Young Left Back/ });
+    ).getByRole("listitem");
+    expect(prospect).toHaveTextContent("19 years");
     expect(prospect).toHaveTextContent("+30");
     expect(
       within(prospect).getByRole("img", {
@@ -418,6 +422,116 @@ describe("Dashboard", () => {
     setDashboardSigningsIpcMockError(null);
     await user.click(screen.getByRole("button", { name: "Retry" }));
 
-    await waitFor(() => expect(signingRows()).toHaveLength(2));
+    await waitFor(() => expect(signingCards()).toHaveLength(2));
+  });
+
+  it("opens the best signing for each slot and rescores it in place", async () => {
+    const user = userEvent.setup();
+    await seedManagedClub();
+    setDashboardSigningsIpcMock((request) =>
+      signings([LEFT_BACK_TARGET, KEEPER_TARGET], {
+        slots: [
+          {
+            ...KEEPER_SLOT,
+            bestSigning:
+              request.mode === "moneyball"
+                ? { ...KEEPER_TARGET, score: 88, improvement: 18 }
+                : KEEPER_TARGET,
+          },
+          { ...LEFT_BACK_SLOT, bestSigning: LEFT_BACK_TARGET },
+          STRIKER_SLOT,
+        ],
+      }),
+    );
+    renderDashboard();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Best per slot" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Best signing for each slot",
+    });
+    expect(dialog).toHaveTextContent("All shortlists");
+    // Goalkeeper to striker, whatever order the slots arrive in.
+    const [keeper, leftBack, striker] = within(dialog)
+      .getAllByRole("row")
+      .slice(1);
+    expect(keeper).toHaveTextContent("Home Keeper");
+    expect(keeper).toHaveTextContent("Better Keeper");
+    expect(keeper).toHaveTextContent("+5");
+    expect(leftBack).toHaveTextContent("Home Left Back");
+    expect(leftBack).toHaveTextContent("+20");
+    expect(
+      within(leftBack).getByRole("link", { name: "Better Left Back" }),
+    ).toHaveAttribute("href", "/players/11?view=general");
+    expect(striker).toHaveTextContent("Empty slot");
+    expect(striker).toHaveTextContent(
+      "No shortlisted player improves this slot",
+    );
+
+    await user.click(within(dialog).getByRole("button", { name: "Moneyball" }));
+
+    await waitFor(() =>
+      expect(within(dialog).getAllByRole("row")[1]).toHaveTextContent("+18"),
+    );
+
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("opens the youth XI in the tactic's slots", async () => {
+    const user = userEvent.setup();
+    await seedManagedClub();
+    const { bestSigning: _signing, ...keeperSlot } = KEEPER_SLOT;
+    setDashboardProspectsIpcMock({
+      players: [],
+      youthXi: [
+        {
+          laneId: "left_back",
+          ipPosition: "DL",
+          ipRoleId: "full_back_ip",
+          oopPosition: "DL",
+          oopRoleId: "holding_full_back_oop",
+          player: {
+            uid: 4,
+            name: "Young Left Back",
+            age: 19,
+            currentScore: 50,
+            potentialScore: 80,
+          },
+        },
+        {
+          laneId: keeperSlot.laneId,
+          ipPosition: keeperSlot.ipPosition,
+          ipRoleId: keeperSlot.ipRoleId,
+          oopPosition: keeperSlot.oopPosition,
+          oopRoleId: keeperSlot.oopRoleId,
+          player: null,
+        },
+      ],
+    });
+    renderDashboard();
+
+    // No prospect has room to grow, yet the young players still form an XI.
+    expect(
+      await screen.findByText("No prospects with room to grow"),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Youth XI" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Youth XI" });
+    const [keeper, leftBack] = within(
+      within(dialog).getByRole("list", { name: "Youth XI by tactic slot" }),
+    ).getAllByRole("listitem");
+    expect(keeper).toHaveTextContent("No player");
+    expect(keeper).toHaveTextContent("GK");
+    expect(
+      within(leftBack).getByRole("link", { name: "Young Left Back" }),
+    ).toHaveAttribute("href", "/players/4");
+    expect(
+      within(leftBack).getByRole("img", {
+        name: "Young Left Back potential at DL: 80, Good",
+      }),
+    ).toBeInTheDocument();
   });
 });

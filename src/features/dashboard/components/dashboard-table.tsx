@@ -4,6 +4,7 @@ import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { cn } from "@/utils/cn";
 import type { DashboardScoreMode } from "../types/dashboard";
 import type { SlotLabel } from "../utils/slot-label";
+import { Portrait } from "./portrait";
 
 const headerCellClass =
   "h-table-header-height px-2 text-label-md whitespace-nowrap text-on-surface-variant uppercase";
@@ -61,34 +62,39 @@ export function DashboardTable({
   );
 }
 
-/** The row header: the player's name as a profile link over one line of context. */
-export function PlayerCell({
+/** A player's portrait beside the name as a profile link over one line of context. */
+export function PlayerIdentity({
   uid,
   name,
   detail,
   view,
+  portrait,
 }: {
   uid: number;
   name: string;
   detail: string;
   /** The profile's analysis view; absent lets the configured default apply. */
   view?: DashboardScoreMode;
+  portrait: ReactNode;
 }) {
   return (
-    <th scope="row" className="min-w-0 px-2 text-left font-normal">
-      <Link
-        to="/players/$uid"
-        params={{ uid: String(uid) }}
-        search={view ? { view } : {}}
-        className="block truncate text-body-sm text-on-surface underline-offset-2 hover:underline"
-        title={name}
-      >
-        {name}
-      </Link>
-      <span className={secondaryLineClass} title={detail}>
-        {detail}
+    <span className="flex min-w-0 items-center gap-2">
+      <Portrait className="size-7 rounded-sm">{portrait}</Portrait>
+      <span className="min-w-0 flex-1">
+        <Link
+          to="/players/$uid"
+          params={{ uid: String(uid) }}
+          search={view ? { view } : {}}
+          className="block truncate text-body-sm text-on-surface underline-offset-2 hover:underline"
+          title={name}
+        >
+          {name}
+        </Link>
+        <span className={secondaryLineClass} title={detail}>
+          {detail}
+        </span>
       </span>
-    </th>
+    </span>
   );
 }
 
@@ -133,9 +139,22 @@ export function Score({
 }
 
 /** Points gained over the compared score. The sign carries the direction. */
-export function Gain({ points }: { points: number }) {
+export function Gain({
+  points,
+  size = "sm",
+}: {
+  points: number;
+  /** `lg` is a card's headline figure. */
+  size?: "sm" | "lg";
+}) {
   return (
-    <span className="font-mono text-mono-sm text-on-surface tabular-nums">
+    <span
+      className={
+        size === "lg"
+          ? "font-mono text-mono-lg text-on-surface tabular-nums"
+          : "font-mono text-mono-sm text-on-surface tabular-nums"
+      }
+    >
       +{points}
     </span>
   );

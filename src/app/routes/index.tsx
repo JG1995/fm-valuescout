@@ -7,17 +7,21 @@ import {
 } from "@/app/components/managed-club-setup";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { DashboardGrid } from "@/features/dashboard/components/dashboard-grid";
 import {
   type DashboardSetupNote,
   DashboardSetupNotes,
 } from "@/features/dashboard/components/dashboard-setup-notes";
 import { DevelopmentProspectsPanel } from "@/features/dashboard/components/development-prospects-panel";
 import { ExpiringContractsPanel } from "@/features/dashboard/components/expiring-contracts-panel";
+import { PortraitInitials } from "@/features/dashboard/components/portrait";
 import { SigningsWorkspace } from "@/features/dashboard/components/signings-workspace";
 import type {
   DashboardContext,
+  DashboardGraphics,
   DashboardScoreMode,
 } from "@/features/dashboard/types/dashboard";
+import { GraphicsImage } from "@/features/graphics/components/graphics-image";
 import {
   managedClubOptionsQueryOptions,
   managedClubQueryOptions,
@@ -52,6 +56,28 @@ export const Route = createFileRoute("/")({
     ]),
   component: DashboardPage,
 });
+
+// Module-level, so the panels' cards keep one graphics identity across renders.
+const dashboardGraphics: DashboardGraphics = {
+  portrait: (uid, name) => (
+    <GraphicsImage
+      kind="personPortrait"
+      uid={uid}
+      slot={{
+        alt: "",
+        className: "size-full object-contain",
+        fallback: <PortraitInitials name={name} />,
+      }}
+    />
+  ),
+  crest: (clubUid) => (
+    <GraphicsImage
+      kind="clubLogo"
+      uid={clubUid ?? 0}
+      slot={{ alt: "", className: "size-3 object-contain" }}
+    />
+  ),
+};
 
 const setupLinkClass =
   "inline-flex h-8 shrink-0 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high active:bg-surface-container-highest";
@@ -219,22 +245,31 @@ function DashboardPage() {
   }
 
   return (
-    <div className="space-y-gutter">
+    // The panels share the window's height, so the page fits one screen. A
+    // window too short for them scrolls the page rather than squeezing them.
+    <div className="flex min-h-full flex-col gap-gutter">
       {header}
       <DashboardSetupNotes notes={setupNotes(save, snapshot)} />
-      <SigningsWorkspace
-        key={`${context.saveId}:${context.contextToken}:${context.snapshotId}:${context.clubName}`}
-        context={context}
-        mode={mode}
-        onModeChange={(nextMode) =>
-          void navigate({ search: { mode: nextMode }, replace: true })
-        }
-        shortlists={shortlistOptionLabels(save.playerShortlists)}
-      />
-      <div className="grid grid-cols-2 gap-4">
-        <ExpiringContractsPanel context={context} />
-        <DevelopmentProspectsPanel context={context} />
-      </div>
+      <DashboardGrid>
+        <SigningsWorkspace
+          key={`${context.saveId}:${context.contextToken}:${context.snapshotId}:${context.clubName}`}
+          context={context}
+          mode={mode}
+          onModeChange={(nextMode) =>
+            void navigate({ search: { mode: nextMode }, replace: true })
+          }
+          shortlists={shortlistOptionLabels(save.playerShortlists)}
+          graphics={dashboardGraphics}
+        />
+        <DevelopmentProspectsPanel
+          context={context}
+          graphics={dashboardGraphics}
+        />
+        <ExpiringContractsPanel
+          context={context}
+          graphics={dashboardGraphics}
+        />
+      </DashboardGrid>
     </div>
   );
 }

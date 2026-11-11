@@ -199,9 +199,10 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
-  test("Dashboard asks for the managed club, then recommends signings", async ({
+  test("Dashboard asks for the managed club, then fits its panels on one screen", async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
     await stubTauriIpc(page, {
       moneyballSearch: true,
       plannerSnapshot: true,
@@ -224,19 +225,19 @@ test.describe("application smoke", () => {
     await expect(
       main.getByText("Managed club: Barcelona", { exact: true }),
     ).toBeVisible();
-    const signings = main.getByRole("table", {
-      name: /Shortlisted players ranked by improvement/,
-    });
-    const firstRow = signings.getByRole("row").nth(1);
-    await expect(firstRow).toContainText("Viktor Gyökeres");
-    await expect(firstRow).toContainText("Empty slot");
-    await expect(firstRow).toContainText("+87");
+    const signings = main
+      .getByRole("list", { name: "Recommended signings, best first" })
+      .getByRole("listitem");
+    await expect(signings).toHaveCount(3);
+    await expect(signings.first()).toContainText("Viktor Gyökeres");
+    await expect(signings.first()).toContainText("Fills an empty slot");
+    await expect(signings.first()).toContainText("+87");
 
     // Moneyball mode rescores the XI and the candidates together.
     await main.getByRole("button", { name: "Moneyball", exact: true }).click();
     await expect(page).toHaveURL(/\?mode=moneyball$/);
-    await expect(firstRow).toContainText("2,890 min");
-    await expect(firstRow).toContainText("+91");
+    await expect(signings.first()).toContainText("2,890 min");
+    await expect(signings.first()).toContainText("+91");
     const lineup = main.getByRole("list", {
       name: "Starting XI by tactic slot",
     });
@@ -244,14 +245,16 @@ test.describe("application smoke", () => {
       lineup.getByRole("button", { name: /Marc-André ter Stegen/ }),
     ).toContainText("78");
 
-    // A slot of the XI narrows the list to the players who would improve it.
+    // A slot of the XI narrows the cards to the players who would improve it.
     await lineup.getByRole("button", { name: /Alejandro Balde/ }).click();
     await expect(
-      main.getByText("3 shortlisted players would improve DL"),
+      main.getByText(/^3 shortlisted players would improve DL/),
     ).toBeVisible();
-    await expect(signings.getByRole("row")).toHaveCount(4);
+    await expect(signings.first()).toContainText("Alejandro Grimaldo García");
     await main.getByRole("button", { name: "Show all slots" }).click();
-    await expect(signings.getByRole("row")).toHaveCount(11);
+    await expect(
+      main.getByText(/^10 of 12 shortlisted players would improve your XI/),
+    ).toBeVisible();
 
     await expect(
       main
@@ -260,24 +263,65 @@ test.describe("application smoke", () => {
         })
         .getByRole("row", { name: /Jules Koundé/ }),
     ).toContainText("31 Dec 2026");
+    const prospects = main
+      .getByRole("list", {
+        name: "Development prospects, highest potential first",
+      })
+      .getByRole("listitem");
+    await expect(prospects).toHaveCount(3);
+    await expect(prospects.filter({ hasText: "Marc Bernal" })).toContainText(
+      "+24",
+    );
+
+    // Every panel fits a 1080p window: the page scrolls in neither direction.
+    const pageFits = () =>
+      main.evaluate((element) => {
+        const region = element as unknown as {
+          scrollWidth: number;
+          clientWidth: number;
+          scrollHeight: number;
+          clientHeight: number;
+        };
+        return (
+          region.scrollWidth <= region.clientWidth &&
+          region.scrollHeight <= region.clientHeight
+        );
+      });
+    await expect.poll(pageFits).toBe(true);
+
+    // The cards open their fuller views: one row per slot, and the youth XI.
+    await main.getByRole("button", { name: "Best per slot" }).click();
+    const slots = page.getByRole("dialog", {
+      name: "Best signing for each slot",
+    });
+    await expect(slots.getByRole("row")).toHaveCount(12);
     await expect(
-      main
-        .getByRole("table", {
-          name: "Your young players by potential score in their best tactic slot",
-        })
-        .getByRole("row", { name: /Marc Bernal/ }),
-    ).toContainText("+24");
-    await expect
-      .poll(() =>
-        main.evaluate((element) => {
-          const region = element as unknown as {
-            scrollWidth: number;
-            clientWidth: number;
-          };
-          return region.scrollWidth <= region.clientWidth;
-        }),
-      )
-      .toBe(true);
+      slots.getByRole("row").filter({ hasText: "Alejandro Balde" }),
+    ).toContainText("Alejandro Grimaldo García");
+    await expect(
+      slots.getByRole("row").filter({ hasText: "Pedri" }),
+    ).toContainText("No shortlisted player improves this slot");
+    await page.keyboard.press("Escape");
+    await expect(slots).toHaveCount(0);
+
+    await main.getByRole("button", { name: "Youth XI" }).click();
+    const youthXi = page
+      .getByRole("dialog", { name: "Youth XI" })
+      .getByRole("list", { name: "Youth XI by tactic slot" })
+      .getByRole("listitem");
+    await expect(youthXi).toHaveCount(11);
+    await expect(youthXi.filter({ hasText: "Lamine Yamal" })).toContainText(
+      "AMR/MR",
+    );
+    await expect(youthXi.filter({ hasText: "No player" })).toContainText("STC");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    // An ultrawide window shows every improving player and prospect at once.
+    await page.setViewportSize({ width: 3440, height: 1440 });
+    await expect(signings).toHaveCount(10);
+    await expect(prospects).toHaveCount(10);
+    await expect.poll(pageFits).toBe(true);
   });
 
   test("Dashboard names Load Data and Settings hosts app management", async ({

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 export type DashboardScoreMode = "general" | "moneyball";
 
 /** What a slot's score is made of in the requested mode. */
@@ -132,4 +134,15 @@ export type DashboardContext = {
   contextToken: string;
   snapshotId: number;
   clubName: string;
+};
+
+/**
+ * Player portraits and club crests. The route supplies them from the graphics
+ * feature, because features do not import each other.
+ */
+export type DashboardGraphics = {
+  /** An image that fills its slot, or the slot's fallback when there is none. */
+  portrait: (uid: number, name: string) => ReactNode;
+  /** A 12px club logo, or nothing when there is none. */
+  crest: (clubUid: number | null) => ReactNode;
 };

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CircleAlert, ListPlus, Target, UserRoundCheck } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { fieldClasses } from "@/components/ui/field/field-styles";
@@ -11,12 +11,27 @@ import { formatCount } from "@/utils/format";
 import { dashboardSigningsQueryOptions } from "../api/dashboard-query-options";
 import type {
   DashboardContext,
+  DashboardGraphics,
   DashboardScoreMode,
   DashboardSignings,
 } from "../types/dashboard";
 import { slotLabel } from "../utils/slot-label";
-import { RecommendedSigningsTable } from "./recommended-signings-table";
+import { CardGrid } from "./card-grid";
+import {
+  cardPanelSummaryClass,
+  dashboardArea,
+  dashboardPanelClass,
+  dashboardPanelContentClass,
+} from "./dashboard-grid";
+import {
+  aboveExpandClass,
+  expandablePanelClass,
+  PanelExpandButton,
+} from "./panel-expand-button";
+import { cardGridMinHeightClass, PLAYER_CARD_MIN } from "./player-card";
 import { ScoreModeToggle } from "./score-mode-toggle";
+import { SigningCard } from "./signing-card";
+import { SlotSigningsModal } from "./slot-signings-modal";
 import { StartingXiList } from "./starting-xi-list";
 
 export type DashboardShortlistOption = { id: number; label: string };
@@ -27,10 +42,14 @@ const playerSearchPath: string = "/search";
 const linkButtonClass =
   "inline-flex h-8 shrink-0 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high active:bg-surface-container-highest";
 
+// Two rows of six: the most recommendations one read returns.
+const MAX_SIGNING_COLUMNS = 6;
+
 function plural(count: number, noun: string) {
   return `${formatCount(count)} ${noun}${count === 1 ? "" : "s"}`;
 }
 
+/** How many shortlisted players would improve the XI or the selected slot. */
 function SigningsSummary({
   signings,
   selectedSlot,
@@ -42,23 +61,30 @@ function SigningsSummary({
   refreshing: boolean;
   onClearSlot: () => void;
 }) {
-  const shown = signings.recommendations.length;
   const total = signings.totalRecommendations;
   return (
-    <div className="flex min-h-8 flex-wrap items-center justify-between gap-2 px-4 pb-2">
-      <p className="text-body-sm text-on-surface-variant" role="status">
-        {selectedSlot === null
-          ? `${formatCount(total)} of ${plural(signings.shortlistedPlayers, "shortlisted player")} would improve your XI`
-          : `${plural(total, "shortlisted player")} would improve ${selectedSlot}`}
-        {total > shown ? ` · top ${shown} shown` : null}
-        {refreshing ? " · Updating…" : null}
-      </p>
+    <>
+      {selectedSlot === null
+        ? `${formatCount(total)} of ${plural(signings.shortlistedPlayers, "shortlisted player")} would improve your XI`
+        : `${plural(total, "shortlisted player")} would improve ${selectedSlot}`}
+      {total > 0 ? " · best first" : null}
       {selectedSlot === null ? null : (
-        <Button variant="ghost" onClick={onClearSlot}>
-          Show all slots
-        </Button>
+        <>
+          {" · "}
+          <button
+            type="button"
+            className={cn(
+              aboveExpandClass,
+              "cursor-pointer text-on-surface underline underline-offset-2",
+            )}
+            onClick={onClearSlot}
+          >
+            Show all slots
+          </button>
+        </>
       )}
-    </div>
+      {refreshing ? " · Updating…" : null}
+    </>
   );
 }
 
@@ -149,75 +175,98 @@ function SigningsEmptyState({
 }
 
 /**
- * The club's starting XI beside the shortlisted players who would improve it.
- * Both read one result, so the score mode always changes them together.
+ * The best recommended signings as cards, the club's starting XI they are
+ * measured against, and the per-slot view behind the cards. All three read one
+ * result, so the score mode always changes them together.
  */
 export function SigningsWorkspace({
   context,
   mode,
   onModeChange,
   shortlists,
+  graphics,
 }: {
   context: DashboardContext;
   mode: DashboardScoreMode;
   onModeChange: (mode: DashboardScoreMode) => void;
   shortlists: readonly DashboardShortlistOption[];
+  graphics: DashboardGraphics;
 }) {
   const [chosenShortlistId, setChosenShortlistId] = useState<number | null>(
     null,
   );
   const [laneId, setLaneId] = useState<string | null>(null);
+  const [slotsOpen, setSlotsOpen] = useState(false);
   // A shortlist removed elsewhere falls back to all of them.
-  const shortlistId = shortlists.some(({ id }) => id === chosenShortlistId)
-    ? chosenShortlistId
-    : null;
+  const shortlist = shortlists.find(({ id }) => id === chosenShortlistId);
+  const shortlistId = shortlist?.id ?? null;
   const query = useQuery(
     dashboardSigningsQueryOptions(context, { mode, shortlistId, laneId }),
   );
   const signings = query.data ?? null;
-  const selectedSlot = signings?.slots.find((slot) => slot.laneId === laneId);
+  const slots = useMemo(
+    () => new Map(signings?.slots.map((slot) => [slot.laneId, slot])),
+    [signings],
+  );
+  const selectedSlot = laneId === null ? undefined : slots.get(laneId);
   const selectedSlotName = selectedSlot
     ? slotLabel(selectedSlot).compact
     : null;
   const hasPlannerPicks =
     signings?.slots.some((slot) => slot.incumbent?.source === "planner") ??
     false;
+  // The per-slot view opens once any slot has a signing to show.
+  const expandable =
+    signings?.slots.some((slot) => slot.bestSigning !== null) ?? false;
 
   const controls = (
     <>
-      {shortlists.length > 0 ? (
-        <label className="flex items-center gap-2 text-body-md text-on-surface">
-          Shortlist
-          <select
-            className={cn(fieldClasses, "max-w-56")}
-            value={shortlistId ?? ""}
-            onChange={(event) =>
-              setChosenShortlistId(
-                event.target.value === "" ? null : Number(event.target.value),
-              )
-            }
-          >
-            <option value="">All shortlists</option>
-            {shortlists.map(({ id, label }) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div
+        className={cn(aboveExpandClass, "flex flex-wrap items-center gap-2")}
+      >
+        {shortlists.length > 0 ? (
+          <label className="flex items-center gap-2 text-body-md text-on-surface">
+            Shortlist
+            <select
+              className={cn(fieldClasses, "max-w-56")}
+              value={shortlistId ?? ""}
+              onChange={(event) =>
+                setChosenShortlistId(
+                  event.target.value === "" ? null : Number(event.target.value),
+                )
+              }
+            >
+              <option value="">All shortlists</option>
+              {shortlists.map(({ id, label }) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <ScoreModeToggle mode={mode} onChange={onModeChange} />
+      </div>
+      {expandable ? (
+        <PanelExpandButton onClick={() => setSlotsOpen(true)}>
+          Best per slot
+        </PanelExpandButton>
       ) : null}
-      <ScoreModeToggle mode={mode} onChange={onModeChange} />
     </>
   );
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_24rem] gap-4">
+    <>
       <Panel
         title="Recommended signings"
         flush
         actions={controls}
-        className="flex flex-col"
-        contentClassName="flex min-h-72 flex-1 flex-col"
+        className={cn(
+          dashboardArea.signings,
+          dashboardPanelClass,
+          expandablePanelClass,
+        )}
+        contentClassName={dashboardPanelContentClass}
       >
         {query.isError ? (
           <EmptyState
@@ -244,7 +293,12 @@ export function SigningsWorkspace({
             The active save has no current snapshot for your managed club.
           </EmptyState>
         ) : signings.recommendations.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center">
+          <div
+            className={cn(
+              aboveExpandClass,
+              "flex flex-1 items-center justify-center overflow-y-auto",
+            )}
+          >
             <SigningsEmptyState
               signings={signings}
               hasShortlists={shortlists.length > 0}
@@ -255,26 +309,37 @@ export function SigningsWorkspace({
           </div>
         ) : (
           <>
-            <SigningsSummary
-              signings={signings}
-              selectedSlot={selectedSlotName}
-              refreshing={query.isPlaceholderData}
-              onClearSlot={() => setLaneId(null)}
-            />
-            {/* The XI beside it sets the row's height; the list scrolls inside it. */}
-            <div className="relative flex-1 border-t border-outline-variant">
-              <div
-                className={cn(
-                  "absolute inset-0 overflow-auto",
-                  query.isPlaceholderData && "opacity-60",
-                )}
+            <p className={cardPanelSummaryClass} role="status">
+              <SigningsSummary
+                signings={signings}
+                selectedSlot={selectedSlotName}
+                refreshing={query.isPlaceholderData}
+                onClearSlot={() => setLaneId(null)}
+              />
+            </p>
+            <div
+              className={cn(
+                "flex flex-1 border-t border-outline-variant",
+                query.isPlaceholderData && "opacity-60",
+              )}
+            >
+              <CardGrid
+                label="Recommended signings, best first"
+                items={signings.recommendations}
+                min={PLAYER_CARD_MIN}
+                maxColumns={MAX_SIGNING_COLUMNS}
+                className={cardGridMinHeightClass}
+                itemKey={(recommendation) => recommendation.uid}
               >
-                <RecommendedSigningsTable
-                  signings={signings}
-                  mode={mode}
-                  showOtherSlots={laneId === null}
-                />
-              </div>
+                {(recommendation) => (
+                  <SigningCard
+                    recommendation={recommendation}
+                    slots={slots}
+                    mode={mode}
+                    graphics={graphics}
+                  />
+                )}
+              </CardGrid>
             </div>
           </>
         )}
@@ -291,6 +356,8 @@ export function SigningsWorkspace({
             Open Planner
           </Link>
         }
+        className={cn(dashboardArea.lineup, dashboardPanelClass)}
+        contentClassName={dashboardPanelContentClass}
       >
         {query.isError ? (
           <p className="p-4 text-body-md text-on-surface-variant">
@@ -312,8 +379,9 @@ export function SigningsWorkspace({
               slots={signings.slots}
               selectedLaneId={laneId}
               onSelectLane={setLaneId}
+              graphics={graphics}
             />
-            <div className="space-y-1 border-t border-outline-variant px-4 py-2 text-body-sm text-on-surface-variant">
+            <div className="shrink-0 space-y-1 border-t border-outline-variant px-4 py-2 text-body-sm text-on-surface-variant">
               <p>
                 {hasPlannerPicks
                   ? "A pin marks the Planner's first string; other slots take the best remaining fit."
@@ -336,6 +404,18 @@ export function SigningsWorkspace({
           </>
         )}
       </Panel>
-    </div>
+      {signings ? (
+        <SlotSigningsModal
+          open={slotsOpen}
+          onClose={() => setSlotsOpen(false)}
+          signings={signings}
+          mode={mode}
+          onModeChange={onModeChange}
+          shortlistLabel={shortlist?.label ?? "All shortlists"}
+          refreshing={query.isPlaceholderData}
+          graphics={graphics}
+        />
+      ) : null}
+    </>
   );
 }
