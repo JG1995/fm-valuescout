@@ -10,6 +10,8 @@ export type PlannerStringSettingInput = {
 export type PlannerTeamSettingInput = {
   team: PlannerTeam;
   displayName: string;
+  /** The oldest age the team's squads take, or null for no limit. */
+  maxAge: number | null;
   strings: PlannerStringSettingInput[];
 };
 

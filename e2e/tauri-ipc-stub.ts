@@ -388,6 +388,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         teams: ["senior", "reserves", "youth"].map((team, index) => ({
           team,
           displayName: plannerTeamNames[team],
+          maxAge: { senior: null, reserves: 23, youth: 18 }[team],
           strings: [{
             id: index + 1,
             stringOrder: 0,
@@ -399,7 +400,11 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               lastKnownName: "Potential Keeper",
               currentName: "Potential Keeper",
               state: "resolved",
+              age: 19,
+              pinned: false,
+              overAge: false,
               combinedScore: 82,
+              expectedCombinedScore: 88,
               potentialCombinedScore: 91,
             }] : [],
           }],
@@ -2239,6 +2244,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               return {
                 team: input.team,
                 displayName: input.displayName.trim(),
+                maxAge: input.maxAge ?? null,
                 strings: input.strings.map((plannerString) => {
                   if (
                     (plannerString?.id !== null &&
@@ -2286,6 +2292,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   return {
                     ...existing,
                     displayName: input.displayName,
+                    maxAge: input.maxAge,
                     strings: input.strings.map((plannerString, stringOrder) => {
                       if (plannerString.id === null) {
                         return {
@@ -2312,19 +2319,155 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 return {
                       team,
                       displayName: input.displayName,
+                      maxAge: input.maxAge,
                       strings: [{ id: nextStringId++, stringOrder: 0, displayName: ordinalStringLabel(0), assignments: [] }],
                     };
               });
             return plannerDepth;
           }
 
-          if (cmd === "optimize_planner_depth") {
-            if (
-              args?.scoreBasis !== "current" &&
-              args?.scoreBasis !== "potential"
-            ) {
-              throw new Error("Optimizer requires a valid score basis");
+          if (cmd === "get_planner_unassigned_players") {
+            const placed = new Set(
+              plannerDepth.teams.flatMap((team) =>
+                team.strings.flatMap((plannerString) =>
+                  plannerString.assignments.map(
+                    (assignment) => assignment.playerUid,
+                  ),
+                ),
+              ),
+            );
+            // [uid, name, age, lane, current, expected].
+            return [
+              [501, "Senior Keeper", 29, "goalkeeper", 78, 78],
+              [503, "Left-Footed Keeper", 24, "goalkeeper", 70, 73],
+              [502, "Young Keeper", 17, "goalkeeper", 61, 80],
+              [504, "Surplus Player", 31, null, null, null],
+            ]
+              .filter((player) => !placed.has(player[0]))
+              .map((player) => ({
+                playerUid: player[0],
+                name: player[1],
+                age: player[2],
+                laneId: player[3],
+                currentScore: player[4],
+                expectedScore: player[5],
+              }));
+          }
+
+          if (cmd === "get_planner_slot_candidates") {
+            const team = plannerDepth.teams.find(
+              (candidate) => candidate.team === args?.team,
+            );
+            if (!team) {
+              throw new Error("Planner team not found");
             }
+            const search = String(args?.search ?? "").toLowerCase();
+            // [uid, name, age, current, expected, position fit, foot fit].
+            return [
+              [77, "Potential Keeper", 19, 82, 88, "suited", "matches"],
+              [501, "Senior Keeper", 29, 78, 78, "suited", "matches"],
+              [502, "Young Keeper", 17, 61, 80, "unfamiliar", "matches"],
+              [503, "Left-Footed Keeper", 24, 70, 73, "suited", "mismatch"],
+            ]
+              .filter((candidate) => candidate[1].toLowerCase().includes(search))
+              .map((candidate) => {
+                const location = plannerDepth.teams
+                  .flatMap((placedTeam) =>
+                    placedTeam.strings.flatMap((plannerString) =>
+                      plannerString.assignments.map((assignment) => ({
+                        playerUid: assignment.playerUid,
+                        team: placedTeam.team,
+                        stringId: plannerString.id,
+                        stringOrder: plannerString.stringOrder,
+                        laneId: assignment.laneId,
+                      })),
+                    ),
+                  )
+                  .find((placed) => placed.playerUid === candidate[0]);
+                return {
+                  playerUid: candidate[0],
+                  name: candidate[1],
+                  currentClub: "Barcelona",
+                  age: candidate[2],
+                  overAge: team.maxAge !== null && candidate[2] > team.maxAge,
+                  ipScore: candidate[3],
+                  oopScore: candidate[3],
+                  combinedScore: candidate[3],
+                  expectedCombinedScore: candidate[4],
+                  positionFit: candidate[5],
+                  footFit: candidate[6],
+                  assignmentLocation: location
+                    ? {
+                        team: location.team,
+                        stringId: location.stringId,
+                        stringOrder: location.stringOrder,
+                        laneId: location.laneId,
+                      }
+                    : null,
+                };
+              });
+          }
+
+          if (
+            cmd === "assign_planner_player" ||
+            cmd === "move_planner_player" ||
+            cmd === "clear_planner_assignment" ||
+            cmd === "set_planner_assignment_pinned"
+          ) {
+            const strings = plannerDepth.teams.flatMap((team) => team.strings);
+            const target = strings.find(
+              (plannerString) => plannerString.id === args?.stringId,
+            );
+            if (!target) {
+              throw new Error("Planner string not found");
+            }
+            if (cmd === "set_planner_assignment_pinned") {
+              const assignment = target.assignments.find(
+                (candidate) => candidate.laneId === args?.laneId,
+              );
+              if (!assignment) {
+                throw new Error("Planner cell is empty");
+              }
+              assignment.pinned = args?.pinned === true;
+              return plannerDepth;
+            }
+            const names = {
+              77: "Potential Keeper",
+              501: "Senior Keeper",
+              502: "Young Keeper",
+              503: "Left-Footed Keeper",
+            };
+            // A pick leaves his old cell and replaces the target's player.
+            for (const plannerString of strings) {
+              plannerString.assignments = plannerString.assignments.filter(
+                (assignment) =>
+                  assignment.playerUid !== args?.playerUid &&
+                  !(
+                    plannerString === target &&
+                    assignment.laneId === args?.laneId
+                  ),
+              );
+            }
+            if (cmd !== "clear_planner_assignment") {
+              target.assignments.push({
+                id: 1000 + args.playerUid,
+                laneId: args.laneId,
+                playerUid: args.playerUid,
+                lastKnownName: names[args.playerUid],
+                currentName: names[args.playerUid],
+                state: "resolved",
+                age: 24,
+                pinned: true,
+                overAge: false,
+                combinedScore: 70,
+                expectedCombinedScore: 73,
+                potentialCombinedScore: 76,
+              });
+            }
+            return plannerDepth;
+          }
+
+          if (cmd === "optimize_planner_depth") {
             const reserves = plannerDepth.teams.find(
               (team) => team.team === "reserves",
             );
@@ -2339,7 +2482,11 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 lastKnownName: "Optimized Keeper",
                 currentName: "Optimized Keeper",
                 state: "resolved",
+                age: 19,
+                pinned: false,
+                overAge: false,
                 combinedScore: 82,
+                expectedCombinedScore: 88,
                 potentialCombinedScore: 91,
               },
             ];

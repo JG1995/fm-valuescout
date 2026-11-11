@@ -62,6 +62,9 @@ function YouthXiMarker({
   );
 }
 
+/** The oldest player Rust counts as young. */
+export const YOUTH_MAX_AGE = 21;
+
 /**
  * The club's young players in the tactic's shape, each slot taking the player
  * the potential scores allocate to it. The team attacks toward the right.
@@ -70,13 +73,11 @@ export function YouthXiModal({
   open,
   onClose,
   slots,
-  maxAge,
   graphics,
 }: {
   open: boolean;
   onClose: () => void;
   slots: readonly DashboardYouthXiSlot[];
-  maxAge: number;
   graphics: DashboardGraphics;
 }) {
   return (
@@ -88,7 +89,7 @@ export function YouthXiModal({
       className="max-w-[72rem]!"
     >
       <p className="pb-3 text-body-md text-on-surface-variant">
-        Your players aged {maxAge} or younger in your tactic, placed by
+        Your players aged {YOUTH_MAX_AGE} or younger in your tactic, placed by
         potential score. Each shows the score now and the potential.
       </p>
       <div className="relative h-[34rem] overflow-hidden rounded-lg bg-surface-container">

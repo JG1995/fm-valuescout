@@ -5,6 +5,7 @@ import type {
 import type {
   PlannerDepth,
   PlannerSlotCandidate,
+  PlannerUnassignedPlayer,
 } from "@/features/planner/types/depth";
 import type {
   PlannerRoleReference,
@@ -16,7 +17,11 @@ import type {
   TacticOptions,
   TacticRoleOption,
 } from "@/features/planner/types/tactic";
-import { PLANNER_TEAMS, type PlannerTeam } from "@/features/planner/types/team";
+import {
+  PLANNER_TEAM_DEFAULT_MAX_AGE,
+  PLANNER_TEAMS,
+  type PlannerTeam,
+} from "@/features/planner/types/team";
 import type { PlannerTeamRemovalImpact } from "@/features/planner/types/team-removal-impact";
 import { resolveListSavesIpcMock } from "@/testing/snapshot-ipc-mock";
 
@@ -297,6 +302,7 @@ let roleReferenceCalls: Array<{
 let depthFetchCount = 0;
 let tacticSaveError: string | null = null;
 let slotCandidates: PlannerSlotCandidate[] = [];
+let unassignedPlayers: PlannerUnassignedPlayer[] = [];
 let assignmentError: string | null = null;
 let clearAllError: string | null = null;
 let clearAllPending = false;
@@ -306,26 +312,24 @@ let optimizeDepth: PlannerDepth | null = null;
 let optimizeError: string | null = null;
 let optimizePending = false;
 let optimizeCalls = 0;
-let optimizeBases: string[] = [];
 let teamSaveError: string | null = null;
 let teamSavePending = false;
 let teamRemovalImpactOverride: PlannerTeamRemovalImpact[] | null = null;
 let teamRemovalImpactPending = false;
 let pendingTeamRemovalImpact: (() => void) | null = null;
+type TeamSaveInput = {
+  team: PlannerTeam;
+  displayName: string;
+  maxAge: number | null;
+  strings: Array<{ id: number | null; displayName: string }>;
+};
+
 let teamSaveCalls: Array<{
-  teams: Array<{
-    team: PlannerTeam;
-    displayName: string;
-    strings: Array<{ id: number | null; displayName: string }>;
-  }>;
+  teams: TeamSaveInput[];
   confirmPopulatedRemoval: boolean;
 }> = [];
 let pendingPlannerTeamSave: {
-  teams: Array<{
-    team: PlannerTeam;
-    displayName: string;
-    strings: Array<{ id: number | null; displayName: string }>;
-  }>;
+  teams: TeamSaveInput[];
   confirmPopulatedRemoval: boolean;
   resolve: (depth: PlannerDepth) => void;
 } | null = null;
@@ -360,6 +364,7 @@ function cloneDepth(value: PlannerDepth): PlannerDepth {
     teams: value.teams.map((team) => ({
       team: team.team,
       displayName: team.displayName,
+      maxAge: team.maxAge,
       strings: team.strings.map((plannerString) => ({
         id: plannerString.id,
         stringOrder: plannerString.stringOrder,
@@ -422,6 +427,7 @@ function buildDefaultDepth(): PlannerDepth {
     teams: ["senior", "reserves", "youth"].map((team, index) => ({
       team: team as PlannerDepth["teams"][number]["team"],
       displayName: displayNames[team as keyof typeof displayNames],
+      maxAge: PLANNER_TEAM_DEFAULT_MAX_AGE[team as PlannerTeam],
       strings: [
         {
           id: index + 1,
@@ -492,6 +498,7 @@ export function resetPlannerIpcMock() {
   depthFetchCount = 0;
   tacticSaveError = null;
   slotCandidates = [];
+  unassignedPlayers = [];
   assignmentError = null;
   clearAllError = null;
   clearAllPending = false;
@@ -501,7 +508,6 @@ export function resetPlannerIpcMock() {
   optimizeError = null;
   optimizePending = false;
   optimizeCalls = 0;
-  optimizeBases = [];
   teamSaveError = null;
   teamSavePending = false;
   pendingPlannerTeamSave = null;
@@ -738,10 +744,6 @@ export function getPlannerOptimizeIpcMockCalls() {
   return optimizeCalls;
 }
 
-export function getPlannerOptimizeIpcMockBases() {
-  return [...optimizeBases];
-}
-
 export function resolvePlannerSlotCandidatesIpcMock(args: unknown) {
   slotCandidateFetchCount += 1;
   const search =
@@ -836,9 +838,6 @@ function resolvePlannerAssignmentIpcMock(args: unknown, move: boolean) {
   if (!target) {
     throw new Error("Planner string not found");
   }
-  if (target.assignments.some((assignment) => assignment.laneId === laneId)) {
-    throw new Error("Planner cell is already occupied");
-  }
   const existing = depth.teams
     .flatMap((team) => team.strings)
     .flatMap((plannerString) => plannerString.assignments)
@@ -861,6 +860,10 @@ function resolvePlannerAssignmentIpcMock(args: unknown, move: boolean) {
   const candidate = slotCandidates.find(
     (slotCandidate) => slotCandidate.playerUid === playerUid,
   );
+  // The cell's player, if any, is left unassigned.
+  target.assignments = target.assignments.filter(
+    (assignment) => assignment.laneId !== laneId,
+  );
   target.assignments.push({
     id: -playerUid,
     laneId,
@@ -868,7 +871,11 @@ function resolvePlannerAssignmentIpcMock(args: unknown, move: boolean) {
     lastKnownName: candidate?.name ?? `Player ${playerUid}`,
     currentName: candidate?.name ?? `Player ${playerUid}`,
     state: "resolved",
+    age: null,
+    pinned: true,
+    overAge: false,
     combinedScore: candidate?.combinedScore ?? null,
+    expectedCombinedScore: null,
     potentialCombinedScore: null,
   });
   return cloneDepth(depth);
@@ -896,6 +903,38 @@ export function resolveClearPlannerAssignmentIpcMock(args: unknown) {
   target.assignments = target.assignments.filter(
     (assignment) => assignment.laneId !== laneId,
   );
+  return cloneDepth(depth);
+}
+
+export function setPlannerUnassignedPlayersIpcMock(
+  players: PlannerUnassignedPlayer[],
+) {
+  unassignedPlayers = players.map((player) => ({ ...player }));
+}
+
+export function resolvePlannerUnassignedPlayersIpcMock() {
+  return unassignedPlayers.map((player) => ({ ...player }));
+}
+
+export function resolveSetPlannerAssignmentPinnedIpcMock(args: unknown) {
+  if (assignmentError) {
+    throw assignmentError;
+  }
+  const { stringId, laneId } = plannerSlotArgs(args);
+  const assignment = depth.teams
+    .flatMap((team) => team.strings)
+    .find((plannerString) => plannerString.id === stringId)
+    ?.assignments.find((candidate) => candidate.laneId === laneId);
+  if (
+    !assignment ||
+    typeof args !== "object" ||
+    args === null ||
+    !("pinned" in args) ||
+    typeof args.pinned !== "boolean"
+  ) {
+    throw new Error("Planner cell is empty");
+  }
+  assignment.pinned = args.pinned;
   return cloneDepth(depth);
 }
 
@@ -928,17 +967,8 @@ export function resolveClearPlannerDepthIpcMock(args: unknown) {
   return cloneDepth(depth);
 }
 
-export function resolveOptimizePlannerDepthIpcMock(args: unknown) {
+export function resolveOptimizePlannerDepthIpcMock() {
   optimizeCalls += 1;
-  if (
-    typeof args !== "object" ||
-    args === null ||
-    !("scoreBasis" in args) ||
-    (args.scoreBasis !== "current" && args.scoreBasis !== "potential")
-  ) {
-    throw new Error("Optimizer requires a valid score basis");
-  }
-  optimizeBases.push(args.scoreBasis);
   if (optimizeError) {
     throw optimizeError;
   }
@@ -1052,6 +1082,7 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
   const teams = args.teams as Array<{
     team: unknown;
     displayName: unknown;
+    maxAge: unknown;
     strings: unknown;
   }>;
   if (teams.length < 1 || teams.length > PLANNER_TEAMS.length) {
@@ -1062,6 +1093,7 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
       typeof team.team !== "string" ||
       !PLANNER_TEAMS.includes(team.team as PlannerTeam) ||
       typeof team.displayName !== "string" ||
+      (team.maxAge !== null && typeof team.maxAge !== "number") ||
       !Array.isArray(team.strings)
     ) {
       throw new Error("Invalid planner team settings");
@@ -1069,6 +1101,7 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
     return {
       team: team.team as PlannerTeam,
       displayName: team.displayName.trim(),
+      maxAge: team.maxAge as number | null,
       strings: (
         team.strings as Array<{ id?: unknown; displayName?: unknown }>
       ).map((plannerString) => {
@@ -1117,11 +1150,7 @@ export function resolvePendingPlannerTeamSaveIpcMock() {
 }
 
 function applyPlannerTeamSave(
-  inputs: Array<{
-    team: PlannerTeam;
-    displayName: string;
-    strings: Array<{ id: number | null; displayName: string }>;
-  }>,
+  inputs: TeamSaveInput[],
   confirmPopulatedRemoval: boolean,
 ) {
   const removedPopulatedTeams = depth.teams.filter(
@@ -1154,6 +1183,7 @@ function applyPlannerTeamSave(
       return {
         ...current,
         displayName: input?.displayName ?? current.displayName,
+        maxAge: input ? input.maxAge : current.maxAge,
         strings: inputStrings.map((plannerString, index) => {
           if (plannerString.id !== null) {
             const existing = current.strings.find(
@@ -1179,7 +1209,7 @@ function applyPlannerTeamSave(
           return {
             id: nextStringId++,
             stringOrder: index,
-            displayName: plannerString.displayName,
+            displayName: plannerString.displayName || ordinalStringLabel(index),
             assignments: [],
           };
         }),
@@ -1188,6 +1218,7 @@ function applyPlannerTeamSave(
     return {
       team,
       displayName: input?.displayName ?? team,
+      maxAge: input?.maxAge ?? null,
       strings:
         inputStrings.length > 0
           ? inputStrings.map((plannerString, index) => ({

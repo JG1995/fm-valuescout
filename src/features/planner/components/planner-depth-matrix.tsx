@@ -1,28 +1,44 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { Maximize2 } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
 import { clearPlannerDepth } from "../api/clear-planner-depth";
-import {
-  optimizePlannerDepth,
-  type PlannerScoreBasis,
-} from "../api/optimize-planner-depth";
+import { optimizePlannerDepth } from "../api/optimize-planner-depth";
 import { plannerKeys } from "../api/planner-keys";
+import {
+  type PlannerStringSettingInput,
+  type PlannerTeamSettingInput,
+  savePlannerTeams,
+} from "../api/save-planner-teams";
 import type { PlannerDepth } from "../types/depth";
 import type { TacticOptions } from "../types/tactic";
 import type { PlannerTeam } from "../types/team";
+import { teamSettingInputs } from "../utils/team-settings";
 import { PlannerClearAllControl } from "./planner-clear-all-control";
-import { PlannerOptimizerControls } from "./planner-optimizer-controls";
 import { PlannerRoleReferenceModal } from "./planner-role-reference-modal";
 import {
   PlannerSlotFitPicker,
   type PlannerSlotTarget,
 } from "./planner-slot-fit-picker";
 import { PlannerSquadBoard } from "./planner-squad-board";
+import { PlannerStringEditor } from "./planner-string-editor";
 import { PlannerTeamManagement } from "./planner-team-management";
+import { PlannerUnassignedPlayers } from "./planner-unassigned-players";
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Separates the squad controls that change the board, open a view, and set it up. */
+function ControlDivider() {
+  return (
+    <span
+      aria-hidden="true"
+      className="mx-1 h-5 w-px shrink-0 bg-outline-variant"
+    />
+  );
 }
 
 export function PlannerDepthMatrix({
@@ -30,11 +46,14 @@ export function PlannerDepthMatrix({
   tactic,
   options,
   activeSaveId,
+  actions,
 }: {
   depth: PlannerDepth;
   tactic: PlannerDepth["tactic"];
   options: TacticOptions;
   activeSaveId: number;
+  /** Further read-only views the page adds beside Best role fit. */
+  actions?: ReactNode;
 }) {
   const [picker, setPicker] = useState<PlannerSlotTarget | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -47,6 +66,11 @@ export function PlannerDepthMatrix({
   const [roleReferenceOpen, setRoleReferenceOpen] = useState(false);
   const [roleReferenceReturnFocus, setRoleReferenceReturnFocus] =
     useState<HTMLElement | null>(null);
+  const [editedString, setEditedString] = useState<{
+    team: PlannerTeam;
+    stringId: number;
+  } | null>(null);
+  const [stringError, setStringError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const closeTimerRef = useRef<number | null>(null);
   const teamFocusTimerRef = useRef<number | null>(null);
@@ -109,26 +133,70 @@ export function PlannerDepthMatrix({
 
   const optimize = useMutation({
     mutationFn: optimizePlannerDepth,
-    onSuccess: async (nextDepth, scoreBasis) => {
+    onSuccess: async (nextDepth) => {
       queryClient.setQueryData(plannerKeys.depth(), nextDepth);
       await queryClient.invalidateQueries({
         queryKey: plannerKeys.slotCandidates(),
       });
       setOptimizeError(null);
-      setActionStatus(
-        scoreBasis === "potential"
-          ? "Squads optimized by potential."
-          : "Squads optimized by current scores.",
-      );
+      setActionStatus("Squads optimized.");
     },
-    onError: (error, scoreBasis) => {
-      setOptimizeError(
-        `${scoreBasis === "potential" ? "Potential" : "Current"} optimization failed: ${errorMessage(error)}`,
-      );
+    onError: (error) => {
+      setOptimizeError(`Optimization failed: ${errorMessage(error)}`);
     },
   });
 
-  const optimizePendingBasis = optimize.isPending ? optimize.variables : null;
+  const saveStrings = useMutation({
+    mutationKey: playerResultContextMutationKey,
+    mutationFn: (request: {
+      teams: PlannerTeamSettingInput[];
+      confirmPopulatedRemoval: boolean;
+      status: string;
+    }) => savePlannerTeams(request.teams, request.confirmPopulatedRemoval),
+    onSuccess: async (nextDepth, request) => {
+      queryClient.setQueryData(plannerKeys.depth(), nextDepth);
+      await queryClient.invalidateQueries({
+        queryKey: plannerKeys.slotCandidates(),
+      });
+      setEditedString(null);
+      setActionStatus(request.status);
+    },
+    onError: (error) => {
+      setStringError(errorMessage(error));
+    },
+  });
+  const controlsBusy =
+    clearAll.isPending ||
+    optimize.isPending ||
+    teamManagementPending ||
+    saveStrings.isPending;
+
+  /** Saves one team's new string list, leaving every other team as it is. */
+  const saveTeamStrings = (
+    team: PlannerTeam,
+    strings: PlannerStringSettingInput[],
+    confirmPopulatedRemoval: boolean,
+    status: string,
+  ) => {
+    if (controlsBusy) {
+      return;
+    }
+    setStringError(null);
+    setActionStatus(null);
+    saveStrings.mutate({
+      teams: teamSettingInputs(depth).map((input) =>
+        input.team === team ? { ...input, strings } : input,
+      ),
+      confirmPopulatedRemoval,
+      status,
+    });
+  };
+  const editedTeam = depth.teams.find(
+    (team) => team.team === editedString?.team,
+  );
+  const editedPlannerString = editedTeam?.strings.find(
+    (plannerString) => plannerString.id === editedString?.stringId,
+  );
 
   const requestClearAll = () => {
     if (clearAll.isPending || optimize.isPending || teamManagementPending) {
@@ -139,13 +207,13 @@ export function PlannerDepthMatrix({
     setClearAllOpen(true);
   };
 
-  const runOptimization = (scoreBasis: PlannerScoreBasis) => {
+  const runOptimization = () => {
     if (clearAll.isPending || optimize.isPending || teamManagementPending) {
       return;
     }
     setOptimizeError(null);
     setActionStatus(null);
-    optimize.mutate(scoreBasis);
+    optimize.mutate();
   };
 
   const closeClearAll = () => {
@@ -197,9 +265,23 @@ export function PlannerDepthMatrix({
           aria-label="Squad controls"
           className="m-0 flex min-w-0 flex-wrap items-center justify-between gap-2 border-0 p-0"
         >
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              disabled={
+                clearAll.isPending ||
+                optimize.isPending ||
+                teamManagementPending
+              }
+              loading={optimize.isPending}
+              loadingLabel="Optimizing…"
+              onClick={runOptimization}
+            >
+              Optimize squads
+            </Button>
+            <ControlDivider />
             <Button
               variant="secondary"
+              icon={Maximize2}
               onClick={(event) => {
                 setRoleReferenceReturnFocus(event.currentTarget);
                 setRoleReferenceOpen(true);
@@ -208,15 +290,13 @@ export function PlannerDepthMatrix({
             >
               Best role fit
             </Button>
-            <PlannerOptimizerControls
-              pendingBasis={optimizePendingBasis}
-              disabled={
-                clearAll.isPending ||
-                optimize.isPending ||
-                teamManagementPending
-              }
-              onOptimize={runOptimization}
+            {actions}
+            <PlannerUnassignedPlayers
+              activeSaveId={activeSaveId}
+              tactic={tactic}
+              options={options}
             />
+            <ControlDivider />
             <PlannerTeamManagement
               depth={depth}
               disabled={
@@ -267,11 +347,33 @@ export function PlannerDepthMatrix({
             {optimizeError}
           </p>
         ) : null}
+        {stringError && !editedString ? (
+          <p className="text-body-sm text-error" role="alert">
+            {stringError}
+          </p>
+        ) : null}
         <PlannerSquadBoard
           teamDepths={orderedTeamDepths}
           tactic={tactic}
           options={options}
+          stringsDisabled={controlsBusy}
           onOpen={openPicker}
+          onAddString={(team) => {
+            const strings =
+              teamSettingInputs(depth).find((input) => input.team === team)
+                ?.strings ?? [];
+            // Rust names a blank new string after its place in the team.
+            saveTeamStrings(
+              team,
+              [...strings, { id: null, displayName: "" }],
+              false,
+              "String added.",
+            );
+          }}
+          onEditString={(team, plannerString) => {
+            setStringError(null);
+            setEditedString({ team, stringId: plannerString.id });
+          }}
         />
       </div>
       {picker ? (
@@ -284,6 +386,26 @@ export function PlannerDepthMatrix({
           teamLabels={teamLabels}
           onClose={closePicker}
           onMutationError={setPickerError}
+        />
+      ) : null}
+      {editedTeam && editedPlannerString ? (
+        <PlannerStringEditor
+          open
+          team={editedTeam}
+          plannerString={editedPlannerString}
+          pending={saveStrings.isPending}
+          error={stringError}
+          onClose={() => setEditedString(null)}
+          onSave={(strings, confirmPopulatedRemoval) =>
+            saveTeamStrings(
+              editedTeam.team,
+              strings,
+              confirmPopulatedRemoval,
+              strings.length < editedTeam.strings.length
+                ? "String removed."
+                : "String saved.",
+            )
+          }
         />
       ) : null}
       <PlannerRoleReferenceModal

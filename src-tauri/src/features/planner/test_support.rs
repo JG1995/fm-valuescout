@@ -196,6 +196,23 @@ pub(super) fn set_player_attributes(
     .expect("set player attributes");
 }
 
+pub(super) fn set_player_personality(
+    conn: &Connection,
+    save_id: i64,
+    player_uid: i64,
+    personality_json: &str,
+) {
+    conn.execute(
+        "UPDATE players SET personality_json = ?1 WHERE snapshot_id = ?2 AND uid = ?3",
+        params![
+            personality_json,
+            current_snapshot_id(conn, save_id),
+            player_uid
+        ],
+    )
+    .expect("set player personality");
+}
+
 pub(super) fn set_player_preferred_foot(
     conn: &Connection,
     save_id: i64,

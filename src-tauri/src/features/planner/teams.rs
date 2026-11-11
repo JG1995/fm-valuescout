@@ -8,6 +8,10 @@ use super::depth::{ordinal_label, preflight_depth_snapshot, PlannerTeam};
 
 pub(super) const MAX_DISPLAY_NAME_LEN: usize = 40;
 
+/// The lowest and highest age limit a team may set.
+const MIN_MAX_AGE: i64 = 14;
+const MAX_MAX_AGE: i64 = 45;
+
 const REORDER_TEMP_BASE: i64 = 1_000_000;
 
 const DEFAULT_TEAM_NAMES: [(PlannerTeam, &str); 3] = [
@@ -20,6 +24,28 @@ const DEFAULT_TEAM_NAMES: [(PlannerTeam, &str); 3] = [
 pub(crate) struct PlannerTeamSetting {
     pub(super) team: PlannerTeam,
     pub(super) display_name: String,
+    /// The oldest age the team's squads take, or `None` for no limit.
+    pub(super) max_age: Option<i64>,
+}
+
+impl PlannerTeamSetting {
+    /// Whether a player of this age may play for the team. An unknown age fits only a team
+    /// without a limit.
+    pub(super) fn takes_age(&self, age: Option<i64>) -> bool {
+        match self.max_age {
+            None => true,
+            Some(max_age) => age.is_some_and(|age| age <= max_age),
+        }
+    }
+}
+
+/// The age limit a team starts with: the usual under-23 and under-18 squads.
+pub(super) fn default_max_age(team: PlannerTeam) -> Option<i64> {
+    match team {
+        PlannerTeam::Senior => None,
+        PlannerTeam::Reserves => Some(23),
+        PlannerTeam::Youth => Some(18),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +58,7 @@ pub(super) struct PlannerStringInput {
 pub(super) struct PlannerTeamInput {
     pub(super) team: String,
     pub(super) display_name: String,
+    pub(super) max_age: Option<i64>,
     pub(super) strings: Vec<PlannerStringInput>,
 }
 
@@ -45,6 +72,7 @@ struct NormalizedStringSetting {
 struct NormalizedTeamSetting {
     team: PlannerTeam,
     display_name: String,
+    max_age: Option<i64>,
     strings: Vec<NormalizedStringSetting>,
 }
 
@@ -305,9 +333,9 @@ pub(super) fn save_team_settings(
     for item in &desired {
         let was_available = current.iter().any(|setting| setting.team == item.team);
         tx.execute(
-            "INSERT INTO planner_teams (save_id, team, display_name)
-             VALUES (?1, ?2, ?3)",
-            params![save_id, item.team.as_str(), item.display_name],
+            "INSERT INTO planner_teams (save_id, team, display_name, max_age)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![save_id, item.team.as_str(), item.display_name, item.max_age],
         )
         .map_err(|error| error.to_string())?;
         if !was_available {
@@ -348,7 +376,7 @@ fn load_team_settings_from_query(
 ) -> Result<Vec<PlannerTeamSetting>, String> {
     let mut statement = conn
         .prepare(
-            "SELECT team, display_name
+            "SELECT team, display_name, max_age
              FROM planner_teams
              WHERE save_id = ?1
              ORDER BY CASE team
@@ -360,14 +388,19 @@ fn load_team_settings_from_query(
         .map_err(|error| error.to_string())?;
     let settings = statement
         .query_map(params![save_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+            ))
         })
         .map_err(|error| error.to_string())?
         .map(|row| {
-            let (team, display_name) = row.map_err(|error| error.to_string())?;
+            let (team, display_name, max_age) = row.map_err(|error| error.to_string())?;
             Ok(PlannerTeamSetting {
                 team: PlannerTeam::parse(&team)?,
                 display_name,
+                max_age,
             })
         })
         .collect::<Result<Vec<_>, String>>();
@@ -391,9 +424,9 @@ fn ensure_team_rows(tx: &Transaction<'_>, save_id: i64) -> Result<(), String> {
     }
     for (team, display_name) in DEFAULT_TEAM_NAMES {
         tx.execute(
-            "INSERT INTO planner_teams (save_id, team, display_name)
-             VALUES (?1, ?2, ?3)",
-            params![save_id, team.as_str(), display_name],
+            "INSERT INTO planner_teams (save_id, team, display_name, max_age)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![save_id, team.as_str(), display_name, default_max_age(team)],
         )
         .map_err(|error| error.to_string())?;
     }
@@ -431,9 +464,21 @@ fn normalize_inputs(inputs: &[PlannerTeamInput]) -> Result<Vec<NormalizedTeamSet
         if !seen_names.insert(display_name.to_lowercase()) {
             return Err("Planner team display names must be unique".to_string());
         }
+        if team == PlannerTeam::Senior && input.max_age.is_some() {
+            return Err("The senior team has no age limit".to_string());
+        }
+        if input
+            .max_age
+            .is_some_and(|max_age| !(MIN_MAX_AGE..=MAX_MAX_AGE).contains(&max_age))
+        {
+            return Err(format!(
+                "Planner team age limit must be between {MIN_MAX_AGE} and {MAX_MAX_AGE}"
+            ));
+        }
         normalized.push(NormalizedTeamSetting {
             team,
             display_name: display_name.to_string(),
+            max_age: input.max_age,
             strings: normalize_string_inputs(team, &input.strings)?,
         });
     }

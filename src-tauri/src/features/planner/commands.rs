@@ -297,7 +297,11 @@ pub struct PlannerAssignmentDto {
     pub last_known_name: String,
     pub current_name: Option<String>,
     pub state: String,
+    pub age: Option<i64>,
+    pub pinned: bool,
+    pub over_age: bool,
     pub combined_score: Option<u8>,
+    pub expected_combined_score: Option<u8>,
     pub potential_combined_score: Option<u8>,
 }
 
@@ -310,7 +314,11 @@ impl From<PlannerAssignment> for PlannerAssignmentDto {
             last_known_name: assignment.last_known_name,
             current_name: assignment.current_name,
             state: assignment.state.as_str().to_string(),
+            age: assignment.age,
+            pinned: assignment.pinned,
+            over_age: assignment.over_age,
             combined_score: assignment.combined_score,
+            expected_combined_score: assignment.expected_combined_score,
             potential_combined_score: assignment.potential_combined_score,
         }
     }
@@ -342,9 +350,14 @@ pub struct PlannerSlotCandidateDto {
     pub player_uid: i64,
     pub name: String,
     pub current_club: String,
+    pub age: Option<i64>,
+    pub over_age: bool,
     pub ip_score: Option<u8>,
     pub oop_score: Option<u8>,
     pub combined_score: Option<u8>,
+    pub expected_combined_score: Option<u8>,
+    pub position_fit: &'static str,
+    pub foot_fit: &'static str,
     pub assignment_location: Option<PlannerAssignmentLocationDto>,
 }
 
@@ -354,9 +367,14 @@ impl From<PlannerSlotCandidate> for PlannerSlotCandidateDto {
             player_uid: candidate.player_uid,
             name: candidate.name,
             current_club: candidate.current_club,
+            age: candidate.age,
+            over_age: candidate.over_age,
             ip_score: candidate.ip_score,
             oop_score: candidate.oop_score,
             combined_score: candidate.combined_score,
+            expected_combined_score: candidate.expected_combined_score,
+            position_fit: candidate.position_fit.as_str(),
+            foot_fit: candidate.foot_fit.as_str(),
             assignment_location: candidate
                 .assignment_location
                 .map(PlannerAssignmentLocationDto::from),
@@ -393,6 +411,7 @@ impl From<PlannerString> for PlannerStringDto {
 pub struct PlannerDepthTeamDto {
     pub team: String,
     pub display_name: String,
+    pub max_age: Option<i64>,
     pub strings: Vec<PlannerStringDto>,
 }
 
@@ -401,6 +420,7 @@ impl From<PlannerDepthTeam> for PlannerDepthTeamDto {
         Self {
             team: team.team.as_str().to_string(),
             display_name: team.display_name,
+            max_age: team.max_age,
             strings: team
                 .strings
                 .into_iter()
@@ -675,6 +695,7 @@ impl From<PlannerStringInputDto> for PlannerStringInput {
 pub struct PlannerTeamInputDto {
     pub team: String,
     pub display_name: String,
+    pub max_age: Option<i64>,
     pub strings: Vec<PlannerStringInputDto>,
 }
 
@@ -683,6 +704,7 @@ impl From<PlannerTeamInputDto> for PlannerTeamInput {
         Self {
             team: input.team,
             display_name: input.display_name,
+            max_age: input.max_age,
             strings: input
                 .strings
                 .into_iter()
@@ -808,18 +830,14 @@ pub async fn save_planner_teams(
 }
 
 #[tauri::command]
-pub async fn optimize_planner_depth(
-    score_basis: String,
-    db: State<'_, Db>,
-) -> Result<PlannerDepthDto, String> {
+pub async fn optimize_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
     let db = db.inner().clone();
     blocking::run(move || {
-        let score_basis = optimizer::ScoreBasis::parse(&score_basis)?;
         let conn =
             db.0.lock()
                 .map_err(|_| "database lock poisoned".to_string())?;
         let save_id = service::active_save_id(&conn)?;
-        Ok(optimizer::optimize_depth_with_basis(&conn, save_id, score_basis)?.into())
+        Ok(optimizer::optimize_depth(&conn, save_id)?.into())
     })
     .await
 }
@@ -889,6 +907,74 @@ pub async fn clear_planner_assignment(
         let save_id = service::active_save_id(&conn)?;
         let (_, snapshot_id) =
             depth_service::clear_assignment(&conn, save_id, string_id, &lane_id)?;
+        Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
+    })
+    .await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerUnassignedPlayerDto {
+    pub player_uid: i64,
+    pub name: String,
+    pub age: Option<i64>,
+    /// The tactic lane the player fits best now; absent when he suits none.
+    pub lane_id: Option<String>,
+    pub current_score: Option<u8>,
+    pub expected_score: Option<u8>,
+}
+
+/// The managed club's players in no squad, best current fit first.
+#[tauri::command]
+pub async fn get_planner_unassigned_players(
+    db: State<'_, Db>,
+) -> Result<Vec<PlannerUnassignedPlayerDto>, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        Ok(optimizer::unassigned_players(&conn, save_id)?
+            .into_iter()
+            .map(|player| {
+                let (lane_id, current_score, expected_score) = match player.best_lane {
+                    Some(lane) => (
+                        Some(lane.lane_id),
+                        Some(lane.current_score),
+                        Some(lane.expected_score),
+                    ),
+                    None => (None, None, None),
+                };
+                PlannerUnassignedPlayerDto {
+                    player_uid: player.player_uid,
+                    name: player.name,
+                    age: player.age,
+                    lane_id,
+                    current_score,
+                    expected_score,
+                }
+            })
+            .collect())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn set_planner_assignment_pinned(
+    string_id: i64,
+    lane_id: String,
+    pinned: bool,
+    db: State<'_, Db>,
+) -> Result<PlannerDepthDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        let (_, snapshot_id) =
+            depth_service::set_assignment_pinned(&conn, save_id, string_id, &lane_id, pinned)?;
         Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
     })
     .await
@@ -1048,6 +1134,7 @@ mod tests {
             .map(|team| PlannerTeamInput {
                 team: team.team.clone(),
                 display_name: team.display_name.clone(),
+                max_age: team.max_age,
                 strings: team
                     .strings
                     .iter()

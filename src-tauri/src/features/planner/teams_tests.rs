@@ -13,10 +13,20 @@ use super::test_support::{
     planner_potential_state, team_strings,
 };
 
+/// The age limit a team starts with.
+fn usual_max_age(team: &str) -> Option<i64> {
+    match team {
+        "reserves" => Some(23),
+        "youth" => Some(18),
+        _ => None,
+    }
+}
+
 fn input(team: &str, display_name: &str) -> PlannerTeamInput {
     PlannerTeamInput {
         team: team.to_string(),
         display_name: display_name.to_string(),
+        max_age: usual_max_age(team),
         strings: vec![PlannerStringInput {
             id: None,
             display_name: String::new(),
@@ -32,6 +42,7 @@ fn input_with_strings(
     PlannerTeamInput {
         team: team.to_string(),
         display_name: display_name.to_string(),
+        max_age: usual_max_age(team),
         strings,
     }
 }
@@ -60,6 +71,87 @@ fn current_strings_input(
         .iter()
         .map(|string| retained_string(string.id, &string.display_name))
         .collect()
+}
+
+fn max_ages(conn: &rusqlite::Connection, save_id: i64) -> Vec<(PlannerTeam, Option<i64>)> {
+    get_depth(conn, save_id)
+        .expect("load planner depth")
+        .teams
+        .iter()
+        .map(|team| (team.team, team.max_age))
+        .collect()
+}
+
+#[test]
+fn teams_start_with_the_usual_age_limits_and_save_changed_ones() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+
+    assert_eq!(
+        max_ages(&conn, save_id),
+        [
+            (PlannerTeam::Senior, None),
+            (PlannerTeam::Reserves, Some(23)),
+            (PlannerTeam::Youth, Some(18)),
+        ]
+    );
+
+    let retained = |team: PlannerTeam, display_name: &str, max_age| PlannerTeamInput {
+        max_age,
+        ..input_with_strings(
+            team.as_str(),
+            display_name,
+            current_strings_input(&conn, save_id, team),
+        )
+    };
+    save_team_settings(
+        &conn,
+        save_id,
+        &[
+            retained(PlannerTeam::Senior, "Senior", None),
+            retained(PlannerTeam::Reserves, "Reserves", None),
+            retained(PlannerTeam::Youth, "Youth", Some(19)),
+        ],
+        false,
+    )
+    .expect("save changed age limits");
+
+    assert_eq!(
+        max_ages(&conn, save_id),
+        [
+            (PlannerTeam::Senior, None),
+            (PlannerTeam::Reserves, None),
+            (PlannerTeam::Youth, Some(19)),
+        ]
+    );
+}
+
+#[test]
+fn rejects_a_senior_age_limit_and_limits_outside_the_supported_range() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    get_depth(&conn, save_id).expect("initialize planner depth");
+    let limited = |team: &str, max_age| PlannerTeamInput {
+        max_age: Some(max_age),
+        ..input(team, "Limited")
+    };
+
+    for (team, max_age, message) in [
+        ("senior", 30, "The senior team has no age limit"),
+        (
+            "youth",
+            13,
+            "Planner team age limit must be between 14 and 45",
+        ),
+        (
+            "reserves",
+            46,
+            "Planner team age limit must be between 14 and 45",
+        ),
+    ] {
+        let error = save_team_settings(&conn, save_id, &[limited(team, max_age)], true)
+            .expect_err("reject the age limit");
+        assert_eq!(error, message);
+    }
+    assert_eq!(max_ages(&conn, save_id).len(), 3);
 }
 
 #[test]

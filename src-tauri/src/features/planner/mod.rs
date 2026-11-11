@@ -2,6 +2,7 @@ pub mod commands;
 pub mod depth;
 pub(crate) mod fit;
 pub(crate) mod optimizer;
+mod outlook;
 mod role_reference;
 pub mod squad;
 pub mod suggested_training;
@@ -14,6 +15,8 @@ mod depth_tests;
 mod fit_tests;
 #[cfg(test)]
 mod optimizer_tests;
+#[cfg(test)]
+mod outlook_tests;
 #[cfg(test)]
 mod role_reference_tests;
 #[cfg(test)]

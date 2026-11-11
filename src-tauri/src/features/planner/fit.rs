@@ -91,6 +91,71 @@ pub(crate) fn custom_metrics_lane_score(
     )
 }
 
+/// How a player's positions suit a lane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PositionFit {
+    /// Accomplished in the lane's position in both phases.
+    Suited,
+    /// Playable, but marked down for a position he is less familiar with.
+    Unfamiliar,
+    /// Cannot play one of the lane's positions, so Optimize never places him there.
+    Unsuited,
+}
+
+impl PositionFit {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Suited => "suited",
+            Self::Unfamiliar => "unfamiliar",
+            Self::Unsuited => "unsuited",
+        }
+    }
+}
+
+/// How a player's preferred foot suits a lane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FootFit {
+    Matches,
+    /// Marked down for the wrong foot.
+    Mismatch,
+    /// The lane takes only its preferred foot, so Optimize never places him there.
+    Excluded,
+}
+
+impl FootFit {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Matches => "matches",
+            Self::Mismatch => "mismatch",
+            Self::Excluded => "excluded",
+        }
+    }
+}
+
+pub(super) fn lane_position_fit(
+    positions: &BTreeMap<String, Option<i64>>,
+    lane: &TacticLane,
+) -> PositionFit {
+    match (
+        suitable_familiarity(positions, &lane.ip_position),
+        suitable_familiarity(positions, &lane.oop_position),
+    ) {
+        (Some(ip), Some(oop)) if familiarity_penalty(ip) + familiarity_penalty(oop) == 0 => {
+            PositionFit::Suited
+        }
+        (Some(_), Some(_)) => PositionFit::Unfamiliar,
+        _ => PositionFit::Unsuited,
+    }
+}
+
+pub(super) fn lane_foot_fit(player_foot: &str, lane: &TacticLane) -> FootFit {
+    match foot_penalty(player_foot, &lane.preferred_foot, &lane.foot_preference) {
+        Some(0) => FootFit::Matches,
+        Some(_) => FootFit::Mismatch,
+        None => FootFit::Excluded,
+    }
+}
+
 pub(super) fn foot_matches(player_foot: &str, preferred_foot: &str) -> bool {
     match preferred_foot {
         "any" => true,

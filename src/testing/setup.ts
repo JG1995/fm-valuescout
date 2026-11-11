@@ -82,9 +82,11 @@ import {
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
   resolvePlannerTeamRemovalImpactsIpcMock,
+  resolvePlannerUnassignedPlayersIpcMock,
   resolveSavePlannerTacticIpcMock,
   resolveSavePlannerTeamsIpcMock,
   resolveSetManagedClubIpcMock,
+  resolveSetPlannerAssignmentPinnedIpcMock,
 } from "@/testing/planner-ipc-mock";
 import {
   resetGetPlayerOverride,
@@ -399,7 +401,7 @@ function registerIpcMocks() {
     }
 
     if (cmd === "optimize_planner_depth") {
-      return resolveOptimizePlannerDepthIpcMock(args);
+      return resolveOptimizePlannerDepthIpcMock();
     }
 
     if (cmd === "get_planner_slot_candidates") {
@@ -420,6 +422,14 @@ function registerIpcMocks() {
 
     if (cmd === "clear_planner_assignment") {
       return resolveClearPlannerAssignmentIpcMock(args);
+    }
+
+    if (cmd === "set_planner_assignment_pinned") {
+      return resolveSetPlannerAssignmentPinnedIpcMock(args);
+    }
+
+    if (cmd === "get_planner_unassigned_players") {
+      return resolvePlannerUnassignedPlayersIpcMock();
     }
 
     if (cmd === "move_planner_player") {

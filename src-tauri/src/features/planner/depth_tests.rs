@@ -8,12 +8,13 @@ use crate::features::snapshot;
 
 use super::depth::{
     assign_player, clear_all, clear_assignment, get_depth, get_slot_candidates, move_player,
-    AssignmentState, PlannerTeam,
+    set_assignment_pinned, AssignmentState, PlannerTeam,
 };
+use super::fit::{FootFit, PositionFit};
 use super::teams::{save_team_settings, PlannerStringInput, PlannerTeamInput};
 use super::test_support::{
     add_picker_candidates, assignment_provenance, current_snapshot_id, deny_potential_writes,
-    open_with_snapshot, planner_potential_state, team_strings,
+    open_with_snapshot, planner_potential_state, set_player_age, team_strings,
 };
 
 #[test]
@@ -211,6 +212,7 @@ fn add_second_senior_string(conn: &Connection, save_id: i64) -> i64 {
             PlannerTeamInput {
                 team: team.team.as_str().to_string(),
                 display_name: team.display_name.clone(),
+                max_age: team.max_age,
                 strings,
             }
         })
@@ -237,11 +239,13 @@ fn restored_team_creates_the_ordinal_labeled_string() {
             PlannerTeamInput {
                 team: "senior".to_string(),
                 display_name: "Senior".to_string(),
+                max_age: None,
                 strings: senior_strings.clone(),
             },
             PlannerTeamInput {
                 team: "reserves".to_string(),
                 display_name: "Reserves".to_string(),
+                max_age: Some(23),
                 strings: reserves_strings.clone(),
             },
         ],
@@ -255,16 +259,19 @@ fn restored_team_creates_the_ordinal_labeled_string() {
             PlannerTeamInput {
                 team: "senior".to_string(),
                 display_name: "Senior".to_string(),
+                max_age: None,
                 strings: senior_strings,
             },
             PlannerTeamInput {
                 team: "reserves".to_string(),
                 display_name: "Reserves".to_string(),
+                max_age: Some(23),
                 strings: reserves_strings,
             },
             PlannerTeamInput {
                 team: "youth".to_string(),
                 display_name: "Youth".to_string(),
+                max_age: Some(18),
                 strings: vec![PlannerStringInput {
                     id: None,
                     display_name: String::new(),
@@ -292,6 +299,7 @@ fn direct_depth_commands_reject_an_unavailable_team_without_recreating_it() {
         &[PlannerTeamInput {
             team: "senior".to_string(),
             display_name: "Senior".to_string(),
+            max_age: None,
             strings: retained_strings(&depth, PlannerTeam::Senior),
         }],
         false,
@@ -307,6 +315,138 @@ fn direct_depth_commands_reject_an_unavailable_team_without_recreating_it() {
         .teams
         .iter()
         .any(|team| team.team == PlannerTeam::Reserves));
+}
+
+#[test]
+fn assignments_report_age_pins_and_players_over_their_teams_age_limit() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    set_player_age(&conn, save_id, 79, Some(24));
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let string_id = team_strings(&depth, PlannerTeam::Reserves)[0].id;
+    assign_player(&conn, save_id, string_id, "goalkeeper", 79).expect("assign an older player");
+    let reserve_keeper = |conn: &Connection| {
+        let depth = get_depth(conn, save_id).expect("reload planner depth");
+        team_strings(&depth, PlannerTeam::Reserves)[0].assignments[0].clone()
+    };
+
+    let placed_by_hand = reserve_keeper(&conn);
+    assert_eq!(placed_by_hand.age, Some(24));
+    assert!(placed_by_hand.pinned);
+    assert!(placed_by_hand.over_age);
+
+    set_assignment_pinned(&conn, save_id, string_id, "goalkeeper", false).expect("unpin");
+    set_player_age(&conn, save_id, 79, Some(23));
+    let unpinned = reserve_keeper(&conn);
+    assert!(!unpinned.pinned);
+    assert!(!unpinned.over_age);
+    assert_eq!(assignment_provenance(&conn, 79), "optimizer");
+
+    set_assignment_pinned(&conn, save_id, string_id, "goalkeeper", true).expect("pin again");
+    assert!(reserve_keeper(&conn).pinned);
+    assert_eq!(
+        set_assignment_pinned(&conn, save_id, string_id, "right_back", true)
+            .expect_err("reject an empty cell"),
+        "Planner cell is empty"
+    );
+}
+
+#[test]
+fn assigning_or_moving_into_an_occupied_cell_leaves_its_player_unassigned() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let senior = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    let reserves = team_strings(&depth, PlannerTeam::Reserves)[0].id;
+    let placed = |conn: &Connection| {
+        conn.prepare(
+            "SELECT string_id, player_uid FROM planner_assignments
+             WHERE save_id = ?1 ORDER BY player_uid",
+        )
+        .expect("prepare assignments")
+        .query_map([save_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+        })
+        .expect("query assignments")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect assignments")
+    };
+    assign_player(&conn, save_id, senior, "goalkeeper", 77).expect("fill the senior cell");
+    assign_player(&conn, save_id, reserves, "goalkeeper", 79).expect("fill the reserves cell");
+
+    assign_player(&conn, save_id, senior, "goalkeeper", 78)
+        .expect("replace with an unassigned player");
+    assert_eq!(placed(&conn), [(senior, 78), (reserves, 79)]);
+
+    move_player(&conn, save_id, senior, "goalkeeper", 79)
+        .expect("replace with a player from another cell");
+    assert_eq!(placed(&conn), [(senior, 79)]);
+}
+
+#[test]
+fn slot_candidates_report_age_expected_score_and_fit_for_the_team() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute_batch(&format!(
+        "UPDATE players
+         SET age = 20,
+             preferred_foot = 'right',
+             positions_json = '{{\"AMR\": 18, \"MR\": 18}}',
+             personality_json = '{{\"Professionalism\": 15, \"Ambition\": 15}}',
+             attributes_json = '{{\"Determination\": 15}}'
+         WHERE snapshot_id = {snapshot_id} AND uid = 78;
+         UPDATE player_role_metrics
+         SET winger_ip = 60,
+             tracking_wide_midfielder_oop = 60,
+             potential_winger_ip = 80,
+             potential_tracking_wide_midfielder_oop = 80
+         WHERE snapshot_id = {snapshot_id} AND uid = 78;
+         UPDATE players
+         SET age = 24,
+             preferred_foot = 'left',
+             positions_json = '{{\"AMR\": 13, \"MR\": 18}}'
+         WHERE snapshot_id = {snapshot_id} AND uid = 79;
+         UPDATE players
+         SET positions_json = '{{\"AMR\": 18}}'
+         WHERE snapshot_id = {snapshot_id} AND uid = 80;"
+    ))
+    .expect("set candidate facts");
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[9].preferred_foot = "right".to_string();
+    tactic.lanes[9].foot_preference = "strict".to_string();
+    tactic::save_tactic(&conn, save_id, &tactic).expect("require a right foot");
+    let candidate = |team: PlannerTeam, player_uid: i64| {
+        get_slot_candidates(&conn, save_id, team, "right_winger", "")
+            .expect("load slot candidates")
+            .into_iter()
+            .find(|candidate| candidate.player_uid == player_uid)
+            .expect("candidate")
+    };
+
+    // At 20 with a drive of 15, the player closes 85% of the 20-point gap.
+    let suited = candidate(PlannerTeam::Reserves, 78);
+    assert_eq!((suited.age, suited.over_age), (Some(20), false));
+    assert_eq!(
+        (suited.combined_score, suited.expected_combined_score),
+        (Some(60), Some(77))
+    );
+    assert_eq!(
+        (suited.position_fit, suited.foot_fit),
+        (PositionFit::Suited, FootFit::Matches)
+    );
+
+    let older = candidate(PlannerTeam::Reserves, 79);
+    assert!(older.over_age);
+    assert_eq!(
+        (older.position_fit, older.foot_fit),
+        (PositionFit::Unfamiliar, FootFit::Excluded)
+    );
+    assert!(!candidate(PlannerTeam::Senior, 79).over_age);
+    assert_eq!(
+        candidate(PlannerTeam::Reserves, 80).position_fit,
+        PositionFit::Unsuited
+    );
 }
 
 #[test]
@@ -728,7 +868,7 @@ fn slot_candidates_reject_missing_current_compact_row_without_writes() {
 
     let error = get_slot_candidates(&conn, save_id, PlannerTeam::Senior, "goalkeeper", "")
         .expect_err("reject missing compact row");
-    assert_eq!(error, "Current compact player snapshot is incomplete");
+    assert_eq!(error, "Current potential snapshot is incomplete");
     assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
 }
 
@@ -749,7 +889,7 @@ fn slot_candidates_reject_wrong_current_score_model_version_without_writes() {
 
     let error = get_slot_candidates(&conn, save_id, PlannerTeam::Senior, "goalkeeper", "")
         .expect_err("reject stale compact current state");
-    assert_eq!(error, "Current compact player snapshot is incomplete");
+    assert_eq!(error, "Current potential snapshot is incomplete");
     assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
 }
 
@@ -782,6 +922,42 @@ fn assignment_uses_persisted_potential_scores_instead_of_source_projection() {
         assignment.potential_combined_score,
         combine_role_scores(Some(80), Some(60), 0.5)
     );
+}
+
+#[test]
+fn assignment_expects_the_share_of_the_gap_the_players_age_and_personality_reach() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE players
+         SET age = 20,
+             personality_json = '{\"Professionalism\": 15, \"Ambition\": 15}',
+             attributes_json = '{\"Determination\": 15}'
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("set development inputs");
+    conn.execute(
+        "UPDATE player_role_metrics
+         SET goalkeeper_ip = 60,
+             line_holding_keeper_oop = 60,
+             potential_goalkeeper_ip = 80,
+             potential_line_holding_keeper_oop = 80
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("set current and potential scores");
+
+    let reloaded = get_depth(&conn, save_id).expect("load assignment scores");
+    let assignment = &team_strings(&reloaded, PlannerTeam::Senior)[0].assignments[0];
+
+    // At 20 with a drive of 15, the player closes 85% of the 20-point gap.
+    assert_eq!(assignment.combined_score, Some(60));
+    assert_eq!(assignment.expected_combined_score, Some(77));
+    assert_eq!(assignment.potential_combined_score, Some(80));
 }
 
 #[test]

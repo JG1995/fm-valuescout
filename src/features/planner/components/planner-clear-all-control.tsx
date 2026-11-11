@@ -28,7 +28,7 @@ export function PlannerClearAllControl({
   return (
     <>
       <Button
-        variant="secondary"
+        variant="ghost"
         disabled={disabled}
         onClick={onRequest}
         onFocus={onFocus}

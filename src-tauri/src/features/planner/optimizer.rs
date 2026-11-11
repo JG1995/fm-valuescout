@@ -1,5 +1,5 @@
 use std::cmp::Reverse;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use rusqlite::{params, Connection};
 
@@ -15,30 +15,17 @@ use super::depth::{
     PlannerDepth, PlannerTeam,
 };
 use super::fit::lane_fit_score;
-use super::tactic::{PlannerTactic, TACTIC_LANE_COUNT};
+use super::outlook::{expected_score, slot_value, Development};
+use super::tactic::{base_position, PlannerTactic, TACTIC_LANE_COUNT};
 use super::teams;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct OptimizerCandidate {
     pub(crate) player_uid: i64,
     pub(crate) last_known_name: String,
-    pub(crate) lane_scores: Vec<Option<u8>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ScoreBasis {
-    Current,
-    Potential,
-}
-
-impl ScoreBasis {
-    pub(super) fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "current" => Ok(Self::Current),
-            "potential" => Ok(Self::Potential),
-            _ => Err(format!("Unknown optimizer score basis `{value}`")),
-        }
-    }
+    /// The player's value in each tactic lane, on any scale where higher is better. `None`
+    /// where he cannot play the lane.
+    pub(crate) lane_scores: Vec<Option<u16>>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -301,16 +288,10 @@ pub(crate) fn allocate_lanes(
     allocation
 }
 
-#[cfg(test)]
+/// Refills every lane the user has not assigned by hand. Each team values a player by his
+/// score now and where his development is heading ([`slot_value`]), and each player is used
+/// once, in the strings' [`fill_order`].
 pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerDepth, String> {
-    optimize_depth_with_basis(conn, save_id, ScoreBasis::Current)
-}
-
-pub(super) fn optimize_depth_with_basis(
-    conn: &Connection,
-    save_id: i64,
-    score_basis: ScoreBasis,
-) -> Result<PlannerDepth, String> {
     let snapshot_id = preflight_depth_snapshot(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
     let tactic = ensure_depth(conn, save_id)?;
@@ -337,40 +318,42 @@ pub(super) fn optimize_depth_with_basis(
     )
     .map_err(|error| error.to_string())?;
 
-    let strings = load_ordered_strings(&tx, save_id)?;
-    for setting in available_teams {
-        let team = setting.team;
-        let candidates =
-            load_optimizer_candidates(&tx, save_id, snapshot_id, team, &tactic, score_basis)?;
-        for planner_string in strings
+    let players = load_club_players(&tx, save_id, snapshot_id, &tactic)?;
+    let candidates_by_team = available_teams
+        .iter()
+        .map(|setting| (setting.team, team_candidates(setting, &tactic, &players)))
+        .collect::<Vec<_>>();
+    for planner_string in fill_order(load_ordered_strings(&tx, save_id)?) {
+        let Some((_, candidates)) = candidates_by_team
             .iter()
-            .filter(|planner_string| planner_string.team == team)
+            .find(|(team, _)| *team == planner_string.team)
+        else {
+            continue;
+        };
+        let occupied_lanes = manual_lanes.get(&planner_string.id);
+        let lane_indices = tactic
+            .lanes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, lane)| {
+                (!occupied_lanes.is_some_and(|lanes| lanes.contains(&lane.lane_id)))
+                    .then_some(index)
+            })
+            .collect::<Vec<_>>();
+        for (lane_index, candidate_index) in
+            allocate_lanes(&tactic, &lane_indices, candidates, &reserved_uids)
         {
-            let occupied_lanes = manual_lanes.get(&planner_string.id);
-            let lane_indices = tactic
-                .lanes
-                .iter()
-                .enumerate()
-                .filter_map(|(index, lane)| {
-                    (!occupied_lanes.is_some_and(|lanes| lanes.contains(&lane.lane_id)))
-                        .then_some(index)
-                })
-                .collect::<Vec<_>>();
-            for (lane_index, candidate_index) in
-                allocate_lanes(&tactic, &lane_indices, &candidates, &reserved_uids)
-            {
-                let candidate = &candidates[candidate_index];
-                insert_assignment(
-                    &tx,
-                    save_id,
-                    planner_string.id,
-                    &tactic.lanes[lane_index].lane_id,
-                    candidate.player_uid,
-                    &candidate.last_known_name,
-                    AssignmentProvenance::Optimizer,
-                )?;
-                reserved_uids.insert(candidate.player_uid);
-            }
+            let candidate = &candidates[candidate_index];
+            insert_assignment(
+                &tx,
+                save_id,
+                planner_string.id,
+                &tactic.lanes[lane_index].lane_id,
+                candidate.player_uid,
+                &candidate.last_known_name,
+                AssignmentProvenance::Optimizer,
+            )?;
+            reserved_uids.insert(candidate.player_uid);
         }
     }
 
@@ -414,6 +397,7 @@ fn load_manual_assignments(
     Ok(assignments)
 }
 
+/// The save's strings by team, then by their order within the team.
 fn load_ordered_strings(
     tx: &rusqlite::Transaction<'_>,
     save_id: i64,
@@ -448,130 +432,136 @@ fn load_ordered_strings(
         .collect()
 }
 
-fn load_optimizer_candidates(
-    tx: &rusqlite::Transaction<'_>,
-    save_id: i64,
-    snapshot_id: i64,
-    team: PlannerTeam,
-    tactic: &PlannerTactic,
-    score_basis: ScoreBasis,
-) -> Result<Vec<OptimizerCandidate>, String> {
-    match score_basis {
-        ScoreBasis::Current => {
-            load_current_optimizer_candidates(tx, save_id, snapshot_id, team, tactic)
-        }
-        ScoreBasis::Potential => {
-            load_potential_optimizer_candidates(tx, save_id, snapshot_id, team, tactic)
-        }
-    }
-}
-
-fn load_current_optimizer_candidates(
-    tx: &rusqlite::Transaction<'_>,
-    save_id: i64,
-    snapshot_id: i64,
-    team: PlannerTeam,
-    tactic: &PlannerTactic,
-) -> Result<Vec<OptimizerCandidate>, String> {
-    let lane_count = tactic.lanes.len();
-    let mut metric_columns = Vec::with_capacity(lane_count * 2);
-    for lane in &tactic.lanes {
-        metric_columns.push(player_current_column(&lane.ip_role_id)?.to_string());
-        metric_columns.push(player_current_column(&lane.oop_role_id)?.to_string());
-    }
-    let metric_select = metric_columns
-        .iter()
-        .map(|column| format!(", {PLAYER_METRICS_ALIAS}.{column}"))
-        .collect::<String>();
-    let sql = format!(
-        "SELECT p.uid, p.name, p.age, p.preferred_foot, p.positions_json{metric_select}
-         FROM players p{}
-         WHERE p.snapshot_id = ?1
-           AND p.current_club = (
-               SELECT club_name FROM managed_club_settings WHERE save_id = ?2
-           )
-         ORDER BY p.uid",
-        player_metrics_join("p", true, false)
-    );
-    let mut statement = tx.prepare(&sql).map_err(|error| error.to_string())?;
-    let players = statement
-        .query_map(params![snapshot_id, save_id], |row| {
-            let score_values = (0..lane_count * 2)
-                .map(|index| row.get::<_, Option<u8>>(index + 5))
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, Option<i64>>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-                score_values,
-            ))
-        })
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-
-    players
+/// The order strings fill in, from strings sorted within each team. The senior first and
+/// second strings come first: rotation gives both of them regular minutes. After them a
+/// player starts for a lower team before he sits deeper in any squad, so each further rank
+/// fills Reserves, then Youth, then the next senior string.
+fn fill_order(strings: Vec<OrderedPlannerString>) -> Vec<OrderedPlannerString> {
+    let (mut senior, mut reserves, mut youth) = (0, 0, 0);
+    let mut keyed = strings
         .into_iter()
-        .filter(|(_, _, age, _, _, _)| is_age_eligible(team, *age))
-        .map(
-            |(player_uid, last_known_name, _, preferred_foot, positions_json, score_values)| {
-                let positions = serde_json::from_str::<
-                    std::collections::BTreeMap<String, Option<i64>>,
-                >(&positions_json)
-                .map_err(|error| error.to_string())?;
-                let mut role_scores = HashMap::with_capacity(lane_count * 2);
-                for (lane_index, lane) in tactic.lanes.iter().enumerate() {
-                    role_scores.insert(lane.ip_role_id.clone(), score_values[lane_index * 2]);
-                    role_scores.insert(lane.oop_role_id.clone(), score_values[lane_index * 2 + 1]);
-                }
-                let lane_scores = tactic
-                    .lanes
-                    .iter()
-                    .map(|lane| {
-                        lane_fit_score(
-                            combine_role_scores(
-                                role_scores.get(lane.ip_role_id.as_str()).copied().flatten(),
-                                role_scores
-                                    .get(lane.oop_role_id.as_str())
-                                    .copied()
-                                    .flatten(),
-                                lane.ip_weight,
-                            ),
-                            &preferred_foot,
-                            &positions,
-                            lane,
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                Ok(OptimizerCandidate {
-                    player_uid,
-                    last_known_name,
-                    lane_scores,
-                })
-            },
-        )
-        .filter_map(|candidate| match candidate {
-            Ok(candidate) if candidate.lane_scores.iter().any(Option::is_some) => {
-                Some(Ok(candidate))
-            }
-            Ok(_) => None,
-            Err(error) => Some(Err(error)),
+        .map(|planner_string| {
+            let rank = match planner_string.team {
+                PlannerTeam::Senior => &mut senior,
+                PlannerTeam::Reserves => &mut reserves,
+                PlannerTeam::Youth => &mut youth,
+            };
+            let key = fill_key(planner_string.team, *rank);
+            *rank += 1;
+            (key, planner_string)
         })
+        .collect::<Vec<_>>();
+    keyed.sort_by_key(|(key, _)| *key);
+    keyed
+        .into_iter()
+        .map(|(_, planner_string)| planner_string)
         .collect()
 }
 
-fn load_potential_optimizer_candidates(
-    tx: &rusqlite::Transaction<'_>,
+/// A string's place in the fill order, from its 0-based rank within its team.
+pub(super) fn fill_key(team: PlannerTeam, rank: usize) -> (usize, usize) {
+    match team {
+        PlannerTeam::Senior if rank < 2 => (0, rank),
+        PlannerTeam::Senior => (rank, 2),
+        PlannerTeam::Reserves => (rank + 1, 0),
+        PlannerTeam::Youth => (rank + 1, 1),
+    }
+}
+
+struct ClubPlayer {
+    uid: i64,
+    name: String,
+    development: Development,
+    /// Each tactic lane's current and potential fit scores, where the player suits the lane.
+    lane_scores: Vec<Option<(u8, u8)>>,
+}
+
+/// A managed-club player whom no squad holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct UnassignedPlayer {
+    pub(super) player_uid: i64,
+    pub(super) name: String,
+    pub(super) age: Option<i64>,
+    /// The lane he fits best now, or `None` when he suits no lane of the tactic.
+    pub(super) best_lane: Option<UnassignedPlayerLane>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct UnassignedPlayerLane {
+    pub(super) lane_id: String,
+    /// His fit score in the lane now, and the one he is expected to reach.
+    pub(super) current_score: u8,
+    pub(super) expected_score: u8,
+}
+
+/// The managed club's players in no squad, best current fit first: who is surplus to the plan.
+pub(super) fn unassigned_players(
+    conn: &Connection,
+    save_id: i64,
+) -> Result<Vec<UnassignedPlayer>, String> {
+    let snapshot_id = preflight_depth_snapshot(conn, save_id)?
+        .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
+    let tactic = ensure_depth(conn, save_id)?;
+    let assigned_uids = conn
+        .prepare("SELECT player_uid FROM planner_assignments WHERE save_id = ?1")
+        .map_err(|error| error.to_string())?
+        .query_map(params![save_id], |row| row.get::<_, i64>(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<HashSet<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    let mut players = load_club_players(conn, save_id, snapshot_id, &tactic)?
+        .into_iter()
+        .filter(|player| !assigned_uids.contains(&player.uid))
+        .map(|player| {
+            let best_lane = player
+                .lane_scores
+                .iter()
+                .enumerate()
+                .filter_map(|(lane_index, scores)| Some((lane_index, (*scores)?)))
+                .max_by_key(|&(lane_index, (current, _))| (current, Reverse(lane_index)))
+                .map(|(lane_index, (current, potential))| UnassignedPlayerLane {
+                    lane_id: tactic.lanes[lane_index].lane_id.clone(),
+                    current_score: current,
+                    expected_score: expected_score(current, potential, &player.development).round()
+                        as u8,
+                });
+            UnassignedPlayer {
+                player_uid: player.uid,
+                name: player.name,
+                age: player.development.age,
+                best_lane,
+            }
+        })
+        .collect::<Vec<_>>();
+    players.sort_by(|left, right| {
+        let score =
+            |player: &UnassignedPlayer| player.best_lane.as_ref().map(|lane| lane.current_score);
+        score(right)
+            .cmp(&score(left))
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+            .then_with(|| left.player_uid.cmp(&right.player_uid))
+    });
+    Ok(players)
+}
+
+/// The managed club's players with their fit scores for every lane of the tactic.
+fn load_club_players(
+    conn: &Connection,
     save_id: i64,
     snapshot_id: i64,
-    team: PlannerTeam,
     tactic: &PlannerTactic,
-) -> Result<Vec<OptimizerCandidate>, String> {
-    let lane_count = tactic.lanes.len();
-    let mut metric_columns = Vec::with_capacity(lane_count * 2);
+) -> Result<Vec<ClubPlayer>, String> {
+    // Four identity columns, then the four development columns, then the lane scores.
+    const DEVELOPMENT_COLUMN: usize = 4;
+    const SCORE_COLUMN: usize = 8;
+    // Each lane's current IP and OOP scores, then its potential IP and OOP scores.
+    const SCORES_PER_LANE: usize = 4;
+
+    let mut metric_columns = Vec::with_capacity(tactic.lanes.len() * SCORES_PER_LANE);
     for lane in &tactic.lanes {
+        metric_columns.push(player_current_column(&lane.ip_role_id)?.to_string());
+        metric_columns.push(player_current_column(&lane.oop_role_id)?.to_string());
         metric_columns.push(player_potential_column(&lane.ip_role_id)?);
         metric_columns.push(player_potential_column(&lane.oop_role_id)?);
     }
@@ -580,28 +570,29 @@ fn load_potential_optimizer_candidates(
         .map(|column| format!(", {PLAYER_METRICS_ALIAS}.{column}"))
         .collect::<String>();
     let sql = format!(
-        "SELECT p.uid, p.name, p.age, p.preferred_foot, p.positions_json{metric_select}
+        "SELECT p.uid, p.name, p.preferred_foot, p.positions_json, {}{metric_select}
          FROM players p{}
          WHERE p.snapshot_id = ?1
            AND p.current_club = (
                SELECT club_name FROM managed_club_settings WHERE save_id = ?2
            )
          ORDER BY p.uid",
-        player_metrics_join("p", false, true)
+        Development::columns("p"),
+        player_metrics_join("p", true, true)
     );
-    let mut statement = tx.prepare(&sql).map_err(|error| error.to_string())?;
+    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let players = statement
         .query_map(params![snapshot_id, save_id], |row| {
-            let score_values = (0..lane_count * 2)
-                .map(|index| row.get::<_, Option<u8>>(index + 5))
+            let scores = (0..metric_columns.len())
+                .map(|index| row.get::<_, Option<u8>>(SCORE_COLUMN + index))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, Option<i64>>(2)?,
+                row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-                score_values,
+                Development::from_row(row, DEVELOPMENT_COLUMN)?,
+                scores,
             ))
         })
         .map_err(|error| error.to_string())?
@@ -610,58 +601,69 @@ fn load_potential_optimizer_candidates(
 
     players
         .into_iter()
-        .filter(|(_, _, age, _, _, _)| is_age_eligible(team, *age))
         .map(
-            |(player_uid, last_known_name, _, preferred_foot, positions_json, score_values)| {
-                let positions = serde_json::from_str::<
-                    std::collections::BTreeMap<String, Option<i64>>,
-                >(&positions_json)
-                .map_err(|error| error.to_string())?;
-                let mut role_scores = HashMap::with_capacity(lane_count * 2);
-                for (lane_index, lane) in tactic.lanes.iter().enumerate() {
-                    role_scores.insert(lane.ip_role_id.clone(), score_values[lane_index * 2]);
-                    role_scores.insert(lane.oop_role_id.clone(), score_values[lane_index * 2 + 1]);
-                }
+            |(uid, name, preferred_foot, positions_json, development, scores)| {
+                let positions =
+                    serde_json::from_str::<BTreeMap<String, Option<i64>>>(&positions_json)
+                        .map_err(|error| error.to_string())?;
                 let lane_scores = tactic
                     .lanes
                     .iter()
-                    .map(|lane| {
-                        lane_fit_score(
-                            combine_role_scores(
-                                role_scores.get(lane.ip_role_id.as_str()).copied().flatten(),
-                                role_scores
-                                    .get(lane.oop_role_id.as_str())
-                                    .copied()
-                                    .flatten(),
-                                lane.ip_weight,
-                            ),
-                            &preferred_foot,
-                            &positions,
-                            lane,
-                        )
+                    .zip(scores.chunks_exact(SCORES_PER_LANE))
+                    .map(|(lane, scores)| {
+                        let fit = |ip_score, oop_score| {
+                            lane_fit_score(
+                                combine_role_scores(ip_score, oop_score, lane.ip_weight),
+                                &preferred_foot,
+                                &positions,
+                                lane,
+                            )
+                        };
+                        let current = fit(scores[0], scores[1])?;
+                        // A lane without a potential score promises no growth.
+                        Some((current, fit(scores[2], scores[3]).unwrap_or(current)))
                     })
-                    .collect::<Vec<_>>();
-                Ok(OptimizerCandidate {
-                    player_uid,
-                    last_known_name,
+                    .collect();
+                Ok(ClubPlayer {
+                    uid,
+                    name,
+                    development,
                     lane_scores,
                 })
             },
         )
-        .filter_map(|candidate| match candidate {
-            Ok(candidate) if candidate.lane_scores.iter().any(Option::is_some) => {
-                Some(Ok(candidate))
-            }
-            Ok(_) => None,
-            Err(error) => Some(Err(error)),
-        })
         .collect()
 }
 
-fn is_age_eligible(team: PlannerTeam, age: Option<i64>) -> bool {
-    match team {
-        PlannerTeam::Senior => true,
-        PlannerTeam::Reserves => age.is_some_and(|age| age <= 23),
-        PlannerTeam::Youth => age.is_some_and(|age| age <= 18),
-    }
+/// The players within the team's age limit who suit at least one lane, each valued for the team.
+fn team_candidates(
+    setting: &teams::PlannerTeamSetting,
+    tactic: &PlannerTactic,
+    players: &[ClubPlayer],
+) -> Vec<OptimizerCandidate> {
+    let team = setting.team;
+    players
+        .iter()
+        .filter(|player| setting.takes_age(player.development.age))
+        .filter(|player| player.lane_scores.iter().any(Option::is_some))
+        .map(|player| OptimizerCandidate {
+            player_uid: player.uid,
+            last_known_name: player.name.clone(),
+            lane_scores: player
+                .lane_scores
+                .iter()
+                .zip(&tactic.lanes)
+                .map(|(scores, lane)| {
+                    let (current, potential) = (*scores)?;
+                    Some(slot_value(
+                        team,
+                        current,
+                        potential,
+                        &player.development,
+                        base_position(&lane.ip_position) == "GK",
+                    ))
+                })
+                .collect(),
+        })
+        .collect()
 }
