@@ -78,6 +78,36 @@ export function formatLongGameDate(value: string): string {
   return `${day}${suffix} ${monthName} ${year}`;
 }
 
+/** Canonical `YYYY-MM-DD` date as `30 Jun 2027`, for dated rows in a list. */
+export function formatShortDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value;
+
+  const date = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+  );
+  if (date.toISOString().slice(0, 10) !== value) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+/**
+ * Time left from a count of days: `in 12 days`, then whole months once two
+ * have passed (`in 10 months`). Months round down, so the label never
+ * overstates the time.
+ */
+export function formatDaysRemaining(days: number): string {
+  if (days < 0) return "expired";
+  if (days === 0) return "today";
+  if (days === 1) return "in 1 day";
+  if (days < 61) return `in ${days} days`;
+  return `in ${Math.floor(days / 30.44)} months`;
+}
+
 /** Integer counts with thousands separators: `1,247`. */
 export function formatCount(value: number): string {
   return value.toLocaleString("en-GB");

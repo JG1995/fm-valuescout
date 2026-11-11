@@ -1,7 +1,7 @@
 pub mod commands;
 pub mod depth;
 pub(crate) mod fit;
-mod optimizer;
+pub(crate) mod optimizer;
 mod role_reference;
 pub mod squad;
 pub mod suggested_training;

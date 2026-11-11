@@ -1,4 +1,11 @@
 import { useId } from "react";
+import {
+  comparePitchOrder,
+  type PitchCoordinate,
+  type PitchOrientation,
+  portraitCoordinateForPlacement,
+  projectPosition,
+} from "@/utils/tactic-pitch-geometry";
 import type { TacticLane, TacticOptions } from "../types/tactic";
 import {
   canonicalPlacement,
@@ -11,13 +18,6 @@ import {
   type TacticPhase,
   type TacticView,
 } from "../utils/tactic-editor";
-import {
-  comparePitchOrder,
-  type PitchCoordinate,
-  type PitchOrientation,
-  portraitCoordinateForPlacement,
-  projectPosition,
-} from "../utils/tactic-pitch-geometry";
 
 type PlannerTacticPitchProps = {
   phase: TacticPhase;
