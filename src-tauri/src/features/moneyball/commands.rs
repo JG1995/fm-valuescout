@@ -7,8 +7,10 @@ use tauri::State;
 use crate::blocking;
 use crate::db::Db;
 use crate::features::player::boost_gate;
+use crate::features::snapshot::service::active_save_id;
 
 use super::catalog::is_save_unavailable_statistic_key;
+use super::league_strength::{self, LeagueAdjustment, LeagueBreakdown};
 use super::query::{
     self, MoneyballComparisonBasis, MoneyballProfile, MoneyballProfileState,
     MoneyballRoleContribution, MoneyballRoleScore,
@@ -27,6 +29,32 @@ pub struct MoneyballProfileDto {
     pub role_catalog_version: Option<u32>,
     pub role_scores: Option<Vec<MoneyballRoleScoreDto>>,
     pub comparison_basis: Option<MoneyballComparisonBasisDto>,
+    pub league_adjustment: Option<MoneyballLeagueBreakdownDto>,
+}
+
+/// What moved a player's role scores for his league. Strengths are mean current abilities.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoneyballLeagueBreakdownDto {
+    pub division: Option<String>,
+    pub strength: f64,
+    pub estimated: bool,
+    pub reference_division: String,
+    pub reference_strength: f64,
+    pub shift: i16,
+}
+
+impl From<LeagueBreakdown> for MoneyballLeagueBreakdownDto {
+    fn from(breakdown: LeagueBreakdown) -> Self {
+        Self {
+            division: breakdown.division,
+            strength: breakdown.strength,
+            estimated: breakdown.estimated,
+            reference_division: breakdown.reference_division,
+            reference_strength: breakdown.reference_strength,
+            shift: breakdown.shift,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -136,6 +164,9 @@ impl From<MoneyballProfile> for MoneyballProfileDto {
             comparison_basis: profile
                 .comparison_basis
                 .map(MoneyballComparisonBasisDto::from),
+            league_adjustment: profile
+                .league_adjustment
+                .map(MoneyballLeagueBreakdownDto::from),
         }
     }
 }
@@ -153,6 +184,54 @@ pub async fn get_player_moneyball(
 fn read_player_moneyball(db: &Db, uid: i64) -> Result<Option<MoneyballProfileDto>, String> {
     let conn = db.read()?;
     query::get_player_moneyball(&conn, uid).map(|profile| profile.map(MoneyballProfileDto::from))
+}
+
+/// Whether the active save adjusts Moneyball scores for league strength, and the league it
+/// adjusts them to. No reference means its current snapshot has no measured leagues yet.
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoneyballLeagueAdjustmentDto {
+    pub enabled: bool,
+    pub reference_division: Option<String>,
+}
+
+fn league_adjustment(
+    conn: &rusqlite::Connection,
+    save_id: i64,
+) -> Result<MoneyballLeagueAdjustmentDto, String> {
+    Ok(MoneyballLeagueAdjustmentDto {
+        enabled: league_strength::is_enabled(conn, save_id)?,
+        reference_division: LeagueAdjustment::reference_division(conn, save_id)?,
+    })
+}
+
+#[tauri::command]
+pub async fn get_moneyball_league_adjustment(
+    db: State<'_, Db>,
+) -> Result<MoneyballLeagueAdjustmentDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn = db.read()?;
+        league_adjustment(&conn, active_save_id(&conn)?)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn set_moneyball_league_adjustment(
+    enabled: bool,
+    db: State<'_, Db>,
+) -> Result<MoneyballLeagueAdjustmentDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = active_save_id(&conn)?;
+        league_strength::set_enabled(&conn, save_id, enabled)?;
+        league_adjustment(&conn, save_id)
+    })
+    .await
 }
 
 /// Why Refresh stats did not read the save. The frontend matches on `kind`.
@@ -234,6 +313,7 @@ mod tests {
             role_catalog_version: Some(1),
             role_scores: Some(Vec::new()),
             comparison_basis: Some(comparison_basis),
+            league_adjustment: None,
         }
     }
 

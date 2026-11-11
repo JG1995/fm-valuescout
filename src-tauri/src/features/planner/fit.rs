@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use super::tactic::{base_position, TacticLane};
+use crate::features::moneyball::league_strength::shifted;
 use crate::features::moneyball::role_catalog::definition_for_attribute_role;
 use crate::features::moneyball::role_score::{mean_percentile_score, score_role};
 use crate::features::scoring::combine::combine_role_scores;
@@ -58,10 +59,12 @@ pub(crate) fn moneyball_roles_lane_score(
     player_foot: &str,
     positions: &BTreeMap<String, Option<i64>>,
     lane: &TacticLane,
+    league_shift: i16,
 ) -> Option<u8> {
     let role_score = |role_id: &str, position: &str| {
-        definition_for_attribute_role(role_id, base_position(position))
-            .map(|definition| score_role(definition, percentiles).map(|role| role.score))
+        definition_for_attribute_role(role_id, base_position(position)).map(|definition| {
+            score_role(definition, percentiles).map(|role| shifted(role.score, league_shift))
+        })
     };
     let ip_score = role_score(&lane.ip_role_id, &lane.ip_position)?;
     let oop_score = role_score(&lane.oop_role_id, &lane.oop_position)?;
@@ -76,15 +79,17 @@ pub(crate) fn moneyball_roles_lane_score(
 }
 
 /// A slot's custom Moneyball score: the equal-weight mean of its chosen metrics' percentiles,
-/// adjusted for fit without the IP/OOP blend.
+/// moved by the player's league shift and adjusted for fit without the IP/OOP blend.
 pub(crate) fn custom_metrics_lane_score(
     percentiles: &BTreeMap<String, Option<u8>>,
     player_foot: &str,
     positions: &BTreeMap<String, Option<i64>>,
     lane: &TacticLane,
+    league_shift: i16,
 ) -> Option<u8> {
     lane_fit_score(
-        mean_percentile_score(&lane.custom_metric_keys, percentiles),
+        mean_percentile_score(&lane.custom_metric_keys, percentiles)
+            .map(|score| shifted(score, league_shift)),
         player_foot,
         positions,
         lane,

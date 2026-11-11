@@ -12,9 +12,14 @@ import {
 import { rolePhaseLabel } from "@/utils/role-phase";
 import type {
   MoneyballComparisonBasis,
+  MoneyballLeagueBreakdown,
   MoneyballRoleContribution,
   MoneyballRoleScore,
 } from "../types/moneyball-profile";
+import {
+  leagueAdjustmentSummary,
+  signedPoints,
+} from "../utils/league-adjustment";
 
 function formatWeight(weight: number) {
   return `${(weight * 100).toLocaleString("en-GB", {
@@ -70,9 +75,11 @@ function MetricContribution({
 function RoleExplanation({
   role,
   catalogVersion,
+  leagueShift,
 }: {
   role: MoneyballRoleScore;
   catalogVersion: number;
+  leagueShift: number;
 }) {
   return (
     <details className="mt-1 rounded-md bg-surface-container-low px-2">
@@ -93,7 +100,10 @@ function RoleExplanation({
         ) : (
           <p className="pb-1 text-body-sm text-on-surface-variant">
             Weighted percentile score from the natural-position comparison
-            cohort.
+            cohort
+            {leagueShift === 0
+              ? "."
+              : `, moved ${signedPoints(leagueShift)} for league strength.`}
           </p>
         )}
         <dl>
@@ -136,11 +146,14 @@ export function MoneyballRoleFitPanel({
   roleScores,
   catalogVersion,
   comparisonBasis,
+  leagueAdjustment,
 }: {
   positions: PositionFamiliarityMap;
   roleScores: readonly MoneyballRoleScore[] | null;
   catalogVersion: number | null;
   comparisonBasis: MoneyballComparisonBasis;
+  /** How the player's league moved every role score, or null when it did not. */
+  leagueAdjustment: MoneyballLeagueBreakdown | null;
 }) {
   const [selectedPosition, setSelectedPosition] = useState(() =>
     defaultProfilePosition(positions, roleScores ?? []),
@@ -199,6 +212,11 @@ export function MoneyballRoleFitPanel({
           />
         </div>
         <div className="flex min-h-0 min-w-0 flex-col">
+          {leagueAdjustment ? (
+            <p className="shrink-0 pb-2 text-body-sm text-on-surface-variant">
+              {leagueAdjustmentSummary(leagueAdjustment)}
+            </p>
+          ) : null}
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             <table className="w-full table-fixed border-collapse">
               <caption className="sr-only">
@@ -262,6 +280,7 @@ export function MoneyballRoleFitPanel({
                       <RoleExplanation
                         role={role}
                         catalogVersion={catalogVersion}
+                        leagueShift={leagueAdjustment?.shift ?? 0}
                       />
                     </td>
                     <td className="pt-2 text-right tabular-nums">

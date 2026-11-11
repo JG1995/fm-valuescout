@@ -2637,6 +2637,41 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
+  test("Moneyball scores are league-adjusted until Raw is chosen", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      moneyballSearch: true,
+      plannerSnapshot: true,
+      playerProfile: true,
+    });
+    await page.goto("/search?view=moneyball");
+    const main = page.getByRole("main");
+    const table = main.getByRole("table", { name: "Player search results" });
+    const scores = main.getByRole("group", { name: "Scores" });
+    const leagueLine = page.getByText(
+      "League strength: role scores not moved (Premier Division is the reference league)",
+    );
+
+    await expect(
+      scores.getByRole("button", { name: "League-adjusted" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await table.getByText("Moneyball player 001").click();
+    await expect(leagueLine).toBeVisible();
+
+    await page.goBack();
+    await scores.getByRole("button", { name: "Raw" }).click();
+    await expect(scores.getByRole("button", { name: "Raw" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await table.getByText("Moneyball player 001").click();
+    await expect(
+      page.getByRole("heading", { name: "Moneyball", exact: true }),
+    ).toBeVisible();
+    await expect(leagueLine).toHaveCount(0);
+  });
+
   test("Moneyball restricts rows to the selected shortlist and carries it to General", async ({
     page,
   }) => {

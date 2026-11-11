@@ -7,6 +7,7 @@ use std::sync::{mpsc, Arc, Mutex, PoisonError};
 use rusqlite::{params_from_iter, types::Value, Connection, Rows};
 
 use crate::db::result_cache::{Cancellation, ResultCache};
+use crate::features::moneyball::league_strength::{shifted, LeagueAdjustment};
 use crate::features::moneyball::percentile::rank_column;
 use crate::features::moneyball::role_catalog::{builtin_catalog, definition_for_attribute_role};
 use crate::features::moneyball::role_score::score_role;
@@ -45,6 +46,8 @@ pub struct MoneyballCohort {
     pub(super) generation: u64,
     pub(super) state: SearchPlayersPageState,
     pub(super) snapshot_id: i64,
+    /// How the snapshot's league strengths move each player's scores.
+    pub(super) league: LeagueAdjustment,
     pool: ComparisonPool,
     /// The comparison cohort in ascending UID order. Percentile columns follow this order.
     uids: Vec<i64>,
@@ -129,6 +132,7 @@ impl MoneyballCohort {
             generation,
             state: SearchPlayersPageState::NoCurrentSnapshot,
             snapshot_id: 0,
+            league: LeagueAdjustment::default(),
             pool: *comparison_pool,
             uids: Vec::new(),
             order: Vec::new(),
@@ -143,6 +147,7 @@ impl MoneyballCohort {
             return Ok(cohort);
         }
         cohort.state = SearchPlayersPageState::Ready;
+        cohort.league = LeagueAdjustment::load(conn, snapshot_id)?;
         let sort_tactic = match sort_by {
             SortField::Dynamic(field) if field.is_tactic_field() => Some((
                 field,
@@ -201,6 +206,14 @@ impl MoneyballCohort {
         } else {
             ""
         };
+        // A sort or filter on an adjusted score reads each member's league to adjust it.
+        let scored = cohort.league.applies()
+            && (sort_role.is_some() || sort_tactic.is_some() || !filter_roles.is_empty());
+        let (division_column, division_index) = match (scored, sort_tactic.is_some()) {
+            (false, _) => ("", 0),
+            (true, false) => (", players.division", 1),
+            (true, true) => (", players.division", 3),
+        };
         #[cfg(test)]
         if let Some(hook) = BEFORE_COHORT_QUERY.with(|hook| hook.borrow_mut().take()) {
             hook();
@@ -208,7 +221,7 @@ impl MoneyballCohort {
         cancellation.check()?;
         let rows = conn
             .prepare(&format!(
-                "SELECT players.uid{fit_columns} {MONEYBALL_FROM_SQL} WHERE {cohort_where_sql} {order_sql}"
+                "SELECT players.uid{fit_columns}{division_column} {MONEYBALL_FROM_SQL} WHERE {cohort_where_sql} {order_sql}"
             ))
             .map_err(|error| error.to_string())?
             .query_map(params_from_iter(cohort_bind_values.iter()), |row| {
@@ -217,21 +230,29 @@ impl MoneyballCohort {
                 } else {
                     None
                 };
-                Ok((row.get::<_, i64>(0)?, fit))
+                let shift = if scored {
+                    let division: Option<String> = row.get(division_index)?;
+                    cohort.league.shift(division.as_deref())
+                } else {
+                    0
+                };
+                Ok((row.get::<_, i64>(0)?, fit, shift))
             })
             .map_err(|error| error.to_string())?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| error.to_string())?;
         cancellation.check()?;
 
-        cohort.uids = rows.iter().map(|(uid, _)| *uid).collect();
+        cohort.uids = rows.iter().map(|(uid, ..)| *uid).collect();
         cohort.uids.sort_unstable();
         let mut fits = Vec::with_capacity(rows.len());
         fits.resize_with(rows.len(), || None);
+        let mut shifts = vec![0_i16; rows.len()];
         let mut order = Vec::with_capacity(rows.len());
-        for (uid, fit) in rows {
+        for (uid, fit, shift) in rows {
             let member = cohort.member(uid).expect("a cohort row is a member");
             fits[member as usize] = fit;
+            shifts[member as usize] = shift;
             order.push(member);
         }
 
@@ -261,7 +282,8 @@ impl MoneyballCohort {
                 let scores = filter_roles
                     .iter()
                     .map(|(definition, role_id)| {
-                        let score = score_role(definition, &percentiles).map(|role| role.score);
+                        let score = score_role(definition, &percentiles)
+                            .map(|role| shifted(role.score, shifts[member as usize]));
                         (role_id.clone(), score)
                     })
                     .collect();
@@ -279,14 +301,13 @@ impl MoneyballCohort {
         let sort_score = |member: u32| -> Option<u8> {
             let percentiles = columns.member(member);
             match (sort_role, &sort_tactic) {
-                (Some(definition), _) => {
-                    score_role(definition, &percentiles).map(|role| role.score)
-                }
+                (Some(definition), _) => score_role(definition, &percentiles)
+                    .map(|role| shifted(role.score, shifts[member as usize])),
                 (None, Some((field, tactic))) => {
                     let fit = fits[member as usize]
                         .as_ref()
                         .expect("tactic sorts read fit");
-                    tactic_score(field, tactic, &percentiles, fit)
+                    tactic_score(field, tactic, &percentiles, fit, shifts[member as usize])
                 }
                 (None, None) => None,
             }
@@ -565,19 +586,22 @@ pub(super) fn tactic_metric_keys(field: &MetricField, tactic: &PlannerTactic) ->
     .collect()
 }
 
-/// A Moneyball tactic column's score from a player's percentiles and fit: the custom metrics'
-/// mean, or the slot's two role scores when both have Moneyball definitions.
+/// A Moneyball tactic column's score from a player's percentiles, fit, and league shift: the
+/// custom metrics' mean, or the slot's two role scores when both have Moneyball definitions.
 pub(super) fn tactic_score(
     field: &MetricField,
     tactic: &PlannerTactic,
     percentiles: &BTreeMap<String, Option<u8>>,
     fit: &PlayerFit,
+    league_shift: i16,
 ) -> Option<u8> {
     let lane = tactic_lane(field, tactic)?;
-    if field.tactic_group() == Some(TacticGroup::Custom) {
-        return custom_metrics_lane_score(percentiles, &fit.foot, &fit.positions, lane);
-    }
-    moneyball_roles_lane_score(percentiles, &fit.foot, &fit.positions, lane)
+    let lane_score = if field.tactic_group() == Some(TacticGroup::Custom) {
+        custom_metrics_lane_score
+    } else {
+        moneyball_roles_lane_score
+    };
+    lane_score(percentiles, &fit.foot, &fit.positions, lane, league_shift)
 }
 
 fn tactic_lane<'a>(

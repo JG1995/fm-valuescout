@@ -4,6 +4,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
 use super::{
+    league_strength::{shifted, LeagueAdjustment, LeagueBreakdown},
     percentile::subject_percentiles,
     role_catalog::{builtin_catalog, RoleDefinition, RolePhase},
     role_score::explain_role,
@@ -37,6 +38,8 @@ pub struct MoneyballProfile {
     pub role_catalog_version: Option<u32>,
     pub role_scores: Option<Vec<MoneyballRoleScore>>,
     pub comparison_basis: Option<MoneyballComparisonBasis>,
+    /// What moved every role score for the player's league, or none when nothing did.
+    pub league_adjustment: Option<LeagueBreakdown>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +49,7 @@ pub struct MoneyballRoleScore {
     pub phase: String,
     pub position_family: String,
     pub position_tags: Vec<String>,
+    /// The weighted percentile score, moved by the profile's league adjustment.
     pub score: Option<u8>,
     pub contributions: Vec<MoneyballRoleContribution>,
 }
@@ -72,6 +76,7 @@ impl MoneyballProfile {
             role_catalog_version: None,
             role_scores: None,
             comparison_basis: None,
+            league_adjustment: None,
         }
     }
 
@@ -121,7 +126,8 @@ pub fn get_player_moneyball(
     let row = conn
         .query_row(
             "SELECT moneyball.starts, moneyball.substitute_appearances, moneyball.minutes,
-                    moneyball.statistics_json, moneyball.percentiles_json, players.positions_json
+                    moneyball.statistics_json, moneyball.percentiles_json, players.positions_json,
+                    players.division
              FROM player_moneyball_stats moneyball
              INNER JOIN players ON players.snapshot_id = moneyball.snapshot_id
                 AND players.uid = moneyball.player_uid
@@ -135,6 +141,7 @@ pub fn get_player_moneyball(
                     row.get::<_, String>(3)?,
                     row.get::<_, Option<String>>(4)?,
                     row.get::<_, String>(5)?,
+                    row.get::<_, Option<String>>(6)?,
                 ))
             },
         )
@@ -147,6 +154,7 @@ pub fn get_player_moneyball(
         statistics_json,
         percentiles_json,
         positions_json,
+        division,
     )) = row
     else {
         return Ok(Some(MoneyballProfile::no_data()));
@@ -174,6 +182,7 @@ pub fn get_player_moneyball(
             role_catalog_version: None,
             role_scores: None,
             comparison_basis: Some(MoneyballComparisonBasis::UnavailableNoNaturalPosition),
+            league_adjustment: None,
         }));
     }
 
@@ -185,7 +194,12 @@ pub fn get_player_moneyball(
     }
     let percentiles = subject_percentiles(&statistic_values, cohort.values());
     let role_catalog = builtin_catalog()?;
-    let role_scores = score_roles(&role_catalog.definitions, &percentiles)?;
+    let league_adjustment =
+        LeagueAdjustment::load(conn, snapshot_id)?.breakdown(division.as_deref());
+    let league_shift = league_adjustment
+        .as_ref()
+        .map_or(0, |adjustment| adjustment.shift);
+    let role_scores = score_roles(&role_catalog.definitions, &percentiles, league_shift)?;
 
     Ok(Some(MoneyballProfile {
         state: MoneyballProfileState::Ready,
@@ -200,6 +214,7 @@ pub fn get_player_moneyball(
             natural_positions,
             comparison_player_count: cohort.len(),
         }),
+        league_adjustment,
     }))
 }
 
@@ -261,6 +276,7 @@ fn load_natural_position_cohort(
 fn score_roles(
     definitions: &[RoleDefinition],
     percentiles: &BTreeMap<String, Option<u8>>,
+    league_shift: i16,
 ) -> Result<Vec<MoneyballRoleScore>, String> {
     definitions
         .iter()
@@ -306,7 +322,7 @@ fn score_roles(
                 },
                 position_family: definition.position_family.clone(),
                 position_tags: definition.position_tags.clone(),
-                score: details.score,
+                score: details.score.map(|score| shifted(score, league_shift)),
                 contributions,
             })
         })
@@ -341,6 +357,7 @@ mod tests {
 
     use super::get_player_moneyball;
     use crate::db::migrations;
+    use crate::features::moneyball::league_strength::test_support::measure_leagues;
     use crate::features::moneyball::role_catalog::builtin_catalog;
     use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
     use crate::features::snapshot::ingest::ingest_dump_file;
@@ -710,6 +727,47 @@ mod tests {
             .expect("role scores")
             .iter()
             .all(|role| role.score == Some(50)));
+    }
+
+    #[test]
+    fn role_scores_move_with_the_players_league() {
+        let temp_dir = tempfile::tempdir().expect("temp directory");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-league.db"));
+        let snapshot_id = ingest_current_player(&mut conn);
+        insert_moneyball_row(&conn, snapshot_id, Some(&complete_percentiles(83)));
+        conn.execute(
+            "UPDATE players SET division = 'Middle' WHERE snapshot_id = ?1 AND uid = 77",
+            [snapshot_id],
+        )
+        .expect("set division");
+        let profile = |conn: &Connection| {
+            get_player_moneyball(conn, 77)
+                .expect("query player")
+                .expect("known current player")
+        };
+
+        // Alone in his cohort, the player scores 50 in every role.
+        let unmeasured = profile(&conn);
+        assert_eq!(unmeasured.league_adjustment, None);
+
+        measure_leagues(&conn, snapshot_id, &[("Top", 150.0), ("Middle", 138.0)]);
+        let adjusted = profile(&conn);
+        let adjustment = adjusted.league_adjustment.expect("league adjustment");
+        assert_eq!(
+            (
+                adjustment.division.as_deref(),
+                adjustment.strength,
+                adjustment.reference_division.as_str(),
+                adjustment.reference_strength,
+                adjustment.shift
+            ),
+            (Some("Middle"), 138.0, "Top", 150.0, -6)
+        );
+        assert!(adjusted
+            .role_scores
+            .expect("role scores")
+            .iter()
+            .all(|role| role.score == Some(44)));
     }
 
     #[test]

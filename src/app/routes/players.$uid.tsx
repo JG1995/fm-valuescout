@@ -358,6 +358,7 @@ function MoneyballPlayerProfile({
             roleScores={readyProfile.roleScores}
             catalogVersion={readyProfile.roleCatalogVersion}
             comparisonBasis={readyProfile.comparisonBasis}
+            leagueAdjustment={readyProfile.leagueAdjustment}
           />
         ) : null}
       </div>

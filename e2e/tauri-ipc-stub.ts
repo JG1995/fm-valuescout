@@ -71,6 +71,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       let nextSaveId = 2;
       let clubDnaDefinition = null;
       let moneyballStatsGameDate = moneyballSearch ? "2026-07-30" : null;
+      let moneyballLeagueAdjusted = true;
       let saves = [{
         id: 1,
         contextToken: "save-token-1",
@@ -1791,6 +1792,19 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             };
           }
 
+          if (
+            cmd === "get_moneyball_league_adjustment" ||
+            cmd === "set_moneyball_league_adjustment"
+          ) {
+            if (cmd === "set_moneyball_league_adjustment") {
+              moneyballLeagueAdjusted = args.enabled;
+            }
+            return {
+              enabled: moneyballLeagueAdjusted,
+              referenceDivision: "Premier Division",
+            };
+          }
+
           if (cmd === "get_player_moneyball") {
             return moneyballSearch ? {
               state: "ready",
@@ -1818,6 +1832,17 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 naturalPositions: ["MC"],
                 comparisonPlayerCount: 24,
               },
+              // The stub's player is in the reference league, so his scores do not move.
+              leagueAdjustment: moneyballLeagueAdjusted
+                ? {
+                    division: "Premier Division",
+                    strength: 149,
+                    estimated: false,
+                    referenceDivision: "Premier Division",
+                    referenceStrength: 149,
+                    shift: 0,
+                  }
+                : null,
               roleCatalogVersion: 1,
               roleScores: [
                 {

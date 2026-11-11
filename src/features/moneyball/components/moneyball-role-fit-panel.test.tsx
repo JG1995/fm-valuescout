@@ -67,6 +67,7 @@ describe("MoneyballRoleFitPanel", () => {
 
     render(
       <MoneyballRoleFitPanel
+        leagueAdjustment={null}
         positions={{ MC: 20, GK: null }}
         roleScores={roles}
         catalogVersion={1}
@@ -134,6 +135,7 @@ describe("MoneyballRoleFitPanel", () => {
     const user = userEvent.setup();
     render(
       <MoneyballRoleFitPanel
+        leagueAdjustment={null}
         positions={{ MC: null }}
         catalogVersion={1}
         comparisonBasis={{
@@ -168,10 +170,74 @@ describe("MoneyballRoleFitPanel", () => {
     );
   });
 
+  it("says how far the player's league moved a role score", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <MoneyballRoleFitPanel
+        leagueAdjustment={{
+          division: "Sky Bet Championship",
+          strength: 125,
+          estimated: false,
+          referenceDivision: "Premier League",
+          referenceStrength: 149,
+          shift: -12,
+        }}
+        positions={{ MC: 20 }}
+        catalogVersion={1}
+        comparisonBasis={{
+          kind: "available",
+          naturalPositions: ["MC"],
+          comparisonPlayerCount: 24,
+        }}
+        roleScores={[
+          role({ roleId: "scored", displayName: "Scored Role", score: 60 }),
+        ]}
+      />,
+    );
+
+    const panel = await screen.findByRole("region", {
+      name: "Moneyball role fit for MC",
+    });
+    expect(
+      within(panel).getByText(
+        "League strength: role scores −12 (Sky Bet Championship 125 against Premier League 149)",
+      ),
+    ).toBeInTheDocument();
+    await user.click(within(panel).getByText("Scored Role"));
+    expect(
+      within(panel).getByText(
+        "Weighted percentile score from the natural-position comparison cohort, moved −12 for league strength.",
+      ),
+    ).toBeInTheDocument();
+
+    rerender(
+      <MoneyballRoleFitPanel
+        leagueAdjustment={null}
+        positions={{ MC: 20 }}
+        catalogVersion={1}
+        comparisonBasis={{
+          kind: "available",
+          naturalPositions: ["MC"],
+          comparisonPlayerCount: 24,
+        }}
+        roleScores={[
+          role({ roleId: "scored", displayName: "Scored Role", score: 60 }),
+        ]}
+      />,
+    );
+    expect(
+      within(panel).getByText(
+        "Weighted percentile score from the natural-position comparison cohort.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(panel).queryByText(/League strength/)).toBeNull();
+  });
+
   it("marks a metric the save cannot provide and keeps its listed weight", async () => {
     const user = userEvent.setup();
     render(
       <MoneyballRoleFitPanel
+        leagueAdjustment={null}
         positions={{ MC: 20 }}
         catalogVersion={1}
         comparisonBasis={{
@@ -226,6 +292,7 @@ describe("MoneyballRoleFitPanel", () => {
   it("withholds stale role scores when the player has no natural position", () => {
     render(
       <MoneyballRoleFitPanel
+        leagueAdjustment={null}
         positions={{ MC: 19 }}
         catalogVersion={1}
         comparisonBasis={{ kind: "unavailableNoNaturalPosition" }}

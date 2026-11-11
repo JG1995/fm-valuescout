@@ -63,9 +63,11 @@ import {
 } from "@/testing/managed-club-boost-ipc-mock";
 import {
   resetPlayerMoneyballOverride,
+  resolveGetMoneyballLeagueAdjustmentIpcMock,
   resolveGetPlayerMoneyballIpcMock,
   resolvePendingRefreshSeasonStats,
   resolveRefreshSeasonStatsIpcMock,
+  resolveSetMoneyballLeagueAdjustmentIpcMock,
 } from "@/testing/moneyball-ipc-mock";
 import {
   resetPlannerIpcMock,
@@ -294,6 +296,14 @@ function registerIpcMocks() {
 
     if (cmd === "refresh_season_stats") {
       return resolveRefreshSeasonStatsIpcMock(args);
+    }
+
+    if (cmd === "get_moneyball_league_adjustment") {
+      return resolveGetMoneyballLeagueAdjustmentIpcMock();
+    }
+
+    if (cmd === "set_moneyball_league_adjustment") {
+      return resolveSetMoneyballLeagueAdjustmentIpcMock(args);
     }
 
     if (cmd === "set_hidden_information_revealed") {
