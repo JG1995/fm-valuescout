@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::features::{
@@ -8,6 +10,7 @@ use crate::features::{
     scoring::combine::combine_role_scores,
 };
 
+use super::fit::{lane_foot_fit, lane_position_fit, FootFit, PositionFit};
 use super::outlook::{expected_score, Development};
 use super::tactic::{self, PlannerTactic, TacticLane};
 use super::teams;
@@ -92,9 +95,16 @@ pub struct PlannerSlotCandidate {
     pub player_uid: i64,
     pub name: String,
     pub current_club: String,
+    pub age: Option<i64>,
+    /// Whether the player is older than the age limit of the team being picked for.
+    pub over_age: bool,
     pub ip_score: Option<u8>,
     pub oop_score: Option<u8>,
     pub combined_score: Option<u8>,
+    /// The combined score the player is expected to reach, given his age and personality.
+    pub expected_combined_score: Option<u8>,
+    pub(super) position_fit: PositionFit,
+    pub(super) foot_fit: FootFit,
     pub assignment_location: Option<PlannerAssignmentLocation>,
 }
 
@@ -218,6 +228,26 @@ pub(super) fn load_depth(
     Ok(PlannerDepth { tactic, teams })
 }
 
+struct SlotCandidateRow {
+    player_uid: i64,
+    name: String,
+    current_club: String,
+    preferred_foot: String,
+    positions_json: String,
+    development: Development,
+    ip_score: Option<u8>,
+    oop_score: Option<u8>,
+    potential_ip_score: Option<u8>,
+    potential_oop_score: Option<u8>,
+    assignment_team: Option<String>,
+    assignment_string_id: Option<i64>,
+    assignment_string_order: Option<i64>,
+    assignment_lane_id: Option<String>,
+}
+
+/// The managed club's players for a cell of `team`, best current combined score first. Every
+/// player is offered, with what Optimize would hold against him: his fit for the lane and
+/// whether he is over the team's age limit.
 pub fn get_slot_candidates(
     conn: &Connection,
     save_id: i64,
@@ -228,20 +258,31 @@ pub fn get_slot_candidates(
     let search = normalize_candidate_search(search)?;
     let tactic = ensure_depth(conn, save_id)?;
     teams::ensure_available(conn, save_id, team)?;
+    let max_age = teams::get_team_settings(conn, save_id)?
+        .into_iter()
+        .find(|setting| setting.team == team)
+        .and_then(|setting| setting.max_age);
     let lane = find_lane(&tactic, lane_id)?;
     let snapshot_id = current_snapshot_id(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
-    assert_read_models_complete(conn, snapshot_id, true, false)?;
+    assert_read_models_complete(conn, snapshot_id, true, true)?;
     let ip_column = player_current_column(&lane.ip_role_id)?;
     let oop_column = player_current_column(&lane.oop_role_id)?;
+    let potential_ip_column = player_potential_column(&lane.ip_role_id)?;
+    let potential_oop_column = player_potential_column(&lane.oop_role_id)?;
     let mut statement = conn
         .prepare(&format!(
             "SELECT
                 p.uid,
                 p.name,
                 p.current_club,
+                p.preferred_foot,
+                p.positions_json,
+                {},
                 {PLAYER_METRICS_ALIAS}.{ip_column},
                 {PLAYER_METRICS_ALIAS}.{oop_column},
+                {PLAYER_METRICS_ALIAS}.{potential_ip_column},
+                {PLAYER_METRICS_ALIAS}.{potential_oop_column},
                 assignment_string.team,
                 assignment_string.id,
                 assignment_string.string_order,
@@ -256,69 +297,83 @@ pub fn get_slot_candidates(
                AND p.current_club = (
                    SELECT club_name FROM managed_club_settings WHERE save_id = ?2
                )",
-            player_metrics_join("p", true, false),
+            Development::columns("p"),
+            player_metrics_join("p", true, true),
         ))
         .map_err(|error| error.to_string())?;
-    let candidates = statement
+    let rows = statement
         .query_map(params![snapshot_id, save_id], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, Option<u8>>(3)?,
-                row.get::<_, Option<u8>>(4)?,
-                row.get::<_, Option<String>>(5)?,
-                row.get::<_, Option<i64>>(6)?,
-                row.get::<_, Option<i64>>(7)?,
-                row.get::<_, Option<String>>(8)?,
-            ))
+            Ok(SlotCandidateRow {
+                player_uid: row.get(0)?,
+                name: row.get(1)?,
+                current_club: row.get(2)?,
+                preferred_foot: row.get(3)?,
+                positions_json: row.get(4)?,
+                development: Development::from_row(row, 5)?,
+                ip_score: row.get(9)?,
+                oop_score: row.get(10)?,
+                potential_ip_score: row.get(11)?,
+                potential_oop_score: row.get(12)?,
+                assignment_team: row.get(13)?,
+                assignment_string_id: row.get(14)?,
+                assignment_string_order: row.get(15)?,
+                assignment_lane_id: row.get(16)?,
+            })
         })
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
 
-    let mut candidates = candidates
+    let mut candidates = rows
         .into_iter()
-        .filter(|(_, name, _, _, _, _, _, _, _)| name.to_lowercase().contains(&search))
-        .map(
-            |(
-                player_uid,
-                name,
-                current_club,
-                ip_score,
-                oop_score,
-                assignment_team,
-                assignment_string_id,
-                assignment_string_order,
-                assignment_lane_id,
-            )| {
-                let assignment_location = match (
-                    assignment_team,
-                    assignment_string_id,
-                    assignment_string_order,
-                    assignment_lane_id,
-                ) {
-                    (Some(team), Some(string_id), Some(string_order), Some(lane_id)) => {
-                        Some(PlannerAssignmentLocation {
-                            team: PlannerTeam::parse(&team)?,
-                            string_id,
-                            string_order,
-                            lane_id,
-                        })
-                    }
-                    _ => None,
-                };
-                Ok(PlannerSlotCandidate {
-                    player_uid,
-                    name,
-                    current_club,
-                    ip_score,
-                    oop_score,
-                    combined_score: combine_role_scores(ip_score, oop_score, lane.ip_weight),
-                    assignment_location,
-                })
-            },
-        )
+        .filter(|row| row.name.to_lowercase().contains(&search))
+        .map(|row| {
+            let assignment_location = match (
+                row.assignment_team,
+                row.assignment_string_id,
+                row.assignment_string_order,
+                row.assignment_lane_id,
+            ) {
+                (Some(team), Some(string_id), Some(string_order), Some(lane_id)) => {
+                    Some(PlannerAssignmentLocation {
+                        team: PlannerTeam::parse(&team)?,
+                        string_id,
+                        string_order,
+                        lane_id,
+                    })
+                }
+                _ => None,
+            };
+            let positions =
+                serde_json::from_str::<BTreeMap<String, Option<i64>>>(&row.positions_json)
+                    .map_err(|error| error.to_string())?;
+            let combined_score = combine_role_scores(row.ip_score, row.oop_score, lane.ip_weight);
+            let potential_combined_score = combine_role_scores(
+                row.potential_ip_score,
+                row.potential_oop_score,
+                lane.ip_weight,
+            );
+            Ok(PlannerSlotCandidate {
+                player_uid: row.player_uid,
+                name: row.name,
+                current_club: row.current_club,
+                age: row.development.age,
+                over_age: max_age
+                    .zip(row.development.age)
+                    .is_some_and(|(max_age, age)| age > max_age),
+                ip_score: row.ip_score,
+                oop_score: row.oop_score,
+                combined_score,
+                expected_combined_score: combined_score.zip(potential_combined_score).map(
+                    |(current, potential)| {
+                        expected_score(current, potential, &row.development).round() as u8
+                    },
+                ),
+                position_fit: lane_position_fit(&positions, lane),
+                foot_fit: lane_foot_fit(&row.preferred_foot, lane),
+                assignment_location,
+            })
+        })
         .collect::<Result<Vec<_>, String>>()?;
     candidates.sort_by(|left, right| {
         right
@@ -404,6 +459,8 @@ pub fn set_assignment_pinned(
     Ok(((), snapshot_id))
 }
 
+/// Places an unassigned player in a cell and pins him there. A player already in the cell is
+/// left unassigned.
 pub fn assign_player(
     conn: &Connection,
     save_id: i64,
@@ -418,9 +475,13 @@ pub fn assign_player(
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
     let team = string_team(&tx, save_id, string_id)?;
-    ensure_cell_is_empty(&tx, string_id, lane_id)?;
     let last_known_name = assignable_player_name(&tx, save_id, team, player_uid)?;
     ensure_player_is_unassigned(&tx, save_id, player_uid)?;
+    tx.execute(
+        "DELETE FROM planner_assignments WHERE string_id = ?1 AND lane_id = ?2",
+        params![string_id, lane_id],
+    )
+    .map_err(|error| error.to_string())?;
     insert_assignment(
         &tx,
         save_id,
@@ -434,6 +495,8 @@ pub fn assign_player(
     Ok(((), snapshot_id))
 }
 
+/// Moves an assigned player to a cell and pins him there. A player already in the cell is
+/// left unassigned.
 pub fn move_player(
     conn: &Connection,
     save_id: i64,
@@ -448,7 +511,6 @@ pub fn move_player(
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
     let team = string_team(&tx, save_id, string_id)?;
-    ensure_cell_is_empty(&tx, string_id, lane_id)?;
     let existing_assignment_id: i64 = tx
         .query_row(
             "SELECT id FROM planner_assignments WHERE save_id = ?1 AND player_uid = ?2",
@@ -460,8 +522,9 @@ pub fn move_player(
         .ok_or_else(|| format!("Player {player_uid} is not assigned"))?;
     let last_known_name = assignable_player_name(&tx, save_id, team, player_uid)?;
     tx.execute(
-        "DELETE FROM planner_assignments WHERE id = ?1",
-        params![existing_assignment_id],
+        "DELETE FROM planner_assignments
+         WHERE id = ?1 OR (string_id = ?2 AND lane_id = ?3)",
+        params![existing_assignment_id, string_id, lane_id],
     )
     .map_err(|error| error.to_string())?;
     insert_assignment(
@@ -746,22 +809,6 @@ fn string_team(conn: &Connection, save_id: i64, string_id: i64) -> Result<Planne
         .map_err(|error| error.to_string())?
         .ok_or_else(|| format!("Planner string {string_id} not found"))?;
     PlannerTeam::parse(&team)
-}
-
-fn ensure_cell_is_empty(conn: &Connection, string_id: i64, lane_id: &str) -> Result<(), String> {
-    let occupied: bool = conn
-        .query_row(
-            "SELECT EXISTS(
-                 SELECT 1 FROM planner_assignments WHERE string_id = ?1 AND lane_id = ?2
-             )",
-            params![string_id, lane_id],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if occupied {
-        return Err("Planner cell is already occupied".to_string());
-    }
-    Ok(())
 }
 
 fn ensure_player_is_unassigned(

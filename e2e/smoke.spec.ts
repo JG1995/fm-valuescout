@@ -5299,6 +5299,52 @@ test.describe("application smoke", () => {
     ).toBeLessThanOrEqual(3440);
   });
 
+  test("planner picker replaces a placed player in one step and unpins him", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      plannerPotentialScores: true,
+    });
+    await page.goto("/my-club?view=planner");
+
+    const main = page.getByRole("main");
+    await main
+      .getByRole("button", {
+        name: /Senior, 1st string, IP: GK .* Potential Keeper, Resolved/,
+      })
+      .click();
+    const picker = page.getByRole("dialog", {
+      name: "Replace Potential Keeper",
+    });
+    await expect(
+      picker.getByRole("region", { name: "Current player" }),
+    ).toContainText("Placed by Optimize, which may replace him.");
+    await expect(
+      picker.getByRole("option", { name: /Potential Keeper/ }),
+    ).toBeDisabled();
+    await expect(
+      picker.getByRole("option", { name: /Young Keeper/ }),
+    ).toContainText("Unfamiliar position");
+    await picker.getByRole("option", { name: /Left-Footed Keeper/ }).click();
+    await expect(picker).toBeHidden();
+
+    const replaced = main.getByRole("button", {
+      name: /Senior, 1st string, IP: GK .* Left-Footed Keeper, Resolved, .* pinned$/,
+    });
+    await replaced.click();
+    const pinned = page.getByRole("dialog", {
+      name: "Replace Left-Footed Keeper",
+    });
+    await pinned.getByRole("button", { name: "Unpin" }).click();
+    await expect(pinned).toBeHidden();
+    await expect(
+      main.getByRole("button", {
+        name: /Senior, 1st string, IP: GK .* Left-Footed Keeper, Resolved, .* aged 24$/,
+      }),
+    ).toBeVisible();
+  });
+
   test("planner depth keeps assigned current and expected scores readable at desktop widths", async ({
     page,
   }) => {

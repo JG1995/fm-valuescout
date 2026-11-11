@@ -158,7 +158,13 @@ function AssignmentCell({
             stringOrder: plannerString.stringOrder,
             laneId,
             laneName,
-            occupantName: assignment ? name : null,
+            occupant: assignment
+              ? {
+                  playerUid: assignment.playerUid,
+                  name,
+                  pinned: assignment.pinned,
+                }
+              : null,
           })
         }
       >

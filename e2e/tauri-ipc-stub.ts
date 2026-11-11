@@ -2326,6 +2326,119 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             return plannerDepth;
           }
 
+          if (cmd === "get_planner_slot_candidates") {
+            const team = plannerDepth.teams.find(
+              (candidate) => candidate.team === args?.team,
+            );
+            if (!team) {
+              throw new Error("Planner team not found");
+            }
+            const search = String(args?.search ?? "").toLowerCase();
+            // [uid, name, age, current, expected, position fit, foot fit].
+            return [
+              [77, "Potential Keeper", 19, 82, 88, "suited", "matches"],
+              [501, "Senior Keeper", 29, 78, 78, "suited", "matches"],
+              [502, "Young Keeper", 17, 61, 80, "unfamiliar", "matches"],
+              [503, "Left-Footed Keeper", 24, 70, 73, "suited", "mismatch"],
+            ]
+              .filter((candidate) => candidate[1].toLowerCase().includes(search))
+              .map((candidate) => {
+                const location = plannerDepth.teams
+                  .flatMap((placedTeam) =>
+                    placedTeam.strings.flatMap((plannerString) =>
+                      plannerString.assignments.map((assignment) => ({
+                        playerUid: assignment.playerUid,
+                        team: placedTeam.team,
+                        stringId: plannerString.id,
+                        stringOrder: plannerString.stringOrder,
+                        laneId: assignment.laneId,
+                      })),
+                    ),
+                  )
+                  .find((placed) => placed.playerUid === candidate[0]);
+                return {
+                  playerUid: candidate[0],
+                  name: candidate[1],
+                  currentClub: "Barcelona",
+                  age: candidate[2],
+                  overAge: team.maxAge !== null && candidate[2] > team.maxAge,
+                  ipScore: candidate[3],
+                  oopScore: candidate[3],
+                  combinedScore: candidate[3],
+                  expectedCombinedScore: candidate[4],
+                  positionFit: candidate[5],
+                  footFit: candidate[6],
+                  assignmentLocation: location
+                    ? {
+                        team: location.team,
+                        stringId: location.stringId,
+                        stringOrder: location.stringOrder,
+                        laneId: location.laneId,
+                      }
+                    : null,
+                };
+              });
+          }
+
+          if (
+            cmd === "assign_planner_player" ||
+            cmd === "move_planner_player" ||
+            cmd === "clear_planner_assignment" ||
+            cmd === "set_planner_assignment_pinned"
+          ) {
+            const strings = plannerDepth.teams.flatMap((team) => team.strings);
+            const target = strings.find(
+              (plannerString) => plannerString.id === args?.stringId,
+            );
+            if (!target) {
+              throw new Error("Planner string not found");
+            }
+            if (cmd === "set_planner_assignment_pinned") {
+              const assignment = target.assignments.find(
+                (candidate) => candidate.laneId === args?.laneId,
+              );
+              if (!assignment) {
+                throw new Error("Planner cell is empty");
+              }
+              assignment.pinned = args?.pinned === true;
+              return plannerDepth;
+            }
+            const names = {
+              77: "Potential Keeper",
+              501: "Senior Keeper",
+              502: "Young Keeper",
+              503: "Left-Footed Keeper",
+            };
+            // A pick leaves his old cell and replaces the target's player.
+            for (const plannerString of strings) {
+              plannerString.assignments = plannerString.assignments.filter(
+                (assignment) =>
+                  assignment.playerUid !== args?.playerUid &&
+                  !(
+                    plannerString === target &&
+                    assignment.laneId === args?.laneId
+                  ),
+              );
+            }
+            if (cmd !== "clear_planner_assignment") {
+              target.assignments.push({
+                id: 1000 + args.playerUid,
+                laneId: args.laneId,
+                playerUid: args.playerUid,
+                lastKnownName: names[args.playerUid],
+                currentName: names[args.playerUid],
+                state: "resolved",
+                age: 24,
+                pinned: true,
+                overAge: false,
+                combinedScore: 70,
+                expectedCombinedScore: 73,
+                potentialCombinedScore: 76,
+              });
+            }
+            return plannerDepth;
+          }
+
           if (cmd === "optimize_planner_depth") {
             const reserves = plannerDepth.teams.find(
               (team) => team.team === "reserves",

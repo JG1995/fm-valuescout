@@ -350,9 +350,14 @@ pub struct PlannerSlotCandidateDto {
     pub player_uid: i64,
     pub name: String,
     pub current_club: String,
+    pub age: Option<i64>,
+    pub over_age: bool,
     pub ip_score: Option<u8>,
     pub oop_score: Option<u8>,
     pub combined_score: Option<u8>,
+    pub expected_combined_score: Option<u8>,
+    pub position_fit: &'static str,
+    pub foot_fit: &'static str,
     pub assignment_location: Option<PlannerAssignmentLocationDto>,
 }
 
@@ -362,9 +367,14 @@ impl From<PlannerSlotCandidate> for PlannerSlotCandidateDto {
             player_uid: candidate.player_uid,
             name: candidate.name,
             current_club: candidate.current_club,
+            age: candidate.age,
+            over_age: candidate.over_age,
             ip_score: candidate.ip_score,
             oop_score: candidate.oop_score,
             combined_score: candidate.combined_score,
+            expected_combined_score: candidate.expected_combined_score,
+            position_fit: candidate.position_fit.as_str(),
+            foot_fit: candidate.foot_fit.as_str(),
             assignment_location: candidate
                 .assignment_location
                 .map(PlannerAssignmentLocationDto::from),

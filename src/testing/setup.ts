@@ -85,6 +85,7 @@ import {
   resolveSavePlannerTacticIpcMock,
   resolveSavePlannerTeamsIpcMock,
   resolveSetManagedClubIpcMock,
+  resolveSetPlannerAssignmentPinnedIpcMock,
 } from "@/testing/planner-ipc-mock";
 import {
   resetGetPlayerOverride,
@@ -420,6 +421,10 @@ function registerIpcMocks() {
 
     if (cmd === "clear_planner_assignment") {
       return resolveClearPlannerAssignmentIpcMock(args);
+    }
+
+    if (cmd === "set_planner_assignment_pinned") {
+      return resolveSetPlannerAssignmentPinnedIpcMock(args);
     }
 
     if (cmd === "move_planner_player") {

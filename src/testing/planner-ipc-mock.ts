@@ -835,9 +835,6 @@ function resolvePlannerAssignmentIpcMock(args: unknown, move: boolean) {
   if (!target) {
     throw new Error("Planner string not found");
   }
-  if (target.assignments.some((assignment) => assignment.laneId === laneId)) {
-    throw new Error("Planner cell is already occupied");
-  }
   const existing = depth.teams
     .flatMap((team) => team.strings)
     .flatMap((plannerString) => plannerString.assignments)
@@ -859,6 +856,10 @@ function resolvePlannerAssignmentIpcMock(args: unknown, move: boolean) {
   }
   const candidate = slotCandidates.find(
     (slotCandidate) => slotCandidate.playerUid === playerUid,
+  );
+  // The cell's player, if any, is left unassigned.
+  target.assignments = target.assignments.filter(
+    (assignment) => assignment.laneId !== laneId,
   );
   target.assignments.push({
     id: -playerUid,
@@ -899,6 +900,28 @@ export function resolveClearPlannerAssignmentIpcMock(args: unknown) {
   target.assignments = target.assignments.filter(
     (assignment) => assignment.laneId !== laneId,
   );
+  return cloneDepth(depth);
+}
+
+export function resolveSetPlannerAssignmentPinnedIpcMock(args: unknown) {
+  if (assignmentError) {
+    throw assignmentError;
+  }
+  const { stringId, laneId } = plannerSlotArgs(args);
+  const assignment = depth.teams
+    .flatMap((team) => team.strings)
+    .find((plannerString) => plannerString.id === stringId)
+    ?.assignments.find((candidate) => candidate.laneId === laneId);
+  if (
+    !assignment ||
+    typeof args !== "object" ||
+    args === null ||
+    !("pinned" in args) ||
+    typeof args.pinned !== "boolean"
+  ) {
+    throw new Error("Planner cell is empty");
+  }
+  assignment.pinned = args.pinned;
   return cloneDepth(depth);
 }
 

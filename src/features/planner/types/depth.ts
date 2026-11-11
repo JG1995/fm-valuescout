@@ -48,12 +48,24 @@ export type PlannerAssignmentLocation = {
   laneId: string;
 };
 
+/** How a player's positions suit a slot. Optimize never places an unsuited player. */
+export type PlannerPositionFit = "suited" | "unfamiliar" | "unsuited";
+/** How a player's foot suits a slot. Optimize never places an excluded player. */
+export type PlannerFootFit = "matches" | "mismatch" | "excluded";
+
 export type PlannerSlotCandidate = {
   playerUid: number;
   name: string;
   currentClub: string;
+  age: number | null;
+  /** Older than the age limit of the team being picked for. */
+  overAge: boolean;
   ipScore: number | null;
   oopScore: number | null;
   combinedScore: number | null;
+  /** The score the player is expected to reach, given his age and personality. */
+  expectedCombinedScore: number | null;
+  positionFit: PlannerPositionFit;
+  footFit: PlannerFootFit;
   assignmentLocation: PlannerAssignmentLocation | null;
 };

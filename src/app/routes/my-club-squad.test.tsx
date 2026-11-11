@@ -5100,15 +5100,21 @@ describe("My Club route", () => {
     );
 
     await user.click(occupiedCell);
-    const clearDialog = screen.getByRole("dialog", {
-      name: "Clear Reserve Keeper?",
+    const replaceDialog = screen.getByRole("dialog", {
+      name: "Replace Reserve Keeper",
     });
-    expect(clearDialog).toHaveTextContent(
-      `Reserve Keeper is assigned to ${RESERVES_FIRST_KEEPER}. It must be cleared before assigning or moving a player.`,
+    const current = within(replaceDialog).getByRole("region", {
+      name: "Current player",
+    });
+    expect(current).toHaveTextContent(RESERVES_FIRST_KEEPER);
+    expect(current).toHaveTextContent(
+      "Placed by Optimize, which may replace him.",
     );
-    expect(within(clearDialog).queryByRole("combobox")).not.toBeInTheDocument();
-    expect(within(clearDialog).queryByRole("listbox")).not.toBeInTheDocument();
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    const ownOption = await within(replaceDialog).findByRole("option", {
+      name: /Reserve Keeper/,
+    });
+    expect(ownOption).toBeDisabled();
+    expect(ownOption).toHaveTextContent("In this slot");
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(document.activeElement).toBe(occupiedCell));
     expect(occupiedCell).toHaveTextContent("Reserve Keeper");
@@ -6855,9 +6861,14 @@ function slotCandidate(
     playerUid: candidate.playerUid,
     name: candidate.name,
     currentClub: candidate.currentClub ?? "Barcelona",
+    age: candidate.age ?? null,
+    overAge: candidate.overAge ?? false,
     ipScore: candidate.ipScore ?? null,
     oopScore: candidate.oopScore ?? null,
     combinedScore: candidate.combinedScore ?? null,
+    expectedCombinedScore: candidate.expectedCombinedScore ?? null,
+    positionFit: candidate.positionFit ?? "suited",
+    footFit: candidate.footFit ?? "matches",
     assignmentLocation: candidate.assignmentLocation ?? null,
   };
 }
