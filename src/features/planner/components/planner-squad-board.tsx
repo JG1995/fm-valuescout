@@ -1,9 +1,11 @@
-import { Pin } from "lucide-react";
+import { Pencil, Pin, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button/button";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import type {
   PlannerAssignment,
   PlannerDepth,
   PlannerDepthTeam,
+  PlannerString,
 } from "../types/depth";
 import type { TacticOptions } from "../types/tactic";
 import type { PlannerTeam } from "../types/team";
@@ -219,14 +221,21 @@ type PlannerSquadBoardProps = {
   teamDepths: PlannerDepthTeam[];
   tactic: PlannerDepth["tactic"];
   options: TacticOptions;
+  /** Whether the strings can be added to or edited right now. */
+  stringsDisabled: boolean;
   onOpen: (target: PlannerSlotTarget) => void;
+  onAddString: (team: PlannerTeam) => void;
+  onEditString: (team: PlannerTeam, plannerString: PlannerString) => void;
 };
 
 export function PlannerSquadBoard({
   teamDepths,
   tactic,
   options,
+  stringsDisabled,
   onOpen,
+  onAddString,
+  onEditString,
 }: PlannerSquadBoardProps) {
   const teamDisplayName = (team: PlannerTeam) =>
     teamDepths.find((candidate) => candidate.team === team)?.displayName ??
@@ -267,24 +276,34 @@ export function PlannerSquadBoard({
                 id={`planner-team-${teamDepth.team}-header`}
                 colSpan={teamDepth.strings.length}
                 scope="colgroup"
+                // The header's name stays the team's: every cell is announced
+                // with it. The age limit is its description.
+                aria-label={teamDepth.displayName}
                 aria-description={
                   teamDepth.maxAge === null
                     ? undefined
                     : `Max age ${teamDepth.maxAge}`
                 }
-                className={`${index > 0 ? "border-l-2" : ""} sticky top-0 z-20 h-table-header-height border-b border-outline-variant bg-surface-container-lowest px-3 text-label-md text-on-surface`}
+                className={`${index > 0 ? "border-l-2" : ""} sticky top-0 z-20 h-table-header-height border-b border-outline-variant bg-surface-container-lowest pr-1 pl-3 text-label-md text-on-surface`}
               >
-                {teamDepth.displayName}
-                {/* The header's name stays the team's: every cell is announced
-                    with it. The limit is its description. */}
-                {teamDepth.maxAge === null ? null : (
-                  <span
-                    aria-hidden="true"
-                    className="ml-2 text-body-sm font-normal whitespace-nowrap text-on-surface-variant"
-                  >
-                    Max age {teamDepth.maxAge}
+                <span className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate">
+                    {teamDepth.displayName}
+                    {teamDepth.maxAge === null ? null : (
+                      <span className="ml-2 text-body-sm font-normal text-on-surface-variant">
+                        Max age {teamDepth.maxAge}
+                      </span>
+                    )}
                   </span>
-                )}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    icon={Plus}
+                    aria-label={`Add string to ${teamDepth.displayName}`}
+                    disabled={stringsDisabled}
+                    onClick={() => onAddString(teamDepth.team)}
+                  />
+                </span>
               </th>
             ))}
           </tr>
@@ -294,9 +313,25 @@ export function PlannerSquadBoard({
                 key={plannerString.id}
                 id={`${idPrefix}-${team}-string-${plannerString.id}`}
                 scope="col"
+                aria-label={plannerString.displayName}
                 className={`${index === 0 || allStrings[index - 1]?.team !== team ? "border-l-2" : ""} h-table-header-height w-52 max-w-52 min-w-52 border-b border-outline-variant bg-surface-container-high px-3 text-left text-body-sm font-medium text-on-surface`}
               >
-                {plannerString.displayName}
+                <button
+                  type="button"
+                  aria-label={`Edit ${teamDisplayName(team)} ${plannerString.displayName}`}
+                  title="Rename, reorder, or remove this string"
+                  disabled={stringsDisabled}
+                  className="flex w-full items-center justify-between gap-2 rounded-sm text-left underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-45"
+                  onClick={() => onEditString(team, plannerString)}
+                >
+                  <span className="min-w-0 truncate">
+                    {plannerString.displayName}
+                  </span>
+                  <Pencil
+                    aria-hidden="true"
+                    className="size-3 shrink-0 text-on-surface-variant"
+                  />
+                </button>
               </th>
             ))}
           </tr>

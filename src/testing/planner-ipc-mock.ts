@@ -1196,7 +1196,7 @@ function applyPlannerTeamSave(
           return {
             id: nextStringId++,
             stringOrder: index,
-            displayName: plannerString.displayName,
+            displayName: plannerString.displayName || ordinalStringLabel(index),
             assignments: [],
           };
         }),

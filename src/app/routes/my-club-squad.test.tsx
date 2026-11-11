@@ -5837,7 +5837,7 @@ describe("My Club route", () => {
     ]);
   });
 
-  it("renames a planner string while keeping its assignments", async () => {
+  it("renames a planner string from the board while keeping its assignments", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
@@ -5845,34 +5845,33 @@ describe("My Club route", () => {
     renderMyClubRoute();
 
     await user.click(
-      await screen.findByRole("button", { name: "Manage teams" }),
+      await screen.findByRole("button", { name: "Edit Senior 1st string" }),
     );
     const dialog = await screen.findByRole("dialog", {
-      name: "Manage squad teams",
+      name: "Edit Senior string",
     });
     const renameField = within(dialog).getByRole("textbox", {
-      name: "Senior string 1 name",
+      name: "String name",
     });
     expect(renameField).toHaveValue("1st string");
     await user.clear(renameField);
     await user.type(renameField, "First Choice");
     await user.click(
-      within(dialog).getByRole("button", { name: "Save teams" }),
+      within(dialog).getByRole("button", { name: "Save string" }),
     );
 
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
-    const seniorSave = getPlannerTeamSaveIpcMockCalls().find((call) =>
-      call.teams.some((team) => team.team === "senior"),
-    );
     expect(
-      seniorSave?.teams.find((team) => team.team === "senior")?.strings,
+      getPlannerTeamSaveIpcMockCalls()[0]?.teams.find(
+        (team) => team.team === "senior",
+      )?.strings,
     ).toEqual([
       { id: 1, displayName: "First Choice" },
       { id: 4, displayName: "2nd string" },
     ]);
-    expect(await screen.findByText("Team settings saved.")).toBeInTheDocument();
+    expect(await screen.findByText("String saved.")).toBeInTheDocument();
     const matrix = await screen.findByRole("region", {
       name: "Squad depth board",
     });
@@ -5884,7 +5883,7 @@ describe("My Club route", () => {
     ).toBeInTheDocument();
   });
 
-  it("reorders planner strings while keeping stable ids", async () => {
+  it("reorders planner strings from the board while keeping stable ids", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
@@ -5894,32 +5893,26 @@ describe("My Club route", () => {
     renderMyClubRoute();
 
     await user.click(
-      await screen.findByRole("button", { name: "Manage teams" }),
+      await screen.findByRole("button", { name: "Edit Senior 2nd string" }),
     );
     const dialog = await screen.findByRole("dialog", {
-      name: "Manage squad teams",
+      name: "Edit Senior string",
     });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Move Senior string 2 up" }),
+    await user.selectOptions(
+      within(dialog).getByRole("combobox", { name: "Position in Senior" }),
+      "1st",
     );
-    expect(
-      within(dialog).getByRole("textbox", { name: "Senior string 1 name" }),
-    ).toHaveValue("2nd string");
-    expect(
-      within(dialog).getByRole("textbox", { name: "Senior string 2 name" }),
-    ).toHaveValue("1st string");
     await user.click(
-      within(dialog).getByRole("button", { name: "Save teams" }),
+      within(dialog).getByRole("button", { name: "Save string" }),
     );
 
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
-    const seniorSave = getPlannerTeamSaveIpcMockCalls().find((call) =>
-      call.teams.some((team) => team.team === "senior"),
-    );
     expect(
-      seniorSave?.teams.find((team) => team.team === "senior")?.strings,
+      getPlannerTeamSaveIpcMockCalls()[0]?.teams.find(
+        (team) => team.team === "senior",
+      )?.strings,
     ).toEqual([
       { id: 4, displayName: "2nd string" },
       { id: 1, displayName: "1st string" },
@@ -5934,25 +5927,23 @@ describe("My Club route", () => {
     renderMyClubRoute();
 
     await user.click(
-      await screen.findByRole("button", { name: "Manage teams" }),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Manage squad teams",
-    });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Remove Senior string 1" }),
+      await screen.findByRole("button", { name: "Edit Senior 1st string" }),
     );
     await user.click(
-      within(dialog).getByRole("button", { name: "Save teams" }),
+      within(
+        await screen.findByRole("dialog", { name: "Edit Senior string" }),
+      ).getByRole("button", { name: "Remove string" }),
     );
 
     const confirmation = await screen.findByRole("dialog", {
-      name: "Remove planner strings?",
+      name: "Remove 1st string?",
     });
-    expect(confirmation).toHaveTextContent("1st string: 4 assignments");
+    expect(confirmation).toHaveTextContent(
+      "Removing 1st string from Senior permanently deletes its 4 assignments.",
+    );
     expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(0);
     await user.click(
-      within(confirmation).getByRole("button", { name: "Remove strings" }),
+      within(confirmation).getByRole("button", { name: "Remove string" }),
     );
 
     await waitFor(() =>
@@ -5983,9 +5974,10 @@ describe("My Club route", () => {
         confirmPopulatedRemoval: true,
       },
     ]);
+    expect(await screen.findByText("String removed.")).toBeInTheDocument();
   });
 
-  it("confirms mixed team and string removal with combined wording", async () => {
+  it("names the assignments and staffing targets a removed team loses", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
@@ -6006,15 +5998,6 @@ describe("My Club route", () => {
     });
     setPlannerTeamRemovalImpacts([
       {
-        team: "senior",
-        displayName: "First Team",
-        assignmentCount: 1,
-        staffingTargets: [],
-        strings: [
-          { stringId: 1, displayName: "1st string", assignmentCount: 1 },
-        ],
-      },
-      {
         team: "reserves",
         displayName: "B Team",
         assignmentCount: 1,
@@ -6032,9 +6015,9 @@ describe("My Club route", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Manage squad teams",
     });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Remove Senior string 1" }),
-    );
+    expect(
+      within(dialog).queryByRole("button", { name: /string/i }),
+    ).not.toBeInTheDocument();
     await user.click(
       within(dialog).getByRole("checkbox", { name: "Reserves" }),
     );
@@ -6043,19 +6026,18 @@ describe("My Club route", () => {
     );
 
     const confirmation = await screen.findByRole("dialog", {
-      name: "Remove planner teams and strings?",
+      name: "Remove planner teams?",
     });
     expect(confirmation).toHaveTextContent(
-      "Removing these teams and strings permanently deletes their assignments and staffing targets.",
+      "Removing these teams permanently deletes their assignments and staffing targets.",
     );
     expect(confirmation).toHaveTextContent(
       "B Team: 1 assignment; Manager: 2 slots",
     );
-    expect(confirmation).toHaveTextContent("1st string: 1 assignment");
     expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(0);
     await user.click(
       within(confirmation).getByRole("button", {
-        name: "Remove teams and strings",
+        name: "Remove teams",
       }),
     );
 
@@ -6069,7 +6051,10 @@ describe("My Club route", () => {
             team: "senior",
             displayName: "First Team",
             maxAge: null,
-            strings: [{ id: 4, displayName: "2nd string" }],
+            strings: [
+              { id: 1, displayName: "1st string" },
+              { id: 4, displayName: "2nd string" },
+            ],
           },
           {
             team: "youth",
@@ -6083,7 +6068,7 @@ describe("My Club route", () => {
     ]);
   });
 
-  it("prefills the next ordinal default for a new planner string", async () => {
+  it("adds a planner string from the board under the next ordinal name", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
@@ -6093,34 +6078,22 @@ describe("My Club route", () => {
     renderMyClubRoute();
 
     await user.click(
-      await screen.findByRole("button", { name: "Manage teams" }),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Manage squad teams",
-    });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Add string to Senior" }),
-    );
-    expect(
-      within(dialog).getByRole("textbox", { name: "Senior string 3 name" }),
-    ).toHaveValue("3rd string");
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save teams" }),
+      await screen.findByRole("button", { name: "Add string to Senior" }),
     );
 
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
-    const seniorSave = getPlannerTeamSaveIpcMockCalls().find((call) =>
-      call.teams.some((team) => team.team === "senior"),
-    );
+    expect(await screen.findByText("String added.")).toBeInTheDocument();
     expect(
-      seniorSave?.teams.find((team) => team.team === "senior")?.strings,
+      getPlannerTeamSaveIpcMockCalls()[0]?.teams.find(
+        (team) => team.team === "senior",
+      )?.strings,
     ).toEqual([
       { id: 1, displayName: "1st string" },
       { id: 4, displayName: "2nd string" },
-      { id: null, displayName: "3rd string" },
+      { id: null, displayName: "" },
     ]);
+    expect(
+      screen.getByRole("columnheader", { name: "3rd string" }),
+    ).toBeInTheDocument();
   });
 
   it("blocks invalid planner string names with field errors", async () => {
@@ -6133,33 +6106,26 @@ describe("My Club route", () => {
     renderMyClubRoute();
 
     await user.click(
-      await screen.findByRole("button", { name: "Manage teams" }),
+      await screen.findByRole("button", { name: "Edit Senior 1st string" }),
     );
     const dialog = await screen.findByRole("dialog", {
-      name: "Manage squad teams",
+      name: "Edit Senior string",
     });
-    const firstName = within(dialog).getByRole("textbox", {
-      name: "Senior string 1 name",
-    });
-    await user.clear(firstName);
+    const name = within(dialog).getByRole("textbox", { name: "String name" });
+    const save = within(dialog).getByRole("button", { name: "Save string" });
+    await user.clear(name);
     expect(within(dialog).getByText("Enter a string name")).toBeInTheDocument();
+    expect(save).toBeDisabled();
+    await user.type(name, "2ND STRING");
     expect(
-      within(dialog).getByRole("button", { name: "Save teams" }),
-    ).toBeDisabled();
-    await user.type(firstName, "2ND STRING");
-    expect(
-      within(dialog).getAllByText("String names must be unique"),
-    ).toHaveLength(2);
-    expect(
-      within(dialog).getByRole("button", { name: "Save teams" }),
-    ).toBeDisabled();
-    fireEvent.change(firstName, { target: { value: "x".repeat(41) } });
+      within(dialog).getByText("String names must be unique"),
+    ).toBeInTheDocument();
+    expect(save).toBeDisabled();
+    fireEvent.change(name, { target: { value: "x".repeat(41) } });
     expect(
       within(dialog).getByText("Use 40 characters or fewer"),
     ).toBeInTheDocument();
-    expect(
-      within(dialog).getByRole("button", { name: "Save teams" }),
-    ).toBeDisabled();
+    expect(save).toBeDisabled();
     expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(0);
   });
 

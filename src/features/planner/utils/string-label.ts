@@ -1,5 +1,6 @@
-export function ordinalStringLabel(stringOrder: number): string {
-  const number = stringOrder + 1;
+/** "1st", "2nd", and so on for a 0-based position. */
+export function ordinal(position: number): string {
+  const number = position + 1;
   const suffix =
     number % 100 >= 11 && number % 100 <= 13
       ? "th"
@@ -10,7 +11,11 @@ export function ordinalStringLabel(stringOrder: number): string {
           : number % 10 === 3
             ? "rd"
             : "th";
-  return `${number}${suffix} string`;
+  return `${number}${suffix}`;
+}
+
+export function ordinalStringLabel(stringOrder: number): string {
+  return `${ordinal(stringOrder)} string`;
 }
 
 export function nextOrdinalDefault(existingCount: number): string {

@@ -1,5 +1,4 @@
 import { useMutation } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
@@ -21,12 +20,7 @@ import {
 } from "../types/team";
 import type { PlannerTeamRemovalImpact } from "../types/team-removal-impact";
 import { nextOrdinalDefault } from "../utils/string-label";
-
-type PlannerStringDraft = {
-  key: string;
-  id: number | null;
-  displayName: string;
-};
+import { teamSettingInputs } from "../utils/team-settings";
 
 type PlannerTeamDraft = {
   team: PlannerTeam;
@@ -34,7 +28,6 @@ type PlannerTeamDraft = {
   /** The oldest age as typed; blank means no limit. */
   maxAge: string;
   included: boolean;
-  strings: PlannerStringDraft[];
 };
 
 /** The age limit a draft's text stands for, or undefined when it is not one. */
@@ -49,12 +42,6 @@ function parseMaxAge(value: string): number | null | undefined {
     age <= PLANNER_TEAM_MAX_MAX_AGE
     ? age
     : undefined;
-}
-
-let nextNewStringKey = 1;
-
-function stringFieldKey(team: PlannerTeam, index: number) {
-  return `${team}:${index}`;
 }
 
 type PlannerTeamManagementProps = {
@@ -76,21 +63,6 @@ function draftFromDepth(depth: PlannerDepth): PlannerTeamDraft[] {
           ? current.maxAge
           : PLANNER_TEAM_DEFAULT_MAX_AGE[team]
         )?.toString() ?? "",
-      strings: current
-        ? [...current.strings]
-            .sort((left, right) => left.stringOrder - right.stringOrder)
-            .map((plannerString) => ({
-              key: `string-${plannerString.id}`,
-              id: plannerString.id,
-              displayName: plannerString.displayName,
-            }))
-        : [
-            {
-              key: `new-${nextNewStringKey++}`,
-              id: null,
-              displayName: nextOrdinalDefault(0),
-            },
-          ],
     };
   });
 }
@@ -99,7 +71,6 @@ function validateDraft(draft: PlannerTeamDraft[]) {
   const included = draft.filter((team) => team.included);
   const fieldErrors: Partial<Record<PlannerTeam, string>> = {};
   const maxAgeErrors: Partial<Record<PlannerTeam, string>> = {};
-  const stringFieldErrors: Record<string, string> = {};
   const names = new Map<string, PlannerTeam[]>();
 
   for (const team of included) {
@@ -130,50 +101,14 @@ function validateDraft(draft: PlannerTeamDraft[]) {
     }
   }
 
-  for (const team of included) {
-    const seen = new Map<string, number[]>();
-    team.strings.forEach((plannerString, index) => {
-      const trimmed = plannerString.displayName.trim();
-      // A blank new string derives the next ordinal default in Rust, so
-      // validate the effective name exactly as the server normalizes it.
-      const effective =
-        plannerString.id === null && trimmed === ""
-          ? nextOrdinalDefault(index)
-          : trimmed;
-      if (trimmed === "" && plannerString.id !== null) {
-        stringFieldErrors[stringFieldKey(team.team, index)] =
-          "Enter a string name";
-      } else if ([...effective].length > 40) {
-        stringFieldErrors[stringFieldKey(team.team, index)] =
-          "Use 40 characters or fewer";
-      }
-      const matchingIndexes = seen.get(effective.toLowerCase()) ?? [];
-      matchingIndexes.push(index);
-      seen.set(effective.toLowerCase(), matchingIndexes);
-    });
-    for (const matchingIndexes of seen.values()) {
-      if (matchingIndexes.length < 2 || matchingIndexes[0] === undefined) {
-        continue;
-      }
-      for (const index of matchingIndexes) {
-        const errorKey = stringFieldKey(team.team, index);
-        if (!stringFieldErrors[errorKey]) {
-          stringFieldErrors[errorKey] = "String names must be unique";
-        }
-      }
-    }
-  }
-
   return {
     fieldErrors,
     maxAgeErrors,
-    stringFieldErrors,
     includedCount: included.length,
     valid:
       included.length > 0 &&
       Object.keys(fieldErrors).length === 0 &&
-      Object.keys(maxAgeErrors).length === 0 &&
-      Object.keys(stringFieldErrors).length === 0,
+      Object.keys(maxAgeErrors).length === 0,
   };
 }
 
@@ -293,36 +228,18 @@ export function PlannerTeamManagement({
     );
   };
 
-  const updateStrings = (
-    team: PlannerTeam,
-    update: (strings: PlannerStringDraft[]) => PlannerStringDraft[],
-  ) => {
-    removalImpactRequest.current += 1;
-    save.reset();
-    setCheckingRemovalImpact(false);
-    setPreviewedTeams(null);
-    setRemovalImpacts([]);
-    setRemovalImpactError(null);
-    setDraft((current) =>
-      current.map((candidate) =>
-        candidate.team === team
-          ? { ...candidate, strings: update(candidate.strings) }
-          : candidate,
-      ),
-    );
-  };
-
+  // Strings are edited on the board, so a kept team's go back unchanged and
+  // a restored team starts with one.
+  const currentStrings = teamSettingInputs(depth);
   const inputs = () =>
     draft
       .filter((team) => team.included)
-      .map(({ team, displayName, maxAge, strings }) => ({
+      .map(({ team, displayName, maxAge }) => ({
         team,
         displayName: displayName.trim(),
         maxAge: team === "senior" ? null : (parseMaxAge(maxAge) ?? null),
-        strings: strings.map((plannerString) => ({
-          id: plannerString.id,
-          displayName: plannerString.displayName.trim(),
-        })),
+        strings: currentStrings.find((current) => current.team === team)
+          ?.strings ?? [{ id: null, displayName: nextOrdinalDefault(0) }],
       }));
 
   const submit = (
@@ -389,18 +306,8 @@ export function PlannerTeamManagement({
   };
 
   const removedPopulatedTeams = removalImpacts.filter(
-    (impact) =>
-      !draft.find((candidate) => candidate.team === impact.team)?.included &&
-      (impact.assignmentCount > 0 || impact.staffingTargets.length > 0),
+    (impact) => impact.assignmentCount > 0 || impact.staffingTargets.length > 0,
   );
-  const removesTeams = removedPopulatedTeams.length > 0;
-  const removesStrings = removalImpacts.some(
-    (impact) =>
-      draft.find((candidate) => candidate.team === impact.team)?.included ===
-        true &&
-      impact.strings.some((plannerString) => plannerString.assignmentCount > 0),
-  );
-  const removesMixed = removesTeams && removesStrings;
 
   return (
     <>
@@ -415,15 +322,7 @@ export function PlannerTeamManagement({
       </Button>
       <Modal
         open={open}
-        title={
-          confirmRemoval
-            ? removesMixed
-              ? "Remove planner teams and strings?"
-              : removesTeams
-                ? "Remove planner teams?"
-                : "Remove planner strings?"
-            : "Manage squad teams"
-        }
+        title={confirmRemoval ? "Remove planner teams?" : "Manage squad teams"}
         variant={confirmRemoval ? "destructive" : "form"}
         onClose={confirmRemoval ? leaveConfirmation : close}
         footer={
@@ -448,11 +347,7 @@ export function PlannerTeamManagement({
                   }
                 }}
               >
-                {removesMixed
-                  ? "Remove teams and strings"
-                  : removesTeams
-                    ? "Remove teams"
-                    : "Remove strings"}
+                Remove teams
               </Button>
             </>
           ) : (
@@ -480,54 +375,33 @@ export function PlannerTeamManagement({
         {confirmRemoval ? (
           <div className="space-y-3">
             <p className="text-body-md text-on-surface-variant">
-              {removesMixed
-                ? "Removing these teams and strings permanently deletes their assignments and staffing targets."
-                : removesTeams
-                  ? "Removing these teams permanently deletes their assignments and staffing targets."
-                  : "Removing these strings permanently deletes their assignments."}
+              Removing these teams permanently deletes their assignments and
+              staffing targets.
             </p>
             <ul className="list-disc space-y-1 pl-5 text-body-md text-on-surface">
-              {removalImpacts.flatMap((impact) => {
-                const teamRemoved = !draft.find(
-                  (candidate) => candidate.team === impact.team,
-                )?.included;
-                if (teamRemoved) {
-                  return [
-                    <li key={impact.team}>
-                      {impact.displayName}:{" "}
-                      {impact.assignmentCount > 0 ? (
-                        <>
-                          {impact.assignmentCount} assignment
-                          {impact.assignmentCount === 1 ? "" : "s"}
-                        </>
-                      ) : null}
-                      {impact.assignmentCount > 0 &&
-                      impact.staffingTargets.length > 0
-                        ? "; "
-                        : null}
-                      {impact.staffingTargets.map((target, index) => (
-                        <span key={target.jobId}>
-                          {index > 0 ? ", " : null}
-                          {target.jobLabel}: {target.slotCount} slot
-                          {target.slotCount === 1 ? "" : "s"}
-                        </span>
-                      ))}
-                    </li>,
-                  ];
-                }
-                return impact.strings.map((plannerString) => (
-                  <li key={plannerString.stringId}>
-                    {plannerString.displayName}: {plannerString.assignmentCount}{" "}
-                    assignment{plannerString.assignmentCount === 1 ? "" : "s"}
-                  </li>
-                ));
-              })}
+              {removedPopulatedTeams.map((impact) => (
+                <li key={impact.team}>
+                  {impact.displayName}:{" "}
+                  {impact.assignmentCount > 0 ? (
+                    <>
+                      {impact.assignmentCount} assignment
+                      {impact.assignmentCount === 1 ? "" : "s"}
+                    </>
+                  ) : null}
+                  {impact.assignmentCount > 0 &&
+                  impact.staffingTargets.length > 0
+                    ? "; "
+                    : null}
+                  {impact.staffingTargets.map((target, index) => (
+                    <span key={target.jobId}>
+                      {index > 0 ? ", " : null}
+                      {target.jobLabel}: {target.slotCount} slot
+                      {target.slotCount === 1 ? "" : "s"}
+                    </span>
+                  ))}
+                </li>
+              ))}
             </ul>
-            {serverError ? (
-              <p className="text-body-sm text-error" role="alert">
-                {serverError}
-              </p>
-            ) : null}
           </div>
         ) : (
           <form
@@ -539,7 +413,8 @@ export function PlannerTeamManagement({
             }}
           >
             <p className="text-body-md text-on-surface-variant">
-              Choose one to three teams and set the names shown in Planner.
+              Choose one to three teams, name them, and set the oldest age
+              Reserves and Youth take. Add and edit strings on the board.
             </p>
             <fieldset className="space-y-3">
               <legend className="text-label-lg text-on-surface">
@@ -550,21 +425,17 @@ export function PlannerTeamManagement({
                 const soleTeam = team.included && selectedCount === 1;
                 const maxTeams =
                   !team.included && selectedCount === PLANNER_TEAMS.length;
+                const busy = save.isPending || checkingRemovalImpact;
                 return (
                   <div
                     key={team.team}
-                    className="space-y-2 rounded-lg border border-outline-variant p-3"
+                    className="flex flex-wrap items-start gap-3 rounded-lg border border-outline-variant p-3"
                   >
-                    <label className="flex items-center gap-2 text-body-md text-on-surface">
+                    <label className="flex h-8 w-28 shrink-0 items-center gap-2 self-end text-body-md text-on-surface">
                       <input
                         type="checkbox"
                         checked={team.included}
-                        disabled={
-                          soleTeam ||
-                          maxTeams ||
-                          save.isPending ||
-                          checkingRemovalImpact
-                        }
+                        disabled={soleTeam || maxTeams || busy}
                         onChange={(event) =>
                           updateDraft(team.team, {
                             included: event.target.checked,
@@ -576,10 +447,11 @@ export function PlannerTeamManagement({
                     {team.included ? (
                       <>
                         <TextField
+                          className="min-w-40 flex-1"
                           label={`${PLANNER_TEAM_NAMES[team.team]} display name`}
                           value={team.displayName}
                           error={validation.fieldErrors[team.team]}
-                          disabled={save.isPending || checkingRemovalImpact}
+                          disabled={busy}
                           onChange={(event) =>
                             updateDraft(team.team, {
                               displayName: event.target.value,
@@ -588,12 +460,13 @@ export function PlannerTeamManagement({
                         />
                         {team.team === "senior" ? null : (
                           <TextField
+                            className="w-36"
                             label={`${PLANNER_TEAM_NAMES[team.team]} oldest age`}
                             inputMode="numeric"
                             placeholder="No limit"
                             value={team.maxAge}
                             error={validation.maxAgeErrors[team.team]}
-                            disabled={save.isPending || checkingRemovalImpact}
+                            disabled={busy}
                             onChange={(event) =>
                               updateDraft(team.team, {
                                 maxAge: event.target.value,
@@ -601,127 +474,6 @@ export function PlannerTeamManagement({
                             }
                           />
                         )}
-                        <div className="space-y-2">
-                          <p className="text-label-md text-on-surface">
-                            Strings
-                          </p>
-                          {team.strings.map((plannerString, index) => {
-                            const stringLabel = `${PLANNER_TEAM_NAMES[team.team]} string ${index + 1}`;
-                            const busy =
-                              save.isPending || checkingRemovalImpact;
-                            return (
-                              <div
-                                key={plannerString.key}
-                                className="flex items-start gap-2"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <TextField
-                                    label={`${stringLabel} name`}
-                                    value={plannerString.displayName}
-                                    error={
-                                      validation.stringFieldErrors[
-                                        stringFieldKey(team.team, index)
-                                      ]
-                                    }
-                                    disabled={busy}
-                                    onChange={(event) =>
-                                      updateStrings(team.team, (strings) =>
-                                        strings.map(
-                                          (candidate, candidateIndex) =>
-                                            candidateIndex === index
-                                              ? {
-                                                  ...candidate,
-                                                  displayName:
-                                                    event.target.value,
-                                                }
-                                              : candidate,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                </div>
-                                <div className="flex shrink-0 gap-1 pt-6">
-                                  <Button
-                                    size="icon"
-                                    variant="secondary"
-                                    icon={ArrowUp}
-                                    aria-label={`Move ${stringLabel} up`}
-                                    disabled={busy || index === 0}
-                                    onClick={() =>
-                                      updateStrings(team.team, (strings) =>
-                                        strings.map(
-                                          (candidate, candidateIndex) =>
-                                            candidateIndex === index - 1
-                                              ? (strings[index] ?? candidate)
-                                              : candidateIndex === index
-                                                ? (strings[index - 1] ??
-                                                  candidate)
-                                                : candidate,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <Button
-                                    size="icon"
-                                    variant="secondary"
-                                    icon={ArrowDown}
-                                    aria-label={`Move ${stringLabel} down`}
-                                    disabled={
-                                      busy || index === team.strings.length - 1
-                                    }
-                                    onClick={() =>
-                                      updateStrings(team.team, (strings) =>
-                                        strings.map(
-                                          (candidate, candidateIndex) =>
-                                            candidateIndex === index
-                                              ? (strings[index + 1] ??
-                                                candidate)
-                                              : candidateIndex === index + 1
-                                                ? (strings[index] ?? candidate)
-                                                : candidate,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <Button
-                                    size="icon"
-                                    variant="secondary"
-                                    icon={Trash2}
-                                    aria-label={`Remove ${stringLabel}`}
-                                    disabled={busy || team.strings.length === 1}
-                                    onClick={() =>
-                                      updateStrings(team.team, (strings) =>
-                                        strings.filter(
-                                          (_, candidateIndex) =>
-                                            candidateIndex !== index,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
-                          <Button
-                            variant="secondary"
-                            icon={Plus}
-                            disabled={save.isPending || checkingRemovalImpact}
-                            onClick={() =>
-                              updateStrings(team.team, (strings) => [
-                                ...strings,
-                                {
-                                  key: `new-${nextNewStringKey++}`,
-                                  id: null,
-                                  displayName: nextOrdinalDefault(
-                                    strings.length,
-                                  ),
-                                },
-                              ])
-                            }
-                          >
-                            Add string to {PLANNER_TEAM_NAMES[team.team]}
-                          </Button>
-                        </div>
                       </>
                     ) : null}
                   </div>
