@@ -392,6 +392,13 @@ pub(super) struct ExampleStaff {
     pub job_ratings: Option<[u8; 15]>,
     /// The stored coaching qualification: 0 is none and 3 a Continental B Licence.
     pub qualification: u8,
+    /// The level of the one entry in the list before the job ratings: up to 20, or 255.
+    pub first_list_level: u8,
+    /// How many ids follow the job ratings, in ascending order.
+    pub ids_after_ratings: u16,
+    /// Whether the object's trailer stores the Unique ID once with another word after it, as
+    /// the game stores some of the Unique IDs it allocated.
+    pub unique_id_stored_once: bool,
 }
 
 impl ExampleStaff {
@@ -405,11 +412,14 @@ impl ExampleStaff {
             job_type: 0,
             job_ratings: Some(job_ratings),
             qualification: 0,
+            first_list_level: 10,
+            ids_after_ratings: 1,
+            unique_id_stored_once: false,
         }
     }
 
     /// The trailer of the object before this one, the person's object, and its trailer: the
-    /// key, then the Unique ID twice.
+    /// key, then the Unique ID twice, or once with another word after it.
     fn to_bytes(self) -> Vec<u8> {
         let unset_date = [1, 0, 0x6C, 0x07];
         // The earlier object's trailer, whose Unique ID the game allocated and stored once.
@@ -432,7 +442,7 @@ impl ExampleStaff {
         // A first list of one entry, an empty second list, then the job ratings.
         bytes.extend_from_slice(&[0, 1]);
         bytes.extend_from_slice(&7_u64.to_le_bytes());
-        bytes.push(10);
+        bytes.push(self.first_list_level);
         bytes.extend_from_slice(&0_u32.to_le_bytes());
         match self.job_ratings {
             Some(job_ratings) => {
@@ -441,10 +451,12 @@ impl ExampleStaff {
             }
             None => bytes.push(0),
         }
-        // One four-byte entry, three unread bytes, and the dates before the qualification.
-        bytes.push(1);
-        bytes.extend_from_slice(&[0, 0xB7, 1, 0]);
-        bytes.extend_from_slice(&[0; 3]);
+        // The counted ids, two unread bytes, and the dates before the qualification.
+        bytes.extend_from_slice(&self.ids_after_ratings.to_le_bytes());
+        for id in 0..u32::from(self.ids_after_ratings) {
+            bytes.extend_from_slice(&(0x1B7 + id).to_le_bytes());
+        }
+        bytes.extend_from_slice(&[0; 2]);
         bytes.extend_from_slice(&packed_date(194, 2026, 0));
         bytes.push(0);
         bytes.extend_from_slice(&unset_date);
@@ -453,7 +465,12 @@ impl ExampleStaff {
         bytes.extend_from_slice(&unset_date);
         bytes.push(self.qualification);
         bytes.extend_from_slice(&[0; 40]);
-        for word in [self.key, self.unique_id, self.unique_id] {
+        let after_unique_id = if self.unique_id_stored_once {
+            123_456_789
+        } else {
+            self.unique_id
+        };
+        for word in [self.key, self.unique_id, after_unique_id] {
             bytes.extend_from_slice(&word.to_le_bytes());
         }
         bytes

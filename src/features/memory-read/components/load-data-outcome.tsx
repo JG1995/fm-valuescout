@@ -84,18 +84,27 @@ function saveShortlistsCopy(
   }
 }
 
-/** How many staff the save's staff shortlists hold, or why they were not read; null when there is nothing to say. */
+/**
+ * How many staff the save's staff shortlists hold and how many of them could
+ * not be read, or why none were read; null when there is nothing to say.
+ */
 function staffShortlistCopy(
   staffShortlist: SaveShortlistsOutcome,
 ): { text: string; isProblem: boolean } | null {
   switch (staffShortlist.status) {
-    case "read":
-      return staffShortlist.count === 0
-        ? null
-        : {
-            text: `Read ${formatCount(staffShortlist.count)} shortlisted staff from the save.`,
-            isProblem: false,
-          };
+    case "read": {
+      const { count, unread } = staffShortlist;
+      if (count === 0) {
+        return null;
+      }
+      return {
+        text:
+          unread === 0
+            ? `Read ${formatCount(count)} shortlisted staff from the save.`
+            : `Read ${formatCount(count)} of ${formatCount(count + unread)} shortlisted staff from the save. ${formatCount(unread)} could not be read.`,
+        isProblem: false,
+      };
+    }
     case "notRead":
       return null;
     case "failed":

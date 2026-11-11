@@ -386,6 +386,15 @@ pub(crate) struct SaveShortlistedStaff {
     pub coaching_qualifications: &'static str,
 }
 
+/// The people on the manager's staff shortlists.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct SaveStaffShortlist {
+    /// Everyone listed whose record was read, each once, in the save's order.
+    pub staff: Vec<SaveShortlistedStaff>,
+    /// How many listed people were left out because their record could not be read.
+    pub unread: usize,
+}
+
 /// The save's facts, the statistics of every player with a Unique ID and competitive
 /// minutes this season, and the manager's player and staff shortlists.
 #[derive(Debug, Clone, PartialEq)]
@@ -395,9 +404,9 @@ pub(crate) struct SaveSeasonStats {
     /// Why the shortlists could not be read, when they could not. That never fails the
     /// statistics.
     pub shortlists: Result<Vec<SaveShortlist>, SaveStatsError>,
-    /// Everyone on a staff shortlist, each once, in the save's order. A failure here never
-    /// fails the statistics or the player shortlists.
-    pub staff_shortlist: Result<Vec<SaveShortlistedStaff>, SaveStatsError>,
+    /// Everyone on a staff shortlist. A failure here never fails the statistics or the
+    /// player shortlists.
+    pub staff_shortlist: Result<SaveStaffShortlist, SaveStatsError>,
 }
 
 /// Reads the whole save once, then the players' current-season statistics and the manager's
@@ -431,7 +440,8 @@ pub(crate) fn read_season_stats(path: &Path) -> Result<SaveSeasonStats, SaveStat
     let (shortlists, staff_shortlist) = match lists {
         Ok(lists) => (
             Ok(lists.player_shortlists),
-            staff::read_shortlisted_staff(&game_db, &lists.staff_keys).map_err(fit),
+            // No build registers the staff layout, so its failure says nothing of the build.
+            staff::read_shortlisted_staff(&game_db, &lists.staff_keys),
         ),
         Err(error) => (Err(error), Err(error)),
     };

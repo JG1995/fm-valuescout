@@ -623,13 +623,13 @@ describe("LoadDataOutcome", () => {
   it.each<[string, SeasonStatsOutcome["shortlists"], string, boolean]>([
     [
       "several shortlists read from the save",
-      { status: "read", count: 5 },
+      { status: "read", count: 5, unread: 0 },
       `${attachedSentence} Read 5 shortlists from the save.`,
       false,
     ],
     [
       "one shortlist read from the save",
-      { status: "read", count: 1 },
+      { status: "read", count: 1, unread: 0 },
       `${attachedSentence} Read 1 shortlist from the save.`,
       false,
     ],
@@ -671,8 +671,14 @@ describe("LoadDataOutcome", () => {
   it.each<[string, SeasonStatsOutcome["staffShortlist"], string, boolean]>([
     [
       "the staff on the save's staff shortlists",
-      { status: "read", count: 13 },
+      { status: "read", count: 13, unread: 0 },
       `${attachedSentence} Read 2 shortlists from the save. Read 13 shortlisted staff from the save.`,
+      false,
+    ],
+    [
+      "the staff read when some listed staff could not be",
+      { status: "read", count: 1482, unread: 1 },
+      `${attachedSentence} Read 2 shortlists from the save. Read 1,482 of 1,483 shortlisted staff from the save. 1 could not be read.`,
       false,
     ],
     [
@@ -689,7 +695,7 @@ describe("LoadDataOutcome", () => {
     ],
     [
       "nothing for a staff shortlist that holds nobody",
-      { status: "read", count: 0 },
+      { status: "read", count: 0, unread: 0 },
       `${attachedSentence} Read 2 shortlists from the save.`,
       false,
     ],
@@ -703,7 +709,7 @@ describe("LoadDataOutcome", () => {
             ...successResult(),
             stats: {
               ...attached,
-              shortlists: { status: "read", count: 2 },
+              shortlists: { status: "read", count: 2, unread: 0 },
               staffShortlist,
             },
             shortlists: { read: 0, failed: [] },
@@ -727,7 +733,10 @@ describe("LoadDataOutcome", () => {
         error={null}
         result={{
           ...successResult(),
-          stats: { ...attached, shortlists: { status: "read", count: 0 } },
+          stats: {
+            ...attached,
+            shortlists: { status: "read", count: 0, unread: 0 },
+          },
           shortlists: { read: 0, failed: [] },
         }}
         onDismiss={() => undefined}

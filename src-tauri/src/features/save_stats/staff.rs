@@ -3,7 +3,10 @@
 //!
 //! fmsave reads no staff, so this layout is this project's own. It was worked out on FM27
 //! build `27.0.1+2494687`, where the 13 staff of a shortlist read from a save matched the
-//! game's staff screen by Unique ID, Preferred Job, and Coaching Qualifications.
+//! game's staff screen by Unique ID, Preferred Job, and Coaching Qualifications. It was then
+//! widened until it read every non-player's object in two whole saves: 88,037 of 88,040 in a
+//! career save of that build and 36,751 of 36,759 in a save of build `27.0.0+2493426`. The
+//! objects left over sit at keys whose bytes are common, so they may not be objects at all.
 //!
 //! Every person's object in `game_db` ends with a 12-byte trailer: the person's key, then
 //! the Unique ID twice. A list in `scout_man` stores a member by that key. The object's own
@@ -13,14 +16,18 @@
 //!
 //! A non-player's object opens with its kind, a counted block, three reputations, both
 //! abilities, and the type of job the person holds. Further in come two counted lists, a
-//! flag saying whether 15 job ratings follow, the ratings, a counted block, four dates at
-//! fixed places, and the coaching qualification. Nothing before the flag has a known length,
-//! so the ratings are found as the one place in the object where all of that holds.
+//! flag saying whether 15 job ratings follow, the ratings, counted ids in ascending order,
+//! four dates at fixed places, and the coaching qualification. Nothing before the flag has a
+//! known length, so the ratings are found as the one place in the object where all of that
+//! holds.
 //!
 //! Other bytes read as a trailer too, most often for a low key. So a trailer only opens an
 //! object when a non-player's opening follows it, an object ends at the nearest trailer that
 //! leaves it readable, a trailer followed by another object's kind is preferred to one that
 //! is not, and the work spent on one key is bounded.
+//!
+//! A listed person whose object cannot be found that way is left out and counted, so one
+//! object the layout does not cover costs the list one member.
 //!
 //! The game shows the job with the highest rating as the Preferred Job. Which job it shows
 //! when several share the highest rating is known only for the pairs listed at `TIE_ORDER`.
@@ -28,13 +35,13 @@
 use std::collections::{HashMap, HashSet};
 
 use super::container::read_u32;
-use super::{decode_date, SaveShortlistedStaff, SaveStatsError};
+use super::{decode_date, SaveShortlistedStaff, SaveStaffShortlist, SaveStatsError};
 
 const TRAILER_BYTES: usize = 12;
 /// The value a trailer's Unique ID holds when it refers to nothing.
 const MISSING_REFERENCE: u32 = 0xFFFF_FFFF;
-/// Unique IDs from here up are allocated by the game, and a trailer may store one once.
-const ALLOCATED_UNIQUE_ID_MINIMUM: u32 = 2_000_000_000;
+/// The Unique IDs the game allocates. A trailer may store one of them once.
+const ALLOCATED_UNIQUE_IDS: std::ops::RangeInclusive<u32> = 2_000_000_000..=i32::MAX as u32;
 /// The developer's reference save holds 316,826 people.
 const MAX_PERSON_KEY: u32 = 16 * 1024 * 1024 - 1;
 const MAX_TRAILER_CANDIDATES: usize = 1024 * 1024;
@@ -70,18 +77,21 @@ const DOCTOR_JOB_TYPES: [u8; 2] = [38, 46];
 const JOB_RATINGS: usize = 15;
 const JOB_RATING_RANGE: std::ops::RangeInclusive<u8> = 1..=20;
 /// The first list: a zero byte, a one-byte count, then a u64 id and a level for each entry.
+/// A level runs up to 20, or is 255.
 const MAX_FIRST_LIST_ENTRIES: usize = 64;
 const MAX_FIRST_LIST_LEVEL: u8 = 20;
+const HIGHEST_FIRST_LIST_LEVEL: u8 = 0xFF;
 /// The second list: a u32 count, then entries as long as the first list's.
 const MAX_SECOND_LIST_ENTRIES: usize = 255;
 const LIST_ENTRY_BYTES: usize = 9;
-/// The block after the ratings: a one-byte count of four-byte entries, then three bytes.
-const MAX_BLOCK_ENTRIES: usize = 64;
-const BLOCK_ENTRY_BYTES: usize = 4;
-const AFTER_BLOCK_BYTES: usize = 3;
-/// Where a date starts after the block, and where the qualification is.
-const DATES_AFTER_BLOCK: [usize; 4] = [0, 5, 9, 21];
-const QUALIFICATION_AFTER_BLOCK: usize = 25;
+/// The ids after the ratings: a two-byte count, then four bytes each in ascending order.
+/// Two more bytes follow the ids. One person in the career save holds 179 ids.
+const ID_COUNT_BYTES: usize = 2;
+const ID_BYTES: usize = 4;
+const AFTER_IDS_BYTES: usize = 2;
+/// Where a date starts after those bytes, and where the qualification is.
+const DATES_AFTER_IDS: [usize; 4] = [0, 5, 9, 21];
+const QUALIFICATION_AFTER_IDS: usize = 25;
 /// A date field the game has not set: day 1 of 1900.
 const UNSET_DATE: [u8; 4] = [1, 0, 0x6C, 0x07];
 
@@ -123,20 +133,23 @@ const QUALIFICATIONS: [&str; 8] = [
     "National B Licence",
     "National C Licence",
 ];
-/// The highest stored qualification. Its name in the game is not known.
-const MAX_QUALIFICATION: u8 = 8;
+/// The stored qualification is a signed byte. The game's names for 8 and for the negative
+/// values are not known. About a twelfth of the staff in the save of build `27.0.0+2493426`
+/// hold a negative one, from -7 to -1, and nobody in the career save does.
+const QUALIFICATION_RANGE: std::ops::RangeInclusive<i8> = -8..=8;
 const UNKNOWN: &str = "-";
 
 /// The person behind each of `keys`, in that order, each Unique ID once.
 ///
-/// A key that gives nobody, or whose candidate objects give different people, fails the read,
-/// so no person is attributed by a guess.
+/// A key that gives nobody, or whose candidate objects give different people, is left out
+/// and counted, so no person is attributed by a guess. When nobody listed can be read, the
+/// layout does not fit the save and the read fails.
 pub(super) fn read_shortlisted_staff(
     game_db: &[u8],
     keys: &[u32],
-) -> Result<Vec<SaveShortlistedStaff>, SaveStatsError> {
+) -> Result<SaveStaffShortlist, SaveStatsError> {
     if keys.is_empty() {
-        return Ok(Vec::new());
+        return Ok(SaveStaffShortlist::default());
     }
     if keys.contains(&0) || keys.iter().any(|key| *key > MAX_PERSON_KEY) {
         return Err(SaveStatsError::Corrupt);
@@ -144,13 +157,18 @@ pub(super) fn read_shortlisted_staff(
     let trailers = find_trailers(game_db, keys)?;
     let mut staff = Vec::with_capacity(keys.len());
     let mut listed = HashSet::new();
+    let mut unread = 0;
     for key in keys {
-        let person = person_of_key(game_db, *key, &trailers)?;
-        if listed.insert(person.unique_id) {
-            staff.push(person);
+        match person_of_key(game_db, *key, &trailers) {
+            Ok(person) if listed.insert(person.unique_id) => staff.push(person),
+            Ok(_) => {}
+            Err(_) => unread += 1,
         }
     }
-    Ok(staff)
+    if staff.is_empty() {
+        return Err(SaveStatsError::Corrupt);
+    }
+    Ok(SaveStaffShortlist { staff, unread })
 }
 
 /// A set of person keys, tested once for every byte of `game_db`.
@@ -178,7 +196,8 @@ impl KeySet {
 /// The places in `game_db` that read as a trailer bounding a listed person's object.
 #[derive(Default)]
 struct Trailers {
-    /// By key: each trailer that stores its Unique ID twice, ascending.
+    /// By key: each trailer that stores its Unique ID twice, or an allocated one once,
+    /// ascending.
     closing: HashMap<u32, Vec<ClosingTrailer>>,
     /// By key: where a trailer starts that a non-player's opening follows, ascending.
     opening: HashMap<u32, Vec<usize>>,
@@ -212,8 +231,8 @@ fn find_trailers(game_db: &[u8], keys: &[u32]) -> Result<Trailers, SaveStatsErro
         if unique_id == 0 || unique_id == MISSING_REFERENCE {
             continue;
         }
-        let stored_twice = unique_id == copy;
-        if closes && stored_twice {
+        let stored = unique_id == copy || ALLOCATED_UNIQUE_IDS.contains(&unique_id);
+        if closes && stored {
             trailers
                 .closing
                 .entry(key)
@@ -227,10 +246,7 @@ fn find_trailers(game_db: &[u8], keys: &[u32]) -> Result<Trailers, SaveStatsErro
                 });
             found += 1;
         }
-        if opens
-            && (stored_twice || unique_id >= ALLOCATED_UNIQUE_ID_MINIMUM)
-            && reputations_at(&game_db[at + TRAILER_BYTES..]).is_some()
-        {
+        if opens && stored && reputations_at(&game_db[at + TRAILER_BYTES..]).is_some() {
             trailers.opening.entry(key).or_default().push(at);
             found += 1;
         }
@@ -391,24 +407,34 @@ fn reputations_at(object: &[u8]) -> Option<usize> {
     .then_some(at)
 }
 
-/// The coaching qualification, when the counted block at `block_at` is followed by its three
-/// bytes, a date at each fixed place, and a qualification the game stores.
-fn qualification_after(object: &[u8], block_at: usize) -> Result<Option<u8>, SaveStatsError> {
-    let Some(&entries) = object.get(block_at) else {
+/// The coaching qualification, when the counted ids at `count_at` ascend and are followed by
+/// their two bytes, a date at each fixed place, and a qualification the game stores.
+fn qualification_after(object: &[u8], count_at: usize) -> Result<Option<u8>, SaveStatsError> {
+    let ids_at = count_at + ID_COUNT_BYTES;
+    let Some(count) = object.get(count_at..ids_at) else {
         return Ok(None);
     };
-    if usize::from(entries) > MAX_BLOCK_ENTRIES {
-        return Ok(None);
-    }
-    let after_block = block_at + 1 + usize::from(entries) * BLOCK_ENTRY_BYTES + AFTER_BLOCK_BYTES;
-    let Some(&qualification) = object.get(after_block + QUALIFICATION_AFTER_BLOCK) else {
+    let ids_end = ids_at + usize::from(u16::from_le_bytes([count[0], count[1]])) * ID_BYTES;
+    let Some(ids) = object.get(ids_at..ids_end) else {
         return Ok(None);
     };
-    if qualification > MAX_QUALIFICATION {
+    let id = |bytes: &[u8]| u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    let ascending = ids
+        .chunks_exact(ID_BYTES)
+        .zip(ids.chunks_exact(ID_BYTES).skip(1))
+        .all(|(earlier, later)| id(earlier) < id(later));
+    if !ascending {
         return Ok(None);
     }
-    for date_at in DATES_AFTER_BLOCK {
-        let date_at = after_block + date_at;
+    let after_ids = ids_end + AFTER_IDS_BYTES;
+    let Some(&qualification) = object.get(after_ids + QUALIFICATION_AFTER_IDS) else {
+        return Ok(None);
+    };
+    if !QUALIFICATION_RANGE.contains(&(qualification as i8)) {
+        return Ok(None);
+    }
+    for date_at in DATES_AFTER_IDS {
+        let date_at = after_ids + date_at;
         if object[date_at..date_at + 4] != UNSET_DATE && decode_date(object, date_at)?.is_none() {
             return Ok(None);
         }
@@ -440,7 +466,10 @@ fn first_list_ends_at(object: &[u8], end: usize, entries: usize) -> bool {
         && usize::from(object[count_at]) == entries
         && object[count_at + 1..end]
             .chunks_exact(LIST_ENTRY_BYTES)
-            .all(|entry| entry[4..8] == [0; 4] && entry[8] <= MAX_FIRST_LIST_LEVEL)
+            .all(|entry| {
+                entry[4..8] == [0; 4]
+                    && (entry[8] <= MAX_FIRST_LIST_LEVEL || entry[8] == HIGHEST_FIRST_LIST_LEVEL)
+            })
 }
 
 /// The game's name for the job with the highest rating. Recruitment and performance analysts
@@ -470,9 +499,17 @@ mod tests {
     use super::super::test_support::{
         game_db_payload_with_staff, save_with_staff, scout_section, season_stats_body, stat_line,
         write_save, ExampleList, ExamplePlayer, ExampleRecord, ExampleStaff, FM27_BUILD,
+        UNREGISTERED_FM27_BUILD,
     };
     use super::super::{read_season_stats, SaveShortlist};
     use super::*;
+
+    fn shortlist(
+        staff: Vec<SaveShortlistedStaff>,
+        unread: usize,
+    ) -> Result<SaveStaffShortlist, SaveStatsError> {
+        Ok(SaveStaffShortlist { staff, unread })
+    }
 
     fn person(
         unique_id: u32,
@@ -526,15 +563,108 @@ mod tests {
 
         assert_eq!(
             staff,
-            Ok(vec![
-                person(2_002_118_740, "Recruitment Analyst", "National C Licence"),
-                person(9_001, "Physio", "Continental B Licence"),
-                person(9_003, "Performance Analyst", "No Qualifications"),
-                person(9_004, "Doctor", "No Qualifications"),
-                person(9_005, "-", "-"),
-            ])
+            shortlist(
+                vec![
+                    person(2_002_118_740, "Recruitment Analyst", "National C Licence"),
+                    person(9_001, "Physio", "Continental B Licence"),
+                    person(9_003, "Performance Analyst", "No Qualifications"),
+                    person(9_004, "Doctor", "No Qualifications"),
+                    person(9_005, "-", "-"),
+                ],
+                0
+            )
         );
-        assert_eq!(read_shortlisted_staff(&game_db, &[]), Ok(Vec::new()));
+        assert_eq!(read_shortlisted_staff(&game_db, &[]), shortlist(vec![], 0));
+    }
+
+    #[test]
+    fn a_person_holding_many_ids_after_the_job_ratings_is_read() {
+        // One person in the developer's career save holds 179 of these ids. The count is two
+        // bytes wide.
+        let staff = [
+            ExampleStaff {
+                ids_after_ratings: 179,
+                ..ExampleStaff::preferring(510, 9_001, 4)
+            },
+            ExampleStaff {
+                ids_after_ratings: 300,
+                ..ExampleStaff::preferring(520, 9_002, 5)
+            },
+            ExampleStaff {
+                ids_after_ratings: 0,
+                ..ExampleStaff::preferring(530, 9_003, 2)
+            },
+        ];
+
+        assert_eq!(
+            read_shortlisted_staff(&game_db(&staff), &[510, 520, 530]),
+            shortlist(
+                vec![
+                    person(9_001, "Physio", "No Qualifications"),
+                    person(9_002, "Scout", "No Qualifications"),
+                    person(9_003, "Assistant Manager", "No Qualifications"),
+                ],
+                0
+            )
+        );
+    }
+
+    #[test]
+    fn a_stored_qualification_with_no_known_name_reads_as_unknown() {
+        // 8, then -8 and -1 as the signed byte stores them.
+        let staff: Vec<ExampleStaff> = [8, 0xF8, 0xFF]
+            .into_iter()
+            .zip(0..)
+            .map(|(qualification, order)| ExampleStaff {
+                qualification,
+                ..ExampleStaff::preferring(510 + 10 * order, 9_001 + order, 4)
+            })
+            .collect();
+
+        assert_eq!(
+            read_shortlisted_staff(&game_db(&staff), &[510, 520, 530]),
+            shortlist(
+                vec![
+                    person(9_001, "Physio", "-"),
+                    person(9_002, "Physio", "-"),
+                    person(9_003, "Physio", "-"),
+                ],
+                0
+            )
+        );
+    }
+
+    #[test]
+    fn a_person_whose_first_list_holds_the_highest_level_is_read() {
+        let person_with_it = ExampleStaff {
+            first_list_level: 0xFF,
+            ..ExampleStaff::preferring(510, 9_001, 4)
+        };
+
+        assert_eq!(
+            read_shortlisted_staff(&game_db(&[person_with_it]), &[510]),
+            shortlist(vec![person(9_001, "Physio", "No Qualifications")], 0)
+        );
+    }
+
+    #[test]
+    fn a_person_is_read_from_a_trailer_storing_an_allocated_unique_id_once() {
+        let stored_once = ExampleStaff {
+            unique_id_stored_once: true,
+            ..ExampleStaff::preferring(510, 2_002_042_661, 4)
+        };
+        let next = ExampleStaff::preferring(520, 9_002, 5);
+
+        assert_eq!(
+            read_shortlisted_staff(&game_db(&[stored_once, next]), &[510, 520]),
+            shortlist(
+                vec![
+                    person(2_002_042_661, "Physio", "No Qualifications"),
+                    person(9_002, "Scout", "No Qualifications"),
+                ],
+                0
+            )
+        );
     }
 
     #[test]
@@ -574,7 +704,9 @@ mod tests {
             .collect();
         let keys: Vec<u32> = staff.iter().map(|person| person.key).collect();
 
-        let read = read_shortlisted_staff(&game_db(&staff), &keys).expect("staff");
+        let read = read_shortlisted_staff(&game_db(&staff), &keys)
+            .expect("staff")
+            .staff;
 
         let expected: Vec<SaveShortlistedStaff> = (0..jobs.len())
             .map(|slot| {
@@ -614,9 +746,11 @@ mod tests {
     }
 
     #[test]
-    fn a_key_whose_object_is_not_found_exactly_once_fails_the_read() {
+    fn a_listed_person_who_cannot_be_read_is_left_out_and_counted() {
+        let other = ExampleStaff::preferring(520, 9_009, 5);
         let listed = ExampleStaff::preferring(510, 9_001, 4);
-        let sound = game_db(&[listed]);
+        // The listed person's object is the last, so its trailer ends the payload.
+        let sound = game_db(&[other, listed]);
         let trailer_at = sound.len() - TRAILER_BYTES;
         let change = |at: usize, byte: u8| {
             let mut damaged = sound.clone();
@@ -628,39 +762,83 @@ mod tests {
             .rposition(|window| window == listed.job_ratings.expect("ratings"))
             .expect("job ratings");
         // Two objects closing with one key give it two people.
-        let two_people = game_db(&[listed, ExampleStaff::preferring(510, 9_002, 4)]);
+        let two_people = game_db(&[other, listed, ExampleStaff::preferring(510, 9_002, 4)]);
         // The object starts after the earlier object's trailer: its allocated Unique ID,
         // stored once, then another word.
         let earlier_unique_id_at = sound
             .windows(4)
-            .position(|window| window == 2_100_000_000_u32.to_le_bytes())
+            .rposition(|window| window == 2_100_000_000_u32.to_le_bytes())
             .expect("the earlier object's trailer");
         let player_object = change(earlier_unique_id_at + 8, 2);
         // The kind, an empty counted block, and three reputations lie before the abilities.
         let ability_at = earlier_unique_id_at + 8 + 9;
+        // Three ids follow the job ratings and their count. The second repeats the first.
+        let three_ids = ExampleStaff {
+            ids_after_ratings: 3,
+            ..listed
+        };
+        let mut ids_out_of_order = game_db(&[other, three_ids]);
+        let second_id_at = ids_out_of_order
+            .windows(JOB_RATINGS)
+            .rposition(|window| window == listed.job_ratings.expect("ratings"))
+            .expect("job ratings")
+            + JOB_RATINGS
+            + 2
+            + 4;
+        ids_out_of_order[second_id_at] = 0xB7;
 
         for (case, game_db, keys) in [
-            ("unknown key", sound.clone(), &[511][..]),
-            ("key zero", sound.clone(), &[0]),
-            ("key past the bound", sound.clone(), &[MAX_PERSON_KEY + 1]),
-            ("no ability", change(ability_at, 0), &[510]),
-            ("Unique ID stored once", change(trailer_at + 8, 1), &[510]),
-            ("rating out of range", change(ratings_at, 21), &[510]),
+            ("unknown key", sound.clone(), [511, 520]),
+            ("no ability", change(ability_at, 0), [510, 520]),
+            (
+                "Unique ID stored once",
+                change(trailer_at + 8, 1),
+                [510, 520],
+            ),
+            ("rating out of range", change(ratings_at, 21), [510, 520]),
             (
                 "no qualification",
                 change(ratings_at + JOB_RATINGS + 33, 9),
-                &[510],
+                [510, 520],
             ),
-            ("a player's object", player_object, &[510]),
-            ("two people with one key", two_people, &[510]),
+            ("ids out of order", ids_out_of_order, [510, 520]),
+            ("a player's object", player_object, [510, 520]),
+            ("two people with one key", two_people, [510, 520]),
         ] {
             assert_eq!(
-                read_shortlisted_staff(&game_db, keys),
+                read_shortlisted_staff(&game_db, &keys),
+                shortlist(vec![person(9_009, "Scout", "No Qualifications")], 1),
+                "{case}"
+            );
+        }
+        assert_eq!(
+            read_shortlisted_staff(&sound, &[510, 520]),
+            shortlist(
+                vec![
+                    person(9_001, "Physio", "No Qualifications"),
+                    person(9_009, "Scout", "No Qualifications"),
+                ],
+                0
+            )
+        );
+    }
+
+    #[test]
+    fn a_list_that_gives_nobody_or_holds_no_persons_key_fails_the_read() {
+        let sound = game_db(&[ExampleStaff::preferring(510, 9_001, 4)]);
+
+        for (case, keys) in [
+            // When nobody listed can be read, the layout does not fit the save.
+            ("nobody read", &[511, 512][..]),
+            ("key zero", &[510, 0]),
+            ("key past the bound", &[510, MAX_PERSON_KEY + 1]),
+        ] {
+            assert_eq!(
+                read_shortlisted_staff(&sound, keys),
                 Err(SaveStatsError::Corrupt),
                 "{case}"
             );
         }
-        assert!(read_shortlisted_staff(&sound, &[510]).is_ok());
     }
 
     #[test]
@@ -686,12 +864,12 @@ mod tests {
         // leave it readable.
         assert_eq!(
             read_shortlisted_staff(&crowded(8), &[510]),
-            Ok(vec![person(9_001, "Physio", "No Qualifications")])
+            shortlist(vec![person(9_001, "Physio", "No Qualifications")], 0)
         );
-        // The search for one key is bounded.
+        // The search for one key is bounded: past the bound the key gives nobody.
         assert_eq!(
             read_shortlisted_staff(&crowded(40), &[510]),
-            Err(SaveStatsError::OutOfBounds)
+            Err(SaveStatsError::Corrupt)
         );
     }
 
@@ -717,7 +895,7 @@ mod tests {
 
         assert_eq!(
             read_shortlisted_staff(&game_db, &[510]),
-            Ok(vec![person(9_001, "Physio", "No Qualifications")])
+            shortlist(vec![person(9_001, "Physio", "No Qualifications")], 0)
         );
     }
 
@@ -730,9 +908,9 @@ mod tests {
         ];
         let played = stat_line(&[("minutes", 90.0), ("starts", 1.0)]);
         let season_stats = season_stats_body(&[ExampleRecord::with_lines(11, &[(1, played)])], 15);
-        let read = |lists: &[ExampleList]| {
+        let read = |build: &str, lists: &[ExampleList]| {
             let save = save_with_staff(
-                FM27_BUILD,
+                build,
                 &players,
                 &staff,
                 &season_stats,
@@ -746,29 +924,51 @@ mod tests {
             player_unique_ids: vec![1_500],
         };
 
-        let stats = read(&[
-            ExampleList::staff_shortlist("Backroom", &[520]),
-            ExampleList::shortlist("Targets", &[11]),
-            ExampleList::staff_shortlist("", &[510, 520]),
-        ]);
+        let stats = read(
+            FM27_BUILD,
+            &[
+                ExampleList::staff_shortlist("Backroom", &[520]),
+                ExampleList::shortlist("Targets", &[11]),
+                ExampleList::staff_shortlist("", &[510, 520]),
+            ],
+        );
 
         assert_eq!(
             stats.staff_shortlist,
-            Ok(vec![
-                person(9_002, "Assistant Manager", "No Qualifications"),
-                person(9_001, "Scout", "No Qualifications"),
-            ])
+            shortlist(
+                vec![
+                    person(9_002, "Assistant Manager", "No Qualifications"),
+                    person(9_001, "Scout", "No Qualifications"),
+                ],
+                0
+            )
         );
         assert_eq!(stats.shortlists, Ok(vec![targets.clone()]));
 
-        // A listed person who cannot be read fails the staff alone.
-        let stats = read(&[
+        // A listed person who cannot be read is left out and counted.
+        let stats = read(FM27_BUILD, &[ExampleList::staff_shortlist("", &[999, 510])]);
+
+        assert_eq!(
+            stats.staff_shortlist,
+            shortlist(vec![person(9_001, "Scout", "No Qualifications")], 1)
+        );
+
+        // A staff shortlist nobody can be read from fails the staff alone.
+        let nobody_read = [
             ExampleList::shortlist("Targets", &[11]),
             ExampleList::staff_shortlist("", &[999]),
-        ]);
+        ];
+        let stats = read(FM27_BUILD, &nobody_read);
+
+        assert_eq!(stats.staff_shortlist, Err(SaveStatsError::Corrupt));
+        assert_eq!(stats.shortlists, Ok(vec![targets.clone()]));
+        assert_eq!(stats.players.len(), 1);
+
+        // No build registers the staff layout, so on a build that borrows its other layouts
+        // the failure still does not say the build is unsupported.
+        let stats = read(UNREGISTERED_FM27_BUILD, &nobody_read);
 
         assert_eq!(stats.staff_shortlist, Err(SaveStatsError::Corrupt));
         assert_eq!(stats.shortlists, Ok(vec![targets]));
-        assert_eq!(stats.players.len(), 1);
     }
 }

@@ -4103,7 +4103,7 @@ describe("search route", () => {
       unmatchedPlayers: 3,
       gameDate: "2026-06-30",
       shortlists: { status: "notRead" },
-      staffShortlist: { status: "read", count: 13 },
+      staffShortlist: { status: "read", count: 13, unread: 0 },
       elapsedMs: 40,
     });
     const { queryClient } = renderSearchRoute("/search?view=moneyball");

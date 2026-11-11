@@ -60,9 +60,11 @@ export type SeasonStatsErrorKind =
  * What a read of the linked FM save did with its player shortlists, or with
  * its staff shortlist. Only `read` replaced what was stored; `count` is how
  * many player shortlists hold players, or how many staff are shortlisted.
+ * `unread` is how many listed staff were left out because their record could
+ * not be read; it is 0 for player shortlists.
  */
 export type SaveShortlistsOutcome =
-  | { status: "read"; count: number }
+  | { status: "read"; count: number; unread: number }
   | { status: "notRead" }
   | { status: "failed"; kind: SeasonStatsErrorKind };
 
