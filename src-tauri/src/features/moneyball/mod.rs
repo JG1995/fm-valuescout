@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 mod catalog;
 pub(crate) mod commands;
+pub(crate) mod league_strength;
 pub(crate) mod percentile;
 pub(crate) mod persistence;
 pub(crate) mod query;

@@ -8,6 +8,7 @@ use crate::db::Db;
 
 use crate::features::moneyball::percentile::{calculate_percentiles, MoneyballNumericStatistics};
 use crate::features::moneyball::{
+    league_strength::{shifted, LeagueAdjustment},
     role_catalog::{builtin_catalog, definition_for_attribute_role},
     role_score::score_role,
 };
@@ -1211,6 +1212,7 @@ fn read_moneyball_window(
         .filter_map(|&member| {
             let (mut player, fit) = rows.remove(&cohort.uid(member))?;
             let percentiles = columns.member(member);
+            let league_shift = cohort.league.shift(player.division.as_deref());
             player.moneyball_percentiles = moneyball_fields
                 .iter()
                 .map(|(field_id, key)| {
@@ -1222,14 +1224,15 @@ fn read_moneyball_window(
                 .collect();
             let score_value = |score: Option<u8>| score.map(i64::from).map(DynamicValue::Integer);
             for (field_id, definition) in &role_fields {
-                let score = score_role(definition, &percentiles).map(|role| role.score);
+                let score = score_role(definition, &percentiles)
+                    .map(|role| shifted(role.score, league_shift));
                 player
                     .dynamic_values
                     .insert(field_id.to_string(), score_value(score));
             }
             if let (Some(tactic), Some(fit)) = (&tactic, &fit) {
                 for field in &tactic_fields {
-                    let score = tactic_score(field, tactic, &percentiles, fit);
+                    let score = tactic_score(field, tactic, &percentiles, fit, league_shift);
                     player
                         .dynamic_values
                         .insert(field.id().to_string(), score_value(score));
@@ -1633,10 +1636,12 @@ fn search_players_with_cohort_scoring(
         }
     }
 
+    let league = LeagueAdjustment::load(conn, snapshot_id)?;
     for candidate in &mut candidates {
+        let league_shift = league.shift(candidate.player.division.as_deref());
         for (role_id, definition) in role_ids.iter().zip(&definitions) {
-            let score =
-                score_role(definition, &candidate.role_percentiles).map(|result| result.score);
+            let score = score_role(definition, &candidate.role_percentiles)
+                .map(|result| shifted(result.score, league_shift));
             candidate.role_scores.insert(role_id.clone(), score);
         }
         if let Some(tactic) = tactic_for_moneyball.as_ref() {
@@ -1653,6 +1658,7 @@ fn search_players_with_cohort_scoring(
                             &candidate.player_foot,
                             &candidate.positions,
                             lane,
+                            league_shift,
                         );
                         candidate
                             .tactic_scores
@@ -1997,6 +2003,7 @@ fn parse_nationalities(json: &str) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
     use crate::db::migrations;
+    use crate::features::moneyball::league_strength::{self, test_support::measure_leagues};
     use crate::features::moneyball::role_catalog::builtin_catalog;
     use crate::features::player_metrics::{
         club_dna::SCORE_MODEL_VERSION, potential_scores::PROJECTION_MODEL_VERSION,
@@ -6986,7 +6993,8 @@ mod tests {
     }
 
     /// A database with readers whose Moneyball statistics and stored percentiles tie and miss
-    /// values, with a custom goalkeeper slot and an uncovered centre-forward slot.
+    /// values, with a custom goalkeeper slot and an uncovered centre-forward slot. Its players
+    /// are spread over a strong league, a weaker one, and none.
     fn open_moneyball_equivalence_db() -> (tempfile::TempDir, Db) {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db = crate::db::open(&temp_dir.path().join(crate::db::APP_DB_FILE)).expect("open db");
@@ -7007,6 +7015,11 @@ mod tests {
                     _ => json!({ "GK": 18, "ST": 16 }),
                 };
                 player["preferredFoot"] = json!(if uid % 3 == 0 { "left" } else { "right" });
+                player["division"] = match uid % 3 {
+                    0 => json!("Top"),
+                    1 => json!("Middle"),
+                    _ => Value::Null,
+                };
                 player
             })
             .collect();
@@ -7014,6 +7027,11 @@ mod tests {
 
         let writer = db.0.lock().expect("lock writer");
         let snapshot_id = current_snapshot_id(&writer);
+        measure_leagues(
+            &writer,
+            snapshot_id,
+            &[("Top", 150.0), ("Middle", 140.0), ("Weak", 130.0)],
+        );
         let save_id = snapshot_save_id(&writer, snapshot_id).expect("save");
         let mut tactic =
             crate::features::planner::tactic::get_tactic(&writer, save_id).expect("tactic");
@@ -7113,6 +7131,97 @@ mod tests {
             joined.extend(cached.players);
         }
         assert_eq!(joined, complete.players, "{name} joined windows");
+    }
+
+    #[test]
+    fn moneyball_scores_move_with_each_players_league_until_the_save_turns_it_off() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = crate::db::open(&temp_dir.path().join(crate::db::APP_DB_FILE)).expect("open db");
+        let mut players = vec![
+            player_template(1, "Top league", 100),
+            player_template(2, "Middle league", 100),
+            player_template(3, "No league", 100),
+        ];
+        players[0]["division"] = json!("Top");
+        players[1]["division"] = json!("Middle");
+        players[2]["division"] = Value::Null;
+        ingest_players(&mut db.0.lock().expect("lock writer"), players);
+        let save_id = {
+            let writer = db.0.lock().expect("lock writer");
+            let snapshot_id = current_snapshot_id(&writer);
+            measure_leagues(
+                &writer,
+                snapshot_id,
+                &[("Top", 150.0), ("Middle", 120.0), ("Weak", 90.0)],
+            );
+            // Every player has the same percentiles, so the same score before his league
+            // moves it.
+            let catalog = builtin_catalog().expect("catalog");
+            let definition = catalog
+                .definitions
+                .iter()
+                .find(|definition| definition.id == MONEYBALL_ROLE)
+                .expect("role definition");
+            let percentiles = Value::Object(
+                definition
+                    .metrics
+                    .iter()
+                    .map(|metric| (metric.key.clone(), json!(80)))
+                    .collect::<Map<_, _>>(),
+            )
+            .to_string();
+            for uid in 1..=3 {
+                insert_moneyball_row(&writer, snapshot_id, uid, Some(&percentiles));
+            }
+            snapshot_save_id(&writer, snapshot_id).expect("save")
+        };
+        let role = moneyball_role_field();
+        // Each returned player's role score, the same from the cached and uncached paths.
+        let scores = |rules: Vec<FilterRule>| {
+            let shape = MoneyballShape::new("league", &role, SortDir::Desc, &[&role])
+                .in_pool(ComparisonPool::FullCsv);
+            let shape = if rules.is_empty() {
+                shape
+            } else {
+                shape.filtered(rules, "and")
+            };
+            let cached = search_moneyball_players(
+                &db,
+                &MoneyballCohortCache::new(2),
+                &TableRegistry::default(),
+                None,
+                shape.request(0, 10),
+            )
+            .expect("cached page");
+            let uncached =
+                search_players_in_view(&db.read().expect("reader"), shape.request(0, 10))
+                    .expect("uncached page");
+            assert_eq!(cached, uncached);
+            cached
+                .players
+                .iter()
+                .map(|player| (player.uid, player.dynamic_values[&role].clone()))
+                .collect::<Vec<_>>()
+        };
+        let score = |value: i64| Some(DynamicValue::Integer(value));
+
+        // The middle league is 30 points weaker than the top one, which costs 15. A player
+        // with no league counts as in the weakest measured one, 60 points weaker.
+        assert_eq!(
+            scores(vec![]),
+            [(1, score(80)), (2, score(65)), (3, score(50))]
+        );
+        assert_eq!(
+            scores(vec![filter_rule(&role, "gte", FilterValue::Integer(60))]),
+            [(1, score(80)), (2, score(65))]
+        );
+
+        league_strength::set_enabled(&db.0.lock().expect("lock writer"), save_id, false)
+            .expect("turn the adjustment off");
+        assert_eq!(
+            scores(vec![]),
+            [(1, score(80)), (2, score(80)), (3, score(80))]
+        );
     }
 
     #[test]

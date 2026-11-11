@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use rusqlite::{params_from_iter, types::Value, Connection};
 
+use crate::features::moneyball::league_strength::LeagueAdjustment;
 use crate::features::moneyball::role_catalog::definition_for_attribute_role;
 use crate::features::planner::fit::{
     custom_metrics_lane_score, moneyball_roles_lane_score, tactic_adjusted_score,
@@ -325,7 +326,7 @@ fn load_players(
             (columns, player_metrics_join("p", true, false))
         }
         ScoreMode::Moneyball => (
-            ", moneyball.minutes, moneyball.percentiles_json".to_string(),
+            ", moneyball.minutes, moneyball.percentiles_json, p.division".to_string(),
             " LEFT JOIN player_moneyball_stats moneyball
                 ON moneyball.snapshot_id = p.snapshot_id AND moneyball.player_uid = p.uid"
                 .to_string(),
@@ -356,6 +357,10 @@ fn load_players(
          ORDER BY p.uid"
     );
     let lane_count = tactic.lanes.len();
+    let league = match mode {
+        ScoreMode::General => LeagueAdjustment::default(),
+        ScoreMode::Moneyball => LeagueAdjustment::load(conn, snapshot_id)?,
+    };
     let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let mut rows = statement
         .query(params_from_iter(bind_values.iter()))
@@ -390,18 +395,28 @@ fn load_players(
                     .map(|json| serde_json::from_str::<BTreeMap<String, Option<u8>>>(&json))
                     .transpose()
                     .map_err(|error| error.to_string())?;
+                let division: Option<String> = row.get(10).map_err(read)?;
+                let league_shift = league.shift(division.as_deref());
                 let scores = tactic
                     .lanes
                     .iter()
                     .map(|lane| {
                         let percentiles = percentiles.as_ref()?;
                         match score_basis(lane, mode) {
-                            ScoreBasis::MoneyballCustom => {
-                                custom_metrics_lane_score(percentiles, &foot, &positions, lane)
-                            }
-                            ScoreBasis::MoneyballRoles => {
-                                moneyball_roles_lane_score(percentiles, &foot, &positions, lane)
-                            }
+                            ScoreBasis::MoneyballCustom => custom_metrics_lane_score(
+                                percentiles,
+                                &foot,
+                                &positions,
+                                lane,
+                                league_shift,
+                            ),
+                            ScoreBasis::MoneyballRoles => moneyball_roles_lane_score(
+                                percentiles,
+                                &foot,
+                                &positions,
+                                lane,
+                                league_shift,
+                            ),
                             ScoreBasis::Attributes | ScoreBasis::Unavailable => None,
                         }
                     })

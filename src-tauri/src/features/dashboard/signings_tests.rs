@@ -348,6 +348,33 @@ fn moneyball_mode_scores_a_slot_by_its_custom_metrics_or_else_its_roles() {
 }
 
 #[test]
+fn moneyball_mode_marks_a_signing_down_for_playing_in_a_weaker_league() {
+    let fixture = open_with_players(&[
+        player(1, "Home Keeper", HOME_CLUB, "GK"),
+        player(10, "Target Keeper", OTHER_CLUB, "GK"),
+    ]);
+    fixture.set_percentiles(1, 60, &[]);
+    fixture.set_percentiles(10, 75, &[]);
+    fixture.add_shortlist("Targets", &[10]);
+    fixture.set_player_column(1, "division", "Top");
+    fixture.set_player_column(10, "division", "Second");
+    fixture.measure_leagues(&[("Top", 150.0), ("Second", 140.0)]);
+
+    let signings = signings(&fixture, MONEYBALL);
+
+    // The managed club's league is the reference, so its own keeper keeps his 60. The
+    // target's 75 loses half of the 10 points between the leagues.
+    assert_eq!(
+        incumbent(&signings, "goalkeeper"),
+        Some((1, 60, IncumbentSource::BestFit))
+    );
+    assert_eq!(
+        ranked(&signings.recommendations),
+        [(10, "goalkeeper", 70, 10)]
+    );
+}
+
+#[test]
 fn moneyball_mode_without_season_stats_reports_that_no_scores_exist() {
     let fixture = open_with_players(&[
         player(1, "Home Keeper", HOME_CLUB, "GK"),

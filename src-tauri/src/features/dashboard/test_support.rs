@@ -164,6 +164,15 @@ impl Fixture {
             .expect("set player column");
     }
 
+    /// Records each league's measured strength for the current snapshot.
+    pub(super) fn measure_leagues(&self, leagues: &[(&str, f64)]) {
+        crate::features::moneyball::league_strength::test_support::measure_leagues(
+            &self.conn,
+            self.snapshot_id,
+            leagues,
+        );
+    }
+
     /// Adds a shortlist read from the linked FM save and returns its ID.
     pub(super) fn add_shortlist(&self, name: &str, uids: &[i64]) -> i64 {
         self.conn

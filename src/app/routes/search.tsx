@@ -8,10 +8,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { DatabaseZap, FolderOpen, RefreshCw, X } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo } from "react";
+import { clearPlayerResultContext } from "@/app/player-result-context";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { dashboardKeys } from "@/features/dashboard/api/dashboard-keys";
 import { GraphicsImage } from "@/features/graphics/components/graphics-image";
 import {
   type RefreshSeasonStatsResult,
@@ -20,6 +22,7 @@ import {
 import { seasonStatsCopy } from "@/features/memory-read/components/load-data-outcome";
 import { loadDataMutationKey } from "@/features/memory-read/hooks/use-load-data";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
+import { MoneyballLeagueToggle } from "@/features/moneyball/components/moneyball-league-toggle";
 import { MoneyballStatsAsOf } from "@/features/moneyball/components/moneyball-profile-panel";
 import type { TacticContextBoundaryState } from "@/features/planner/components/tactic-context-boundary";
 import { TacticContextBoundary } from "@/features/planner/components/tactic-context-boundary";
@@ -665,6 +668,13 @@ function SearchPageContent() {
           </button>
         ))}
       </fieldset>
+      <MoneyballLeagueToggle
+        onBeforeChange={() => clearPlayerResultContext(queryClient)}
+        onChanged={() => {
+          void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
+          void queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+        }}
+      />
     </>
   );
   const datasetToggles =

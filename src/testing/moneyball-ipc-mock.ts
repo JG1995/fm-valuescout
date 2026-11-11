@@ -1,5 +1,8 @@
 import type { SeasonStatsOutcome } from "@/features/memory-read/types/load-data";
-import type { MoneyballProfile } from "@/features/moneyball/types/moneyball-profile";
+import type {
+  MoneyballLeagueAdjustment,
+  MoneyballProfile,
+} from "@/features/moneyball/types/moneyball-profile";
 import { setMoneyballStatsGameDateIpcMock } from "./snapshot-ipc-mock";
 
 let profileOverride: MoneyballProfile | null | undefined;
@@ -17,6 +20,35 @@ let refreshResult: RefreshSeasonStatsMockResult = {
 };
 let refreshArgs: unknown;
 let pendingRefresh: (() => void) | null = null;
+
+const DEFAULT_LEAGUE_ADJUSTMENT: MoneyballLeagueAdjustment = {
+  enabled: true,
+  referenceDivision: "Premier Division",
+};
+let leagueAdjustment = DEFAULT_LEAGUE_ADJUSTMENT;
+let leagueAdjustmentChanges: boolean[] = [];
+
+export function setMoneyballLeagueAdjustmentIpcMock(
+  adjustment: MoneyballLeagueAdjustment,
+) {
+  leagueAdjustment = adjustment;
+}
+
+/** Each value `set_moneyball_league_adjustment` was called with, in order. */
+export function getMoneyballLeagueAdjustmentChanges() {
+  return leagueAdjustmentChanges;
+}
+
+export function resolveGetMoneyballLeagueAdjustmentIpcMock() {
+  return leagueAdjustment;
+}
+
+export function resolveSetMoneyballLeagueAdjustmentIpcMock(args: unknown) {
+  const enabled = (args as { enabled: boolean }).enabled;
+  leagueAdjustmentChanges.push(enabled);
+  leagueAdjustment = { ...leagueAdjustment, enabled };
+  return leagueAdjustment;
+}
 
 export function setRefreshSeasonStatsIpcMockResult(
   result: RefreshSeasonStatsMockResult,
@@ -76,6 +108,8 @@ export function resetPlayerMoneyballOverride() {
   };
   refreshArgs = undefined;
   pendingRefresh = null;
+  leagueAdjustment = DEFAULT_LEAGUE_ADJUSTMENT;
+  leagueAdjustmentChanges = [];
 }
 
 export function setPlayerMoneyballPending() {
@@ -111,6 +145,7 @@ export function fixturePlayerMoneyball(
       naturalPositions: ["AMR"],
       comparisonPlayerCount: 24,
     },
+    leagueAdjustment: null,
     ...overrides,
   };
 }

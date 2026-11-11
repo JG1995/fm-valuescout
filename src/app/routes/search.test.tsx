@@ -40,7 +40,9 @@ import {
 import { useSearchViewMemory } from "@/stores/use-search-view-memory";
 import {
   getLastRefreshSeasonStatsIpcArgs,
+  getMoneyballLeagueAdjustmentChanges,
   resolvePendingRefreshSeasonStats,
+  setMoneyballLeagueAdjustmentIpcMock,
   setRefreshSeasonStatsIpcMockPending,
   setRefreshSeasonStatsIpcMockResult,
 } from "@/testing/moneyball-ipc-mock";
@@ -4328,6 +4330,55 @@ describe("search route", () => {
           comparisonPool: "fullCsv",
         });
       });
+    });
+
+    it("saves the league adjustment choice and reloads the results it changes", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
+      renderSearchRoute("/search?view=moneyball");
+
+      await screen.findByText("Moneyball Scout");
+      const scores = screen.getByRole("group", { name: "Scores" });
+      expect(scores).toHaveAccessibleDescription(
+        "League-adjusted scores show how a player would score in Premier Division.",
+      );
+      expect(
+        within(scores).getByRole("button", { name: "League-adjusted" }),
+      ).toHaveAttribute("aria-pressed", "true");
+      const requestsBefore = getSearchPlayersCallCount();
+
+      await user.click(within(scores).getByRole("button", { name: "Raw" }));
+
+      await waitFor(() => {
+        expect(getMoneyballLeagueAdjustmentChanges()).toEqual([false]);
+        expect(screen.getByRole("button", { name: "Raw" })).toHaveAttribute(
+          "aria-pressed",
+          "true",
+        );
+        expect(getSearchPlayersCallCount()).toBeGreaterThan(requestsBefore);
+      });
+      expect(await screen.findByText("Moneyball Scout")).toBeInTheDocument();
+    });
+
+    it("offers the league choice only in Moneyball and only once leagues are measured", async () => {
+      await resolveLoadDataIpcMock();
+      setSearchPlayersOverride([playerNamed("Scout", 160)]);
+      const { unmount } = renderSearchRoute("/search?view=general");
+      await screen.findByText("Scout");
+      expect(screen.queryByRole("group", { name: "Scores" })).toBeNull();
+      unmount();
+
+      setMoneyballLeagueAdjustmentIpcMock({
+        enabled: true,
+        referenceDivision: null,
+      });
+      renderSearchRoute("/search?view=moneyball");
+      const scores = await screen.findByRole("group", { name: "Scores" });
+      expect(scores).toBeDisabled();
+      expect(scores).toHaveAccessibleDescription(
+        "League strength is measured by the next Load Data.",
+      );
     });
   });
 });

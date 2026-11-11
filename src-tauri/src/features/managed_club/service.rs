@@ -152,7 +152,8 @@ pub fn selected_club(conn: &Connection, save_id: i64) -> Result<Option<String>, 
     Ok(selected_club_identity(conn, save_id)?.map(|(name, _)| name))
 }
 
-fn selected_club_identity(
+/// The save's managed club: its name and, when recorded, its UID.
+pub(crate) fn selected_club_identity(
     conn: &Connection,
     save_id: i64,
 ) -> Result<Option<(String, Option<i64>)>, String> {

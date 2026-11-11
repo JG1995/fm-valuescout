@@ -11,6 +11,7 @@ use serde_json::Value;
 
 use crate::features::academy::service as academy_service;
 use crate::features::memory_read::dump_validation::read_validated_dump;
+use crate::features::moneyball::league_strength;
 use crate::features::moneyball::persistence as moneyball_persistence;
 use crate::features::player_metrics::club_dna as club_dna_scores;
 use crate::features::player_metrics::compact as player_compact;
@@ -512,6 +513,17 @@ pub(crate) fn publish_prepared_snapshot_canonical(
     let raw = &prepared.raw;
     let snapshot_id = insert_prepared_snapshot(&tx, save_id, raw, bridge_source_request_id)?;
     insert_prepared_players_raw(&tx, snapshot_id, &raw.players)?;
+    league_strength::persist(
+        &tx,
+        snapshot_id,
+        &league_strength::measure(raw.players.iter().map(|player| {
+            (
+                player.division.as_deref(),
+                player.current_club_uid,
+                player.ca,
+            )
+        })),
+    )?;
     insert_prepared_staff_raw(&tx, snapshot_id, &raw.staff)?;
     let save_ms = now_ms().saturating_sub(save_started);
     // Non-cancelling phase boundary: raw save complete, finalize start.
