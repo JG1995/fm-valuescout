@@ -38,7 +38,8 @@ pub struct SaveSummaryDto {
 pub struct PlayerShortlistSummaryDto {
     pub id: i64,
     pub name: String,
-    pub file_name: String,
+    /// `None` for a shortlist read from the linked FM save.
+    pub file_name: Option<String>,
 }
 
 impl From<SaveSummary> for SaveSummaryDto {
@@ -1843,6 +1844,7 @@ mod tests {
             },
             stats: SeasonStatsOutcome {
                 result: save_stats_import::SeasonStatsResult::NotLinked,
+                shortlists: save_stats_import::SaveShortlistsOutcome::NotRead,
                 elapsed_ms: 1,
             },
             shortlists: PlayerShortlistsOutcome {
@@ -2170,7 +2172,7 @@ mod tests {
                 player_shortlists: vec![service::PlayerShortlistSummary {
                     id: 5,
                     name: "Targets".to_string(),
-                    file_name: "Targets.fmf".to_string(),
+                    file_name: Some("Targets.fmf".to_string()),
                 }],
             },
         });

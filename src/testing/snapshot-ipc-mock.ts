@@ -156,7 +156,11 @@ function buildLoadDataResult(
     storedSnapshot,
     effectiveSnapshot,
     timings: { ...defaultTimings, ...(overrideTimings ?? {}) },
-    stats: { status: "notLinked", elapsedMs: 0 },
+    stats: {
+      status: "notLinked",
+      shortlists: { status: "notRead" },
+      elapsedMs: 0,
+    },
     shortlists: { read: 0, failed: [] },
     ...restOverrides,
   };

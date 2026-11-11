@@ -29,17 +29,18 @@ pub struct SaveSummary {
     pub updated_at_utc: String,
     /// The linked FM save's file name. The stored path's directory never leaves the database.
     pub linked_save_file_name: Option<String>,
-    /// The save's linked FM shortlists, by name case-insensitively, then by file name.
+    /// The save's player shortlists, by name case-insensitively, then by file name.
     pub player_shortlists: Vec<PlayerShortlistSummary>,
 }
 
-/// One linked FM shortlist of a save. The stored path's directory never leaves the database.
+/// One player shortlist of a save. The stored path's directory never leaves the database.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerShortlistSummary {
     pub id: i64,
-    /// The list name from the file's last successful read.
+    /// The list name from the last successful read.
     pub name: String,
-    pub file_name: String,
+    /// The linked shortlist file's name, or `None` for a list read from the linked FM save.
+    pub file_name: Option<String>,
 }
 
 /// A WebView-supplied path that read as a supported FM27 save when it was validated.
@@ -669,8 +670,8 @@ fn map_save_row(row: &Row<'_>) -> rusqlite::Result<SaveSummary> {
     })
 }
 
-/// Fills in the save's linked shortlists, ordered by name case-insensitively, then by file
-/// name.
+/// Fills in the save's shortlists, ordered by name case-insensitively, then by file name, a
+/// list read from the FM save first.
 fn with_player_shortlists(conn: &Connection, mut save: SaveSummary) -> Result<SaveSummary, String> {
     let mut shortlists = conn
         .prepare("SELECT id, name, file_path FROM player_shortlists WHERE save_id = ?1")
@@ -680,7 +681,7 @@ fn with_player_shortlists(conn: &Connection, mut save: SaveSummary) -> Result<Sa
                     Ok(PlayerShortlistSummary {
                         id: row.get(0)?,
                         name: row.get(1)?,
-                        file_name: file_name(Some(&row.get::<_, String>(2)?)).unwrap_or_default(),
+                        file_name: file_name(row.get::<_, Option<String>>(2)?.as_deref()),
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()
@@ -1021,15 +1022,18 @@ mod tests {
 
     #[test]
     fn saves_list_their_shortlists_by_name_then_file_name_without_paths() {
+        let from_save: Option<&str> = None;
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = open_migrated(&temp_dir.path().join("save-shortlists.db"));
         let save = list_saves(&conn).expect("list saves").remove(0);
         let other = create_save(&conn, "Other").expect("create other save");
         for (save_id, path, name) in [
-            (save.id, "/lists/b/Zeta.fmf", "targets"),
-            (save.id, "/lists/a/Alpha.fmf", "Targets"),
-            (save.id, "/lists/Loans.fmf", "Loans"),
-            (other.id, "/lists/Elsewhere.fmf", "Elsewhere"),
+            (save.id, Some("/lists/b/Zeta.fmf"), "targets"),
+            (save.id, Some("/lists/a/Alpha.fmf"), "Targets"),
+            (save.id, Some("/lists/Loans.fmf"), "Loans"),
+            // Read from the FM save, so it has no file.
+            (save.id, from_save, "Targets"),
+            (other.id, Some("/lists/Elsewhere.fmf"), "Elsewhere"),
         ] {
             conn.execute(
                 "INSERT INTO player_shortlists (save_id, file_path, name) VALUES (?1, ?2, ?3)",
@@ -1047,11 +1051,12 @@ mod tests {
                 .collect::<Vec<_>>()
         };
 
-        let pair = |name: &str, file_name: &str| (name.to_string(), file_name.to_string());
+        let pair = |name: &str, file_name: &str| (name.to_string(), Some(file_name.to_string()));
         assert_eq!(
             listed(save.id),
             [
                 pair("Loans", "Loans.fmf"),
+                ("Targets".to_string(), None),
                 pair("Targets", "Alpha.fmf"),
                 pair("targets", "Zeta.fmf"),
             ]
@@ -1061,7 +1066,7 @@ mod tests {
             list_saves(&conn).expect("list saves")[0]
                 .player_shortlists
                 .len(),
-            3
+            4
         );
     }
 

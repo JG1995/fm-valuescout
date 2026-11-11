@@ -147,7 +147,9 @@ export function useLoadData(options: UseLoadDataOptions) {
         // even when the loaded snapshot is older. Its roots stay valid, so refresh current
         // views without clearing them.
         if (
-          (data.stats.status === "attached" || data.shortlists.read > 0) &&
+          (data.stats.status === "attached" ||
+            data.stats.shortlists.status === "read" ||
+            data.shortlists.read > 0) &&
           sameContext(captured, activeSaveContextRef.current)
         ) {
           options.invalidateCurrentOwners();

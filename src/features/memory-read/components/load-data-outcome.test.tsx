@@ -56,7 +56,11 @@ function resultWithHistoricalStoredSnapshot(): LoadDataResult {
       totalMs: 2200,
       ingestMs: 400,
     },
-    stats: { status: "notLinked", elapsedMs: 100 },
+    stats: {
+      status: "notLinked",
+      shortlists: { status: "notRead" },
+      elapsedMs: 100,
+    },
     shortlists: { read: 0, failed: [] },
   };
 }
@@ -109,7 +113,11 @@ function successResult(): LoadDataResult {
       totalMs: 2200,
       ingestMs: 400,
     },
-    stats: { status: "notLinked", elapsedMs: 100 },
+    stats: {
+      status: "notLinked",
+      shortlists: { status: "notRead" },
+      elapsedMs: 100,
+    },
     shortlists: { read: 0, failed: [] },
   };
 }
@@ -473,13 +481,14 @@ describe("LoadDataOutcome", () => {
         matchedPlayers: 35903,
         unmatchedPlayers: 12,
         gameDate: "2027-01-01",
+        shortlists: { status: "notRead" },
         elapsedMs: 1300,
       },
       "Attached season stats for 35,903 players from the save dated 1st January 2027.",
     ],
     [
       "link guidance",
-      { status: "notLinked", elapsedMs: 0 },
+      { status: "notLinked", shortlists: { status: "notRead" }, elapsedMs: 0 },
       "No FM save file is linked, so no season stats were read. Link one in Settings.",
     ],
     [
@@ -488,13 +497,18 @@ describe("LoadDataOutcome", () => {
         status: "noMatches",
         unmatchedPlayers: 4,
         gameDate: "2026-07-01",
+        shortlists: { status: "notRead" },
         elapsedMs: 900,
       },
       "No players in the save dated 1st July 2026 matched the current snapshot, so season stats were not changed.",
     ],
     [
       "a discarded stale read",
-      { status: "staleContext", elapsedMs: 10 },
+      {
+        status: "staleContext",
+        shortlists: { status: "notRead" },
+        elapsedMs: 10,
+      },
       "The save or snapshot changed while season stats were read, so they were not attached.",
     ],
     [
@@ -503,6 +517,7 @@ describe("LoadDataOutcome", () => {
         status: "failed",
         kind: "not_found",
         fileName: "Career.fm",
+        shortlists: { status: "notRead" },
         elapsedMs: 1,
       },
       "Season stats were not read: Career.fm could not be found.",
@@ -513,6 +528,7 @@ describe("LoadDataOutcome", () => {
         status: "failed",
         kind: "not_fm_save",
         fileName: "Notes.fm",
+        shortlists: { status: "notRead" },
         elapsedMs: 1,
       },
       "Season stats were not read: Notes.fm is not a supported FM27 save.",
@@ -523,6 +539,7 @@ describe("LoadDataOutcome", () => {
         status: "failed",
         kind: "unsupported_build",
         fileName: "Career.fm",
+        shortlists: { status: "notRead" },
         elapsedMs: 1,
       },
       "Season stats were not read: this FM27 build is not supported yet.",
@@ -533,6 +550,7 @@ describe("LoadDataOutcome", () => {
         status: "failed",
         kind: "corrupt",
         fileName: "Career.fm",
+        shortlists: { status: "notRead" },
         elapsedMs: 1,
       },
       "Season stats were not read: the save could not be read safely.",
@@ -543,13 +561,20 @@ describe("LoadDataOutcome", () => {
         status: "failed",
         kind: "changed_during_read",
         fileName: "Career.fm",
+        shortlists: { status: "notRead" },
         elapsedMs: 1,
       },
       "Season stats were not read: the save changed while it was read. Wait for FM to finish saving, then try again.",
     ],
     [
       "a failed write",
-      { status: "failed", kind: "database", fileName: null, elapsedMs: 1 },
+      {
+        status: "failed",
+        kind: "database",
+        fileName: null,
+        shortlists: { status: "notRead" },
+        elapsedMs: 1,
+      },
       "Season stats could not be stored, so the previous stats are unchanged.",
     ],
   ])("reports %s after the snapshot outcome", (_case, stats, expected) => {
@@ -567,6 +592,82 @@ describe("LoadDataOutcome", () => {
     );
   });
 
+  const attached = {
+    status: "attached",
+    matchedPlayers: 2,
+    unmatchedPlayers: 0,
+    gameDate: "2027-01-01",
+    elapsedMs: 1,
+  } as const;
+  const attachedSentence =
+    "Attached season stats for 2 players from the save dated 1st January 2027.";
+
+  it.each<[string, SeasonStatsOutcome["shortlists"], string, boolean]>([
+    [
+      "several shortlists read from the save",
+      { status: "read", count: 5 },
+      `${attachedSentence} Read 5 shortlists from the save.`,
+      false,
+    ],
+    [
+      "one shortlist read from the save",
+      { status: "read", count: 1 },
+      `${attachedSentence} Read 1 shortlist from the save.`,
+      false,
+    ],
+    [
+      "shortlists an FM build stores differently",
+      { status: "failed", kind: "unsupported_build" },
+      `${attachedSentence} The save's shortlists were not read: this FM27 build is not supported yet. The previous ones are kept.`,
+      true,
+    ],
+    [
+      "shortlists that could not be stored",
+      { status: "failed", kind: "database" },
+      `${attachedSentence} The save's shortlists could not be stored, so the previous ones are kept.`,
+      true,
+    ],
+  ])(
+    "reports %s after the season stats",
+    (_case, shortlists, expected, isProblem) => {
+      render(
+        <LoadDataOutcome
+          error={null}
+          result={{
+            ...successResult(),
+            stats: { ...attached, shortlists },
+            shortlists: { read: 0, failed: [] },
+          }}
+          onDismiss={() => undefined}
+        />,
+      );
+
+      const outcome = screen.getByText(/Loaded 3 players into the database/i);
+      expect(outcome).toHaveTextContent(expected);
+      expect(outcome.parentElement?.parentElement).toHaveClass(
+        isProblem ? "bg-warning-container" : "bg-success-container",
+      );
+    },
+  );
+
+  it("says nothing about shortlists when the save's hold no players", () => {
+    render(
+      <LoadDataOutcome
+        error={null}
+        result={{
+          ...successResult(),
+          stats: { ...attached, shortlists: { status: "read", count: 0 } },
+          shortlists: { read: 0, failed: [] },
+        }}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    const outcome = screen.getByText(/Loaded 3 players into the database/i);
+    expect(outcome).toHaveTextContent(attachedSentence);
+    expect(outcome).not.toHaveTextContent("shortlist");
+  });
+
   const statsSentence =
     "No FM save file is linked, so no season stats were read. Link one in Settings.";
 
@@ -574,13 +675,13 @@ describe("LoadDataOutcome", () => {
     [
       "one re-read shortlist",
       { read: 1, failed: [] },
-      "Read 1 shortlist.",
+      "Read 1 shortlist file.",
       false,
     ],
     [
       "several re-read shortlists",
       { read: 3, failed: [] },
-      "Read 3 shortlists.",
+      "Read 3 shortlist files.",
       false,
     ],
     [
@@ -593,13 +694,13 @@ describe("LoadDataOutcome", () => {
           { kind: "database", fileName: "Loans.fmf" },
         ],
       },
-      "Read 1 shortlist. Targets.fmf could not be found or opened, so its previous players are kept. View.fmf is not a player shortlist, so its previous players are kept. Loans.fmf could not be stored, so its previous players are kept.",
+      "Read 1 shortlist file. Targets.fmf could not be found or opened, so its previous players are kept. View.fmf is not a player shortlist, so its previous players are kept. Loans.fmf could not be stored, so its previous players are kept.",
       true,
     ],
     [
       "shortlists that could not be updated at all",
       { read: 0, failed: [{ kind: "database", fileName: null }] },
-      "Read 0 shortlists. The shortlists could not be updated, so their previous players are kept.",
+      "Read 0 shortlist files. The shortlist files could not be updated, so their previous players are kept.",
       true,
     ],
   ])(

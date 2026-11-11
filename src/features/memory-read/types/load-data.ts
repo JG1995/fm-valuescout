@@ -56,8 +56,20 @@ export type SeasonStatsErrorKind =
   | "changed_during_read"
   | "database";
 
-/** The season stats read from the active save's linked FM save file. */
-export type SeasonStatsOutcome = { elapsedMs: number } & (
+/**
+ * What a read of the linked FM save did with its player shortlists. Only
+ * `read` replaced the stored ones; `count` is how many hold players.
+ */
+export type SaveShortlistsOutcome =
+  | { status: "read"; count: number }
+  | { status: "notRead" }
+  | { status: "failed"; kind: SeasonStatsErrorKind };
+
+/** The season stats and shortlists read from the active save's linked FM save file. */
+export type SeasonStatsOutcome = {
+  elapsedMs: number;
+  shortlists: SaveShortlistsOutcome;
+} & (
   | {
       status: "attached";
       matchedPlayers: number;
@@ -83,7 +95,7 @@ export type PlayerShortlistReadErrorKind =
 /**
  * The re-read of the active save's linked FM shortlist files. A re-read
  * discarded because the save or shortlist changed counts as neither, so a
- * save without shortlists reports `{ read: 0, failed: [] }`.
+ * save without linked files reports `{ read: 0, failed: [] }`.
  */
 export type PlayerShortlistsOutcome = {
   /** How many shortlists had their name and players replaced. */

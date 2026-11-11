@@ -1595,6 +1595,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               matchedPlayers: 3,
               unmatchedPlayers: 0,
               gameDate: "2027-01-01",
+              shortlists: { status: "notRead" },
               elapsedMs: 12,
             };
           }
@@ -2221,7 +2222,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               timings: { scanMs: 0, ingestMs: 0, totalMs: 0 },
               storedSnapshot: loadedSnapshot,
               effectiveSnapshot: loadedSnapshot,
-              stats: { status: "notLinked", elapsedMs: 0 },
+              stats: { status: "notLinked", shortlists: { status: "notRead" }, elapsedMs: 0 },
               shortlists: { read: activeSave().playerShortlists.length, failed: [] },
             };
           }

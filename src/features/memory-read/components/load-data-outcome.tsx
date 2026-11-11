@@ -8,6 +8,7 @@ import type {
   LoadDataResult,
   PlayerShortlistReadErrorKind,
   PlayerShortlistsOutcome,
+  SaveShortlistsOutcome,
   SeasonStatsErrorKind,
   SeasonStatsOutcome,
 } from "../types/load-data";
@@ -37,8 +38,51 @@ const seasonStatsReadFailureReasons: Record<
     "the save changed while it was read. Wait for FM to finish saving, then try again",
 };
 
-/** One sentence for the stats step, and whether it left the snapshot without new stats. */
+/**
+ * The read of the linked save: one sentence for the stats, then one for the
+ * save's shortlists when they were read or failed. `isProblem` is whether the
+ * read left the snapshot without new stats or the shortlists unchanged.
+ */
 export function seasonStatsCopy(stats: SeasonStatsOutcome): {
+  text: string;
+  isProblem: boolean;
+} {
+  const statsCopy = statsStepCopy(stats);
+  const shortlists = saveShortlistsCopy(stats.shortlists);
+  return shortlists
+    ? {
+        text: `${statsCopy.text} ${shortlists.text}`,
+        isProblem: statsCopy.isProblem || shortlists.isProblem,
+      }
+    : statsCopy;
+}
+
+/** How many shortlists the save gave, or why they were not read; null when there is nothing to say. */
+function saveShortlistsCopy(
+  shortlists: SaveShortlistsOutcome,
+): { text: string; isProblem: boolean } | null {
+  switch (shortlists.status) {
+    case "read":
+      return shortlists.count === 0
+        ? null
+        : {
+            text: `Read ${formatCount(shortlists.count)} ${shortlists.count === 1 ? "shortlist" : "shortlists"} from the save.`,
+            isProblem: false,
+          };
+    case "notRead":
+      return null;
+    case "failed":
+      return {
+        text:
+          shortlists.kind === "database"
+            ? "The save's shortlists could not be stored, so the previous ones are kept."
+            : `The save's shortlists were not read: ${seasonStatsReadFailureReasons[shortlists.kind]("the linked save file")}. The previous ones are kept.`,
+        isProblem: true,
+      };
+  }
+}
+
+function statsStepCopy(stats: SeasonStatsOutcome): {
   text: string;
   isProblem: boolean;
 } {
@@ -96,7 +140,7 @@ function shortlistFailureCopy({
   fileName,
 }: PlayerShortlistsOutcome["failed"][number]): string {
   if (fileName === null) {
-    return "The shortlists could not be updated, so their previous players are kept.";
+    return "The shortlist files could not be updated, so their previous players are kept.";
   }
   const reason =
     kind === "database"
@@ -106,8 +150,8 @@ function shortlistFailureCopy({
 }
 
 /**
- * How many shortlists were re-read plus each failed file, or null when the
- * save has no shortlists.
+ * How many linked shortlist files were re-read plus each failed file, or null
+ * when the save links none.
  */
 function shortlistsCopy({
   read,
@@ -118,7 +162,7 @@ function shortlistsCopy({
   }
   return {
     text: [
-      `Read ${formatCount(read)} ${read === 1 ? "shortlist" : "shortlists"}.`,
+      `Read ${formatCount(read)} ${read === 1 ? "shortlist file" : "shortlist files"}.`,
       ...failed.map(shortlistFailureCopy),
     ].join(" "),
     isProblem: failed.length > 0,
