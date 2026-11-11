@@ -298,6 +298,7 @@ pub struct PlannerAssignmentDto {
     pub current_name: Option<String>,
     pub state: String,
     pub combined_score: Option<u8>,
+    pub expected_combined_score: Option<u8>,
     pub potential_combined_score: Option<u8>,
 }
 
@@ -311,6 +312,7 @@ impl From<PlannerAssignment> for PlannerAssignmentDto {
             current_name: assignment.current_name,
             state: assignment.state.as_str().to_string(),
             combined_score: assignment.combined_score,
+            expected_combined_score: assignment.expected_combined_score,
             potential_combined_score: assignment.potential_combined_score,
         }
     }
@@ -808,18 +810,14 @@ pub async fn save_planner_teams(
 }
 
 #[tauri::command]
-pub async fn optimize_planner_depth(
-    score_basis: String,
-    db: State<'_, Db>,
-) -> Result<PlannerDepthDto, String> {
+pub async fn optimize_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
     let db = db.inner().clone();
     blocking::run(move || {
-        let score_basis = optimizer::ScoreBasis::parse(&score_basis)?;
         let conn =
             db.0.lock()
                 .map_err(|_| "database lock poisoned".to_string())?;
         let save_id = service::active_save_id(&conn)?;
-        Ok(optimizer::optimize_depth_with_basis(&conn, save_id, score_basis)?.into())
+        Ok(optimizer::optimize_depth(&conn, save_id)?.into())
     })
     .await
 }

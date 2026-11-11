@@ -8,6 +8,7 @@ use crate::features::{
     scoring::combine::combine_role_scores,
 };
 
+use super::outlook::{expected_score, Development};
 use super::tactic::{self, PlannerTactic, TacticLane};
 use super::teams;
 
@@ -66,6 +67,8 @@ pub struct PlannerAssignment {
     pub current_name: Option<String>,
     pub state: AssignmentState,
     pub combined_score: Option<u8>,
+    /// The combined score the player is expected to reach, given his age and personality.
+    pub expected_combined_score: Option<u8>,
     pub potential_combined_score: Option<u8>,
 }
 
@@ -559,6 +562,7 @@ fn load_assignments(
                 current_name: resolved.current_name,
                 state: resolved.state,
                 combined_score: resolved.combined_score,
+                expected_combined_score: resolved.expected_combined_score,
                 potential_combined_score: resolved.potential_combined_score,
             })
         })
@@ -569,6 +573,7 @@ struct ResolvedAssignment {
     current_name: Option<String>,
     state: AssignmentState,
     combined_score: Option<u8>,
+    expected_combined_score: Option<u8>,
     potential_combined_score: Option<u8>,
 }
 
@@ -584,6 +589,7 @@ fn resolve_assignment(
             current_name: None,
             state: AssignmentState::Unresolved,
             combined_score: None,
+            expected_combined_score: None,
             potential_combined_score: None,
         });
     };
@@ -606,9 +612,11 @@ fn resolve_assignment(
                     {PLAYER_METRICS_ALIAS}.{oop_column},
                     {PLAYER_METRICS_ALIAS}.{potential_ip_column},
                     {PLAYER_METRICS_ALIAS}.{potential_oop_column},
-                    {PLAYER_METRICS_ALIAS}.score_model_version IS NOT NULL
+                    {PLAYER_METRICS_ALIAS}.score_model_version IS NOT NULL,
+                    {}
                  FROM players p{}
                  WHERE p.snapshot_id = ?2 AND p.uid = ?3",
+                Development::columns("p"),
                 player_metrics_join("p", true, true),
             ),
             params![save_id, snapshot_id, player_uid],
@@ -621,6 +629,7 @@ fn resolve_assignment(
                     row.get::<_, Option<u8>>(4)?,
                     row.get::<_, Option<u8>>(5)?,
                     row.get::<_, bool>(6)?,
+                    Development::from_row(row, 7)?,
                 ))
             },
         )
@@ -635,12 +644,14 @@ fn resolve_assignment(
         potential_ip_score,
         potential_oop_score,
         has_compact_row,
+        development,
     )) = player
     else {
         return Ok(ResolvedAssignment {
             current_name: None,
             state: AssignmentState::Unresolved,
             combined_score: None,
+            expected_combined_score: None,
             potential_combined_score: None,
         });
     };
@@ -653,15 +664,17 @@ fn resolve_assignment(
         AssignmentState::OutsidePool
     };
 
+    let combined_score = combine_role_scores(ip_score, oop_score, lane.ip_weight);
+    let potential_combined_score =
+        combine_role_scores(potential_ip_score, potential_oop_score, lane.ip_weight);
     Ok(ResolvedAssignment {
         current_name: Some(current_name),
         state,
-        combined_score: combine_role_scores(ip_score, oop_score, lane.ip_weight),
-        potential_combined_score: combine_role_scores(
-            potential_ip_score,
-            potential_oop_score,
-            lane.ip_weight,
+        combined_score,
+        expected_combined_score: combined_score.zip(potential_combined_score).map(
+            |(current, potential)| expected_score(current, potential, &development).round() as u8,
         ),
+        potential_combined_score,
     })
 }
 

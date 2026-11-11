@@ -785,6 +785,42 @@ fn assignment_uses_persisted_potential_scores_instead_of_source_projection() {
 }
 
 #[test]
+fn assignment_expects_the_share_of_the_gap_the_players_age_and_personality_reach() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE players
+         SET age = 20,
+             personality_json = '{\"Professionalism\": 15, \"Ambition\": 15}',
+             attributes_json = '{\"Determination\": 15}'
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("set development inputs");
+    conn.execute(
+        "UPDATE player_role_metrics
+         SET goalkeeper_ip = 60,
+             line_holding_keeper_oop = 60,
+             potential_goalkeeper_ip = 80,
+             potential_line_holding_keeper_oop = 80
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("set current and potential scores");
+
+    let reloaded = get_depth(&conn, save_id).expect("load assignment scores");
+    let assignment = &team_strings(&reloaded, PlannerTeam::Senior)[0].assignments[0];
+
+    // At 20 with a drive of 15, the player closes 85% of the 20-point gap.
+    assert_eq!(assignment.combined_score, Some(60));
+    assert_eq!(assignment.expected_combined_score, Some(77));
+    assert_eq!(assignment.potential_combined_score, Some(80));
+}
+
+#[test]
 fn managed_club_and_tactic_updates_preserve_assignments_and_save_isolation() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     let depth = get_depth(&conn, save_id).expect("create planner depth");

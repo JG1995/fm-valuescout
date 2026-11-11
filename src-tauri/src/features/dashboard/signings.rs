@@ -465,7 +465,11 @@ fn starting_lineup(
         .map(|player| OptimizerCandidate {
             player_uid: player.uid,
             last_known_name: player.name.clone(),
-            lane_scores: player.lane_scores.clone(),
+            lane_scores: player
+                .lane_scores
+                .iter()
+                .map(|score| score.map(u16::from))
+                .collect(),
         })
         .collect::<Vec<_>>();
     for (lane_index, player_index) in

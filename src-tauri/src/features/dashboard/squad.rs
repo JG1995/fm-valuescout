@@ -257,7 +257,7 @@ pub(crate) fn get_prospects(conn: &Connection, save_id: i64) -> Result<Option<Pr
             lane_scores: player
                 .lane_scores
                 .iter()
-                .map(|scores| scores.map(|(_, potential)| potential))
+                .map(|scores| scores.map(|(_, potential)| u16::from(potential)))
                 .collect(),
         })
         .collect::<Vec<_>>();

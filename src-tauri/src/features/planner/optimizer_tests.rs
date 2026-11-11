@@ -1,17 +1,53 @@
 use rusqlite::params;
 
 use super::depth::{assign_player, get_depth, PlannerTeam};
-use super::optimizer::{
-    match_lanes, optimize_depth, optimize_depth_with_basis, OptimizerCandidate, ScoreBasis,
-};
+use super::optimizer::{fill_key, match_lanes, optimize_depth, OptimizerCandidate};
 use super::tactic;
 use super::teams::{save_team_settings, PlannerStringInput, PlannerTeamInput};
 use super::test_support::{
     add_picker_candidates, assigned_player_uid, assignment_provenance, clear_current_scores_except,
     current_snapshot_id, deny_potential_writes, open_with_snapshot, planner_potential_state,
-    set_player_age, set_player_positions, set_player_preferred_foot, set_potential_role_score,
-    set_right_winger_scores, set_role_score, team_strings,
+    set_player_age, set_player_attributes, set_player_personality, set_player_positions,
+    set_player_preferred_foot, set_potential_role_score, set_right_winger_scores, set_role_score,
+    team_strings,
 };
+
+/// Gives the player a right-winger score now and a potential one, with full familiarity.
+fn set_right_winger(
+    conn: &rusqlite::Connection,
+    save_id: i64,
+    player_uid: i64,
+    current: u8,
+    potential: u8,
+) {
+    set_player_positions(conn, save_id, player_uid, r#"{"AMR": 18, "MR": 18}"#);
+    set_right_winger_scores(conn, save_id, player_uid, Some(current));
+    for role_id in ["winger_ip", "tracking_wide_midfielder_oop"] {
+        set_potential_role_score(conn, save_id, player_uid, role_id, Some(potential));
+    }
+}
+
+fn set_development(
+    conn: &rusqlite::Connection,
+    save_id: i64,
+    player_uid: i64,
+    age: i64,
+    [professionalism, ambition, determination]: [u8; 3],
+) {
+    set_player_age(conn, save_id, player_uid, Some(age));
+    set_player_personality(
+        conn,
+        save_id,
+        player_uid,
+        &format!(r#"{{"Professionalism": {professionalism}, "Ambition": {ambition}}}"#),
+    );
+    set_player_attributes(
+        conn,
+        save_id,
+        player_uid,
+        &format!(r#"{{"Determination": {determination}}}"#),
+    );
+}
 
 fn retained_strings(
     depth: &super::depth::PlannerDepth,
@@ -105,50 +141,31 @@ fn optimizer_penalizes_sub_16_familiarity_without_excluding_eligible_players() {
 }
 
 #[test]
-fn optimizer_switches_between_current_and_persisted_potential_candidate_scores() {
+fn optimizer_starts_a_prospect_over_a_declining_veteran_unless_he_is_unprofessional() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let snapshot_id = current_snapshot_id(&conn, save_id);
-    conn.execute(
-        "UPDATE players
-         SET age = 20, positions_json = ?1, attributes_json = '{}'
-         WHERE snapshot_id = ?2 AND uid = 78",
-        params![r#"{"AMR": 18, "MR": 18}"#, snapshot_id],
-    )
-    .expect("make persisted candidate source-ineligible");
-    conn.execute(
-        "UPDATE players SET team_level = NULL WHERE snapshot_id = ?1 AND uid IN (77, 78)",
-        [snapshot_id],
-    )
-    .expect("remove team levels");
-    set_right_winger_scores(&conn, save_id, 77, Some(100));
-    set_right_winger_scores(&conn, save_id, 78, Some(90));
-    set_potential_role_score(&conn, save_id, 77, "winger_ip", Some(10));
-    set_potential_role_score(&conn, save_id, 77, "tracking_wide_midfielder_oop", Some(10));
-    set_potential_role_score(&conn, save_id, 78, "winger_ip", Some(90));
-    set_potential_role_score(&conn, save_id, 78, "tracking_wide_midfielder_oop", Some(90));
-
+    set_right_winger(&conn, save_id, 77, 74, 74);
+    set_development(&conn, save_id, 77, 33, [10, 10, 10]);
+    set_right_winger(&conn, save_id, 78, 70, 84);
+    set_development(&conn, save_id, 78, 20, [15, 14, 12]);
     let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
     tactic.lanes[9].importance_rank = Some(1);
     tactic::save_tactic(&conn, save_id, &tactic).expect("rank right winger");
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
-    let current = optimize_depth(&conn, save_id).expect("optimize current scores");
-    let potential = optimize_depth_with_basis(&conn, save_id, ScoreBasis::Potential)
-        .expect("optimize persisted potential scores");
+    let professional = optimize_depth(&conn, save_id).expect("optimize with a driven prospect");
+    set_development(&conn, save_id, 78, 20, [5, 8, 9]);
+    let unprofessional = optimize_depth(&conn, save_id).expect("optimize with a lazy prospect");
 
     assert_eq!(
-        assigned_player_uid(&current, PlannerTeam::Senior, "right_winger"),
-        Some(77)
-    );
-    assert_eq!(
-        assigned_player_uid(&potential, PlannerTeam::Senior, "right_winger"),
+        assigned_player_uid(&professional, PlannerTeam::Senior, "right_winger"),
         Some(78)
     );
     assert_eq!(
-        ScoreBasis::parse("unsupported").expect_err("reject unknown basis"),
-        "Unknown optimizer score basis `unsupported`"
+        assigned_player_uid(&unprofessional, PlannerTeam::Senior, "right_winger"),
+        Some(77)
     );
     assert_eq!(
         planner_potential_state(&conn, save_id, snapshot_id).compact_rows,
@@ -157,7 +174,145 @@ fn optimizer_switches_between_current_and_persisted_potential_candidate_scores()
 }
 
 #[test]
-fn optimizer_rejects_missing_potential_role_for_both_bases_before_assignment_writes() {
+fn optimizer_starts_the_higher_ceiling_in_the_reserves_over_the_better_player_today() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    set_right_winger(&conn, save_id, 77, 58, 86);
+    set_development(&conn, save_id, 77, 16, [14, 12, 13]);
+    set_right_winger(&conn, save_id, 78, 66, 72);
+    set_development(&conn, save_id, 78, 20, [14, 12, 13]);
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[9].importance_rank = Some(1);
+    tactic::save_tactic(&conn, save_id, &tactic).expect("rank right winger");
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+
+    // The senior team weighs today more, so it takes the better player now.
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
+        Some(78)
+    );
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Reserves, "right_winger"),
+        Some(77)
+    );
+
+    let depth = get_depth(&conn, save_id).expect("load planner depth");
+    save_team_settings(
+        &conn,
+        save_id,
+        &[PlannerTeamInput {
+            team: "reserves".to_string(),
+            display_name: "Reserves".to_string(),
+            strings: retained_strings(&depth, PlannerTeam::Reserves),
+        }],
+        true,
+    )
+    .expect("keep only reserves");
+
+    let reserves_only = optimize_depth(&conn, save_id).expect("optimize the reserves alone");
+
+    assert_eq!(
+        assigned_player_uid(&reserves_only, PlannerTeam::Reserves, "right_winger"),
+        Some(77)
+    );
+}
+
+#[test]
+fn strings_fill_two_senior_strings_then_starters_before_deeper_squads() {
+    let mut strings = Vec::new();
+    for rank in 0..4 {
+        strings.push((PlannerTeam::Youth, rank));
+        strings.push((PlannerTeam::Senior, rank));
+        strings.push((PlannerTeam::Reserves, rank));
+    }
+    strings.sort_by_key(|&(team, rank)| fill_key(team, rank));
+
+    assert_eq!(
+        strings[..10],
+        [
+            (PlannerTeam::Senior, 0),
+            (PlannerTeam::Senior, 1),
+            (PlannerTeam::Reserves, 0),
+            (PlannerTeam::Youth, 0),
+            (PlannerTeam::Reserves, 1),
+            (PlannerTeam::Youth, 1),
+            (PlannerTeam::Senior, 2),
+            (PlannerTeam::Reserves, 2),
+            (PlannerTeam::Youth, 2),
+            (PlannerTeam::Senior, 3),
+        ]
+    );
+}
+
+#[test]
+fn optimizer_starts_a_player_for_a_lower_team_before_a_third_senior_string() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    for (player_uid, score) in [(77, 100), (78, 90), (79, 80), (80, 70)] {
+        set_right_winger(&conn, save_id, player_uid, score, score);
+        set_player_age(&conn, save_id, player_uid, Some(18));
+    }
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[9].importance_rank = Some(1);
+    tactic::save_tactic(&conn, save_id, &tactic).expect("rank right winger");
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let with_added_strings = |team: PlannerTeam, added: usize| {
+        let mut strings = retained_strings(&depth, team);
+        strings.extend((0..added).map(|index| PlannerStringInput {
+            id: None,
+            display_name: format!("Added string {index}"),
+        }));
+        strings
+    };
+    save_team_settings(
+        &conn,
+        save_id,
+        &[
+            PlannerTeamInput {
+                team: "senior".to_string(),
+                display_name: "Senior".to_string(),
+                strings: with_added_strings(PlannerTeam::Senior, 2),
+            },
+            PlannerTeamInput {
+                team: "reserves".to_string(),
+                display_name: "Reserves".to_string(),
+                strings: with_added_strings(PlannerTeam::Reserves, 1),
+            },
+            PlannerTeamInput {
+                team: "youth".to_string(),
+                display_name: "Youth".to_string(),
+                strings: with_added_strings(PlannerTeam::Youth, 0),
+            },
+        ],
+        false,
+    )
+    .expect("add deeper strings");
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+    let right_wingers = |team: PlannerTeam| {
+        team_strings(&optimized, team)
+            .iter()
+            .map(|planner_string| {
+                planner_string
+                    .assignments
+                    .iter()
+                    .find(|assignment| assignment.lane_id == "right_winger")
+                    .map(|assignment| assignment.player_uid)
+            })
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        right_wingers(PlannerTeam::Senior),
+        [Some(77), Some(78), None]
+    );
+    assert_eq!(right_wingers(PlannerTeam::Reserves), [Some(79), None]);
+    assert_eq!(right_wingers(PlannerTeam::Youth), [Some(80)]);
+}
+
+#[test]
+fn optimizer_rejects_a_missing_potential_role_before_assignment_writes() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
@@ -169,16 +324,14 @@ fn optimizer_rejects_missing_potential_role_for_both_bases_before_assignment_wri
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
-    for basis in [ScoreBasis::Current, ScoreBasis::Potential] {
-        let error = optimize_depth_with_basis(&conn, save_id, basis)
-            .expect_err("reject incomplete potential state");
-        assert_eq!(error, "Current potential snapshot is incomplete");
-        assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
-    }
+    let error = optimize_depth(&conn, save_id).expect_err("reject incomplete potential state");
+
+    assert_eq!(error, "Current potential snapshot is incomplete");
+    assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
 }
 
 #[test]
-fn optimizer_rejects_wrong_version_potential_role_for_both_bases_before_assignment_writes() {
+fn optimizer_rejects_a_wrong_version_potential_role_before_assignment_writes() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
@@ -191,16 +344,14 @@ fn optimizer_rejects_wrong_version_potential_role_for_both_bases_before_assignme
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
-    for basis in [ScoreBasis::Current, ScoreBasis::Potential] {
-        let error = optimize_depth_with_basis(&conn, save_id, basis)
-            .expect_err("reject stale potential state");
-        assert_eq!(error, "Current potential snapshot is incomplete");
-        assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
-    }
+    let error = optimize_depth(&conn, save_id).expect_err("reject stale potential state");
+
+    assert_eq!(error, "Current potential snapshot is incomplete");
+    assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
 }
 
 #[test]
-fn optimizer_skips_an_unavailable_team_for_current_and_potential_scores() {
+fn optimizer_skips_an_unavailable_team() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     set_right_winger_scores(&conn, save_id, 79, Some(100));
@@ -224,19 +375,16 @@ fn optimizer_skips_an_unavailable_team_for_current_and_potential_scores() {
     )
     .expect("remove reserves before optimization");
 
-    let current = optimize_depth(&conn, save_id).expect("optimize current scores");
-    let potential = optimize_depth_with_basis(&conn, save_id, ScoreBasis::Potential)
-        .expect("optimize potential scores");
+    let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+
     assert_eq!(
-        assigned_player_uid(&current, PlannerTeam::Senior, "right_winger"),
+        assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
         Some(79)
     );
-    for optimized in [current, potential] {
-        assert!(!optimized
-            .teams
-            .iter()
-            .any(|team| team.team == PlannerTeam::Reserves));
-    }
+    assert!(!optimized
+        .teams
+        .iter()
+        .any(|team| team.team == PlannerTeam::Reserves));
     assert_eq!(
         conn.query_row(
             "SELECT COUNT(*) FROM planner_strings WHERE save_id = ?1 AND team = 'reserves'",
