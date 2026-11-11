@@ -1,4 +1,4 @@
-import { Pencil, Pin, Plus } from "lucide-react";
+import { Pencil, Pin, Plus, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button/button";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import type {
@@ -146,12 +146,12 @@ function AssignmentCell({
   return (
     <td
       headers={[rowHeaderId, teamHeaderId, stringHeaderId].join(" ")}
-      className={`${teamStart ? "border-l-2" : ""} w-52 max-w-52 min-w-52 border-b border-outline-variant px-3 py-1 align-middle`}
+      className={`${teamStart ? "border-l-2" : ""} w-60 max-w-60 min-w-60 border-b border-outline-variant px-3 py-1.5 align-middle`}
     >
       <button
         type="button"
         data-planner-team={team}
-        className={`block min-h-8 w-full rounded-md border px-2 py-0.5 text-left transition-colors duration-150 ease-out hover:bg-surface-container-highest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${assignment ? "border-outline-variant bg-surface-container-high" : "border-transparent"}`}
+        className={`block min-h-8 w-full rounded-md border px-2 py-1.5 text-left transition-colors duration-150 ease-out hover:bg-surface-container-highest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${assignment ? "border-outline-variant bg-surface-container-high" : "border-transparent"}`}
         aria-label={ariaLabel}
         onClick={() =>
           onOpen({
@@ -171,45 +171,52 @@ function AssignmentCell({
         }
       >
         <span className="block">
-          <span className="flex min-w-0 items-center justify-between gap-2">
-            <span
-              className={
-                assignment
-                  ? "min-w-0 flex-1 truncate text-body-sm text-on-surface"
-                  : "text-body-sm font-medium text-on-surface underline decoration-outline underline-offset-4"
-              }
-              title={assignment ? name : undefined}
-            >
-              {assignment ? name : "Assign"}
-            </span>
-            {assignment ? (
-              <AssignmentScores
-                currentScore={score}
-                expectedScore={expectedScore}
-                potentialScore={potentialScore}
-              />
-            ) : null}
-          </span>
           {assignment ? (
-            <span className="flex items-center gap-2 text-[11px] leading-3 text-on-surface-variant">
+            // One line: the name gives way first, so the age, the pin, and the
+            // scores always show.
+            <span className="flex min-w-0 items-center gap-1.5 text-body-sm">
+              <span className="min-w-0 truncate text-on-surface" title={name}>
+                {name}
+              </span>
               {assignment.age === null ? null : (
-                <span>Age {assignment.age}</span>
+                <span
+                  className={`flex shrink-0 items-center gap-1 ${assignment.overAge ? "text-warning" : "text-on-surface-variant"}`}
+                  title={assignment.overAge ? "Over the age limit" : undefined}
+                >
+                  · {assignment.age}
+                  {assignment.overAge ? (
+                    <TriangleAlert aria-hidden="true" className="size-3" />
+                  ) : null}
+                </span>
               )}
               {assignment.pinned ? (
-                <span title="Pinned: Optimize keeps this player here">
+                <span
+                  className="shrink-0 text-on-surface-variant"
+                  title="Pinned: Optimize keeps this player here"
+                >
                   <Pin aria-hidden="true" className="size-3" />
                 </span>
               ) : null}
-              {assignment.overAge ? (
-                <span className="text-warning">Over age limit</span>
-              ) : null}
-              {assignment.state === "outside_pool" ? (
-                <span className="text-warning">Outside pool</span>
-              ) : null}
-              {assignment.state === "unresolved" ? (
-                <span className="text-warning">Unresolved</span>
-              ) : null}
+              <span className="ml-auto flex shrink-0">
+                <AssignmentScores
+                  currentScore={score}
+                  expectedScore={expectedScore}
+                  potentialScore={potentialScore}
+                />
+              </span>
             </span>
+          ) : (
+            <span className="text-body-sm font-medium text-on-surface underline decoration-outline underline-offset-4">
+              Assign
+            </span>
+          )}
+          {assignment?.state === "outside_pool" ? (
+            <span className="block text-label-sm text-warning">
+              Outside pool
+            </span>
+          ) : null}
+          {assignment?.state === "unresolved" ? (
+            <span className="block text-label-sm text-warning">Unresolved</span>
           ) : null}
         </span>
       </button>
@@ -290,8 +297,11 @@ export function PlannerSquadBoard({
                   <span className="min-w-0 truncate">
                     {teamDepth.displayName}
                     {teamDepth.maxAge === null ? null : (
-                      <span className="ml-2 text-body-sm font-normal text-on-surface-variant">
-                        Max age {teamDepth.maxAge}
+                      <span
+                        className="ml-2 text-body-sm font-normal text-on-surface-variant"
+                        title={`Max age ${teamDepth.maxAge}`}
+                      >
+                        ≤{teamDepth.maxAge}
                       </span>
                     )}
                   </span>
@@ -314,7 +324,7 @@ export function PlannerSquadBoard({
                 id={`${idPrefix}-${team}-string-${plannerString.id}`}
                 scope="col"
                 aria-label={plannerString.displayName}
-                className={`${index === 0 || allStrings[index - 1]?.team !== team ? "border-l-2" : ""} h-table-header-height w-52 max-w-52 min-w-52 border-b border-outline-variant bg-surface-container-high px-3 text-left text-body-sm font-medium text-on-surface`}
+                className={`${index === 0 || allStrings[index - 1]?.team !== team ? "border-l-2" : ""} h-table-header-height w-60 max-w-60 min-w-60 border-b border-outline-variant bg-surface-container-high px-3 text-left text-body-sm font-medium text-on-surface`}
               >
                 <button
                   type="button"

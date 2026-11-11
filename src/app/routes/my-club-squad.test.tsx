@@ -4845,8 +4845,8 @@ describe("My Club route", () => {
     const stringCell = within(board)
       .getByRole("button", { name: /Senior, 1st string, IP: GK .* Empty/ })
       .closest("td");
-    expect(stringCell).toHaveClass("min-w-52");
-    expect(stringCell).toHaveClass("max-w-52");
+    expect(stringCell).toHaveClass("min-w-60");
+    expect(stringCell).toHaveClass("max-w-60");
     const slotHeader = within(board).getAllByRole("rowheader")[0];
     expect(slotHeader).toHaveClass("sticky");
     expect(slotHeader).toHaveClass("min-w-52");
@@ -5704,8 +5704,9 @@ describe("My Club route", () => {
     const cell = await screen.findByRole("button", {
       name: /Youth, 1st string, IP: GK .* Older Keeper, Resolved, .* potential score 75, aged 19, pinned, over the age limit$/,
     });
-    expect(within(cell).getByText("Age 19")).toBeInTheDocument();
-    expect(within(cell).getByText("Over age limit")).toBeInTheDocument();
+    expect(within(cell).getByTitle("Over the age limit")).toHaveTextContent(
+      "· 19",
+    );
     expect(
       within(cell).getByTitle("Pinned: Optimize keeps this player here"),
     ).toBeInTheDocument();
@@ -5717,9 +5718,11 @@ describe("My Club route", () => {
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute();
 
-    expect(
-      await screen.findByRole("columnheader", { name: "Reserves" }),
-    ).toHaveAccessibleDescription("Max age 23");
+    const reserves = await screen.findByRole("columnheader", {
+      name: "Reserves",
+    });
+    expect(reserves).toHaveAccessibleDescription("Max age 23");
+    expect(within(reserves).getByTitle("Max age 23")).toHaveTextContent("≤23");
     await user.click(screen.getByRole("button", { name: "Manage teams" }));
     const dialog = await screen.findByRole("dialog", {
       name: "Manage squad teams",
