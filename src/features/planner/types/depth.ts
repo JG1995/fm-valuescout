@@ -10,6 +10,11 @@ export type PlannerAssignment = {
   lastKnownName: string;
   currentName: string | null;
   state: PlannerAssignmentState;
+  age: number | null;
+  /** Placed or pinned by the user: Optimize keeps the player here. */
+  pinned: boolean;
+  /** Older than the team's age limit. */
+  overAge: boolean;
   combinedScore: number | null;
   /** The score the player is expected to reach, given his age and personality. */
   expectedCombinedScore: number | null;

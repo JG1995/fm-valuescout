@@ -8,12 +8,12 @@ use crate::features::snapshot;
 
 use super::depth::{
     assign_player, clear_all, clear_assignment, get_depth, get_slot_candidates, move_player,
-    AssignmentState, PlannerTeam,
+    set_assignment_pinned, AssignmentState, PlannerTeam,
 };
 use super::teams::{save_team_settings, PlannerStringInput, PlannerTeamInput};
 use super::test_support::{
     add_picker_candidates, assignment_provenance, current_snapshot_id, deny_potential_writes,
-    open_with_snapshot, planner_potential_state, team_strings,
+    open_with_snapshot, planner_potential_state, set_player_age, team_strings,
 };
 
 #[test]
@@ -314,6 +314,40 @@ fn direct_depth_commands_reject_an_unavailable_team_without_recreating_it() {
         .teams
         .iter()
         .any(|team| team.team == PlannerTeam::Reserves));
+}
+
+#[test]
+fn assignments_report_age_pins_and_players_over_their_teams_age_limit() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    set_player_age(&conn, save_id, 79, Some(24));
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let string_id = team_strings(&depth, PlannerTeam::Reserves)[0].id;
+    assign_player(&conn, save_id, string_id, "goalkeeper", 79).expect("assign an older player");
+    let reserve_keeper = |conn: &Connection| {
+        let depth = get_depth(conn, save_id).expect("reload planner depth");
+        team_strings(&depth, PlannerTeam::Reserves)[0].assignments[0].clone()
+    };
+
+    let placed_by_hand = reserve_keeper(&conn);
+    assert_eq!(placed_by_hand.age, Some(24));
+    assert!(placed_by_hand.pinned);
+    assert!(placed_by_hand.over_age);
+
+    set_assignment_pinned(&conn, save_id, string_id, "goalkeeper", false).expect("unpin");
+    set_player_age(&conn, save_id, 79, Some(23));
+    let unpinned = reserve_keeper(&conn);
+    assert!(!unpinned.pinned);
+    assert!(!unpinned.over_age);
+    assert_eq!(assignment_provenance(&conn, 79), "optimizer");
+
+    set_assignment_pinned(&conn, save_id, string_id, "goalkeeper", true).expect("pin again");
+    assert!(reserve_keeper(&conn).pinned);
+    assert_eq!(
+        set_assignment_pinned(&conn, save_id, string_id, "right_back", true)
+            .expect_err("reject an empty cell"),
+        "Planner cell is empty"
+    );
 }
 
 #[test]

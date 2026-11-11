@@ -1,3 +1,4 @@
+import { Pin } from "lucide-react";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import type {
   PlannerAssignment,
@@ -130,18 +131,25 @@ function AssignmentCell({
   const expectedScore = assignment?.expectedCombinedScore ?? null;
   const potentialScore = assignment?.potentialCombinedScore ?? null;
   const ariaLabel = assignment
-    ? `${teamLabel}, ${stringLabel}, ${laneName}, ${name}, ${state}, current score ${score ?? "—"}, expected score ${expectedScore ?? "—"}, potential score ${potentialScore ?? "—"}`
+    ? [
+        `${teamLabel}, ${stringLabel}, ${laneName}, ${name}, ${state}, current score ${score ?? "—"}, expected score ${expectedScore ?? "—"}, potential score ${potentialScore ?? "—"}`,
+        assignment.age === null ? null : `aged ${assignment.age}`,
+        assignment.pinned ? "pinned" : null,
+        assignment.overAge ? "over the age limit" : null,
+      ]
+        .filter((part) => part !== null)
+        .join(", ")
     : `${teamLabel}, ${stringLabel}, ${laneName}, Empty`;
 
   return (
     <td
       headers={[rowHeaderId, teamHeaderId, stringHeaderId].join(" ")}
-      className={`${teamStart ? "border-l-2" : ""} w-52 max-w-52 min-w-52 border-b border-outline-variant px-3 py-1.5 align-middle`}
+      className={`${teamStart ? "border-l-2" : ""} w-52 max-w-52 min-w-52 border-b border-outline-variant px-3 py-1 align-middle`}
     >
       <button
         type="button"
         data-planner-team={team}
-        className={`block min-h-8 w-full rounded-md border px-2 py-1.5 text-left transition-colors duration-150 ease-out hover:bg-surface-container-highest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${assignment ? "border-outline-variant bg-surface-container-high" : "border-transparent"}`}
+        className={`block min-h-8 w-full rounded-md border px-2 py-0.5 text-left transition-colors duration-150 ease-out hover:bg-surface-container-highest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${assignment ? "border-outline-variant bg-surface-container-high" : "border-transparent"}`}
         aria-label={ariaLabel}
         onClick={() =>
           onOpen({
@@ -174,13 +182,26 @@ function AssignmentCell({
               />
             ) : null}
           </span>
-          {assignment?.state === "outside_pool" ? (
-            <span className="block text-label-sm text-warning">
-              Outside pool
+          {assignment ? (
+            <span className="flex items-center gap-2 text-[11px] leading-3 text-on-surface-variant">
+              {assignment.age === null ? null : (
+                <span>Age {assignment.age}</span>
+              )}
+              {assignment.pinned ? (
+                <span title="Pinned: Optimize keeps this player here">
+                  <Pin aria-hidden="true" className="size-3" />
+                </span>
+              ) : null}
+              {assignment.overAge ? (
+                <span className="text-warning">Over age limit</span>
+              ) : null}
+              {assignment.state === "outside_pool" ? (
+                <span className="text-warning">Outside pool</span>
+              ) : null}
+              {assignment.state === "unresolved" ? (
+                <span className="text-warning">Unresolved</span>
+              ) : null}
             </span>
-          ) : null}
-          {assignment?.state === "unresolved" ? (
-            <span className="block text-label-sm text-warning">Unresolved</span>
           ) : null}
         </span>
       </button>
@@ -243,7 +264,7 @@ export function PlannerSquadBoard({
                 aria-description={
                   teamDepth.maxAge === null
                     ? undefined
-                    : `Aged ${teamDepth.maxAge} or younger`
+                    : `Max age ${teamDepth.maxAge}`
                 }
                 className={`${index > 0 ? "border-l-2" : ""} sticky top-0 z-20 h-table-header-height border-b border-outline-variant bg-surface-container-lowest px-3 text-label-md text-on-surface`}
               >
@@ -253,9 +274,9 @@ export function PlannerSquadBoard({
                 {teamDepth.maxAge === null ? null : (
                   <span
                     aria-hidden="true"
-                    className="ml-2 text-body-sm font-normal text-on-surface-variant"
+                    className="ml-2 text-body-sm font-normal whitespace-nowrap text-on-surface-variant"
                   >
-                    Aged {teamDepth.maxAge} or younger
+                    Max age {teamDepth.maxAge}
                   </span>
                 )}
               </th>

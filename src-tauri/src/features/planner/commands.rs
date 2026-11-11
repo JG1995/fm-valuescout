@@ -297,6 +297,9 @@ pub struct PlannerAssignmentDto {
     pub last_known_name: String,
     pub current_name: Option<String>,
     pub state: String,
+    pub age: Option<i64>,
+    pub pinned: bool,
+    pub over_age: bool,
     pub combined_score: Option<u8>,
     pub expected_combined_score: Option<u8>,
     pub potential_combined_score: Option<u8>,
@@ -311,6 +314,9 @@ impl From<PlannerAssignment> for PlannerAssignmentDto {
             last_known_name: assignment.last_known_name,
             current_name: assignment.current_name,
             state: assignment.state.as_str().to_string(),
+            age: assignment.age,
+            pinned: assignment.pinned,
+            over_age: assignment.over_age,
             combined_score: assignment.combined_score,
             expected_combined_score: assignment.expected_combined_score,
             potential_combined_score: assignment.potential_combined_score,
@@ -891,6 +897,26 @@ pub async fn clear_planner_assignment(
         let save_id = service::active_save_id(&conn)?;
         let (_, snapshot_id) =
             depth_service::clear_assignment(&conn, save_id, string_id, &lane_id)?;
+        Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn set_planner_assignment_pinned(
+    string_id: i64,
+    lane_id: String,
+    pinned: bool,
+    db: State<'_, Db>,
+) -> Result<PlannerDepthDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        let (_, snapshot_id) =
+            depth_service::set_assignment_pinned(&conn, save_id, string_id, &lane_id, pinned)?;
         Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
     })
     .await

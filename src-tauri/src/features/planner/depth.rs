@@ -66,6 +66,13 @@ pub struct PlannerAssignment {
     pub last_known_name: String,
     pub current_name: Option<String>,
     pub state: AssignmentState,
+    /// The player's age in the current snapshot.
+    pub age: Option<i64>,
+    /// Whether the user placed or pinned the player. Optimize keeps a pinned player and
+    /// replaces the rest.
+    pub pinned: bool,
+    /// Whether the player is older than his team's age limit.
+    pub over_age: bool,
     pub combined_score: Option<u8>,
     /// The combined score the player is expected to reach, given his age and personality.
     pub expected_combined_score: Option<u8>,
@@ -194,18 +201,18 @@ pub(super) fn load_depth(
 
     for (id, team, string_order, display_name) in strings {
         let team = PlannerTeam::parse(&team)?;
-        let assignments = load_assignments(conn, save_id, id, snapshot_id, &tactic)?;
-        let planner_string = PlannerString {
-            id,
-            string_order,
-            display_name,
-            assignments,
-        };
         let team_depth = teams
             .iter_mut()
             .find(|team_depth| team_depth.team == team)
             .ok_or_else(|| format!("Unknown planner team `{}`", team.as_str()))?;
-        team_depth.strings.push(planner_string);
+        let assignments =
+            load_assignments(conn, save_id, id, snapshot_id, &tactic, team_depth.max_age)?;
+        team_depth.strings.push(PlannerString {
+            id,
+            string_order,
+            display_name,
+            assignments,
+        });
     }
 
     Ok(PlannerDepth { tactic, teams })
@@ -366,6 +373,34 @@ pub fn clear_assignment(
     )
     .map_err(|error| error.to_string())?;
     tx.commit().map_err(|error| error.to_string())?;
+    Ok(((), snapshot_id))
+}
+
+/// Pins or unpins the player in a cell. Optimize keeps a pinned player where he is and is
+/// free to replace an unpinned one.
+pub fn set_assignment_pinned(
+    conn: &Connection,
+    save_id: i64,
+    string_id: i64,
+    lane_id: &str,
+    pinned: bool,
+) -> Result<((), Option<i64>), String> {
+    let snapshot_id = preflight_depth_snapshot(conn, save_id)?;
+    let provenance = if pinned {
+        AssignmentProvenance::Manual
+    } else {
+        AssignmentProvenance::Optimizer
+    };
+    let updated = conn
+        .execute(
+            "UPDATE planner_assignments SET provenance = ?1
+             WHERE save_id = ?2 AND string_id = ?3 AND lane_id = ?4",
+            params![provenance.as_str(), save_id, string_id, lane_id],
+        )
+        .map_err(|error| error.to_string())?;
+    if updated == 0 {
+        return Err("Planner cell is empty".to_string());
+    }
     Ok(((), snapshot_id))
 }
 
@@ -530,10 +565,11 @@ fn load_assignments(
     string_id: i64,
     snapshot_id: Option<i64>,
     tactic: &PlannerTactic,
+    max_age: Option<i64>,
 ) -> Result<Vec<PlannerAssignment>, String> {
     let mut statement = conn
         .prepare(
-            "SELECT id, lane_id, player_uid, last_known_name
+            "SELECT id, lane_id, player_uid, last_known_name, provenance = 'manual'
              FROM planner_assignments
              WHERE string_id = ?1
              ORDER BY id",
@@ -546,6 +582,7 @@ fn load_assignments(
                 row.get::<_, String>(1)?,
                 row.get::<_, i64>(2)?,
                 row.get::<_, String>(3)?,
+                row.get::<_, bool>(4)?,
             ))
         })
         .map_err(|error| error.to_string())?
@@ -554,7 +591,7 @@ fn load_assignments(
 
     assignments
         .into_iter()
-        .map(|(id, lane_id, player_uid, last_known_name)| {
+        .map(|(id, lane_id, player_uid, last_known_name, pinned)| {
             let lane = find_lane(tactic, &lane_id)?;
             let resolved = resolve_assignment(conn, save_id, snapshot_id, player_uid, lane)?;
             Ok(PlannerAssignment {
@@ -564,6 +601,11 @@ fn load_assignments(
                 last_known_name,
                 current_name: resolved.current_name,
                 state: resolved.state,
+                age: resolved.age,
+                pinned,
+                over_age: max_age
+                    .zip(resolved.age)
+                    .is_some_and(|(max_age, age)| age > max_age),
                 combined_score: resolved.combined_score,
                 expected_combined_score: resolved.expected_combined_score,
                 potential_combined_score: resolved.potential_combined_score,
@@ -575,6 +617,7 @@ fn load_assignments(
 struct ResolvedAssignment {
     current_name: Option<String>,
     state: AssignmentState,
+    age: Option<i64>,
     combined_score: Option<u8>,
     expected_combined_score: Option<u8>,
     potential_combined_score: Option<u8>,
@@ -591,6 +634,7 @@ fn resolve_assignment(
         return Ok(ResolvedAssignment {
             current_name: None,
             state: AssignmentState::Unresolved,
+            age: None,
             combined_score: None,
             expected_combined_score: None,
             potential_combined_score: None,
@@ -653,6 +697,7 @@ fn resolve_assignment(
         return Ok(ResolvedAssignment {
             current_name: None,
             state: AssignmentState::Unresolved,
+            age: None,
             combined_score: None,
             expected_combined_score: None,
             potential_combined_score: None,
@@ -673,6 +718,7 @@ fn resolve_assignment(
     Ok(ResolvedAssignment {
         current_name: Some(current_name),
         state,
+        age: development.age,
         combined_score,
         expected_combined_score: combined_score.zip(potential_combined_score).map(
             |(current, potential)| expected_score(current, potential, &development).round() as u8,

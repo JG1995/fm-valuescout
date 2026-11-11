@@ -5659,6 +5659,51 @@ describe("My Club route", () => {
     expect(new Set(restoredIds).size).toBe(2);
   });
 
+  it("shows a placed player's age, pin, and over-age flag in his cell", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
+    const depth = resolvePlannerDepthIpcMock();
+    setPlannerDepthIpcMock({
+      ...depth,
+      teams: depth.teams.map((team) =>
+        team.team === "youth"
+          ? {
+              ...team,
+              strings: team.strings.map((plannerString) => ({
+                ...plannerString,
+                assignments: [
+                  {
+                    id: 301,
+                    laneId: "goalkeeper",
+                    playerUid: 90,
+                    lastKnownName: "Older Keeper",
+                    currentName: "Older Keeper",
+                    state: "resolved" as const,
+                    age: 19,
+                    pinned: true,
+                    overAge: true,
+                    combinedScore: 60,
+                    expectedCombinedScore: 70,
+                    potentialCombinedScore: 75,
+                  },
+                ],
+              })),
+            }
+          : team,
+      ),
+    });
+    renderMyClubRoute();
+
+    const cell = await screen.findByRole("button", {
+      name: /Youth, 1st string, IP: GK .* Older Keeper, Resolved, .* potential score 75, aged 19, pinned, over the age limit$/,
+    });
+    expect(within(cell).getByText("Age 19")).toBeInTheDocument();
+    expect(within(cell).getByText("Over age limit")).toBeInTheDocument();
+    expect(
+      within(cell).getByTitle("Pinned: Optimize keeps this player here"),
+    ).toBeInTheDocument();
+  });
+
   it("sets each non-senior team's age limit and shows it on the board", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -5667,7 +5712,7 @@ describe("My Club route", () => {
 
     expect(
       await screen.findByRole("columnheader", { name: "Reserves" }),
-    ).toHaveAccessibleDescription("Aged 23 or younger");
+    ).toHaveAccessibleDescription("Max age 23");
     await user.click(screen.getByRole("button", { name: "Manage teams" }));
     const dialog = await screen.findByRole("dialog", {
       name: "Manage squad teams",
@@ -5706,7 +5751,7 @@ describe("My Club route", () => {
     ).toEqual([null, null, 19]);
     expect(
       screen.getByRole("columnheader", { name: "Youth" }),
-    ).toHaveAccessibleDescription("Aged 19 or younger");
+    ).toHaveAccessibleDescription("Max age 19");
     expect(
       screen.getByRole("columnheader", { name: "Reserves" }),
     ).not.toHaveAccessibleDescription();
@@ -6835,6 +6880,9 @@ function withReserveGoalkeeper(depth: PlannerDepth): PlannerDepth {
                     lastKnownName: "Reserve Keeper",
                     currentName: "Reserve Keeper",
                     state: "resolved",
+                    age: null,
+                    pinned: false,
+                    overAge: false,
                     combinedScore: 80,
                     expectedCombinedScore: null,
                     potentialCombinedScore: null,
@@ -6910,6 +6958,9 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     lastKnownName: "Alex Keeper",
                     currentName: "Alex Keeper",
                     state: "resolved",
+                    age: null,
+                    pinned: false,
+                    overAge: false,
                     combinedScore: 82,
                     expectedCombinedScore: 88,
                     potentialCombinedScore: 91,
@@ -6921,6 +6972,9 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     lastKnownName: "Outside Full-Back",
                     currentName: "Outside Full-Back",
                     state: "outside_pool",
+                    age: null,
+                    pinned: false,
+                    overAge: false,
                     combinedScore: 61,
                     expectedCombinedScore: 66,
                     potentialCombinedScore: 70,
@@ -6932,6 +6986,9 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     lastKnownName: "Missing Centre-Back",
                     currentName: null,
                     state: "unresolved",
+                    age: null,
+                    pinned: false,
+                    overAge: false,
                     combinedScore: null,
                     expectedCombinedScore: null,
                     potentialCombinedScore: null,
@@ -6943,6 +7000,9 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     lastKnownName: "No Score Player",
                     currentName: "No Score Player",
                     state: "resolved",
+                    age: null,
+                    pinned: false,
+                    overAge: false,
                     combinedScore: null,
                     expectedCombinedScore: null,
                     potentialCombinedScore: null,
@@ -6975,6 +7035,9 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
               lastKnownName: "Senior Keeper",
               currentName: "Senior Keeper",
               state: "resolved" as const,
+              age: null,
+              pinned: false,
+              overAge: false,
               combinedScore: 82,
               expectedCombinedScore: null,
               potentialCombinedScore: null,
@@ -6987,6 +7050,9 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
                 lastKnownName: "Reserve Keeper",
                 currentName: "Reserve Keeper",
                 state: "resolved" as const,
+                age: null,
+                pinned: false,
+                overAge: false,
                 combinedScore: 80,
                 expectedCombinedScore: null,
                 potentialCombinedScore: null,
@@ -6998,6 +7064,9 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
                 lastKnownName: "Youth Keeper",
                 currentName: "Youth Keeper",
                 state: "resolved" as const,
+                age: null,
+                pinned: false,
+                overAge: false,
                 combinedScore: 78,
                 expectedCombinedScore: null,
                 potentialCombinedScore: null,

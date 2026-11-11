@@ -1,6 +1,6 @@
 use rusqlite::params;
 
-use super::depth::{assign_player, get_depth, PlannerTeam};
+use super::depth::{assign_player, get_depth, set_assignment_pinned, PlannerTeam};
 use super::optimizer::{fill_key, match_lanes, optimize_depth, OptimizerCandidate};
 use super::tactic;
 use super::teams::{save_team_settings, PlannerStringInput, PlannerTeamInput};
@@ -909,6 +909,40 @@ fn optimizer_excludes_players_with_a_missing_role_score() {
         .flat_map(|team| &team.strings)
         .flat_map(|planner_string| &planner_string.assignments)
         .any(|assignment| assignment.player_uid == 78));
+}
+
+#[test]
+fn optimizer_keeps_a_pinned_pick_and_replaces_it_once_unpinned() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    set_right_winger(&conn, save_id, 77, 90, 90);
+    set_right_winger(&conn, save_id, 78, 50, 50);
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[9].importance_rank = Some(1);
+    tactic::save_tactic(&conn, save_id, &tactic).expect("rank right winger");
+    let first = optimize_depth(&conn, save_id).expect("run first optimization");
+    let senior_string_id = team_strings(&first, PlannerTeam::Senior)[0].id;
+    assert_eq!(
+        assigned_player_uid(&first, PlannerTeam::Senior, "right_winger"),
+        Some(77)
+    );
+    set_right_winger(&conn, save_id, 78, 100, 100);
+
+    set_assignment_pinned(&conn, save_id, senior_string_id, "right_winger", true)
+        .expect("pin the optimizer's pick");
+    let pinned = optimize_depth(&conn, save_id).expect("optimize around the pin");
+    set_assignment_pinned(&conn, save_id, senior_string_id, "right_winger", false)
+        .expect("unpin the pick");
+    let unpinned = optimize_depth(&conn, save_id).expect("optimize without the pin");
+
+    assert_eq!(
+        assigned_player_uid(&pinned, PlannerTeam::Senior, "right_winger"),
+        Some(77)
+    );
+    assert_eq!(
+        assigned_player_uid(&unpinned, PlannerTeam::Senior, "right_winger"),
+        Some(78)
+    );
 }
 
 #[test]
