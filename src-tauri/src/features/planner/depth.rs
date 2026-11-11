@@ -103,6 +103,8 @@ pub struct PlannerString {
 pub struct PlannerDepthTeam {
     pub team: PlannerTeam,
     pub display_name: String,
+    /// The oldest age the team's squads take, or `None` for no limit.
+    pub max_age: Option<i64>,
     pub strings: Vec<PlannerString>,
 }
 
@@ -160,6 +162,7 @@ pub(super) fn load_depth(
         .map(|setting| PlannerDepthTeam {
             team: setting.team,
             display_name: setting.display_name,
+            max_age: setting.max_age,
             strings: Vec::new(),
         })
         .collect::<Vec<_>>();

@@ -211,6 +211,7 @@ fn add_second_senior_string(conn: &Connection, save_id: i64) -> i64 {
             PlannerTeamInput {
                 team: team.team.as_str().to_string(),
                 display_name: team.display_name.clone(),
+                max_age: team.max_age,
                 strings,
             }
         })
@@ -237,11 +238,13 @@ fn restored_team_creates_the_ordinal_labeled_string() {
             PlannerTeamInput {
                 team: "senior".to_string(),
                 display_name: "Senior".to_string(),
+                max_age: None,
                 strings: senior_strings.clone(),
             },
             PlannerTeamInput {
                 team: "reserves".to_string(),
                 display_name: "Reserves".to_string(),
+                max_age: Some(23),
                 strings: reserves_strings.clone(),
             },
         ],
@@ -255,16 +258,19 @@ fn restored_team_creates_the_ordinal_labeled_string() {
             PlannerTeamInput {
                 team: "senior".to_string(),
                 display_name: "Senior".to_string(),
+                max_age: None,
                 strings: senior_strings,
             },
             PlannerTeamInput {
                 team: "reserves".to_string(),
                 display_name: "Reserves".to_string(),
+                max_age: Some(23),
                 strings: reserves_strings,
             },
             PlannerTeamInput {
                 team: "youth".to_string(),
                 display_name: "Youth".to_string(),
+                max_age: Some(18),
                 strings: vec![PlannerStringInput {
                     id: None,
                     display_name: String::new(),
@@ -292,6 +298,7 @@ fn direct_depth_commands_reject_an_unavailable_team_without_recreating_it() {
         &[PlannerTeamInput {
             team: "senior".to_string(),
             display_name: "Senior".to_string(),
+            max_age: None,
             strings: retained_strings(&depth, PlannerTeam::Senior),
         }],
         false,

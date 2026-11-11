@@ -26,6 +26,8 @@ export type PlannerString = {
 export type PlannerDepthTeam = {
   team: PlannerTeam;
   displayName: string;
+  /** The oldest age the team's squads take, or null for no limit. */
+  maxAge: number | null;
   strings: PlannerString[];
 };
 

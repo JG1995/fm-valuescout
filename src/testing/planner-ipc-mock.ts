@@ -16,7 +16,11 @@ import type {
   TacticOptions,
   TacticRoleOption,
 } from "@/features/planner/types/tactic";
-import { PLANNER_TEAMS, type PlannerTeam } from "@/features/planner/types/team";
+import {
+  PLANNER_TEAM_DEFAULT_MAX_AGE,
+  PLANNER_TEAMS,
+  type PlannerTeam,
+} from "@/features/planner/types/team";
 import type { PlannerTeamRemovalImpact } from "@/features/planner/types/team-removal-impact";
 import { resolveListSavesIpcMock } from "@/testing/snapshot-ipc-mock";
 
@@ -311,20 +315,19 @@ let teamSavePending = false;
 let teamRemovalImpactOverride: PlannerTeamRemovalImpact[] | null = null;
 let teamRemovalImpactPending = false;
 let pendingTeamRemovalImpact: (() => void) | null = null;
+type TeamSaveInput = {
+  team: PlannerTeam;
+  displayName: string;
+  maxAge: number | null;
+  strings: Array<{ id: number | null; displayName: string }>;
+};
+
 let teamSaveCalls: Array<{
-  teams: Array<{
-    team: PlannerTeam;
-    displayName: string;
-    strings: Array<{ id: number | null; displayName: string }>;
-  }>;
+  teams: TeamSaveInput[];
   confirmPopulatedRemoval: boolean;
 }> = [];
 let pendingPlannerTeamSave: {
-  teams: Array<{
-    team: PlannerTeam;
-    displayName: string;
-    strings: Array<{ id: number | null; displayName: string }>;
-  }>;
+  teams: TeamSaveInput[];
   confirmPopulatedRemoval: boolean;
   resolve: (depth: PlannerDepth) => void;
 } | null = null;
@@ -359,6 +362,7 @@ function cloneDepth(value: PlannerDepth): PlannerDepth {
     teams: value.teams.map((team) => ({
       team: team.team,
       displayName: team.displayName,
+      maxAge: team.maxAge,
       strings: team.strings.map((plannerString) => ({
         id: plannerString.id,
         stringOrder: plannerString.stringOrder,
@@ -421,6 +425,7 @@ function buildDefaultDepth(): PlannerDepth {
     teams: ["senior", "reserves", "youth"].map((team, index) => ({
       team: team as PlannerDepth["teams"][number]["team"],
       displayName: displayNames[team as keyof typeof displayNames],
+      maxAge: PLANNER_TEAM_DEFAULT_MAX_AGE[team as PlannerTeam],
       strings: [
         {
           id: index + 1,
@@ -1038,6 +1043,7 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
   const teams = args.teams as Array<{
     team: unknown;
     displayName: unknown;
+    maxAge: unknown;
     strings: unknown;
   }>;
   if (teams.length < 1 || teams.length > PLANNER_TEAMS.length) {
@@ -1048,6 +1054,7 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
       typeof team.team !== "string" ||
       !PLANNER_TEAMS.includes(team.team as PlannerTeam) ||
       typeof team.displayName !== "string" ||
+      (team.maxAge !== null && typeof team.maxAge !== "number") ||
       !Array.isArray(team.strings)
     ) {
       throw new Error("Invalid planner team settings");
@@ -1055,6 +1062,7 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
     return {
       team: team.team as PlannerTeam,
       displayName: team.displayName.trim(),
+      maxAge: team.maxAge as number | null,
       strings: (
         team.strings as Array<{ id?: unknown; displayName?: unknown }>
       ).map((plannerString) => {
@@ -1103,11 +1111,7 @@ export function resolvePendingPlannerTeamSaveIpcMock() {
 }
 
 function applyPlannerTeamSave(
-  inputs: Array<{
-    team: PlannerTeam;
-    displayName: string;
-    strings: Array<{ id: number | null; displayName: string }>;
-  }>,
+  inputs: TeamSaveInput[],
   confirmPopulatedRemoval: boolean,
 ) {
   const removedPopulatedTeams = depth.teams.filter(
@@ -1140,6 +1144,7 @@ function applyPlannerTeamSave(
       return {
         ...current,
         displayName: input?.displayName ?? current.displayName,
+        maxAge: input ? input.maxAge : current.maxAge,
         strings: inputStrings.map((plannerString, index) => {
           if (plannerString.id !== null) {
             const existing = current.strings.find(
@@ -1174,6 +1179,7 @@ function applyPlannerTeamSave(
     return {
       team,
       displayName: input?.displayName ?? team,
+      maxAge: input?.maxAge ?? null,
       strings:
         inputStrings.length > 0
           ? inputStrings.map((plannerString, index) => ({

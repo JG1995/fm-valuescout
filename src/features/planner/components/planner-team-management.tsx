@@ -12,6 +12,9 @@ import {
 } from "../api/save-planner-teams";
 import type { PlannerDepth } from "../types/depth";
 import {
+  PLANNER_TEAM_DEFAULT_MAX_AGE,
+  PLANNER_TEAM_MAX_MAX_AGE,
+  PLANNER_TEAM_MIN_MAX_AGE,
   PLANNER_TEAM_NAMES,
   PLANNER_TEAMS,
   type PlannerTeam,
@@ -28,9 +31,25 @@ type PlannerStringDraft = {
 type PlannerTeamDraft = {
   team: PlannerTeam;
   displayName: string;
+  /** The oldest age as typed; blank means no limit. */
+  maxAge: string;
   included: boolean;
   strings: PlannerStringDraft[];
 };
+
+/** The age limit a draft's text stands for, or undefined when it is not one. */
+function parseMaxAge(value: string): number | null | undefined {
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    return null;
+  }
+  const age = Number(trimmed);
+  return /^\d+$/.test(trimmed) &&
+    age >= PLANNER_TEAM_MIN_MAX_AGE &&
+    age <= PLANNER_TEAM_MAX_MAX_AGE
+    ? age
+    : undefined;
+}
 
 let nextNewStringKey = 1;
 
@@ -52,6 +71,11 @@ function draftFromDepth(depth: PlannerDepth): PlannerTeamDraft[] {
       team,
       included: current !== undefined,
       displayName: current?.displayName ?? PLANNER_TEAM_NAMES[team],
+      maxAge:
+        (current
+          ? current.maxAge
+          : PLANNER_TEAM_DEFAULT_MAX_AGE[team]
+        )?.toString() ?? "",
       strings: current
         ? [...current.strings]
             .sort((left, right) => left.stringOrder - right.stringOrder)
@@ -74,10 +98,15 @@ function draftFromDepth(depth: PlannerDepth): PlannerTeamDraft[] {
 function validateDraft(draft: PlannerTeamDraft[]) {
   const included = draft.filter((team) => team.included);
   const fieldErrors: Partial<Record<PlannerTeam, string>> = {};
+  const maxAgeErrors: Partial<Record<PlannerTeam, string>> = {};
   const stringFieldErrors: Record<string, string> = {};
   const names = new Map<string, PlannerTeam[]>();
 
   for (const team of included) {
+    if (team.team !== "senior" && parseMaxAge(team.maxAge) === undefined) {
+      maxAgeErrors[team.team] =
+        `Enter an age from ${PLANNER_TEAM_MIN_MAX_AGE} to ${PLANNER_TEAM_MAX_MAX_AGE}, or leave it blank`;
+    }
     const name = team.displayName.trim();
     if (!name) {
       fieldErrors[team.team] = "Enter a team name";
@@ -137,11 +166,13 @@ function validateDraft(draft: PlannerTeamDraft[]) {
 
   return {
     fieldErrors,
+    maxAgeErrors,
     stringFieldErrors,
     includedCount: included.length,
     valid:
       included.length > 0 &&
       Object.keys(fieldErrors).length === 0 &&
+      Object.keys(maxAgeErrors).length === 0 &&
       Object.keys(stringFieldErrors).length === 0,
   };
 }
@@ -284,9 +315,10 @@ export function PlannerTeamManagement({
   const inputs = () =>
     draft
       .filter((team) => team.included)
-      .map(({ team, displayName, strings }) => ({
+      .map(({ team, displayName, maxAge, strings }) => ({
         team,
         displayName: displayName.trim(),
+        maxAge: team === "senior" ? null : (parseMaxAge(maxAge) ?? null),
         strings: strings.map((plannerString) => ({
           id: plannerString.id,
           displayName: plannerString.displayName.trim(),
@@ -554,6 +586,21 @@ export function PlannerTeamManagement({
                             })
                           }
                         />
+                        {team.team === "senior" ? null : (
+                          <TextField
+                            label={`${PLANNER_TEAM_NAMES[team.team]} oldest age`}
+                            inputMode="numeric"
+                            placeholder="No limit"
+                            value={team.maxAge}
+                            error={validation.maxAgeErrors[team.team]}
+                            disabled={save.isPending || checkingRemovalImpact}
+                            onChange={(event) =>
+                              updateDraft(team.team, {
+                                maxAge: event.target.value,
+                              })
+                            }
+                          />
+                        )}
                         <div className="space-y-2">
                           <p className="text-label-md text-on-surface">
                             Strings

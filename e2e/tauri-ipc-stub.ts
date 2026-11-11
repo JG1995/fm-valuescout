@@ -388,6 +388,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         teams: ["senior", "reserves", "youth"].map((team, index) => ({
           team,
           displayName: plannerTeamNames[team],
+          maxAge: { senior: null, reserves: 23, youth: 18 }[team],
           strings: [{
             id: index + 1,
             stringOrder: 0,
@@ -2240,6 +2241,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               return {
                 team: input.team,
                 displayName: input.displayName.trim(),
+                maxAge: input.maxAge ?? null,
                 strings: input.strings.map((plannerString) => {
                   if (
                     (plannerString?.id !== null &&
@@ -2287,6 +2289,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   return {
                     ...existing,
                     displayName: input.displayName,
+                    maxAge: input.maxAge,
                     strings: input.strings.map((plannerString, stringOrder) => {
                       if (plannerString.id === null) {
                         return {
@@ -2313,6 +2316,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 return {
                       team,
                       displayName: input.displayName,
+                      maxAge: input.maxAge,
                       strings: [{ id: nextStringId++, stringOrder: 0, displayName: ordinalStringLabel(0), assignments: [] }],
                     };
               });

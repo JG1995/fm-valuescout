@@ -204,6 +204,7 @@ fn optimizer_starts_the_higher_ceiling_in_the_reserves_over_the_better_player_to
         &[PlannerTeamInput {
             team: "reserves".to_string(),
             display_name: "Reserves".to_string(),
+            max_age: Some(23),
             strings: retained_strings(&depth, PlannerTeam::Reserves),
         }],
         true,
@@ -214,6 +215,41 @@ fn optimizer_starts_the_higher_ceiling_in_the_reserves_over_the_better_player_to
 
     assert_eq!(
         assigned_player_uid(&reserves_only, PlannerTeam::Reserves, "right_winger"),
+        Some(77)
+    );
+}
+
+#[test]
+fn optimizer_keeps_players_over_a_teams_age_limit_out_of_its_squads() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    set_right_winger(&conn, save_id, 77, 100, 100);
+    set_player_age(&conn, save_id, 77, Some(22));
+    set_right_winger(&conn, save_id, 78, 50, 50);
+    set_player_age(&conn, save_id, 78, Some(21));
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[9].importance_rank = Some(1);
+    tactic::save_tactic(&conn, save_id, &tactic).expect("rank right winger");
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let reserves = |max_age| PlannerTeamInput {
+        team: "reserves".to_string(),
+        display_name: "Reserves".to_string(),
+        max_age,
+        strings: retained_strings(&depth, PlannerTeam::Reserves),
+    };
+
+    save_team_settings(&conn, save_id, &[reserves(Some(21))], true)
+        .expect("keep only the reserves with a lower limit");
+    let limited = optimize_depth(&conn, save_id).expect("optimize under the limit");
+    save_team_settings(&conn, save_id, &[reserves(None)], true).expect("remove the limit");
+    let unlimited = optimize_depth(&conn, save_id).expect("optimize without a limit");
+
+    assert_eq!(
+        assigned_player_uid(&limited, PlannerTeam::Reserves, "right_winger"),
+        Some(78)
+    );
+    assert_eq!(
+        assigned_player_uid(&unlimited, PlannerTeam::Reserves, "right_winger"),
         Some(77)
     );
 }
@@ -272,16 +308,19 @@ fn optimizer_starts_a_player_for_a_lower_team_before_a_third_senior_string() {
             PlannerTeamInput {
                 team: "senior".to_string(),
                 display_name: "Senior".to_string(),
+                max_age: None,
                 strings: with_added_strings(PlannerTeam::Senior, 2),
             },
             PlannerTeamInput {
                 team: "reserves".to_string(),
                 display_name: "Reserves".to_string(),
+                max_age: Some(23),
                 strings: with_added_strings(PlannerTeam::Reserves, 1),
             },
             PlannerTeamInput {
                 team: "youth".to_string(),
                 display_name: "Youth".to_string(),
+                max_age: Some(18),
                 strings: with_added_strings(PlannerTeam::Youth, 0),
             },
         ],
@@ -363,11 +402,13 @@ fn optimizer_skips_an_unavailable_team() {
             PlannerTeamInput {
                 team: "senior".to_string(),
                 display_name: "Senior".to_string(),
+                max_age: None,
                 strings: retained_strings(&depth, PlannerTeam::Senior),
             },
             PlannerTeamInput {
                 team: "youth".to_string(),
                 display_name: "Youth".to_string(),
+                max_age: Some(18),
                 strings: retained_strings(&depth, PlannerTeam::Youth),
             },
         ],
@@ -683,6 +724,7 @@ fn optimizer_allocates_strings_in_ascending_order_within_a_team() {
             PlannerTeamInput {
                 team: "senior".to_string(),
                 display_name: "Senior".to_string(),
+                max_age: None,
                 strings: vec![
                     PlannerStringInput {
                         id: Some(first_string_id),
@@ -697,11 +739,13 @@ fn optimizer_allocates_strings_in_ascending_order_within_a_team() {
             PlannerTeamInput {
                 team: "reserves".to_string(),
                 display_name: "Reserves".to_string(),
+                max_age: Some(23),
                 strings: retained_strings(&depth, PlannerTeam::Reserves),
             },
             PlannerTeamInput {
                 team: "youth".to_string(),
                 display_name: "Youth".to_string(),
+                max_age: Some(18),
                 strings: retained_strings(&depth, PlannerTeam::Youth),
             },
         ],
@@ -846,6 +890,7 @@ fn optimizer_excludes_players_with_a_missing_role_score() {
         &[PlannerTeamInput {
             team: "reserves".to_string(),
             display_name: "Reserves".to_string(),
+            max_age: Some(23),
             strings: retained_strings(&depth, PlannerTeam::Reserves),
         }],
         false,

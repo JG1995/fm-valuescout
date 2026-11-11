@@ -5522,11 +5522,13 @@ describe("My Club route", () => {
           {
             team: "senior",
             displayName: "First Team",
+            maxAge: null,
             strings: [{ id: 1, displayName: "1st string" }],
           },
           {
             team: "youth",
             displayName: "U19",
+            maxAge: 18,
             strings: [{ id: 3, displayName: "1st string" }],
           },
         ],
@@ -5586,16 +5588,19 @@ describe("My Club route", () => {
           {
             team: "senior",
             displayName: "First Team",
+            maxAge: null,
             strings: [{ id: 1, displayName: "1st string" }],
           },
           {
             team: "reserves",
             displayName: "B Team",
+            maxAge: 23,
             strings: [{ id: null, displayName: "1st string" }],
           },
           {
             team: "youth",
             displayName: "U19",
+            maxAge: 18,
             strings: [{ id: 3, displayName: "1st string" }],
           },
         ],
@@ -5654,6 +5659,59 @@ describe("My Club route", () => {
     expect(new Set(restoredIds).size).toBe(2);
   });
 
+  it("sets each non-senior team's age limit and shows it on the board", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
+    renderMyClubRoute();
+
+    expect(
+      await screen.findByRole("columnheader", { name: "Reserves" }),
+    ).toHaveAccessibleDescription("Aged 23 or younger");
+    await user.click(screen.getByRole("button", { name: "Manage teams" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    expect(
+      within(dialog).queryByRole("textbox", { name: "Senior oldest age" }),
+    ).not.toBeInTheDocument();
+    const youthAge = within(dialog).getByRole("textbox", {
+      name: "Youth oldest age",
+    });
+    expect(youthAge).toHaveValue("18");
+
+    await user.clear(youthAge);
+    await user.type(youthAge, "50");
+    expect(youthAge).toHaveAccessibleDescription(
+      "Enter an age from 14 to 45, or leave it blank",
+    );
+    expect(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    ).toBeDisabled();
+
+    await user.clear(youthAge);
+    await user.type(youthAge, "19");
+    await user.clear(
+      within(dialog).getByRole("textbox", { name: "Reserves oldest age" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(
+      getPlannerTeamSaveIpcMockCalls()[0]?.teams.map((team) => team.maxAge),
+    ).toEqual([null, null, 19]);
+    expect(
+      screen.getByRole("columnheader", { name: "Youth" }),
+    ).toHaveAccessibleDescription("Aged 19 or younger");
+    expect(
+      screen.getByRole("columnheader", { name: "Reserves" }),
+    ).not.toHaveAccessibleDescription();
+  });
+
   it("submits retained string ids, names, and orders unchanged", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -5704,6 +5762,7 @@ describe("My Club route", () => {
           {
             team: "senior",
             displayName: "Senior",
+            maxAge: null,
             strings: [
               { id: 5, displayName: "First" },
               { id: 7, displayName: "Second" },
@@ -5712,11 +5771,13 @@ describe("My Club route", () => {
           {
             team: "reserves",
             displayName: "Reserves",
+            maxAge: 23,
             strings: [{ id: 2, displayName: "1st string" }],
           },
           {
             team: "youth",
             displayName: "Youth",
+            maxAge: 18,
             strings: [{ id: 3, displayName: "1st string" }],
           },
         ],
@@ -5852,16 +5913,19 @@ describe("My Club route", () => {
           {
             team: "senior",
             displayName: "Senior",
+            maxAge: null,
             strings: [{ id: 4, displayName: "2nd string" }],
           },
           {
             team: "reserves",
             displayName: "Reserves",
+            maxAge: 23,
             strings: [{ id: 2, displayName: "1st string" }],
           },
           {
             team: "youth",
             displayName: "Youth",
+            maxAge: 18,
             strings: [{ id: 3, displayName: "1st string" }],
           },
         ],
@@ -5953,11 +6017,13 @@ describe("My Club route", () => {
           {
             team: "senior",
             displayName: "First Team",
+            maxAge: null,
             strings: [{ id: 4, displayName: "2nd string" }],
           },
           {
             team: "youth",
             displayName: "U19",
+            maxAge: 18,
             strings: [{ id: 3, displayName: "1st string" }],
           },
         ],

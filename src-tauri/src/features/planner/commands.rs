@@ -395,6 +395,7 @@ impl From<PlannerString> for PlannerStringDto {
 pub struct PlannerDepthTeamDto {
     pub team: String,
     pub display_name: String,
+    pub max_age: Option<i64>,
     pub strings: Vec<PlannerStringDto>,
 }
 
@@ -403,6 +404,7 @@ impl From<PlannerDepthTeam> for PlannerDepthTeamDto {
         Self {
             team: team.team.as_str().to_string(),
             display_name: team.display_name,
+            max_age: team.max_age,
             strings: team
                 .strings
                 .into_iter()
@@ -677,6 +679,7 @@ impl From<PlannerStringInputDto> for PlannerStringInput {
 pub struct PlannerTeamInputDto {
     pub team: String,
     pub display_name: String,
+    pub max_age: Option<i64>,
     pub strings: Vec<PlannerStringInputDto>,
 }
 
@@ -685,6 +688,7 @@ impl From<PlannerTeamInputDto> for PlannerTeamInput {
         Self {
             team: input.team,
             display_name: input.display_name,
+            max_age: input.max_age,
             strings: input
                 .strings
                 .into_iter()
@@ -1046,6 +1050,7 @@ mod tests {
             .map(|team| PlannerTeamInput {
                 team: team.team.clone(),
                 display_name: team.display_name.clone(),
+                max_age: team.max_age,
                 strings: team
                     .strings
                     .iter()

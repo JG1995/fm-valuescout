@@ -240,9 +240,24 @@ export function PlannerSquadBoard({
                 id={`planner-team-${teamDepth.team}-header`}
                 colSpan={teamDepth.strings.length}
                 scope="colgroup"
+                aria-description={
+                  teamDepth.maxAge === null
+                    ? undefined
+                    : `Aged ${teamDepth.maxAge} or younger`
+                }
                 className={`${index > 0 ? "border-l-2" : ""} sticky top-0 z-20 h-table-header-height border-b border-outline-variant bg-surface-container-lowest px-3 text-label-md text-on-surface`}
               >
                 {teamDepth.displayName}
+                {/* The header's name stays the team's: every cell is announced
+                    with it. The limit is its description. */}
+                {teamDepth.maxAge === null ? null : (
+                  <span
+                    aria-hidden="true"
+                    className="ml-2 text-body-sm font-normal text-on-surface-variant"
+                  >
+                    Aged {teamDepth.maxAge} or younger
+                  </span>
+                )}
               </th>
             ))}
           </tr>

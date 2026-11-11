@@ -321,12 +321,7 @@ pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerD
     let players = load_club_players(&tx, save_id, snapshot_id, &tactic)?;
     let candidates_by_team = available_teams
         .iter()
-        .map(|setting| {
-            (
-                setting.team,
-                team_candidates(setting.team, &tactic, &players),
-            )
-        })
+        .map(|setting| (setting.team, team_candidates(setting, &tactic, &players)))
         .collect::<Vec<_>>();
     for planner_string in fill_order(load_ordered_strings(&tx, save_id)?) {
         let Some((_, candidates)) = candidates_by_team
@@ -571,15 +566,16 @@ fn load_club_players(
         .collect()
 }
 
-/// The players old enough for `team` who suit at least one lane, each valued for the team.
+/// The players within the team's age limit who suit at least one lane, each valued for the team.
 fn team_candidates(
-    team: PlannerTeam,
+    setting: &teams::PlannerTeamSetting,
     tactic: &PlannerTactic,
     players: &[ClubPlayer],
 ) -> Vec<OptimizerCandidate> {
+    let team = setting.team;
     players
         .iter()
-        .filter(|player| is_age_eligible(team, player.development.age))
+        .filter(|player| setting.takes_age(player.development.age))
         .filter(|player| player.lane_scores.iter().any(Option::is_some))
         .map(|player| OptimizerCandidate {
             player_uid: player.uid,
@@ -601,12 +597,4 @@ fn team_candidates(
                 .collect(),
         })
         .collect()
-}
-
-fn is_age_eligible(team: PlannerTeam, age: Option<i64>) -> bool {
-    match team {
-        PlannerTeam::Senior => true,
-        PlannerTeam::Reserves => age.is_some_and(|age| age <= 23),
-        PlannerTeam::Youth => age.is_some_and(|age| age <= 18),
-    }
 }
