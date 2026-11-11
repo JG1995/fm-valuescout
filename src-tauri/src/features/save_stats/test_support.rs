@@ -360,12 +360,104 @@ fn player_record_bytes(player: &ExamplePlayer) -> Vec<u8> {
 
 /// The name pools, 64 zero bytes, then each player's record, with no section header.
 pub(super) fn game_db_payload(players: &[ExamplePlayer]) -> Vec<u8> {
+    game_db_payload_with_staff(players, &[])
+}
+
+/// `game_db_payload`, then each of `staff` as its own object.
+pub(super) fn game_db_payload_with_staff(
+    players: &[ExamplePlayer],
+    staff: &[ExampleStaff],
+) -> Vec<u8> {
     let mut payload = name_pools_bytes([&["Alex"], &["Example"], &[]]);
     payload.extend_from_slice(&[0; 64]);
     for player in players {
         payload.extend(player_record_bytes(player));
     }
+    for person in staff {
+        payload.extend(person.to_bytes());
+    }
     payload
+}
+
+/// A fictional non-player. A list stores it by `key`; the object before it in `game_db` has
+/// the key one lower.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ExampleStaff {
+    pub key: u32,
+    pub unique_id: u32,
+    /// The type of job the person holds: 58 is a recruitment analyst, 46 a doctor, and 0
+    /// none.
+    pub job_type: u8,
+    /// The 15 job ratings in stored order, or `None` for a person stored without any.
+    pub job_ratings: Option<[u8; 15]>,
+    /// The stored coaching qualification: 0 is none and 3 a Continental B Licence.
+    pub qualification: u8,
+}
+
+impl ExampleStaff {
+    /// A person whose one highest job rating is the 1-based `preferred`.
+    pub(super) fn preferring(key: u32, unique_id: u32, preferred: usize) -> Self {
+        let mut job_ratings = [1; 15];
+        job_ratings[preferred - 1] = 20;
+        Self {
+            key,
+            unique_id,
+            job_type: 0,
+            job_ratings: Some(job_ratings),
+            qualification: 0,
+        }
+    }
+
+    /// The trailer of the object before this one, the person's object, and its trailer: the
+    /// key, then the Unique ID twice.
+    fn to_bytes(self) -> Vec<u8> {
+        let unset_date = [1, 0, 0x6C, 0x07];
+        // The earlier object's trailer, whose Unique ID the game allocated and stored once.
+        let mut bytes = (self.key - 1).to_le_bytes().to_vec();
+        bytes.extend_from_slice(&2_100_000_000_u32.to_le_bytes());
+        bytes.extend_from_slice(&7_u32.to_le_bytes());
+        // Kind, no leading entries, three reputations, both abilities, and the job type.
+        bytes.push(1);
+        bytes.extend_from_slice(&0_u16.to_le_bytes());
+        for word in [3_290_u16, 3_290, 2_887, 70, 97] {
+            bytes.extend_from_slice(&word.to_le_bytes());
+        }
+        bytes.push(self.job_type);
+        // Eight unread bytes, the attribute block, and fields of no fixed length.
+        bytes.extend_from_slice(&[0; 8]);
+        bytes.push(12);
+        bytes.extend_from_slice(&[10; 52]);
+        bytes.extend_from_slice(&[0xFF; 24]);
+        bytes.extend_from_slice(&[0; 40]);
+        // A first list of one entry, an empty second list, then the job ratings.
+        bytes.extend_from_slice(&[0, 1]);
+        bytes.extend_from_slice(&7_u64.to_le_bytes());
+        bytes.push(10);
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        match self.job_ratings {
+            Some(job_ratings) => {
+                bytes.push(1);
+                bytes.extend_from_slice(&job_ratings);
+            }
+            None => bytes.push(0),
+        }
+        // One four-byte entry, three unread bytes, and the dates before the qualification.
+        bytes.push(1);
+        bytes.extend_from_slice(&[0, 0xB7, 1, 0]);
+        bytes.extend_from_slice(&[0; 3]);
+        bytes.extend_from_slice(&packed_date(194, 2026, 0));
+        bytes.push(0);
+        bytes.extend_from_slice(&unset_date);
+        bytes.extend_from_slice(&unset_date);
+        bytes.extend_from_slice(&[0xFF; 8]);
+        bytes.extend_from_slice(&unset_date);
+        bytes.push(self.qualification);
+        bytes.extend_from_slice(&[0; 40]);
+        for word in [self.key, self.unique_id, self.unique_id] {
+            bytes.extend_from_slice(&word.to_le_bytes());
+        }
+        bytes
+    }
 }
 
 const SEASON_LINE_BYTES: usize = 155;
@@ -504,7 +596,7 @@ pub(super) fn season_stats_save(
     season_stats: &[u8],
 ) -> Vec<u8> {
     build_container(
-        &season_stats_sections(build, game_db_schema, players, season_stats),
+        &season_stats_sections(build, game_db_schema, players, &[], season_stats),
         &[],
     )
 }
@@ -516,7 +608,18 @@ pub(super) fn save_with_scout_section(
     season_stats: &[u8],
     scout_section: Vec<u8>,
 ) -> Vec<u8> {
-    let mut sections = season_stats_sections(build, 4000, players, season_stats);
+    save_with_staff(build, players, &[], season_stats, scout_section)
+}
+
+/// `save_with_scout_section` whose `game_db` also holds `staff`.
+pub(super) fn save_with_staff(
+    build: &str,
+    players: &[ExamplePlayer],
+    staff: &[ExampleStaff],
+    season_stats: &[u8],
+    scout_section: Vec<u8>,
+) -> Vec<u8> {
+    let mut sections = season_stats_sections(build, 4000, players, staff, season_stats);
     sections.push(SectionFrame::new("scout_man", scout_section));
     build_container(&sections, &[])
 }
@@ -525,9 +628,14 @@ fn season_stats_sections(
     build: &str,
     game_db_schema: u16,
     players: &[ExamplePlayer],
+    staff: &[ExampleStaff],
     season_stats: &[u8],
 ) -> Vec<SectionFrame> {
-    let game_db = section_body(".dat", game_db_schema, &game_db_payload(players));
+    let game_db = section_body(
+        ".dat",
+        game_db_schema,
+        &game_db_payload_with_staff(players, staff),
+    );
     let mut sections = with_body(fm27_sections(build), "game_db", game_db);
     let span = sections
         .iter_mut()
@@ -541,14 +649,15 @@ fn season_stats_sections(
 }
 
 /// One list record of a `scout_man` section. Kind 0 with the `frlp` filter tag is a player
-/// shortlist; an empty name is the game's default shortlist.
+/// shortlist and kind 8 with the `flpn` filter tag a staff shortlist; an empty name is the
+/// game's default list of its kind.
 #[derive(Debug, Clone)]
 pub(super) struct ExampleList {
     pub kind: u32,
     pub filter_tag: [u8; 4],
     pub name: &'static str,
-    /// Each member's season-statistics key: the player's pindex plus one.
-    pub player_keys: Vec<u32>,
+    /// Each member's key: a player's pindex plus one, or a staff member's own key.
+    pub member_keys: Vec<u32>,
 }
 
 impl ExampleList {
@@ -557,17 +666,21 @@ impl ExampleList {
             kind: 0,
             filter_tag: *b"frlp",
             name,
-            player_keys: player_keys.to_vec(),
+            member_keys: player_keys.to_vec(),
         }
     }
 
-    /// The staff shortlist the game stores after the player shortlists.
+    /// The game's default staff shortlist, holding nobody.
     pub(super) fn staff() -> Self {
+        Self::staff_shortlist("", &[])
+    }
+
+    pub(super) fn staff_shortlist(name: &'static str, staff_keys: &[u32]) -> Self {
         Self {
             kind: 8,
             filter_tag: *b"flpn",
-            name: "",
-            player_keys: Vec::new(),
+            name,
+            member_keys: staff_keys.to_vec(),
         }
     }
 
@@ -583,12 +696,17 @@ impl ExampleList {
         record.extend_from_slice(&[1, 0, 1]);
         record.extend_from_slice(&self.filter_tag);
         record.extend_from_slice(b"tlif");
-        // A filter body of no fixed length.
+        // A filter body of no fixed length, then the member tag of the filter's kind.
         record.extend_from_slice(&[0, 0x12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1]);
-        record.extend_from_slice(b"roip\0rfsc\0");
-        record.extend_from_slice(b"rSrP\0");
-        record.extend_from_slice(&(self.player_keys.len() as u32).to_le_bytes());
-        for key in &self.player_keys {
+        if &self.filter_tag == b"flpn" {
+            record.extend_from_slice(b"fpnp\0\x01roip\0\x01\x01\0");
+            record.extend_from_slice(b"manP\x01");
+        } else {
+            record.extend_from_slice(b"roip\0rfsc\0");
+            record.extend_from_slice(b"rSrP\0");
+        }
+        record.extend_from_slice(&(self.member_keys.len() as u32).to_le_bytes());
+        for key in &self.member_keys {
             record.push(2);
             record.extend_from_slice(&key.to_le_bytes());
             record.extend_from_slice(&[1, 0, 0xEB, 0x07, 0, 0, 0, 0, 1, 0, 0x6C, 0x07]);

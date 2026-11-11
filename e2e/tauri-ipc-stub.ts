@@ -567,7 +567,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           ...staffRows[0],
           shortlist: {
             preferredJob: "Technical Director",
-            clubJob: "Technical Director",
             coachingQualifications: "Continental Pro",
           },
           dynamicValues: {
@@ -579,9 +578,9 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           ...staffRows[0],
           uid: 102,
           name: "Coach Casey",
+          club: null,
           shortlist: {
             preferredJob: "Coach",
-            clubJob: "-",
             coachingQualifications: "Continental A",
           },
         },
@@ -589,9 +588,9 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           ...staffRows[0],
           uid: 103,
           name: "Manager Morgan",
+          club: null,
           shortlist: {
             preferredJob: "Manager",
-            clubJob: "",
             coachingQualifications: "Continental Pro",
           },
           dynamicValues: {
@@ -606,7 +605,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           ca: 150,
           shortlist: {
             preferredJob: "Manager",
-            clubJob: "Manager",
             coachingQualifications: "Continental Pro",
           },
           dynamicValues: {
@@ -1527,7 +1525,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 const unemployedOnly = args?.unemployedOnly === true;
                 const matching = shortlistStaffRows.filter((staff) =>
                   (!preferredJob || staff.shortlist.preferredJob === preferredJob) &&
-                  (!unemployedOnly || !staff.shortlist.clubJob || staff.shortlist.clubJob === "-"),
+                  (!unemployedOnly || staff.club === null),
                 );
                 if (args?.sortBy === "ca" && args?.sortDir === "desc") {
                   matching.sort((left, right) => right.ca - left.ca);
@@ -1787,7 +1785,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               matchedPlayers: 3,
               unmatchedPlayers: 0,
               gameDate: "2027-01-01",
-              shortlists: { status: "notRead" },
+              shortlists: { status: "notRead" }, staffShortlist: { status: "notRead" },
               elapsedMs: 12,
             };
           }
@@ -2592,7 +2590,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               timings: { scanMs: 0, ingestMs: 0, totalMs: 0 },
               storedSnapshot: loadedSnapshot,
               effectiveSnapshot: loadedSnapshot,
-              stats: { status: "notLinked", shortlists: { status: "notRead" }, elapsedMs: 0 },
+              stats: { status: "notLinked", shortlists: { status: "notRead" }, staffShortlist: { status: "notRead" }, elapsedMs: 0 },
               shortlists: { read: activeSave().playerShortlists.length, failed: [] },
             };
           }

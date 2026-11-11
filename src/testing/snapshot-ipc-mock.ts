@@ -159,6 +159,7 @@ function buildLoadDataResult(
     stats: {
       status: "notLinked",
       shortlists: { status: "notRead" },
+      staffShortlist: { status: "notRead" },
       elapsedMs: 0,
     },
     shortlists: { read: 0, failed: [] },

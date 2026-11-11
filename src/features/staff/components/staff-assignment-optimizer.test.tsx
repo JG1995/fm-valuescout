@@ -724,7 +724,7 @@ describe("StaffAssignmentOptimizer", () => {
     );
     await waitFor(() =>
       expect(
-        screen.queryByText("Upload a Staff Shortlist"),
+        screen.queryByText(/Shortlist staff in FM/),
       ).not.toBeInTheDocument(),
     );
 
@@ -736,7 +736,7 @@ describe("StaffAssignmentOptimizer", () => {
       screen.getByRole("button", { name: "Optimize assignments" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Upload a Staff Shortlist",
+      "Shortlist staff in FM, save the game, then use Load Data before optimizing assignments.",
     );
 
     rerenderOptimizer(false, "assignment-context-c");

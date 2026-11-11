@@ -33,7 +33,6 @@ const DEFAULT_STAFF_SHORTLIST_COLUMN_IDS = [
   "ca",
   "pa",
   "preferred_job",
-  "club_job",
   "coaching_qualifications",
   ...DEFAULT_STAFF_TABLE_COLUMN_IDS.filter(
     (columnId) =>

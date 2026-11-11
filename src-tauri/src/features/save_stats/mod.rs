@@ -1,5 +1,5 @@
-//! Reads FM27 save files: identification, build support, the in-game date, and each player's
-//! current-season statistics.
+//! Reads FM27 save files: identification, build support, the in-game date, each player's
+//! current-season statistics, and the manager's player and staff shortlists.
 //!
 //! The metadata decoding here is ported from fmsave 0.10.0 (commit
 //! a71abe9b7b38e35affa05c49c3619ff05eb21795, MIT License, Copyright (c) 2026 Randal S.
@@ -17,6 +17,7 @@ mod players;
 mod reference;
 mod season_stats;
 mod shortlists;
+mod staff;
 #[cfg(test)]
 mod test_support;
 
@@ -254,8 +255,9 @@ pub(crate) mod synthetic {
     use std::path::{Path, PathBuf};
 
     use super::test_support::{
-        save_with_scout_section, scout_section, season_stats_body, season_stats_save, stat_line,
-        write_save, ExampleList, ExamplePlayer, ExampleRecord, FM27_BUILD,
+        save_with_scout_section, save_with_staff, scout_section, season_stats_body,
+        season_stats_save, stat_line, write_save, ExampleList, ExamplePlayer, ExampleRecord,
+        ExampleStaff, FM27_BUILD,
     };
 
     /// The in-game date every synthetic save reports.
@@ -311,6 +313,37 @@ pub(crate) mod synthetic {
         write_save(directory, &save)
     }
 
+    /// `write_season_stats_save` for a save whose staff shortlist holds `staff`: each
+    /// person's Unique ID and the 1-based rated job they prefer, where 2 is Assistant
+    /// Manager, 4 Physio, and 5 Scout. Everyone holds no coaching qualification.
+    pub(crate) fn write_save_with_staff_shortlist(
+        directory: &Path,
+        players: &[(u32, &[(&str, f64)])],
+        staff: &[(u32, usize)],
+    ) -> PathBuf {
+        let (example_players, season_stats) = players_and_season_stats(players);
+        let example_staff: Vec<ExampleStaff> = staff
+            .iter()
+            .zip(1..)
+            .map(|((unique_id, preferred), order)| {
+                ExampleStaff::preferring(100_000 + 10 * order, *unique_id, *preferred)
+            })
+            .collect();
+        let keys: Vec<u32> = example_staff.iter().map(|person| person.key).collect();
+        let lists = [
+            ExampleList::staff_shortlist("", &keys),
+            ExampleList::shortlist("", &[]),
+        ];
+        let save = save_with_staff(
+            FM27_BUILD,
+            &example_players,
+            &example_staff,
+            &season_stats,
+            scout_section(&lists, 31),
+        );
+        write_save(directory, &save)
+    }
+
     fn players_and_season_stats(
         players: &[(u32, &[(&str, f64)])],
     ) -> (Vec<ExamplePlayer>, Vec<u8>) {
@@ -343,8 +376,18 @@ pub(crate) struct SaveShortlist {
     pub player_unique_ids: Vec<u32>,
 }
 
+/// One person on the manager's staff shortlists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SaveShortlistedStaff {
+    pub unique_id: u32,
+    /// The game's name for the job the person prefers, or `-` when the save holds none.
+    pub preferred_job: &'static str,
+    /// The game's name for the person's coaching qualification, or `-` when it is not known.
+    pub coaching_qualifications: &'static str,
+}
+
 /// The save's facts, the statistics of every player with a Unique ID and competitive
-/// minutes this season, and the manager's player shortlists.
+/// minutes this season, and the manager's player and staff shortlists.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SaveSeasonStats {
     pub info: SaveInfo,
@@ -352,10 +395,13 @@ pub(crate) struct SaveSeasonStats {
     /// Why the shortlists could not be read, when they could not. That never fails the
     /// statistics.
     pub shortlists: Result<Vec<SaveShortlist>, SaveStatsError>,
+    /// Everyone on a staff shortlist, each once, in the save's order. A failure here never
+    /// fails the statistics or the player shortlists.
+    pub staff_shortlist: Result<Vec<SaveShortlistedStaff>, SaveStatsError>,
 }
 
 /// Reads the whole save once, then the players' current-season statistics and the manager's
-/// player shortlists.
+/// player and staff shortlists.
 ///
 /// Every structural check must pass first: a failure returns an error and no statistics.
 /// Section schemas must match the registered layouts' on every build.
@@ -379,9 +425,16 @@ pub(crate) fn read_season_stats(path: &Path) -> Result<SaveSeasonStats, SaveStat
     let fit = |error| layout_fit(error, info.known_build);
     let records =
         players::read_players(&game_db, name_pool_layout, player_layout, bounds).map_err(fit)?;
-    let shortlists = scout_section
-        .and_then(|section| shortlists::read_player_shortlists(&section, &records))
+    let lists = scout_section
+        .and_then(|section| shortlists::read_lists(&section, &records))
         .map_err(fit);
+    let (shortlists, staff_shortlist) = match lists {
+        Ok(lists) => (
+            Ok(lists.player_shortlists),
+            staff::read_shortlisted_staff(&game_db, &lists.staff_keys).map_err(fit),
+        ),
+        Err(error) => (Err(error), Err(error)),
+    };
     let players = season_stats::season_totals(
         &season_frames,
         &records,
@@ -402,6 +455,7 @@ pub(crate) fn read_season_stats(path: &Path) -> Result<SaveSeasonStats, SaveStat
         info,
         players,
         shortlists,
+        staff_shortlist,
     })
 }
 

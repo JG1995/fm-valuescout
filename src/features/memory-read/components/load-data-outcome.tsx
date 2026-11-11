@@ -39,22 +39,24 @@ const seasonStatsReadFailureReasons: Record<
 };
 
 /**
- * The read of the linked save: one sentence for the stats, then one for the
- * save's shortlists when they were read or failed. `isProblem` is whether the
- * read left the snapshot without new stats or the shortlists unchanged.
+ * The read of the linked save: one sentence for the stats, then one each for
+ * the save's player shortlists and staff shortlist when they were read or
+ * failed. `isProblem` is whether the read left the snapshot without new stats
+ * or a shortlist unchanged.
  */
 export function seasonStatsCopy(stats: SeasonStatsOutcome): {
   text: string;
   isProblem: boolean;
 } {
-  const statsCopy = statsStepCopy(stats);
-  const shortlists = saveShortlistsCopy(stats.shortlists);
-  return shortlists
-    ? {
-        text: `${statsCopy.text} ${shortlists.text}`,
-        isProblem: statsCopy.isProblem || shortlists.isProblem,
-      }
-    : statsCopy;
+  const steps = [
+    statsStepCopy(stats),
+    saveShortlistsCopy(stats.shortlists),
+    staffShortlistCopy(stats.staffShortlist),
+  ].filter((step) => step !== null);
+  return {
+    text: steps.map((step) => step.text).join(" "),
+    isProblem: steps.some((step) => step.isProblem),
+  };
 }
 
 /** How many shortlists the save gave, or why they were not read; null when there is nothing to say. */
@@ -77,6 +79,31 @@ function saveShortlistsCopy(
           shortlists.kind === "database"
             ? "The save's shortlists could not be stored, so the previous ones are kept."
             : `The save's shortlists were not read: ${seasonStatsReadFailureReasons[shortlists.kind]("the linked save file")}. The previous ones are kept.`,
+        isProblem: true,
+      };
+  }
+}
+
+/** How many staff the save's staff shortlists hold, or why they were not read; null when there is nothing to say. */
+function staffShortlistCopy(
+  staffShortlist: SaveShortlistsOutcome,
+): { text: string; isProblem: boolean } | null {
+  switch (staffShortlist.status) {
+    case "read":
+      return staffShortlist.count === 0
+        ? null
+        : {
+            text: `Read ${formatCount(staffShortlist.count)} shortlisted staff from the save.`,
+            isProblem: false,
+          };
+    case "notRead":
+      return null;
+    case "failed":
+      return {
+        text:
+          staffShortlist.kind === "database"
+            ? "The save's staff shortlist could not be stored, so the previous one is kept."
+            : `The save's staff shortlist was not read: ${seasonStatsReadFailureReasons[staffShortlist.kind]("the linked save file")}. The previous one is kept.`,
         isProblem: true,
       };
   }

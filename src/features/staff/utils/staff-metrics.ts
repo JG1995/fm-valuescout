@@ -159,7 +159,6 @@ export const STAFF_METRICS: readonly StaffMetric[] = [
 export const STAFF_SHORTLIST_METRICS: readonly StaffMetric[] = [
   ...STAFF_METRICS,
   stringMetric("preferred_job", "Preferred Job", "shortlist", 160),
-  stringMetric("club_job", "Club Job", "shortlist", 160),
   stringMetric(
     "coaching_qualifications",
     "Coaching Qualifications",
@@ -194,7 +193,6 @@ export function defaultDirForStaffSortField(field: string): "asc" | "desc" {
     "club",
     "division",
     "preferred_job",
-    "club_job",
     "coaching_qualifications",
   ].includes(field)
     ? "asc"

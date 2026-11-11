@@ -27,6 +27,7 @@ import type { PlayerSummary } from "@/features/search/types/player-summary";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
+import { staffKeys } from "@/features/staff/api/staff-keys";
 import { routeTree } from "@/routeTree.gen";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
@@ -4044,6 +4045,7 @@ describe("search route", () => {
       unmatchedPlayers: 3,
       gameDate: "2026-06-30",
       shortlists: { status: "notRead" },
+      staffShortlist: { status: "notRead" },
       elapsedMs: 40,
     });
     const { queryClient } = renderSearchRoute("/search?view=moneyball");
@@ -4090,6 +4092,31 @@ describe("search route", () => {
     expect(
       screen.queryByText(/Attached season stats for 1,200 players/),
     ).toBeNull();
+  });
+
+  it("reloads Staff queries when Refresh stats reads the staff shortlist without attaching stats", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
+    setRefreshSeasonStatsIpcMockResult({
+      status: "noMatches",
+      unmatchedPlayers: 3,
+      gameDate: "2026-06-30",
+      shortlists: { status: "notRead" },
+      staffShortlist: { status: "read", count: 13 },
+      elapsedMs: 40,
+    });
+    const { queryClient } = renderSearchRoute("/search?view=moneyball");
+    await screen.findByText("Moneyball Scout");
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    await user.click(screen.getByRole("button", { name: "Refresh stats" }));
+
+    expect(
+      await screen.findByText(/Read 13 shortlisted staff from the save\./),
+    ).toBeInTheDocument();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: staffKeys.all });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: searchKeys.all });
   });
 
   it("keeps Refresh stats unavailable while a refresh or Load Data runs", async () => {

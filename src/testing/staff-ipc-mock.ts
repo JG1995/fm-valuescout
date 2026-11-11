@@ -791,8 +791,7 @@ function buildStaffPage(args: unknown): StaffPage {
       if (preferredJob && staff.shortlist?.preferredJob !== preferredJob) {
         return false;
       }
-      const clubJob = (staff.shortlist?.clubJob ?? "").trim();
-      if (unemployedOnly && clubJob !== "" && clubJob !== "-") {
+      if (unemployedOnly && staff.club !== null) {
         return false;
       }
       if (parsed.filters.length === 0) return true;

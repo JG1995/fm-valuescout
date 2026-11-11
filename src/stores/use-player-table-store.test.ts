@@ -574,14 +574,13 @@ describe("usePlayerTableStore", () => {
 
   it("starts Shortlist with its recruitment context before score columns", () => {
     expect(
-      defaultPlayerTableLayouts()["staff-shortlist"].columnIds.slice(0, 7),
+      defaultPlayerTableLayouts()["staff-shortlist"].columnIds.slice(0, 6),
     ).toEqual([
       "age",
       "nationality",
       "ca",
       "pa",
       "preferred_job",
-      "club_job",
       "coaching_qualifications",
     ]);
   });
@@ -607,14 +606,13 @@ describe("usePlayerTableStore", () => {
     expect(
       usePlayerTableStore
         .getState()
-        .layouts["staff-shortlist"].columnIds.slice(0, 7),
+        .layouts["staff-shortlist"].columnIds.slice(0, 6),
     ).toEqual([
       "age",
       "nationality",
       "ca",
       "pa",
       "preferred_job",
-      "club_job",
       "coaching_qualifications",
     ]);
   });
@@ -1291,7 +1289,6 @@ describe("v8 identity migration (Commit 4)", () => {
     "ca",
     "pa",
     "preferred_job",
-    "club_job",
     "coaching_qualifications",
     ...DEFAULT_STAFF_TABLE_COLUMN_IDS.filter(
       (columnId) =>

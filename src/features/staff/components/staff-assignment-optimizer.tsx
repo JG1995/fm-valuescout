@@ -1,5 +1,4 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { optimizeStaffAssignments } from "../api/optimize-staff-assignments";
@@ -19,7 +18,6 @@ type StaffAssignmentOptimizerProps = {
   contextKey: string;
   contextUnavailable: boolean;
   shortlistReady: boolean;
-  uploadAction?: ReactNode;
   onReviewShortlist?: () => void;
 };
 
@@ -34,6 +32,9 @@ type PresentedResult = {
   contextKey: string;
   value: StaffAssignmentOptimization;
 };
+
+const NO_SHORTLIST_MESSAGE =
+  "Shortlist staff in FM, save the game, then use Load Data before optimizing assignments.";
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -70,7 +71,7 @@ function setupMessage(result: StaffAssignmentOptimization) {
     case "no_managed_club":
       return "Choose a managed club before optimizing assignments.";
     case "no_shortlist":
-      return "Upload a Staff Shortlist before optimizing assignments.";
+      return NO_SHORTLIST_MESSAGE;
     case "ready":
       return null;
   }
@@ -81,7 +82,6 @@ export function StaffAssignmentOptimizer({
   contextKey,
   contextUnavailable,
   shortlistReady,
-  uploadAction,
   onReviewShortlist = () => {},
 }: StaffAssignmentOptimizerProps) {
   const targetsQuery = useQuery(
@@ -169,7 +169,7 @@ export function StaffAssignmentOptimizer({
         : configuredSlotCount === 0
           ? "Configure staffing needs before optimizing assignments."
           : !shortlistReady
-            ? "Upload a Staff Shortlist before optimizing assignments."
+            ? NO_SHORTLIST_MESSAGE
             : null;
   const currentResult =
     !contextUnavailable &&
@@ -187,7 +187,6 @@ export function StaffAssignmentOptimizer({
         data-testid="assignment-action-row"
         className="flex w-full flex-wrap items-center justify-end gap-2"
       >
-        {uploadAction}
         <StaffAssignmentTargetModal
           context={context}
           contextKey={contextKey}

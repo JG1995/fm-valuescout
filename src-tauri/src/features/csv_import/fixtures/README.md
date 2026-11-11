@@ -9,7 +9,3 @@ SHA-256: `5c3a4a686f7619f7001e01530d4d44576718f6b3c131a7bb1a5faf94b99301a6`
 ## Canonical Moneyball statistics
 
 `moneyball_canonical_statistics.txt` records the 138 performance-stat keys from the legacy `schema.rs` in [`JG1995/fm-valuescout-react` at `366aa20b`](https://github.com/JG1995/fm-valuescout-react/tree/366aa20b5282d3a63c94854ddb8da6992462b0c5). The Moneyball catalog test in `features/moneyball/catalog.rs` uses it to lock the exact persisted-key spelling independently from the Rust key table. Moneyball stats come from the linked FM save file, and the CSV importer rejects Moneyball exports.
-
-## Staff shortlist export
-
-`staff_shortlist.csv` is a synthetic semicolon-delimited export for the staff shortlist importer. It verifies the four required headers and preserves `-` and blank Club Job values without including any real save data.

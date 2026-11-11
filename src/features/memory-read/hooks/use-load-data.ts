@@ -149,6 +149,7 @@ export function useLoadData(options: UseLoadDataOptions) {
         if (
           (data.stats.status === "attached" ||
             data.stats.shortlists.status === "read" ||
+            data.stats.staffShortlist.status === "read" ||
             data.shortlists.read > 0) &&
           sameContext(captured, activeSaveContextRef.current)
         ) {

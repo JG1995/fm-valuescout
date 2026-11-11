@@ -70,7 +70,6 @@ pub enum SortField {
     ContractYear,
     ContractDayOfYear,
     PreferredJob,
-    ClubJob,
     CoachingQualifications,
     Dynamic(MetricField),
 }
@@ -94,7 +93,6 @@ impl SortField {
             "contract_year" => Ok(Self::ContractYear),
             "contract_day" => Ok(Self::ContractDayOfYear),
             "preferred_job" => Ok(Self::PreferredJob),
-            "club_job" => Ok(Self::ClubJob),
             "coaching_qualifications" => Ok(Self::CoachingQualifications),
             other => Ok(Self::Dynamic(MetricField::parse(other)?)),
         }
@@ -117,7 +115,6 @@ impl SortField {
             Self::ContractYear => "staff.contract_expiry_year".into(),
             Self::ContractDayOfYear => "staff.contract_expiry_day_of_year".into(),
             Self::PreferredJob => "shortlist.preferred_job COLLATE NOCASE".into(),
-            Self::ClubJob => "shortlist.club_job COLLATE NOCASE".into(),
             Self::CoachingQualifications => {
                 "shortlist.coaching_qualifications COLLATE NOCASE".into()
             }
@@ -151,7 +148,6 @@ pub struct StaffSummary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StaffShortlistMetadata {
     pub preferred_job: String,
-    pub club_job: String,
     pub coaching_qualifications: String,
 }
 
@@ -466,7 +462,7 @@ fn list_staff_with_shortlist(
     })
 }
 
-/// Whether a query reads the shortlist. Only a shortlisted query may sort by a shortlist CSV
+/// Whether a query reads the shortlist. Only a shortlisted query may sort by a shortlist
 /// column.
 fn shortlisted_query(
     scope: StaffScope,
@@ -478,10 +474,10 @@ fn shortlisted_query(
     let shortlisted = scope == StaffScope::Shortlist || shortlist_only;
     if matches!(
         sort,
-        SortField::PreferredJob | SortField::ClubJob | SortField::CoachingQualifications
+        SortField::PreferredJob | SortField::CoachingQualifications
     ) && !shortlisted
     {
-        return Err("shortlist CSV columns can only sort Shortlist".to_string());
+        return Err("shortlist columns can only sort Shortlist".to_string());
     }
     Ok(shortlisted)
 }
@@ -585,7 +581,9 @@ fn plan_staff_query(
             ));
         }
         if unemployed_only {
-            where_sql.push_str(" AND trim(shortlist.club_job) IN ('', '-')");
+            // The shortlist holds no job: a person is unemployed when the snapshot has no
+            // club for them.
+            where_sql.push_str(" AND staff.club IS NULL");
         }
     }
     if let Some(compiled) = compiled {
@@ -619,9 +617,7 @@ fn staff_select_sql(dynamic_fields: &[MetricField], shortlisted: bool) -> String
         sql.push_str(&field.sql_expression("staff"));
     }
     if shortlisted {
-        sql.push_str(
-            ", shortlist.preferred_job, shortlist.club_job, shortlist.coaching_qualifications",
-        );
+        sql.push_str(", shortlist.preferred_job, shortlist.coaching_qualifications");
     }
     sql
 }
@@ -886,8 +882,7 @@ fn map_staff(
         shortlist: if has_shortlist {
             Some(StaffShortlistMetadata {
                 preferred_job: row.get(16 + fields.len())?,
-                club_job: row.get(17 + fields.len())?,
-                coaching_qualifications: row.get(18 + fields.len())?,
+                coaching_qualifications: row.get(17 + fields.len())?,
             })
         } else {
             None
@@ -990,11 +985,12 @@ mod tests {
         seed(&conn, false);
         conn.execute_batch(
             "INSERT INTO staff_shortlist_entries (
-                save_id, staff_uid, preferred_job, club_job, coaching_qualifications
+                save_id, staff_uid, preferred_job, coaching_qualifications
              ) VALUES
-                (1, 1, 'Physio', '-', 'Continental Pro'),
-                (1, 2, 'Scout', '', 'National C'),
-                (1, 3, 'Scout', 'Chief Scout', 'National B');",
+                (1, 1, 'Physio', 'Continental Pro'),
+                (1, 2, 'Scout', 'National C'),
+                (1, 3, 'Scout', 'National B');
+             UPDATE staff SET club = NULL WHERE snapshot_id = 1 AND uid IN (1, 2);",
         )
         .expect("seed shortlist");
 
@@ -1018,7 +1014,6 @@ mod tests {
             all.staff[0].shortlist.as_ref().expect("shortlist metadata"),
             &StaffShortlistMetadata {
                 preferred_job: "Physio".to_string(),
-                club_job: "-".to_string(),
                 coaching_qualifications: "Continental Pro".to_string(),
             }
         );
@@ -1087,11 +1082,12 @@ mod tests {
         seed(&conn, false);
         conn.execute_batch(
             "INSERT INTO staff_shortlist_entries (
-                save_id, staff_uid, preferred_job, club_job, coaching_qualifications
+                save_id, staff_uid, preferred_job, coaching_qualifications
              ) VALUES
-                (1, 1, 'Physio', '-', 'Continental Pro'),
-                (1, 2, 'Scout', '', 'National C'),
-                (1, 3, 'Scout', 'Chief Scout', 'National B');",
+                (1, 1, 'Physio', 'Continental Pro'),
+                (1, 2, 'Scout', 'National C'),
+                (1, 3, 'Scout', 'National B');
+             UPDATE staff SET club = NULL WHERE snapshot_id = 1 AND uid IN (1, 2);",
         )
         .expect("seed shortlist");
 
@@ -1126,7 +1122,6 @@ mod tests {
                 .expect("shortlist metadata"),
             &StaffShortlistMetadata {
                 preferred_job: "Physio".to_string(),
-                club_job: "-".to_string(),
                 coaching_qualifications: "Continental Pro".to_string(),
             }
         );
@@ -1145,7 +1140,7 @@ mod tests {
             false,
             &[],
         )
-        .expect("flagged shortlist CSV sort");
+        .expect("flagged shortlist sort");
         assert_eq!(
             sorted
                 .staff
@@ -1194,7 +1189,6 @@ mod tests {
                 .expect("shortlist metadata"),
             &StaffShortlistMetadata {
                 preferred_job: "Scout".to_string(),
-                club_job: String::new(),
                 coaching_qualifications: "National C".to_string(),
             }
         );
@@ -1242,15 +1236,15 @@ mod tests {
         );
         conn.execute(
             "INSERT INTO staff_shortlist_entries (
-                save_id, staff_uid, preferred_job, club_job, coaching_qualifications
-             ) VALUES (1, 1, 'Physio', '-', 'A')",
+                save_id, staff_uid, preferred_job, coaching_qualifications
+             ) VALUES (1, 1, 'Physio', 'A')",
             [],
         )
         .expect("seed shortlist");
         conn.execute(
             "INSERT INTO staff_shortlist_entries (
-                save_id, staff_uid, preferred_job, club_job, coaching_qualifications
-             ) VALUES (1, 3, 'Scout', '-', 'B')",
+                save_id, staff_uid, preferred_job, coaching_qualifications
+             ) VALUES (1, 3, 'Scout', 'B')",
             [],
         )
         .expect("seed departed entry");
@@ -1303,28 +1297,24 @@ mod tests {
     }
 
     #[test]
-    fn shortlist_scopes_csv_sorts_and_role_projection_to_the_bounded_query() {
+    fn shortlist_scopes_its_sorts_and_role_projection_to_the_bounded_query() {
         let conn = open();
         seed(&conn, false);
         conn.execute_batch(
             "INSERT INTO staff_shortlist_entries (
-                save_id, staff_uid, preferred_job, club_job, coaching_qualifications
+                save_id, staff_uid, preferred_job, coaching_qualifications
              ) VALUES
-                (1, 1, 'Zulu', 'Zulu job', 'Zulu qualification'),
-                (1, 2, 'Alpha', 'Alpha job', 'Alpha qualification');
+                (1, 1, 'Zulu', 'Zulu qualification'),
+                (1, 2, 'Alpha', 'Alpha qualification');
              INSERT INTO saves (id, name, is_active) VALUES (2, 'Inactive', 0);
              INSERT INTO staff_shortlist_entries (
-                save_id, staff_uid, preferred_job, club_job, coaching_qualifications
-             ) VALUES (2, 1, 'Wrong save', '-', 'Wrong qualification');
+                save_id, staff_uid, preferred_job, coaching_qualifications
+             ) VALUES (2, 1, 'Wrong save', 'Wrong qualification');
              UPDATE staff_role_metrics SET coach_fitness = 70 WHERE snapshot_id = 1 AND uid = 1;
              UPDATE staff_role_metrics SET coach_fitness = 80 WHERE snapshot_id = 1 AND uid = 2;",
         )
         .expect("seed shortlist");
-        for sort in [
-            SortField::PreferredJob,
-            SortField::ClubJob,
-            SortField::CoachingQualifications,
-        ] {
+        for sort in [SortField::PreferredJob, SortField::CoachingQualifications] {
             let sorted = list_staff(
                 &conn,
                 StaffScope::Search,
@@ -1338,7 +1328,7 @@ mod tests {
                 false,
                 &[],
             )
-            .expect("sort shortlist CSV column");
+            .expect("sort shortlist column");
             assert_eq!(
                 sorted
                     .staff
@@ -1899,8 +1889,8 @@ mod tests {
                  VALUES (1, 4, 1, 80), (1, 5, 1, NULL), (1, 6, 1, 55), (1, 7, 1, 70), (1, 8, 1, 80);
                  INSERT INTO saves (id, name, is_active) VALUES (2, 'Inactive', 0);
                  INSERT INTO staff_shortlist_entries (
-                    save_id, staff_uid, preferred_job, club_job, coaching_qualifications
-                 ) VALUES (2, 4, 'Wrong save', '-', 'Wrong qualification');"#,
+                    save_id, staff_uid, preferred_job, coaching_qualifications
+                 ) VALUES (2, 4, 'Wrong save', 'Wrong qualification');"#,
             )
             .expect("seed staff");
         drop(writer);
@@ -1941,8 +1931,13 @@ mod tests {
                 .shortlisted(None, false),
             StaffShape::new("Preferred Job", "name", SortDir::Asc, &["attr.Authority"])
                 .shortlisted(Some("scout"), false),
-            StaffShape::new("unemployed only", "club_job", SortDir::Desc, &[])
-                .shortlisted(None, true),
+            StaffShape::new(
+                "unemployed only",
+                "coaching_qualifications",
+                SortDir::Desc,
+                &[],
+            )
+            .shortlisted(None, true),
             StaffShape::new("shortlist filters", "ca", SortDir::Asc, &[])
                 .shortlisted(Some("Scout"), true)
                 .filtered(vec![("ca", "gt", FilterValue::Integer(95))], "and"),
@@ -1984,30 +1979,31 @@ mod tests {
             .expect("lock writer")
             .execute_batch(
                 "INSERT INTO staff_shortlist_entries (
-                    save_id, staff_uid, preferred_job, club_job, coaching_qualifications
+                    save_id, staff_uid, preferred_job, coaching_qualifications
                  ) VALUES
-                    (1, 1, 'Physio', '-', 'Continental Pro'),
-                    (1, 2, 'Scout', '', 'National C'),
-                    (1, 3, 'scout', 'Chief Scout', 'National B'),
-                    (1, 4, 'Scout', '-', 'National B'),
-                    (1, 7, 'Analyst', ' ', 'None'),
-                    (1, 99, 'Scout', '-', 'Departed');",
+                    (1, 1, 'Physio', 'Continental Pro'),
+                    (1, 2, 'Scout', 'National C'),
+                    (1, 3, 'scout', 'National B'),
+                    (1, 4, 'Scout', 'National B'),
+                    (1, 7, 'Analyst', 'None'),
+                    (1, 99, 'Scout', 'Departed');",
             )
             .expect("seed shortlist");
         for shape in shapes.iter().chain(&shortlist_shapes) {
             assert_cached_windows_match(&db, &orders, shape);
         }
 
-        let csv_sort_without_shortlist = StaffShape::new("CSV sort", "club_job", SortDir::Asc, &[]);
+        let shortlist_sort_without_shortlist =
+            StaffShape::new("shortlist sort", "preferred_job", SortDir::Asc, &[]);
         assert_eq!(
             search_staff_page(
                 &db,
                 &orders,
                 &TableRegistry::default(),
                 None,
-                csv_sort_without_shortlist.request(0, 3)
+                shortlist_sort_without_shortlist.request(0, 3)
             ),
-            csv_sort_without_shortlist.uncached(&db, 0, 3)
+            shortlist_sort_without_shortlist.uncached(&db, 0, 3)
         );
     }
 

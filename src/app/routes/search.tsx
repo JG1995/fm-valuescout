@@ -78,6 +78,7 @@ import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-sna
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { shortlistOptionLabels } from "@/features/snapshot/utils/shortlist-option-labels";
+import { staffKeys } from "@/features/staff/api/staff-keys";
 import { TauriCommandError } from "@/lib/tauri-client";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
@@ -450,8 +451,18 @@ function SearchPageContent() {
     mutationFn: ({ saveId, contextToken }: SeasonStatsRefreshContext) =>
       refreshSeasonStats(saveId, contextToken),
     onSuccess: async (result) => {
-      if (result.status !== "attached") return;
+      if (result.status === "loadDataRunning") return;
+      // The read replaces the save's staff shortlist whether or not stats attached.
+      const staffShortlistRead =
+        result.staffShortlist.status === "read"
+          ? [queryClient.invalidateQueries({ queryKey: staffKeys.all })]
+          : [];
+      if (result.status !== "attached") {
+        await Promise.all(staffShortlistRead);
+        return;
+      }
       await Promise.all([
+        ...staffShortlistRead,
         queryClient.invalidateQueries({ queryKey: snapshotKeys.all }),
         queryClient.invalidateQueries({ queryKey: searchKeys.all }),
         queryClient.invalidateQueries({ queryKey: moneyballKeys.all }),

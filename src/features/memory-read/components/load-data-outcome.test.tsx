@@ -59,6 +59,7 @@ function resultWithHistoricalStoredSnapshot(): LoadDataResult {
     stats: {
       status: "notLinked",
       shortlists: { status: "notRead" },
+      staffShortlist: { status: "notRead" },
       elapsedMs: 100,
     },
     shortlists: { read: 0, failed: [] },
@@ -116,6 +117,7 @@ function successResult(): LoadDataResult {
     stats: {
       status: "notLinked",
       shortlists: { status: "notRead" },
+      staffShortlist: { status: "notRead" },
       elapsedMs: 100,
     },
     shortlists: { read: 0, failed: [] },
@@ -482,13 +484,19 @@ describe("LoadDataOutcome", () => {
         unmatchedPlayers: 12,
         gameDate: "2027-01-01",
         shortlists: { status: "notRead" },
+        staffShortlist: { status: "notRead" },
         elapsedMs: 1300,
       },
       "Attached season stats for 35,903 players from the save dated 1st January 2027.",
     ],
     [
       "link guidance",
-      { status: "notLinked", shortlists: { status: "notRead" }, elapsedMs: 0 },
+      {
+        status: "notLinked",
+        shortlists: { status: "notRead" },
+        staffShortlist: { status: "notRead" },
+        elapsedMs: 0,
+      },
       "No FM save file is linked, so no season stats were read. Link one in Settings.",
     ],
     [
@@ -498,6 +506,7 @@ describe("LoadDataOutcome", () => {
         unmatchedPlayers: 4,
         gameDate: "2026-07-01",
         shortlists: { status: "notRead" },
+        staffShortlist: { status: "notRead" },
         elapsedMs: 900,
       },
       "No players in the save dated 1st July 2026 matched the current snapshot, so season stats were not changed.",
@@ -507,6 +516,7 @@ describe("LoadDataOutcome", () => {
       {
         status: "staleContext",
         shortlists: { status: "notRead" },
+        staffShortlist: { status: "notRead" },
         elapsedMs: 10,
       },
       "The save or snapshot changed while season stats were read, so they were not attached.",
@@ -518,6 +528,7 @@ describe("LoadDataOutcome", () => {
         kind: "not_found",
         fileName: "Career.fm",
         shortlists: { status: "notRead" },
+        staffShortlist: { status: "notRead" },
         elapsedMs: 1,
       },
       "Season stats were not read: Career.fm could not be found.",
@@ -529,6 +540,7 @@ describe("LoadDataOutcome", () => {
         kind: "not_fm_save",
         fileName: "Notes.fm",
         shortlists: { status: "notRead" },
+        staffShortlist: { status: "notRead" },
         elapsedMs: 1,
       },
       "Season stats were not read: Notes.fm is not a supported FM27 save.",
@@ -540,6 +552,7 @@ describe("LoadDataOutcome", () => {
         kind: "unsupported_build",
         fileName: "Career.fm",
         shortlists: { status: "notRead" },
+        staffShortlist: { status: "notRead" },
         elapsedMs: 1,
       },
       "Season stats were not read: this FM27 build is not supported yet.",
@@ -551,6 +564,7 @@ describe("LoadDataOutcome", () => {
         kind: "corrupt",
         fileName: "Career.fm",
         shortlists: { status: "notRead" },
+        staffShortlist: { status: "notRead" },
         elapsedMs: 1,
       },
       "Season stats were not read: the save could not be read safely.",
@@ -562,6 +576,7 @@ describe("LoadDataOutcome", () => {
         kind: "changed_during_read",
         fileName: "Career.fm",
         shortlists: { status: "notRead" },
+        staffShortlist: { status: "notRead" },
         elapsedMs: 1,
       },
       "Season stats were not read: the save changed while it was read. Wait for FM to finish saving, then try again.",
@@ -573,6 +588,7 @@ describe("LoadDataOutcome", () => {
         kind: "database",
         fileName: null,
         shortlists: { status: "notRead" },
+        staffShortlist: { status: "notRead" },
         elapsedMs: 1,
       },
       "Season stats could not be stored, so the previous stats are unchanged.",
@@ -598,7 +614,9 @@ describe("LoadDataOutcome", () => {
     unmatchedPlayers: 0,
     gameDate: "2027-01-01",
     elapsedMs: 1,
-  } as const;
+    shortlists: { status: "notRead" },
+    staffShortlist: { status: "notRead" },
+  } as const satisfies SeasonStatsOutcome;
   const attachedSentence =
     "Attached season stats for 2 players from the save dated 1st January 2027.";
 
@@ -644,6 +662,59 @@ describe("LoadDataOutcome", () => {
 
       const outcome = screen.getByText(/Loaded 3 players into the database/i);
       expect(outcome).toHaveTextContent(expected);
+      expect(outcome.parentElement?.parentElement).toHaveClass(
+        isProblem ? "bg-warning-container" : "bg-success-container",
+      );
+    },
+  );
+
+  it.each<[string, SeasonStatsOutcome["staffShortlist"], string, boolean]>([
+    [
+      "the staff on the save's staff shortlists",
+      { status: "read", count: 13 },
+      `${attachedSentence} Read 2 shortlists from the save. Read 13 shortlisted staff from the save.`,
+      false,
+    ],
+    [
+      "a staff shortlist that could not be read",
+      { status: "failed", kind: "corrupt" },
+      `${attachedSentence} Read 2 shortlists from the save. The save's staff shortlist was not read: the save could not be read safely. The previous one is kept.`,
+      true,
+    ],
+    [
+      "a staff shortlist that could not be stored",
+      { status: "failed", kind: "database" },
+      `${attachedSentence} Read 2 shortlists from the save. The save's staff shortlist could not be stored, so the previous one is kept.`,
+      true,
+    ],
+    [
+      "nothing for a staff shortlist that holds nobody",
+      { status: "read", count: 0 },
+      `${attachedSentence} Read 2 shortlists from the save.`,
+      false,
+    ],
+  ])(
+    "reports %s after the player shortlists",
+    (_case, staffShortlist, expected, isProblem) => {
+      render(
+        <LoadDataOutcome
+          error={null}
+          result={{
+            ...successResult(),
+            stats: {
+              ...attached,
+              shortlists: { status: "read", count: 2 },
+              staffShortlist,
+            },
+            shortlists: { read: 0, failed: [] },
+          }}
+          onDismiss={() => undefined}
+        />,
+      );
+
+      const outcome = screen.getByText(/Loaded 3 players into the database/i);
+      expect(outcome).toHaveTextContent(expected);
+      expect(outcome).not.toHaveTextContent(`${expected} `);
       expect(outcome.parentElement?.parentElement).toHaveClass(
         isProblem ? "bg-warning-container" : "bg-success-container",
       );

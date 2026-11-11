@@ -78,6 +78,7 @@ function historicalResultWithAttachedStats(saveId: number): BusyLoadDataResult {
       unmatchedPlayers: 0,
       gameDate: "2027-08-16",
       shortlists: { status: "notRead" },
+      staffShortlist: { status: "notRead" },
       elapsedMs: 900,
     },
     shortlists: { read: 0, failed: [] },
@@ -94,6 +95,7 @@ function historicalResultWithShortlists(
     stats: {
       status: "notLinked",
       shortlists: { status: "notRead" },
+      staffShortlist: { status: "notRead" },
       elapsedMs: 0,
     },
     shortlists,
@@ -483,6 +485,7 @@ describe("useLoadData", () => {
           unmatchedPlayers: 3,
           gameDate: "2027-01-01",
           shortlists: { status: "read", count: 2 },
+          staffShortlist: { status: "notRead" },
           elapsedMs: 0,
         },
       },
@@ -1080,6 +1083,7 @@ describe("useLoadData", () => {
         stats: {
           status: "notLinked",
           shortlists: { status: "notRead" },
+          staffShortlist: { status: "notRead" },
           elapsedMs: 0,
         },
         shortlists: { read: 0, failed: [] },
@@ -1263,6 +1267,7 @@ describe("useLoadData", () => {
         stats: {
           status: "notLinked",
           shortlists: { status: "notRead" },
+          staffShortlist: { status: "notRead" },
           elapsedMs: 0,
         },
         shortlists: { read: 0, failed: [] },
@@ -1394,6 +1399,7 @@ describe("useLoadData", () => {
         stats: {
           status: "notLinked",
           shortlists: { status: "notRead" },
+          staffShortlist: { status: "notRead" },
           elapsedMs: 0,
         },
         shortlists: { read: 0, failed: [] },
@@ -1540,6 +1546,7 @@ describe("useLoadData", () => {
         stats: {
           status: "notLinked",
           shortlists: { status: "notRead" },
+          staffShortlist: { status: "notRead" },
           elapsedMs: 0,
         },
         shortlists: { read: 0, failed: [] },
