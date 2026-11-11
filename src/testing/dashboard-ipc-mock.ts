@@ -1,6 +1,6 @@
 import type {
   DashboardExpiringContracts,
-  DashboardProspect,
+  DashboardProspects,
   DashboardSignings,
   DashboardSigningsRequest,
 } from "@/features/dashboard/types/dashboard";
@@ -14,19 +14,20 @@ const NO_CONTRACTS: DashboardExpiringContracts = {
   total: 0,
   players: [],
 };
+const NO_PROSPECTS: DashboardProspects = { players: [], youthXi: [] };
 
 let signingsResolver: SigningsResolver = () => null;
 let signingsRequests: DashboardSigningsRequest[] = [];
 let signingsError: string | null = null;
 let expiringContracts: DashboardExpiringContracts | null = NO_CONTRACTS;
-let prospects: DashboardProspect[] | null = [];
+let prospects: DashboardProspects | null = NO_PROSPECTS;
 
 export function resetDashboardIpcMock() {
   signingsResolver = () => null;
   signingsRequests = [];
   signingsError = null;
   expiringContracts = NO_CONTRACTS;
-  prospects = [];
+  prospects = NO_PROSPECTS;
 }
 
 /** Answers every later `get_dashboard_signings` from the request it receives. */
@@ -48,7 +49,7 @@ export function setDashboardExpiringContractsIpcMock(
   expiringContracts = contracts;
 }
 
-export function setDashboardProspectsIpcMock(next: DashboardProspect[] | null) {
+export function setDashboardProspectsIpcMock(next: DashboardProspects | null) {
   prospects = next;
 }
 

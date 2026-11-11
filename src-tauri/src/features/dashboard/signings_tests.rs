@@ -246,6 +246,56 @@ fn a_slot_without_an_incumbent_counts_the_whole_score_and_a_slot_filter_narrows_
 }
 
 #[test]
+fn names_each_slots_best_signing_whichever_slot_suits_the_player_most() {
+    let fixture = open_with_players(&[
+        player(1, "First Centre Back", HOME_CLUB, "DC"),
+        player(2, "Second Centre Back", HOME_CLUB, "DC"),
+        player(3, "Home Keeper", HOME_CLUB, "GK"),
+        player(10, "Target Centre Back", OTHER_CLUB, "DC"),
+        player(11, "Lesser Centre Back", OTHER_CLUB, "DC"),
+        player(12, "Worse Keeper", OTHER_CLUB, "GK"),
+    ]);
+    for (uid, score) in [(1, 70), (2, 60), (10, 85), (11, 65)] {
+        fixture.set_slot_score(uid, "left_centre_back", score);
+    }
+    fixture.set_slot_score(3, "goalkeeper", 70);
+    fixture.set_slot_score(12, "goalkeeper", 60);
+    fixture.add_shortlist("Targets", &[10, 11, 12]);
+
+    // A slot filter narrows the ranking, never the per-slot answers.
+    for request in [
+        GENERAL,
+        SigningsRequest {
+            lane_id: Some("goalkeeper"),
+            ..GENERAL
+        },
+    ] {
+        let signings = signings(&fixture, request);
+
+        // The target is listed once in the ranking, yet is the best signing for both slots.
+        let mut centre_backs = ["left_centre_back", "right_centre_back"].map(|lane_id| {
+            let best = slot(&signings, lane_id)
+                .best_signing
+                .as_ref()
+                .expect("best signing");
+            assert_eq!(best.lane_id, lane_id);
+            (best.uid, best.score, best.improvement)
+        });
+        centre_backs.sort();
+        assert_eq!(centre_backs, [(10, 85, 15), (10, 85, 25)]);
+        assert_eq!(slot(&signings, "goalkeeper").best_signing, None);
+        assert_eq!(slot(&signings, "left_back").best_signing, None);
+    }
+    assert_eq!(
+        ranked(&signings(&fixture, GENERAL).recommendations)
+            .iter()
+            .map(|&(uid, _, _, improvement)| (uid, improvement))
+            .collect::<Vec<_>>(),
+        [(10, 25), (11, 5)]
+    );
+}
+
+#[test]
 fn moneyball_mode_scores_a_slot_by_its_custom_metrics_or_else_its_roles() {
     let fixture = open_with_players(&[
         player(1, "Home Striker", HOME_CLUB, "ST"),

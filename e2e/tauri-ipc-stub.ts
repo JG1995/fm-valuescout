@@ -782,7 +782,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 request?.shortlistId == null || target[9] === request.shortlistId,
             )
           : [];
-        const recommendations = candidates
+        const improving = candidates
           .map((target) => {
             const score = moneyball ? target[7] : target[6];
             return score === null ? null : {
@@ -802,16 +802,18 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   : [],
             };
           })
-          .filter(
-            (target) =>
-              target !== null &&
-              target.improvement > 0 &&
-              (request?.laneId == null || target.laneId === request.laneId),
-          )
+          .filter((target) => target !== null && target.improvement > 0)
           .sort(
             (left, right) =>
               right.improvement - left.improvement || right.score - left.score,
           );
+        const recommendations = improving.filter(
+          (target) => request?.laneId == null || target.laneId === request.laneId,
+        );
+        for (const slot of slots) {
+          const best = improving.find((target) => target.laneId === slot.laneId);
+          slot.bestSigning = best ? { ...best, otherLanes: [] } : null;
+        }
         return {
           tacticIsDefault: true,
           scoresAvailable: true,
@@ -842,25 +844,47 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           daysRemaining: player[7],
         })),
       };
-      const dashboardProspects = [
+      // [uid, name, age, slot index, current score, potential score].
+      const dashboardYoungPlayers = [
         [308, "Lamine Yamal", 18, 8, 93, 97],
         [303, "Pau Cubarsí", 19, 3, 79, 92],
         [405, "Marc Bernal", 18, 5, 62, 86],
         [401, "Héctor Fort", 19, 1, 64, 81],
+        [416, "Dro Fernández", 18, 7, 57, 80],
         [411, "Toni Fernández Casino", 17, 9, 48, 79],
         [412, "Guille Fernández", 17, 6, 51, 77],
-      ].map((prospect) => ({
-        uid: prospect[0],
-        name: prospect[1],
-        age: prospect[2],
-        laneId: dashboardSlots[prospect[3]][0],
-        ipPosition: dashboardSlots[prospect[3]][1],
-        ipRoleId: dashboardSlots[prospect[3]][2],
-        oopPosition: dashboardSlots[prospect[3]][3],
-        oopRoleId: dashboardSlots[prospect[3]][4],
-        currentScore: prospect[4],
-        potentialScore: prospect[5],
-      }));
+        [413, "Diego Kochen", 20, 0, 55, 76],
+        [414, "Andrés Cuenca", 19, 2, 58, 75],
+        [415, "Jofre Torrents", 19, 4, 54, 74],
+      ];
+      const dashboardSlotPlacement = (index) => ({
+        laneId: dashboardSlots[index][0],
+        ipPosition: dashboardSlots[index][1],
+        ipRoleId: dashboardSlots[index][2],
+        oopPosition: dashboardSlots[index][3],
+        oopRoleId: dashboardSlots[index][4],
+      });
+      const dashboardYoungPlayer = (player) => ({
+        uid: player[0],
+        name: player[1],
+        age: player[2],
+        currentScore: player[4],
+        potentialScore: player[5],
+      });
+      // The youth XI has no striker, so its last slot stays empty.
+      const dashboardProspects = {
+        players: dashboardYoungPlayers.map((player) => ({
+          ...dashboardYoungPlayer(player),
+          ...dashboardSlotPlacement(player[3]),
+        })),
+        youthXi: dashboardSlots.map((_, index) => {
+          const player = dashboardYoungPlayers.find((young) => young[3] === index);
+          return {
+            ...dashboardSlotPlacement(index),
+            player: player ? dashboardYoungPlayer(player) : null,
+          };
+        }),
+      };
 
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {

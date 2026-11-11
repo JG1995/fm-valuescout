@@ -18,18 +18,27 @@ export type DashboardIncumbent = DashboardLineupPlayer & {
   source: "planner" | "best_fit";
 };
 
-export type DashboardLineupSlot = {
+/** A tactic slot's placement and roles. */
+export type DashboardSlotPlacement = {
   laneId: string;
   ipPosition: string;
   ipRoleId: string;
   oopPosition: string;
   oopRoleId: string;
+};
+
+export type DashboardLineupSlot = DashboardSlotPlacement & {
   scoreBasis: DashboardScoreBasis;
   incumbent: DashboardIncumbent | null;
   /** The best club player for the slot outside the starting XI. */
   cover: DashboardLineupPlayer | null;
   /** The Planner's pick for the slot when the mode gives them no score there. */
   unscoredPlannerPlayer: string | null;
+  /**
+   * The shortlisted player who would improve the slot most. Slots answer
+   * independently, so one player can be the best signing for several.
+   */
+  bestSigning: DashboardRecommendation | null;
 };
 
 export type DashboardOtherLane = {
@@ -68,7 +77,7 @@ export type DashboardSigningsRequest = {
   mode: DashboardScoreMode;
   /** One of the save's shortlists, or null for all of them. */
   shortlistId: number | null;
-  /** Restricts recommendations to one tactic slot. */
+  /** Restricts the ranked recommendations to one tactic slot. */
   laneId: string | null;
 };
 
@@ -91,18 +100,27 @@ export type DashboardExpiringContracts = {
   players: DashboardExpiringContract[];
 };
 
-export type DashboardProspect = {
+type DashboardYoungPlayer = {
   uid: number;
   name: string;
   age: number;
-  /** The tactic slot where the player's potential score is highest. */
-  laneId: string;
-  ipPosition: string;
-  ipRoleId: string;
-  oopPosition: string;
-  oopRoleId: string;
   currentScore: number;
   potentialScore: number;
+};
+
+/** A young player in the tactic slot where their potential score is highest. */
+export type DashboardProspect = DashboardYoungPlayer & DashboardSlotPlacement;
+
+export type DashboardYouthXiSlot = DashboardSlotPlacement & {
+  /** Null when no young player can play the slot. */
+  player: DashboardYoungPlayer | null;
+};
+
+export type DashboardProspects = {
+  /** Young players with room to grow, highest potential first. */
+  players: DashboardProspect[];
+  /** Every tactic slot with the young player it takes by potential score. */
+  youthXi: DashboardYouthXiSlot[];
 };
 
 /**

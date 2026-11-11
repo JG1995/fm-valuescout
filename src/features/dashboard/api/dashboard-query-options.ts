@@ -3,7 +3,7 @@ import { invokeCommand } from "@/lib/tauri-client";
 import type {
   DashboardContext,
   DashboardExpiringContracts,
-  DashboardProspect,
+  DashboardProspects,
   DashboardSignings,
   DashboardSigningsRequest,
 } from "../types/dashboard";
@@ -62,7 +62,7 @@ export function dashboardProspectsQueryOptions(context: DashboardContext) {
   return queryOptions({
     queryKey: dashboardKeys.prospects(context),
     queryFn: () =>
-      invokeCommand<DashboardProspect[] | null>("get_dashboard_prospects"),
+      invokeCommand<DashboardProspects | null>("get_dashboard_prospects"),
     staleTime,
   });
 }

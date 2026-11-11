@@ -90,6 +90,7 @@ fn ranks_young_players_by_potential_in_their_best_tactic_slot() {
 
     assert_eq!(
         prospects
+            .players
             .iter()
             .map(|prospect| (
                 prospect.uid,
@@ -100,4 +101,55 @@ fn ranks_young_players_by_potential_in_their_best_tactic_slot() {
             .collect::<Vec<_>>(),
         [(1, "left_back", 50, 80), (2, "goalkeeper", 60, 70)]
     );
+}
+
+#[test]
+fn the_youth_xi_gives_each_slot_a_distinct_young_player_by_potential() {
+    let fixture = open_with_players(&[
+        player(1, "Young Left Back", HOME_CLUB, "DL"),
+        player(2, "Young Keeper", HOME_CLUB, "GK"),
+        player(3, "Raw Keeper", HOME_CLUB, "GK"),
+        player(4, "Older Keeper", HOME_CLUB, "GK"),
+        player(5, "Finished Centre Back", HOME_CLUB, "DC"),
+        player(6, "Rival Youngster", OTHER_CLUB, "DL"),
+    ]);
+    for (uid, age, lane_id, current, potential) in [
+        (1, 19, "left_back", 50, 80),
+        (2, 21, "goalkeeper", 60, 70),
+        (3, 17, "goalkeeper", 30, 85),
+        (4, 22, "goalkeeper", 40, 90),
+        (5, 18, "left_centre_back", 70, 70),
+        (6, 17, "left_back", 30, 95),
+    ] {
+        fixture.set_player_column(uid, "age", age);
+        fixture.set_slot_score(uid, lane_id, current);
+        fixture.set_potential_slot_score(uid, lane_id, potential);
+    }
+
+    let prospects = get_prospects(&fixture.conn, fixture.save_id)
+        .expect("read prospects")
+        .expect("prospects for a managed club");
+
+    assert_eq!(prospects.youth_xi.len(), 11);
+    let mut placed = prospects
+        .youth_xi
+        .iter()
+        .filter_map(|slot| {
+            let player = slot.player.as_ref()?;
+            Some((
+                player.uid,
+                slot.lane.lane_id.as_str(),
+                player.current_score,
+                player.potential_score,
+            ))
+        })
+        .collect::<Vec<_>>();
+    placed.sort();
+    // The raw keeper's potential outranks the better keeper of today, and a player with no
+    // room to grow still takes the one centre-back slot he fits best.
+    assert_eq!(placed[0], (1, "left_back", 50, 80));
+    assert_eq!(placed[1], (3, "goalkeeper", 30, 85));
+    assert_eq!((placed[2].0, placed[2].2, placed[2].3), (5, 70, 70));
+    assert!(placed[2].1.ends_with("centre_back"));
+    assert_eq!(placed.len(), 3);
 }

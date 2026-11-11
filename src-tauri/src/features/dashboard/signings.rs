@@ -1,7 +1,7 @@
 //! Recommended signings: the managed club's starting XI per tactic slot, and the shortlisted
 //! players who would improve it.
 
-use std::cmp::Reverse;
+use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeMap, HashSet};
 
 use rusqlite::{params_from_iter, types::Value, Connection};
@@ -20,7 +20,8 @@ use crate::features::player_metrics::compact::{
 
 use super::{club_snapshot_id, MANAGED_CLUB_NAME_SQL};
 
-pub(crate) const MAX_RECOMMENDATIONS: usize = 50;
+/// The most ranked recommendations one read returns: as many as the dashboard shows at once.
+pub(crate) const MAX_RECOMMENDATIONS: usize = 12;
 const MAX_OTHER_LANES: usize = 2;
 
 /// Which scores compare a shortlisted player with the club's player in a slot.
@@ -79,6 +80,9 @@ pub(crate) struct LineupSlot {
     /// The Planner's first-string player for the slot, when the mode gives them no score
     /// there and another player stands in.
     pub(crate) unscored_planner_player: Option<String>,
+    /// The shortlisted player who would improve the slot most. Slots answer independently, so
+    /// one player can be the best signing for several.
+    pub(crate) best_signing: Option<Recommendation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,7 +127,7 @@ pub(crate) struct SigningsRequest<'a> {
     pub(crate) mode: ScoreMode,
     /// One of the save's shortlists, or every shortlist when absent.
     pub(crate) shortlist_id: Option<i64>,
-    /// Restricts recommendations to one slot.
+    /// Restricts the ranked recommendations to one slot. Each slot's best signing is unaffected.
     pub(crate) lane_id: Option<&'a str>,
 }
 
@@ -200,14 +204,7 @@ pub(crate) fn get_signings(
         .iter()
         .filter_map(|player| recommend(player, &tactic, &incumbent_scores, lane_filter))
         .collect::<Vec<_>>();
-    recommendations.sort_by(|left, right| {
-        right
-            .improvement
-            .cmp(&left.improvement)
-            .then_with(|| right.score.cmp(&left.score))
-            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
-            .then_with(|| left.uid.cmp(&right.uid))
-    });
+    recommendations.sort_by(by_improvement);
     let total_recommendations = recommendations.len();
     recommendations.truncate(MAX_RECOMMENDATIONS);
 
@@ -223,6 +220,12 @@ pub(crate) fn get_signings(
             }),
             cover: cover(&club, &lineup, lane_index),
             unscored_planner_player: lineup.unscored_planner_players[lane_index].clone(),
+            best_signing: shortlisted
+                .iter()
+                .filter_map(|player| {
+                    recommend(player, &tactic, &incumbent_scores, Some(lane_index))
+                })
+                .min_by(by_improvement),
         })
         .collect();
 
@@ -234,6 +237,16 @@ pub(crate) fn get_signings(
         total_recommendations,
         recommendations,
     }))
+}
+
+/// Orders the larger improvement first, then the higher score, then by name.
+fn by_improvement(left: &Recommendation, right: &Recommendation) -> Ordering {
+    right
+        .improvement
+        .cmp(&left.improvement)
+        .then_with(|| right.score.cmp(&left.score))
+        .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+        .then_with(|| left.uid.cmp(&right.uid))
 }
 
 fn score_basis(lane: &TacticLane, mode: ScoreMode) -> ScoreBasis {

@@ -1,11 +1,11 @@
 import { compareTacticPositions } from "@/utils/position-order";
 import { ROLE_CATALOG } from "@/utils/role-catalog";
-import type { DashboardLineupSlot } from "../types/dashboard";
-
-type SlotPlacement = Pick<
+import type {
   DashboardLineupSlot,
-  "ipPosition" | "ipRoleId" | "oopPosition" | "oopRoleId"
->;
+  DashboardSlotPlacement,
+} from "../types/dashboard";
+
+type SlotPlacement = Omit<DashboardSlotPlacement, "laneId">;
 
 export type SlotLabel = {
   /** Placement identifier: one token, or the IP/OOP pair such as `AML/ML`. */

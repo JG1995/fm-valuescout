@@ -57,7 +57,7 @@ export function DevelopmentProspectsPanel({
   context: DashboardContext;
 }) {
   const query = useQuery(dashboardProspectsQueryOptions(context));
-  const prospects = query.data ?? null;
+  const prospects = query.data?.players ?? null;
   return (
     <Panel
       title="Development prospects"

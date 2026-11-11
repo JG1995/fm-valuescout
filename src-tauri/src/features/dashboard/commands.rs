@@ -9,7 +9,9 @@ use super::signings::{
     self, IncumbentSource, LineupPlayer, LineupSlot, OtherLane, Recommendation, ScoreBasis,
     ScoreMode, Signings, SigningsRequest,
 };
-use super::squad::{self, ExpiringContract, ExpiringContracts, Prospect};
+use super::squad::{
+    self, ExpiringContract, ExpiringContracts, Prospect, Prospects, YouthXiPlayer, YouthXiSlot,
+};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,6 +54,7 @@ pub struct LineupSlotDto {
     pub incumbent: Option<IncumbentDto>,
     pub cover: Option<LineupPlayerDto>,
     pub unscored_planner_player: Option<String>,
+    pub best_signing: Option<RecommendationDto>,
 }
 
 impl From<LineupSlot> for LineupSlotDto {
@@ -79,6 +82,7 @@ impl From<LineupSlot> for LineupSlotDto {
             }),
             cover: value.cover.map(Into::into),
             unscored_planner_player: value.unscored_planner_player,
+            best_signing: value.best_signing.map(Into::into),
         }
     }
 }
@@ -278,17 +282,78 @@ impl From<Prospect> for ProspectDto {
     }
 }
 
-/// The managed club's young players with the highest potential in the tactic, or `null`
-/// without a current snapshot or a managed club.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YouthXiPlayerDto {
+    pub uid: i64,
+    pub name: String,
+    pub age: i64,
+    pub current_score: u8,
+    pub potential_score: u8,
+}
+
+impl From<YouthXiPlayer> for YouthXiPlayerDto {
+    fn from(value: YouthXiPlayer) -> Self {
+        Self {
+            uid: value.uid,
+            name: value.name,
+            age: value.age,
+            current_score: value.current_score,
+            potential_score: value.potential_score,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YouthXiSlotDto {
+    pub lane_id: String,
+    pub ip_position: String,
+    pub ip_role_id: String,
+    pub oop_position: String,
+    pub oop_role_id: String,
+    pub player: Option<YouthXiPlayerDto>,
+}
+
+impl From<YouthXiSlot> for YouthXiSlotDto {
+    fn from(value: YouthXiSlot) -> Self {
+        Self {
+            lane_id: value.lane.lane_id,
+            ip_position: value.lane.ip_position,
+            ip_role_id: value.lane.ip_role_id,
+            oop_position: value.lane.oop_position,
+            oop_role_id: value.lane.oop_role_id,
+            player: value.player.map(Into::into),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardProspectsDto {
+    pub players: Vec<ProspectDto>,
+    pub youth_xi: Vec<YouthXiSlotDto>,
+}
+
+impl From<Prospects> for DashboardProspectsDto {
+    fn from(value: Prospects) -> Self {
+        Self {
+            players: value.players.into_iter().map(Into::into).collect(),
+            youth_xi: value.youth_xi.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+/// The managed club's young players with the highest potential in the tactic and the XI they
+/// form, or `null` without a current snapshot or a managed club.
 #[tauri::command]
 pub async fn get_dashboard_prospects(
     db: State<'_, Db>,
-) -> Result<Option<Vec<ProspectDto>>, String> {
+) -> Result<Option<DashboardProspectsDto>, String> {
     let db = db.inner().clone();
     blocking::run(move || {
         let conn = db.read()?;
-        Ok(squad::get_prospects(&conn, active_save_id(&conn)?)?
-            .map(|prospects| prospects.into_iter().map(Into::into).collect()))
+        Ok(squad::get_prospects(&conn, active_save_id(&conn)?)?.map(Into::into))
     })
     .await
 }

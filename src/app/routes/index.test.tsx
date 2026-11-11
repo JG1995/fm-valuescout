@@ -36,6 +36,7 @@ const KEEPER_SLOT: DashboardLineupSlot = {
   incumbent: { uid: 1, name: "Home Keeper", score: 70, source: "planner" },
   cover: { uid: 3, name: "Reserve Keeper", score: 55 },
   unscoredPlannerPlayer: null,
+  bestSigning: null,
 };
 const LEFT_BACK_SLOT: DashboardLineupSlot = {
   laneId: "left_back",
@@ -47,6 +48,7 @@ const LEFT_BACK_SLOT: DashboardLineupSlot = {
   incumbent: { uid: 2, name: "Home Left Back", score: 60, source: "best_fit" },
   cover: null,
   unscoredPlannerPlayer: null,
+  bestSigning: null,
 };
 const STRIKER_SLOT: DashboardLineupSlot = {
   laneId: "centre_forward",
@@ -58,6 +60,7 @@ const STRIKER_SLOT: DashboardLineupSlot = {
   incumbent: null,
   cover: null,
   unscoredPlannerPlayer: null,
+  bestSigning: null,
 };
 
 function recommendation(
@@ -367,20 +370,23 @@ describe("Dashboard", () => {
         },
       ],
     });
-    setDashboardProspectsIpcMock([
-      {
-        uid: 4,
-        name: "Young Left Back",
-        age: 19,
-        laneId: "left_back",
-        ipPosition: "DL",
-        ipRoleId: "full_back_ip",
-        oopPosition: "DL",
-        oopRoleId: "holding_full_back_oop",
-        currentScore: 50,
-        potentialScore: 80,
-      },
-    ]);
+    setDashboardProspectsIpcMock({
+      players: [
+        {
+          uid: 4,
+          name: "Young Left Back",
+          age: 19,
+          laneId: "left_back",
+          ipPosition: "DL",
+          ipRoleId: "full_back_ip",
+          oopPosition: "DL",
+          oopRoleId: "holding_full_back_oop",
+          currentScore: 50,
+          potentialScore: 80,
+        },
+      ],
+      youthXi: [],
+    });
     renderDashboard();
 
     expect(

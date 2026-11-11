@@ -1,11 +1,13 @@
 //! Squad upkeep for the managed club: contracts that run out soon and young players with
 //! room to grow into the tactic.
 
-use std::collections::BTreeMap;
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, HashSet};
 
 use rusqlite::{params, Connection};
 
 use crate::features::planner::fit::tactic_adjusted_score;
+use crate::features::planner::optimizer::{allocate_lanes, OptimizerCandidate};
 use crate::features::planner::tactic::{read_tactic, TacticLane};
 use crate::features::player_metrics::compact::{
     assert_read_models_complete, player_current_column, player_metrics_join,
@@ -118,12 +120,42 @@ pub(crate) struct Prospect {
     pub(crate) potential_score: u8,
 }
 
-/// The managed club's players aged `PROSPECT_MAX_AGE` or younger whose potential score in
-/// their best tactic slot exceeds their current one, highest potential first.
-pub(crate) fn get_prospects(
-    conn: &Connection,
-    save_id: i64,
-) -> Result<Option<Vec<Prospect>>, String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct YouthXiPlayer {
+    pub(crate) uid: i64,
+    pub(crate) name: String,
+    pub(crate) age: i64,
+    pub(crate) current_score: u8,
+    pub(crate) potential_score: u8,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct YouthXiSlot {
+    pub(crate) lane: TacticLane,
+    /// Absent when no young player can play the slot.
+    pub(crate) player: Option<YouthXiPlayer>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Prospects {
+    /// Young players with room to grow in their best slot, highest potential first.
+    pub(crate) players: Vec<Prospect>,
+    /// Every tactic slot with the young player it takes when the slots are allocated by
+    /// potential score, as the Planner's Optimize allocates them.
+    pub(crate) youth_xi: Vec<YouthXiSlot>,
+}
+
+struct YoungPlayer {
+    uid: i64,
+    name: String,
+    age: i64,
+    /// The current and potential score in each tactic slot, in lane order.
+    lane_scores: Vec<Option<(u8, u8)>>,
+}
+
+/// The managed club's players aged `PROSPECT_MAX_AGE` or younger: those whose potential score
+/// in their best tactic slot exceeds their current one, and the XI they form by potential.
+pub(crate) fn get_prospects(conn: &Connection, save_id: i64) -> Result<Option<Prospects>, String> {
     let Some(snapshot_id) = club_snapshot_id(conn, save_id)? else {
         return Ok(None);
     };
@@ -152,7 +184,7 @@ pub(crate) fn get_prospects(
     let mut rows = statement
         .query(params![snapshot_id, save_id, PROSPECT_MAX_AGE])
         .map_err(|error| error.to_string())?;
-    let mut prospects = Vec::new();
+    let mut young = Vec::new();
     while let Some(row) = rows.next().map_err(|error| error.to_string())? {
         let read = |error: rusqlite::Error| error.to_string();
         let foot: String = row.get(3).map_err(read)?;
@@ -160,7 +192,7 @@ pub(crate) fn get_prospects(
             &row.get::<_, String>(4).map_err(read)?,
         )
         .map_err(|error| error.to_string())?;
-        let mut best: Option<(usize, u8, u8)> = None;
+        let mut lane_scores = Vec::with_capacity(tactic.lanes.len());
         for (lane_index, lane) in tactic.lanes.iter().enumerate() {
             // Per lane: IP current, IP potential, OOP current, OOP potential.
             let column = 5 + lane_index * 4;
@@ -174,33 +206,40 @@ pub(crate) fn get_prospects(
                     lane,
                 ))
             };
-            let (Some(current), Some(potential)) =
-                (score(column, column + 2)?, score(column + 1, column + 3)?)
-            else {
-                continue;
-            };
-            if best.map_or(true, |(_, best_current, best_potential)| {
-                (potential, current) > (best_potential, best_current)
-            }) {
-                best = Some((lane_index, current, potential));
-            }
+            lane_scores.push(score(column, column + 2)?.zip(score(column + 1, column + 3)?));
         }
-        let Some((lane_index, current_score, potential_score)) = best else {
-            continue;
-        };
-        if potential_score > current_score {
-            prospects.push(Prospect {
-                uid: row.get(0).map_err(read)?,
-                name: row.get(1).map_err(read)?,
-                age: row.get(2).map_err(read)?,
+        young.push(YoungPlayer {
+            uid: row.get(0).map_err(read)?,
+            name: row.get(1).map_err(read)?,
+            age: row.get(2).map_err(read)?,
+            lane_scores,
+        });
+    }
+
+    let mut players = young
+        .iter()
+        .filter_map(|player| {
+            // Between equal fits the earlier lane wins.
+            let (lane_index, (current_score, potential_score)) = player
+                .lane_scores
+                .iter()
+                .enumerate()
+                .filter_map(|(lane_index, scores)| Some((lane_index, (*scores)?)))
+                .max_by_key(|&(lane_index, (current, potential))| {
+                    (potential, current, Reverse(lane_index))
+                })?;
+            (potential_score > current_score).then(|| Prospect {
+                uid: player.uid,
+                name: player.name.clone(),
+                age: player.age,
                 lane: tactic.lanes[lane_index].clone(),
                 current_score,
                 potential_score,
-            });
-        }
-    }
+            })
+        })
+        .collect::<Vec<_>>();
     // Between equal potentials, the lower current score has more room to grow.
-    prospects.sort_by(|left, right| {
+    players.sort_by(|left, right| {
         right
             .potential_score
             .cmp(&left.potential_score)
@@ -208,6 +247,42 @@ pub(crate) fn get_prospects(
             .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
             .then_with(|| left.uid.cmp(&right.uid))
     });
-    prospects.truncate(MAX_PROSPECTS);
-    Ok(Some(prospects))
+    players.truncate(MAX_PROSPECTS);
+
+    let candidates = young
+        .iter()
+        .map(|player| OptimizerCandidate {
+            player_uid: player.uid,
+            last_known_name: player.name.clone(),
+            lane_scores: player
+                .lane_scores
+                .iter()
+                .map(|scores| scores.map(|(_, potential)| potential))
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+    let mut youth_xi = tactic
+        .lanes
+        .iter()
+        .map(|lane| YouthXiSlot {
+            lane: lane.clone(),
+            player: None,
+        })
+        .collect::<Vec<_>>();
+    let every_lane = (0..tactic.lanes.len()).collect::<Vec<_>>();
+    for (lane_index, player_index) in
+        allocate_lanes(&tactic, &every_lane, &candidates, &HashSet::new())
+    {
+        let player = &young[player_index];
+        youth_xi[lane_index].player =
+            player.lane_scores[lane_index].map(|(current_score, potential_score)| YouthXiPlayer {
+                uid: player.uid,
+                name: player.name.clone(),
+                age: player.age,
+                current_score,
+                potential_score,
+            });
+    }
+
+    Ok(Some(Prospects { players, youth_xi }))
 }
