@@ -9,6 +9,7 @@ import {
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { DatabaseZap, UsersRound } from "lucide-react";
 import { Suspense, useCallback, useRef, useState } from "react";
+import { dashboardGraphics } from "@/app/components/dashboard-graphics";
 import {
   ManagedClubLogo,
   ManagedClubSetup,
@@ -26,6 +27,8 @@ import type {
   ClubDnaUpsertResult,
 } from "@/features/club-dna/types/club-dna";
 import { SquadCsvImportActions } from "@/features/csv-import/components/squad-csv-import-actions";
+import { YouthXiAction } from "@/features/dashboard/components/youth-xi-action";
+import type { DashboardContext } from "@/features/dashboard/types/dashboard";
 import { GraphicsImage } from "@/features/graphics/components/graphics-image";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import {
@@ -302,6 +305,14 @@ function MyClubPageContent() {
     snapshot !== null &&
     plannerContext !== null &&
     snapshot.saveId === plannerContext.saveId;
+  const youthXiContext: DashboardContext | null =
+    plannerContext && isMatchedSnapshot && managedClub.clubName !== null
+      ? {
+          ...plannerContext,
+          snapshotId: snapshot.id,
+          clubName: managedClub.clubName,
+        }
+      : null;
   const invalidateSquadBoostQueries = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: snapshotKeys.all }),
@@ -694,6 +705,14 @@ function MyClubPageContent() {
                       depth={depth}
                       tactic={tactic}
                       options={options}
+                      actions={
+                        youthXiContext ? (
+                          <YouthXiAction
+                            context={youthXiContext}
+                            graphics={dashboardGraphics}
+                          />
+                        ) : null
+                      }
                     />
                   </>
                 );

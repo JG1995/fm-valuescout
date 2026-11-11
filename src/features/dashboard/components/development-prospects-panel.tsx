@@ -29,10 +29,8 @@ import {
   PLAYER_CARD_MIN,
   PlayerCard,
 } from "./player-card";
-import { YouthXiModal } from "./youth-xi-modal";
+import { YOUTH_MAX_AGE, YouthXiModal } from "./youth-xi-modal";
 
-// The oldest player Rust counts as young.
-const MAX_AGE = 21;
 // Two rows of five: the most prospects one read returns.
 const MAX_PROSPECT_COLUMNS = 5;
 
@@ -145,15 +143,15 @@ export function DevelopmentProspectsPanel({
               icon={TrendingUp}
               title="No prospects with room to grow"
             >
-              No player aged {MAX_AGE} or younger is projected to improve in a
-              slot of your tactic.
+              No player aged {YOUTH_MAX_AGE} or younger is projected to improve
+              in a slot of your tactic.
             </EmptyState>
           </div>
         ) : (
           <>
             <p className={cardPanelSummaryClass}>
-              Aged {MAX_AGE} or younger with room to grow · highest potential
-              first
+              Aged {YOUTH_MAX_AGE} or younger with room to grow · highest
+              potential first
             </p>
             <div className="flex flex-1 border-t border-outline-variant">
               <CardGrid
@@ -177,7 +175,6 @@ export function DevelopmentProspectsPanel({
           open={youthXiOpen}
           onClose={() => setYouthXiOpen(false)}
           slots={prospects.youthXi}
-          maxAge={MAX_AGE}
           graphics={graphics}
         />
       ) : null}

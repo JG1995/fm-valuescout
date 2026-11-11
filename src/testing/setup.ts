@@ -399,7 +399,7 @@ function registerIpcMocks() {
     }
 
     if (cmd === "optimize_planner_depth") {
-      return resolveOptimizePlannerDepthIpcMock(args);
+      return resolveOptimizePlannerDepthIpcMock();
     }
 
     if (cmd === "get_planner_slot_candidates") {

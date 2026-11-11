@@ -1,6 +1,7 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { DatabaseZap } from "lucide-react";
+import { dashboardGraphics } from "@/app/components/dashboard-graphics";
 import {
   ManagedClubLogo,
   ManagedClubSetup,
@@ -14,14 +15,11 @@ import {
 } from "@/features/dashboard/components/dashboard-setup-notes";
 import { DevelopmentProspectsPanel } from "@/features/dashboard/components/development-prospects-panel";
 import { ExpiringContractsPanel } from "@/features/dashboard/components/expiring-contracts-panel";
-import { PortraitInitials } from "@/features/dashboard/components/portrait";
 import { SigningsWorkspace } from "@/features/dashboard/components/signings-workspace";
 import type {
   DashboardContext,
-  DashboardGraphics,
   DashboardScoreMode,
 } from "@/features/dashboard/types/dashboard";
-import { GraphicsImage } from "@/features/graphics/components/graphics-image";
 import {
   managedClubOptionsQueryOptions,
   managedClubQueryOptions,
@@ -56,28 +54,6 @@ export const Route = createFileRoute("/")({
     ]),
   component: DashboardPage,
 });
-
-// Module-level, so the panels' cards keep one graphics identity across renders.
-const dashboardGraphics: DashboardGraphics = {
-  portrait: (uid, name) => (
-    <GraphicsImage
-      kind="personPortrait"
-      uid={uid}
-      slot={{
-        alt: "",
-        className: "size-full object-contain",
-        fallback: <PortraitInitials name={name} />,
-      }}
-    />
-  ),
-  crest: (clubUid) => (
-    <GraphicsImage
-      kind="clubLogo"
-      uid={clubUid ?? 0}
-      slot={{ alt: "", className: "size-3 object-contain" }}
-    />
-  ),
-};
 
 const setupLinkClass =
   "inline-flex h-8 shrink-0 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high active:bg-surface-container-highest";

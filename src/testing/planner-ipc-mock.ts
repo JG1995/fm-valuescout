@@ -306,7 +306,6 @@ let optimizeDepth: PlannerDepth | null = null;
 let optimizeError: string | null = null;
 let optimizePending = false;
 let optimizeCalls = 0;
-let optimizeBases: string[] = [];
 let teamSaveError: string | null = null;
 let teamSavePending = false;
 let teamRemovalImpactOverride: PlannerTeamRemovalImpact[] | null = null;
@@ -501,7 +500,6 @@ export function resetPlannerIpcMock() {
   optimizeError = null;
   optimizePending = false;
   optimizeCalls = 0;
-  optimizeBases = [];
   teamSaveError = null;
   teamSavePending = false;
   pendingPlannerTeamSave = null;
@@ -738,10 +736,6 @@ export function getPlannerOptimizeIpcMockCalls() {
   return optimizeCalls;
 }
 
-export function getPlannerOptimizeIpcMockBases() {
-  return [...optimizeBases];
-}
-
 export function resolvePlannerSlotCandidatesIpcMock(args: unknown) {
   slotCandidateFetchCount += 1;
   const search =
@@ -869,6 +863,7 @@ function resolvePlannerAssignmentIpcMock(args: unknown, move: boolean) {
     currentName: candidate?.name ?? `Player ${playerUid}`,
     state: "resolved",
     combinedScore: candidate?.combinedScore ?? null,
+    expectedCombinedScore: null,
     potentialCombinedScore: null,
   });
   return cloneDepth(depth);
@@ -928,17 +923,8 @@ export function resolveClearPlannerDepthIpcMock(args: unknown) {
   return cloneDepth(depth);
 }
 
-export function resolveOptimizePlannerDepthIpcMock(args: unknown) {
+export function resolveOptimizePlannerDepthIpcMock() {
   optimizeCalls += 1;
-  if (
-    typeof args !== "object" ||
-    args === null ||
-    !("scoreBasis" in args) ||
-    (args.scoreBasis !== "current" && args.scoreBasis !== "potential")
-  ) {
-    throw new Error("Optimizer requires a valid score basis");
-  }
-  optimizeBases.push(args.scoreBasis);
   if (optimizeError) {
     throw optimizeError;
   }

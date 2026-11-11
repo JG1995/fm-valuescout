@@ -57,11 +57,11 @@ import {
   getLastCsvImportIpcArgs,
   setCsvImportIpcMockResult,
 } from "@/testing/csv-import-ipc-mock";
+import { setDashboardProspectsIpcMock } from "@/testing/dashboard-ipc-mock";
 import {
   getLastManagedClubSaveArgs,
   getPlannerClearAllIpcMockCalls,
   getPlannerDepthIpcMockCalls,
-  getPlannerOptimizeIpcMockBases,
   getPlannerOptimizeIpcMockCalls,
   getPlannerRoleReferenceCalls,
   getPlannerSlotCandidateFetchCount,
@@ -4394,8 +4394,13 @@ describe("My Club route", () => {
     ).toBeInTheDocument();
     expect(
       within(board).getByRole("img", {
-        name: /Potential combined role score: 91/,
+        name: /Expected combined role score: 88/,
       }),
+    ).toBeInTheDocument();
+    expect(
+      within(board).getByTitle(
+        "Current to expected combined role score. Potential: 91",
+      ),
     ).toBeInTheDocument();
     expect(within(board).getByText("Outside pool")).toBeInTheDocument();
     expect(within(board).getByText("Unresolved")).toBeInTheDocument();
@@ -4405,7 +4410,7 @@ describe("My Club route", () => {
       }),
     ).toBeInTheDocument();
     const unavailableCell = within(board).getByRole("button", {
-      name: /No Score Player, Resolved, current score —, potential score —/,
+      name: /No Score Player, Resolved, current score —, expected score —, potential score —/,
     });
     expect(unavailableCell).not.toBeDisabled();
     unavailableCell.focus();
@@ -4886,7 +4891,7 @@ describe("My Club route", () => {
       await screen.findByRole("button", { name: "Optimize squads" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Squads optimized by current scores.",
+      "Squads optimized.",
     );
 
     await user.click(screen.getByRole("button", { name: "Clear all" }));
@@ -6442,12 +6447,9 @@ describe("My Club route", () => {
     await user.click(optimizeButton);
 
     await waitFor(() =>
-      expect(
-        screen.getByText("Squads optimized by current scores."),
-      ).toBeInTheDocument(),
+      expect(screen.getByText("Squads optimized.")).toBeInTheDocument(),
     );
     expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
-    expect(getPlannerOptimizeIpcMockBases()).toEqual(["current"]);
     expect(
       screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
     ).toBeInTheDocument();
@@ -6456,15 +6458,9 @@ describe("My Club route", () => {
       await screen.findByRole("option", { name: /Reserve Keeper/ }),
     ).toHaveTextContent(`Assigned: ${RESERVES_FIRST_KEEPER}`);
     await user.keyboard("{Escape}");
-    await user.click(
-      screen.getByRole("button", { name: "Optimize by potential" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.getByText("Squads optimized by potential."),
-      ).toBeInTheDocument(),
-    );
-    expect(getPlannerOptimizeIpcMockBases()).toEqual(["current", "potential"]);
+    expect(
+      screen.queryByRole("button", { name: "Optimize by potential" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the depth unchanged and reports optimizer errors", async () => {
@@ -6479,21 +6475,13 @@ describe("My Club route", () => {
     );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Optimize failed",
+      "Optimization failed: Optimize failed",
     );
     expect(
       screen.getByRole("button", {
         name: /Senior, 1st string, IP: GK .* Empty/,
       }),
     ).toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: "Optimize by potential" }),
-    );
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Potential optimization failed: Optimize failed",
-    );
-    expect(getPlannerOptimizeIpcMockBases()).toEqual(["current", "potential"]);
   });
 
   it("prevents duplicate optimizer runs while pending", async () => {
@@ -6506,40 +6494,53 @@ describe("My Club route", () => {
     const optimizeButton = await screen.findByRole("button", {
       name: "Optimize squads",
     });
-    const potentialButton = screen.getByRole("button", {
-      name: "Optimize by potential",
-    });
     await user.click(optimizeButton);
     await user.click(optimizeButton);
-    await user.click(potentialButton);
 
     expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
     expect(optimizeButton).toBeDisabled();
-    expect(potentialButton).toBeDisabled();
     expect(screen.getByRole("button", { name: "Clear all" })).toBeDisabled();
-    expect(optimizeButton).toHaveAccessibleName("Optimizing current…");
-    expect(getPlannerOptimizeIpcMockBases()).toEqual(["current"]);
+    expect(optimizeButton).toHaveAccessibleName("Optimizing…");
   });
 
-  it("identifies a pending potential optimization", async () => {
+  it("opens the Youth XI from the squad controls", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
-    setPlannerOptimizePending(true);
+    setManagedClubIpcMock({
+      clubName: "Barcelona",
+      clubUid: 1,
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
+    const tactic = resolvePlannerDepthIpcMock().tactic;
+    setDashboardProspectsIpcMock({
+      players: [],
+      youthXi: tactic.lanes.map((lane, index) => ({
+        laneId: lane.laneId,
+        ipPosition: lane.ipPosition,
+        ipRoleId: lane.ipRoleId,
+        oopPosition: lane.oopPosition,
+        oopRoleId: lane.oopRoleId,
+        player:
+          index === 0
+            ? {
+                uid: 500,
+                name: "Young Keeper",
+                age: 17,
+                currentScore: 55,
+                potentialScore: 81,
+              }
+            : null,
+      })),
+    });
     renderMyClubRoute();
 
-    const potentialButton = await screen.findByRole("button", {
-      name: "Optimize by potential",
-    });
-    await user.click(potentialButton);
+    await user.click(await screen.findByRole("button", { name: "Youth XI" }));
 
-    expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
-    expect(potentialButton).toHaveAccessibleName("Optimizing potential…");
+    const youthXi = await screen.findByRole("dialog", { name: "Youth XI" });
     expect(
-      screen.getByRole("button", { name: "Optimize squads" }),
-    ).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Clear all" })).toBeDisabled();
-    expect(getPlannerOptimizeIpcMockBases()).toEqual(["potential"]);
+      within(youthXi).getByRole("link", { name: "Young Keeper" }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -6769,6 +6770,7 @@ function withReserveGoalkeeper(depth: PlannerDepth): PlannerDepth {
                     currentName: "Reserve Keeper",
                     state: "resolved",
                     combinedScore: 80,
+                    expectedCombinedScore: null,
                     potentialCombinedScore: null,
                   },
                 ],
@@ -6843,6 +6845,7 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     currentName: "Alex Keeper",
                     state: "resolved",
                     combinedScore: 82,
+                    expectedCombinedScore: 88,
                     potentialCombinedScore: 91,
                   },
                   {
@@ -6853,6 +6856,7 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     currentName: "Outside Full-Back",
                     state: "outside_pool",
                     combinedScore: 61,
+                    expectedCombinedScore: 66,
                     potentialCombinedScore: 70,
                   },
                   {
@@ -6863,6 +6867,7 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     currentName: null,
                     state: "unresolved",
                     combinedScore: null,
+                    expectedCombinedScore: null,
                     potentialCombinedScore: null,
                   },
                   {
@@ -6873,6 +6878,7 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     currentName: "No Score Player",
                     state: "resolved",
                     combinedScore: null,
+                    expectedCombinedScore: null,
                     potentialCombinedScore: null,
                   },
                 ],
@@ -6904,6 +6910,7 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
               currentName: "Senior Keeper",
               state: "resolved" as const,
               combinedScore: 82,
+              expectedCombinedScore: null,
               potentialCombinedScore: null,
             }
           : team.team === "reserves"
@@ -6915,6 +6922,7 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
                 currentName: "Reserve Keeper",
                 state: "resolved" as const,
                 combinedScore: 80,
+                expectedCombinedScore: null,
                 potentialCombinedScore: null,
               }
             : {
@@ -6925,6 +6933,7 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
                 currentName: "Youth Keeper",
                 state: "resolved" as const,
                 combinedScore: 78,
+                expectedCombinedScore: null,
                 potentialCombinedScore: null,
               };
 

@@ -11,6 +11,8 @@ export type PlannerAssignment = {
   currentName: string | null;
   state: PlannerAssignmentState;
   combinedScore: number | null;
+  /** The score the player is expected to reach, given his age and personality. */
+  expectedCombinedScore: number | null;
   potentialCombinedScore: number | null;
 };
 

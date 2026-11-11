@@ -49,7 +49,7 @@ function AssignmentScore({
   label,
   score,
 }: {
-  label: "Current" | "Potential";
+  label: "Current" | "Expected";
   score: number | null;
 }) {
   return (
@@ -75,15 +75,17 @@ function AssignmentScore({
 
 function AssignmentScores({
   currentScore,
+  expectedScore,
   potentialScore,
 }: {
   currentScore: number | null;
+  expectedScore: number | null;
   potentialScore: number | null;
 }) {
   return (
     <span
       className="flex shrink-0 items-center gap-1"
-      title="Current to potential combined role score"
+      title={`Current to expected combined role score. Potential: ${potentialScore ?? "—"}`}
     >
       <AssignmentScore label="Current" score={currentScore} />
       <span
@@ -92,7 +94,7 @@ function AssignmentScores({
       >
         →
       </span>
-      <AssignmentScore label="Potential" score={potentialScore} />
+      <AssignmentScore label="Expected" score={expectedScore} />
     </span>
   );
 }
@@ -125,9 +127,10 @@ function AssignmentCell({
   const name = assignmentName(assignment);
   const state = assignmentStateLabel(assignment);
   const score = assignment?.combinedScore ?? null;
+  const expectedScore = assignment?.expectedCombinedScore ?? null;
   const potentialScore = assignment?.potentialCombinedScore ?? null;
   const ariaLabel = assignment
-    ? `${teamLabel}, ${stringLabel}, ${laneName}, ${name}, ${state}, current score ${score ?? "—"}, potential score ${potentialScore ?? "—"}`
+    ? `${teamLabel}, ${stringLabel}, ${laneName}, ${name}, ${state}, current score ${score ?? "—"}, expected score ${expectedScore ?? "—"}, potential score ${potentialScore ?? "—"}`
     : `${teamLabel}, ${stringLabel}, ${laneName}, Empty`;
 
   return (
@@ -166,6 +169,7 @@ function AssignmentCell({
             {assignment ? (
               <AssignmentScores
                 currentScore={score}
+                expectedScore={expectedScore}
                 potentialScore={potentialScore}
               />
             ) : null}

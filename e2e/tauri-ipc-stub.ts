@@ -400,6 +400,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               currentName: "Potential Keeper",
               state: "resolved",
               combinedScore: 82,
+              expectedCombinedScore: 88,
               potentialCombinedScore: 91,
             }] : [],
           }],
@@ -2319,12 +2320,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "optimize_planner_depth") {
-            if (
-              args?.scoreBasis !== "current" &&
-              args?.scoreBasis !== "potential"
-            ) {
-              throw new Error("Optimizer requires a valid score basis");
-            }
             const reserves = plannerDepth.teams.find(
               (team) => team.team === "reserves",
             );
@@ -2340,6 +2335,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 currentName: "Optimized Keeper",
                 state: "resolved",
                 combinedScore: 82,
+                expectedCombinedScore: 88,
                 potentialCombinedScore: 91,
               },
             ];

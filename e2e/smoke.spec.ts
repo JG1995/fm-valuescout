@@ -4787,9 +4787,7 @@ test.describe("application smoke", () => {
     const main = page.getByRole("main");
     await page.getByRole("link", { name: "Planner", exact: true }).click();
     await main.getByRole("button", { name: "Optimize squads" }).click();
-    await expect(main.getByRole("status")).toHaveText(
-      "Squads optimized by current scores.",
-    );
+    await expect(main.getByRole("status")).toHaveText("Squads optimized.");
 
     await main.getByRole("button", { name: "Manage teams" }).click();
     const management = page.getByRole("dialog", {
@@ -4860,10 +4858,11 @@ test.describe("application smoke", () => {
     await expect(main.getByRole("tab", { name: "First Team" })).toHaveCount(0);
   });
 
-  test("planner depth optimizes current and potential squads within desktop widths", async ({
+  test("planner depth optimizes squads and opens the Youth XI within desktop widths", async ({
     page,
   }) => {
-    await stubTauriIpc(page, { plannerSnapshot: true });
+    // The Youth XI needs a managed club, which the squad overview stub sets.
+    await stubTauriIpc(page, { plannerSnapshot: true, squadOverview: true });
 
     for (const [width, height] of [
       [1280, 800],
@@ -4875,32 +4874,40 @@ test.describe("application smoke", () => {
       const main = page.getByRole("main");
       await page.getByRole("link", { name: "Planner", exact: true }).click();
       const controls = main.getByRole("group", { name: "Squad controls" });
-      const current = main.getByRole("button", { name: "Optimize squads" });
-      const potential = main.getByRole("button", {
-        name: "Optimize by potential",
-      });
+      const optimize = main.getByRole("button", { name: "Optimize squads" });
       await expect(controls).toBeVisible();
-      await current.click();
-      await expect(main.getByRole("status")).toHaveText(
-        "Squads optimized by current scores.",
-      );
-      await potential.click();
-      await expect(main.getByRole("status")).toHaveText(
-        "Squads optimized by potential.",
-      );
+      await expect(
+        main.getByRole("button", { name: "Optimize by potential" }),
+      ).toHaveCount(0);
+      await optimize.click();
+      await expect(main.getByRole("status")).toHaveText("Squads optimized.");
       await expect(
         main.getByRole("button", {
           name: /Reserves, 1st string, IP: GK .* Optimized Keeper, Resolved/,
         }),
       ).toBeVisible();
 
-      const [controlsBox, potentialBox] = await Promise.all([
+      await controls.getByRole("button", { name: "Youth XI" }).click();
+      const youthXi = page.getByRole("dialog", { name: "Youth XI" });
+      await expect(
+        youthXi
+          .getByRole("list", { name: "Youth XI by tactic slot" })
+          .getByRole("listitem"),
+      ).toHaveCount(11);
+      // The modal listens for Escape once it has taken focus.
+      await expect(
+        youthXi.getByRole("button", { name: "Close" }),
+      ).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(youthXi).toBeHidden();
+
+      const [controlsBox, optimizeBox] = await Promise.all([
         controls.boundingBox(),
-        potential.boundingBox(),
+        optimize.boundingBox(),
       ]);
       expect(controlsBox).not.toBeNull();
-      expect(potentialBox).not.toBeNull();
-      if (!controlsBox || !potentialBox) {
+      expect(optimizeBox).not.toBeNull();
+      if (!controlsBox || !optimizeBox) {
         throw new Error("Expected visible Planner optimization controls.");
       }
       expect(controlsBox.height).toBeLessThanOrEqual(36);
@@ -4917,7 +4924,7 @@ test.describe("application smoke", () => {
           ),
         );
       expect(controlBoxes.every((height) => height >= 32)).toBe(true);
-      expect(potentialBox.x + potentialBox.width).toBeLessThanOrEqual(
+      expect(optimizeBox.x + optimizeBox.width).toBeLessThanOrEqual(
         controlsBox.x + controlsBox.width,
       );
       expect(controlsBox.x + controlsBox.width).toBeLessThanOrEqual(width);
@@ -4944,9 +4951,7 @@ test.describe("application smoke", () => {
     const main = page.getByRole("main");
     await page.getByRole("link", { name: "Planner", exact: true }).click();
     await main.getByRole("button", { name: "Optimize squads" }).click();
-    await expect(main.getByRole("status")).toHaveText(
-      "Squads optimized by current scores.",
-    );
+    await expect(main.getByRole("status")).toHaveText("Squads optimized.");
 
     const clearAll = main.getByRole("button", { name: "Clear all" });
     await expect(clearAll).not.toHaveClass(/bg-error/);
@@ -5294,7 +5299,7 @@ test.describe("application smoke", () => {
     ).toBeLessThanOrEqual(3440);
   });
 
-  test("planner depth keeps assigned current and potential scores readable at desktop widths", async ({
+  test("planner depth keeps assigned current and expected scores readable at desktop widths", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
@@ -5306,13 +5311,13 @@ test.describe("application smoke", () => {
     const main = page.getByRole("main");
     await page.getByRole("link", { name: "Planner", exact: true }).click();
     const scoreCell = main.getByRole("button", {
-      name: /Senior, 1st string, IP: GK .* Potential Keeper, Resolved, current score 82, potential score 91/,
+      name: /Senior, 1st string, IP: GK .* Potential Keeper, Resolved, current score 82, expected score 88, potential score 91/,
     });
     const currentScore = scoreCell.getByRole("img", {
       name: /Current combined role score: 82/,
     });
-    const potentialScore = scoreCell.getByRole("img", {
-      name: /Potential combined role score: 91/,
+    const expectedScore = scoreCell.getByRole("img", {
+      name: /Expected combined role score: 88/,
     });
 
     for (const [width, height] of [
@@ -5322,23 +5327,23 @@ test.describe("application smoke", () => {
       await page.setViewportSize({ width, height });
       await expect(scoreCell).toContainText("Potential Keeper");
       await expect(currentScore).toBeVisible();
-      await expect(potentialScore).toBeVisible();
+      await expect(expectedScore).toBeVisible();
 
-      const [cellBox, currentBox, potentialBox] = await Promise.all([
+      const [cellBox, currentBox, expectedBox] = await Promise.all([
         scoreCell.boundingBox(),
         currentScore.boundingBox(),
-        potentialScore.boundingBox(),
+        expectedScore.boundingBox(),
       ]);
       expect(cellBox).not.toBeNull();
       expect(currentBox).not.toBeNull();
-      expect(potentialBox).not.toBeNull();
-      if (!cellBox || !currentBox || !potentialBox) {
+      expect(expectedBox).not.toBeNull();
+      if (!cellBox || !currentBox || !expectedBox) {
         throw new Error(
           "Expected assigned score content to have layout bounds.",
         );
       }
       expect(currentBox.x).toBeGreaterThanOrEqual(cellBox.x);
-      expect(potentialBox.x + potentialBox.width).toBeLessThanOrEqual(
+      expect(expectedBox.x + expectedBox.width).toBeLessThanOrEqual(
         cellBox.x + cellBox.width,
       );
     }
