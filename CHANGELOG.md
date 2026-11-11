@@ -6,6 +6,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-11
+
+### Added
+
+- The Dashboard shows your managed club at a glance: the starting XI for your tactic, signings recommended from your shortlists and ranked by how much they improve each slot, contracts that end within 12 months, and your development prospects. Recommended signings can use General or Moneyball scores. **Best per slot** lists the best shortlisted signing for every slot, and **Youth XI** shows your best young players in your tactic's shape. A save without a managed club chooses one on the Dashboard.
+- Load Data and **Refresh stats** read your player shortlists from the linked FM save, so a shortlist no longer has to be exported from the game first. Search and Moneyball label each shortlist with its source.
+- Moneyball shows pressing, games won, drawn, and lost, win ratio, xG overperformance, and goalkeeper penalty and expected save statistics again, read from the linked FM save. The ten pressing roles score from all their metrics again. Run **Refresh stats** or Load Data once to fill them in.
+- Reserves and Youth each take an oldest age in the Planner's **Manage teams**, from 14 to 45 or none. **Optimize squads** never places a player over it. Existing saves keep 23 and 18.
+- The Planner's **Unassigned** button counts the players in no squad and lists them with the slot each fits best, and **Youth XI** opens from the Planner as well.
+- Planner board cells show each player's age, a pin for a player you placed or pinned, and a warning for a player older than his team's age limit.
+
+### Changed
+
+- **Optimize squads** now weighs development. Each squad values a player by his score now plus a share of the score he is expected to reach, judged from his age, Professionalism, Ambition, and Determination. A prospect can start ahead of a slightly better veteran, and the Reserves and Youth squads favour the higher ceiling. Senior first and second strings fill first, then Reserves and Youth starters before deeper strings.
+- Planner board cells show `Current → Expected` scores on one line with the player's name and age. The potential score is in the tooltip.
+- Every Planner cell opens the same picker. For a placed player it pins or unpins him, clears the slot, or replaces him in one step. Candidates show their age and expected score, and say when an unfamiliar position, the wrong foot, or the age limit counts against them.
+- Planner strings are added, renamed, reordered, and removed on the board. **Manage teams** now sets each team's name and age limit, and no longer edits strings.
+- The Planner's squad controls are ordered from most to least used: **Optimize squads**, the read-only views, then **Manage teams** and **Clear all**.
+- Moneyball's "xG Open Play" is now "xG Overperformance".
+
+### Removed
+
+- The Planner's **Optimize by potential**. **Optimize squads** now accounts for each player's expected development.
+
 ## [0.23.0] - 2026-11-10
 
 ### Added
