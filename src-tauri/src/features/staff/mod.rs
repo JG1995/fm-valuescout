@@ -12,3 +12,4 @@ mod metrics;
 pub mod query;
 pub mod scoring;
 pub mod service;
+pub(crate) mod shortlist;

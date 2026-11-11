@@ -101,13 +101,13 @@ test.describe("application smoke", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.emulateMedia({ reducedMotion: "reduce" });
     await stubTauriIpc(page, { staffWorkspace: true });
-    await page.goto("/staff?shortlistOnly=true");
+    await page.goto("/staff");
     await page
       .getByRole("main")
-      .getByRole("button", { name: "Upload CSV" })
+      .getByRole("button", { name: "Configure staffing needs" })
       .click();
     const dialog = page.getByRole("dialog", {
-      name: "Upload Staff Shortlist CSV",
+      name: "Configure staffing needs",
     });
     const backdrop = page.getByRole("button", { name: "Close dialog" });
     await expect(dialog).toHaveCSS("opacity", "1");
@@ -943,10 +943,7 @@ test.describe("application smoke", () => {
     await expect(staffTable).toBeVisible();
     await expect(staffTable.getByText("Alex Coach")).toBeVisible();
     await page.goto("/staff?shortlistOnly=true");
-    await expect(main.getByText("No Staff Shortlist uploaded")).toBeVisible();
-    await expect(
-      main.getByRole("button", { name: "Upload CSV" }),
-    ).toBeVisible();
+    await expect(main.getByText("No staff shortlisted")).toBeVisible();
     await expect(
       main.getByRole("combobox", { name: "Preferred Job" }),
     ).toHaveValue("");

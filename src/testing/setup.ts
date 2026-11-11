@@ -143,10 +143,6 @@ import {
   resolveSaveStaffAssignmentTargetsIpcMock,
   resolveSearchStaffIpcMock,
 } from "@/testing/staff-ipc-mock";
-import {
-  resetStaffShortlistImportIpcMock,
-  resolveStaffShortlistImportIpcMock,
-} from "@/testing/staff-shortlist-import-ipc-mock";
 
 function registerIpcMocks() {
   mockIPC((cmd, args) => {
@@ -224,10 +220,6 @@ function registerIpcMocks() {
 
     if (cmd === "remove_player_shortlist") {
       return resolveRemovePlayerShortlistIpcMock(args);
-    }
-
-    if (cmd === "import_staff_shortlist_csv") {
-      return resolveStaffShortlistImportIpcMock(args);
     }
 
     if (cmd === "import_csv") {
@@ -491,7 +483,6 @@ afterEach(() => {
   resetCsvImportIpcMock();
   resetDashboardIpcMock();
   resetPlayerShortlistIpcMock();
-  resetStaffShortlistImportIpcMock();
   resetClubDnaIpcMock();
   resetSearchPlayersOverride();
   resetStaffIpcMock();

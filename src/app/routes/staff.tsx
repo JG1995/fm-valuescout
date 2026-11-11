@@ -11,9 +11,8 @@ import {
   useLocation,
   useRouter,
 } from "@tanstack/react-router";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
-import { Button } from "@/components/ui/button/button";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import {
   managedClubOptionsQueryOptions,
@@ -24,15 +23,12 @@ import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
-import { staffKeys } from "@/features/staff/api/staff-keys";
 import {
   staffMyStaffQueryOptions,
   staffSearchQueryOptions,
 } from "@/features/staff/api/staff-query-options";
 import { StaffAssignmentOptimizer } from "@/features/staff/components/staff-assignment-optimizer";
 import { StaffSearchResultsPanel } from "@/features/staff/components/staff-search-results-panel";
-import type { StaffShortlistImportSummary } from "@/features/staff/components/staff-shortlist-import-modal";
-import { StaffShortlistImportModal } from "@/features/staff/components/staff-shortlist-import-modal";
 import type { StaffAssignmentContext } from "@/features/staff/types/staff-assignment";
 import type { StaffFilterRule } from "@/features/staff/types/staff-filter-rule";
 import type {
@@ -336,7 +332,6 @@ function StaffSearchContent() {
   } = Route.useSearch();
   const navigate = Route.useNavigate();
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const savesQuery = useQuery(savesQueryOptions);
   const activeSave = savesQuery.data?.find((save) => save.isActive);
@@ -375,12 +370,6 @@ function StaffSearchContent() {
           : { sort: "ca", dir: "desc" as const }
     : { sort: shortlistSort, dir: shortlistDir };
 
-  const [importOpen, setImportOpen] = useState(false);
-  const [shortlistImport, setShortlistImport] = useState<
-    { contextKey: string; summary: StaffShortlistImportSummary } | undefined
-  >();
-  const [shortlistImportRevision, setShortlistImportRevision] = useState(0);
-  const [shortlistImportPending, setShortlistImportPending] = useState(false);
   const shortlistContextKey = `${activeSave?.id ?? "none"}:${activeSave?.contextToken ?? "none"}:${snapshot?.saveId ?? "none"}:${snapshot?.id ?? "none"}:${snapshot?.contextToken ?? "none"}`;
   const staffAssignmentContext: StaffAssignmentContext | null =
     activeSave && snapshot && activeSave.id === snapshot.saveId
@@ -391,7 +380,7 @@ function StaffSearchContent() {
           snapshotContextToken: snapshot.contextToken,
         }
       : null;
-  const staffAssignmentContextKey = `${shortlistContextKey}:${managedClub?.clubName ?? "none"}:${(depth?.teams ?? []).map((team) => `${team.team}:${team.displayName}`).join("|")}:${shortlistImportRevision}`;
+  const staffAssignmentContextKey = `${shortlistContextKey}:${managedClub?.clubName ?? "none"}:${(depth?.teams ?? []).map((team) => `${team.team}:${team.displayName}`).join("|")}`;
   const isPlannerRefreshing = useIsFetching({ queryKey: plannerKeys.all }) > 0;
   const isSnapshotRefreshing =
     useIsFetching({ queryKey: snapshotKeys.all }) > 0;
@@ -411,8 +400,7 @@ function StaffSearchContent() {
     isManagedClubRefreshing ||
     managedClubQuery.isPending ||
     managedClubQuery.isError ||
-    isPlayerResultContextMutating ||
-    shortlistImportPending;
+    isPlayerResultContextMutating;
 
   const { data: shortlistOptionsPage } = useSuspenseQuery(
     staffSearchQueryOptions(
@@ -439,6 +427,9 @@ function StaffSearchContent() {
   const staffSaveContextToken =
     staffAssignmentContext?.saveContextToken ?? null;
   const shortlistPresent = shortlistOptionsPage.state === "ready";
+  // Load Data can re-read the shortlist without replacing the snapshot, so an assignment
+  // result is also bound to who is shortlisted.
+  const optimizerContextKey = `${staffAssignmentContextKey}:${shortlistOptionsPage.total}:${(shortlistOptionsPage.preferredJobOptions ?? []).join("|")}`;
   const shortlistChoice = useShortlistFilterStore((state) =>
     staffSaveId === null || staffSaveContextToken === null
       ? undefined
@@ -543,26 +534,6 @@ function StaffSearchContent() {
     });
   };
 
-  const onShortlistImported = async (summary: StaffShortlistImportSummary) => {
-    await queryClient.invalidateQueries({ queryKey: staffKeys.all });
-    if (staffSaveId !== null && staffSaveContextToken !== null) {
-      useShortlistFilterStore
-        .getState()
-        .set(
-          "staff",
-          { saveId: staffSaveId, contextToken: staffSaveContextToken },
-          true,
-        );
-    }
-    await updateSearch({
-      preferredJob: "",
-      unemployedOnly: false,
-      shortlistOnly: undefined,
-    });
-    setShortlistImport({ contextKey: shortlistContextKey, summary });
-    setShortlistImportRevision((revision) => revision + 1);
-  };
-
   return (
     <>
       <h1 className="sr-only">Staff Search</h1>
@@ -570,14 +541,9 @@ function StaffSearchContent() {
         {staffAssignmentContext ? (
           <StaffAssignmentOptimizer
             context={staffAssignmentContext}
-            contextKey={staffAssignmentContextKey}
+            contextKey={optimizerContextKey}
             contextUnavailable={staffAssignmentContextUnavailable}
             shortlistReady={shortlistPresent}
-            uploadAction={
-              <Button variant="secondary" onClick={() => setImportOpen(true)}>
-                Upload CSV
-              </Button>
-            }
             onReviewShortlist={() => {
               if (staffSaveId !== null && staffSaveContextToken !== null) {
                 useShortlistFilterStore.getState().set(
@@ -592,22 +558,9 @@ function StaffSearchContent() {
               void updateSearch({ shortlistOnly: undefined });
             }}
           />
-        ) : (
-          <div className="flex w-full justify-end">
-            <Button variant="secondary" onClick={() => setImportOpen(true)}>
-              Upload CSV
-            </Button>
-          </div>
-        )}
+        ) : null}
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-gutter">
-        {shortlistImport?.contextKey === shortlistContextKey ? (
-          <p role="status" className="text-body-sm text-on-surface-variant">
-            Stored {shortlistImport.summary.storedStaff} of{" "}
-            {shortlistImport.summary.totalStaff} staff IDs;{" "}
-            {shortlistImport.summary.skippedStaff} skipped.
-          </p>
-        ) : null}
         <div className="flex min-h-0 flex-1 flex-col">
           <Suspense fallback={<StaffFallback />}>
             <StaffSearchResultsPanel
@@ -666,16 +619,6 @@ function StaffSearchContent() {
           </Suspense>
         </div>
       </div>
-      <StaffShortlistImportModal
-        activeSaveId={snapshot?.saveId}
-        snapshotId={snapshot?.id}
-        open={importOpen}
-        replacesExisting={shortlistPresent}
-        onClose={() => setImportOpen(false)}
-        onImported={onShortlistImported}
-        onPendingChange={setShortlistImportPending}
-        contextKey={shortlistContextKey}
-      />
     </>
   );
 }

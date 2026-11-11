@@ -3,7 +3,6 @@ mod error;
 mod model;
 pub(crate) mod parser;
 pub(crate) mod service;
-pub(crate) mod staff_shortlist;
 
 pub(crate) use error::CsvImportError;
 pub(crate) use model::{YouthTrackerAttribute, YouthTrackerHiddenAttribute, YouthTrackerPlayer};

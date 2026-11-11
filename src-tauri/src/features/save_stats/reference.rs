@@ -1,7 +1,8 @@
 //! The private reference harness behind `./scripts/dev save-stats-reference`.
 //!
 //! It reads the save named by `FM_VALUESCOUT_SAVE_FILE` and prints one JSON report of the
-//! save's facts, each shortlist's name and player count, and every player's totals, keyed by
+//! save's facts, each shortlist's name and player count, each shortlisted staff member's
+//! Unique ID, Preferred Job, and Coaching Qualifications, and every player's totals, keyed by
 //! Unique ID with fmsave's field names, so the totals can be compared with fmsave's outside
 //! the repository. The report never holds the path, and a missing or unreadable file fails
 //! without printing it.
@@ -85,6 +86,17 @@ fn save_stats_reference_harness() {
                 .map(|shortlist| json!({
                     "name": shortlist.name,
                     "players": shortlist.player_unique_ids.len(),
+                }))
+                .collect(),
+            Err(error) => json!({ "error": error.kind() }),
+        },
+        "staff_shortlist": match &stats.staff_shortlist {
+            Ok(staff) => staff
+                .iter()
+                .map(|person| json!({
+                    "unique_id": person.unique_id,
+                    "preferred_job": person.preferred_job,
+                    "coaching_qualifications": person.coaching_qualifications,
                 }))
                 .collect(),
             Err(error) => json!({ "error": error.kind() }),

@@ -57,8 +57,9 @@ export type SeasonStatsErrorKind =
   | "database";
 
 /**
- * What a read of the linked FM save did with its player shortlists. Only
- * `read` replaced the stored ones; `count` is how many hold players.
+ * What a read of the linked FM save did with its player shortlists, or with
+ * its staff shortlist. Only `read` replaced what was stored; `count` is how
+ * many player shortlists hold players, or how many staff are shortlisted.
  */
 export type SaveShortlistsOutcome =
   | { status: "read"; count: number }
@@ -69,6 +70,7 @@ export type SaveShortlistsOutcome =
 export type SeasonStatsOutcome = {
   elapsedMs: number;
   shortlists: SaveShortlistsOutcome;
+  staffShortlist: SaveShortlistsOutcome;
 } & (
   | {
       status: "attached";

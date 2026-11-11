@@ -68,12 +68,12 @@ fn insert_staff_with_name(conn: &Connection, uid: i64, name: Option<&str>, club:
     .expect("insert staff");
 }
 
-fn shortlist(conn: &Connection, uid: i64, preferred_job: &str, club_job: &str) {
+fn shortlist(conn: &Connection, uid: i64, preferred_job: &str) {
     conn.execute(
         "INSERT INTO staff_shortlist_entries (
-             save_id, staff_uid, preferred_job, club_job, coaching_qualifications
-         ) VALUES (1, ?1, ?2, ?3, 'Continental Pro')",
-        params![uid, preferred_job, club_job],
+             save_id, staff_uid, preferred_job, coaching_qualifications
+         ) VALUES (1, ?1, ?2, 'Continental Pro')",
+        params![uid, preferred_job],
     )
     .expect("insert shortlist entry");
 }
@@ -106,7 +106,7 @@ fn distinguishes_context_and_setup_states_without_writing() {
         StaffAssignmentOptimizationState::NoShortlist
     );
 
-    shortlist(&conn, 999, "Assistant Manager", "-");
+    shortlist(&conn, 999, "Assistant Manager");
     let ready =
         optimize_staff_assignments(&conn, &save_token, &snapshot_token).expect("read ready state");
     assert_eq!(ready.state, StaffAssignmentOptimizationState::Ready);
@@ -131,7 +131,7 @@ fn rejects_stale_tokens_including_a_reused_numeric_snapshot_id() {
     let (_temp_dir, conn, save_token) = open();
     let original_snapshot_token = insert_current_snapshot(&conn, 1);
     configure_managed_club(&conn);
-    shortlist(&conn, 1, "Assistant Manager", "-");
+    shortlist(&conn, 1, "Assistant Manager");
     insert_staff(&conn, 1, "First", Some("Club A"));
 
     let stale_save = optimize_staff_assignments(&conn, "stale-save", &original_snapshot_token)
@@ -169,11 +169,11 @@ fn loads_fm27_candidate_scores_from_current_shortlist_only() {
     insert_staff(&conn, 3, "Recruitment analyst", Some("Other FC"));
     insert_staff(&conn, 4, "Outside shortlist", Some("Club A"));
     insert_staff(&conn, 6, "Fitness missing score", Some("Club A"));
-    shortlist(&conn, 1, "Fitness Coach", "-");
-    shortlist(&conn, 2, "Goalkeeping Coach", "-");
-    shortlist(&conn, 3, "Recruitment Analyst", "-");
-    shortlist(&conn, 5, "Recruitment Analyst", "-");
-    shortlist(&conn, 6, "Fitness Coach", "-");
+    shortlist(&conn, 1, "Fitness Coach");
+    shortlist(&conn, 2, "Goalkeeping Coach");
+    shortlist(&conn, 3, "Recruitment Analyst");
+    shortlist(&conn, 5, "Recruitment Analyst");
+    shortlist(&conn, 6, "Fitness Coach");
     conn.execute(
         "UPDATE staff
          SET staff_attributes_json = '{\"WorkingWithYoungsters\": 16}'
@@ -250,16 +250,16 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
     insert_staff(&conn, 9, "Head physio", Some("Club A"));
     insert_staff(&conn, 10, "Head sports science", Some("Club A"));
     insert_staff_with_name(&conn, 11, None, Some("Club A"));
-    shortlist(&conn, 1, "Assistant Manager", "-");
-    shortlist(&conn, 3, "Chief Scout", "Current");
-    shortlist(&conn, 4, "Coach", "-");
-    shortlist(&conn, 5, "Coach", "-");
-    shortlist(&conn, 6, "Coach", "-");
-    shortlist(&conn, 7, "Fitness Coach", "-");
-    shortlist(&conn, 8, "Manager", "-");
-    shortlist(&conn, 9, "Head Physio", "-");
-    shortlist(&conn, 10, "Head of Sports Science", "-");
-    shortlist(&conn, 11, "Assistant Manager", "-");
+    shortlist(&conn, 1, "Assistant Manager");
+    shortlist(&conn, 3, "Chief Scout");
+    shortlist(&conn, 4, "Coach");
+    shortlist(&conn, 5, "Coach");
+    shortlist(&conn, 6, "Coach");
+    shortlist(&conn, 7, "Fitness Coach");
+    shortlist(&conn, 8, "Manager");
+    shortlist(&conn, 9, "Head Physio");
+    shortlist(&conn, 10, "Head of Sports Science");
+    shortlist(&conn, 11, "Assistant Manager");
     conn.execute_batch(
         "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, assistant_manager) VALUES (1, 1, 1, 72), (1, 2, 1, 99), (1, 11, 1, 73);
          INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, manager) VALUES (1, 8, 1, 81);
@@ -349,7 +349,7 @@ fn allocates_leads_and_recruitment_analyst_from_persisted_scores() {
         (9, "Recruitment Analyst"),
     ] {
         insert_staff(&conn, uid, &format!("Staff {uid}"), Some("Club A"));
-        shortlist(&conn, uid, preferred_job, "-");
+        shortlist(&conn, uid, preferred_job);
     }
     conn.execute_batch(
         "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, head_performance_analyst, performance_analyst) VALUES (1, 1, 1, 95, 60), (1, 2, 1, 80, 90);
@@ -436,7 +436,7 @@ fn allocates_persisted_fitness_and_goalkeeping_scores_with_exact_vacancy_evidenc
         (10, "Goalkeeping Coach"),
     ] {
         insert_staff(&conn, uid, &format!("Staff {uid}"), Some("Club A"));
-        shortlist(&conn, uid, preferred_job, "-");
+        shortlist(&conn, uid, preferred_job);
     }
     conn.execute_batch(
         "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_attacking_technical) VALUES (1, 1, 1, 80);
@@ -499,7 +499,7 @@ fn places_standalone_club_results_after_enabled_squads_without_senior() {
     )
     .expect("configure targets");
     insert_staff(&conn, 1, "Unsupported", Some("Club A"));
-    shortlist(&conn, 1, "Kit Manager", "-");
+    shortlist(&conn, 1, "Kit Manager");
     conn.execute(
         "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version) VALUES (1, 1, 1)",
         [],
@@ -616,7 +616,7 @@ fn caps_the_ready_result_at_the_supported_slot_limit() {
         )
         .expect("insert club lead target");
     }
-    shortlist(&conn, 999, "Assistant Manager", "-");
+    shortlist(&conn, 999, "Assistant Manager");
 
     let result = optimize_staff_assignments(&conn, &save_token, &snapshot_token)
         .expect("read bounded vacancies");

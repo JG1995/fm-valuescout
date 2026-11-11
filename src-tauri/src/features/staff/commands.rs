@@ -74,7 +74,6 @@ pub struct StaffSummaryDto {
 #[serde(rename_all = "camelCase")]
 pub struct StaffShortlistMetadataDto {
     pub preferred_job: String,
-    pub club_job: String,
     pub coaching_qualifications: String,
 }
 
@@ -82,7 +81,6 @@ impl From<StaffShortlistMetadata> for StaffShortlistMetadataDto {
     fn from(value: StaffShortlistMetadata) -> Self {
         Self {
             preferred_job: value.preferred_job,
-            club_job: value.club_job,
             coaching_qualifications: value.coaching_qualifications,
         }
     }
@@ -1188,7 +1186,6 @@ mod tests {
                 dynamic_values: BTreeMap::new(),
                 shortlist: Some(StaffShortlistMetadata {
                     preferred_job: "Physio".to_string(),
-                    club_job: "-".to_string(),
                     coaching_qualifications: "Continental Pro".to_string(),
                 }),
             }],
@@ -1200,7 +1197,6 @@ mod tests {
         assert_eq!(value["total"], 1);
         assert_eq!(value["preferredJobOptions"], serde_json::json!(["Physio"]));
         assert_eq!(value["staff"][0]["shortlist"]["preferredJob"], "Physio");
-        assert_eq!(value["staff"][0]["shortlist"]["clubJob"], "-");
         assert_eq!(
             value["staff"][0]["shortlist"]["coachingQualifications"],
             "Continental Pro"

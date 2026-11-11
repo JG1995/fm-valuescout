@@ -20,7 +20,6 @@ export type StaffSummary = {
   dynamicValues?: Record<string, StaffDynamicValue>;
   shortlist?: {
     preferredJob: string;
-    clubJob: string;
     coachingQualifications: string;
   } | null;
 };

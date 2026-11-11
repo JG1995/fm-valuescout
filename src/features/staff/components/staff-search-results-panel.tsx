@@ -433,15 +433,12 @@ function StaffSearchTable({
         if (!STAFF_BASIC_METRIC_IDS.includes(column.id)) {
           if (
             column.id === "preferred_job" ||
-            column.id === "club_job" ||
             column.id === "coaching_qualifications"
           ) {
             const value =
               column.id === "preferred_job"
                 ? staff?.shortlist?.preferredJob
-                : column.id === "club_job"
-                  ? staff?.shortlist?.clubJob
-                  : staff?.shortlist?.coachingQualifications;
+                : staff?.shortlist?.coachingQualifications;
             return (
               <td key={column.id} className={`${TEXT_CELL} text-on-surface`}>
                 {value || (staff === undefined ? "…" : "—")}
@@ -645,9 +642,7 @@ export function StaffSearchResultsPanel({
         .filter(
           (column) =>
             !STAFF_BASIC_METRIC_IDS.includes(column.id) &&
-            !["preferred_job", "club_job", "coaching_qualifications"].includes(
-              column.id,
-            ),
+            !["preferred_job", "coaching_qualifications"].includes(column.id),
         )
         .map((column) => column.id)
         .sort(),
@@ -1042,8 +1037,9 @@ export function StaffSearchResultsPanel({
         contentClassName="flex min-h-0 flex-1 flex-col"
       >
         {renderToolbar()}
-        <EmptyState icon={UsersRound} title="No Staff Shortlist uploaded">
-          Upload a staff CSV to view the people included in it.
+        <EmptyState icon={UsersRound} title="No staff shortlisted">
+          Staff shortlists come from your linked FM save file. Add staff to a
+          staff shortlist in FM, save the game, then use Load Data.
         </EmptyState>
       </Panel>
     );

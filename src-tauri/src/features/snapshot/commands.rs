@@ -1845,6 +1845,7 @@ mod tests {
             stats: SeasonStatsOutcome {
                 result: save_stats_import::SeasonStatsResult::NotLinked,
                 shortlists: save_stats_import::SaveShortlistsOutcome::NotRead,
+                staff_shortlist: save_stats_import::SaveShortlistsOutcome::NotRead,
                 elapsed_ms: 1,
             },
             shortlists: PlayerShortlistsOutcome {

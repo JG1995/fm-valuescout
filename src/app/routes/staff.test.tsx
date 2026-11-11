@@ -13,7 +13,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
@@ -62,14 +62,6 @@ import {
   setStaffSearchIpcMockMode,
   setStaffShortlistOverride,
 } from "@/testing/staff-ipc-mock";
-import {
-  getLastStaffShortlistImportIpcArgs,
-  setStaffShortlistImportIpcMockResult,
-} from "@/testing/staff-shortlist-import-ipc-mock";
-
-const { openCsvDialog } = vi.hoisted(() => ({ openCsvDialog: vi.fn() }));
-
-vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openCsvDialog }));
 
 function renderStaffRoute(initialEntry = "/staff") {
   const queryClient = new QueryClient({
@@ -137,7 +129,6 @@ function holdNamedStaffSearchRequests(): HeldStaffSearchRequest[] {
 
 describe("staff route", () => {
   beforeEach(() => {
-    openCsvDialog.mockReset();
     usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });
   });
 
@@ -222,7 +213,6 @@ describe("staff route", () => {
       fixtureStaff({
         shortlist: {
           preferredJob: "Technical Director",
-          clubJob: "Technical Director",
           coachingQualifications: "Continental Pro",
         },
       }),
@@ -256,9 +246,6 @@ describe("staff route", () => {
     const table = await screen.findByRole("table", { name: "Staff Shortlist" });
     expect(
       within(table).queryByRole("columnheader", { name: "Preferred Job" }),
-    ).toBeNull();
-    expect(
-      within(table).queryByRole("columnheader", { name: "Club Job" }),
     ).toBeNull();
     await user.click(
       within(table).getByRole("button", { name: "Coaching Qualifications" }),
@@ -822,16 +809,13 @@ describe("staff route", () => {
     expect(dialog).toBeInTheDocument();
   });
 
-  it("keeps shortlist upload, Configure staffing needs, and Optimize visible with conditional metadata filters", async () => {
+  it("keeps Configure staffing needs and Optimize visible with conditional metadata filters", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
     const { router } = renderStaffRoute("/staff");
 
     expect(
-      await screen.findByRole("button", { name: "Upload CSV" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Configure staffing needs" }),
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Optimize assignments" }),
@@ -994,54 +978,6 @@ describe("staff route", () => {
     ).toBeInTheDocument();
   });
 
-  it("turns shortlist filtering on after a successful upload and resets metadata filters", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    openCsvDialog.mockResolvedValue("C:\\exports\\staff.csv");
-    setStaffShortlistImportIpcMockResult({
-      totalStaff: 3,
-      storedStaff: 2,
-      skippedStaff: 1,
-    });
-    const { router } = renderStaffRoute(
-      "/staff?preferredJob=Coach&unemployedOnly=true",
-    );
-
-    await user.click(await screen.findByRole("button", { name: "Upload CSV" }));
-    const dialog = await screen.findByRole("dialog", {
-      name: "Upload Staff Shortlist CSV",
-    });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Choose CSV" }),
-    );
-
-    // The successful import forces the filter on through the per-save choice
-    // while the URL stays clean; metadata filters reset as before.
-    expect(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
-    ).toHaveAttribute("aria-checked", "true");
-    expect(router.state.location.search).not.toHaveProperty("shortlistOnly");
-    expect(router.state.location.search).not.toHaveProperty("preferredJob");
-    expect(router.state.location.search.unemployedOnly).toBe(false);
-    expect(
-      useShortlistFilterStore.getState().choices[
-        shortlistFilterKey("staff", {
-          saveId: 1,
-          contextToken: "save-token-1",
-        })
-      ],
-    ).toBe(true);
-    await waitFor(() => {
-      expect(getLastStaffArgs()).toMatchObject({ shortlistOnly: true });
-    });
-    expect(getLastStaffShortlistImportIpcArgs()).toEqual({
-      path: "C:\\exports\\staff.csv",
-    });
-    expect(
-      await screen.findByText("Stored 2 of 3 staff IDs; 1 skipped."),
-    ).toBeInTheDocument();
-  });
-
   it("keeps Staff Search usable when Planner context fails", async () => {
     await resolveLoadDataIpcMock();
     setPlannerDepthError("Planner unavailable");
@@ -1049,9 +985,6 @@ describe("staff route", () => {
 
     expect(
       await screen.findByRole("table", { name: "Staff search results" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Upload CSV" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Optimize assignments" }),
@@ -1136,7 +1069,6 @@ describe("staff route", () => {
       fixtureStaff({
         shortlist: {
           preferredJob: "Manager",
-          clubJob: "-",
           coachingQualifications: "National C",
         },
       }),
@@ -1152,7 +1084,7 @@ describe("staff route", () => {
     expect(screen.queryByRole("button", { name: "Columns" })).toBeNull();
   });
 
-  it("shows setup feedback with Upload available when filtering on with no list", async () => {
+  it("says how to shortlist staff when filtering on with no list", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setStaffAssignmentOptimizationIpcMock(
@@ -1160,12 +1092,13 @@ describe("staff route", () => {
     );
     renderStaffRoute("/staff?shortlistOnly=true");
 
+    expect(await screen.findByText("No staff shortlisted")).toBeInTheDocument();
     expect(
-      await screen.findByText("No Staff Shortlist uploaded"),
+      screen.getByText(
+        "Staff shortlists come from your linked FM save file. Add staff to a staff shortlist in FM, save the game, then use Load Data.",
+      ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Upload CSV" }),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Upload CSV" })).toBeNull();
     expect(
       await screen.findByRole("switch", { name: "Shortlist: On" }),
     ).toHaveAttribute("aria-checked", "true");
@@ -1175,7 +1108,7 @@ describe("staff route", () => {
     );
     expect(
       await screen.findByText(
-        "Upload a Staff Shortlist before optimizing assignments.",
+        "Shortlist staff in FM, save the game, then use Load Data before optimizing assignments.",
       ),
     ).toBeInTheDocument();
   });
@@ -1187,7 +1120,6 @@ describe("staff route", () => {
       fixtureStaff({
         shortlist: {
           preferredJob: "Coach",
-          clubJob: "-",
           coachingQualifications: "Continental A",
         },
       }),
@@ -1663,7 +1595,6 @@ describe("staff route", () => {
       fixtureStaff({
         shortlist: {
           preferredJob: "Coach",
-          clubJob: "Coach",
           coachingQualifications: "Continental A",
         },
       }),
@@ -1767,9 +1698,7 @@ describe("staff route", () => {
     expect(screen.queryByText("Alex Coach")).toBeNull();
     expect(screen.getByText("Loading staff results…")).toBeInTheDocument();
     act(() => held[0].resolve());
-    expect(
-      await screen.findByText("No Staff Shortlist uploaded"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("No staff shortlisted")).toBeInTheDocument();
   });
 
   describe("staff table toolbar", () => {
@@ -1814,11 +1743,7 @@ describe("staff route", () => {
       expect(
         screen.getByRole("heading", { level: 1, name: "Staff Search" }),
       ).toHaveClass("sr-only");
-      for (const name of [
-        "Upload CSV",
-        "Configure staffing needs",
-        "Optimize assignments",
-      ]) {
+      for (const name of ["Configure staffing needs", "Optimize assignments"]) {
         expect(
           within(actions).getByRole("button", { name }),
         ).toBeInTheDocument();
@@ -1827,9 +1752,6 @@ describe("staff route", () => {
       expect(
         within(actions).getByRole("button", { name: "Optimize assignments" }),
       ).toHaveClass("bg-primary");
-      expect(
-        within(actions).getByRole("button", { name: "Upload CSV" }),
-      ).toHaveClass("border-outline");
       expect(
         within(actions).getByRole("button", {
           name: "Configure staffing needs",
