@@ -81,6 +81,24 @@ pub(crate) fn builtin_catalog() -> Result<&'static BuiltinRoleCatalog, String> {
         .map_err(Clone::clone)
 }
 
+/// The Moneyball definition that presents an attribute role at a base position, if any.
+pub(crate) fn definition_for_attribute_role(
+    role_id: &str,
+    base_position: &str,
+) -> Option<&'static RoleDefinition> {
+    builtin_catalog()
+        .ok()?
+        .definitions
+        .iter()
+        .find(|definition| {
+            definition.attribute_role_id.as_deref() == Some(role_id)
+                && definition
+                    .position_tags
+                    .iter()
+                    .any(|tag| tag == base_position)
+        })
+}
+
 pub(crate) fn validate_role_definition(definition: &RoleDefinition) -> Result<f64, String> {
     if definition.id.trim().is_empty() {
         return Err("role definition id must not be empty".to_owned());

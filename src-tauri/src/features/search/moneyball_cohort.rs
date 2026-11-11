@@ -8,9 +8,9 @@ use rusqlite::{params_from_iter, types::Value, Connection, Rows};
 
 use crate::db::result_cache::{Cancellation, ResultCache};
 use crate::features::moneyball::percentile::rank_column;
-use crate::features::moneyball::role_catalog::{builtin_catalog, RoleDefinition};
-use crate::features::moneyball::role_score::{mean_percentile_score, score_role};
-use crate::features::planner::fit::{lane_fit_score, tactic_adjusted_score};
+use crate::features::moneyball::role_catalog::{builtin_catalog, definition_for_attribute_role};
+use crate::features::moneyball::role_score::score_role;
+use crate::features::planner::fit::{custom_metrics_lane_score, moneyball_roles_lane_score};
 use crate::features::planner::tactic::{base_position, read_tactic, PlannerTactic};
 use crate::features::player_metrics::resolver::{MetricField, TacticGroup};
 
@@ -19,10 +19,9 @@ use super::filter::{
     moneyball_role_ids_from_ast, post_cohort_rules_match, without_post_cohort_rules, CombineMode,
 };
 use super::query::{
-    active_current_snapshot_id, compare_role_scores, moneyball_base_where_sql,
-    moneyball_definition_for_role_and_position, query_matching_uids, requested_shortlist_missing,
-    snapshot_save_id, where_sql_with_filter, ComparisonPool, SearchPlayersPageState,
-    SearchPlayersRequest, SortField,
+    active_current_snapshot_id, compare_role_scores, moneyball_base_where_sql, query_matching_uids,
+    requested_shortlist_missing, snapshot_save_id, where_sql_with_filter, ComparisonPool,
+    SearchPlayersPageState, SearchPlayersRequest, SortField,
 };
 
 /// Moneyball Search's players: the current snapshot's players with stored percentiles.
@@ -560,7 +559,7 @@ pub(super) fn tactic_metric_keys(field: &MetricField, tactic: &PlannerTactic) ->
     ]
     .into_iter()
     .filter_map(|(role_id, position)| {
-        moneyball_definition_for_role_and_position(role_id, base_position(position))
+        definition_for_attribute_role(role_id, base_position(position))
     })
     .flat_map(|definition| definition.metrics.iter().map(|metric| metric.key.clone()))
     .collect()
@@ -576,22 +575,9 @@ pub(super) fn tactic_score(
 ) -> Option<u8> {
     let lane = tactic_lane(field, tactic)?;
     if field.tactic_group() == Some(TacticGroup::Custom) {
-        let base = mean_percentile_score(&lane.custom_metric_keys, percentiles);
-        return lane_fit_score(base, &fit.foot, &fit.positions, lane);
+        return custom_metrics_lane_score(percentiles, &fit.foot, &fit.positions, lane);
     }
-    let definition = |role_id: &str, position: &str| -> Option<&RoleDefinition> {
-        moneyball_definition_for_role_and_position(role_id, base_position(position))
-    };
-    let ip_definition = definition(&lane.ip_role_id, &lane.ip_position)?;
-    let oop_definition = definition(&lane.oop_role_id, &lane.oop_position)?;
-    tactic_adjusted_score(
-        score_role(ip_definition, percentiles).map(|role| role.score),
-        score_role(oop_definition, percentiles).map(|role| role.score),
-        lane.ip_weight,
-        &fit.foot,
-        &fit.positions,
-        lane,
-    )
+    moneyball_roles_lane_score(percentiles, &fit.foot, &fit.positions, lane)
 }
 
 fn tactic_lane<'a>(

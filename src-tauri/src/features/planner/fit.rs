@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
 use super::tactic::{base_position, TacticLane};
+use crate::features::moneyball::role_catalog::definition_for_attribute_role;
+use crate::features::moneyball::role_score::{mean_percentile_score, score_role};
 use crate::features::scoring::combine::combine_role_scores;
 
 pub(super) fn phase_fit_score(
@@ -46,6 +48,47 @@ pub(crate) fn tactic_adjusted_score(
 ) -> Option<u8> {
     let blended = combine_role_scores(ip_score, oop_score, ip_weight)?;
     lane_fit_score(Some(blended), player_foot, positions, lane)
+}
+
+/// A slot's Moneyball role score from a player's percentiles: the Moneyball definitions of
+/// the slot's IP and OOP roles, blended by its IP weight and adjusted for fit. No score when
+/// either role has no Moneyball definition at its position.
+pub(crate) fn moneyball_roles_lane_score(
+    percentiles: &BTreeMap<String, Option<u8>>,
+    player_foot: &str,
+    positions: &BTreeMap<String, Option<i64>>,
+    lane: &TacticLane,
+) -> Option<u8> {
+    let role_score = |role_id: &str, position: &str| {
+        definition_for_attribute_role(role_id, base_position(position))
+            .map(|definition| score_role(definition, percentiles).map(|role| role.score))
+    };
+    let ip_score = role_score(&lane.ip_role_id, &lane.ip_position)?;
+    let oop_score = role_score(&lane.oop_role_id, &lane.oop_position)?;
+    tactic_adjusted_score(
+        ip_score,
+        oop_score,
+        lane.ip_weight,
+        player_foot,
+        positions,
+        lane,
+    )
+}
+
+/// A slot's custom Moneyball score: the equal-weight mean of its chosen metrics' percentiles,
+/// adjusted for fit without the IP/OOP blend.
+pub(crate) fn custom_metrics_lane_score(
+    percentiles: &BTreeMap<String, Option<u8>>,
+    player_foot: &str,
+    positions: &BTreeMap<String, Option<i64>>,
+    lane: &TacticLane,
+) -> Option<u8> {
+    lane_fit_score(
+        mean_percentile_score(&lane.custom_metric_keys, percentiles),
+        player_foot,
+        positions,
+        lane,
+    )
 }
 
 pub(super) fn foot_matches(player_foot: &str, preferred_foot: &str) -> bool {

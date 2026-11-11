@@ -8,10 +8,10 @@ use crate::db::Db;
 
 use crate::features::moneyball::percentile::{calculate_percentiles, MoneyballNumericStatistics};
 use crate::features::moneyball::{
-    role_catalog::builtin_catalog,
-    role_score::{mean_percentile_score, score_role},
+    role_catalog::{builtin_catalog, definition_for_attribute_role},
+    role_score::score_role,
 };
-use crate::features::planner::fit::{lane_fit_score, tactic_adjusted_score};
+use crate::features::planner::fit::{custom_metrics_lane_score, moneyball_roles_lane_score};
 use crate::features::planner::tactic::{base_position, read_tactic};
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
@@ -1277,17 +1277,6 @@ pub(super) fn snapshot_save_id(conn: &Connection, snapshot_id: i64) -> Result<i6
     .map_err(|error| error.to_string())
 }
 
-pub(super) fn moneyball_definition_for_role_and_position(
-    role_id: &str,
-    base_pos: &str,
-) -> Option<&'static crate::features::moneyball::role_catalog::RoleDefinition> {
-    let catalog = builtin_catalog().ok()?;
-    catalog.definitions.iter().find(|def| {
-        def.attribute_role_id.as_deref() == Some(role_id)
-            && def.position_tags.contains(&base_pos.to_string())
-    })
-}
-
 fn tactic_sql_expression(
     lane: &crate::features::planner::tactic::TacticLane,
     group: TacticGroup,
@@ -1508,8 +1497,7 @@ fn search_players_with_cohort_scoring(
                         (lane.oop_role_id.as_str(), lane.oop_position.as_str()),
                     ] {
                         let base = base_position(pos);
-                        if let Some(def) = moneyball_definition_for_role_and_position(role_id, base)
-                        {
+                        if let Some(def) = definition_for_attribute_role(role_id, base) {
                             for m in &def.metrics {
                                 extra_keys.insert(m.key.clone());
                             }
@@ -1655,46 +1643,17 @@ fn search_players_with_cohort_scoring(
             for field in &tactic_moneyball_worklist {
                 if let Some(lane_id) = field.tactic_lane_id() {
                     if let Some(lane) = tactic.lanes.iter().find(|l| l.lane_id == lane_id) {
-                        if field.tactic_group() == Some(TacticGroup::Custom) {
-                            let base = mean_percentile_score(
-                                &lane.custom_metric_keys,
-                                &candidate.role_percentiles,
-                            );
-                            let score = lane_fit_score(
-                                base,
-                                &candidate.player_foot,
-                                &candidate.positions,
-                                lane,
-                            );
-                            candidate
-                                .tactic_scores
-                                .insert(field.id().to_string(), score);
-                            continue;
-                        }
-                        let base_ip = base_position(&lane.ip_position);
-                        let base_oop = base_position(&lane.oop_position);
-                        let ip_def =
-                            moneyball_definition_for_role_and_position(&lane.ip_role_id, base_ip);
-                        let oop_def =
-                            moneyball_definition_for_role_and_position(&lane.oop_role_id, base_oop);
-                        let score = if ip_def.is_none() || oop_def.is_none() {
-                            None
+                        let lane_score = if field.tactic_group() == Some(TacticGroup::Custom) {
+                            custom_metrics_lane_score
                         } else {
-                            let ip_score = ip_def.and_then(|def| {
-                                score_role(def, &candidate.role_percentiles).map(|r| r.score)
-                            });
-                            let oop_score = oop_def.and_then(|def| {
-                                score_role(def, &candidate.role_percentiles).map(|r| r.score)
-                            });
-                            tactic_adjusted_score(
-                                ip_score,
-                                oop_score,
-                                lane.ip_weight,
-                                &candidate.player_foot,
-                                &candidate.positions,
-                                lane,
-                            )
+                            moneyball_roles_lane_score
                         };
+                        let score = lane_score(
+                            &candidate.role_percentiles,
+                            &candidate.player_foot,
+                            &candidate.positions,
+                            lane,
+                        );
                         candidate
                             .tactic_scores
                             .insert(field.id().to_string(), score);
