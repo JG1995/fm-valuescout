@@ -3554,6 +3554,9 @@ describe("search route", () => {
       { id: 3, name: "Targets", fileName: "First.fmf" },
       { id: 4, name: "Targets", fileName: "Second.fmf" },
       { id: 5, name: "", fileName: "Unnamed.fmf" },
+      // Read from the linked FM save, so they have no file.
+      { id: 6, name: "Targets", fileName: null },
+      { id: 7, name: "(Default)", fileName: null },
     ]);
     setSearchPlayersOverride([playerNamed("General Scout", 160)]);
     renderSearchRoute("/search");
@@ -3569,17 +3572,45 @@ describe("search route", () => {
       "Targets (First.fmf)",
       "Targets (Second.fmf)",
       "Unnamed.fmf",
+      "Targets (FM save)",
+      "(Default)",
     ]);
     expect(select).toHaveValue("");
     expect(
       screen.queryByRole("button", { name: "Remove shortlist" }),
     ).toBeNull();
+    // A list read from the FM save has no file to name.
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         searchView: "general",
         shortlistId: null,
       });
     });
+  });
+
+  it("offers no remove action for a shortlist read from the FM save", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSavePlayerShortlistsIpcMock(1, [
+      LOANS,
+      { id: 7, name: "(Default)", fileName: null },
+    ]);
+    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+    renderSearchRoute("/search");
+    const select = await screen.findByRole("combobox", { name: "Shortlist" });
+
+    await user.selectOptions(select, "(Default)");
+
+    await waitFor(() => expect(select).toHaveValue("7"));
+    expect(
+      screen.queryByRole("button", { name: "Remove shortlist" }),
+    ).toBeNull();
+
+    await user.selectOptions(select, "Loans");
+
+    expect(
+      await screen.findByRole("button", { name: "Remove shortlist" }),
+    ).toBeInTheDocument();
   });
 
   it("hides the shortlist dropdown when the save has no shortlists", async () => {
@@ -4010,6 +4041,7 @@ describe("search route", () => {
       matchedPlayers: 1_200,
       unmatchedPlayers: 3,
       gameDate: "2026-06-30",
+      shortlists: { status: "notRead" },
       elapsedMs: 40,
     });
     const { queryClient } = renderSearchRoute("/search?view=moneyball");

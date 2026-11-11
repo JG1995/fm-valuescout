@@ -1,9 +1,10 @@
 //! The private reference harness behind `./scripts/dev save-stats-reference`.
 //!
 //! It reads the save named by `FM_VALUESCOUT_SAVE_FILE` and prints one JSON report of the
-//! save's facts and every player's totals, keyed by Unique ID with fmsave's field names, so
-//! the totals can be compared with fmsave's outside the repository. The report never holds the
-//! path, and a missing or unreadable file fails without printing it.
+//! save's facts, each shortlist's name and player count, and every player's totals, keyed by
+//! Unique ID with fmsave's field names, so the totals can be compared with fmsave's outside
+//! the repository. The report never holds the path, and a missing or unreadable file fails
+//! without printing it.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -78,6 +79,16 @@ fn save_stats_reference_harness() {
         "elapsed_ms": elapsed_ms,
         "cohort_size": stats.players.len(),
         "unique_players": players.len(),
+        "shortlists": match &stats.shortlists {
+            Ok(shortlists) => shortlists
+                .iter()
+                .map(|shortlist| json!({
+                    "name": shortlist.name,
+                    "players": shortlist.player_unique_ids.len(),
+                }))
+                .collect(),
+            Err(error) => json!({ "error": error.kind() }),
+        },
         "players": players,
     });
     let json = serde_json::to_string(&report).expect("reference report serializes");

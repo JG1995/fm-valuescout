@@ -1,16 +1,19 @@
-//! Player shortlists that FM exports as `.fmf` files. A save links any number of them.
+//! A save's player shortlists: those FM exports as `.fmf` files, of which a save links any
+//! number, and those read from the save's linked FM save file.
 //!
 //! `file` reads a shortlist file into its list name and player Unique IDs. Adding a file
 //! links it to the active save, or re-reads it when the save already links that path, and
 //! stores every ID it lists, so a later snapshot can match players the current one lacks.
-//! Load Data re-reads every linked file after publication. Search matches the IDs of the
-//! selected shortlist against the current snapshot.
+//! Load Data re-reads every linked file after publication. Each read of the linked FM save
+//! replaces the shortlists read from it. Search matches the IDs of the selected shortlist
+//! against the current snapshot.
 
 pub(crate) mod commands;
 mod file;
 #[cfg(test)]
 mod test_support;
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use rusqlite::{params, Connection};
@@ -21,6 +24,7 @@ use crate::features::csv_import::service::{
     capture_active_import_context, revalidate_active_import_context, ActiveImportContext,
     CsvImportServiceError,
 };
+use crate::features::save_stats::SaveShortlist;
 
 use file::{read_player_shortlist, PlayerShortlistFile, ShortlistFileError};
 
@@ -256,8 +260,8 @@ pub(crate) fn refresh_player_shortlists(
     outcome
 }
 
-/// The active save's current snapshot and its shortlists, captured before their files are
-/// read, or `None` when the save is no longer active.
+/// The active save's current snapshot and its shortlists linked to files, captured before
+/// those files are read, or `None` when the save is no longer active.
 fn capture_links(
     conn: &Connection,
     save_id: i64,
@@ -271,7 +275,10 @@ fn capture_links(
         Err(kind) => return Err(kind),
     };
     let linked = conn
-        .prepare("SELECT id, file_path FROM player_shortlists WHERE save_id = ?1 ORDER BY id")
+        .prepare(
+            "SELECT id, file_path FROM player_shortlists
+             WHERE save_id = ?1 AND file_path IS NOT NULL ORDER BY id",
+        )
         .and_then(|mut statement| {
             statement
                 .query_map([save_id], |row| {
@@ -312,6 +319,67 @@ fn persist_refresh(
     }
     store_players(&tx, shortlist_id, &shortlist.player_uids)?;
     tx.commit().map_err(|_| Database)
+}
+
+/// The name the game shows for its default shortlist, which the save stores unnamed.
+const DEFAULT_SHORTLIST_NAME: &str = "(Default)";
+
+/// Replaces the shortlists save `save_id` reads from its FM save file with `shortlists`, and
+/// returns how many it now keeps. Run it inside the caller's transaction.
+///
+/// A list without players is not kept, and lists with one name are stored as one. A stored
+/// list keeps its ID while a list of its name is still read, so a selection survives a
+/// refresh. Shortlists linked to files are untouched.
+pub(crate) fn replace_save_file_shortlists(
+    conn: &Connection,
+    save_id: i64,
+    shortlists: &[SaveShortlist],
+) -> Result<usize, PlayerShortlistErrorKind> {
+    let mut players_by_name: BTreeMap<&str, BTreeSet<i64>> = BTreeMap::new();
+    for shortlist in shortlists {
+        if shortlist.player_unique_ids.is_empty() {
+            continue;
+        }
+        let name = if shortlist.name.is_empty() {
+            DEFAULT_SHORTLIST_NAME
+        } else {
+            &shortlist.name
+        };
+        players_by_name
+            .entry(name)
+            .or_default()
+            .extend(shortlist.player_unique_ids.iter().map(|&id| i64::from(id)));
+    }
+
+    let mut kept = Vec::with_capacity(players_by_name.len());
+    for (name, players) in &players_by_name {
+        let id: i64 = conn
+            .query_row(
+                "INSERT INTO player_shortlists (save_id, file_path, name) VALUES (?1, NULL, ?2)
+                 ON CONFLICT (save_id, name) WHERE file_path IS NULL
+                 DO UPDATE SET name = excluded.name
+                 RETURNING id",
+                params![save_id, name],
+                |row| row.get(0),
+            )
+            .map_err(|_| Database)?;
+        let players: Vec<i64> = players.iter().copied().collect();
+        store_players(conn, id, &players)?;
+        kept.push(id);
+    }
+    let stored: Vec<i64> = conn
+        .prepare("SELECT id FROM player_shortlists WHERE save_id = ?1 AND file_path IS NULL")
+        .and_then(|mut statement| {
+            statement
+                .query_map([save_id], |row| row.get(0))?
+                .collect::<Result<_, _>>()
+        })
+        .map_err(|_| Database)?;
+    for id in stored.into_iter().filter(|id| !kept.contains(id)) {
+        conn.execute("DELETE FROM player_shortlists WHERE id = ?1", [id])
+            .map_err(|_| Database)?;
+    }
+    Ok(kept.len())
 }
 
 fn revalidate(
@@ -394,6 +462,13 @@ mod tests {
     /// A stored shortlist: its ID, path, name, and players.
     type StoredShortlist = (i64, String, String, Vec<i64>);
 
+    fn save_list(name: &str, players: &[u32]) -> SaveShortlist {
+        SaveShortlist {
+            name: name.to_owned(),
+            player_unique_ids: players.to_vec(),
+        }
+    }
+
     struct Fixture {
         _database_directory: tempfile::TempDir,
         db: Db,
@@ -458,11 +533,52 @@ mod tests {
             (path, id)
         }
 
-        /// Every stored shortlist of every save, in ID order.
+        /// Replaces the shortlists read from the FM save and returns how many are kept.
+        fn replace_save_lists(&self, shortlists: &[SaveShortlist]) -> usize {
+            let conn = self.db.0.lock().expect("lock");
+            replace_save_file_shortlists(&conn, self.save.id, shortlists)
+                .expect("replace the lists read from the FM save")
+        }
+
+        /// The ID, name, and players of every shortlist read from an FM save, by name.
+        fn save_lists(&self) -> Vec<(i64, String, Vec<i64>)> {
+            let conn = self.db.0.lock().expect("lock");
+            let rows = conn
+                .prepare(
+                    "SELECT shortlist.id, shortlist.name,
+                            (SELECT json_group_array(player_uid) FROM (
+                                SELECT player_uid FROM player_shortlist_entries
+                                WHERE shortlist_id = shortlist.id ORDER BY player_uid))
+                     FROM player_shortlists shortlist
+                     WHERE shortlist.file_path IS NULL ORDER BY shortlist.name",
+                )
+                .expect("prepare save lists")
+                .query_map([], |row| {
+                    let players: String = row.get(2)?;
+                    Ok((row.get(0)?, row.get(1)?, players))
+                })
+                .expect("query save lists")
+                .collect::<Result<Vec<(i64, String, String)>, _>>()
+                .expect("read save lists");
+            rows.into_iter()
+                .map(|(id, name, players)| {
+                    (
+                        id,
+                        name,
+                        serde_json::from_str(&players).expect("player IDs"),
+                    )
+                })
+                .collect()
+        }
+
+        /// Every stored shortlist linked to a file, of every save, in ID order.
         fn state(&self) -> Vec<StoredShortlist> {
             let conn = self.db.0.lock().expect("lock");
             let shortlists: Vec<(i64, String, String)> = conn
-                .prepare("SELECT id, file_path, name FROM player_shortlists ORDER BY id")
+                .prepare(
+                    "SELECT id, file_path, name FROM player_shortlists
+                     WHERE file_path IS NOT NULL ORDER BY id",
+                )
                 .expect("prepare shortlists")
                 .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
                 .expect("query shortlists")
@@ -486,6 +602,66 @@ mod tests {
                 })
                 .collect()
         }
+    }
+
+    #[test]
+    fn lists_read_from_the_fm_save_replace_the_earlier_ones_and_keep_their_ids_by_name() {
+        let fixture = fixture();
+        let (linked_path, linked_id) = fixture.add("Targets.fmf", "Targets", &[IN_SNAPSHOT]);
+        let linked = vec![(
+            linked_id,
+            linked_path,
+            "Targets".to_string(),
+            uids(&[IN_SNAPSHOT]),
+        )];
+
+        // The unnamed list is the game's default; a list without players is not kept.
+        let kept = fixture.replace_save_lists(&[
+            save_list("Targets", &[NOT_IN_SNAPSHOT, IN_SNAPSHOT]),
+            save_list("", &[IN_SNAPSHOT]),
+            save_list("Empty", &[]),
+        ]);
+
+        assert_eq!(kept, 2);
+        let first = fixture.save_lists();
+        assert_eq!(
+            first
+                .iter()
+                .map(|(_, name, players)| (name.as_str(), players.clone()))
+                .collect::<Vec<_>>(),
+            [
+                ("(Default)", uids(&[IN_SNAPSHOT])),
+                ("Targets", uids(&[IN_SNAPSHOT, NOT_IN_SNAPSHOT])),
+            ]
+        );
+        let targets_id = first[1].0;
+
+        // Lists with one name are stored as one, and a list no longer read is removed.
+        let kept = fixture.replace_save_lists(&[
+            save_list("Targets", &[IN_SNAPSHOT]),
+            save_list("Wingers", &[5, 6]),
+            save_list("Wingers", &[6, 7]),
+        ]);
+
+        assert_eq!(kept, 2);
+        let second = fixture.save_lists();
+        assert_eq!(
+            second[0],
+            (targets_id, "Targets".to_string(), uids(&[IN_SNAPSHOT]))
+        );
+        assert_eq!(
+            (second[1].1.as_str(), second[1].2.clone()),
+            ("Wingers", uids(&[5, 6, 7]))
+        );
+        assert_eq!(second.len(), 2);
+        // The linked file is untouched, and Load Data still re-reads only linked files.
+        assert_eq!(fixture.state(), linked);
+        assert_eq!(fixture.refresh().read, 1);
+        assert_eq!(fixture.save_lists(), second);
+
+        assert_eq!(fixture.replace_save_lists(&[]), 0);
+        assert_eq!(fixture.save_lists(), []);
+        assert_eq!(fixture.state(), linked);
     }
 
     #[test]
@@ -522,7 +698,7 @@ mod tests {
             [PlayerShortlistSummary {
                 id: choice.id,
                 name: "Targets".to_string(),
-                file_name: "Targets.fmf".to_string(),
+                file_name: Some("Targets.fmf".to_string()),
             }]
         );
     }

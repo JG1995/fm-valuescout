@@ -503,6 +503,30 @@ pub(super) fn season_stats_save(
     players: &[ExamplePlayer],
     season_stats: &[u8],
 ) -> Vec<u8> {
+    build_container(
+        &season_stats_sections(build, game_db_schema, players, season_stats),
+        &[],
+    )
+}
+
+/// `season_stats_save` with a `scout_man` section holding `scout_section`.
+pub(super) fn save_with_scout_section(
+    build: &str,
+    players: &[ExamplePlayer],
+    season_stats: &[u8],
+    scout_section: Vec<u8>,
+) -> Vec<u8> {
+    let mut sections = season_stats_sections(build, 4000, players, season_stats);
+    sections.push(SectionFrame::new("scout_man", scout_section));
+    build_container(&sections, &[])
+}
+
+fn season_stats_sections(
+    build: &str,
+    game_db_schema: u16,
+    players: &[ExamplePlayer],
+    season_stats: &[u8],
+) -> Vec<SectionFrame> {
     let game_db = section_body(".dat", game_db_schema, &game_db_payload(players));
     let mut sections = with_body(fm27_sections(build), "game_db", game_db);
     let span = sections
@@ -513,5 +537,77 @@ pub(super) fn season_stats_save(
         compress(&section_body(".dat", 9, &[0; 40])),
         compress(season_stats),
     ];
-    build_container(&sections, &[])
+    sections
+}
+
+/// One list record of a `scout_man` section. Kind 0 with the `frlp` filter tag is a player
+/// shortlist; an empty name is the game's default shortlist.
+#[derive(Debug, Clone)]
+pub(super) struct ExampleList {
+    pub kind: u32,
+    pub filter_tag: [u8; 4],
+    pub name: &'static str,
+    /// Each member's season-statistics key: the player's pindex plus one.
+    pub player_keys: Vec<u32>,
+}
+
+impl ExampleList {
+    pub(super) fn shortlist(name: &'static str, player_keys: &[u32]) -> Self {
+        Self {
+            kind: 0,
+            filter_tag: *b"frlp",
+            name,
+            player_keys: player_keys.to_vec(),
+        }
+    }
+
+    /// The staff shortlist the game stores after the player shortlists.
+    pub(super) fn staff() -> Self {
+        Self {
+            kind: 8,
+            filter_tag: *b"flpn",
+            name: "",
+            player_keys: Vec::new(),
+        }
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        // Owner, two flag bytes, kind, 14 unused bytes, an unset id, a flag, an unset date.
+        let mut record = 38_573_830_u32.to_le_bytes().to_vec();
+        record.extend_from_slice(&[0, 1]);
+        record.extend_from_slice(&self.kind.to_le_bytes());
+        record.extend_from_slice(&[0; 14]);
+        record.extend_from_slice(&[0xFF; 4]);
+        record.extend_from_slice(&[1, 1, 0, 0x6C, 0x07]);
+        record.extend(length_prefixed(self.name));
+        record.extend_from_slice(&[1, 0, 1]);
+        record.extend_from_slice(&self.filter_tag);
+        record.extend_from_slice(b"tlif");
+        // A filter body of no fixed length.
+        record.extend_from_slice(&[0, 0x12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1]);
+        record.extend_from_slice(b"roip\0rfsc\0");
+        record.extend_from_slice(b"rSrP\0");
+        record.extend_from_slice(&(self.player_keys.len() as u32).to_le_bytes());
+        for key in &self.player_keys {
+            record.push(2);
+            record.extend_from_slice(&key.to_le_bytes());
+            record.extend_from_slice(&[1, 0, 0xEB, 0x07, 0, 0, 0, 0, 1, 0, 0x6C, 0x07]);
+            record.extend_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0]);
+        }
+        // List settings, two view columns, four unused bytes, and the record's end.
+        record.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x5A, 0, 0]);
+        record.extend_from_slice(&2_u32.to_le_bytes());
+        record.extend_from_slice(&[1, 0, 0, 0, 2, 0, 0, 0]);
+        record.extend_from_slice(&[0; 4]);
+        record.extend_from_slice(&30_u16.to_le_bytes());
+        record
+    }
+}
+
+/// A whole `scout_man` section: its header, the list count, and `lists` back to back.
+pub(super) fn scout_section(lists: &[ExampleList], schema: u16) -> Vec<u8> {
+    let mut payload = 31_u16.to_le_bytes().to_vec();
+    payload.extend_from_slice(&(lists.len() as u32).to_le_bytes());
+    payload.extend(lists.iter().flat_map(ExampleList::to_bytes));
+    section_body(".dat", schema, &payload)
 }

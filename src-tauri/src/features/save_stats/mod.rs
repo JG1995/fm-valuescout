@@ -16,6 +16,7 @@ mod players;
 #[cfg(test)]
 mod reference;
 mod season_stats;
+mod shortlists;
 #[cfg(test)]
 mod test_support;
 
@@ -253,8 +254,8 @@ pub(crate) mod synthetic {
     use std::path::{Path, PathBuf};
 
     use super::test_support::{
-        season_stats_body, season_stats_save, stat_line, write_save, ExamplePlayer, ExampleRecord,
-        FM27_BUILD,
+        save_with_scout_section, scout_section, season_stats_body, season_stats_save, stat_line,
+        write_save, ExampleList, ExamplePlayer, ExampleRecord, FM27_BUILD,
     };
 
     /// The in-game date every synthetic save reports.
@@ -272,6 +273,47 @@ pub(crate) mod synthetic {
         directory: &Path,
         players: &[(u32, &[(&str, f64)])],
     ) -> PathBuf {
+        let (example_players, season_stats) = players_and_season_stats(players);
+        let save = season_stats_save(FM27_BUILD, 4000, &example_players, &season_stats);
+        write_save(directory, &save)
+    }
+
+    /// `write_season_stats_save` for a save that also holds player shortlists. Each
+    /// `(name, unique_ids)` lists some of `players`; an empty name is the game's default
+    /// shortlist.
+    pub(crate) fn write_save_with_shortlists(
+        directory: &Path,
+        players: &[(u32, &[(&str, f64)])],
+        shortlists: &[(&'static str, &[u32])],
+    ) -> PathBuf {
+        let (example_players, season_stats) = players_and_season_stats(players);
+        let key_of = |unique_id: &u32| {
+            let player = example_players
+                .iter()
+                .find(|player| player.unique_id == Some(*unique_id))
+                .expect("a shortlisted player is one of the save's players");
+            player.pindex + 1
+        };
+        let mut lists: Vec<ExampleList> = shortlists
+            .iter()
+            .map(|(name, unique_ids)| {
+                let keys: Vec<u32> = unique_ids.iter().map(key_of).collect();
+                ExampleList::shortlist(name, &keys)
+            })
+            .collect();
+        lists.push(ExampleList::staff());
+        let save = save_with_scout_section(
+            FM27_BUILD,
+            &example_players,
+            &season_stats,
+            scout_section(&lists, 31),
+        );
+        write_save(directory, &save)
+    }
+
+    fn players_and_season_stats(
+        players: &[(u32, &[(&str, f64)])],
+    ) -> (Vec<ExamplePlayer>, Vec<u8>) {
         let mut players = players.to_vec();
         players.sort_by_key(|(unique_id, _)| *unique_id);
         let mut example_players = Vec::new();
@@ -288,25 +330,32 @@ pub(crate) mod synthetic {
                 &[(LEAGUE_SLOT, stat_line(fields))],
             ));
         }
-        let save = season_stats_save(
-            FM27_BUILD,
-            4000,
-            &example_players,
-            &season_stats_body(&records, 15),
-        );
-        write_save(directory, &save)
+        (example_players, season_stats_body(&records, 15))
     }
 }
 
-/// The save's facts and the statistics of every player with a Unique ID and competitive
-/// minutes this season.
+/// One of the manager's player shortlists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SaveShortlist {
+    /// The list's name, which is empty for the game's default shortlist.
+    pub name: String,
+    /// Each listed player's Unique ID once, in the save's order.
+    pub player_unique_ids: Vec<u32>,
+}
+
+/// The save's facts, the statistics of every player with a Unique ID and competitive
+/// minutes this season, and the manager's player shortlists.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SaveSeasonStats {
     pub info: SaveInfo,
     pub players: Vec<SavePlayerSeasonStats>,
+    /// Why the shortlists could not be read, when they could not. That never fails the
+    /// statistics.
+    pub shortlists: Result<Vec<SaveShortlist>, SaveStatsError>,
 }
 
-/// Reads the whole save once, then the players' current-season statistics.
+/// Reads the whole save once, then the players' current-season statistics and the manager's
+/// player shortlists.
 ///
 /// Every structural check must pass first: a failure returns an error and no statistics.
 /// Section schemas must match the registered layouts' on every build.
@@ -324,14 +373,18 @@ pub(crate) fn read_season_stats(path: &Path) -> Result<SaveSeasonStats, SaveStat
     let bounds = find_fm27_layout(GATE_BOUNDS_LAYOUTS, Some(schema), &info.build)?;
     let season_layout = find_fm27_layout(SEASON_STATS_LAYOUTS, None, &info.build)?;
     let season_frames = season_stats::read_section_frames(&mut source, &index, season_layout)?;
+    let scout_section = container::read_section(&mut source, &index, shortlists::SECTION);
     drop(save);
 
     let fit = |error| layout_fit(error, info.known_build);
-    let players =
+    let records =
         players::read_players(&game_db, name_pool_layout, player_layout, bounds).map_err(fit)?;
+    let shortlists = scout_section
+        .and_then(|section| shortlists::read_player_shortlists(&section, &records))
+        .map_err(fit);
     let players = season_stats::season_totals(
         &season_frames,
-        &players,
+        &records,
         season_layout,
         bounds,
         game_db.len(),
@@ -345,7 +398,11 @@ pub(crate) fn read_season_stats(path: &Path) -> Result<SaveSeasonStats, SaveStat
     {
         return Err(fit(SaveStatsError::Corrupt));
     }
-    Ok(SaveSeasonStats { info, players })
+    Ok(SaveSeasonStats {
+        info,
+        players,
+        shortlists,
+    })
 }
 
 /// Damage under a registered build's own layout is damage; under a borrowed layout it means

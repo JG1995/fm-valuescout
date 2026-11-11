@@ -12,6 +12,7 @@ type RefreshSeasonStatsMockResult = SeasonStatsOutcome | "loadDataRunning";
 
 let refreshResult: RefreshSeasonStatsMockResult = {
   status: "notLinked",
+  shortlists: { status: "notRead" },
   elapsedMs: 0,
 };
 let refreshArgs: unknown;
@@ -68,7 +69,11 @@ export function setPlayerMoneyballOverride(
 export function resetPlayerMoneyballOverride() {
   profileOverride = undefined;
   pendingProfile = null;
-  refreshResult = { status: "notLinked", elapsedMs: 0 };
+  refreshResult = {
+    status: "notLinked",
+    shortlists: { status: "notRead" },
+    elapsedMs: 0,
+  };
   refreshArgs = undefined;
   pendingRefresh = null;
 }

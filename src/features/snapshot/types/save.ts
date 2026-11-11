@@ -7,15 +7,18 @@ export type SaveSummary = {
   updatedAtUtc: string;
   /** The linked FM save's file name only; the app never receives its directory. */
   linkedSaveFileName: string | null;
-  /** The linked FM shortlists, by name case-insensitively, then by file name. */
+  /** The save's player shortlists, by name case-insensitively, then by file name. */
   playerShortlists: PlayerShortlistSummary[];
 };
 
-/** One linked FM shortlist of a save. */
+/** One player shortlist of a save: a linked FM file, or a list read from the linked FM save. */
 export type PlayerShortlistSummary = {
   id: number;
-  /** The list name from the file's last successful read; it may be empty. */
+  /** The list name from the last successful read; a file's may be empty. */
   name: string;
-  /** The file name only; the app never receives its directory. */
-  fileName: string;
+  /**
+   * The linked file's name only, as the app never receives its directory, or
+   * null for a list read from the linked FM save.
+   */
+  fileName: string | null;
 };

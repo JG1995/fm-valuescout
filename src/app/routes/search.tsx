@@ -336,21 +336,23 @@ function refreshSeasonStatsCopy(result: RefreshSeasonStatsResult): {
 }
 
 /**
- * Dropdown labels: the list name, or the file name when the name is empty,
- * with the file name added when another shortlist shares the name.
+ * Dropdown labels: the list name, or the file name when the name is empty.
+ * When another shortlist shares the name, the file name is added, or "FM save"
+ * for a list read from the linked save.
  */
 function shortlistOptionLabels(shortlists: PlayerShortlistSummary[]) {
   return shortlists.map((shortlist) => {
     const shared = shortlists.some(
       (other) => other.id !== shortlist.id && other.name === shortlist.name,
     );
+    const source = shortlist.fileName ?? "FM save";
     return {
       id: shortlist.id,
       label:
         shortlist.name === ""
-          ? shortlist.fileName
+          ? source
           : shared
-            ? `${shortlist.name} (${shortlist.fileName})`
+            ? `${shortlist.name} (${source})`
             : shortlist.name,
     };
   });
@@ -630,7 +632,12 @@ function SearchPageContent() {
             ))}
           </select>
         </label>
-        {shortlistId !== null ? (
+        {/* A list read from the FM save is managed in FM and returns on the next read. */}
+        {shortlistId !== null &&
+        shortlists.some(
+          (shortlist) =>
+            shortlist.id === shortlistId && shortlist.fileName !== null,
+        ) ? (
           <Button
             variant="ghost"
             size="icon"

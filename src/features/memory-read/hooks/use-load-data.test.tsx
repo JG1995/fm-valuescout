@@ -77,6 +77,7 @@ function historicalResultWithAttachedStats(saveId: number): BusyLoadDataResult {
       matchedPlayers: 3,
       unmatchedPlayers: 0,
       gameDate: "2027-08-16",
+      shortlists: { status: "notRead" },
       elapsedMs: 900,
     },
     shortlists: { read: 0, failed: [] },
@@ -90,7 +91,11 @@ function historicalResultWithShortlists(
 ): BusyLoadDataResult {
   return {
     ...historicalResultWithAttachedStats(saveId),
-    stats: { status: "notLinked", elapsedMs: 0 },
+    stats: {
+      status: "notLinked",
+      shortlists: { status: "notRead" },
+      elapsedMs: 0,
+    },
     shortlists,
   };
 }
@@ -467,6 +472,20 @@ describe("useLoadData", () => {
         read: 1,
         failed: [{ kind: "unreadable", fileName: "Loans.fmf" }],
       }),
+      1,
+    ],
+    [
+      "shortlists read from the save and no stats",
+      {
+        ...historicalResultWithShortlists(1, { read: 0, failed: [] }),
+        stats: {
+          status: "noMatches",
+          unmatchedPlayers: 3,
+          gameDate: "2027-01-01",
+          shortlists: { status: "read", count: 2 },
+          elapsedMs: 0,
+        },
+      },
       1,
     ],
     [
@@ -1058,7 +1077,11 @@ describe("useLoadData", () => {
           totalMs: 2100,
           ingestMs: 400,
         },
-        stats: { status: "notLinked", elapsedMs: 0 },
+        stats: {
+          status: "notLinked",
+          shortlists: { status: "notRead" },
+          elapsedMs: 0,
+        },
         shortlists: { read: 0, failed: [] },
       } as never);
     });
@@ -1237,7 +1260,11 @@ describe("useLoadData", () => {
           totalMs: 2100,
           ingestMs: 400,
         },
-        stats: { status: "notLinked", elapsedMs: 0 },
+        stats: {
+          status: "notLinked",
+          shortlists: { status: "notRead" },
+          elapsedMs: 0,
+        },
         shortlists: { read: 0, failed: [] },
       } as never);
     });
@@ -1364,7 +1391,11 @@ describe("useLoadData", () => {
           totalMs: 2100,
           ingestMs: 400,
         },
-        stats: { status: "notLinked", elapsedMs: 0 },
+        stats: {
+          status: "notLinked",
+          shortlists: { status: "notRead" },
+          elapsedMs: 0,
+        },
         shortlists: { read: 0, failed: [] },
       } as never);
     });
@@ -1506,7 +1537,11 @@ describe("useLoadData", () => {
           totalMs: 2100,
           ingestMs: 400,
         },
-        stats: { status: "notLinked", elapsedMs: 0 },
+        stats: {
+          status: "notLinked",
+          shortlists: { status: "notRead" },
+          elapsedMs: 0,
+        },
         shortlists: { read: 0, failed: [] },
       } as never);
     });
