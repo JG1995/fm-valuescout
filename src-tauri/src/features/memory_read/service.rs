@@ -1244,18 +1244,12 @@ mod tests {
             write_status_fixture(&writer_dir, "scanning", Some(&writer_id), None, None);
             thread::sleep(Duration::from_millis(30));
             fs::write(dump_path(&writer_dir), "{\"schemaVersion\":99}").expect("dump");
-            write_status_fixture(&writer_dir, "ready", Some(&writer_id), Some(42), None);
-            let status_file = status_path(&writer_dir);
-            let mut old_status: serde_json::Value =
-                serde_json::from_str(&fs::read_to_string(&status_file).expect("status"))
-                    .expect("status JSON");
+            // The ready status in an older shape, with fields this reader no longer knows.
+            let ready = status_fixture("ready", Some(&writer_id), Some(42), None);
+            let mut old_status = serde_json::to_value(&ready).expect("status JSON");
             old_status["scanTruncated"] = serde_json::Value::Bool(false);
             old_status["maxAccepted"] = serde_json::Value::from(500);
-            fs::write(
-                status_file,
-                serde_json::to_vec(&old_status).expect("serialize status"),
-            )
-            .expect("write old status shape");
+            write_status_json(&writer_dir, &old_status.to_string());
         });
 
         barrier.wait();
@@ -1868,7 +1862,19 @@ mod tests {
         players_found: Option<i32>,
         error: Option<&str>,
     ) {
-        let status = BridgeStatus {
+        write_status(
+            bridge_dir,
+            &status_fixture(state, request_id, players_found, error),
+        );
+    }
+
+    fn status_fixture(
+        state: &str,
+        request_id: Option<&str>,
+        players_found: Option<i32>,
+        error: Option<&str>,
+    ) -> BridgeStatus {
+        BridgeStatus {
             protocol_version: 1,
             plugin_version: "0.1.0".to_string(),
             state: state.to_string(),
@@ -1882,8 +1888,7 @@ mod tests {
             player_boost: None,
             staff_boosts_supported: None,
             staff_boost: None,
-        };
-        write_status(bridge_dir, &status);
+        }
     }
 
     fn write_player_boost_status_fixture(
@@ -1940,9 +1945,15 @@ mod tests {
 
     fn write_status(bridge_dir: &Path, status: &BridgeStatus) {
         let json = serde_json::to_string_pretty(&status).expect("serialize");
+        write_status_json(bridge_dir, &json);
+    }
+
+    /// Replaces `status.json` in one step, as the bridge does, so a reader polling it never
+    /// sees it empty or half written.
+    fn write_status_json(bridge_dir: &Path, json: &str) {
         let path = status_path(bridge_dir);
         let temp = path.with_extension("json.tmp");
-        fs::write(&temp, &json).expect("write status tmp");
+        fs::write(&temp, json).expect("write status tmp");
         fs::rename(&temp, &path).expect("rename status");
     }
 
