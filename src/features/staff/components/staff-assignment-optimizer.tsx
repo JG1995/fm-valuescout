@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { optimizeStaffAssignments } from "../api/optimize-staff-assignments";
+import { setStaffAssignmentSkip } from "../api/set-staff-assignment-skip";
 import { staffAssignmentTargetsQueryOptions } from "../api/staff-assignment-targets-query-options";
 import type {
   StaffAssignmentContext,
@@ -26,6 +27,14 @@ type OptimizeRequest = {
   generation: number;
   saveContextToken: string;
   snapshotContextToken: string;
+};
+
+type SkipRequest = {
+  contextKey: string;
+  generation: number;
+  saveContextToken: string;
+  uid: number;
+  skipped: boolean;
 };
 
 type PresentedResult = {
@@ -118,6 +127,39 @@ export function StaffAssignmentOptimizer({
         return;
       }
       setResult({ contextKey: request.contextKey, value: nextResult });
+    },
+    onError: (nextError, request) => {
+      if (
+        request.contextKey === currentContextKey.current &&
+        request.generation === requestGeneration.current
+      ) {
+        setError(errorMessage(nextError));
+      }
+    },
+  });
+
+  // A skip or restore changes the pool, so the optimization runs again. The visible result
+  // stays until the new one arrives; a context reset meanwhile drops both.
+  const skip = useMutation({
+    mutationFn: (request: SkipRequest) =>
+      setStaffAssignmentSkip(
+        request.saveContextToken,
+        request.uid,
+        request.skipped,
+      ),
+    onSuccess: (_, request) => {
+      if (
+        request.contextKey !== currentContextKey.current ||
+        request.generation !== requestGeneration.current
+      ) {
+        return;
+      }
+      optimize.mutate({
+        contextKey: request.contextKey,
+        generation: request.generation,
+        saveContextToken: currentContext.current.saveContextToken,
+        snapshotContextToken: currentContext.current.snapshotContextToken,
+      });
     },
     onError: (nextError, request) => {
       if (
@@ -263,6 +305,17 @@ export function StaffAssignmentOptimizer({
           result={currentResult}
           onRequestConfiguration={() => setModalOpen(true)}
           onReviewShortlist={onReviewShortlist}
+          onSetSkip={(uid, skipped) => {
+            setError(null);
+            skip.mutate({
+              contextKey,
+              generation: requestGeneration.current,
+              saveContextToken: context.saveContextToken,
+              uid,
+              skipped,
+            });
+          }}
+          skipDisabled={skip.isPending || optimize.isPending}
         />
       ) : null}
     </div>

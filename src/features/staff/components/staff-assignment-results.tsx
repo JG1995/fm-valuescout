@@ -1,4 +1,11 @@
-import { Building2, ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
+import {
+  Building2,
+  ChevronDown,
+  ChevronUp,
+  RotateCcw,
+  TriangleAlert,
+  UserX,
+} from "lucide-react";
 import { Fragment, useId, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
@@ -14,6 +21,8 @@ type StaffAssignmentResultsProps = {
   result: StaffAssignmentOptimization;
   onRequestConfiguration: () => void;
   onReviewShortlist: () => void;
+  onSetSkip: (uid: number, skipped: boolean) => void;
+  skipDisabled: boolean;
 };
 
 const coachRequirementLabels: Record<CoachRequirement, string> = {
@@ -38,7 +47,7 @@ function evidenceCountsText(
 ) {
   const { eligibleScoreCount, joinedCandidateCount, unavailableScoreCount } =
     slot.evidence;
-  return `${eligibleScoreCount} eligible score${eligibleScoreCount === 1 ? "" : "s"}; ${unavailableScoreCount} unavailable score${unavailableScoreCount === 1 ? "" : "s"}; ${joinedCandidateCount} joined shortlisted candidate${joinedCandidateCount === 1 ? "" : "s"}.`;
+  return `${eligibleScoreCount} eligible score${eligibleScoreCount === 1 ? "" : "s"}; ${unavailableScoreCount} unavailable score${unavailableScoreCount === 1 ? "" : "s"}; ${joinedCandidateCount} candidate${joinedCandidateCount === 1 ? "" : "s"} for this job.`;
 }
 
 function groupAdjacentSlots(slots: StaffAssignmentSlot[]) {
@@ -58,9 +67,12 @@ export function StaffAssignmentResults({
   result,
   onRequestConfiguration,
   onReviewShortlist,
+  onSetSkip,
+  skipDisabled,
 }: StaffAssignmentResultsProps) {
   const [expanded, setExpanded] = useState(true);
   const bodyId = useId();
+  const skippedHeadingId = useId();
   const ToggleIcon = expanded ? ChevronUp : ChevronDown;
   const filledSlotCount = result.slots.filter(
     (slot) => slot.kind === "recommendation",
@@ -110,9 +122,9 @@ export function StaffAssignmentResults({
           ))}
         </dl>
         <p className="text-body-sm text-on-surface-variant">
-          {result.joinedCandidateCount} joined shortlisted candidate
-          {result.joinedCandidateCount === 1 ? "" : "s"};{" "}
-          {result.configuredSlotCount} configured slot
+          {result.joinedCandidateCount} candidate
+          {result.joinedCandidateCount === 1 ? "" : "s"} from the shortlist and
+          current staff; {result.configuredSlotCount} configured slot
           {result.configuredSlotCount === 1 ? "" : "s"}.
         </p>
         {result.slots.length > 0 ? (
@@ -135,6 +147,9 @@ export function StaffAssignmentResults({
                   <th scope="col" className="px-2 py-2">
                     Evidence
                   </th>
+                  <th scope="col" className="px-2 py-2">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -145,7 +160,7 @@ export function StaffAssignmentResults({
                     <tr>
                       <th
                         scope="rowgroup"
-                        colSpan={4}
+                        colSpan={5}
                         className="bg-surface-container-high px-2 py-2 text-label-md text-on-surface"
                       >
                         {group.displayName}:{" "}
@@ -193,11 +208,25 @@ export function StaffAssignmentResults({
                               />
                             </td>
                             <td className="px-2 py-2 text-on-surface-variant">
-                              Preferred Job: {slot.preferredJob}. Eligible for
-                              this target.
+                              {slot.jobSource === "current_job"
+                                ? "Current job"
+                                : "Preferred Job"}
+                              : {slot.preferredJob}. Eligible for this target.
                               {slot.coachRequirement
                                 ? ` ${coachRequirementText(slot.coachRequirement)}`
                                 : null}
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              <Button
+                                variant="ghost"
+                                icon={UserX}
+                                aria-label={`Skip ${slot.name ?? `staff ${slot.uid}`} for ${slot.scopeDisplayName} ${slot.jobLabel} slot ${slot.slotNumber}`}
+                                disabled={skipDisabled}
+                                className="gap-1 px-2"
+                                onClick={() => onSetSkip(slot.uid, true)}
+                              >
+                                Skip
+                              </Button>
                             </td>
                           </>
                         ) : (
@@ -209,10 +238,7 @@ export function StaffAssignmentResults({
                             </td>
                             <td className="px-2 py-2 text-right">—</td>
                             <td className="space-y-2 px-2 py-2 text-on-surface-variant">
-                              <p>
-                                No eligible shortlisted candidate filled this
-                                slot.
-                              </p>
+                              <p>No eligible candidate filled this slot.</p>
                               {slot.coachRequirement ? (
                                 <p>
                                   {coachRequirementText(slot.coachRequirement)}
@@ -241,6 +267,7 @@ export function StaffAssignmentResults({
                                 </Button>
                               </div>
                             </td>
+                            <td />
                           </>
                         )}
                       </tr>
@@ -255,6 +282,45 @@ export function StaffAssignmentResults({
             No assignment slots are configured.
           </p>
         )}
+        {result.skipped.length > 0 ? (
+          <section aria-labelledby={skippedHeadingId} className="space-y-2">
+            <h3
+              id={skippedHeadingId}
+              className="text-label-md text-on-surface-variant"
+            >
+              Skipped staff
+            </h3>
+            <p className="text-body-sm text-on-surface-variant">
+              Skipped people stay out of every assignment until you restore
+              them.
+            </p>
+            <ul className="flex flex-wrap gap-2">
+              {result.skipped.map((skip) => {
+                const name = skip.name ?? `Staff ${skip.uid}`;
+                return (
+                  <li
+                    key={skip.uid}
+                    className="flex items-center gap-1 rounded-md border border-outline-variant py-0.5 pr-0.5 pl-2 text-body-sm text-on-surface"
+                  >
+                    <span className="max-w-48 truncate" title={name}>
+                      {name}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      icon={RotateCcw}
+                      aria-label={`Restore ${name}`}
+                      disabled={skipDisabled}
+                      className="gap-1 px-2"
+                      onClick={() => onSetSkip(skip.uid, false)}
+                    >
+                      Restore
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
         {result.unsupportedPreferredJobCount > 0 ? (
           <p className="text-body-sm text-on-surface-variant">
             {result.unsupportedPreferredJobCount} shortlisted person

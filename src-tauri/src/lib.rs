@@ -110,6 +110,7 @@ pub fn run() {
             features::staff::commands::get_staff_assignment_targets,
             features::staff::commands::save_staff_assignment_targets,
             features::staff::commands::optimize_staff_assignments,
+            features::staff::commands::set_staff_assignment_skip,
             features::staff::commands::get_staff,
             features::staff::commands::boost_staff_current_ability,
             features::staff::commands::boost_my_staff_current_ability,

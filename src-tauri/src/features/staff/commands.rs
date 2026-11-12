@@ -12,10 +12,12 @@ use crate::features::memory_read::service::{
 use crate::features::player::boost_gate;
 
 use super::assignment_optimizer::{
-    CoachRequirement, StaffAssignmentClassification, StaffAssignmentEvidence, StaffAssignmentSlot,
+    CoachRequirement, StaffAssignmentClassification, StaffAssignmentEvidence,
+    StaffAssignmentJobSource, StaffAssignmentSlot,
 };
 use super::assignment_optimizer_query::{
     self, StaffAssignmentOptimization, StaffAssignmentOptimizationState, StaffAssignmentResultSlot,
+    StaffAssignmentSkip,
 };
 use super::assignment_targets::{
     self, StaffAssignmentTarget, StaffAssignmentTargetInput, StaffAssignmentTargetTeam,
@@ -362,6 +364,7 @@ pub enum StaffAssignmentSlotDto {
         uid: i64,
         name: Option<String>,
         preferred_job: String,
+        job_source: &'static str,
         classification: &'static str,
         score: u8,
         coach_requirement: Option<&'static str>,
@@ -393,6 +396,10 @@ impl From<StaffAssignmentResultSlot> for StaffAssignmentSlotDto {
                 uid: recommendation.uid,
                 name: recommendation.name,
                 preferred_job: recommendation.preferred_job,
+                job_source: match recommendation.job_source {
+                    StaffAssignmentJobSource::PreferredJob => "preferred_job",
+                    StaffAssignmentJobSource::CurrentJob => "current_job",
+                },
                 classification: classification_name(recommendation.classification),
                 score: recommendation.score,
                 coach_requirement: recommendation.coach_requirement.map(CoachRequirement::name),
@@ -411,6 +418,21 @@ impl From<StaffAssignmentResultSlot> for StaffAssignmentSlotDto {
 }
 
 #[derive(Serialize)]
+pub struct StaffAssignmentSkipDto {
+    pub uid: i64,
+    pub name: Option<String>,
+}
+
+impl From<StaffAssignmentSkip> for StaffAssignmentSkipDto {
+    fn from(skip: StaffAssignmentSkip) -> Self {
+        Self {
+            uid: skip.uid,
+            name: skip.name,
+        }
+    }
+}
+
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StaffAssignmentOptimizationDto {
     pub state: &'static str,
@@ -423,6 +445,7 @@ pub struct StaffAssignmentOptimizationDto {
     pub unsupported_preferred_job_count: i64,
     pub slots: Vec<StaffAssignmentSlotDto>,
     pub evidence: Vec<StaffAssignmentEvidenceDto>,
+    pub skipped: Vec<StaffAssignmentSkipDto>,
 }
 
 impl From<StaffAssignmentOptimization> for StaffAssignmentOptimizationDto {
@@ -444,6 +467,7 @@ impl From<StaffAssignmentOptimization> for StaffAssignmentOptimizationDto {
             unsupported_preferred_job_count: result.unsupported_preferred_job_count,
             slots: result.slots.into_iter().map(Into::into).collect(),
             evidence: result.evidence.into_iter().map(Into::into).collect(),
+            skipped: result.skipped.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -465,6 +489,28 @@ pub async fn optimize_staff_assignments(
             &expected_snapshot_context_token,
         )
         .map(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn set_staff_assignment_skip(
+    expected_save_context_token: String,
+    uid: i64,
+    skipped: bool,
+    db: State<'_, Db>,
+) -> Result<(), String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        assignment_optimizer_query::set_staff_assignment_skip(
+            &conn,
+            &expected_save_context_token,
+            uid,
+            skipped,
+        )
     })
     .await
 }
@@ -1261,6 +1307,7 @@ mod tests {
                     uid: 7,
                     name: None,
                     preferred_job: "Assistant Manager".to_string(),
+                    job_source: "current_job",
                     classification: "current_staff",
                     score: 82,
                     coach_requirement: None,
@@ -1288,6 +1335,7 @@ mod tests {
                     uid: 8,
                     name: Some("Coach".to_string()),
                     preferred_job: "Fitness Coach".to_string(),
+                    job_source: "preferred_job",
                     classification: "recruitment",
                     score: 83,
                     coach_requirement: Some("fitness"),
@@ -1313,6 +1361,10 @@ mod tests {
                 eligible_score_count: 0,
                 unavailable_score_count: 2,
             }],
+            skipped: vec![StaffAssignmentSkipDto {
+                uid: 9,
+                name: Some("Skipped".to_string()),
+            }],
         })
         .expect("serialize assignment optimizer");
 
@@ -1327,6 +1379,10 @@ mod tests {
         assert!(value["slots"][0]["name"].is_null());
         assert_eq!(value["slots"][0]["scopeDisplayName"], "First Team");
         assert_eq!(value["slots"][0]["slotNumber"], 1);
+        assert_eq!(value["slots"][0]["jobSource"], "current_job");
+        assert_eq!(value["slots"][2]["jobSource"], "preferred_job");
+        assert_eq!(value["skipped"][0]["uid"], 9);
+        assert_eq!(value["skipped"][0]["name"], "Skipped");
         assert_eq!(value["slots"][1]["kind"], "vacancy");
         assert!(value["slots"][1]["coachRequirement"].is_null());
         assert_eq!(value["slots"][1]["evidence"]["unavailableScoreCount"], 2);

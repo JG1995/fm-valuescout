@@ -62,6 +62,7 @@ export type StaffAssignmentRecommendation = {
   uid: number;
   name: string | null;
   preferredJob: string;
+  jobSource: "preferred_job" | "current_job";
   classification: "current_staff" | "recruitment";
   score: number;
   coachRequirement: CoachRequirement | null;
@@ -82,6 +83,11 @@ export type StaffAssignmentSlot =
   | StaffAssignmentRecommendation
   | StaffAssignmentVacancy;
 
+export type StaffAssignmentSkip = {
+  uid: number;
+  name: string | null;
+};
+
 export type StaffAssignmentOptimizationState =
   | "stale_context"
   | "no_current_snapshot"
@@ -100,4 +106,5 @@ export type StaffAssignmentOptimization = {
   unsupportedPreferredJobCount: number;
   slots: StaffAssignmentSlot[];
   evidence: StaffAssignmentEvidence[];
+  skipped: StaffAssignmentSkip[];
 };

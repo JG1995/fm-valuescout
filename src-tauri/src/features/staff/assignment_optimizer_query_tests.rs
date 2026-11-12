@@ -1,10 +1,11 @@
 use rusqlite::{params, Connection};
 
 use super::assignment_optimizer::{
-    CoachRequirement, StaffAssignmentClassification, StaffAssignmentSlot,
+    CoachRequirement, StaffAssignmentClassification, StaffAssignmentJobSource, StaffAssignmentSlot,
 };
 use super::assignment_optimizer_query::{
-    load_candidates, optimize_staff_assignments, StaffAssignmentOptimizationState,
+    load_candidates, optimize_staff_assignments, set_staff_assignment_skip,
+    StaffAssignmentOptimizationState, StaffAssignmentSkip,
 };
 use crate::db::migrations;
 
@@ -161,13 +162,13 @@ fn rejects_stale_tokens_including_a_reused_numeric_snapshot_id() {
 }
 
 #[test]
-fn loads_fm27_candidate_scores_from_current_shortlist_only() {
+fn loads_fm27_candidate_scores_from_the_current_pool_only() {
     let (_temp_dir, conn, _save_token) = open();
     insert_current_snapshot(&conn, 1);
     insert_staff(&conn, 1, "Fitness", Some("Club A"));
     insert_staff(&conn, 2, "Goalkeeping", Some("Club A"));
     insert_staff(&conn, 3, "Recruitment analyst", Some("Other FC"));
-    insert_staff(&conn, 4, "Outside shortlist", Some("Club A"));
+    insert_staff(&conn, 4, "Club staff without a job", Some("Club A"));
     insert_staff(&conn, 6, "Fitness missing score", Some("Club A"));
     shortlist(&conn, 1, "Fitness Coach");
     shortlist(&conn, 2, "Goalkeeping Coach");
@@ -221,7 +222,7 @@ fn loads_fm27_candidate_scores_from_current_shortlist_only() {
 }
 
 #[test]
-fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() {
+fn joins_only_current_pool_staff_and_preserves_scores_and_classification() {
     let (_temp_dir, conn, save_token) = open();
     let snapshot_token = insert_current_snapshot(&conn, 1);
     configure_managed_club(&conn);
@@ -240,7 +241,7 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
     .expect("configure targets");
 
     insert_staff(&conn, 1, "Current assistant", Some("Club A"));
-    insert_staff(&conn, 2, "Outside shortlist", Some("Club A"));
+    insert_staff(&conn, 2, "Club staff without a job", Some("Club A"));
     insert_staff(&conn, 3, "Recruitment scout", Some("Other FC"));
     insert_staff(&conn, 4, "Coach with score", Some("Club A"));
     insert_staff(&conn, 5, "Coach missing score", Some("Club A"));
@@ -530,6 +531,215 @@ fn places_standalone_club_results_after_enabled_squads_without_senior() {
             ("club", "Club"),
         ]
     );
+}
+
+fn set_job(conn: &Connection, uid: i64, job_id: i64) {
+    conn.execute(
+        "UPDATE staff SET job_id = ?2 WHERE snapshot_id = 1 AND uid = ?1",
+        params![uid, job_id],
+    )
+    .expect("set current job");
+}
+
+fn recommended_uid(
+    result: &super::assignment_optimizer_query::StaffAssignmentOptimization,
+    job_id: &str,
+) -> Option<i64> {
+    result
+        .slots
+        .iter()
+        .find_map(|result_slot| match &result_slot.slot {
+            StaffAssignmentSlot::Recommendation(recommendation)
+                if recommendation.job_id == job_id =>
+            {
+                Some(recommendation.uid)
+            }
+            _ => None,
+        })
+}
+
+#[test]
+fn pools_unshortlisted_club_staff_by_current_job_without_the_human_manager() {
+    let (_temp_dir, conn, save_token) = open();
+    let snapshot_token = insert_current_snapshot(&conn, 1);
+    conn.execute("UPDATE snapshots SET manager_uid = 50 WHERE id = 1", [])
+        .expect("record the human manager");
+    configure_managed_club(&conn);
+    conn.execute_batch(
+        "INSERT INTO planner_teams (save_id, team, display_name) VALUES
+             (1, 'senior', 'Senior'),
+             (1, 'reserves', 'Reserves');
+         INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count) VALUES
+             (1, 'senior', 'assistant_manager', 1),
+             (1, 'reserves', 'manager', 1),
+             (1, 'club', 'head_physio', 1);",
+    )
+    .expect("configure targets");
+    insert_staff(&conn, 1, "Shortlisted assistant", Some("Other FC"));
+    shortlist(&conn, 1, "Assistant Manager");
+    insert_staff(&conn, 2, "Current assistant", Some("Club A"));
+    set_job(&conn, 2, 20);
+    insert_staff(&conn, 3, "Current head physio", Some("Club A"));
+    set_job(&conn, 3, 50);
+    insert_staff(&conn, 4, "Board director", Some("Club A"));
+    set_job(&conn, 4, 6);
+    insert_staff(&conn, 5, "Current reserves manager", Some("Club A"));
+    set_job(&conn, 5, 16);
+    insert_staff(&conn, 6, "Assistant elsewhere", Some("Other FC"));
+    set_job(&conn, 6, 20);
+    insert_staff(&conn, 50, "You", Some("Club A"));
+    set_job(&conn, 50, 16);
+    conn.execute_batch(
+        "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, manager, assistant_manager, physio) VALUES
+             (1, 1, 1, NULL, 70, NULL),
+             (1, 2, 1, NULL, 80, NULL),
+             (1, 3, 1, NULL, NULL, 75),
+             (1, 4, 1, NULL, 99, NULL),
+             (1, 5, 1, 60, NULL, NULL),
+             (1, 6, 1, NULL, 99, NULL),
+             (1, 50, 1, 99, NULL, NULL);",
+    )
+    .expect("insert persisted scores");
+
+    let result = optimize_staff_assignments(&conn, &save_token, &snapshot_token)
+        .expect("optimize with current staff");
+
+    assert_eq!(result.joined_candidate_count, 4);
+    assert_eq!(result.unsupported_preferred_job_count, 0);
+    assert_eq!(recommended_uid(&result, "manager"), Some(5));
+    assert!(result.slots.iter().any(|slot| matches!(
+        &slot.slot,
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.job_id == "assistant_manager"
+                && recommendation.uid == 2
+                && recommendation.classification == StaffAssignmentClassification::CurrentStaff
+                && recommendation.job_source == StaffAssignmentJobSource::CurrentJob
+                && recommendation.preferred_job == "Assistant Manager"
+    )));
+    assert!(result.slots.iter().any(|slot| matches!(
+        &slot.slot,
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.job_id == "head_physio"
+                && recommendation.uid == 3
+                && recommendation.job_source == StaffAssignmentJobSource::CurrentJob
+                && recommendation.preferred_job == "Head Physio"
+    )));
+}
+
+#[test]
+fn a_shortlisted_current_staff_member_keeps_their_preferred_job() {
+    let (_temp_dir, conn, save_token) = open();
+    let snapshot_token = insert_current_snapshot(&conn, 1);
+    configure_managed_club(&conn);
+    conn.execute_batch(
+        "INSERT INTO planner_teams (save_id, team, display_name) VALUES (1, 'senior', 'Senior');
+         INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count) VALUES
+             (1, 'senior', 'assistant_manager', 1);",
+    )
+    .expect("configure targets");
+    insert_staff(&conn, 1, "Physio who wants to assist", Some("Club A"));
+    set_job(&conn, 1, 12);
+    shortlist(&conn, 1, "Assistant Manager");
+    conn.execute(
+        "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, assistant_manager)
+         VALUES (1, 1, 1, 70)",
+        [],
+    )
+    .expect("insert persisted score");
+
+    let result = optimize_staff_assignments(&conn, &save_token, &snapshot_token)
+        .expect("optimize shortlisted current staff");
+
+    assert_eq!(result.joined_candidate_count, 1);
+    assert!(matches!(
+        &result.slots[0].slot,
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 1
+                && recommendation.job_source == StaffAssignmentJobSource::PreferredJob
+                && recommendation.preferred_job == "Assistant Manager"
+    ));
+}
+
+#[test]
+fn a_skipped_person_leaves_the_pool_until_restored() {
+    let (_temp_dir, conn, save_token) = open();
+    let snapshot_token = insert_current_snapshot(&conn, 1);
+    configure_managed_club(&conn);
+    conn.execute_batch(
+        "INSERT INTO planner_teams (save_id, team, display_name) VALUES (1, 'senior', 'Senior');
+         INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count) VALUES
+             (1, 'senior', 'assistant_manager', 1);",
+    )
+    .expect("configure targets");
+    insert_staff(&conn, 1, "Unrealistic signing", Some("Other FC"));
+    insert_staff(&conn, 2, "Next best", Some("Other FC"));
+    shortlist(&conn, 1, "Assistant Manager");
+    shortlist(&conn, 2, "Assistant Manager");
+    conn.execute(
+        "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, assistant_manager)
+         VALUES (1, 1, 1, 90), (1, 2, 1, 80)",
+        [],
+    )
+    .expect("insert persisted scores");
+
+    set_staff_assignment_skip(&conn, &save_token, 1, true).expect("skip the first choice");
+    set_staff_assignment_skip(&conn, &save_token, 1, true).expect("skip again harmlessly");
+    let skipped = optimize_staff_assignments(&conn, &save_token, &snapshot_token)
+        .expect("optimize without the skipped person");
+
+    assert_eq!(recommended_uid(&skipped, "assistant_manager"), Some(2));
+    assert_eq!(skipped.joined_candidate_count, 1);
+    assert_eq!(
+        skipped.skipped,
+        [StaffAssignmentSkip {
+            uid: 1,
+            name: Some("Unrealistic signing".to_string()),
+        }]
+    );
+
+    set_staff_assignment_skip(&conn, &save_token, 1, false).expect("restore the first choice");
+    let restored = optimize_staff_assignments(&conn, &save_token, &snapshot_token)
+        .expect("optimize after restoring");
+
+    assert_eq!(recommended_uid(&restored, "assistant_manager"), Some(1));
+    assert!(restored.skipped.is_empty());
+}
+
+#[test]
+fn skips_belong_to_one_save_and_require_its_current_token() {
+    let (_temp_dir, conn, save_token) = open();
+    conn.execute(
+        "INSERT INTO saves (id, name, is_active) VALUES (2, 'Other save', 0)",
+        [],
+    )
+    .expect("insert another save");
+    conn.execute(
+        "INSERT INTO staff_assignment_skips (save_id, staff_uid) VALUES (2, 7)",
+        [],
+    )
+    .expect("skip someone in the other save");
+
+    assert!(set_staff_assignment_skip(&conn, "stale-save", 1, true).is_err());
+    assert!(set_staff_assignment_skip(&conn, &save_token, 0, true).is_err());
+    set_staff_assignment_skip(&conn, &save_token, 7, false).expect("restore in this save");
+
+    let skips: Vec<(i64, i64)> = conn
+        .prepare("SELECT save_id, staff_uid FROM staff_assignment_skips")
+        .expect("prepare skip read")
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .expect("read skips")
+        .collect::<Result<_, _>>()
+        .expect("collect skips");
+    assert_eq!(skips, [(2, 7)]);
+
+    conn.execute("DELETE FROM saves WHERE id = 2", [])
+        .expect("delete the other save");
+    let remaining: i64 = conn
+        .query_row("SELECT COUNT(*) FROM staff_assignment_skips", [], |row| {
+            row.get(0)
+        })
+        .expect("count skips");
+    assert_eq!(remaining, 0);
 }
 
 #[test]

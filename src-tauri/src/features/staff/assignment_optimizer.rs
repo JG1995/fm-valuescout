@@ -175,11 +175,23 @@ pub(super) struct StaffAssignmentScoreSet {
     pub(super) sports_scientist: Option<u8>,
 }
 
+/// Where a candidate's job comes from: the shortlist's Preferred Job, or, for club staff off the
+/// shortlist, the job they hold now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum StaffAssignmentJobSource {
+    PreferredJob,
+    CurrentJob,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StaffAssignmentCandidate {
     pub(super) uid: i64,
     pub(super) name: Option<String>,
+    /// The job's name as FM shows it.
     pub(super) preferred_job: String,
+    pub(super) job_source: StaffAssignmentJobSource,
+    /// The candidate group the job joins, or none when no target takes it.
+    pub(super) job: Option<PreferredJob>,
     pub(super) classification: StaffAssignmentClassification,
     pub(super) working_with_youngsters: Option<u8>,
     pub(super) scores: StaffAssignmentScoreSet,
@@ -202,6 +214,7 @@ pub(super) struct StaffAssignmentRecommendation {
     pub(super) uid: i64,
     pub(super) name: Option<String>,
     pub(super) preferred_job: String,
+    pub(super) job_source: StaffAssignmentJobSource,
     pub(super) classification: StaffAssignmentClassification,
     pub(super) score: u8,
     pub(super) coach_requirement: Option<CoachRequirement>,
@@ -343,6 +356,39 @@ pub(super) fn preferred_job_classification(preferred_job: &str) -> Option<Prefer
     })
 }
 
+/// The name and candidate group of the job a person holds now, from FM's job type
+/// (`staff.job_id`). Only the types cross-checked against a real save are mapped. Board,
+/// medical, and ownership jobs fill no target, and FM27's types 22 and 80 are still unidentified.
+pub(super) fn current_job_classification(job_id: i64) -> Option<(&'static str, PreferredJob)> {
+    match job_id {
+        2 => Some(("Coach", PreferredJob::Coach)),
+        10 => Some(("Director of Football", PreferredJob::DirectorOfFootball)),
+        12 => Some(("Physio", PreferredJob::Physio)),
+        14 => Some(("Scout", PreferredJob::Scout)),
+        16 => Some(("Manager", PreferredJob::Manager)),
+        20 => Some(("Assistant Manager", PreferredJob::AssistantManager)),
+        26 => Some(("Fitness Coach", PreferredJob::FitnessCoach)),
+        34 => Some(("Goalkeeping Coach", PreferredJob::GoalkeepingCoach)),
+        40 => Some(("Head of Sports Science", PreferredJob::SportsScientist)),
+        44 => Some(("Chief Scout", PreferredJob::Scout)),
+        48 => Some(("Sports Scientist", PreferredJob::SportsScientist)),
+        50 => Some(("Head Physio", PreferredJob::Physio)),
+        58 => Some(("Recruitment Analyst", PreferredJob::RecruitmentAnalyst)),
+        60 => Some(("Performance Analyst", PreferredJob::PerformanceAnalyst)),
+        62 => Some((
+            "Head Performance Analyst",
+            PreferredJob::HeadPerformanceAnalyst,
+        )),
+        64 => Some((
+            "Head of Youth Development",
+            PreferredJob::HeadOfYouthDevelopment,
+        )),
+        86 => Some(("Loan Manager", PreferredJob::LoanManager)),
+        88 => Some(("Technical Director", PreferredJob::TechnicalDirector)),
+        _ => None,
+    }
+}
+
 fn add_candidate_to_group<'a>(
     groups: &mut [CandidateGroup<'a>; 17],
     candidate: &'a StaffAssignmentCandidate,
@@ -361,7 +407,7 @@ pub(super) fn allocate_staff_assignments(
     let mut fitness_coaches = CandidateGroup::default();
     let mut goalkeeping_coaches = CandidateGroup::default();
     for candidate in candidates {
-        let Some(preferred_job) = preferred_job_classification(&candidate.preferred_job) else {
+        let Some(preferred_job) = candidate.job else {
             continue;
         };
         match preferred_job {
@@ -740,6 +786,7 @@ fn recommendation(
         uid: candidate.uid,
         name: candidate.name.clone(),
         preferred_job: candidate.preferred_job.clone(),
+        job_source: candidate.job_source,
         classification: candidate.classification,
         score,
         coach_requirement,
