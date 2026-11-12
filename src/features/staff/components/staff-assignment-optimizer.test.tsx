@@ -7,12 +7,17 @@ import {
   fixtureStaffAssignmentTargets,
   getLastStaffAssignmentOptimizerIpcArgs,
   getStaffAssignmentOptimizerIpcCallCount,
+  getStaffAssignmentSkipIpcCalls,
   resolvePendingStaffAssignmentOptimizationIpcMock,
+  resolvePendingStaffAssignmentSkipIpcMock,
   resolvePendingStaffAssignmentTargetsIpcMock,
   setStaffAssignmentOptimizationIpcMock,
   setStaffAssignmentOptimizerIpcMockMode,
+  setStaffAssignmentSkipIpcError,
+  setStaffAssignmentSkipIpcPending,
   setStaffAssignmentTargetsIpcMockMode,
 } from "@/testing/staff-ipc-mock";
+import type { StaffAssignmentRecommendation } from "../types/staff-assignment";
 import { StaffAssignmentOptimizer } from "./staff-assignment-optimizer";
 
 const context = {
@@ -128,6 +133,7 @@ describe("StaffAssignmentOptimizer", () => {
             uid: 101,
             name: "Alex Coach",
             preferredJob: "Coach",
+            jobSource: "preferred_job",
             classification: "current_staff",
             score: 82,
             coachRequirement: "attacking_technical",
@@ -142,6 +148,7 @@ describe("StaffAssignmentOptimizer", () => {
             uid: 102,
             name: "Riley Recruit",
             preferredJob: "Coach",
+            jobSource: "preferred_job",
             classification: "recruitment",
             score: 79,
             coachRequirement: null,
@@ -171,6 +178,7 @@ describe("StaffAssignmentOptimizer", () => {
             uid: 103,
             name: "Taylor Coach",
             preferredJob: "Assistant Manager",
+            jobSource: "preferred_job",
             classification: "recruitment",
             score: 75,
             coachRequirement: null,
@@ -240,13 +248,13 @@ describe("StaffAssignmentOptimizer", () => {
     );
     expect(screen.getByText("Recruits").parentElement).toHaveTextContent("2");
     expect(
-      screen.getByText("5 joined shortlisted candidates; 4 configured slots."),
+      screen.getByText(
+        "5 candidates from the shortlist and current staff; 4 configured slots.",
+      ),
     ).toBeInTheDocument();
     const vacancyRow = screen.getByRole("row", { name: /Vacancy/ });
     expect(
-      within(vacancyRow).getByText(
-        "No eligible shortlisted candidate filled this slot.",
-      ),
+      within(vacancyRow).getByText("No eligible candidate filled this slot."),
     ).toBeInTheDocument();
     expect(
       within(vacancyRow).getByText(/eligible scores;.*unavailable scores/i),
@@ -259,7 +267,7 @@ describe("StaffAssignmentOptimizer", () => {
     await user.click(within(evidence).getByText("Show assignment evidence"));
     expect(evidence).toHaveAttribute("open");
     expect(evidence).toHaveTextContent(
-      "0 eligible scores; 2 unavailable scores; 2 joined shortlisted candidates.",
+      "0 eligible scores; 2 unavailable scores; 2 candidates for this job.",
     );
     expect(
       within(vacancyRow).getByText("Coach requirement: Goalkeeping."),
@@ -354,6 +362,7 @@ describe("StaffAssignmentOptimizer", () => {
             uid: 102,
             name: "Jordan Assistant",
             preferredJob: "Assistant Manager",
+            jobSource: "preferred_job",
             classification: "current_staff",
             score: 81,
             coachRequirement: null,
@@ -389,6 +398,7 @@ describe("StaffAssignmentOptimizer", () => {
             uid: 101,
             name: "Fit Coach",
             preferredJob: "Fitness Coach",
+            jobSource: "preferred_job",
             classification: "current_staff",
             score: 82,
             coachRequirement: "fitness",
@@ -422,6 +432,7 @@ describe("StaffAssignmentOptimizer", () => {
             uid: 101,
             name: null,
             preferredJob: "Assistant Manager",
+            jobSource: "preferred_job",
             classification: "current_staff",
             score: 82,
             coachRequirement: null,
@@ -747,5 +758,184 @@ describe("StaffAssignmentOptimizer", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Could not optimize staff assignments",
     );
+  });
+
+  function reservesManager(
+    uid: number,
+    name: string,
+    overrides: Partial<StaffAssignmentRecommendation> = {},
+  ): StaffAssignmentRecommendation {
+    return {
+      kind: "recommendation",
+      scope: "reserves",
+      scopeDisplayName: "Reserves",
+      jobId: "manager",
+      jobLabel: "Manager",
+      slotNumber: 1,
+      uid,
+      name,
+      preferredJob: "Manager",
+      jobSource: "preferred_job",
+      classification: "recruitment",
+      score: 90,
+      coachRequirement: null,
+      ...overrides,
+    };
+  }
+
+  it("names a current staff member's current job instead of a Preferred Job", async () => {
+    const user = userEvent.setup();
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({
+        slots: [
+          reservesManager(102, "Darren Fletcher", {
+            preferredJob: "Head Physio",
+            jobSource: "current_job",
+            classification: "current_staff",
+          }),
+        ],
+      }),
+    );
+    renderOptimizer();
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Current job: Head Physio. Eligible for this target.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Preferred Job: Head Physio/)).toBeNull();
+  });
+
+  it("skips a recommendation, shows the next best, and restores the skipped person", async () => {
+    const user = userEvent.setup();
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({
+        slots: [reservesManager(101, "Fatih Terim")],
+      }),
+    );
+    renderOptimizer();
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+    await screen.findByText("Fatih Terim");
+
+    setStaffAssignmentOptimizerIpcMockMode("pending");
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({
+        slots: [reservesManager(103, "Next Best", { score: 80 })],
+        skipped: [{ uid: 101, name: "Fatih Terim" }],
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Skip Fatih Terim for Reserves Manager slot 1",
+      }),
+    );
+
+    expect(getStaffAssignmentSkipIpcCalls()).toEqual([
+      { expectedSaveContextToken: "save-token-1", uid: 101, skipped: true },
+    ]);
+    await waitFor(() =>
+      expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(2),
+    );
+    expect(screen.getByText("Fatih Terim")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Skip Fatih Terim for Reserves Manager slot 1",
+      }),
+    ).toBeDisabled();
+
+    resolvePendingStaffAssignmentOptimizationIpcMock();
+
+    expect(await screen.findByText("Next Best")).toBeInTheDocument();
+    const skipped = screen.getByRole("region", { name: "Skipped staff" });
+    expect(within(skipped).getByText("Fatih Terim")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Skip Fatih Terim/ }),
+    ).toBeNull();
+
+    setStaffAssignmentOptimizerIpcMockMode("success");
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({
+        slots: [reservesManager(101, "Fatih Terim")],
+      }),
+    );
+    await user.click(
+      within(skipped).getByRole("button", { name: "Restore Fatih Terim" }),
+    );
+
+    expect(getStaffAssignmentSkipIpcCalls()).toEqual([
+      { expectedSaveContextToken: "save-token-1", uid: 101, skipped: true },
+      { expectedSaveContextToken: "save-token-1", uid: 101, skipped: false },
+    ]);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("region", { name: "Skipped staff" }),
+      ).toBeNull(),
+    );
+    expect(screen.getByText("Fatih Terim")).toBeInTheDocument();
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(3);
+  });
+
+  it("reports a failed skip without optimizing again", async () => {
+    const user = userEvent.setup();
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({
+        slots: [reservesManager(101, "Fatih Terim")],
+      }),
+    );
+    renderOptimizer();
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+    await screen.findByText("Fatih Terim");
+
+    setStaffAssignmentSkipIpcError("Save changed or no longer exists");
+    await user.click(
+      screen.getByRole("button", {
+        name: "Skip Fatih Terim for Reserves Manager slot 1",
+      }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Save changed or no longer exists",
+    );
+    expect(screen.getByText("Fatih Terim")).toBeInTheDocument();
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
+  });
+
+  it("does not optimize again when a skip settles after the context refreshed", async () => {
+    const user = userEvent.setup();
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({
+        slots: [reservesManager(101, "Fatih Terim")],
+      }),
+    );
+    const { rerenderOptimizer } = renderOptimizer();
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+    await screen.findByText("Fatih Terim");
+
+    setStaffAssignmentSkipIpcPending(true);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Skip Fatih Terim for Reserves Manager slot 1",
+      }),
+    );
+    rerenderOptimizer(true);
+    rerenderOptimizer(false);
+    resolvePendingStaffAssignmentSkipIpcMock();
+
+    await waitFor(() =>
+      expect(getStaffAssignmentSkipIpcCalls()).toHaveLength(1),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
+    expect(screen.queryByText("Fatih Terim")).toBeNull();
   });
 });

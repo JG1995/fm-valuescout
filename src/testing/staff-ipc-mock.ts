@@ -60,6 +60,10 @@ let pendingStaffAssignmentOptimization: {
   promise: Promise<StaffAssignmentOptimization>;
   resolve: (result: StaffAssignmentOptimization) => void;
 } | null = null;
+let staffAssignmentSkipCalls: unknown[] = [];
+let staffAssignmentSkipError: string | null = null;
+let staffAssignmentSkipPending = false;
+let resolvePendingStaffAssignmentSkip: (() => void) | null = null;
 
 export type MyStaffBoostIpcMockMode = "pending" | "recoveryRequired" | "error";
 
@@ -287,6 +291,7 @@ export function fixtureStaffAssignmentOptimization(
         uid: 101,
         name: "Alex Coach",
         preferredJob: "Assistant Manager",
+        jobSource: "preferred_job",
         classification: "current_staff",
         score: 82,
         coachRequirement: null,
@@ -308,6 +313,7 @@ export function fixtureStaffAssignmentOptimization(
       },
     ],
     evidence: [],
+    skipped: [],
     ...overrides,
   };
 }
@@ -451,6 +457,42 @@ export function resetStaffIpcMock() {
   lastStaffAssignmentOptimizerArgs = undefined;
   staffAssignmentOptimizerCallCount = 0;
   pendingStaffAssignmentOptimization = null;
+  staffAssignmentSkipCalls = [];
+  staffAssignmentSkipError = null;
+  staffAssignmentSkipPending = false;
+  resolvePendingStaffAssignmentSkip = null;
+}
+
+export function getStaffAssignmentSkipIpcCalls() {
+  return staffAssignmentSkipCalls;
+}
+
+export function setStaffAssignmentSkipIpcError(message: string | null) {
+  staffAssignmentSkipError = message;
+}
+
+export function setStaffAssignmentSkipIpcPending(pending: boolean) {
+  staffAssignmentSkipPending = pending;
+}
+
+export function resolvePendingStaffAssignmentSkipIpcMock() {
+  resolvePendingStaffAssignmentSkip?.();
+  resolvePendingStaffAssignmentSkip = null;
+}
+
+export function resolveSetStaffAssignmentSkipIpcMock(
+  args: unknown,
+): null | Promise<null> {
+  staffAssignmentSkipCalls = [...staffAssignmentSkipCalls, args];
+  if (staffAssignmentSkipError) {
+    throw new Error(staffAssignmentSkipError);
+  }
+  if (staffAssignmentSkipPending) {
+    return new Promise((resolve) => {
+      resolvePendingStaffAssignmentSkip = () => resolve(null);
+    });
+  }
+  return null;
 }
 
 export function fixtureStaffDetail(

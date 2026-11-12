@@ -1159,7 +1159,9 @@ test.describe("application smoke", () => {
     });
     await expect(assignments).toBeVisible();
     await expect(
-      main.getByText("5 joined shortlisted candidates; 4 configured slots."),
+      main.getByText(
+        "5 candidates from the shortlist and current staff; 4 configured slots.",
+      ),
     ).toBeVisible();
     await expect(assignments.getByRole("row")).toHaveCount(8);
     await expect(
@@ -1213,7 +1215,7 @@ test.describe("application smoke", () => {
     await expect(assignments).toContainText("Vacancy");
     const vacancyRow = assignments.getByRole("row", { name: /Vacancy/ });
     await expect(vacancyRow).toContainText(
-      "No eligible shortlisted candidate filled this slot.",
+      "No eligible candidate filled this slot.",
     );
     await expect(vacancyRow).toContainText("Coach requirement: Goalkeeping.");
     const evidence = vacancyRow.getByRole("group");
@@ -1222,8 +1224,22 @@ test.describe("application smoke", () => {
     await evidence.getByText("Show assignment evidence").click();
     await expect(evidence).toHaveAttribute("open");
     await expect(evidence).toContainText(
-      "0 eligible scores; 1 unavailable score; 1 joined shortlisted candidate.",
+      "0 eligible scores; 1 unavailable score; 1 candidate for this job.",
     );
+
+    await assignments
+      .getByRole("button", { name: "Skip Riley Scout for Club Scout slot 1" })
+      .click();
+    const skipped = main.getByRole("region", { name: "Skipped staff" });
+    await expect(skipped).toContainText("Riley Scout");
+    await expect(
+      assignments.getByRole("rowheader", { name: "Club: 0 of 1 filled" }),
+    ).toBeVisible();
+    await skipped.getByRole("button", { name: "Restore Riley Scout" }).click();
+    await expect(skipped).toHaveCount(0);
+    await expect(
+      assignments.getByRole("rowheader", { name: "Club: 1 of 1 filled" }),
+    ).toBeVisible();
 
     const collapse = main.getByRole("button", {
       name: "Collapse assignment recommendations",

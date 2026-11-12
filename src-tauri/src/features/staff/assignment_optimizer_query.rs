@@ -3,14 +3,16 @@ use std::collections::HashMap;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::features::managed_club::service::selected_club;
+use crate::features::snapshot::service::capture_active_save_context;
 use crate::features::staff::scoring::{
     assert_read_models_complete, staff_role_column, STAFF_METRICS_ALIAS,
 };
 
 use super::assignment_optimizer::{
-    allocate_staff_assignments, preferred_job_classification, StaffAssignmentAllocation,
-    StaffAssignmentCandidate, StaffAssignmentClassification, StaffAssignmentEvidence,
-    StaffAssignmentScoreSet, StaffAssignmentSlot,
+    allocate_staff_assignments, current_job_classification, preferred_job_classification,
+    StaffAssignmentAllocation, StaffAssignmentCandidate, StaffAssignmentClassification,
+    StaffAssignmentEvidence, StaffAssignmentJobSource, StaffAssignmentScoreSet,
+    StaffAssignmentSlot,
 };
 use super::assignment_targets::{
     read_nonzero_targets_without_initializing_teams, target_job_display_rank,
@@ -56,6 +58,13 @@ pub(super) struct StaffAssignmentResultSlot {
     pub(super) slot: StaffAssignmentSlot,
 }
 
+/// One person the save has skipped, named from the current snapshot when it has them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct StaffAssignmentSkip {
+    pub(super) uid: i64,
+    pub(super) name: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StaffAssignmentOptimization {
     pub(super) state: StaffAssignmentOptimizationState,
@@ -68,6 +77,7 @@ pub(super) struct StaffAssignmentOptimization {
     pub(super) unsupported_preferred_job_count: i64,
     pub(super) slots: Vec<StaffAssignmentResultSlot>,
     pub(super) evidence: Vec<StaffAssignmentEvidence>,
+    pub(super) skipped: Vec<StaffAssignmentSkip>,
 }
 
 pub(super) fn optimize_staff_assignments(
@@ -162,7 +172,7 @@ pub(super) fn optimize_staff_assignments(
     let unsupported_preferred_job_count = i64::try_from(
         candidates
             .iter()
-            .filter(|candidate| preferred_job_classification(&candidate.preferred_job).is_none())
+            .filter(|candidate| candidate.job.is_none())
             .count(),
     )
     .map_err(|_| "Staff shortlist candidate count is too large".to_string())?;
@@ -230,7 +240,56 @@ pub(super) fn optimize_staff_assignments(
         unsupported_preferred_job_count,
         slots,
         evidence,
+        skipped: load_skips(conn, save_id, snapshot_id)?,
     })
+}
+
+/// Skips one person in the active save's staff assignments, or restores them.
+pub(super) fn set_staff_assignment_skip(
+    conn: &Connection,
+    expected_save_context_token: &str,
+    uid: i64,
+    skipped: bool,
+) -> Result<(), String> {
+    let context = capture_active_save_context(conn)?;
+    if context.context_token != expected_save_context_token {
+        return Err("Save changed or no longer exists".to_string());
+    }
+    if uid <= 0 {
+        return Err("Staff UID must be positive".to_string());
+    }
+    let sql = if skipped {
+        "INSERT OR IGNORE INTO staff_assignment_skips (save_id, staff_uid) VALUES (?1, ?2)"
+    } else {
+        "DELETE FROM staff_assignment_skips WHERE save_id = ?1 AND staff_uid = ?2"
+    };
+    conn.execute(sql, params![context.id, uid])
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn load_skips(
+    conn: &Connection,
+    save_id: i64,
+    snapshot_id: i64,
+) -> Result<Vec<StaffAssignmentSkip>, String> {
+    conn.prepare(
+        "SELECT skipped.staff_uid, staff.name
+         FROM staff_assignment_skips skipped
+         LEFT JOIN staff ON staff.snapshot_id = ?2 AND staff.uid = skipped.staff_uid
+         WHERE skipped.save_id = ?1
+         ORDER BY staff.name IS NULL, staff.name COLLATE NOCASE, skipped.staff_uid",
+    )
+    .map_err(|error| error.to_string())?
+    .query_map([save_id, snapshot_id], |row| {
+        Ok(StaffAssignmentSkip {
+            uid: row.get(0)?,
+            name: row.get(1)?,
+        })
+    })
+    .map_err(|error| error.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|error| error.to_string())
 }
 
 fn result(
@@ -251,6 +310,7 @@ fn result(
         unsupported_preferred_job_count: 0,
         slots: Vec::new(),
         evidence: Vec::new(),
+        skipped: Vec::new(),
     }
 }
 
@@ -284,36 +344,47 @@ pub(super) fn load_candidates(
         })
         .collect::<Result<Vec<_>, String>>()?
         .join(", ");
+    // The pool is the save's shortlist plus the managed club's own staff, without the human
+    // manager and anyone the save has skipped. Shortlisted people join by their Preferred Job;
+    // club staff off the shortlist join by the job they hold now.
     let sql = format!(
-        "SELECT staff.uid, staff.name, staff.club, shortlist.preferred_job,
+        "SELECT staff.uid, staff.name, staff.club, shortlist.preferred_job, staff.job_id,
                 json_extract(staff.staff_attributes_json, '$.WorkingWithYoungsters'),
                 {metric_columns}
          FROM staff
-         INNER JOIN staff_shortlist_entries shortlist
+         LEFT JOIN staff_shortlist_entries shortlist
              ON shortlist.save_id = ?1 AND shortlist.staff_uid = staff.uid
          LEFT JOIN staff_role_metrics {STAFF_METRICS_ALIAS}
              ON {STAFF_METRICS_ALIAS}.snapshot_id = staff.snapshot_id
             AND {STAFF_METRICS_ALIAS}.uid = staff.uid
             AND {STAFF_METRICS_ALIAS}.score_model_version = 1
          WHERE staff.snapshot_id = ?2
+           AND (shortlist.staff_uid IS NOT NULL OR staff.club = ?3)
+           AND staff.uid IS NOT (SELECT manager_uid FROM snapshots WHERE id = ?2)
+           AND NOT EXISTS (
+               SELECT 1 FROM staff_assignment_skips skipped
+               WHERE skipped.save_id = ?1 AND skipped.staff_uid = staff.uid
+           )
          ORDER BY staff.uid ASC"
     );
     let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map(params![save_id, snapshot_id], |row| {
+        .query_map(params![save_id, snapshot_id, managed_club], |row| {
             let uid: i64 = row.get(0)?;
             let name: Option<String> = row.get(1)?;
             let club: Option<String> = row.get(2)?;
-            let preferred_job: String = row.get(3)?;
-            let working_with_youngsters: Option<i64> = row.get(4)?;
+            let preferred_job: Option<String> = row.get(3)?;
+            let job_id: Option<i64> = row.get(4)?;
+            let working_with_youngsters: Option<i64> = row.get(5)?;
             let scores: Vec<Option<i64>> = (0..SCORE_ROLE_IDS.len())
-                .map(|index| row.get::<_, Option<i64>>(5 + index))
+                .map(|index| row.get::<_, Option<i64>>(6 + index))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok((
                 uid,
                 name,
                 club,
                 preferred_job,
+                job_id,
                 working_with_youngsters,
                 scores,
             ))
@@ -321,8 +392,22 @@ pub(super) fn load_candidates(
         .map_err(|error| error.to_string())?;
     let mut candidates = Vec::new();
     for row in rows {
-        let (uid, name, club, preferred_job, working_with_youngsters, scores) =
+        let (uid, name, club, preferred_job, job_id, working_with_youngsters, scores) =
             row.map_err(|error| error.to_string())?;
+        let (preferred_job, job_source, job) = match preferred_job {
+            Some(preferred_job) => {
+                let job = preferred_job_classification(&preferred_job);
+                (preferred_job, StaffAssignmentJobSource::PreferredJob, job)
+            }
+            None => match job_id.and_then(current_job_classification) {
+                Some((current_job, job)) => (
+                    current_job.to_string(),
+                    StaffAssignmentJobSource::CurrentJob,
+                    Some(job),
+                ),
+                None => continue,
+            },
+        };
         let mut score_set = StaffAssignmentScoreSet::default();
         for (role_id, score) in SCORE_ROLE_IDS.iter().zip(scores) {
             set_score(
@@ -335,6 +420,8 @@ pub(super) fn load_candidates(
             uid,
             name,
             preferred_job,
+            job_source,
+            job,
             classification: if club.as_deref() == Some(managed_club) {
                 StaffAssignmentClassification::CurrentStaff
             } else {

@@ -187,6 +187,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         academyClasses[0].memberCount = academyMembers.length;
       }
       let staffAssignmentSnapshotToken = "snapshot-token-1";
+      const staffAssignmentSkips = new Set();
       const staffAssignmentSnapshot = () => ({
         id: 1,
         contextToken: staffAssignmentSnapshotToken,
@@ -1427,7 +1428,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             ) {
               throw new Error("Staff assignment context changed");
             }
-            return {
+            const result = {
               state: "ready",
               saveId: activeSave().id,
               saveContextToken: activeSave().contextToken,
@@ -1447,6 +1448,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   uid: 101,
                   name: "Alex Assistant",
                   preferredJob: "Assistant Manager",
+                  jobSource: "preferred_job",
                   classification: "current_staff",
                   score: 82,
                   coachRequirement: null,
@@ -1461,6 +1463,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   uid: 102,
                   name: "Coach Casey",
                   preferredJob: "Coach",
+                  jobSource: "preferred_job",
                   classification: "current_staff",
                   score: 79,
                   coachRequirement: "attacking_technical",
@@ -1475,6 +1478,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   uid: 103,
                   name: "Riley Scout",
                   preferredJob: "Scout",
+                  jobSource: "preferred_job",
                   classification: "recruitment",
                   score: 74,
                   coachRequirement: null,
@@ -1513,7 +1517,46 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 { jobId: "chief_scout", joinedCandidateCount: 0, eligibleScoreCount: 0, unavailableScoreCount: 0 },
                 { jobId: "scout", joinedCandidateCount: 1, eligibleScoreCount: 1, unavailableScoreCount: 0 },
               ],
+              skipped: [],
             };
+            const recommendations = result.slots.filter(
+              (slot) => slot.kind === "recommendation",
+            );
+            result.skipped = recommendations
+              .filter((slot) => staffAssignmentSkips.has(slot.uid))
+              .map((slot) => ({ uid: slot.uid, name: slot.name }));
+            result.slots = result.slots.map((slot) =>
+              slot.kind === "recommendation" && staffAssignmentSkips.has(slot.uid)
+                ? {
+                    kind: "vacancy",
+                    scope: slot.scope,
+                    scopeDisplayName: slot.scopeDisplayName,
+                    jobId: slot.jobId,
+                    jobLabel: slot.jobLabel,
+                    slotNumber: slot.slotNumber,
+                    coachRequirement: slot.coachRequirement,
+                    evidence: {
+                      jobId: slot.jobId,
+                      joinedCandidateCount: 0,
+                      eligibleScoreCount: 0,
+                      unavailableScoreCount: 0,
+                    },
+                  }
+                : slot,
+            );
+            return result;
+          }
+
+          if (cmd === "set_staff_assignment_skip") {
+            if (args?.expectedSaveContextToken !== activeSave().contextToken) {
+              throw new Error("Staff assignment save context changed");
+            }
+            if (args?.skipped === true) {
+              staffAssignmentSkips.add(args.uid);
+            } else {
+              staffAssignmentSkips.delete(args.uid);
+            }
+            return null;
           }
 
           if (cmd === "search_staff") {

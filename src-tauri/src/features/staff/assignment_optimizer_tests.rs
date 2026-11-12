@@ -1,7 +1,8 @@
 use super::assignment_optimizer::{
     allocate_staff_assignments, coach_composition, general_match_edge_bytes,
     preferred_job_classification, CoachRequirement, PreferredJob, StaffAssignmentCandidate,
-    StaffAssignmentClassification, StaffAssignmentScoreSet, StaffAssignmentSlot,
+    StaffAssignmentClassification, StaffAssignmentJobSource, StaffAssignmentScoreSet,
+    StaffAssignmentSlot,
 };
 use super::assignment_targets::StaffAssignmentTarget;
 
@@ -25,6 +26,8 @@ fn candidate(
         uid,
         name: Some(format!("Staff {uid}")),
         preferred_job: preferred_job.to_string(),
+        job_source: StaffAssignmentJobSource::PreferredJob,
+        job: preferred_job_classification(preferred_job),
         classification: StaffAssignmentClassification::Recruitment,
         working_with_youngsters: Some(10),
         scores,
