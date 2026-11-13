@@ -20,20 +20,62 @@ import type { SearchView } from "../types/search-view";
 
 export type FilterFieldKind = PlayerMetricKind | "number";
 export type FilterOperator = PlayerMetricOperator;
-export type FilterFieldDef = PlayerMetric | MoneyballSearchMetric;
+/**
+ * A field that filters but has no table column, so the metric catalogs leave it
+ * out. It is never sortable, which keeps it out of the sort picker.
+ */
+type FilterOnlyField = Pick<
+  PlayerMetric,
+  "id" | "label" | "kind" | "operators" | "enumOptions"
+> & { category: string; sortable: false };
+export type FilterFieldDef =
+  | PlayerMetric
+  | MoneyballSearchMetric
+  | FilterOnlyField;
 
-export const FILTER_FIELDS = PLAYER_METRICS;
+/** The rule the "Only realistic signings" toggle adds and removes. */
+export const REALISTIC_SIGNING_FIELD_ID = "realistic_signing";
+
+/** The picker category the field joins in each view. */
+const realisticSigningField = (category: string): FilterOnlyField => ({
+  id: REALISTIC_SIGNING_FIELD_ID,
+  label: "Realistic signing",
+  category,
+  kind: "boolean",
+  sortable: false,
+  operators: [
+    { id: "is", label: "is" },
+    { id: "is_not", label: "is not" },
+  ],
+});
+
+const REALISTIC_SIGNING_FIELDS: Record<SearchView, FilterOnlyField> = {
+  general: realisticSigningField("club-contract"),
+  moneyball: realisticSigningField("Club and value"),
+};
+
+const GENERAL_FILTER_FIELDS: readonly FilterFieldDef[] = [
+  ...PLAYER_METRICS,
+  REALISTIC_SIGNING_FIELDS.general,
+];
+const MONEYBALL_FILTER_FIELDS: readonly FilterFieldDef[] = [
+  ...MONEYBALL_SEARCH_METRICS,
+  REALISTIC_SIGNING_FIELDS.moneyball,
+];
 
 export function filterFieldsForView(
   view: SearchView,
 ): readonly FilterFieldDef[] {
-  return view === "moneyball" ? MONEYBALL_SEARCH_METRICS : FILTER_FIELDS;
+  return view === "moneyball" ? MONEYBALL_FILTER_FIELDS : GENERAL_FILTER_FIELDS;
 }
 
 export function getFilterField(
   fieldId: string,
   view: SearchView = "general",
 ): FilterFieldDef | undefined {
+  if (fieldId === REALISTIC_SIGNING_FIELD_ID) {
+    return REALISTIC_SIGNING_FIELDS[view];
+  }
   return view === "moneyball"
     ? MONEYBALL_SEARCH_METRICS.find((field) => field.id === fieldId)
     : getPlayerMetric(fieldId);

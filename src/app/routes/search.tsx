@@ -15,6 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { dashboardKeys } from "@/features/dashboard/api/dashboard-keys";
 import { GraphicsImage } from "@/features/graphics/components/graphics-image";
+import { managedClubQueryOptions } from "@/features/managed-club/api/managed-club-query-options";
 import {
   type RefreshSeasonStatsResult,
   refreshSeasonStats,
@@ -38,6 +39,7 @@ import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { choosePlayerShortlist } from "@/features/search/api/choose-player-shortlist";
 import { removePlayerShortlist } from "@/features/search/api/remove-player-shortlist";
 import { searchKeys } from "@/features/search/api/search-keys";
+import { RealisticSigningsToggle } from "@/features/search/components/realistic-signings-toggle";
 import { SearchFilterBar } from "@/features/search/components/search-filter-bar";
 import type { TacticLaneLabel } from "@/features/search/components/search-results-panel";
 import { SearchResultsPanel } from "@/features/search/components/search-results-panel";
@@ -342,6 +344,7 @@ function refreshSeasonStatsCopy(result: RefreshSeasonStatsResult): {
 function SearchPageContent() {
   const snapshotQuery = useQuery(currentSnapshotQueryOptions);
   const savesQuery = useQuery(savesQueryOptions);
+  const managedClub = useQuery(managedClubQueryOptions).data;
   const snapshot = snapshotQuery.data;
   const activeSave = savesQuery.data?.find((save) => save.isActive);
   const isResultContextChanging =
@@ -688,15 +691,22 @@ function SearchPageContent() {
       />
     </>
   );
-  const datasetToggles =
-    view === "general" ? (
-      shortlistControl
-    ) : (
-      <>
-        {shortlistControl}
-        {comparisonPoolToggle}
-      </>
-    );
+  const datasetToggles = (
+    <>
+      {shortlistControl}
+      <RealisticSigningsToggle
+        rules={filters}
+        onRulesChange={handleRulesChange}
+        // The estimate measures the club's squad by its UID in the snapshot.
+        clubName={
+          managedClub?.status === "available" && managedClub.clubUid !== null
+            ? managedClub.clubName
+            : null
+        }
+      />
+      {view === "moneyball" ? comparisonPoolToggle : null}
+    </>
+  );
 
   const renderSearchBody = (tacticState: TacticContextBoundaryState | null) => {
     const tactic = tacticState?.tactic;
