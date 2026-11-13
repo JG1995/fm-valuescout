@@ -82,11 +82,10 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         linkedSaveFileName: null,
         // Loans and Targets restrict Search to different players.
         playerShortlists: shortlistSearchEnabled ? [
-          { id: 2, name: "Loans", fileName: "Loans.fmf" },
-          { id: 1, name: "Targets", fileName: "Targets.fmf" },
+          { id: 2, name: "Loans" },
+          { id: 1, name: "Targets" },
         ] : [],
       }];
-      let nextShortlistId = 3;
       let snapshots = snapshotHistoryEnabled ? [
         {
           id: 1,
@@ -745,7 +744,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             tacticIsDefault: true,
             scoresAvailable: false,
             slots: [],
-            shortlistedPlayers: 0,
+            candidates: 0,
             totalRecommendations: 0,
             recommendations: [],
           };
@@ -778,18 +777,17 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         });
         const incumbentScore = (laneId) =>
           slots.find((slot) => slot.laneId === laneId)?.incumbent?.score ?? 0;
-        const shortlistHasTargets = saves
-          .find((save) => save.isActive)
-          ?.playerShortlists.some(
-            (shortlist) =>
-              request?.shortlistId == null || shortlist.id === request.shortlistId,
-          );
-        const candidates = shortlistHasTargets
-          ? dashboardTargets.filter(
-              (target) =>
-                request?.shortlistId == null || target[9] === request.shortlistId,
-            )
-          : [];
+        // Without a shortlist, every target is one of the club's realistic signings.
+        const shortlisted = request?.shortlistId != null;
+        const candidates =
+          !shortlisted ||
+          saves
+            .find((save) => save.isActive)
+            ?.playerShortlists.some((shortlist) => shortlist.id === request.shortlistId)
+            ? dashboardTargets.filter(
+                (target) => !shortlisted || target[9] === request.shortlistId,
+              )
+            : [];
         const improving = candidates
           .map((target) => {
             const score = moneyball ? target[7] : target[6];
@@ -826,7 +824,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           tacticIsDefault: true,
           scoresAvailable: true,
           slots,
-          shortlistedPlayers: candidates.length,
+          candidates: shortlisted ? candidates.length : null,
           totalRecommendations: recommendations.length,
           recommendations,
         };
@@ -897,9 +895,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
           if (cmd === "plugin:dialog|open") {
-            if (args?.options?.filters?.[0]?.extensions?.includes("fmf")) {
-              return "/tmp/Smoke Targets.fmf";
-            }
             return csvImportFormat ? "/tmp/smoke-import.csv" : null;
           }
 
@@ -1191,39 +1186,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               storedPlayers: 3,
               skippedPlayers: 0,
             };
-          }
-
-          if (cmd === "choose_player_shortlist" || cmd === "remove_player_shortlist") {
-            const index = saves.findIndex((save) =>
-              save.id === args?.saveId && save.contextToken === args?.contextToken
-            );
-            if (index < 0) throw { kind: "stale_context", fileName: null };
-            const shortlists = saves[index].playerShortlists;
-            if (cmd === "remove_player_shortlist") {
-              saves[index] = {
-                ...saves[index],
-                playerShortlists: shortlists.filter(
-                  (shortlist) => shortlist.id !== args?.shortlistId,
-                ),
-              };
-              return null;
-            }
-            // Adding a linked file again updates its shortlist in place.
-            const fileName = args.path.split(/[\\\\/]/).pop();
-            const linked = shortlists.find((shortlist) => shortlist.fileName === fileName);
-            const added = {
-              id: linked ? linked.id : nextShortlistId++,
-              name: "Smoke Targets",
-              fileName,
-            };
-            saves[index] = {
-              ...saves[index],
-              playerShortlists: [
-                ...shortlists.filter((shortlist) => shortlist.id !== added.id),
-                added,
-              ].sort((left, right) => left.name.localeCompare(right.name)),
-            };
-            return { ...added, totalPlayers: 3, matchedPlayers: 2 };
           }
 
           if (cmd === "search_players") {
@@ -2648,7 +2610,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               storedSnapshot: loadedSnapshot,
               effectiveSnapshot: loadedSnapshot,
               stats: { status: "notLinked", shortlists: { status: "notRead" }, staffShortlist: { status: "notRead" }, elapsedMs: 0 },
-              shortlists: { read: activeSave().playerShortlists.length, failed: [] },
             };
           }
 

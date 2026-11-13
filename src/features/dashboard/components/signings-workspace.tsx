@@ -1,6 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { CircleAlert, ListPlus, Target, UserRoundCheck } from "lucide-react";
+import {
+  CircleAlert,
+  ListPlus,
+  Target,
+  UserRoundCheck,
+  UserRoundSearch,
+} from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
@@ -34,10 +40,10 @@ import { SigningCard } from "./signing-card";
 import { SlotSigningsModal } from "./slot-signings-modal";
 import { StartingXiList } from "./starting-xi-list";
 
-export type DashboardShortlistOption = { id: number; label: string };
+export type DashboardShortlistOption = { id: number; name: string };
 
-// A plain path, so Search's validateSearch supplies its own defaults.
-const playerSearchPath: string = "/search";
+/** The default candidates: every player the managed club could plausibly sign. */
+const REALISTIC_POOL_LABEL = "Realistic signings";
 
 const linkButtonClass =
   "inline-flex h-8 shrink-0 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high active:bg-surface-container-highest";
@@ -49,14 +55,16 @@ function plural(count: number, noun: string) {
   return `${formatCount(count)} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-/** How many shortlisted players would improve the XI or the selected slot. */
+/** How many compared players would improve the XI or the selected slot. */
 function SigningsSummary({
   signings,
+  candidateNoun,
   selectedSlot,
   refreshing,
   onClearSlot,
 }: {
   signings: DashboardSignings;
+  candidateNoun: string;
   selectedSlot: string | null;
   refreshing: boolean;
   onClearSlot: () => void;
@@ -64,9 +72,11 @@ function SigningsSummary({
   const total = signings.totalRecommendations;
   return (
     <>
-      {selectedSlot === null
-        ? `${formatCount(total)} of ${plural(signings.shortlistedPlayers, "shortlisted player")} would improve your XI`
-        : `${plural(total, "shortlisted player")} would improve ${selectedSlot}`}
+      {selectedSlot !== null
+        ? `${plural(total, candidateNoun)} would improve ${selectedSlot}`
+        : signings.candidates === null
+          ? `${plural(total, candidateNoun)} would improve your XI`
+          : `${formatCount(total)} of ${plural(signings.candidates, candidateNoun)} would improve your XI`}
       {total > 0 ? " · best first" : null}
       {selectedSlot === null ? null : (
         <>
@@ -90,13 +100,18 @@ function SigningsSummary({
 
 function SigningsEmptyState({
   signings,
-  hasShortlists,
+  mode,
+  shortlisted,
+  candidateNoun,
   selectedSlot,
   onClearSlot,
   onUseGeneral,
 }: {
   signings: DashboardSignings;
-  hasShortlists: boolean;
+  mode: DashboardScoreMode;
+  /** Whether one shortlist is compared and not the club's realistic signings. */
+  shortlisted: boolean;
+  candidateNoun: string;
   selectedSlot: string | null;
   onClearSlot: () => void;
   onUseGeneral: () => void;
@@ -122,28 +137,22 @@ function SigningsEmptyState({
       </EmptyState>
     );
   }
-  if (!hasShortlists) {
-    return (
-      <EmptyState
-        icon={ListPlus}
-        title="No shortlist loaded"
-        action={
-          <Link to={playerSearchPath} className={cn(linkButtonClass, "mt-2")}>
-            Open Player Search
-          </Link>
-        }
-      >
-        Recommendations compare your squad with shortlisted players. Add an FM
-        shortlist in Player Search, or link your FM save in Settings to read its
-        shortlists.
-      </EmptyState>
-    );
-  }
-  if (signings.shortlistedPlayers === 0) {
-    return (
+  if (signings.candidates === 0) {
+    return shortlisted ? (
       <EmptyState icon={ListPlus} title="No shortlisted players to compare">
         None of this shortlist's players are in the current snapshot outside
         your club.
+      </EmptyState>
+    ) : (
+      <EmptyState
+        icon={UserRoundSearch}
+        title="No realistic signings to compare"
+      >
+        {mode === "moneyball"
+          ? "No player within your club's reach has season stats in this snapshot."
+          : "No player in this snapshot looks within your club's reach."}{" "}
+        If that seems wrong, choose your club again in My Club so its squad can
+        be measured.
       </EmptyState>
     );
   }
@@ -151,25 +160,25 @@ function SigningsEmptyState({
     return (
       <EmptyState
         icon={UserRoundCheck}
-        title={`No shortlisted player improves ${selectedSlot}`}
+        title={`No ${candidateNoun} improves ${selectedSlot}`}
         action={
           <Button variant="secondary" className="mt-2" onClick={onClearSlot}>
             Show all slots
           </Button>
         }
       >
-        Your current player scores at least as high there as every shortlisted
-        player.
+        Your current player scores at least as high there as every{" "}
+        {candidateNoun}.
       </EmptyState>
     );
   }
   return (
     <EmptyState
       icon={UserRoundCheck}
-      title="No shortlisted player improves your XI"
+      title={`No ${candidateNoun} improves your XI`}
     >
-      Your current players score at least as high in every slot as the
-      shortlisted players who can play there.
+      Your current players score at least as high in every slot as the{" "}
+      {candidateNoun}s who can play there.
     </EmptyState>
   );
 }
@@ -197,9 +206,10 @@ export function SigningsWorkspace({
   );
   const [laneId, setLaneId] = useState<string | null>(null);
   const [slotsOpen, setSlotsOpen] = useState(false);
-  // A shortlist removed elsewhere falls back to all of them.
+  // A shortlist removed elsewhere falls back to the realistic signings.
   const shortlist = shortlists.find(({ id }) => id === chosenShortlistId);
   const shortlistId = shortlist?.id ?? null;
+  const candidateNoun = shortlist ? "shortlisted player" : "realistic signing";
   const query = useQuery(
     dashboardSigningsQueryOptions(context, { mode, shortlistId, laneId }),
   );
@@ -226,7 +236,7 @@ export function SigningsWorkspace({
       >
         {shortlists.length > 0 ? (
           <label className="flex items-center gap-2 text-body-md text-on-surface">
-            Shortlist
+            Candidates
             <select
               className={cn(fieldClasses, "max-w-56")}
               value={shortlistId ?? ""}
@@ -236,12 +246,14 @@ export function SigningsWorkspace({
                 )
               }
             >
-              <option value="">All shortlists</option>
-              {shortlists.map(({ id, label }) => (
-                <option key={id} value={id}>
-                  {label}
-                </option>
-              ))}
+              <option value="">{REALISTIC_POOL_LABEL}</option>
+              <optgroup label="Shortlists">
+                {shortlists.map(({ id, name }) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </label>
         ) : null}
@@ -301,7 +313,9 @@ export function SigningsWorkspace({
           >
             <SigningsEmptyState
               signings={signings}
-              hasShortlists={shortlists.length > 0}
+              mode={mode}
+              shortlisted={shortlist !== undefined}
+              candidateNoun={candidateNoun}
               selectedSlot={selectedSlotName}
               onClearSlot={() => setLaneId(null)}
               onUseGeneral={() => onModeChange("general")}
@@ -312,6 +326,7 @@ export function SigningsWorkspace({
             <p className={cardPanelSummaryClass} role="status">
               <SigningsSummary
                 signings={signings}
+                candidateNoun={candidateNoun}
                 selectedSlot={selectedSlotName}
                 refreshing={query.isPlaceholderData}
                 onClearSlot={() => setLaneId(null)}
@@ -411,7 +426,8 @@ export function SigningsWorkspace({
           signings={signings}
           mode={mode}
           onModeChange={onModeChange}
-          shortlistLabel={shortlist?.label ?? "All shortlists"}
+          poolLabel={shortlist?.name ?? REALISTIC_POOL_LABEL}
+          candidateNoun={candidateNoun}
           refreshing={query.isPlaceholderData}
           graphics={graphics}
         />

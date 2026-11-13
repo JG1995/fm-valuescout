@@ -81,24 +81,6 @@ function historicalResultWithAttachedStats(saveId: number): BusyLoadDataResult {
       staffShortlist: { status: "notRead" },
       elapsedMs: 900,
     },
-    shortlists: { read: 0, failed: [] },
-  };
-}
-
-/** The same historical load with no stats attached and the given shortlist outcome. */
-function historicalResultWithShortlists(
-  saveId: number,
-  shortlists: BusyLoadDataResult["shortlists"],
-): BusyLoadDataResult {
-  return {
-    ...historicalResultWithAttachedStats(saveId),
-    stats: {
-      status: "notLinked",
-      shortlists: { status: "notRead" },
-      staffShortlist: { status: "notRead" },
-      elapsedMs: 0,
-    },
-    shortlists,
   };
 }
 
@@ -470,16 +452,9 @@ describe("useLoadData", () => {
   it.each<[string, BusyLoadDataResult]>([
     ["attached stats", historicalResultWithAttachedStats(1)],
     [
-      "a re-read shortlist",
-      historicalResultWithShortlists(1, {
-        read: 1,
-        failed: [{ kind: "unreadable", fileName: "Loans.fmf" }],
-      }),
-    ],
-    [
       "shortlists read from the save and no stats",
       {
-        ...historicalResultWithShortlists(1, { read: 0, failed: [] }),
+        ...historicalResultWithAttachedStats(1),
         stats: {
           status: "noMatches",
           unmatchedPlayers: 3,
@@ -489,13 +464,6 @@ describe("useLoadData", () => {
           elapsedMs: 0,
         },
       },
-    ],
-    [
-      "only failed shortlist re-reads and no stats",
-      historicalResultWithShortlists(1, {
-        read: 0,
-        failed: [{ kind: "unreadable", fileName: "Targets.fmf" }],
-      }),
     ],
   ])(
     "historical result with %s on the active save refreshes current owners without clearing roots",
@@ -1084,7 +1052,6 @@ describe("useLoadData", () => {
           staffShortlist: { status: "notRead" },
           elapsedMs: 0,
         },
-        shortlists: { read: 0, failed: [] },
       } as never);
     });
 
@@ -1268,7 +1235,6 @@ describe("useLoadData", () => {
           staffShortlist: { status: "notRead" },
           elapsedMs: 0,
         },
-        shortlists: { read: 0, failed: [] },
       } as never);
     });
     await act(async () => {
@@ -1400,7 +1366,6 @@ describe("useLoadData", () => {
           staffShortlist: { status: "notRead" },
           elapsedMs: 0,
         },
-        shortlists: { read: 0, failed: [] },
       } as never);
     });
     await act(async () => {
@@ -1547,7 +1512,6 @@ describe("useLoadData", () => {
           staffShortlist: { status: "notRead" },
           elapsedMs: 0,
         },
-        shortlists: { read: 0, failed: [] },
       } as never);
     });
     await act(async () => {

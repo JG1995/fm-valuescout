@@ -18,9 +18,9 @@ import { ScoreModeToggle } from "./score-mode-toggle";
 import { signingClubLine, signingValueLine } from "./signing-card";
 
 /**
- * Every tactic slot with its current player and the shortlisted player who
- * would improve it most. Slots answer independently, so one player can appear
- * for several.
+ * Every tactic slot with its current player and the compared player who would
+ * improve it most. Slots answer independently, so one player can appear for
+ * several.
  */
 export function SlotSigningsModal({
   open,
@@ -28,7 +28,8 @@ export function SlotSigningsModal({
   signings,
   mode,
   onModeChange,
-  shortlistLabel,
+  poolLabel,
+  candidateNoun,
   refreshing,
   graphics,
 }: {
@@ -37,9 +38,11 @@ export function SlotSigningsModal({
   signings: DashboardSignings;
   mode: DashboardScoreMode;
   onModeChange: (mode: DashboardScoreMode) => void;
-  /** The compared shortlist's name, or "All shortlists". */
-  shortlistLabel: string;
-  /** Whether the rows still belong to the previous mode or shortlist. */
+  /** The compared shortlist's name, or "Realistic signings". */
+  poolLabel: string;
+  /** What one compared player is called, for example "realistic signing". */
+  candidateNoun: string;
+  /** Whether the rows still belong to the previous mode or pool. */
   refreshing: boolean;
   graphics: DashboardGraphics;
 }) {
@@ -53,8 +56,8 @@ export function SlotSigningsModal({
     >
       <div className="flex flex-wrap items-center justify-between gap-2 pb-3">
         <p className="text-body-md text-on-surface-variant" role="status">
-          {shortlistLabel}: the shortlisted player who would improve each slot
-          most.{refreshing ? " Updating…" : null}
+          {poolLabel}: the player who would improve each slot most.
+          {refreshing ? " Updating…" : null}
         </p>
         <ScoreModeToggle mode={mode} onChange={onModeChange} />
       </div>
@@ -67,7 +70,7 @@ export function SlotSigningsModal({
           }
         >
           <DashboardTable
-            caption="Each tactic slot's current player and best shortlisted signing"
+            caption="Each tactic slot's current player and best signing"
             headings={[
               { label: "Slot", width: "w-44" },
               { label: "Current player", width: "w-60" },
@@ -137,7 +140,7 @@ export function SlotSigningsModal({
                       colSpan={3}
                       className="px-2 text-body-sm text-on-surface-variant"
                     >
-                      No shortlisted player improves this slot
+                      No {candidateNoun} improves this slot
                     </td>
                   )}
                 </tr>

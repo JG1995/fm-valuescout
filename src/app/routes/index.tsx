@@ -28,7 +28,6 @@ import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-sna
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import type { SaveSummary } from "@/features/snapshot/types/save";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
-import { shortlistOptionLabels } from "@/features/snapshot/utils/shortlist-option-labels";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
   formatAbsoluteUtc,
@@ -58,10 +57,7 @@ export const Route = createFileRoute("/")({
 const setupLinkClass =
   "inline-flex h-8 shrink-0 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high active:bg-surface-container-highest";
 
-/**
- * What the active save still needs before Moneyball mode has data. A missing
- * shortlist is not listed: Recommended signings says so where its rows would be.
- */
+/** What the active save still needs before Moneyball mode has data. */
 function setupNotes(
   save: SaveSummary,
   snapshot: SnapshotSummary,
@@ -201,7 +197,7 @@ function DashboardPage() {
           <p className="max-w-prose pb-4 text-body-md text-on-surface-variant">
             {managedClub.status === "missing"
               ? "The dashboard needs your club's players in the current snapshot. Load data from the save where you manage this club, or choose another club."
-              : "The dashboard compares your squad with shortlisted players, so it needs to know which club you manage. Squad, Planner, Tactic, Youth, and My Staff use the same choice, and you can change it later in My Club."}
+              : "The dashboard compares your squad with the players you could sign, so it needs to know which club you manage. Squad, Planner, Tactic, Youth, and My Staff use the same choice, and you can change it later in My Club."}
           </p>
           <ManagedClubSetup />
         </Panel>
@@ -234,7 +230,7 @@ function DashboardPage() {
           onModeChange={(nextMode) =>
             void navigate({ search: { mode: nextMode }, replace: true })
           }
-          shortlists={shortlistOptionLabels(save.playerShortlists)}
+          shortlists={save.playerShortlists}
           graphics={dashboardGraphics}
         />
         <DevelopmentProspectsPanel

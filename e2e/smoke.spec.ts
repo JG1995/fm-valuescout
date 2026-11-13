@@ -248,12 +248,12 @@ test.describe("application smoke", () => {
     // A slot of the XI narrows the cards to the players who would improve it.
     await lineup.getByRole("button", { name: /Alejandro Balde/ }).click();
     await expect(
-      main.getByText(/^3 shortlisted players would improve DL/),
+      main.getByText(/^3 realistic signings would improve DL/),
     ).toBeVisible();
     await expect(signings.first()).toContainText("Alejandro Grimaldo García");
     await main.getByRole("button", { name: "Show all slots" }).click();
     await expect(
-      main.getByText(/^10 of 12 shortlisted players would improve your XI/),
+      main.getByText(/^10 realistic signings would improve your XI/),
     ).toBeVisible();
 
     await expect(
@@ -300,7 +300,7 @@ test.describe("application smoke", () => {
     ).toContainText("Alejandro Grimaldo García");
     await expect(
       slots.getByRole("row").filter({ hasText: "Pedri" }),
-    ).toContainText("No shortlisted player improves this slot");
+    ).toContainText("No realistic signing improves this slot");
     await page.keyboard.press("Escape");
     await expect(slots).toHaveCount(0);
 
@@ -6228,24 +6228,9 @@ test.describe("application smoke", () => {
     await expect(page).toHaveURL(/\/search\?.*view=general/);
     await expect(searchLink).toHaveAttribute("aria-current", "page");
 
+    // A save without shortlists offers no shortlist to choose.
     const shortlist = page.getByRole("combobox", { name: "Shortlist" });
     await expect(shortlist).toHaveCount(0);
-    await page.getByRole("button", { name: "Add FM Shortlist" }).click();
-    await expect(
-      page.getByText("Smoke Targets: 3 players, 2 in this snapshot."),
-    ).toBeVisible();
-    await expect(shortlist).toHaveValue("3");
-    await expect(shortlist.locator("option:checked")).toHaveText(
-      "Smoke Targets",
-    );
-    await page.getByRole("button", { name: "Remove shortlist" }).click();
-    await expect(shortlist).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Remove shortlist" }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByText("Smoke Targets: 3 players, 2 in this snapshot."),
-    ).toHaveCount(0);
 
     await page.goto("/search?view=shortlist");
     await expect(searchLink).toHaveAttribute("aria-current", "page");

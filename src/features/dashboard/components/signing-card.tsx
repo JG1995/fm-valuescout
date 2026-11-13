@@ -10,7 +10,7 @@ import { slotContext, slotLabel } from "../utils/slot-label";
 import { Gain } from "./dashboard-table";
 import { CardSlotLine, cardDetailClass, PlayerCard } from "./player-card";
 
-/** A shortlisted player's club and age, for the line under their name. */
+/** A recommended signing's club and age, for the line under their name. */
 export function signingClubLine(recommendation: DashboardRecommendation) {
   return [
     recommendation.club ?? "No club",
@@ -20,7 +20,7 @@ export function signingClubLine(recommendation: DashboardRecommendation) {
     .join(" · ");
 }
 
-/** A shortlisted player's value and, behind a Moneyball score, season minutes. */
+/** A recommended signing's value and, behind a Moneyball score, season minutes. */
 export function signingValueLine(
   recommendation: DashboardRecommendation,
   mode: DashboardScoreMode,

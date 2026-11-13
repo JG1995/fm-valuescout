@@ -11,14 +11,9 @@ export type SaveSummary = {
   playerShortlists: PlayerShortlistSummary[];
 };
 
-/** One player shortlist of a save: a linked FM file, or a list read from the linked FM save. */
+/** One player shortlist of a save, read from its linked FM save. */
 export type PlayerShortlistSummary = {
   id: number;
-  /** The list name from the last successful read; a file's may be empty. */
+  /** The list's name in FM, unique in the save; "(Default)" for FM's unnamed list. */
   name: string;
-  /**
-   * The linked file's name only, as the app never receives its directory, or
-   * null for a list read from the linked FM save.
-   */
-  fileName: string | null;
 };

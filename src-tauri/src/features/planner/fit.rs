@@ -61,6 +61,9 @@ pub(crate) fn moneyball_roles_lane_score(
     lane: &TacticLane,
     league_shift: i16,
 ) -> Option<u8> {
+    if !plays_lane(positions, lane) {
+        return None;
+    }
     let role_score = |role_id: &str, position: &str| {
         definition_for_attribute_role(role_id, base_position(position)).map(|definition| {
             score_role(definition, percentiles).map(|role| shifted(role.score, league_shift))
@@ -87,6 +90,9 @@ pub(crate) fn custom_metrics_lane_score(
     lane: &TacticLane,
     league_shift: i16,
 ) -> Option<u8> {
+    if !plays_lane(positions, lane) {
+        return None;
+    }
     lane_fit_score(
         mean_percentile_score(&lane.custom_metric_keys, percentiles)
             .map(|score| shifted(score, league_shift)),
@@ -94,6 +100,14 @@ pub(crate) fn custom_metrics_lane_score(
         positions,
         lane,
     )
+}
+
+/// Whether the player can play both of the lane's positions, without which he has no score
+/// there. The Moneyball lane scores ask first, because most players cannot play most lanes
+/// and scoring a role from percentiles is the costly part.
+fn plays_lane(positions: &BTreeMap<String, Option<i64>>, lane: &TacticLane) -> bool {
+    suitable_familiarity(positions, &lane.ip_position).is_some()
+        && suitable_familiarity(positions, &lane.oop_position).is_some()
 }
 
 /// How a player's positions suit a lane.

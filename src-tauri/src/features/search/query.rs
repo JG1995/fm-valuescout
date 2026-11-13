@@ -2166,25 +2166,25 @@ mod tests {
         }
     }
 
-    /// Links `/lists/Targets.fmf` to the current snapshot's save, adds `uids` to its players,
-    /// and returns its shortlist ID.
+    /// Adds `uids` to the Targets shortlist of the current snapshot's save and returns the
+    /// shortlist's ID.
     fn seed_player_shortlist(conn: &Connection, uids: &[i64]) -> i64 {
-        seed_named_player_shortlist(conn, "/lists/Targets.fmf", uids)
+        seed_named_player_shortlist(conn, "Targets", uids)
     }
 
-    /// Links `path` to the current snapshot's save, adds `uids` to its players, and returns
-    /// its shortlist ID.
-    fn seed_named_player_shortlist(conn: &Connection, path: &str, uids: &[i64]) -> i64 {
+    /// Adds `uids` to the shortlist called `name` of the current snapshot's save, creating
+    /// it when needed, and returns its ID.
+    fn seed_named_player_shortlist(conn: &Connection, name: &str, uids: &[i64]) -> i64 {
         let shortlist_id = conn
             .query_row(
-                "INSERT INTO player_shortlists (save_id, file_path, name)
-                 SELECT save_id, ?1, 'Targets' FROM snapshots WHERE is_current = 1
-                 ON CONFLICT (save_id, file_path) DO UPDATE SET name = name
+                "INSERT INTO player_shortlists (save_id, name)
+                 SELECT save_id, ?1 FROM snapshots WHERE is_current = 1
+                 ON CONFLICT (save_id, name) DO UPDATE SET name = name
                  RETURNING id",
-                [path],
+                [name],
                 |row| row.get(0),
             )
-            .expect("link shortlist file");
+            .expect("store shortlist");
         for uid in uids {
             conn.execute(
                 "INSERT INTO player_shortlist_entries (shortlist_id, player_uid) VALUES (?1, ?2)",
@@ -2776,7 +2776,7 @@ mod tests {
         // Saved UIDs 1..=3 plus a stale UID with no current-snapshot player, and another
         // shortlist of the same save holding only UID 4.
         let shortlist = Some(seed_player_shortlist(&conn, &[1, 2, 3, 99]));
-        let loans = seed_named_player_shortlist(&conn, "/lists/Loans.fmf", &[4]);
+        let loans = seed_named_player_shortlist(&conn, "Loans", &[4]);
         let requested_fields = vec!["role.deep_lying_playmaker_ip".to_string()];
 
         // Unrestricted General still returns every current player.
@@ -2956,8 +2956,7 @@ mod tests {
         assert_eq!(unknown.state, SearchPlayersPageState::NoShortlist);
         conn.execute_batch(
             "INSERT INTO saves (id, name, is_active) VALUES (99, 'Other save', 0);
-             INSERT INTO player_shortlists (id, save_id, file_path, name)
-             VALUES (7, 99, '/lists/Other.fmf', 'Other');
+             INSERT INTO player_shortlists (id, save_id, name) VALUES (7, 99, 'Other');
              INSERT INTO player_shortlist_entries (shortlist_id, player_uid) VALUES (7, 1);",
         )
         .expect("seed another save's shortlist");
@@ -3706,8 +3705,8 @@ mod tests {
     const BIGGER_CLUB: (&str, i64, i64) = ("Bigger FC", 700, 5500);
     const GIANT_CLUB: (&str, i64, i64) = ("Giant FC", 900, 9800);
 
-    /// Small FC's twelve players of ability 100 (UIDs 101–112) and eight players elsewhere.
-    /// UIDs 2, 4, 5, and 8 are realistic signings for Small FC; 1, 3, 6, and 7 are not.
+    /// Small FC's twelve players of ability 100 (UIDs 101–112) and nine players elsewhere.
+    /// UIDs 2, 4, 5, and 8 are realistic signings for Small FC; 1, 3, 6, 7, and 9 are not.
     fn seed_signing_targets(conn: &mut rusqlite::Connection) {
         let at = |club, reputation| Standing {
             age: 27,
@@ -3737,7 +3736,7 @@ mod tests {
             player_with_standing(
                 5,
                 "Free agent",
-                108,
+                100,
                 Standing {
                     age: 29,
                     pa: None,
@@ -3777,6 +3776,19 @@ mod tests {
                 Standing {
                     parent_club_uid: Some(SMALL_CLUB.1),
                     ..at(BIGGER_CLUB, (5000, 4800))
+                },
+            ),
+            // Within the club's reach, but by less than the game's "Interested" level asks.
+            player_with_standing(
+                9,
+                "Free agent who is only slightly interested",
+                108,
+                Standing {
+                    age: 29,
+                    pa: None,
+                    club: None,
+                    parent_club_uid: None,
+                    reputation: (3500, 3300),
                 },
             ),
         ]);
@@ -3834,10 +3846,13 @@ mod tests {
             realistic_signing_uids(&conn, "is_not", false),
             vec![2, 4, 5, 8]
         );
-        assert_eq!(realistic_signing_uids(&conn, "is", false), vec![1, 3, 6, 7]);
+        assert_eq!(
+            realistic_signing_uids(&conn, "is", false),
+            vec![1, 3, 6, 7, 9]
+        );
         assert_eq!(
             realistic_signing_uids(&conn, "is_not", true),
-            vec![1, 3, 6, 7]
+            vec![1, 3, 6, 7, 9]
         );
 
         // The club's own squad counts as realistic.
@@ -3867,7 +3882,7 @@ mod tests {
 
         assert_eq!(
             realistic_signing_uids(&conn, "is", true),
-            vec![1, 2, 3, 4, 5, 6, 7, 8]
+            vec![1, 2, 3, 4, 5, 6, 7, 8, 9]
         );
     }
 
@@ -3893,7 +3908,7 @@ mod tests {
         seed_signing_targets(&mut conn);
         manage_club(&conn, SMALL_CLUB, true);
         let snapshot_id = current_snapshot_id(&conn);
-        for uid in 1..=8 {
+        for uid in 1..=9 {
             insert_moneyball_row(&conn, snapshot_id, uid, Some(r#"{"goals":50}"#));
         }
 
@@ -3919,7 +3934,7 @@ mod tests {
                     .iter()
                     .map(|player| player.uid)
                     .collect::<Vec<_>>(),
-                vec![4, 2, 5, 8]
+                vec![4, 5, 2, 8]
             );
         }
     }
@@ -7082,8 +7097,7 @@ mod tests {
             writer
                 .execute_batch(
                     "INSERT INTO saves (id, name, is_active) VALUES (99, 'Other save', 0);
-                     INSERT INTO player_shortlists (id, save_id, file_path, name)
-                     VALUES (7, 99, '/lists/Other.fmf', 'Other');
+                     INSERT INTO player_shortlists (id, save_id, name) VALUES (7, 99, 'Other');
                      INSERT INTO player_shortlist_entries (shortlist_id, player_uid)
                      VALUES (7, 2);",
                 )
@@ -7712,7 +7726,7 @@ mod tests {
         {
             let writer = db.0.lock().expect("lock writer");
             assert_eq!(seed_player_shortlist(&writer, &shortlist), 1);
-            seed_named_player_shortlist(&writer, "/lists/Loans.fmf", &[4, 8, 12]);
+            seed_named_player_shortlist(&writer, "Loans", &[4, 8, 12]);
         }
         let in_shortlist = |page: SearchPlayersPage| {
             page.players
