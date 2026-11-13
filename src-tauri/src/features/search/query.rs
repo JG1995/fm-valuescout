@@ -3666,6 +3666,264 @@ mod tests {
         assert_eq!(page.total, 0);
     }
 
+    /// What the realistic-signing rule reads of a player besides his ability.
+    struct Standing {
+        age: i64,
+        /// The player's potential ability; his current ability when `None`.
+        pa: Option<i64>,
+        /// The club he plays for: its name, UID, and team reputation.
+        club: Option<(&'static str, i64, i64)>,
+        /// The club that holds his contract when he is out on loan.
+        parent_club_uid: Option<i64>,
+        reputation: (i64, i64),
+    }
+
+    fn player_with_standing(uid: u64, name: &str, ca: i64, standing: Standing) -> Value {
+        let mut player = player_template(uid, name, ca);
+        let object = player.as_object_mut().expect("player object");
+        object.insert("age".to_string(), json!(standing.age));
+        object.insert("pa".to_string(), json!(standing.pa.unwrap_or(ca)));
+        let (club, club_uid, club_reputation) = match standing.club {
+            Some((club, uid, reputation)) => (json!(club), json!(uid), json!(reputation)),
+            None => (Value::Null, Value::Null, Value::Null),
+        };
+        object.insert("currentClub".to_string(), club);
+        object.insert("currentClubUid".to_string(), club_uid.clone());
+        object.insert(
+            "parentClubUid".to_string(),
+            standing.parent_club_uid.map_or(club_uid, |uid| json!(uid)),
+        );
+        object.insert("clubReputation".to_string(), club_reputation);
+        object.insert(
+            "reputation".to_string(),
+            json!({ "current": standing.reputation.0, "world": standing.reputation.1 }),
+        );
+        player
+    }
+
+    const SMALL_CLUB: (&str, i64, i64) = ("Small FC", 500, 4000);
+    const SMALLER_CLUB: (&str, i64, i64) = ("Smaller FC", 600, 3800);
+    const BIGGER_CLUB: (&str, i64, i64) = ("Bigger FC", 700, 5500);
+    const GIANT_CLUB: (&str, i64, i64) = ("Giant FC", 900, 9800);
+
+    /// Small FC's twelve players of ability 100 (UIDs 101–112) and eight players elsewhere.
+    /// UIDs 2, 4, 5, and 8 are realistic signings for Small FC; 1, 3, 6, and 7 are not.
+    fn seed_signing_targets(conn: &mut rusqlite::Connection) {
+        let at = |club, reputation| Standing {
+            age: 27,
+            pa: None,
+            club: Some(club),
+            parent_club_uid: None,
+            reputation,
+        };
+        let mut players = (101..=112)
+            .map(|uid| player_with_standing(uid, "Squad", 100, at(SMALL_CLUB, (3500, 3200))))
+            .collect::<Vec<_>>();
+        players.extend([
+            player_with_standing(1, "Superstar", 190, at(GIANT_CLUB, (9500, 9700))),
+            player_with_standing(2, "Peer", 105, at(SMALLER_CLUB, (3300, 3000))),
+            player_with_standing(
+                3,
+                "Better at a bigger club",
+                112,
+                at(BIGGER_CLUB, (4800, 4500)),
+            ),
+            player_with_standing(
+                4,
+                "Fringe at a bigger club",
+                85,
+                at(("Big FC", 800, 4400), (3500, 3200)),
+            ),
+            player_with_standing(
+                5,
+                "Free agent",
+                108,
+                Standing {
+                    age: 29,
+                    pa: None,
+                    club: None,
+                    parent_club_uid: None,
+                    reputation: (3500, 3300),
+                },
+            ),
+            player_with_standing(
+                6,
+                "Free-agent star",
+                160,
+                Standing {
+                    age: 30,
+                    pa: None,
+                    club: None,
+                    parent_club_uid: None,
+                    reputation: (8000, 8200),
+                },
+            ),
+            // Peer's ability, but a prospect counts some of his potential as his level.
+            player_with_standing(
+                7,
+                "Prospect",
+                105,
+                Standing {
+                    age: 19,
+                    pa: Some(165),
+                    ..at(SMALLER_CLUB, (3300, 3000))
+                },
+            ),
+            // Small FC's own player, far above its level, out on loan.
+            player_with_standing(
+                8,
+                "Loaned out",
+                150,
+                Standing {
+                    parent_club_uid: Some(SMALL_CLUB.1),
+                    ..at(BIGGER_CLUB, (5000, 4800))
+                },
+            ),
+        ]);
+        ingest_players(conn, players);
+    }
+
+    fn manage_club(conn: &Connection, club: (&str, i64, i64), with_uid: bool) {
+        let save_id: i64 = conn
+            .query_row(
+                "SELECT save_id FROM snapshots WHERE is_current = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("save id");
+        conn.execute(
+            "INSERT INTO managed_club_settings (save_id, club_name, club_uid) VALUES (?1, ?2, ?3)",
+            rusqlite::params![save_id, club.0, with_uid.then_some(club.1)],
+        )
+        .expect("choose managed club");
+    }
+
+    fn realistic_signing_uids(conn: &Connection, op: &str, value: bool) -> Vec<i64> {
+        let page = search_with_filters(
+            conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![
+                filter_rule("realistic_signing", op, FilterValue::Bool(value)),
+                // Leaves out Small FC's twelve squad players.
+                filter_rule("name", "is_not", FilterValue::Text("Squad".to_string())),
+            ],
+            Some("and"),
+        )
+        .expect("realistic signing filter");
+        let mut uids = page
+            .players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>();
+        uids.sort_unstable();
+        uids
+    }
+
+    #[test]
+    fn realistic_signings_are_players_the_managed_club_could_attract() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("realistic-signings.db"));
+        seed_signing_targets(&mut conn);
+        manage_club(&conn, SMALL_CLUB, true);
+
+        assert_eq!(realistic_signing_uids(&conn, "is", true), vec![2, 4, 5, 8]);
+        assert_eq!(
+            realistic_signing_uids(&conn, "is_not", false),
+            vec![2, 4, 5, 8]
+        );
+        assert_eq!(realistic_signing_uids(&conn, "is", false), vec![1, 3, 6, 7]);
+        assert_eq!(
+            realistic_signing_uids(&conn, "is_not", true),
+            vec![1, 3, 6, 7]
+        );
+
+        // The club's own squad counts as realistic.
+        let squad = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![
+                filter_rule("realistic_signing", "is", FilterValue::Bool(true)),
+                filter_rule("name", "is", FilterValue::Text("Squad".to_string())),
+            ],
+            Some("and"),
+        )
+        .expect("own squad");
+        assert_eq!(squad.total, 12);
+    }
+
+    #[test]
+    fn a_bigger_club_can_attract_better_players() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("realistic-signings-giant.db"));
+        seed_signing_targets(&mut conn);
+        // Giant FC's only player is the superstar, so its level is his ability.
+        manage_club(&conn, GIANT_CLUB, true);
+
+        assert_eq!(
+            realistic_signing_uids(&conn, "is", true),
+            vec![1, 2, 3, 4, 5, 6, 7, 8]
+        );
+    }
+
+    #[test]
+    fn realistic_signings_match_nobody_without_a_managed_club_uid() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("realistic-signings-no-club.db"));
+        seed_signing_targets(&mut conn);
+
+        assert!(realistic_signing_uids(&conn, "is", true).is_empty());
+        assert!(realistic_signing_uids(&conn, "is_not", true).is_empty());
+
+        // A club chosen before club UIDs were recorded has no squad to measure.
+        manage_club(&conn, SMALL_CLUB, false);
+        assert!(realistic_signing_uids(&conn, "is", true).is_empty());
+        assert!(realistic_signing_uids(&conn, "is_not", true).is_empty());
+    }
+
+    #[test]
+    fn moneyball_view_filters_realistic_signings() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("realistic-signings-moneyball.db"));
+        seed_signing_targets(&mut conn);
+        manage_club(&conn, SMALL_CLUB, true);
+        let snapshot_id = current_snapshot_id(&conn);
+        for uid in 1..=8 {
+            insert_moneyball_row(&conn, snapshot_id, uid, Some(r#"{"goals":50}"#));
+        }
+
+        for pool in [ComparisonPool::FullCsv, ComparisonPool::Filtered] {
+            let page = search_moneyball(
+                &conn,
+                0,
+                DEFAULT_PAGE_LIMIT,
+                SortField::parse_for_moneyball("ca", true).expect("CA sort"),
+                SortDir::Asc,
+                &[],
+                vec![filter_rule(
+                    "realistic_signing",
+                    "is",
+                    FilterValue::Bool(true),
+                )],
+                None,
+                pool,
+            )
+            .expect("Moneyball realistic signing filter");
+            assert_eq!(
+                page.players
+                    .iter()
+                    .map(|player| player.uid)
+                    .collect::<Vec<_>>(),
+                vec![4, 2, 5, 8]
+            );
+        }
+    }
+
     struct DeepPlayerFields {
         nationalities: Value,
         positions: Value,

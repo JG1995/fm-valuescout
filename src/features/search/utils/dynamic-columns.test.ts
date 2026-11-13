@@ -52,6 +52,23 @@ describe("dynamicColumnFields", () => {
     expect(isVisibleSortField("club_dna", [])).toBe(true);
   });
 
+  it("keeps a filter-only field out of the columns and the sorts", () => {
+    const filters = [
+      {
+        id: createFilterRuleId(),
+        field: "realistic_signing",
+        op: "is",
+        value: { type: "bool" as const, value: true },
+      },
+    ];
+    for (const view of ["general", "moneyball"] as const) {
+      expect(dynamicColumnFields(filters, view)).toEqual([]);
+      expect(isVisibleSortField("realistic_signing", filters, view)).toBe(
+        false,
+      );
+    }
+  });
+
   it("allows sorting by known metrics whether or not they are requested", () => {
     const filters = [
       {

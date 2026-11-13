@@ -7,6 +7,12 @@ import { completeFilterRules, getFilterField } from "./filter-registry";
 
 const BASIC_COLUMN_FIELDS = new Set<string>(BASIC_SEARCH_SORT_FIELDS);
 
+/** A known field with a table column; a filter-only field has none and is never sortable. */
+function isColumnField(fieldId: string, view: SearchView): boolean {
+  const field = getFilterField(fieldId, view);
+  return field !== undefined && field.sortable !== false;
+}
+
 /** Non-basic complete filter fields that should appear as result columns. */
 export function dynamicColumnFields(
   filters: FilterRule[],
@@ -17,7 +23,7 @@ export function dynamicColumnFields(
     if (BASIC_COLUMN_FIELDS.has(rule.field)) {
       continue;
     }
-    if (!getFilterField(rule.field, view)) {
+    if (!isColumnField(rule.field, view)) {
       continue;
     }
     if (fields.includes(rule.field)) {
@@ -51,5 +57,5 @@ export function isVisibleSortField(
   if ((BASIC_SEARCH_SORT_FIELDS as readonly string[]).includes(value)) {
     return true;
   }
-  return getFilterField(value, view) !== undefined;
+  return isColumnField(value, view);
 }

@@ -12,6 +12,8 @@ use crate::features::player_metrics::resolver::{
     POSITION_KEYS,
 };
 
+use super::realistic_signing;
+
 /// Maximum filter rules accepted at the trust boundary.
 pub const MAX_FILTER_RULES: usize = 32;
 
@@ -111,6 +113,8 @@ enum FieldKind {
     MoneyballInteger {
         column: &'static str,
     },
+    /// Whether the managed club could sign the player; see `realistic_signing`.
+    RealisticSigning,
 }
 
 /// Unique potential role ids from an AST, in first-seen order.
@@ -381,6 +385,7 @@ fn resolve_field(field: &str, moneyball: bool) -> Result<FieldKind, String> {
         }),
         "position" => Ok(FieldKind::PositionPresence),
         "club_dna" => Ok(FieldKind::ClubDnaScore),
+        "realistic_signing" => Ok(FieldKind::RealisticSigning),
         _ => {
             if let Some(key) = attribute_key(field)? {
                 return Ok(FieldKind::JsonInteger {
@@ -603,6 +608,7 @@ fn compile_rule(
         FieldKind::MoneyballInteger { column } => {
             compile_integer_rule(&format!("moneyball.{column}"), true, op, value, next_index)
         }
+        FieldKind::RealisticSigning => compile_realistic_signing_rule(op, value),
     }
 }
 
@@ -873,6 +879,19 @@ fn compile_boolean_rule(
     };
 
     Ok((clause, vec![Value::Integer(stored)]))
+}
+
+/// Binds nothing: the rule reads the managed club from the statement's snapshot parameter.
+fn compile_realistic_signing_rule(
+    op: &str,
+    value: &FilterValue,
+) -> Result<(String, Vec<Value>), String> {
+    let wanted = match op {
+        "is" => value_as_bool(value)?,
+        "is_not" => !value_as_bool(value)?,
+        _ => return Err(format!("invalid boolean filter operator: {op}")),
+    };
+    Ok((realistic_signing::clause(wanted), Vec::new()))
 }
 
 fn compile_enum_rule(

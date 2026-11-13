@@ -508,6 +508,7 @@ pub fn is_moneyball_search_field(field: &str) -> bool {
             | "set_for_release"
             | "on_loan"
             | "team_level"
+            | "realistic_signing"
     ) || moneyball_context_column(field).is_some()
         || field
             .strip_prefix("moneyball.")

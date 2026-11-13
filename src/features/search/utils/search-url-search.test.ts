@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { getMoneyballSearchMetric } from "@/utils/moneyball-search-metrics";
+import { getPlayerMetric } from "@/utils/player-metrics";
 import type { FilterRule } from "../types/filter-rule";
-import { isFilterRuleComplete } from "./filter-registry";
+import { filterFieldsForView, isFilterRuleComplete } from "./filter-registry";
 import { formatFilterTagLabel } from "./format-filter-label";
 import {
   MAX_FILTER_RULES,
@@ -35,6 +37,28 @@ describe("search URL search params", () => {
 
     const decoded = parseSearchFilters(encoded);
     expect(decoded).toEqual(rules);
+  });
+
+  it("keeps the realistic-signing rule in both views without offering it as a column", () => {
+    const encoded = [
+      { id: "realistic", field: "realistic_signing", op: "is", value: true },
+    ];
+    for (const view of ["general", "moneyball"] as const) {
+      const [rule] = parseSearchFilters(encoded, view);
+      expect(rule).toEqual({
+        id: "realistic",
+        field: "realistic_signing",
+        op: "is",
+        value: { type: "bool", value: true },
+      });
+      expect(isFilterRuleComplete(rule, view)).toBe(true);
+      expect(formatFilterTagLabel(rule, view)).toBe("Realistic signing is Yes");
+      expect(filterFieldsForView(view).map((field) => field.id)).toContain(
+        "realistic_signing",
+      );
+    }
+    expect(getPlayerMetric("realistic_signing")).toBeUndefined();
+    expect(getMoneyballSearchMetric("realistic_signing")).toBeUndefined();
   });
 
   it("parses combine mode and defaults invalid values to and", () => {
