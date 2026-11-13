@@ -6,6 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-13
+
+### Added
+
+- **Only realistic signings** in Search and Moneyball keeps the players your managed club could plausibly sign. It is an estimate from each player's ability, potential, and reputation against your squad's level and your club's reputation, not Football Manager's own check. It needs a managed club, chosen in My Club.
+- The staff assignment optimizer also considers the staff already at your club, by the job each holds now. Your own manager is never suggested.
+- **Skip** on a staff recommendation leaves that person out of every assignment for the save and optimizes again. **Skipped staff** lists them with **Restore**.
+- Snapshot history has **Keep** and **Don't keep** for each snapshot and marks a kept one with a **Kept** chip.
+
+### Changed
+
+- The Dashboard's Recommended signings compare your club's realistic signings by default, so recommendations no longer need a shortlist. **Candidates** switches to one of your shortlists, whose players are compared as they stand. In Moneyball mode only players with season stats are compared.
+- Load Data replaces the save's snapshots unless you keep them. Every snapshot stored before this version is kept, so upgrading deletes none.
+
+### Removed
+
+- **Add FM Shortlist** and linked FM shortlist files (`.fmf`), because Load Data and **Refresh stats** read your shortlists from the linked FM save. Shortlists that were linked to files are deleted on upgrade.
+- The Dashboard's **All shortlists** option. Choose **Realistic signings** or one shortlist.
+
 ## [0.25.1] - 2026-11-11
 
 ### Fixed
