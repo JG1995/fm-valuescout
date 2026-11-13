@@ -136,7 +136,7 @@ describe("LoadDataOutcome", () => {
 
     expect(
       screen.getByText(
-        /Stored this snapshot in history; the latest remains 2027-08-16\./i,
+        /The kept snapshot from 2027-08-16 is later and stays current\./i,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/This snapshot is now the latest/i)).toBeNull();
@@ -157,9 +157,7 @@ describe("LoadDataOutcome", () => {
       />,
     );
 
-    expect(
-      screen.getByText(/Stored this snapshot in history/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/is later and stays current/i)).toBeInTheDocument();
     expect(screen.queryByText(/This snapshot is now the latest/i)).toBeNull();
   });
 
@@ -431,9 +429,7 @@ describe("LoadDataOutcome", () => {
       />,
     );
 
-    expect(
-      screen.getByText(/Stored this snapshot in history/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/is later and stays current/i)).toBeInTheDocument();
     expect(screen.getByText(/Scan 1\.2s/i)).toBeInTheDocument();
   });
 

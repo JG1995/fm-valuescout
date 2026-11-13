@@ -74,7 +74,8 @@ pub fn list_snapshot_metadata(
                 game_date_source,
                 player_count,
                 loaded_at_utc,
-                is_current
+                is_current,
+                is_kept
              FROM snapshots
              WHERE save_id = ?1
              ORDER BY {SNAPSHOT_ORDER_BY}"
@@ -104,7 +105,8 @@ pub(crate) fn get_snapshot_metadata(
             game_date_source,
             player_count,
             loaded_at_utc,
-            is_current
+            is_current,
+            is_kept
          FROM snapshots
          WHERE id = ?1",
         [snapshot_id],
@@ -145,6 +147,7 @@ fn map_snapshot_metadata_row(row: &Row<'_>) -> rusqlite::Result<SnapshotMetadata
         player_count: row.get(6)?,
         loaded_at_utc: row.get(7)?,
         is_current: row.get::<_, i32>(8)? == 1,
+        is_kept: row.get::<_, i32>(9)? == 1,
     })
 }
 

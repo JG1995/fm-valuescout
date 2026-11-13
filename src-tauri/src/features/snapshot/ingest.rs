@@ -510,8 +510,24 @@ pub(crate) fn publish_prepared_snapshot_canonical(
     service::ensure_save_context(&tx, save_context)?;
     let save_id = save_context.id;
     let save_started = now_ms();
+    let kept_current_id: Option<i64> = tx
+        .query_row(
+            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1 AND is_kept = 1",
+            rusqlite::params![save_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
     let raw = &prepared.raw;
     let snapshot_id = insert_prepared_snapshot(&tx, save_id, raw, bridge_source_request_id)?;
+    // Load Data replaces the save's other snapshots unless the user kept them. Deleting after
+    // the insert keeps snapshot IDs increasing: SQLite reuses a deleted maximum rowid, and the
+    // frontend keys views on the snapshot ID.
+    tx.execute(
+        "DELETE FROM snapshots WHERE save_id = ?1 AND is_kept = 0 AND id <> ?2",
+        rusqlite::params![save_id, snapshot_id],
+    )
+    .map_err(|e| e.to_string())?;
     insert_prepared_players_raw(&tx, snapshot_id, &raw.players)?;
     league_strength::persist(
         &tx,
@@ -591,6 +607,9 @@ pub(crate) fn publish_prepared_snapshot_canonical(
                     raw.game_date.as_deref(),
                     &raw.game_date_source,
                 )?;
+            } else if Some(effective) != kept_current_id {
+                // The replaced current snapshot gave way to a kept one dated after this load.
+                promote_kept_snapshot(&tx, save_id, effective)?;
             }
         }
         current_id
@@ -613,6 +632,30 @@ pub(crate) fn publish_prepared_snapshot_canonical(
         save_ms,
         finalize_ms,
     ))
+}
+
+/// Materializes a kept snapshot's derived rows from its raw facts when it becomes current
+/// again, as snapshot deletion does.
+fn promote_kept_snapshot(
+    tx: &Transaction<'_>,
+    save_id: i64,
+    snapshot_id: i64,
+) -> Result<(), String> {
+    potential_scores::rebuild_snapshot(tx, snapshot_id)?;
+    crate::features::staff::scoring::rebuild_snapshot(tx, snapshot_id)?;
+    let (game_date, game_date_source): (Option<String>, String) = tx
+        .query_row(
+            "SELECT game_date, game_date_source FROM snapshots WHERE id = ?1",
+            [snapshot_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|error| error.to_string())?;
+    academy_service::ensure_class_for_game_date(
+        tx,
+        save_id,
+        game_date.as_deref(),
+        &game_date_source,
+    )
 }
 
 /// Compatibility wrapper without timings/progress. Delegates to the canonical
@@ -1284,6 +1327,23 @@ mod tests {
             > 0
     }
 
+    fn snapshot_token_exists(conn: &Connection, context_token: &str) -> bool {
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM snapshots WHERE context_token = ?1)",
+            params![context_token],
+            |row| row.get(0),
+        )
+        .expect("look up snapshot token")
+    }
+
+    fn keep_snapshot(conn: &Connection, snapshot_id: i64) {
+        conn.execute(
+            "UPDATE snapshots SET is_kept = 1 WHERE id = ?1",
+            params![snapshot_id],
+        )
+        .expect("keep snapshot");
+    }
+
     fn snapshot_count(conn: &Connection, save_id: i64) -> i64 {
         conn.query_row(
             "SELECT COUNT(*) FROM snapshots WHERE save_id = ?1",
@@ -1334,6 +1394,7 @@ mod tests {
 
         let first_path = write_dump(&temp_dir, "club-dna-first.json", GOLDEN_FIXTURE);
         let first = ingest_dump_file(&mut conn, &first_path).expect("ingest first snapshot");
+        keep_snapshot(&conn, first.id);
         let mut second_dump: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse fixture");
         second_dump["gameDate"] = Value::from("2027-08-14");
         let second_path = write_dump(&temp_dir, "club-dna-second.json", &second_dump.to_string());
@@ -1666,6 +1727,7 @@ mod tests {
 
         let first_path = write_dump(&temp_dir, "first.json", GOLDEN_FIXTURE);
         let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        keep_snapshot(&conn, first.id);
 
         let mut second_root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse fixture");
         for key in [
@@ -1719,6 +1781,7 @@ mod tests {
         let first_path = write_dump(&temp_dir, "first.json", &dump_with_uniform_attributes(10));
         let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
         assert!(role_score_count_for_snapshot(&conn, first.id) > 0);
+        keep_snapshot(&conn, first.id);
 
         let second_path = write_dump(&temp_dir, "second.json", &dump_with_uniform_attributes(20));
         let second = ingest_dump_file(&mut conn, &second_path).expect("second ingest");
@@ -1728,6 +1791,113 @@ mod tests {
         let scores = role_scores_for_player(&conn, second.id, 77);
         assert!(!scores.is_empty());
         assert!(scores.iter().all(|(_, _, score)| *score == Some(100)));
+    }
+
+    #[test]
+    fn load_replaces_the_saves_unkept_snapshots_and_leaves_kept_ones_and_other_saves() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("replace-unkept.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let other_save = service::create_save(&conn, "Other save").expect("create other save");
+        let first_path = write_dump(
+            &temp_dir,
+            "first.json",
+            &dump_with_game_date(Some("2026-08-14"), "First"),
+        );
+        let other_snapshot = ingest_dump_file_for_save(&mut conn, other_save.id, &first_path)
+            .expect("ingest other save");
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+
+        let second_path = write_dump(
+            &temp_dir,
+            "second.json",
+            &dump_with_game_date(Some("2026-09-01"), "Second"),
+        );
+        let second = ingest_dump_file(&mut conn, &second_path).expect("second ingest");
+
+        assert!(
+            second.id > first.id,
+            "a replacing load never reuses the replaced ID"
+        );
+        assert!(!snapshot_token_exists(&conn, &first.context_token));
+        assert_eq!(snapshot_count(&conn, save.id), 1);
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(second.id));
+        assert_eq!(
+            player_count_for_snapshot(&conn, second.id),
+            second.player_count
+        );
+        assert!(snapshot_token_exists(&conn, &other_snapshot.context_token));
+
+        keep_snapshot(&conn, second.id);
+        let third_path = write_dump(
+            &temp_dir,
+            "third.json",
+            &dump_with_game_date(Some("2026-10-01"), "Third"),
+        );
+        let third = ingest_dump_file(&mut conn, &third_path).expect("third ingest");
+
+        assert_eq!(snapshot_count(&conn, save.id), 2);
+        assert!(snapshot_token_exists(&conn, &second.context_token));
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(third.id));
+        assert_eq!(compact_row_count(&conn, second.id), 0);
+        assert_eq!(
+            compact_row_count(&conn, third.id),
+            player_count_for_snapshot(&conn, third.id)
+        );
+    }
+
+    #[test]
+    fn replacing_the_current_snapshot_with_an_older_load_promotes_a_newer_kept_snapshot() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("promote-kept.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let kept_path = write_dump(
+            &temp_dir,
+            "kept.json",
+            &dump_with_game_date(Some("2027-01-01"), "Kept"),
+        );
+        let kept = ingest_dump_file(&mut conn, &kept_path).expect("kept ingest");
+        keep_snapshot(&conn, kept.id);
+        let latest_path = write_dump(
+            &temp_dir,
+            "latest.json",
+            &dump_with_game_date(Some("2027-06-01"), "Latest"),
+        );
+        let latest = ingest_dump_file(&mut conn, &latest_path).expect("latest ingest");
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(latest.id));
+        assert_eq!(compact_row_count(&conn, kept.id), 0);
+
+        let save_context = save_context_for_id(&conn, save.id).expect("save context");
+        let (result, _) = ingest_dump_json_for_save(
+            &mut conn,
+            &save_context,
+            &dump_with_game_date(Some("2026-12-01"), "Older"),
+            None,
+        )
+        .expect("older ingest");
+
+        assert!(!snapshot_token_exists(&conn, &latest.context_token));
+        assert_eq!(result.effective_snapshot.id, kept.id);
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(kept.id));
+        assert_complete_potential_state(&conn, kept.id);
+        assert_eq!(
+            compact_row_count(&conn, kept.id),
+            player_count_for_snapshot(&conn, kept.id)
+        );
+        assert_eq!(
+            staff_compact_row_count(&conn, kept.id),
+            staff_count_for_snapshot(&conn, kept.id)
+        );
+        assert_eq!(compact_row_count(&conn, result.stored_snapshot.id), 0);
+        assert_eq!(staff_compact_row_count(&conn, result.stored_snapshot.id), 0);
     }
 
     #[test]
@@ -2124,6 +2294,7 @@ mod tests {
         let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
         assert_complete_potential_state(&conn, first.id);
         seed_cohort(&conn, first.id, 77, "2027-08-01");
+        keep_snapshot(&conn, first.id);
 
         let earlier_json = dump_with_game_date(Some("2026-08-14"), "Earlier player");
         let second_path = write_dump(&temp_dir, "earlier.json", &earlier_json);
@@ -2187,6 +2358,7 @@ mod tests {
             &dump_with_game_date(Some("2026-08-14"), "Earlier player"),
         );
         let earlier = ingest_dump_file(&mut conn, &earlier_path).expect("earlier ingest");
+        keep_snapshot(&conn, earlier.id);
         assert_complete_potential_state(&conn, earlier.id);
         seed_cohort(&conn, earlier.id, 77, "2026-08-01");
         let later_path = write_dump(
@@ -2226,6 +2398,7 @@ mod tests {
             &dump_with_game_date(Some("2026-08-14"), "First player"),
         );
         let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        keep_snapshot(&conn, first.id);
         let second_path = write_dump(
             &temp_dir,
             "second.json",
@@ -2256,6 +2429,7 @@ mod tests {
             &dump_with_game_date(Some("2026-08-14"), "First player"),
         );
         let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        keep_snapshot(&conn, first.id);
         let second_path = write_dump(
             &temp_dir,
             "second.json",
@@ -2308,6 +2482,7 @@ mod tests {
             &dump_with_game_date(Some("2026-08-14"), "First player"),
         );
         let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        keep_snapshot(&conn, first.id);
         let second_path = write_dump(
             &temp_dir,
             "second.json",
@@ -2346,6 +2521,7 @@ mod tests {
             &dump_with_game_date(Some("2026-08-14"), "Dated player"),
         );
         let dated = ingest_dump_file(&mut conn, &dated_path).expect("dated ingest");
+        keep_snapshot(&conn, dated.id);
         let undated_path = write_dump(
             &temp_dir,
             "undated.json",
@@ -2459,6 +2635,7 @@ mod tests {
             &dump_with_game_date(None, "First player"),
         );
         let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        keep_snapshot(&conn, first.id);
         let second_path = write_dump(
             &temp_dir,
             "second.json",
@@ -2903,6 +3080,7 @@ mod tests {
         assert_eq!(later.stored_snapshot.id, later.effective_snapshot.id);
         assert_complete_potential_state(&conn, later.stored_snapshot.id);
         assert_eq!(compact_row_count(&conn, later.stored_snapshot.id), 1);
+        keep_snapshot(&conn, later.stored_snapshot.id);
         // Historical insert must stay raw-only.
         let earlier_json = dump_with_game_date(Some("2026-08-14"), "Earlier player");
         let earlier_prepared = prepare_dump_json(&earlier_json).expect("prepare earlier");
@@ -2934,7 +3112,7 @@ mod tests {
         )
         .expect("create player update observation seam");
         let mut publish = |game_date: &str, name: &str| {
-            publish_prepared_snapshot(
+            let stored = publish_prepared_snapshot(
                 &mut conn,
                 &save_context,
                 prepare_dump_json(&dump_with_game_date(Some(game_date), name))
@@ -2942,7 +3120,10 @@ mod tests {
                 Some(name),
             )
             .expect("publish dump")
-            .stored_snapshot
+            .stored_snapshot;
+            // Keep each load so the displaced ones stay as raw history.
+            keep_snapshot(&conn, stored.id);
+            stored
         };
 
         let first = publish("2026-08-16", "First");

@@ -624,7 +624,7 @@ mod tests {
     }
 
     #[test]
-    fn load_data_retains_prior_snapshot_with_its_bridge_request_id() {
+    fn load_data_retains_a_kept_prior_snapshot_with_its_bridge_request_id() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let bridge_dir = temp_dir.path().join("bridge");
         fs::create_dir_all(&bridge_dir).expect("bridge dir");
@@ -649,6 +649,11 @@ mod tests {
             active_save.id,
         )
         .expect("first load");
+        conn.execute(
+            "UPDATE snapshots SET is_kept = 1 WHERE id = ?1",
+            rusqlite::params![first.stored_snapshot.id],
+        )
+        .expect("keep snapshot");
 
         let second = load_data_after_scan(
             &mut conn,
@@ -714,6 +719,11 @@ mod tests {
             active_save.id,
         )
         .expect("load later dump");
+        conn.execute(
+            "UPDATE snapshots SET is_kept = 1 WHERE id = ?1",
+            rusqlite::params![later.stored_snapshot.id],
+        )
+        .expect("keep snapshot");
 
         let earlier_path = temp_dir.path().join("earlier.json");
         fs::write(

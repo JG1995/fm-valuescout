@@ -694,10 +694,10 @@ mod tests {
         std::fs::write(&later_path, later_dump.to_string()).expect("write later dump");
         let current = ingest_dump_file(&mut conn, &later_path).expect("ingest later dump");
         conn.execute(
-            "UPDATE snapshots SET bridge_source_request_id = ?1 WHERE id = ?2",
+            "UPDATE snapshots SET bridge_source_request_id = ?1, is_kept = 1 WHERE id = ?2",
             params!["R2", current.id],
         )
-        .expect("bind current source request");
+        .expect("bind and keep current source request");
 
         let mut earlier_dump = later_dump;
         earlier_dump["gameDate"] = serde_json::Value::from("2026-08-14");
@@ -1454,6 +1454,11 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let (temp_dir, db) = seeded_squad_db();
+        // Keep the boosted snapshot so the newer load changes the context without deleting it.
+        db.0.lock()
+            .expect("lock db")
+            .execute("UPDATE snapshots SET is_kept = 1", [])
+            .expect("keep the boosted snapshot");
         let replacement_path = temp_dir.path().join("replacement-snapshot.json");
         let mut replacement: serde_json::Value =
             serde_json::from_str(GOLDEN_FIXTURE).expect("parse replacement fixture");

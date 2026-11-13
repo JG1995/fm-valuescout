@@ -264,7 +264,7 @@ function resolveBanner({ error, result }: LoadDataOutcomeProps): Banner | null {
     storedSnapshot.contextToken === latestSnapshot.contextToken;
   const latestMessage = storedBecameLatest
     ? " This snapshot is now the latest."
-    : ` Stored this snapshot in history; the latest remains ${formatSnapshotDate(latestSnapshot.gameDate)}.`;
+    : ` The kept snapshot from ${formatSnapshotDate(latestSnapshot.gameDate)} is later and stays current.`;
   const stats = seasonStatsCopy(result.stats);
   const shortlist = shortlistsCopy(result.shortlists);
   const isProblem = stats.isProblem || shortlist?.isProblem === true;
@@ -276,7 +276,7 @@ function resolveBanner({ error, result }: LoadDataOutcomeProps): Banner | null {
 }
 
 function formatSnapshotDate(gameDate: string | null): string {
-  return gameDate ?? "an undated snapshot";
+  return gameDate ?? "an unknown in-game date";
 }
 
 export function LoadDataOutcome(props: LoadDataOutcomeProps) {

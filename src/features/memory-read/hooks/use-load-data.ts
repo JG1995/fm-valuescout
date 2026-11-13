@@ -143,16 +143,10 @@ export function useLoadData(options: UseLoadDataOptions) {
           return;
         }
         options.invalidateHistoryOwners(captured.id);
-        // Stats attach to the save's current snapshot, and the shortlists belong to the save,
-        // even when the loaded snapshot is older. Its roots stay valid, so refresh current
-        // views without clearing them.
-        if (
-          (data.stats.status === "attached" ||
-            data.stats.shortlists.status === "read" ||
-            data.stats.staffShortlist.status === "read" ||
-            data.shortlists.read > 0) &&
-          sameContext(captured, activeSaveContextRef.current)
-        ) {
+        // Load Data replaced the save's unkept current snapshot, so a kept one may now be
+        // current. Stats and shortlists also attach to the save's current snapshot. Refresh
+        // current views without clearing roots; the routes key them on the current snapshot.
+        if (sameContext(captured, activeSaveContextRef.current)) {
           options.invalidateCurrentOwners();
         }
         if (generation === generationRef.current) setProgress(null);

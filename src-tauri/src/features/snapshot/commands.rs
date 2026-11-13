@@ -105,6 +105,7 @@ pub struct SnapshotMetadataDto {
     pub player_count: i64,
     pub loaded_at_utc: String,
     pub is_current: bool,
+    pub is_kept: bool,
 }
 
 impl From<SnapshotMetadata> for SnapshotMetadataDto {
@@ -119,6 +120,7 @@ impl From<SnapshotMetadata> for SnapshotMetadataDto {
             player_count: snapshot.player_count,
             loaded_at_utc: snapshot.loaded_at_utc,
             is_current: snapshot.is_current,
+            is_kept: snapshot.is_kept,
         }
     }
 }
@@ -317,6 +319,24 @@ pub async fn rename_snapshot(
                 .map_err(|_| "database lock poisoned".to_string())?;
         let snapshot =
             service::rename_snapshot(&conn, snapshot_id, &context_token, custom_name.as_deref())?;
+        Ok(SnapshotMetadataDto::from(snapshot))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn set_snapshot_kept(
+    snapshot_id: i64,
+    context_token: String,
+    kept: bool,
+    db: State<'_, Db>,
+) -> Result<SnapshotMetadataDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let snapshot = service::set_snapshot_kept(&conn, snapshot_id, &context_token, kept)?;
         Ok(SnapshotMetadataDto::from(snapshot))
     })
     .await
@@ -2145,10 +2165,12 @@ mod tests {
             player_count: 25,
             loaded_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
             is_current: true,
+            is_kept: true,
         });
         let snapshot_value = serde_json::to_value(snapshot).expect("serialize snapshot metadata");
         assert_eq!(snapshot_value["contextToken"], "snapshot-token");
         assert_eq!(snapshot_value["isCurrent"], true);
+        assert_eq!(snapshot_value["isKept"], true);
         assert!(snapshot_value.get("players").is_none());
         let deleted = SnapshotDeleteResultDto::from(SnapshotDeleteResult {
             deleted_snapshot_id: 7,
@@ -2295,6 +2317,7 @@ mod tests {
                 player_count: 2,
                 loaded_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
                 is_current: true,
+                is_kept: false,
             },
             previous_current_snapshot_id: Some(9),
             current_snapshot_id: Some(7),

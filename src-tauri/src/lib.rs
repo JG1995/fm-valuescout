@@ -85,6 +85,7 @@ pub fn run() {
             features::snapshot::commands::set_active_save,
             features::snapshot::commands::list_snapshots,
             features::snapshot::commands::rename_snapshot,
+            features::snapshot::commands::set_snapshot_kept,
             features::snapshot::commands::delete_snapshot,
             features::snapshot::commands::update_snapshot_game_date,
             features::snapshot::commands::delete_save,
