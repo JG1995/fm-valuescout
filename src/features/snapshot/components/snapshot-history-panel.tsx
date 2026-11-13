@@ -22,6 +22,7 @@ import {
 import { deleteSnapshot } from "../api/delete-snapshot";
 import { renameSnapshot } from "../api/rename-snapshot";
 import { savesQueryOptions } from "../api/saves-query-options";
+import { setSnapshotKept } from "../api/set-snapshot-kept";
 import { snapshotKeys } from "../api/snapshot-keys";
 import { snapshotMetadataQueryOptions } from "../api/snapshot-metadata-query-options";
 import {
@@ -377,6 +378,15 @@ export function SnapshotHistoryPanel({
   const [dateEditTarget, setDateEditTarget] = useState<SnapshotMetadata | null>(
     null,
   );
+  const keep = useMutation({
+    mutationFn: (snapshot: SnapshotMetadata) =>
+      setSnapshotKept(snapshot.id, snapshot.contextToken, !snapshot.isKept),
+    onSuccess: (snapshot) => {
+      void queryClient.invalidateQueries({
+        queryKey: snapshotKeys.history(snapshot.saveId),
+      });
+    },
+  });
 
   if (!activeSave) {
     return null;
@@ -390,98 +400,124 @@ export function SnapshotHistoryPanel({
             Load data to store the first dated snapshot for this save.
           </EmptyState>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left">
-              <caption className="sr-only">Snapshot history</caption>
-              <thead>
-                <tr className="bg-surface-container-lowest">
-                  <th
-                    scope="col"
-                    className="h-table-header-height px-4 text-label-md text-on-surface-variant uppercase"
-                  >
-                    Snapshot
-                  </th>
-                  <th
-                    scope="col"
-                    className="h-table-header-height px-2 text-right text-label-md text-on-surface-variant uppercase"
-                  >
-                    Players
-                  </th>
-                  <th
-                    scope="col"
-                    className="h-table-header-height px-2 text-label-md text-on-surface-variant uppercase"
-                  >
-                    Loaded
-                  </th>
-                  <th
-                    scope="col"
-                    className="h-table-header-height px-4 text-right text-label-md text-on-surface-variant uppercase"
-                  >
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {snapshots.map((snapshot) => (
-                  <tr
-                    key={snapshot.id}
-                    className="border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="text-body-sm text-on-surface">
-                          {snapshotLabel(snapshot)}
-                        </span>
-                        {snapshot.isCurrent ? (
-                          <span className="rounded-full bg-primary-container px-2 py-0.5 text-label-sm text-on-primary-container">
-                            Current
-                          </span>
-                        ) : null}
-                      </div>
-                      {snapshot.customName ? (
-                        <p className="mt-0.5 text-body-sm text-on-surface-variant">
-                          {snapshotDate(snapshot)}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className="px-2 text-right text-body-sm font-medium text-on-surface tabular-nums">
-                      {formatCount(snapshot.playerCount)}
-                    </td>
-                    <td className="px-2 text-body-sm text-on-surface-variant">
-                      <span title={formatAbsoluteUtc(snapshot.loadedAtUtc)}>
-                        {formatRelativeAge(snapshot.loadedAtUtc)}
-                      </span>
-                    </td>
-                    <td className="px-4">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          onClick={() => setRenameTarget(snapshot)}
-                          aria-label={`Rename snapshot ${snapshotDate(snapshot)}`}
-                        >
-                          Rename
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() => setDateEditTarget(snapshot)}
-                          aria-label={`Edit date for snapshot ${snapshotTargetLabel(snapshot)}`}
-                        >
-                          Edit date
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() => setDeleteTarget(snapshot)}
-                          aria-label={`Delete snapshot ${snapshotTargetLabel(snapshot)}`}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </td>
+          <>
+            <p className="px-4 pb-3 text-body-sm text-on-surface-variant">
+              Load Data replaces every snapshot you have not kept.
+            </p>
+            {keep.isError ? (
+              <p className="px-4 pb-3 text-body-sm text-error" role="alert">
+                {keep.error.message}
+              </p>
+            ) : null}
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left">
+                <caption className="sr-only">Snapshot history</caption>
+                <thead>
+                  <tr className="bg-surface-container-lowest">
+                    <th
+                      scope="col"
+                      className="h-table-header-height px-4 text-label-md text-on-surface-variant uppercase"
+                    >
+                      Snapshot
+                    </th>
+                    <th
+                      scope="col"
+                      className="h-table-header-height px-2 text-right text-label-md text-on-surface-variant uppercase"
+                    >
+                      Players
+                    </th>
+                    <th
+                      scope="col"
+                      className="h-table-header-height px-2 text-label-md text-on-surface-variant uppercase"
+                    >
+                      Loaded
+                    </th>
+                    <th
+                      scope="col"
+                      className="h-table-header-height px-4 text-right text-label-md text-on-surface-variant uppercase"
+                    >
+                      Actions
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {snapshots.map((snapshot) => (
+                    <tr
+                      key={snapshot.id}
+                      className="border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="text-body-sm text-on-surface">
+                            {snapshotLabel(snapshot)}
+                          </span>
+                          {snapshot.isCurrent ? (
+                            <span className="rounded-full bg-primary-container px-2 py-0.5 text-label-sm text-on-primary-container">
+                              Current
+                            </span>
+                          ) : null}
+                          {snapshot.isKept ? (
+                            <span className="rounded-full bg-surface-container-highest px-2 py-0.5 text-label-sm text-on-surface">
+                              Kept
+                            </span>
+                          ) : null}
+                        </div>
+                        {snapshot.customName ? (
+                          <p className="mt-0.5 text-body-sm text-on-surface-variant">
+                            {snapshotDate(snapshot)}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="px-2 text-right text-body-sm font-medium text-on-surface tabular-nums">
+                        {formatCount(snapshot.playerCount)}
+                      </td>
+                      <td className="px-2 text-body-sm text-on-surface-variant">
+                        <span title={formatAbsoluteUtc(snapshot.loadedAtUtc)}>
+                          {formatRelativeAge(snapshot.loadedAtUtc)}
+                        </span>
+                      </td>
+                      <td className="px-4">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            loading={
+                              keep.isPending &&
+                              keep.variables.id === snapshot.id
+                            }
+                            onClick={() => keep.mutate(snapshot)}
+                            aria-label={`${snapshot.isKept ? "Don't keep" : "Keep"} snapshot ${snapshotTargetLabel(snapshot)}`}
+                          >
+                            {snapshot.isKept ? "Don't keep" : "Keep"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onClick={() => setRenameTarget(snapshot)}
+                            aria-label={`Rename snapshot ${snapshotDate(snapshot)}`}
+                          >
+                            Rename
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onClick={() => setDateEditTarget(snapshot)}
+                            aria-label={`Edit date for snapshot ${snapshotTargetLabel(snapshot)}`}
+                          >
+                            Edit date
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onClick={() => setDeleteTarget(snapshot)}
+                            aria-label={`Delete snapshot ${snapshotTargetLabel(snapshot)}`}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </Panel>
       <SnapshotRenameModal

@@ -28,6 +28,8 @@ export type SnapshotMetadata = {
   playerCount: number;
   loadedAtUtc: string;
   isCurrent: boolean;
+  /** Load Data replaces every snapshot of the save that is not kept. */
+  isKept: boolean;
 };
 
 export type SnapshotDeleteResult = {

@@ -98,6 +98,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           playerCount: 21,
           loadedAtUtc: "2026-07-28T13:00:00.000Z",
           isCurrent: false,
+          isKept: true,
         },
         {
           id: 2,
@@ -109,6 +110,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           playerCount: 24,
           loadedAtUtc: "2026-07-28T15:00:00.000Z",
           isCurrent: true,
+          isKept: false,
         },
       ] : [];
       const academyClasses = academyWorkspace
@@ -198,6 +200,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         playerCount: 4,
         loadedAtUtc: "2026-07-28T15:00:00.000Z",
         isCurrent: true,
+        isKept: false,
       });
       const staffAssignmentTeams = [
         ...(staffAssignmentSenior
@@ -1022,6 +1025,17 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 ? args.customName.trim()
                 : null,
             };
+            snapshots[index] = updated;
+            return updated;
+          }
+
+          if (cmd === "set_snapshot_kept") {
+            const index = snapshots.findIndex((snapshot) =>
+              snapshot.id === args?.snapshotId &&
+              snapshot.contextToken === args?.contextToken,
+            );
+            if (index < 0) throw new Error("Snapshot changed or no longer exists");
+            const updated = { ...snapshots[index], isKept: args?.kept === true };
             snapshots[index] = updated;
             return updated;
           }

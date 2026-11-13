@@ -18,6 +18,7 @@ import {
   setSnapshotDateEditIpcMockMode,
   setSnapshotDeleteIpcMockMode,
   setSnapshotHistoryIpcMock,
+  setSnapshotKeepIpcMockMode,
   setSnapshotRenameIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
 import * as snapshotMetadataApi from "../api/fetch-snapshot-metadata";
@@ -37,6 +38,7 @@ const HISTORY: SnapshotMetadata[] = [
     playerCount: 21,
     loadedAtUtc: "2026-07-28T13:00:00.000Z",
     isCurrent: false,
+    isKept: true,
   },
   {
     id: 12,
@@ -48,6 +50,7 @@ const HISTORY: SnapshotMetadata[] = [
     playerCount: 24,
     loadedAtUtc: "2026-07-28T15:00:00.000Z",
     isCurrent: true,
+    isKept: false,
   },
   {
     id: 13,
@@ -59,6 +62,7 @@ const HISTORY: SnapshotMetadata[] = [
     playerCount: 19,
     loadedAtUtc: "2026-07-28T16:00:00.000Z",
     isCurrent: false,
+    isKept: false,
   },
 ];
 
@@ -385,6 +389,63 @@ describe("snapshot panels", () => {
     expect(rows[1]).toHaveTextContent("Pre-season review");
     expect(rows[1]).toHaveTextContent("2026-08-01");
     expect(rows[2]).toHaveTextContent("2026-06-01");
+  });
+
+  it("keeps a snapshot and stops keeping it", async () => {
+    seedHistory();
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    const table = await screen.findByRole("table", {
+      name: "Snapshot history",
+    });
+    expect(
+      screen.getByText("Load Data replaces every snapshot you have not kept."),
+    ).toBeVisible();
+    const rows = within(table).getAllByRole("row");
+    expect(within(rows[1]).queryByText("Kept")).not.toBeInTheDocument();
+    expect(within(rows[2]).getByText("Kept")).toBeVisible();
+
+    await user.click(
+      within(rows[1]).getByRole("button", {
+        name: /^Keep snapshot Transfer window/,
+      }),
+    );
+
+    expect(await within(rows[1]).findByText("Kept")).toBeVisible();
+    expect(getLastSnapshotManagementIpcArgs()).toEqual({
+      snapshotId: 12,
+      contextToken: "snapshot-token-12",
+      kept: true,
+    });
+
+    await user.click(
+      within(rows[1]).getByRole("button", {
+        name: /^Don't keep snapshot Transfer window/,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(within(rows[1]).queryByText("Kept")).not.toBeInTheDocument(),
+    );
+    expect(getLastSnapshotManagementIpcArgs()).toMatchObject({ kept: false });
+  });
+
+  it("shows a failed keep in the snapshot history panel", async () => {
+    seedHistory();
+    setSnapshotKeepIpcMockMode("failure");
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /^Keep snapshot Transfer window/,
+      }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Snapshot keep failed",
+    );
   });
 
   it("confirms the cascade before deleting a historical snapshot", async () => {
@@ -1027,6 +1088,7 @@ describe("snapshot panels", () => {
         playerCount: 42,
         loadedAtUtc: "2026-07-29T12:00:00.000Z",
         isCurrent: true,
+        isKept: false,
       },
     ]);
     const user = userEvent.setup();

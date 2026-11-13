@@ -397,7 +397,7 @@ describe("useLoadData", () => {
     expect(queryClient.getQueryState(bridgeKey)?.isInvalidated).toBe(true);
   });
 
-  it("historical non-winner without attached stats does not clear current roots and only refreshes exact history and bridge", async () => {
+  it("historical non-winner without attached stats refreshes current owners, exact history, and bridge without clearing current roots", async () => {
     const queryClient = createQueryClient();
     const searchPage = ["search", "players", { offset: 0, limit: 50 }] as const;
     const squadPage = [
@@ -455,7 +455,8 @@ describe("useLoadData", () => {
       result.current.data?.effectiveSnapshot.contextToken,
     );
     expect(clearExactRoots).not.toHaveBeenCalled();
-    expect(invalidateCurrent).not.toHaveBeenCalled();
+    // Load Data may have replaced the unkept current snapshot with a kept one.
+    expect(invalidateCurrent).toHaveBeenCalledOnce();
     expect(historySpy).toHaveBeenCalledOnce();
     expect(historySpy).toHaveBeenCalledWith(1);
     expect(queryClient.getQueryData(searchPage)).toBeDefined();
@@ -466,15 +467,14 @@ describe("useLoadData", () => {
     expect(queryClient.getQueryState(bridgeKey)?.isInvalidated).toBe(true);
   });
 
-  it.each<[string, BusyLoadDataResult, number]>([
-    ["attached stats", historicalResultWithAttachedStats(1), 1],
+  it.each<[string, BusyLoadDataResult]>([
+    ["attached stats", historicalResultWithAttachedStats(1)],
     [
       "a re-read shortlist",
       historicalResultWithShortlists(1, {
         read: 1,
         failed: [{ kind: "unreadable", fileName: "Loans.fmf" }],
       }),
-      1,
     ],
     [
       "shortlists read from the save and no stats",
@@ -489,7 +489,6 @@ describe("useLoadData", () => {
           elapsedMs: 0,
         },
       },
-      1,
     ],
     [
       "only failed shortlist re-reads and no stats",
@@ -497,11 +496,10 @@ describe("useLoadData", () => {
         read: 0,
         failed: [{ kind: "unreadable", fileName: "Targets.fmf" }],
       }),
-      0,
     ],
   ])(
-    "historical result with %s on the active save refreshes current owners only for changed current data, without clearing roots",
-    async (_case, loaded, currentRefreshes) => {
+    "historical result with %s on the active save refreshes current owners without clearing roots",
+    async (_case, loaded) => {
       const clearExactRoots = vi.fn(async () => undefined);
       const invalidateCurrent = vi.fn();
       const invalidateHistory = vi.fn();
@@ -531,7 +529,7 @@ describe("useLoadData", () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
       expect(clearExactRoots).not.toHaveBeenCalled();
-      expect(invalidateCurrent).toHaveBeenCalledTimes(currentRefreshes);
+      expect(invalidateCurrent).toHaveBeenCalledOnce();
       expect(invalidateHistory).toHaveBeenCalledOnce();
       expect(invalidateHistory).toHaveBeenCalledWith(1);
     },

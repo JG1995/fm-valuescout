@@ -72,6 +72,7 @@ let currentSnapshotCapOverride: {
 let moneyballStatsGameDate: string | null = null;
 let snapshotDeleteMode: SnapshotManagementIpcMockMode = "success";
 let snapshotRenameMode: SnapshotManagementIpcMockMode = "success";
+let snapshotKeepMode: SnapshotManagementIpcMockMode = "success";
 let snapshotDateEditMode: SnapshotManagementIpcMockMode = "success";
 let activeSaveMode: ActiveSaveIpcMockMode = "success";
 let lastLoadDataArgs: unknown;
@@ -343,6 +344,7 @@ export function resetSnapshotIpcMock() {
   moneyballStatsGameDate = null;
   snapshotDeleteMode = "success";
   snapshotRenameMode = "success";
+  snapshotKeepMode = "success";
   snapshotDateEditMode = "success";
   activeSaveMode = "success";
   lastLoadDataArgs = undefined;
@@ -531,9 +533,15 @@ export function resolveBusyLoadDataRequest(result?: LoadDataResult) {
   snapshotsBySaveId.set(activeId, {
     snapshot: resultToApply.effectiveSnapshot,
   });
+  // Load Data replaces the save's snapshots that are not kept.
   snapshotHistory = [
     ...snapshotHistory
-      .filter((snapshot) => snapshot.id !== resultToApply.effectiveSnapshot.id)
+      .filter(
+        (snapshot) =>
+          snapshot.id !== resultToApply.effectiveSnapshot.id &&
+          (snapshot.isKept ||
+            snapshot.saveId !== resultToApply.effectiveSnapshot.saveId),
+      )
       .map((snapshot) =>
         snapshot.saveId === resultToApply.effectiveSnapshot.saveId
           ? { ...snapshot, isCurrent: false }
@@ -549,6 +557,7 @@ export function resolveBusyLoadDataRequest(result?: LoadDataResult) {
       playerCount: resultToApply.effectiveSnapshot.playerCount,
       loadedAtUtc: resultToApply.effectiveSnapshot.loadedAtUtc,
       isCurrent: true,
+      isKept: false,
     },
   ];
   nextSnapshotId = Math.max(
@@ -785,6 +794,42 @@ export function resolveRenameSnapshotIpcMock(args: unknown) {
     ...snapshotHistory[index],
     customName: customName?.trim() || null,
   };
+  snapshotHistory = snapshotHistory.map((snapshot, currentIndex) =>
+    currentIndex === index ? updated : snapshot,
+  );
+  return copySnapshotMetadata(updated);
+}
+
+export function setSnapshotKeepIpcMockMode(
+  mode: SnapshotManagementIpcMockMode,
+) {
+  snapshotKeepMode = mode;
+}
+
+export function resolveSetSnapshotKeptIpcMock(args: unknown) {
+  lastSnapshotManagementArgs = args;
+  if (snapshotKeepMode === "failure") {
+    throw new Error("Snapshot keep failed");
+  }
+
+  const { snapshotId, contextToken } = parseSnapshotMutationArgs(args);
+  const kept =
+    typeof args === "object" && args !== null && "kept" in args
+      ? args.kept
+      : null;
+  if (typeof kept !== "boolean") {
+    throw new Error("Kept flag is invalid");
+  }
+
+  const index = snapshotHistory.findIndex(
+    (snapshot) =>
+      snapshot.id === snapshotId && snapshot.contextToken === contextToken,
+  );
+  if (index < 0) {
+    throw new Error("Snapshot changed or no longer exists");
+  }
+
+  const updated = { ...snapshotHistory[index], isKept: kept };
   snapshotHistory = snapshotHistory.map((snapshot, currentIndex) =>
     currentIndex === index ? updated : snapshot,
   );
@@ -1038,6 +1083,7 @@ export function resolveLoadDataIpcMock(
         playerCount: result.storedSnapshot.playerCount,
         loadedAtUtc: result.storedSnapshot.loadedAtUtc,
         isCurrent: false,
+        isKept: false,
       },
     ];
     const effectiveAlreadyCurrent = snapshotHistory.some(
@@ -1062,6 +1108,8 @@ export function resolveLoadDataIpcMock(
           playerCount: result.effectiveSnapshot.playerCount,
           loadedAtUtc: result.effectiveSnapshot.loadedAtUtc,
           isCurrent: true,
+          // Only a kept snapshot can stay current over a new load.
+          isKept: true,
         },
       ];
     }
@@ -1076,7 +1124,12 @@ export function resolveLoadDataIpcMock(
     });
     snapshotHistory = [
       ...snapshotHistory
-        .filter((snapshot) => snapshot.id !== result.effectiveSnapshot.id)
+        .filter(
+          (snapshot) =>
+            snapshot.id !== result.effectiveSnapshot.id &&
+            (snapshot.isKept ||
+              snapshot.saveId !== result.effectiveSnapshot.saveId),
+        )
         .map((snapshot) =>
           snapshot.saveId === result.effectiveSnapshot.saveId
             ? { ...snapshot, isCurrent: false }
@@ -1092,6 +1145,7 @@ export function resolveLoadDataIpcMock(
         playerCount: result.effectiveSnapshot.playerCount,
         loadedAtUtc: result.effectiveSnapshot.loadedAtUtc,
         isCurrent: true,
+        isKept: false,
       },
     ];
     nextSnapshotId += 1;

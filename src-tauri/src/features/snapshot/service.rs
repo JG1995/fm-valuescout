@@ -77,6 +77,8 @@ pub struct SnapshotMetadata {
     pub player_count: i64,
     pub loaded_at_utc: String,
     pub is_current: bool,
+    /// Load Data replaces every snapshot of the save that is not kept.
+    pub is_kept: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -373,6 +375,25 @@ pub fn rename_snapshot(
              SET custom_name = ?1
              WHERE id = ?2 AND context_token = ?3",
             params![custom_name, snapshot_id, context_token],
+        )
+        .map_err(|error| error.to_string())?;
+    if rows == 0 {
+        return Err("Snapshot changed or no longer exists".to_string());
+    }
+
+    get_snapshot_metadata(conn, snapshot_id)
+}
+
+pub fn set_snapshot_kept(
+    conn: &Connection,
+    snapshot_id: i64,
+    context_token: &str,
+    kept: bool,
+) -> Result<SnapshotMetadata, String> {
+    let rows = conn
+        .execute(
+            "UPDATE snapshots SET is_kept = ?1 WHERE id = ?2 AND context_token = ?3",
+            params![kept, snapshot_id, context_token],
         )
         .map_err(|error| error.to_string())?;
     if rows == 0 {
@@ -1294,6 +1315,48 @@ mod tests {
                 .expect_err("reject long custom name")
                 .contains("at most")
         );
+    }
+
+    #[test]
+    fn keeping_a_snapshot_is_token_bound_and_reported_in_its_metadata() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("keep-snapshot.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let target = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-02-01"),
+            "2026-08-11T11:00:00.000Z",
+        );
+        select_current_snapshot_for_test(&mut conn, save.id);
+        let target_token = snapshot_token(&conn, target);
+        assert!(
+            !get_snapshot_metadata(&conn, target)
+                .expect("metadata")
+                .is_kept
+        );
+
+        assert!(set_snapshot_kept(&conn, target, "stale-token", true)
+            .expect_err("reject stale token")
+            .contains("changed"));
+        assert!(
+            !get_snapshot_metadata(&conn, target)
+                .expect("metadata")
+                .is_kept
+        );
+
+        let kept = set_snapshot_kept(&conn, target, &target_token, true).expect("keep snapshot");
+        assert!(kept.is_kept);
+        assert!(kept.is_current);
+        assert!(list_snapshot_metadata(&conn, Some(save.id)).expect("list snapshots")[0].is_kept);
+
+        let released =
+            set_snapshot_kept(&conn, target, &target_token, false).expect("stop keeping snapshot");
+        assert!(!released.is_kept);
     }
 
     #[test]

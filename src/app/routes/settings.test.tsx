@@ -42,6 +42,7 @@ const HISTORY: SnapshotMetadata[] = [
     playerCount: 21,
     loadedAtUtc: "2026-07-28T13:00:00.000Z",
     isCurrent: false,
+    isKept: false,
   },
   {
     id: 12,
@@ -53,6 +54,7 @@ const HISTORY: SnapshotMetadata[] = [
     playerCount: 24,
     loadedAtUtc: "2026-07-28T15:00:00.000Z",
     isCurrent: true,
+    isKept: false,
   },
 ];
 

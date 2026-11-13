@@ -2990,6 +2990,8 @@ mod tests {
             vec![player_template(1, "Current player", 150)],
             "2027-08-16",
         );
+        conn.execute("UPDATE snapshots SET is_kept = 1", [])
+            .expect("keep the later snapshot");
         ingest_players_for_game_date(
             &mut conn,
             vec![player_template(2, "Removed player", 160)],

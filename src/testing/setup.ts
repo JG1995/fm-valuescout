@@ -123,6 +123,7 @@ import {
   resolveRenameSnapshotIpcMock,
   resolveSetActiveSaveIpcMock,
   resolveSetSaveFileLinkIpcMock,
+  resolveSetSnapshotKeptIpcMock,
   resolveUpdateSnapshotDateIpcMock,
   setLoadDataIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
@@ -197,6 +198,9 @@ function registerIpcMocks() {
 
     if (cmd === "rename_snapshot") {
       return resolveRenameSnapshotIpcMock(args);
+    }
+    if (cmd === "set_snapshot_kept") {
+      return resolveSetSnapshotKeptIpcMock(args);
     }
 
     if (cmd === "delete_snapshot") {

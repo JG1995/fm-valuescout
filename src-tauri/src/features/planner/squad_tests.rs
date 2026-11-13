@@ -316,6 +316,11 @@ fn orders_every_fixed_column_and_pages_deterministically() {
 fn orders_targeted_scalar_sorts_in_the_exact_managed_club_cohort() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     let previous_snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE snapshots SET is_kept = 1 WHERE id = ?1",
+        params![previous_snapshot_id],
+    )
+    .expect("keep the earlier snapshot");
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let snapshot_id = current_snapshot_id(&conn, save_id);
     for (uid, pa, age, market_value_gbp) in [
@@ -647,6 +652,11 @@ fn returns_no_players_without_a_configuration_or_matching_current_players() {
 fn excludes_retained_players_from_an_earlier_snapshot() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     let previous_snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE snapshots SET is_kept = 1 WHERE id = ?1",
+        params![previous_snapshot_id],
+    )
+    .expect("keep the earlier snapshot");
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     conn.execute(
         "INSERT INTO players (
