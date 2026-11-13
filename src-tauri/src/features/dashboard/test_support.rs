@@ -129,6 +129,28 @@ impl Fixture {
         });
     }
 
+    /// Sets a default-tactic slot's in-possession and out-of-possession role scores apart.
+    pub(super) fn set_slot_role_scores(&self, uid: i64, lane_id: &str, ip: u8, oop: u8) {
+        let tactic = default_tactic();
+        let lane = tactic
+            .lanes
+            .iter()
+            .find(|lane| lane.lane_id == lane_id)
+            .expect("default tactic lane");
+        let column = |role_id: &str| player_current_column(role_id).expect("current column");
+        self.conn
+            .execute(
+                &format!(
+                    "UPDATE player_role_metrics SET {} = ?1, {} = ?2
+                     WHERE snapshot_id = ?3 AND uid = ?4",
+                    column(&lane.ip_role_id),
+                    column(&lane.oop_role_id)
+                ),
+                params![ip, oop, self.snapshot_id, uid],
+            )
+            .expect("set slot role scores");
+    }
+
     pub(super) fn set_potential_slot_score(&self, uid: i64, lane_id: &str, score: u8) {
         self.set_slot_columns(uid, lane_id, score, |role_id| {
             player_potential_column(role_id).expect("potential column")
@@ -173,11 +195,11 @@ impl Fixture {
         );
     }
 
-    /// Adds a shortlist read from the linked FM save and returns its ID.
+    /// Adds a shortlist and returns its ID.
     pub(super) fn add_shortlist(&self, name: &str, uids: &[i64]) -> i64 {
         self.conn
             .execute(
-                "INSERT INTO player_shortlists (save_id, file_path, name) VALUES (?1, NULL, ?2)",
+                "INSERT INTO player_shortlists (save_id, name) VALUES (?1, ?2)",
                 params![self.save_id, name],
             )
             .expect("insert shortlist");

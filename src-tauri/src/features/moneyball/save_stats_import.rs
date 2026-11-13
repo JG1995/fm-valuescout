@@ -522,7 +522,6 @@ mod tests {
                     "SELECT shortlist.name, entry.player_uid
                      FROM player_shortlists shortlist
                      JOIN player_shortlist_entries entry ON entry.shortlist_id = shortlist.id
-                     WHERE shortlist.file_path IS NULL
                      ORDER BY shortlist.name, entry.player_uid",
                 )
                 .expect("prepare shortlists")

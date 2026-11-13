@@ -29,18 +29,16 @@ pub struct SaveSummary {
     pub updated_at_utc: String,
     /// The linked FM save's file name. The stored path's directory never leaves the database.
     pub linked_save_file_name: Option<String>,
-    /// The save's player shortlists, by name case-insensitively, then by file name.
+    /// The save's player shortlists, by name case-insensitively.
     pub player_shortlists: Vec<PlayerShortlistSummary>,
 }
 
-/// One player shortlist of a save. The stored path's directory never leaves the database.
+/// One player shortlist of a save, read from its linked FM save.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerShortlistSummary {
     pub id: i64,
-    /// The list name from the last successful read.
+    /// The list's name in FM, unique in the save.
     pub name: String,
-    /// The linked shortlist file's name, or `None` for a list read from the linked FM save.
-    pub file_name: Option<String>,
 }
 
 /// A WebView-supplied path that read as a supported FM27 save when it was validated.
@@ -691,26 +689,23 @@ fn map_save_row(row: &Row<'_>) -> rusqlite::Result<SaveSummary> {
     })
 }
 
-/// Fills in the save's shortlists, ordered by name case-insensitively, then by file name, a
-/// list read from the FM save first.
+/// Fills in the save's shortlists, ordered by name case-insensitively, then by name.
 fn with_player_shortlists(conn: &Connection, mut save: SaveSummary) -> Result<SaveSummary, String> {
     let mut shortlists = conn
-        .prepare("SELECT id, name, file_path FROM player_shortlists WHERE save_id = ?1")
+        .prepare("SELECT id, name FROM player_shortlists WHERE save_id = ?1")
         .and_then(|mut statement| {
             statement
                 .query_map([save.id], |row| {
                     Ok(PlayerShortlistSummary {
                         id: row.get(0)?,
                         name: row.get(1)?,
-                        file_name: file_name(row.get::<_, Option<String>>(2)?.as_deref()),
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()
         })
         .map_err(|error| error.to_string())?;
-    shortlists.sort_by_cached_key(|shortlist| {
-        (shortlist.name.to_lowercase(), shortlist.file_name.clone())
-    });
+    shortlists
+        .sort_by_cached_key(|shortlist| (shortlist.name.to_lowercase(), shortlist.name.clone()));
     save.player_shortlists = shortlists;
     Ok(save)
 }
@@ -1042,23 +1037,21 @@ mod tests {
     }
 
     #[test]
-    fn saves_list_their_shortlists_by_name_then_file_name_without_paths() {
-        let from_save: Option<&str> = None;
+    fn saves_list_their_own_shortlists_by_name() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = open_migrated(&temp_dir.path().join("save-shortlists.db"));
         let save = list_saves(&conn).expect("list saves").remove(0);
         let other = create_save(&conn, "Other").expect("create other save");
-        for (save_id, path, name) in [
-            (save.id, Some("/lists/b/Zeta.fmf"), "targets"),
-            (save.id, Some("/lists/a/Alpha.fmf"), "Targets"),
-            (save.id, Some("/lists/Loans.fmf"), "Loans"),
-            // Read from the FM save, so it has no file.
-            (save.id, from_save, "Targets"),
-            (other.id, Some("/lists/Elsewhere.fmf"), "Elsewhere"),
+        for (save_id, name) in [
+            (save.id, "targets"),
+            (save.id, "Wingers"),
+            (save.id, "Targets"),
+            (save.id, "Loans"),
+            (other.id, "Elsewhere"),
         ] {
             conn.execute(
-                "INSERT INTO player_shortlists (save_id, file_path, name) VALUES (?1, ?2, ?3)",
-                params![save_id, path, name],
+                "INSERT INTO player_shortlists (save_id, name) VALUES (?1, ?2)",
+                params![save_id, name],
             )
             .expect("insert shortlist");
         }
@@ -1068,21 +1061,12 @@ mod tests {
                 .expect("read save")
                 .player_shortlists
                 .into_iter()
-                .map(|shortlist| (shortlist.name, shortlist.file_name))
+                .map(|shortlist| shortlist.name)
                 .collect::<Vec<_>>()
         };
 
-        let pair = |name: &str, file_name: &str| (name.to_string(), Some(file_name.to_string()));
-        assert_eq!(
-            listed(save.id),
-            [
-                pair("Loans", "Loans.fmf"),
-                ("Targets".to_string(), None),
-                pair("Targets", "Alpha.fmf"),
-                pair("targets", "Zeta.fmf"),
-            ]
-        );
-        assert_eq!(listed(other.id), [pair("Elsewhere", "Elsewhere.fmf")]);
+        assert_eq!(listed(save.id), ["Loans", "Targets", "targets", "Wingers"]);
+        assert_eq!(listed(other.id), ["Elsewhere"]);
         assert_eq!(
             list_saves(&conn).expect("list saves")[0]
                 .player_shortlists

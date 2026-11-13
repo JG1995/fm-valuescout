@@ -37,7 +37,7 @@ export type DashboardLineupSlot = DashboardSlotPlacement & {
   /** The Planner's pick for the slot when the mode gives them no score there. */
   unscoredPlannerPlayer: string | null;
   /**
-   * The shortlisted player who would improve the slot most. Slots answer
+   * The compared player who would improve the slot most. Slots answer
    * independently, so one player can be the best signing for several.
    */
   bestSigning: DashboardRecommendation | null;
@@ -69,15 +69,20 @@ export type DashboardSignings = {
   /** False only in Moneyball mode when the snapshot has no season stats. */
   scoresAvailable: boolean;
   slots: DashboardLineupSlot[];
-  /** Shortlisted players in the current snapshot outside the managed club. */
-  shortlistedPlayers: number;
+  /**
+   * How many players are compared: the requested shortlist's players in the
+   * snapshot outside the managed club. Realistic signings are not counted, so
+   * without a shortlist this is null when the club has any and 0 when it has
+   * none. In Moneyball mode a realistic signing also needs season stats.
+   */
+  candidates: number | null;
   totalRecommendations: number;
   recommendations: DashboardRecommendation[];
 };
 
 export type DashboardSigningsRequest = {
   mode: DashboardScoreMode;
-  /** One of the save's shortlists, or null for all of them. */
+  /** One of the save's shortlists, or null for the club's realistic signings. */
   shortlistId: number | null;
   /** Restricts the ranked recommendations to one tactic slot. */
   laneId: string | null;

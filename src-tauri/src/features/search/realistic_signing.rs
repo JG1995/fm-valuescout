@@ -5,7 +5,7 @@
 //! rivalries, and league rules. The research is in `.wiki/notes/fm27-player-interest-filter.md`.
 //!
 //! A player is a realistic signing when the club already holds him, or when this score is at
-//! least zero, the game's "Slightly Interested" level:
+//! least 5,000, the game's "Interested" level and its own default:
 //!
 //! - **Ability.** The club's level against the player's own, in points per ability point. The
 //!   club's level is the mean current ability of its best players, raised as the game raises
@@ -35,17 +35,18 @@ const REPUTATION_AGE: u32 = 24;
 const POINTS_PER_REPUTATION_POINT: u32 = 4;
 /// Reputations count up to this value.
 const REPUTATION_CAP: u32 = 9000;
-/// The lowest score of a realistic signing.
-const REALISTIC_SCORE: i32 = 0;
+/// The lowest score of a realistic signing: the game's "Interested" level.
+const REALISTIC_SCORE: i32 = 5000;
 
 /// SQL that is true for the realistic signings among `players` rows (`wanted`) or for the
 /// rest, and null for every row when the managed club has no UID or no players.
 ///
-/// The clause reads the snapshot from `?1`, which every search statement binds first, so the
-/// club's standing is worked out once for the statement and not once for each player.
+/// The clause reads the snapshot from `?1`, which every search statement and the dashboard's
+/// signings statement bind first, so the club's standing is worked out once for the statement
+/// and not once for each player.
 // ponytail: a club chosen before club UIDs were recorded matches nobody.
 // Upgrade to matching that club by name if a save still holds one after its next Load Data.
-pub(super) fn clause(wanted: bool) -> String {
+pub(crate) fn clause(wanted: bool) -> String {
     let level = format!(
         "MIN(CASE WHEN players.age < {POTENTIAL_AGE_LIMIT} \
          THEN players.ca + {POTENTIAL_SHARE} * (players.pa - players.ca) \

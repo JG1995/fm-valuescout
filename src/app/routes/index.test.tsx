@@ -102,7 +102,7 @@ function signings(
     tacticIsDefault: false,
     scoresAvailable: true,
     slots: [KEEPER_SLOT, LEFT_BACK_SLOT, STRIKER_SLOT],
-    shortlistedPlayers: 6,
+    candidates: null,
     totalRecommendations: recommendations.length,
     recommendations,
     ...overrides,
@@ -116,7 +116,10 @@ function answerSignings(request: DashboardSigningsRequest) {
       { ...KEEPER_TARGET, score: 88, improvement: 30, minutes: 1240 },
     ]);
   }
-  if (request.laneId === "goalkeeper" || request.shortlistId === 7) {
+  if (request.shortlistId === 7) {
+    return signings([KEEPER_TARGET], { candidates: 6 });
+  }
+  if (request.laneId === "goalkeeper") {
     return signings([KEEPER_TARGET]);
   }
   return signings([LEFT_BACK_TARGET, KEEPER_TARGET]);
@@ -131,8 +134,8 @@ async function seedManagedClub() {
     unclassifiedPlayerCount: 0,
   });
   setSavePlayerShortlistsIpcMock(1, [
-    { id: 7, name: "Targets", fileName: null },
-    { id: 8, name: "Loans", fileName: "loans.fmf" },
+    { id: 7, name: "Targets" },
+    { id: 8, name: "Loans" },
   ]);
   setDashboardSigningsIpcMock(answerSignings);
 }
@@ -208,7 +211,7 @@ describe("Dashboard", () => {
       expect(signingNames()).toEqual(["Better Left Back", "Better Keeper"]),
     );
     expect(
-      screen.getByText(/^2 of 6 shortlisted players would improve your XI/),
+      screen.getByText(/^2 realistic signings would improve your XI/),
     ).toBeInTheDocument();
     const [best] = signingCards();
     expect(best).toHaveTextContent("Other FC · 24 years");
@@ -283,7 +286,7 @@ describe("Dashboard", () => {
 
     await waitFor(() => expect(signingCards()).toHaveLength(1));
     expect(
-      screen.getByText(/^1 shortlisted player would improve GK/),
+      screen.getByText(/^1 realistic signing would improve GK/),
     ).toBeInTheDocument();
     expect(getDashboardSigningsIpcRequests().at(-1)).toEqual({
       mode: "general",
@@ -294,30 +297,31 @@ describe("Dashboard", () => {
     await user.click(screen.getByRole("button", { name: "Show all slots" }));
     await waitFor(() => expect(signingCards()).toHaveLength(2));
 
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Shortlist" }),
-      "Targets",
-    );
+    const candidates = screen.getByRole("combobox", { name: "Candidates" });
+    expect(candidates).toHaveDisplayValue("Realistic signings");
+    await user.selectOptions(candidates, "Targets");
     await waitFor(() => expect(signingCards()).toHaveLength(1));
     expect(getDashboardSigningsIpcRequests().at(-1)).toEqual({
       mode: "general",
       shortlistId: 7,
       laneId: null,
     });
+    expect(
+      screen.getByText(/^1 of 6 shortlisted players would improve your XI/),
+    ).toBeInTheDocument();
   });
 
-  it("says what is missing when the save has no linked file or shortlist", async () => {
+  it("says what is missing when the save has no linked file and no signing to compare", async () => {
     await seedManagedClub();
     setSavePlayerShortlistsIpcMock(1, []);
     setDashboardSigningsIpcMock(() =>
-      signings([], { shortlistedPlayers: 0, tacticIsDefault: true }),
+      signings([], { candidates: 0, tacticIsDefault: true }),
     );
     renderDashboard();
 
-    expect(await screen.findByText("No shortlist loaded")).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "Open Player Search" }),
-    ).toHaveAttribute("href", "/search");
+      await screen.findByText("No realistic signings to compare"),
+    ).toBeInTheDocument();
     expect(
       within(screen.getByRole("region", { name: "Setup" })).getByRole("link", {
         name: "Open Settings",
@@ -326,7 +330,8 @@ describe("Dashboard", () => {
     expect(
       screen.getByRole("link", { name: "Set up your tactic" }),
     ).toHaveAttribute("href", "/my-club?view=tactic");
-    expect(screen.queryByRole("combobox", { name: "Shortlist" })).toBeNull();
+    // Without a shortlist there is nothing to choose between.
+    expect(screen.queryByRole("combobox", { name: "Candidates" })).toBeNull();
     // With no signing and no young player there is no fuller view to open.
     expect(screen.queryByRole("button", { name: "Best per slot" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Youth XI" })).toBeNull();
@@ -452,7 +457,9 @@ describe("Dashboard", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Best signing for each slot",
     });
-    expect(dialog).toHaveTextContent("All shortlists");
+    expect(dialog).toHaveTextContent(
+      "Realistic signings: the player who would improve each slot most.",
+    );
     // Goalkeeper to striker, whatever order the slots arrive in.
     const [keeper, leftBack, striker] = within(dialog)
       .getAllByRole("row")
@@ -467,7 +474,7 @@ describe("Dashboard", () => {
     ).toHaveAttribute("href", "/players/11?view=general");
     expect(striker).toHaveTextContent("Empty slot");
     expect(striker).toHaveTextContent(
-      "No shortlisted player improves this slot",
+      "No realistic signing improves this slot",
     );
 
     await user.click(within(dialog).getByRole("button", { name: "Moneyball" }));

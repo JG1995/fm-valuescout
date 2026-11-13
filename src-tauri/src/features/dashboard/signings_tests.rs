@@ -69,9 +69,15 @@ fn ranks_shortlisted_players_by_improvement_over_each_slots_incumbent() {
     fixture.set_slot_score(11, "left_back", 80);
     fixture.set_slot_score(12, "left_back", 55);
     fixture.set_slot_score(13, "left_back", 95);
-    fixture.add_shortlist("Targets", &[2, 10, 11, 12]);
+    let shortlist = fixture.add_shortlist("Targets", &[2, 10, 11, 12]);
 
-    let signings = signings(&fixture, GENERAL);
+    let signings = signings(
+        &fixture,
+        SigningsRequest {
+            shortlist_id: Some(shortlist),
+            ..GENERAL
+        },
+    );
 
     assert_eq!(
         incumbent(&signings, "goalkeeper"),
@@ -91,7 +97,7 @@ fn ranks_shortlisted_players_by_improvement_over_each_slots_incumbent() {
     );
     assert_eq!(signings.total_recommendations, 2);
     // The club's own shortlisted player is not a transfer target.
-    assert_eq!(signings.shortlisted_players, 3);
+    assert_eq!(signings.candidates, Some(3));
     let best = &signings.recommendations[0];
     assert_eq!(best.club.as_deref(), Some(OTHER_CLUB));
     assert_eq!(best.minutes, None);
@@ -108,7 +114,6 @@ fn open_slots_take_distinct_club_players_and_the_rest_are_cover() {
     for (uid, score) in [(1, 80), (2, 70), (3, 60), (10, 75)] {
         fixture.set_slot_score(uid, "left_centre_back", score);
     }
-    fixture.add_shortlist("Targets", &[10]);
 
     let signings = signings(&fixture, GENERAL);
 
@@ -157,7 +162,6 @@ fn the_planner_first_string_player_is_the_slots_incumbent() {
     fixture.assign_first_string("left_centre_back", 3);
     // A keeper has no score at left back, so the Planner's pick cannot be compared there.
     fixture.assign_first_string("left_back", 4);
-    fixture.add_shortlist("Targets", &[10]);
 
     let signings = signings(&fixture, GENERAL);
 
@@ -201,7 +205,6 @@ fn a_slot_without_an_incumbent_counts_the_whole_score_and_a_slot_filter_narrows_
         fixture.set_slot_score(uid, "left_centre_back", score);
     }
     fixture.set_slot_score(11, "centre_forward", 66);
-    fixture.add_shortlist("Targets", &[10, 11]);
 
     let all_slots = signings(&fixture, GENERAL);
 
@@ -260,7 +263,6 @@ fn names_each_slots_best_signing_whichever_slot_suits_the_player_most() {
     }
     fixture.set_slot_score(3, "goalkeeper", 70);
     fixture.set_slot_score(12, "goalkeeper", 60);
-    fixture.add_shortlist("Targets", &[10, 11, 12]);
 
     // A slot filter narrows the ranking, never the per-slot answers.
     for request in [
@@ -318,7 +320,6 @@ fn moneyball_mode_scores_a_slot_by_its_custom_metrics_or_else_its_roles() {
     fixture.set_percentiles(2, 60, &[]);
     fixture.set_percentiles(10, 50, &[("goals_per_90", 90), ("xg_per_90", 70)]);
     fixture.set_percentiles(11, 75, &[]);
-    fixture.add_shortlist("Targets", &[10, 11, 12]);
 
     let signings = signings(&fixture, MONEYBALL);
 
@@ -355,7 +356,6 @@ fn moneyball_mode_marks_a_signing_down_for_playing_in_a_weaker_league() {
     ]);
     fixture.set_percentiles(1, 60, &[]);
     fixture.set_percentiles(10, 75, &[]);
-    fixture.add_shortlist("Targets", &[10]);
     fixture.set_player_column(1, "division", "Top");
     fixture.set_player_column(10, "division", "Second");
     fixture.measure_leagues(&[("Top", 150.0), ("Second", 140.0)]);
@@ -382,7 +382,6 @@ fn moneyball_mode_without_season_stats_reports_that_no_scores_exist() {
     ]);
     fixture.set_slot_score(1, "goalkeeper", 70);
     fixture.set_slot_score(10, "goalkeeper", 90);
-    fixture.add_shortlist("Targets", &[10]);
 
     let signings = signings(&fixture, MONEYBALL);
 
@@ -392,7 +391,140 @@ fn moneyball_mode_without_season_stats_reports_that_no_scores_exist() {
 }
 
 #[test]
-fn compares_one_shortlist_or_all_of_the_saves_and_never_another_saves() {
+fn without_a_shortlist_the_candidates_are_the_clubs_realistic_signings() {
+    let fixture = open_with_players(&[
+        player(1, "Home Keeper", HOME_CLUB, "GK"),
+        player(10, "Keeper Within Reach", OTHER_CLUB, "GK"),
+        player(11, "Keeper Out Of Reach", OTHER_CLUB, "GK"),
+        player(12, "Home Keeper On Loan", OTHER_CLUB, "GK"),
+    ]);
+    for (uid, score) in [(1, 50), (10, 60), (11, 90), (12, 80)] {
+        fixture.set_slot_score(uid, "goalkeeper", score);
+    }
+    // Far above the club's level, so the club could not sign him.
+    fixture.set_player_column(11, "ca", 200);
+    // The club's own player is realistic by definition, but is not a transfer target.
+    fixture.set_player_column(12, "on_loan", 1);
+    fixture.set_player_column(12, "parent_club", HOME_CLUB);
+    fixture.set_player_column(12, "parent_club_uid", 1000);
+    let dreams = fixture.add_shortlist("Dreams", &[11]);
+
+    let realistic = signings(&fixture, GENERAL);
+
+    assert_eq!(
+        ranked(&realistic.recommendations),
+        [(10, "goalkeeper", 60, 10)]
+    );
+    // Realistic signings are not counted.
+    assert_eq!(realistic.candidates, None);
+    assert_eq!(
+        slot(&realistic, "goalkeeper")
+            .best_signing
+            .as_ref()
+            .map(|best| best.uid),
+        Some(10)
+    );
+
+    // A shortlist is the manager's own choice, so its players are compared as they stand.
+    let shortlisted = signings(
+        &fixture,
+        SigningsRequest {
+            shortlist_id: Some(dreams),
+            ..GENERAL
+        },
+    );
+    assert_eq!(
+        ranked(&shortlisted.recommendations),
+        [(11, "goalkeeper", 90, 40)]
+    );
+    assert_eq!(shortlisted.candidates, Some(1));
+
+    // A keeper nobody within reach improves on still leaves realistic signings to compare.
+    fixture.set_slot_score(1, "goalkeeper", 95);
+    let none_better = signings(&fixture, GENERAL);
+    assert!(none_better.recommendations.is_empty());
+    assert_eq!(none_better.candidates, None);
+}
+
+#[test]
+fn a_realistic_signing_better_in_one_phase_only_can_still_improve_a_slot() {
+    let fixture = open_with_players(&[
+        player(1, "Home Keeper", HOME_CLUB, "GK"),
+        player(10, "Keeper Better In Possession", OTHER_CLUB, "GK"),
+        player(11, "Keeper Better Out Of Possession", OTHER_CLUB, "GK"),
+        player(12, "Keeper Better In Neither", OTHER_CLUB, "GK"),
+    ]);
+    fixture.set_slot_score(1, "goalkeeper", 60);
+    fixture.set_slot_role_scores(10, "goalkeeper", 90, 40);
+    fixture.set_slot_role_scores(11, "goalkeeper", 50, 74);
+    fixture.set_slot_role_scores(12, "goalkeeper", 60, 60);
+
+    assert_eq!(
+        ranked(&signings(&fixture, GENERAL).recommendations),
+        [(10, "goalkeeper", 65, 5), (11, "goalkeeper", 62, 2)]
+    );
+}
+
+#[test]
+fn realistic_signings_in_moneyball_mode_are_those_with_season_stats() {
+    let fixture = open_with_players(&[
+        player(1, "Home Keeper", HOME_CLUB, "GK"),
+        player(10, "Keeper With Stats", OTHER_CLUB, "GK"),
+        player(11, "Keeper Without Stats", OTHER_CLUB, "GK"),
+        player(12, "Keeper Out Of Reach", OTHER_CLUB, "GK"),
+    ]);
+    fixture.set_percentiles(1, 60, &[]);
+    fixture.set_percentiles(10, 75, &[]);
+    fixture.set_percentiles(12, 90, &[]);
+    fixture.set_player_column(12, "ca", 200);
+
+    let with_stats = signings(&fixture, MONEYBALL);
+
+    assert_eq!(
+        ranked(&with_stats.recommendations),
+        [(10, "goalkeeper", 75, 15)]
+    );
+    assert_eq!(with_stats.candidates, None);
+
+    // A player without season stats has no Moneyball score to compare.
+    fixture
+        .conn
+        .execute(
+            "DELETE FROM player_moneyball_stats WHERE player_uid = 10",
+            [],
+        )
+        .expect("remove the target's stats");
+    let without_stats = signings(&fixture, MONEYBALL);
+    assert!(without_stats.recommendations.is_empty());
+    assert_eq!(without_stats.candidates, Some(0));
+}
+
+#[test]
+fn a_club_without_a_recorded_uid_has_no_realistic_signings() {
+    let fixture = open_with_players(&[
+        player(1, "Home Keeper", HOME_CLUB, "GK"),
+        player(10, "Target Keeper", OTHER_CLUB, "GK"),
+    ]);
+    fixture.set_slot_score(1, "goalkeeper", 50);
+    fixture.set_slot_score(10, "goalkeeper", 60);
+    // A club chosen before club UIDs were recorded.
+    fixture
+        .conn
+        .execute("UPDATE managed_club_settings SET club_uid = NULL", [])
+        .expect("clear club uid");
+
+    let signings = signings(&fixture, GENERAL);
+
+    assert_eq!(
+        incumbent(&signings, "goalkeeper"),
+        Some((1, 50, IncumbentSource::BestFit))
+    );
+    assert_eq!(signings.candidates, Some(0));
+    assert!(signings.recommendations.is_empty());
+}
+
+#[test]
+fn compares_one_of_the_saves_shortlists_and_never_another_saves() {
     let fixture = open_with_players(&[
         player(1, "Home Keeper", HOME_CLUB, "GK"),
         player(10, "First Target", OTHER_CLUB, "GK"),
@@ -402,15 +534,14 @@ fn compares_one_shortlist_or_all_of_the_saves_and_never_another_saves() {
     fixture.set_slot_score(10, "goalkeeper", 60);
     fixture.set_slot_score(11, "goalkeeper", 70);
     let first = fixture.add_shortlist("First", &[10]);
-    fixture.add_shortlist("Second", &[11]);
+    let second = fixture.add_shortlist("Second", &[11]);
     let other_save = snapshot::service::create_save(&fixture.conn, "Other save")
         .expect("create save")
         .id;
     fixture
         .conn
         .execute(
-            "INSERT INTO player_shortlists (id, save_id, file_path, name)
-             VALUES (900, ?1, NULL, 'Foreign')",
+            "INSERT INTO player_shortlists (id, save_id, name) VALUES (900, ?1, 'Foreign')",
             [other_save],
         )
         .expect("insert foreign shortlist");
@@ -425,7 +556,7 @@ fn compares_one_shortlist_or_all_of_the_saves_and_never_another_saves() {
         let signings = signings(
             &fixture,
             SigningsRequest {
-                shortlist_id,
+                shortlist_id: Some(shortlist_id),
                 ..GENERAL
             },
         );
@@ -436,9 +567,9 @@ fn compares_one_shortlist_or_all_of_the_saves_and_never_another_saves() {
             .collect::<Vec<_>>()
     };
 
-    assert_eq!(with_shortlist(None), [11, 10]);
-    assert_eq!(with_shortlist(Some(first)), [10]);
-    assert_eq!(with_shortlist(Some(900)), Vec::<i64>::new());
+    assert_eq!(with_shortlist(first), [10]);
+    assert_eq!(with_shortlist(second), [11]);
+    assert_eq!(with_shortlist(900), Vec::<i64>::new());
 }
 
 #[test]

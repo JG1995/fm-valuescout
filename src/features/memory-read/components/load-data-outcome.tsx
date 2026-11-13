@@ -6,8 +6,6 @@ import { formatCount, formatLongGameDate } from "@/utils/format";
 import type {
   LoadDataProgress,
   LoadDataResult,
-  PlayerShortlistReadErrorKind,
-  PlayerShortlistsOutcome,
   SaveShortlistsOutcome,
   SeasonStatsErrorKind,
   SeasonStatsOutcome,
@@ -159,52 +157,6 @@ function statsStepCopy(stats: SeasonStatsOutcome): {
   }
 }
 
-const shortlistReadFailureReasons: Record<
-  Exclude<PlayerShortlistReadErrorKind, "database">,
-  (fileName: string) => string
-> = {
-  unreadable: (fileName) => `${fileName} could not be found or opened`,
-  too_large: (fileName) => `${fileName} is too large to be an FM shortlist`,
-  not_fm_shortlist: (fileName) => `${fileName} is not a readable FM shortlist`,
-  not_player_shortlist: (fileName) => `${fileName} is not a player shortlist`,
-  unsupported_format: (fileName) =>
-    `${fileName} uses a shortlist format that is not supported`,
-};
-
-function shortlistFailureCopy({
-  kind,
-  fileName,
-}: PlayerShortlistsOutcome["failed"][number]): string {
-  if (fileName === null) {
-    return "The shortlist files could not be updated, so their previous players are kept.";
-  }
-  const reason =
-    kind === "database"
-      ? `${fileName} could not be stored`
-      : shortlistReadFailureReasons[kind](fileName);
-  return `${reason}, so its previous players are kept.`;
-}
-
-/**
- * How many linked shortlist files were re-read plus each failed file, or null
- * when the save links none.
- */
-function shortlistsCopy({
-  read,
-  failed,
-}: PlayerShortlistsOutcome): { text: string; isProblem: boolean } | null {
-  if (read === 0 && failed.length === 0) {
-    return null;
-  }
-  return {
-    text: [
-      `Read ${formatCount(read)} ${read === 1 ? "shortlist file" : "shortlist files"}.`,
-      ...failed.map(shortlistFailureCopy),
-    ].join(" "),
-    isProblem: failed.length > 0,
-  };
-}
-
 function formatDurationMs(ms: number): string {
   if (ms < 1000) {
     return `${ms}ms`;
@@ -266,12 +218,10 @@ function resolveBanner({ error, result }: LoadDataOutcomeProps): Banner | null {
     ? " This snapshot is now the latest."
     : ` The kept snapshot from ${formatSnapshotDate(latestSnapshot.gameDate)} is later and stays current.`;
   const stats = seasonStatsCopy(result.stats);
-  const shortlist = shortlistsCopy(result.shortlists);
-  const isProblem = stats.isProblem || shortlist?.isProblem === true;
   return {
-    icon: isProblem ? CircleAlert : CircleCheck,
-    tone: isProblem ? toneClasses.warning : toneClasses.success,
-    body: `${loaded}${latestMessage} ${stats.text}${shortlist ? ` ${shortlist.text}` : ""}`,
+    icon: stats.isProblem ? CircleAlert : CircleCheck,
+    tone: stats.isProblem ? toneClasses.warning : toneClasses.success,
+    body: `${loaded}${latestMessage} ${stats.text}`,
   };
 }
 

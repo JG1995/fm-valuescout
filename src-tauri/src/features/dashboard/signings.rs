@@ -1,5 +1,5 @@
-//! Recommended signings: the managed club's starting XI per tactic slot, and the shortlisted
-//! players who would improve it.
+//! Recommended signings: the managed club's starting XI per tactic slot, and the players who
+//! would improve it, taken from the club's realistic signings or from one shortlist.
 
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeMap, HashSet};
@@ -17,7 +17,9 @@ use crate::features::planner::tactic::{
 };
 use crate::features::player_metrics::compact::{
     assert_read_models_complete, player_current_column, player_metrics_join, PLAYER_METRICS_ALIAS,
+    SCORE_MODEL_VERSION,
 };
+use crate::features::search::realistic_signing;
 
 use super::{club_snapshot_id, MANAGED_CLUB_NAME_SQL};
 
@@ -25,7 +27,7 @@ use super::{club_snapshot_id, MANAGED_CLUB_NAME_SQL};
 pub(crate) const MAX_RECOMMENDATIONS: usize = 12;
 const MAX_OTHER_LANES: usize = 2;
 
-/// Which scores compare a shortlisted player with the club's player in a slot.
+/// Which scores compare a candidate with the club's player in a slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ScoreMode {
     /// The slot's attribute role scores, as in Search's Tactic (Current) columns.
@@ -81,8 +83,8 @@ pub(crate) struct LineupSlot {
     /// The Planner's first-string player for the slot, when the mode gives them no score
     /// there and another player stands in.
     pub(crate) unscored_planner_player: Option<String>,
-    /// The shortlisted player who would improve the slot most. Slots answer independently, so
-    /// one player can be the best signing for several.
+    /// The candidate who would improve the slot most. Slots answer independently, so one
+    /// player can be the best signing for several.
     pub(crate) best_signing: Option<Recommendation>,
 }
 
@@ -117,8 +119,11 @@ pub(crate) struct Signings {
     /// False only in Moneyball mode when the snapshot has no season statistics.
     pub(crate) scores_available: bool,
     pub(crate) slots: Vec<LineupSlot>,
-    /// Shortlisted players of the current snapshot outside the managed club.
-    pub(crate) shortlisted_players: usize,
+    /// How many players are compared: the requested shortlist's players in the current
+    /// snapshot outside the managed club. Realistic signings are not counted, so without a
+    /// shortlist this is `None` when the club has any and `Some(0)` when it has none. In
+    /// Moneyball mode a realistic signing also needs season statistics.
+    pub(crate) candidates: Option<usize>,
     pub(crate) total_recommendations: usize,
     pub(crate) recommendations: Vec<Recommendation>,
 }
@@ -126,7 +131,7 @@ pub(crate) struct Signings {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SigningsRequest<'a> {
     pub(crate) mode: ScoreMode,
-    /// One of the save's shortlists, or every shortlist when absent.
+    /// One of the save's shortlists, or the club's realistic signings when absent.
     pub(crate) shortlist_id: Option<i64>,
     /// Restricts the ranked recommendations to one slot. Each slot's best signing is unaffected.
     pub(crate) lane_id: Option<&'a str>,
@@ -145,15 +150,22 @@ struct ScoredPlayer {
 }
 
 #[derive(Clone, Copy)]
-enum PlayerScope {
+enum PlayerScope<'a> {
     Club,
-    /// Players on the given shortlist, or on any of the save's, outside the managed club.
-    Shortlisted(Option<i64>),
+    /// The players of one of the save's shortlists outside the managed club.
+    Shortlist(i64),
+    /// The club's realistic signings outside it. In General mode these are only the ones who
+    /// could improve a slot, given each slot's incumbent score.
+    RealisticSignings(&'a [Option<u8>]),
 }
 
 /// The save's starting XI and recommended signings, or `None` without a current snapshot or a
 /// configured managed club. It only reads, so a save without stored lanes uses the default
 /// tactic in memory.
+// ponytail: every read scores the club's realistic signings again, so a slot or mode change
+// repeats the scan. On 250,000 players it takes about a second when a slot has no incumbent.
+// Upgrade to keeping the scored candidates per data generation if a read on a real save
+// takes longer than that.
 pub(crate) fn get_signings(
     conn: &Connection,
     save_id: i64,
@@ -182,17 +194,13 @@ pub(crate) fn get_signings(
         ScoreMode::Moneyball => snapshot_has_percentiles(conn, snapshot_id)?,
     };
 
-    let club = load_players(conn, save_id, snapshot_id, PlayerScope::Club, &tactic, mode)?;
+    let league = match mode {
+        ScoreMode::General => LeagueAdjustment::default(),
+        ScoreMode::Moneyball => LeagueAdjustment::load(conn, snapshot_id)?,
+    };
+    let load = |scope| load_players(conn, save_id, snapshot_id, scope, &tactic, mode, &league);
+    let club = load(PlayerScope::Club)?;
     let lineup = starting_lineup(&tactic, &club, &first_string_assignments(conn, save_id)?);
-    let shortlisted = load_players(
-        conn,
-        save_id,
-        snapshot_id,
-        PlayerScope::Shortlisted(request.shortlist_id),
-        &tactic,
-        mode,
-    )?;
-
     let incumbent_scores = lineup
         .incumbents
         .iter()
@@ -201,7 +209,19 @@ pub(crate) fn get_signings(
             incumbent.and_then(|(player_index, _)| club[player_index].lane_scores[lane_index])
         })
         .collect::<Vec<_>>();
-    let mut recommendations = shortlisted
+    let scope = match request.shortlist_id {
+        Some(shortlist_id) => PlayerScope::Shortlist(shortlist_id),
+        None => PlayerScope::RealisticSignings(&incumbent_scores),
+    };
+    let candidates = load(scope)?;
+    let candidate_count = match request.shortlist_id {
+        Some(_) => Some(candidates.len()),
+        None if !candidates.is_empty() => None,
+        None if has_realistic_signings(conn, save_id, snapshot_id, mode)? => None,
+        None => Some(0),
+    };
+
+    let mut recommendations = candidates
         .iter()
         .filter_map(|player| recommend(player, &tactic, &incumbent_scores, lane_filter))
         .collect::<Vec<_>>();
@@ -221,7 +241,7 @@ pub(crate) fn get_signings(
             }),
             cover: cover(&club, &lineup, lane_index),
             unscored_planner_player: lineup.unscored_planner_players[lane_index].clone(),
-            best_signing: shortlisted
+            best_signing: candidates
                 .iter()
                 .filter_map(|player| {
                     recommend(player, &tactic, &incumbent_scores, Some(lane_index))
@@ -234,7 +254,7 @@ pub(crate) fn get_signings(
         tactic_is_default: tactic == default_tactic(),
         scores_available,
         slots,
-        shortlisted_players: shortlisted.len(),
+        candidates: candidate_count,
         total_recommendations,
         recommendations,
     }))
@@ -304,63 +324,176 @@ fn first_string_assignments(conn: &Connection, save_id: i64) -> Result<Vec<(Stri
     .map_err(|error| error.to_string())
 }
 
+/// SQL that is true for a `players` row neither at the managed club nor on loan from it.
+fn outside_managed_club_sql() -> String {
+    format!(
+        "players.current_club IS NOT {MANAGED_CLUB_NAME_SQL}
+         AND NOT (players.on_loan IS 1 AND players.parent_club IS {MANAGED_CLUB_NAME_SQL})"
+    )
+}
+
+const MONEYBALL_JOIN_SQL: &str = " LEFT JOIN player_moneyball_stats moneyball
+     ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid";
+
+/// Only a player with season statistics has a Moneyball score to compare.
+const HAS_PERCENTILES_SQL: &str = "moneyball.percentiles_json IS NOT NULL";
+
+/// The tactic's role score columns, two for each slot in lane order.
+fn role_score_columns(tactic: &PlannerTactic) -> Result<Vec<String>, String> {
+    let mut columns = Vec::with_capacity(tactic.lanes.len() * 2);
+    for lane in &tactic.lanes {
+        for role_id in [&lane.ip_role_id, &lane.oop_role_id] {
+            columns.push(format!(
+                "{PLAYER_METRICS_ALIAS}.{}",
+                player_current_column(role_id)?
+            ));
+        }
+    }
+    Ok(columns)
+}
+
+/// SQL that is false for a player who cannot improve any slot in General mode, so the many
+/// realistic signings who cannot are never read or scored.
+///
+/// A slot's score never exceeds the higher of its two role scores: the blend lies between
+/// them, and the fit adjustment only lowers it. A player therefore improves a slot only when
+/// one of his role scores there exceeds the incumbent's score, or zero for an empty slot.
+fn could_improve_sql(role_score_columns: &[String], incumbent_scores: &[Option<u8>]) -> String {
+    let better = role_score_columns
+        .chunks(2)
+        .zip(incumbent_scores)
+        .flat_map(|(roles, incumbent)| {
+            let incumbent = incumbent.unwrap_or(0);
+            roles
+                .iter()
+                .map(move |role| format!("{role} > {incumbent}"))
+        })
+        .collect::<Vec<_>>();
+    format!("({})", better.join(" OR "))
+}
+
+/// Whether the club has any realistic signing to compare, whatever the slots' incumbents.
+fn has_realistic_signings(
+    conn: &Connection,
+    save_id: i64,
+    snapshot_id: i64,
+    mode: ScoreMode,
+) -> Result<bool, String> {
+    let (join, comparable) = match mode {
+        ScoreMode::General => ("", "1"),
+        ScoreMode::Moneyball => (MONEYBALL_JOIN_SQL, HAS_PERCENTILES_SQL),
+    };
+    conn.query_row(
+        &format!(
+            "SELECT EXISTS(
+                 SELECT 1 FROM players{join}
+                 WHERE players.snapshot_id = ?1 AND {comparable} AND {} AND {}
+             )",
+            realistic_signing::clause(true),
+            outside_managed_club_sql()
+        ),
+        [snapshot_id, save_id],
+        |row| row.get(0),
+    )
+    .map_err(|error| error.to_string())
+}
+
+/// Reads the scope's players with their score in every tactic slot. Every statement binds
+/// the snapshot as `?1`, where the realistic-signing rule reads it, and the save as `?2`.
 fn load_players(
     conn: &Connection,
     save_id: i64,
     snapshot_id: i64,
-    scope: PlayerScope,
+    scope: PlayerScope<'_>,
     tactic: &PlannerTactic,
     mode: ScoreMode,
+    league: &LeagueAdjustment,
 ) -> Result<Vec<ScoredPlayer>, String> {
-    let (score_columns, score_join) = match mode {
-        ScoreMode::General => {
-            let mut columns = String::new();
-            for lane in &tactic.lanes {
-                for role_id in [&lane.ip_role_id, &lane.oop_role_id] {
-                    columns.push_str(&format!(
-                        ", {PLAYER_METRICS_ALIAS}.{}",
-                        player_current_column(role_id)?
-                    ));
-                }
-            }
-            (columns, player_metrics_join("p", true, false))
-        }
+    let role_score_columns = match mode {
+        ScoreMode::General => role_score_columns(tactic)?,
+        ScoreMode::Moneyball => Vec::new(),
+    };
+    let (score_columns, mut from_sql) = match mode {
+        ScoreMode::General => (
+            role_score_columns.join(", "),
+            format!("players{}", player_metrics_join("players", true, false)),
+        ),
         ScoreMode::Moneyball => (
-            ", moneyball.minutes, moneyball.percentiles_json, p.division".to_string(),
-            " LEFT JOIN player_moneyball_stats moneyball
-                ON moneyball.snapshot_id = p.snapshot_id AND moneyball.player_uid = p.uid"
-                .to_string(),
+            "moneyball.minutes, moneyball.percentiles_json, players.division".to_string(),
+            format!("players{MONEYBALL_JOIN_SQL}"),
         ),
     };
     let mut bind_values = vec![Value::Integer(snapshot_id), Value::Integer(save_id)];
     let scope_sql = match scope {
-        PlayerScope::Club => format!("p.current_club = {MANAGED_CLUB_NAME_SQL}"),
-        PlayerScope::Shortlisted(shortlist_id) => {
-            bind_values.push(shortlist_id.map_or(Value::Null, Value::Integer));
+        PlayerScope::Club => format!("players.current_club = {MANAGED_CLUB_NAME_SQL}"),
+        PlayerScope::Shortlist(shortlist_id) => {
+            bind_values.push(Value::Integer(shortlist_id));
             format!(
-                "p.uid IN (
+                "players.uid IN (
                      SELECT entry.player_uid
                      FROM player_shortlist_entries entry
                      INNER JOIN player_shortlists shortlist ON shortlist.id = entry.shortlist_id
-                     WHERE shortlist.save_id = ?2 AND (?3 IS NULL OR shortlist.id = ?3)
+                     WHERE shortlist.save_id = ?2 AND shortlist.id = ?3
                  )
-                 AND p.current_club IS NOT {MANAGED_CLUB_NAME_SQL}
-                 AND NOT (p.on_loan IS 1 AND p.parent_club IS {MANAGED_CLUB_NAME_SQL})"
+                 AND {}",
+                outside_managed_club_sql()
+            )
+        }
+        PlayerScope::RealisticSignings(incumbent_scores) => {
+            // Most players are realistic signings for most clubs, so each mode reads its
+            // scores first and a player's row only once those scores can be compared. SQLite
+            // keeps a CROSS JOIN's order.
+            let comparable = match mode {
+                ScoreMode::General => {
+                    from_sql = format!(
+                        "player_role_metrics {PLAYER_METRICS_ALIAS}
+                         CROSS JOIN players
+                           ON players.snapshot_id = {PLAYER_METRICS_ALIAS}.snapshot_id
+                          AND players.uid = {PLAYER_METRICS_ALIAS}.uid"
+                    );
+                    format!(
+                        "{PLAYER_METRICS_ALIAS}.snapshot_id = ?1
+                         AND {PLAYER_METRICS_ALIAS}.score_model_version = {SCORE_MODEL_VERSION}
+                         AND {}",
+                        could_improve_sql(&role_score_columns, incumbent_scores)
+                    )
+                }
+                ScoreMode::Moneyball => {
+                    from_sql = "player_moneyball_stats moneyball
+                         CROSS JOIN players
+                           ON players.snapshot_id = moneyball.snapshot_id
+                          AND players.uid = moneyball.player_uid"
+                        .to_string();
+                    format!("moneyball.snapshot_id = ?1 AND {HAS_PERCENTILES_SQL}")
+                }
+            };
+            format!(
+                "{comparable} AND {} AND {}",
+                realistic_signing::clause(true),
+                outside_managed_club_sql()
             )
         }
     };
+    // The club's order settles ties when its lineup is allocated. Candidates are ranked by
+    // `by_improvement`, a total order, so sorting the many realistic signings is left out.
+    let order_sql = match scope {
+        PlayerScope::Club | PlayerScope::Shortlist(_) => "ORDER BY players.uid",
+        PlayerScope::RealisticSignings(_) => "",
+    };
     let sql = format!(
-        "SELECT p.uid, p.name, p.age, p.current_club, p.current_club_uid, p.market_value_gbp,
-                p.preferred_foot, p.positions_json{score_columns}
-         FROM players p{score_join}
-         WHERE p.snapshot_id = ?1 AND {scope_sql}
-         ORDER BY p.uid"
+        "SELECT players.uid, players.name, players.age, players.current_club,
+                players.current_club_uid, players.market_value_gbp, players.preferred_foot,
+                players.positions_json, {score_columns}
+         FROM {from_sql}
+         WHERE players.snapshot_id = ?1 AND {scope_sql}
+         {order_sql}"
     );
     let lane_count = tactic.lanes.len();
-    let league = match mode {
-        ScoreMode::General => LeagueAdjustment::default(),
-        ScoreMode::Moneyball => LeagueAdjustment::load(conn, snapshot_id)?,
-    };
+    let score_bases = tactic
+        .lanes
+        .iter()
+        .map(|lane| score_basis(lane, mode))
+        .collect::<Vec<_>>();
     let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let mut rows = statement
         .query(params_from_iter(bind_values.iter()))
@@ -400,9 +533,10 @@ fn load_players(
                 let scores = tactic
                     .lanes
                     .iter()
-                    .map(|lane| {
+                    .zip(&score_bases)
+                    .map(|(lane, score_basis)| {
                         let percentiles = percentiles.as_ref()?;
-                        match score_basis(lane, mode) {
+                        match score_basis {
                             ScoreBasis::MoneyballCustom => custom_metrics_lane_score(
                                 percentiles,
                                 &foot,

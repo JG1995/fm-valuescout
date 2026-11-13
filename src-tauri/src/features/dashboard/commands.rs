@@ -143,7 +143,8 @@ pub struct DashboardSigningsDto {
     pub tactic_is_default: bool,
     pub scores_available: bool,
     pub slots: Vec<LineupSlotDto>,
-    pub shortlisted_players: usize,
+    /// Null for realistic signings, which are not counted unless the club has none.
+    pub candidates: Option<usize>,
     pub total_recommendations: usize,
     pub recommendations: Vec<RecommendationDto>,
 }
@@ -154,7 +155,7 @@ impl From<Signings> for DashboardSigningsDto {
             tactic_is_default: value.tactic_is_default,
             scores_available: value.scores_available,
             slots: value.slots.into_iter().map(Into::into).collect(),
-            shortlisted_players: value.shortlisted_players,
+            candidates: value.candidates,
             total_recommendations: value.total_recommendations,
             recommendations: value.recommendations.into_iter().map(Into::into).collect(),
         }

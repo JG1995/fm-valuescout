@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import type {
   LoadDataProgress,
   LoadDataResult,
-  PlayerShortlistsOutcome,
   SeasonStatsOutcome,
 } from "../types/load-data";
 import { LoadDataOutcome, loadDataPhaseLabels } from "./load-data-outcome";
@@ -62,7 +61,6 @@ function resultWithHistoricalStoredSnapshot(): LoadDataResult {
       staffShortlist: { status: "notRead" },
       elapsedMs: 100,
     },
-    shortlists: { read: 0, failed: [] },
   };
 }
 
@@ -120,7 +118,6 @@ function successResult(): LoadDataResult {
       staffShortlist: { status: "notRead" },
       elapsedMs: 100,
     },
-    shortlists: { read: 0, failed: [] },
   };
 }
 
@@ -650,7 +647,6 @@ describe("LoadDataOutcome", () => {
           result={{
             ...successResult(),
             stats: { ...attached, shortlists },
-            shortlists: { read: 0, failed: [] },
           }}
           onDismiss={() => undefined}
         />,
@@ -708,7 +704,6 @@ describe("LoadDataOutcome", () => {
               shortlists: { status: "read", count: 2, unread: 0 },
               staffShortlist,
             },
-            shortlists: { read: 0, failed: [] },
           }}
           onDismiss={() => undefined}
         />,
@@ -733,7 +728,6 @@ describe("LoadDataOutcome", () => {
             ...attached,
             shortlists: { status: "read", count: 0, unread: 0 },
           },
-          shortlists: { read: 0, failed: [] },
         }}
         onDismiss={() => undefined}
       />,
@@ -746,57 +740,6 @@ describe("LoadDataOutcome", () => {
 
   const statsSentence =
     "No FM save file is linked, so no season stats were read. Link one in Settings.";
-
-  it.each<[string, PlayerShortlistsOutcome, string, boolean]>([
-    [
-      "one re-read shortlist",
-      { read: 1, failed: [] },
-      "Read 1 shortlist file.",
-      false,
-    ],
-    [
-      "several re-read shortlists",
-      { read: 3, failed: [] },
-      "Read 3 shortlist files.",
-      false,
-    ],
-    [
-      "each failed file by name with its reason",
-      {
-        read: 1,
-        failed: [
-          { kind: "unreadable", fileName: "Targets.fmf" },
-          { kind: "not_player_shortlist", fileName: "View.fmf" },
-          { kind: "database", fileName: "Loans.fmf" },
-        ],
-      },
-      "Read 1 shortlist file. Targets.fmf could not be found or opened, so its previous players are kept. View.fmf is not a player shortlist, so its previous players are kept. Loans.fmf could not be stored, so its previous players are kept.",
-      true,
-    ],
-    [
-      "shortlists that could not be updated at all",
-      { read: 0, failed: [{ kind: "database", fileName: null }] },
-      "Read 0 shortlist files. The shortlist files could not be updated, so their previous players are kept.",
-      true,
-    ],
-  ])(
-    "reports %s after the season stats",
-    (_case, shortlists, expected, isProblem) => {
-      render(
-        <LoadDataOutcome
-          error={null}
-          result={{ ...successResult(), shortlists }}
-          onDismiss={() => undefined}
-        />,
-      );
-
-      const outcome = screen.getByText(/Loaded 3 players into the database/i);
-      expect(outcome).toHaveTextContent(`${statsSentence} ${expected}`);
-      expect(outcome.parentElement?.parentElement).toHaveClass(
-        isProblem ? "bg-warning-container" : "bg-success-container",
-      );
-    },
-  );
 
   it("reports nothing about shortlists when the save has none", () => {
     render(
