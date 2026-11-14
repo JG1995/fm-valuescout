@@ -208,131 +208,129 @@ export function PlannerDepthMatrix({
   }
 
   return (
-    <div className="flex flex-col gap-gutter">
-      <Panel title="Squad depth" flush>
-        <div className="flex flex-col gap-4 p-4">
-          <fieldset
-            aria-label="Squad controls"
-            className="m-0 flex min-w-0 flex-wrap items-center justify-between gap-2 border-0 p-0"
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                disabled={
-                  clearAll.isPending ||
-                  optimize.isPending ||
-                  teamManagementPending
+    <Panel title="Squad depth" flush>
+      <div className="flex flex-col gap-4 p-4">
+        <fieldset
+          aria-label="Squad controls"
+          className="m-0 flex min-w-0 flex-wrap items-center justify-between gap-2 border-0 p-0"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              disabled={
+                clearAll.isPending ||
+                optimize.isPending ||
+                teamManagementPending
+              }
+              loading={optimize.isPending}
+              loadingLabel="Optimizing…"
+              onClick={runOptimization}
+            >
+              Optimize squads
+            </Button>
+            <ControlDivider />
+            <Button
+              variant="secondary"
+              icon={Maximize2}
+              onClick={(event) => {
+                setRoleReferenceReturnFocus(event.currentTarget);
+                setRoleReferenceOpen(true);
+              }}
+              className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              Best role fit
+            </Button>
+            {actions}
+            <PlannerLoanCandidates
+              candidates={loanCandidates.data}
+              error={loanCandidates.error}
+              tactic={tactic}
+              options={options}
+              teamLabels={teamLabels}
+            />
+            <PlannerUnassignedPlayers
+              activeSaveId={activeSaveId}
+              tactic={tactic}
+              options={options}
+            />
+            <ControlDivider />
+            <PlannerTeamManagement
+              depth={depth}
+              disabled={
+                teamManagementPending ||
+                clearAll.isPending ||
+                optimize.isPending
+              }
+              onPendingChange={setTeamManagementPending}
+              onSaved={reconcileTeamSettings}
+            />
+            <PlannerClearAllControl
+              open={clearAllOpen}
+              pending={clearAll.isPending}
+              disabled={
+                clearAll.isPending ||
+                optimize.isPending ||
+                teamManagementPending
+              }
+              error={clearAllError}
+              teamNames={availableTeamNames}
+              onRequest={requestClearAll}
+              onFocus={() => undefined}
+              onClose={closeClearAll}
+              onConfirm={() => {
+                if (
+                  !clearAll.isPending &&
+                  !optimize.isPending &&
+                  !teamManagementPending
+                ) {
+                  clearAll.mutate();
                 }
-                loading={optimize.isPending}
-                loadingLabel="Optimizing…"
-                onClick={runOptimization}
-              >
-                Optimize squads
-              </Button>
-              <ControlDivider />
-              <Button
-                variant="secondary"
-                icon={Maximize2}
-                onClick={(event) => {
-                  setRoleReferenceReturnFocus(event.currentTarget);
-                  setRoleReferenceOpen(true);
-                }}
-                className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                Best role fit
-              </Button>
-              {actions}
-              <PlannerUnassignedPlayers
-                activeSaveId={activeSaveId}
-                tactic={tactic}
-                options={options}
-              />
-              <ControlDivider />
-              <PlannerTeamManagement
-                depth={depth}
-                disabled={
-                  teamManagementPending ||
-                  clearAll.isPending ||
-                  optimize.isPending
-                }
-                onPendingChange={setTeamManagementPending}
-                onSaved={reconcileTeamSettings}
-              />
-              <PlannerClearAllControl
-                open={clearAllOpen}
-                pending={clearAll.isPending}
-                disabled={
-                  clearAll.isPending ||
-                  optimize.isPending ||
-                  teamManagementPending
-                }
-                error={clearAllError}
-                teamNames={availableTeamNames}
-                onRequest={requestClearAll}
-                onFocus={() => undefined}
-                onClose={closeClearAll}
-                onConfirm={() => {
-                  if (
-                    !clearAll.isPending &&
-                    !optimize.isPending &&
-                    !teamManagementPending
-                  ) {
-                    clearAll.mutate();
-                  }
-                }}
-              />
-            </div>
-          </fieldset>
-          {actionStatus ? (
-            <p className="text-body-sm text-success" role="status">
-              {actionStatus}
-            </p>
-          ) : null}
-          {pickerError ? (
-            <p className="text-body-sm text-error" role="alert">
-              {pickerError}
-            </p>
-          ) : null}
-          {optimizeError ? (
-            <p className="text-body-sm text-error" role="alert">
-              {optimizeError}
-            </p>
-          ) : null}
-          <PlannerSquadBoard
-            teamDepths={orderedTeamDepths}
-            tactic={tactic}
-            options={options}
-            loanCandidateUids={loanCandidateUids}
-            onOpen={openPicker}
-          />
-        </div>
-        {picker ? (
-          <PlannerSlotFitPicker
-            activeSaveId={activeSaveId}
-            open={pickerOpen}
-            target={picker}
-            tactic={tactic}
-            options={options}
-            teamLabels={teamLabels}
-            onClose={closePicker}
-            onMutationError={setPickerError}
-          />
+              }}
+            />
+          </div>
+        </fieldset>
+        {actionStatus ? (
+          <p className="text-body-sm text-success" role="status">
+            {actionStatus}
+          </p>
         ) : null}
-        <PlannerRoleReferenceModal
-          activeSaveId={activeSaveId}
-          open={roleReferenceOpen}
+        {pickerError ? (
+          <p className="text-body-sm text-error" role="alert">
+            {pickerError}
+          </p>
+        ) : null}
+        {optimizeError ? (
+          <p className="text-body-sm text-error" role="alert">
+            {optimizeError}
+          </p>
+        ) : null}
+        <PlannerSquadBoard
+          teamDepths={orderedTeamDepths}
           tactic={tactic}
           options={options}
-          onClose={() => setRoleReferenceOpen(false)}
-          returnFocusTo={roleReferenceReturnFocus}
+          loanCandidateUids={loanCandidateUids}
+          onOpen={openPicker}
         />
-      </Panel>
-      <PlannerLoanCandidates
-        candidates={loanCandidates.data}
-        error={loanCandidates.error}
+      </div>
+      {picker ? (
+        <PlannerSlotFitPicker
+          activeSaveId={activeSaveId}
+          open={pickerOpen}
+          target={picker}
+          tactic={tactic}
+          options={options}
+          teamLabels={teamLabels}
+          onClose={closePicker}
+          onMutationError={setPickerError}
+        />
+      ) : null}
+      <PlannerRoleReferenceModal
+        activeSaveId={activeSaveId}
+        open={roleReferenceOpen}
         tactic={tactic}
         options={options}
-        teamLabels={teamLabels}
+        onClose={() => setRoleReferenceOpen(false)}
+        returnFocusTo={roleReferenceReturnFocus}
       />
-    </div>
+    </Panel>
   );
 }

@@ -6357,7 +6357,8 @@ describe("My Club route", () => {
     ).toBeDisabled();
   });
 
-  it("ranks loan candidates and marks the recommended ones on the board", async () => {
+  it("counts the recommended loans, lists every candidate, and marks them on the board", async () => {
+    const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(withReserveGoalkeeper(resolvePlannerDepthIpcMock()));
@@ -6389,13 +6390,21 @@ describe("My Club route", () => {
     ]);
     renderMyClubRoute();
 
-    const loans = (
-      await screen.findByRole("heading", { name: "Loan candidates" })
-    ).closest("section");
-    if (!loans) {
-      throw new Error("Loan candidates panel is missing");
-    }
-    const recommended = await within(loans).findByRole("row", {
+    const board = await screen.findByRole("region", {
+      name: "Squad depth board",
+    });
+    expect(
+      await within(board).findByRole("button", {
+        name: /Reserves, 1st string, IP: GK .* Reserve Keeper, Resolved, .* loan candidate$/,
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Loans (1)" }));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Loan candidates",
+    });
+    const recommended = within(dialog).getByRole("row", {
       name: /Reserve Keeper/,
     });
     expect(recommended).toHaveTextContent("Reserves · 1st string");
@@ -6405,28 +6414,19 @@ describe("My Club route", () => {
     expect(
       within(recommended).getByRole("link", { name: "Reserve Keeper" }),
     ).toHaveAttribute("href", "/players/77");
-    const fringe = within(loans).getByRole("row", { name: /Fringe Keeper/ });
+    const fringe = within(dialog).getByRole("row", { name: /Fringe Keeper/ });
     expect(fringe).toHaveTextContent("No squad");
     expect(fringe).not.toHaveTextContent("Recommended");
-
-    const board = screen.getByRole("region", { name: "Squad depth board" });
-    expect(
-      within(board).getByRole("button", {
-        name: /Reserves, 1st string, IP: GK .* Reserve Keeper, Resolved, .* loan candidate$/,
-      }),
-    ).toBeInTheDocument();
   });
 
-  it("says when no player is of loan age outside the senior squad", async () => {
+  it("disables the loans list when no player is of loan age outside the senior squad", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     renderMyClubRoute();
 
     expect(
-      await screen.findByText(
-        "No player aged 18 to 23 is outside the senior squad.",
-      ),
-    ).toBeInTheDocument();
+      await screen.findByRole("button", { name: "Loans (0)" }),
+    ).toBeDisabled();
   });
 
   it("opens the Youth XI from the squad controls", async () => {
