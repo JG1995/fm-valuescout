@@ -53,10 +53,29 @@ export type PlannerUnassignedPlayer = {
   expectedScore: number | null;
 };
 
+/** A player aged 18 to 23 outside the senior squad, ranked for a loan. */
+export type PlannerLoanCandidate = {
+  playerUid: number;
+  name: string;
+  age: number;
+  /** The team and string that hold him; null when no squad does. */
+  team: PlannerTeam | null;
+  stringName: string | null;
+  /** The tactic lane he is judged in. */
+  laneId: string;
+  currentScore: number;
+  /** The score he is expected to reach in that lane. */
+  expectedScore: number;
+  /** How much a loan would help him, from 0 to 100. */
+  benefit: number;
+  /** Whether the benefit is high enough to mark him on the board. */
+  recommended: boolean;
+};
+
 export type PlannerAssignmentLocation = {
   team: PlannerTeam;
   stringId: number;
-  stringOrder: number;
+  stringName: string;
   laneId: string;
 };
 

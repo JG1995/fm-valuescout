@@ -19,8 +19,6 @@ import {
   type PlannerTeam,
 } from "../types/team";
 import type { PlannerTeamRemovalImpact } from "../types/team-removal-impact";
-import { nextOrdinalDefault } from "../utils/string-label";
-import { teamSettingInputs } from "../utils/team-settings";
 
 type PlannerTeamDraft = {
   team: PlannerTeam;
@@ -228,9 +226,6 @@ export function PlannerTeamManagement({
     );
   };
 
-  // Strings are edited on the board, so a kept team's go back unchanged and
-  // a restored team starts with one.
-  const currentStrings = teamSettingInputs(depth);
   const inputs = () =>
     draft
       .filter((team) => team.included)
@@ -238,8 +233,6 @@ export function PlannerTeamManagement({
         team,
         displayName: displayName.trim(),
         maxAge: team === "senior" ? null : (parseMaxAge(maxAge) ?? null),
-        strings: currentStrings.find((current) => current.team === team)
-          ?.strings ?? [{ id: null, displayName: nextOrdinalDefault(0) }],
       }));
 
   const submit = (
@@ -414,7 +407,8 @@ export function PlannerTeamManagement({
           >
             <p className="text-body-md text-on-surface-variant">
               Choose one to three teams, name them, and set the oldest age
-              Reserves and Youth take. Add and edit strings on the board.
+              Reserves and Youth take. A player outside the senior squad joins
+              the team with the lowest age limit that takes him.
             </p>
             <fieldset className="space-y-3">
               <legend className="text-label-lg text-on-surface">

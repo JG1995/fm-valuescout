@@ -86,7 +86,7 @@ pub struct PlannerAssignment {
 pub struct PlannerAssignmentLocation {
     pub team: PlannerTeam,
     pub string_id: i64,
-    pub string_order: i64,
+    pub string_name: String,
     pub lane_id: String,
 }
 
@@ -145,6 +145,13 @@ impl AssignmentProvenance {
         }
     }
 }
+
+/// The senior squad's strings in order: a starter and a backup for every slot, then the
+/// rotation players. They are fixed; Optimize adds and removes the other teams' strings.
+pub(super) const SENIOR_STRING_NAMES: [&str; 3] = ["Starter", "Backup", "Rotation"];
+
+/// How many players the senior squad's rotation string holds.
+pub(super) const ROTATION_PLACES: usize = 8;
 
 pub(super) fn ordinal_label(string_order: i64) -> String {
     let number = string_order + 1;
@@ -241,7 +248,7 @@ struct SlotCandidateRow {
     potential_oop_score: Option<u8>,
     assignment_team: Option<String>,
     assignment_string_id: Option<i64>,
-    assignment_string_order: Option<i64>,
+    assignment_string_name: Option<String>,
     assignment_lane_id: Option<String>,
 }
 
@@ -285,7 +292,7 @@ pub fn get_slot_candidates(
                 {PLAYER_METRICS_ALIAS}.{potential_oop_column},
                 assignment_string.team,
                 assignment_string.id,
-                assignment_string.string_order,
+                assignment_string.display_name,
                 assignment.lane_id
              FROM players p{}
              LEFT JOIN planner_assignments assignment
@@ -316,7 +323,7 @@ pub fn get_slot_candidates(
                 potential_oop_score: row.get(12)?,
                 assignment_team: row.get(13)?,
                 assignment_string_id: row.get(14)?,
-                assignment_string_order: row.get(15)?,
+                assignment_string_name: row.get(15)?,
                 assignment_lane_id: row.get(16)?,
             })
         })
@@ -331,14 +338,14 @@ pub fn get_slot_candidates(
             let assignment_location = match (
                 row.assignment_team,
                 row.assignment_string_id,
-                row.assignment_string_order,
+                row.assignment_string_name,
                 row.assignment_lane_id,
             ) {
-                (Some(team), Some(string_id), Some(string_order), Some(lane_id)) => {
+                (Some(team), Some(string_id), Some(string_name), Some(lane_id)) => {
                     Some(PlannerAssignmentLocation {
                         team: PlannerTeam::parse(&team)?,
                         string_id,
-                        string_order,
+                        string_name,
                         lane_id,
                     })
                 }
@@ -404,6 +411,7 @@ pub fn clear_all(
         params![save_id],
     )
     .map_err(|error| error.to_string())?;
+    remove_empty_trailing_strings(&tx, save_id)?;
     tx.commit().map_err(|error| error.to_string())?;
     Ok(((), snapshot_id))
 }
@@ -585,20 +593,89 @@ pub(super) fn ensure_depth(conn: &Connection, save_id: i64) -> Result<PlannerTac
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
     for setting in settings {
-        tx.execute(
-            "INSERT INTO planner_strings (save_id, team, string_order, display_name)
-             SELECT ?1, ?2, 0, ?3
-             WHERE NOT EXISTS (
-                 SELECT 1
-                 FROM planner_strings
-                 WHERE save_id = ?1 AND team = ?2
-             )",
-            params![save_id, setting.team.as_str(), ordinal_label(0)],
-        )
-        .map_err(|error| error.to_string())?;
+        insert_default_strings(&tx, save_id, setting.team)?;
     }
     tx.commit().map_err(|error| error.to_string())?;
     Ok(tactic)
+}
+
+/// Gives a team without strings the ones it starts with: the senior squad's fixed three, or
+/// one string for another team.
+pub(super) fn insert_default_strings(
+    tx: &rusqlite::Transaction<'_>,
+    save_id: i64,
+    team: PlannerTeam,
+) -> Result<(), String> {
+    let has_strings: bool = tx
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM planner_strings WHERE save_id = ?1 AND team = ?2
+             )",
+            params![save_id, team.as_str()],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if has_strings {
+        return Ok(());
+    }
+    let string_count = match team {
+        PlannerTeam::Senior => SENIOR_STRING_NAMES.len(),
+        PlannerTeam::Reserves | PlannerTeam::Youth => 1,
+    };
+    for string_order in 0..string_count as i64 {
+        insert_string(tx, save_id, team, string_order)?;
+    }
+    Ok(())
+}
+
+/// Adds the team's string at `string_order` under its fixed or ordinal name, and returns its
+/// ID.
+pub(super) fn insert_string(
+    tx: &rusqlite::Transaction<'_>,
+    save_id: i64,
+    team: PlannerTeam,
+    string_order: i64,
+) -> Result<i64, String> {
+    let display_name = match team {
+        PlannerTeam::Senior => SENIOR_STRING_NAMES
+            .get(string_order as usize)
+            .ok_or_else(|| "The senior squad has three strings".to_string())?
+            .to_string(),
+        PlannerTeam::Reserves | PlannerTeam::Youth => ordinal_label(string_order),
+    };
+    tx.execute(
+        "INSERT INTO planner_strings (save_id, team, string_order, display_name)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![save_id, team.as_str(), string_order, display_name],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(tx.last_insert_rowid())
+}
+
+/// Removes the empty strings after the last occupied one of each team but the senior squad,
+/// keeping every team's first string. Those squads are as deep as their deepest slot.
+pub(super) fn remove_empty_trailing_strings(
+    tx: &rusqlite::Transaction<'_>,
+    save_id: i64,
+) -> Result<(), String> {
+    tx.execute(
+        "DELETE FROM planner_strings
+         WHERE save_id = ?1
+           AND team <> 'senior'
+           AND string_order > COALESCE(
+               (
+                   SELECT MAX(occupied.string_order)
+                   FROM planner_strings occupied
+                   INNER JOIN planner_assignments assignment
+                     ON assignment.string_id = occupied.id
+                   WHERE occupied.save_id = ?1 AND occupied.team = planner_strings.team
+               ),
+               0
+           )",
+        params![save_id],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 pub(super) fn preflight_depth_snapshot(

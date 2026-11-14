@@ -6,8 +6,9 @@ use super::role_reference::{get_role_reference, RoleReferenceBasis, RoleReferenc
 use super::tactic;
 use super::test_support::{
     add_picker_candidates, current_snapshot_id, deny_potential_writes, open_with_snapshot,
-    planner_potential_state, set_player_attributes, set_player_positions,
-    set_player_preferred_foot, set_potential_role_score, set_right_winger_scores, set_role_score,
+    planner_potential_state, seed_players, set_player_attributes, set_player_club,
+    set_player_positions, set_player_preferred_foot, set_potential_role_score,
+    set_right_winger_scores, set_role_score,
 };
 
 fn seeded_snapshot() -> (tempfile::TempDir, rusqlite::Connection, i64) {
@@ -163,12 +164,81 @@ fn phase_selection_uses_only_the_selected_phase_position_and_role() {
     );
 }
 
+/// Seeds uid 77 at the managed club and one rival elsewhere, both able to play either wing,
+/// with the left winger's IP role changed so the wings score differently.
+fn seeded_wingers() -> (tempfile::TempDir, rusqlite::Connection, i64) {
+    let (temp_dir, mut conn, save_id) = seeded_snapshot();
+    seed_players(&temp_dir, &mut conn, save_id, &[77, 201]);
+    clear_current_scores(&conn, save_id);
+    set_player_club(&conn, save_id, 201, "Elsewhere FC");
+    for player_uid in [77, 201] {
+        set_player_positions(&conn, save_id, player_uid, r#"{"AML":20,"AMR":20}"#);
+    }
+    let mut changed_tactic = tactic::default_tactic();
+    changed_tactic.lanes[8].ip_role_id = "inside_winger_ip".to_string();
+    tactic::save_tactic(&conn, save_id, &changed_tactic).expect("save role comparison tactic");
+    (temp_dir, conn, save_id)
+}
+
+fn set_wing_scores(
+    conn: &rusqlite::Connection,
+    save_id: i64,
+    player_uid: i64,
+    [left_current, left_potential]: [u8; 2],
+    [right_current, right_potential]: [u8; 2],
+) {
+    set_role_score(
+        conn,
+        save_id,
+        player_uid,
+        "inside_winger_ip",
+        Some(left_current),
+    );
+    set_potential_role_score(
+        conn,
+        save_id,
+        player_uid,
+        "inside_winger_ip",
+        Some(left_potential),
+    );
+    set_role_score(conn, save_id, player_uid, "winger_ip", Some(right_current));
+    set_potential_role_score(
+        conn,
+        save_id,
+        player_uid,
+        "winger_ip",
+        Some(right_potential),
+    );
+}
+
+#[test]
+fn a_player_is_listed_where_he_ranks_highest_in_the_save_not_where_he_scores_highest() {
+    let (_temp_dir, conn, save_id) = seeded_wingers();
+    // Uid 77 scores more on the right, but the save's other right winger scores far more
+    // there, and its other left winger far less on the left.
+    set_wing_scores(&conn, save_id, 77, [60, 60], [70, 70]);
+    set_wing_scores(&conn, save_id, 201, [40, 40], [90, 90]);
+
+    let reference = get_role_reference(
+        &conn,
+        save_id,
+        RoleReferencePhase::InPossession,
+        RoleReferenceBasis::Current,
+    )
+    .expect("role reference");
+
+    let left_winger = &lane(&reference, "left_winger").players;
+    assert_eq!(left_winger.len(), 1);
+    assert_eq!(left_winger[0].player_uid, 77);
+    assert_eq!(left_winger[0].current_score, Some(60));
+    assert!(lane(&reference, "right_winger").players.is_empty());
+}
+
 #[test]
 fn selected_basis_changes_the_best_lane_and_keeps_both_persisted_scores_for_that_lane() {
-    let (_temp_dir, conn, save_id) = seeded_snapshot();
+    let (_temp_dir, conn, save_id) = seeded_wingers();
     let snapshot_id = current_snapshot_id(&conn, save_id);
-    clear_current_scores(&conn, save_id);
-    set_player_positions(&conn, save_id, 77, r#"{"AML":20,"AMR":20}"#);
+    set_wing_scores(&conn, save_id, 201, [50, 50], [50, 50]);
     set_player_attributes(
         &conn,
         save_id,
@@ -183,13 +253,7 @@ fn selected_basis_changes_the_best_lane_and_keeps_both_persisted_scores_for_that
             ],
         ),
     );
-    let mut changed_tactic = tactic::default_tactic();
-    changed_tactic.lanes[8].ip_role_id = "inside_winger_ip".to_string();
-    tactic::save_tactic(&conn, save_id, &changed_tactic).expect("save role comparison tactic");
-    set_role_score(&conn, save_id, 77, "inside_winger_ip", Some(10));
-    set_role_score(&conn, save_id, 77, "winger_ip", Some(90));
-    set_potential_role_score(&conn, save_id, 77, "inside_winger_ip", Some(90));
-    set_potential_role_score(&conn, save_id, 77, "winger_ip", Some(10));
+    set_wing_scores(&conn, save_id, 77, [10, 90], [90, 10]);
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 

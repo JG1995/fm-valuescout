@@ -11,12 +11,14 @@ use crate::features::{
 };
 
 use super::depth::{
-    ensure_depth, insert_assignment, load_depth, preflight_depth_snapshot, AssignmentProvenance,
-    PlannerDepth, PlannerTeam,
+    ensure_depth, insert_assignment, insert_string, load_depth, preflight_depth_snapshot,
+    remove_empty_trailing_strings, AssignmentProvenance, PlannerDepth, PlannerTeam,
+    ROTATION_PLACES,
 };
 use super::fit::lane_fit_score;
 use super::outlook::{expected_score, slot_value, Development};
-use super::tactic::{base_position, PlannerTactic, TACTIC_LANE_COUNT};
+use super::standout::load_slot_rankings;
+use super::tactic::{base_position, PlannerTactic, TacticLane, TACTIC_LANE_COUNT};
 use super::teams;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,9 +290,44 @@ pub(crate) fn allocate_lanes(
     allocation
 }
 
-/// Refills every lane the user has not assigned by hand. Each team values a player by his
-/// score now and where his development is heading ([`slot_value`]), and each player is used
-/// once, in the strings' [`fill_order`].
+/// Picks the senior rotation: one more player for each open lane ([`allocate_lanes`]), of whom
+/// a goalkeeper always stays and the most valuable of the others take the remaining `places`.
+/// One player per lane keeps the rotation from filling up with players of one position.
+pub(super) fn allocate_rotation(
+    tactic: &PlannerTactic,
+    lane_indices: &[usize],
+    candidates: &[OptimizerCandidate],
+    reserved_uids: &HashSet<i64>,
+    places: usize,
+) -> Vec<(usize, usize)> {
+    let mut allocation = allocate_lanes(tactic, lane_indices, candidates, reserved_uids);
+    allocation.sort_by_key(|&(lane_index, candidate_index)| {
+        let candidate = &candidates[candidate_index];
+        (
+            !is_goalkeeper_lane(&tactic.lanes[lane_index]),
+            Reverse(candidate.lane_scores[lane_index]),
+            candidate.player_uid,
+        )
+    });
+    allocation.truncate(places);
+    allocation
+}
+
+fn is_goalkeeper_lane(lane: &TacticLane) -> bool {
+    base_position(&lane.ip_position) == "GK"
+}
+
+/// Refills every cell the user has not pinned, using each player once.
+///
+/// The senior squad comes first and takes the best players of any age. The exact match
+/// ([`allocate_lanes`]) fills its Starter string and then its Backup string, and
+/// [`allocate_rotation`] fills its Rotation string. Each team values a player by his score now
+/// and where his development is heading ([`slot_value`]).
+///
+/// Every other player joins the team with the lowest age limit that takes him, in the slot he
+/// stands out in ([`SlotRankings::standout_lane`]) rather than where a match would put him.
+/// Each slot lists its players best first, so those teams gain and lose strings to hold their
+/// deepest slot, and a slot nobody stands out in stays empty.
 pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerDepth, String> {
     let snapshot_id = preflight_depth_snapshot(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
@@ -298,7 +335,7 @@ pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerD
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
-    let available_teams = teams::load_team_settings_from_tx(&tx, save_id)?;
+    let settings = teams::load_team_settings_from_tx(&tx, save_id)?;
     let manual_assignments = load_manual_assignments(&tx, save_id)?;
     let mut reserved_uids = manual_assignments
         .iter()
@@ -319,30 +356,35 @@ pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerD
     .map_err(|error| error.to_string())?;
 
     let players = load_club_players(&tx, save_id, snapshot_id, &tactic)?;
-    let candidates_by_team = available_teams
+    let strings = load_ordered_strings(&tx, save_id)?;
+    let is_pinned = |string_id: i64, lane_id: &str| {
+        manual_lanes
+            .get(&string_id)
+            .is_some_and(|lanes| lanes.contains(lane_id))
+    };
+
+    let candidates = senior_candidates(&tactic, &players);
+    for (string_index, planner_string) in strings
         .iter()
-        .map(|setting| (setting.team, team_candidates(setting, &tactic, &players)))
-        .collect::<Vec<_>>();
-    for planner_string in fill_order(load_ordered_strings(&tx, save_id)?) {
-        let Some((_, candidates)) = candidates_by_team
-            .iter()
-            .find(|(team, _)| *team == planner_string.team)
-        else {
-            continue;
-        };
-        let occupied_lanes = manual_lanes.get(&planner_string.id);
-        let lane_indices = tactic
-            .lanes
-            .iter()
-            .enumerate()
-            .filter_map(|(index, lane)| {
-                (!occupied_lanes.is_some_and(|lanes| lanes.contains(&lane.lane_id)))
-                    .then_some(index)
-            })
+        .filter(|planner_string| planner_string.team == PlannerTeam::Senior)
+        .enumerate()
+    {
+        let open_lanes = (0..tactic.lanes.len())
+            .filter(|&index| !is_pinned(planner_string.id, &tactic.lanes[index].lane_id))
             .collect::<Vec<_>>();
-        for (lane_index, candidate_index) in
-            allocate_lanes(&tactic, &lane_indices, candidates, &reserved_uids)
-        {
+        let allocation = if string_index < ROTATION_STRING_INDEX {
+            allocate_lanes(&tactic, &open_lanes, &candidates, &reserved_uids)
+        } else {
+            let pinned = tactic.lanes.len() - open_lanes.len();
+            allocate_rotation(
+                &tactic,
+                &open_lanes,
+                &candidates,
+                &reserved_uids,
+                ROTATION_PLACES.saturating_sub(pinned),
+            )
+        };
+        for (lane_index, candidate_index) in allocation {
             let candidate = &candidates[candidate_index];
             insert_assignment(
                 &tx,
@@ -357,8 +399,97 @@ pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerD
         }
     }
 
+    let development_settings = settings
+        .iter()
+        .filter(|setting| setting.team != PlannerTeam::Senior)
+        .collect::<Vec<_>>();
+    if !development_settings.is_empty() {
+        let rankings = load_slot_rankings(&tx, snapshot_id, &tactic)?;
+        for setting in &development_settings {
+            let team = setting.team;
+            let mut slots = vec![Vec::new(); tactic.lanes.len()];
+            for player in &players {
+                if reserved_uids.contains(&player.uid)
+                    || development_team(&development_settings, player.development.age) != Some(team)
+                {
+                    continue;
+                }
+                let standout_lane =
+                    rankings.standout_lane(team, &player.development, &player.lane_scores);
+                let Some((lane_index, (current, potential))) = standout_lane
+                    .and_then(|lane_index| Some((lane_index, player.lane_scores[lane_index]?)))
+                else {
+                    continue;
+                };
+                let value = slot_value(
+                    team,
+                    current,
+                    potential,
+                    &player.development,
+                    is_goalkeeper_lane(&tactic.lanes[lane_index]),
+                );
+                slots[lane_index].push((Reverse(value), player.uid, player.name.as_str()));
+            }
+
+            let mut team_strings = strings
+                .iter()
+                .filter(|planner_string| planner_string.team == team)
+                .map(|planner_string| planner_string.id)
+                .collect::<Vec<_>>();
+            for (lane, mut slot_players) in tactic.lanes.iter().zip(slots) {
+                slot_players.sort_unstable();
+                let mut string_index = 0;
+                for (_, player_uid, name) in slot_players {
+                    // The next string down whose cell for this slot holds no pinned player.
+                    let string_id = loop {
+                        if string_index == team_strings.len() {
+                            team_strings.push(insert_string(
+                                &tx,
+                                save_id,
+                                team,
+                                string_index as i64,
+                            )?);
+                        }
+                        let string_id = team_strings[string_index];
+                        string_index += 1;
+                        if !is_pinned(string_id, &lane.lane_id) {
+                            break string_id;
+                        }
+                    };
+                    insert_assignment(
+                        &tx,
+                        save_id,
+                        string_id,
+                        &lane.lane_id,
+                        player_uid,
+                        name,
+                        AssignmentProvenance::Optimizer,
+                    )?;
+                }
+            }
+        }
+    }
+    remove_empty_trailing_strings(&tx, save_id)?;
+
     tx.commit().map_err(|error| error.to_string())?;
     load_depth(conn, save_id, Some(snapshot_id))
+}
+
+/// The senior squad's Rotation string comes after its Starter and Backup strings.
+const ROTATION_STRING_INDEX: usize = 2;
+
+/// The team a player outside the senior squad develops in: the one with the lowest age limit
+/// that takes him, and Youth when both would.
+fn development_team(
+    development_settings: &[&teams::PlannerTeamSetting],
+    age: Option<i64>,
+) -> Option<PlannerTeam> {
+    development_settings
+        .iter()
+        .rev()
+        .filter(|setting| setting.takes_age(age))
+        .min_by_key(|setting| setting.max_age.unwrap_or(i64::MAX))
+        .map(|setting| setting.team)
 }
 
 struct ManualAssignment {
@@ -432,48 +563,25 @@ fn load_ordered_strings(
         .collect()
 }
 
-/// The order strings fill in, from strings sorted within each team. The senior first and
-/// second strings come first: rotation gives both of them regular minutes. After them a
-/// player starts for a lower team before he sits deeper in any squad, so each further rank
-/// fills Reserves, then Youth, then the next senior string.
-fn fill_order(strings: Vec<OrderedPlannerString>) -> Vec<OrderedPlannerString> {
-    let (mut senior, mut reserves, mut youth) = (0, 0, 0);
-    let mut keyed = strings
-        .into_iter()
-        .map(|planner_string| {
-            let rank = match planner_string.team {
-                PlannerTeam::Senior => &mut senior,
-                PlannerTeam::Reserves => &mut reserves,
-                PlannerTeam::Youth => &mut youth,
-            };
-            let key = fill_key(planner_string.team, *rank);
-            *rank += 1;
-            (key, planner_string)
-        })
-        .collect::<Vec<_>>();
-    keyed.sort_by_key(|(key, _)| *key);
-    keyed
-        .into_iter()
-        .map(|(_, planner_string)| planner_string)
-        .collect()
-}
-
-/// A string's place in the fill order, from its 0-based rank within its team.
-pub(super) fn fill_key(team: PlannerTeam, rank: usize) -> (usize, usize) {
-    match team {
-        PlannerTeam::Senior if rank < 2 => (0, rank),
-        PlannerTeam::Senior => (rank, 2),
-        PlannerTeam::Reserves => (rank + 1, 0),
-        PlannerTeam::Youth => (rank + 1, 1),
-    }
-}
-
-struct ClubPlayer {
-    uid: i64,
-    name: String,
-    development: Development,
+pub(super) struct ClubPlayer {
+    pub(super) uid: i64,
+    pub(super) name: String,
+    pub(super) development: Development,
     /// Each tactic lane's current and potential fit scores, where the player suits the lane.
-    lane_scores: Vec<Option<(u8, u8)>>,
+    pub(super) lane_scores: Vec<Option<(u8, u8)>>,
+}
+
+impl ClubPlayer {
+    /// The lane the player fits best now, the earlier of two level lanes, or `None` when he
+    /// suits no lane of the tactic.
+    pub(super) fn best_lane(&self) -> Option<usize> {
+        self.lane_scores
+            .iter()
+            .enumerate()
+            .filter_map(|(lane_index, scores)| Some((lane_index, (*scores)?)))
+            .max_by_key(|&(lane_index, (current, _))| (current, Reverse(lane_index)))
+            .map(|(lane_index, _)| lane_index)
+    }
 }
 
 /// A managed-club player whom no squad holds.
@@ -515,11 +623,8 @@ pub(super) fn unassigned_players(
         .filter(|player| !assigned_uids.contains(&player.uid))
         .map(|player| {
             let best_lane = player
-                .lane_scores
-                .iter()
-                .enumerate()
-                .filter_map(|(lane_index, scores)| Some((lane_index, (*scores)?)))
-                .max_by_key(|&(lane_index, (current, _))| (current, Reverse(lane_index)))
+                .best_lane()
+                .and_then(|lane_index| Some((lane_index, player.lane_scores[lane_index]?)))
                 .map(|(lane_index, (current, potential))| UnassignedPlayerLane {
                     lane_id: tactic.lanes[lane_index].lane_id.clone(),
                     current_score: current,
@@ -546,7 +651,7 @@ pub(super) fn unassigned_players(
 }
 
 /// The managed club's players with their fit scores for every lane of the tactic.
-fn load_club_players(
+pub(super) fn load_club_players(
     conn: &Connection,
     save_id: i64,
     snapshot_id: i64,
@@ -635,16 +740,10 @@ fn load_club_players(
         .collect()
 }
 
-/// The players within the team's age limit who suit at least one lane, each valued for the team.
-fn team_candidates(
-    setting: &teams::PlannerTeamSetting,
-    tactic: &PlannerTactic,
-    players: &[ClubPlayer],
-) -> Vec<OptimizerCandidate> {
-    let team = setting.team;
+/// The players who suit at least one lane, each valued for the senior squad.
+fn senior_candidates(tactic: &PlannerTactic, players: &[ClubPlayer]) -> Vec<OptimizerCandidate> {
     players
         .iter()
-        .filter(|player| setting.takes_age(player.development.age))
         .filter(|player| player.lane_scores.iter().any(Option::is_some))
         .map(|player| OptimizerCandidate {
             player_uid: player.uid,
@@ -656,11 +755,11 @@ fn team_candidates(
                 .map(|(scores, lane)| {
                     let (current, potential) = (*scores)?;
                     Some(slot_value(
-                        team,
+                        PlannerTeam::Senior,
                         current,
                         potential,
                         &player.development,
-                        base_position(&lane.ip_position) == "GK",
+                        is_goalkeeper_lane(lane),
                     ))
                 })
                 .collect(),

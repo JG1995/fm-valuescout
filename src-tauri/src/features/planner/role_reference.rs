@@ -13,6 +13,7 @@ use crate::features::{
 use super::{
     depth::current_snapshot_id,
     fit::phase_fit_score,
+    standout::{load_slot_rankings, LaneRankings, ScoreDistribution},
     tactic::{self, TacticLane},
 };
 
@@ -49,6 +50,20 @@ impl RoleReferencePhase {
         match self {
             Self::InPossession => &lane.ip_role_id,
             Self::OutOfPossession => &lane.oop_role_id,
+        }
+    }
+
+    /// How the save's players score in this phase of a lane, on the basis asked for.
+    fn distribution(
+        self,
+        rankings: &LaneRankings,
+        basis: RoleReferenceBasis,
+    ) -> &ScoreDistribution {
+        match (self, basis) {
+            (Self::InPossession, RoleReferenceBasis::Current) => &rankings.ip_current,
+            (Self::InPossession, RoleReferenceBasis::Potential) => &rankings.ip_potential,
+            (Self::OutOfPossession, RoleReferenceBasis::Current) => &rankings.oop_current,
+            (Self::OutOfPossession, RoleReferenceBasis::Potential) => &rankings.oop_potential,
         }
     }
 }
@@ -100,6 +115,9 @@ struct PlayerInput {
     potential_role_scores: HashMap<String, Option<u8>>,
 }
 
+/// Lists each managed-club player under the lane he stands out in for one phase: where his
+/// score ranks highest against every player in the save who can play that lane, not where it
+/// is highest. Level lanes go to the earlier one.
 pub fn get_role_reference(
     conn: &Connection,
     save_id: i64,
@@ -133,13 +151,14 @@ pub fn get_role_reference(
         .map(|(_, role, _)| role.role_id)
         .collect::<BTreeSet<_>>();
     let players = load_players(conn, snapshot_id, &club_name, &role_ids)?;
+    let rankings = load_slot_rankings(conn, snapshot_id, &tactic)?;
     let mut assigned = (0..tactic.lanes.len())
         .map(|_| Vec::new())
         .collect::<Vec<Vec<RoleReferencePlayer>>>();
     let mut no_eligible = Vec::new();
 
     for player in players {
-        let mut best: Option<(usize, u8, RoleReferencePlayer)> = None;
+        let mut best: Option<(usize, f64, RoleReferencePlayer)> = None;
 
         for (lane_index, (lane, role, position)) in lane_roles.iter().enumerate() {
             let current_score = phase_fit_score(
@@ -176,11 +195,14 @@ pub fn get_role_reference(
                 current_score,
                 potential_score,
             };
+            let rank = phase
+                .distribution(rankings.lane(lane_index), basis)
+                .rank(selected_score);
             if best
                 .as_ref()
-                .map_or(true, |(_, best_score, _)| selected_score > *best_score)
+                .map_or(true, |(_, best_rank, _)| rank > *best_rank)
             {
-                best = Some((lane_index, selected_score, candidate));
+                best = Some((lane_index, rank, candidate));
             }
         }
 

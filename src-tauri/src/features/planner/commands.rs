@@ -10,6 +10,7 @@ use super::depth::{
     self as depth_service, PlannerAssignment, PlannerAssignmentLocation, PlannerDepth,
     PlannerDepthTeam, PlannerSlotCandidate, PlannerString, PlannerTeam,
 };
+use super::loans::{self, LoanCandidate};
 use super::optimizer;
 use super::role_reference::{
     self as role_reference_service, RoleReference, RoleReferenceBasis, RoleReferencePhase,
@@ -20,8 +21,8 @@ use super::squad::{
 };
 use super::tactic::{self as tactic_service, PlannerTactic, TacticLane, TacticOptions};
 use super::teams::{
-    self as teams_service, PlannerStaffingTargetRemovalImpact, PlannerStringInput,
-    PlannerStringRemovalImpact, PlannerTeamInput, PlannerTeamRemovalImpact,
+    self as teams_service, PlannerStaffingTargetRemovalImpact, PlannerTeamInput,
+    PlannerTeamRemovalImpact,
 };
 
 #[derive(Serialize)]
@@ -329,7 +330,7 @@ impl From<PlannerAssignment> for PlannerAssignmentDto {
 pub struct PlannerAssignmentLocationDto {
     pub team: String,
     pub string_id: i64,
-    pub string_order: i64,
+    pub string_name: String,
     pub lane_id: String,
 }
 
@@ -338,7 +339,7 @@ impl From<PlannerAssignmentLocation> for PlannerAssignmentLocationDto {
         Self {
             team: location.team.as_str().to_string(),
             string_id: location.string_id,
-            string_order: location.string_order,
+            string_name: location.string_name,
             lane_id: location.lane_id,
         }
     }
@@ -676,27 +677,10 @@ fn read_planner_depth(db: &Db) -> Result<PlannerDepthDto, String> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PlannerStringInputDto {
-    pub id: Option<i64>,
-    pub display_name: String,
-}
-
-impl From<PlannerStringInputDto> for PlannerStringInput {
-    fn from(input: PlannerStringInputDto) -> Self {
-        Self {
-            id: input.id,
-            display_name: input.display_name,
-        }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct PlannerTeamInputDto {
     pub team: String,
     pub display_name: String,
     pub max_age: Option<i64>,
-    pub strings: Vec<PlannerStringInputDto>,
 }
 
 impl From<PlannerTeamInputDto> for PlannerTeamInput {
@@ -705,11 +689,6 @@ impl From<PlannerTeamInputDto> for PlannerTeamInput {
             team: input.team,
             display_name: input.display_name,
             max_age: input.max_age,
-            strings: input
-                .strings
-                .into_iter()
-                .map(PlannerStringInput::from)
-                .collect(),
         }
     }
 }
@@ -734,30 +713,11 @@ impl From<PlannerStaffingTargetRemovalImpact> for PlannerStaffingTargetRemovalIm
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PlannerStringRemovalImpactDto {
-    pub string_id: i64,
-    pub display_name: String,
-    pub assignment_count: i64,
-}
-
-impl From<PlannerStringRemovalImpact> for PlannerStringRemovalImpactDto {
-    fn from(impact: PlannerStringRemovalImpact) -> Self {
-        Self {
-            string_id: impact.string_id,
-            display_name: impact.display_name,
-            assignment_count: impact.assignment_count,
-        }
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct PlannerTeamRemovalImpactDto {
     pub team: String,
     pub display_name: String,
     pub assignment_count: i64,
     pub staffing_targets: Vec<PlannerStaffingTargetRemovalImpactDto>,
-    pub strings: Vec<PlannerStringRemovalImpactDto>,
 }
 
 impl From<PlannerTeamRemovalImpact> for PlannerTeamRemovalImpactDto {
@@ -771,7 +731,6 @@ impl From<PlannerTeamRemovalImpact> for PlannerTeamRemovalImpactDto {
                 .into_iter()
                 .map(Into::into)
                 .collect(),
-            strings: impact.strings.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -960,6 +919,64 @@ pub async fn get_planner_unassigned_players(
     .await
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerLoanCandidateDto {
+    pub player_uid: i64,
+    pub name: String,
+    pub age: i64,
+    /// The team and string that hold the player; absent when no squad does.
+    pub team: Option<&'static str>,
+    pub string_name: Option<String>,
+    /// The tactic lane he is judged in.
+    pub lane_id: String,
+    pub current_score: u8,
+    pub expected_score: u8,
+    /// How much a loan would help him, from 0 to 100.
+    pub benefit: u8,
+    pub recommended: bool,
+}
+
+impl From<LoanCandidate> for PlannerLoanCandidateDto {
+    fn from(candidate: LoanCandidate) -> Self {
+        let (team, string_name) = match candidate.place {
+            Some(place) => (Some(place.team.as_str()), Some(place.string_name)),
+            None => (None, None),
+        };
+        Self {
+            player_uid: candidate.player_uid,
+            name: candidate.name,
+            age: candidate.age,
+            team,
+            string_name,
+            lane_id: candidate.lane_id,
+            current_score: candidate.current_score,
+            expected_score: candidate.expected_score,
+            benefit: candidate.benefit,
+            recommended: candidate.recommended,
+        }
+    }
+}
+
+/// The managed club's players aged 18 to 23 outside the senior squad, most to gain from a
+/// loan first.
+#[tauri::command]
+pub async fn get_planner_loan_candidates(
+    db: State<'_, Db>,
+) -> Result<Vec<PlannerLoanCandidateDto>, String> {
+    let db = db.inner().clone();
+    blocking::run(move || read_planner_loan_candidates(&db)).await
+}
+
+fn read_planner_loan_candidates(db: &Db) -> Result<Vec<PlannerLoanCandidateDto>, String> {
+    answer_without_creating_defaults_on_a_reader(
+        db,
+        |conn| depth_service::depth_exists(conn, service::active_save_id(conn)?),
+        |conn| loans::loan_candidates(conn, service::active_save_id(conn)?),
+    )
+    .map(|candidates| candidates.into_iter().map(Into::into).collect())
+}
+
 #[tauri::command]
 pub async fn set_planner_assignment_pinned(
     string_id: i64,
@@ -1110,7 +1127,7 @@ mod tests {
         let fresh = generation();
         let depth = read_planner_depth(&db).expect("depth creates its defaults on the writer");
         assert_eq!(generation(), fresh + 1, "one write creates every default");
-        assert_eq!(planner_row_counts(&db), (11, 3, 3));
+        assert_eq!(planner_row_counts(&db), (11, 3, 5));
         read_planner_depth(&db).expect("depth again");
         assert_eq!(
             generation(),
@@ -1135,14 +1152,6 @@ mod tests {
                 team: team.team.clone(),
                 display_name: team.display_name.clone(),
                 max_age: team.max_age,
-                strings: team
-                    .strings
-                    .iter()
-                    .map(|string| PlannerStringInput {
-                        id: Some(string.id),
-                        display_name: string.display_name.clone(),
-                    })
-                    .collect(),
             })
             .collect::<Vec<_>>();
         teams_service::save_team_settings(
@@ -1203,7 +1212,7 @@ mod tests {
             .suggested_training
             .is_some());
         assert_eq!(generation(), removed);
-        assert_eq!(planner_row_counts(&db), (11, 2, 2));
+        assert_eq!(planner_row_counts(&db), (11, 2, 4));
 
         db.0.lock()
             .expect("lock writer")
@@ -1214,7 +1223,7 @@ mod tests {
         })
         .expect("Squad on a reader without tactic lanes");
         assert_eq!(squad.players[0].suggested_training, None);
-        assert_eq!(planner_row_counts(&db), (0, 2, 2));
+        assert_eq!(planner_row_counts(&db), (0, 2, 4));
     }
 
     #[test]

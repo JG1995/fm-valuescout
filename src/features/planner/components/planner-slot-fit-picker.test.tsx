@@ -45,7 +45,7 @@ function renderPicker(
         target={{
           team: "reserves",
           stringId: 2,
-          stringOrder: 0,
+          stringName: "1st string",
           laneId: "goalkeeper",
           laneName: "IP: GK / OOP: GK",
           occupant,
@@ -199,7 +199,7 @@ describe("Planner slot mutation locks", () => {
                   ? {
                       team: "reserves",
                       stringId: 2,
-                      stringOrder: 0,
+                      stringName: "1st string",
                       laneId: "goalkeeper",
                     }
                   : null,
@@ -224,7 +224,7 @@ describe("Planner slot mutation locks", () => {
             target={{
               team: "senior",
               stringId: 1,
-              stringOrder: 0,
+              stringName: "Starter",
               laneId: "goalkeeper",
               laneName: "IP: GK / OOP: GK",
               occupant:

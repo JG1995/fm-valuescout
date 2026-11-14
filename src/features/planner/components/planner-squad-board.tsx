@@ -1,11 +1,9 @@
-import { Pencil, Pin, Plus, TriangleAlert } from "lucide-react";
-import { Button } from "@/components/ui/button/button";
+import { ArrowRightLeft, Pin, TriangleAlert } from "lucide-react";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import type {
   PlannerAssignment,
   PlannerDepth,
   PlannerDepthTeam,
-  PlannerString,
 } from "../types/depth";
 import type { TacticOptions } from "../types/tactic";
 import type { PlannerTeam } from "../types/team";
@@ -112,6 +110,7 @@ function AssignmentCell({
   stringHeaderId,
   teamStart,
   plannerString,
+  loanCandidateUids,
   onOpen,
 }: {
   team: PlannerTeam;
@@ -123,6 +122,7 @@ function AssignmentCell({
   stringHeaderId: string;
   teamStart: boolean;
   plannerString: PlannerDepthTeam["strings"][number];
+  loanCandidateUids: ReadonlySet<number>;
   onOpen: (target: PlannerSlotTarget) => void;
 }) {
   const stringLabel = plannerString.displayName;
@@ -132,12 +132,15 @@ function AssignmentCell({
   const score = assignment?.combinedScore ?? null;
   const expectedScore = assignment?.expectedCombinedScore ?? null;
   const potentialScore = assignment?.potentialCombinedScore ?? null;
+  const loanCandidate =
+    assignment !== undefined && loanCandidateUids.has(assignment.playerUid);
   const ariaLabel = assignment
     ? [
         `${teamLabel}, ${stringLabel}, ${laneName}, ${name}, ${state}, current score ${score ?? "—"}, expected score ${expectedScore ?? "—"}, potential score ${potentialScore ?? "—"}`,
         assignment.age === null ? null : `aged ${assignment.age}`,
         assignment.pinned ? "pinned" : null,
         assignment.overAge ? "over the age limit" : null,
+        loanCandidate ? "loan candidate" : null,
       ]
         .filter((part) => part !== null)
         .join(", ")
@@ -157,7 +160,7 @@ function AssignmentCell({
           onOpen({
             team,
             stringId: plannerString.id,
-            stringOrder: plannerString.stringOrder,
+            stringName: plannerString.displayName,
             laneId,
             laneName,
             occupant: assignment
@@ -172,8 +175,8 @@ function AssignmentCell({
       >
         <span className="block">
           {assignment ? (
-            // One line: the name gives way first, so the age, the pin, and the
-            // scores always show.
+            // One line: the name gives way first, so the age, the markers, and
+            // the scores always show.
             <span className="flex min-w-0 items-center gap-1.5 text-body-sm">
               <span className="min-w-0 truncate text-on-surface" title={name}>
                 {name}
@@ -195,6 +198,14 @@ function AssignmentCell({
                   title="Pinned: Optimize keeps this player here"
                 >
                   <Pin aria-hidden="true" className="size-3" />
+                </span>
+              ) : null}
+              {loanCandidate ? (
+                <span
+                  className="shrink-0 text-info"
+                  title="Loan candidate: a loan would help his development"
+                >
+                  <ArrowRightLeft aria-hidden="true" className="size-3" />
                 </span>
               ) : null}
               <span className="ml-auto flex shrink-0">
@@ -228,21 +239,17 @@ type PlannerSquadBoardProps = {
   teamDepths: PlannerDepthTeam[];
   tactic: PlannerDepth["tactic"];
   options: TacticOptions;
-  /** Whether the strings can be added to or edited right now. */
-  stringsDisabled: boolean;
+  /** The players a loan would help enough to mark on the board. */
+  loanCandidateUids: ReadonlySet<number>;
   onOpen: (target: PlannerSlotTarget) => void;
-  onAddString: (team: PlannerTeam) => void;
-  onEditString: (team: PlannerTeam, plannerString: PlannerString) => void;
 };
 
 export function PlannerSquadBoard({
   teamDepths,
   tactic,
   options,
-  stringsDisabled,
+  loanCandidateUids,
   onOpen,
-  onAddString,
-  onEditString,
 }: PlannerSquadBoardProps) {
   const teamDisplayName = (team: PlannerTeam) =>
     teamDepths.find((candidate) => candidate.team === team)?.displayName ??
@@ -291,28 +298,18 @@ export function PlannerSquadBoard({
                     ? undefined
                     : `Max age ${teamDepth.maxAge}`
                 }
-                className={`${index > 0 ? "border-l-2" : ""} sticky top-0 z-20 h-table-header-height border-b border-outline-variant bg-surface-container-lowest pr-1 pl-3 text-label-md text-on-surface`}
+                className={`${index > 0 ? "border-l-2" : ""} sticky top-0 z-20 h-table-header-height border-b border-outline-variant bg-surface-container-lowest px-3 text-label-md text-on-surface`}
               >
-                <span className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate">
-                    {teamDepth.displayName}
-                    {teamDepth.maxAge === null ? null : (
-                      <span
-                        className="ml-2 text-body-sm font-normal text-on-surface-variant"
-                        title={`Max age ${teamDepth.maxAge}`}
-                      >
-                        ≤{teamDepth.maxAge}
-                      </span>
-                    )}
-                  </span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    icon={Plus}
-                    aria-label={`Add string to ${teamDepth.displayName}`}
-                    disabled={stringsDisabled}
-                    onClick={() => onAddString(teamDepth.team)}
-                  />
+                <span className="block min-w-0 truncate">
+                  {teamDepth.displayName}
+                  {teamDepth.maxAge === null ? null : (
+                    <span
+                      className="ml-2 text-body-sm font-normal text-on-surface-variant"
+                      title={`Max age ${teamDepth.maxAge}`}
+                    >
+                      ≤{teamDepth.maxAge}
+                    </span>
+                  )}
                 </span>
               </th>
             ))}
@@ -326,22 +323,9 @@ export function PlannerSquadBoard({
                 aria-label={plannerString.displayName}
                 className={`${index === 0 || allStrings[index - 1]?.team !== team ? "border-l-2" : ""} h-table-header-height w-60 max-w-60 min-w-60 border-b border-outline-variant bg-surface-container-high px-3 text-left text-body-sm font-medium text-on-surface`}
               >
-                <button
-                  type="button"
-                  aria-label={`Edit ${teamDisplayName(team)} ${plannerString.displayName}`}
-                  title="Rename, reorder, or remove this string"
-                  disabled={stringsDisabled}
-                  className="flex w-full items-center justify-between gap-2 rounded-sm text-left underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-45"
-                  onClick={() => onEditString(team, plannerString)}
-                >
-                  <span className="min-w-0 truncate">
-                    {plannerString.displayName}
-                  </span>
-                  <Pencil
-                    aria-hidden="true"
-                    className="size-3 shrink-0 text-on-surface-variant"
-                  />
-                </button>
+                <span className="block min-w-0 truncate">
+                  {plannerString.displayName}
+                </span>
               </th>
             ))}
           </tr>
@@ -405,6 +389,7 @@ export function PlannerSquadBoard({
                     teamHeaderId={`planner-team-${team}-header`}
                     stringHeaderId={`${idPrefix}-${team}-string-${plannerString.id}`}
                     plannerString={plannerString}
+                    loanCandidateUids={loanCandidateUids}
                     onOpen={onOpen}
                   />
                 ))}

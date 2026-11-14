@@ -1,67 +1,33 @@
 use rusqlite::params;
 
-use super::depth::{assign_player, get_depth, set_assignment_pinned, PlannerTeam};
+use std::collections::HashSet;
+
+use super::depth::{assign_player, clear_all, get_depth, set_assignment_pinned, PlannerTeam};
 use super::optimizer::{
-    fill_key, match_lanes, optimize_depth, unassigned_players, OptimizerCandidate,
+    allocate_rotation, match_lanes, optimize_depth, unassigned_players, OptimizerCandidate,
 };
 use super::tactic;
-use super::teams::{save_team_settings, PlannerStringInput, PlannerTeamInput};
+use super::teams::{save_team_settings, PlannerTeamInput};
 use super::test_support::{
     add_picker_candidates, assigned_player_uid, assignment_provenance, clear_current_scores_except,
-    current_snapshot_id, deny_potential_writes, open_with_snapshot, planner_potential_state,
-    set_player_age, set_player_attributes, set_player_personality, set_player_positions,
-    set_player_preferred_foot, set_potential_role_score, set_right_winger_scores, set_role_score,
-    team_strings,
+    current_snapshot_id, deny_potential_writes, lane_players, open_with_snapshot,
+    planner_potential_state, seed_players, set_development, set_lane_scores, set_player_age,
+    set_player_club, set_player_positions, set_player_preferred_foot, set_right_winger,
+    set_right_winger_scores, set_role_score, team_strings,
 };
 
-/// Gives the player a right-winger score now and a potential one, with full familiarity.
-fn set_right_winger(
-    conn: &rusqlite::Connection,
-    save_id: i64,
-    player_uid: i64,
-    current: u8,
-    potential: u8,
-) {
-    set_player_positions(conn, save_id, player_uid, r#"{"AMR": 18, "MR": 18}"#);
-    set_right_winger_scores(conn, save_id, player_uid, Some(current));
-    for role_id in ["winger_ip", "tracking_wide_midfielder_oop"] {
-        set_potential_role_score(conn, save_id, player_uid, role_id, Some(potential));
-    }
-}
-
-fn set_development(
-    conn: &rusqlite::Connection,
-    save_id: i64,
-    player_uid: i64,
-    age: i64,
-    [professionalism, ambition, determination]: [u8; 3],
-) {
-    set_player_age(conn, save_id, player_uid, Some(age));
-    set_player_personality(
-        conn,
-        save_id,
-        player_uid,
-        &format!(r#"{{"Professionalism": {professionalism}, "Ambition": {ambition}}}"#),
-    );
-    set_player_attributes(
-        conn,
-        save_id,
-        player_uid,
-        &format!(r#"{{"Determination": {determination}}}"#),
-    );
-}
-
-fn retained_strings(
-    depth: &super::depth::PlannerDepth,
-    team: PlannerTeam,
-) -> Vec<PlannerStringInput> {
-    team_strings(depth, team)
+/// Keeps only the named teams, each with its usual age limit unless `max_age` sets one.
+fn keep_teams(conn: &rusqlite::Connection, save_id: i64, teams: &[(&str, Option<i64>)]) {
+    get_depth(conn, save_id).expect("create planner depth");
+    let inputs = teams
         .iter()
-        .map(|string| PlannerStringInput {
-            id: Some(string.id),
-            display_name: string.display_name.clone(),
+        .map(|&(team, max_age)| PlannerTeamInput {
+            team: team.to_string(),
+            display_name: team.to_string(),
+            max_age,
         })
-        .collect()
+        .collect::<Vec<_>>();
+    save_team_settings(conn, save_id, &inputs, true).expect("keep the named teams");
 }
 
 #[test]
@@ -176,48 +142,29 @@ fn optimizer_starts_a_prospect_over_a_declining_veteran_unless_he_is_unprofessio
 }
 
 #[test]
-fn optimizer_starts_the_higher_ceiling_in_the_reserves_over_the_better_player_today() {
+fn a_development_slot_lists_the_higher_ceiling_before_the_better_player_today() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     set_right_winger(&conn, save_id, 77, 58, 86);
     set_development(&conn, save_id, 77, 16, [14, 12, 13]);
     set_right_winger(&conn, save_id, 78, 66, 72);
     set_development(&conn, save_id, 78, 20, [14, 12, 13]);
-    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
-    tactic.lanes[9].importance_rank = Some(1);
-    tactic::save_tactic(&conn, save_id, &tactic).expect("rank right winger");
+    keep_teams(&conn, save_id, &[("reserves", Some(23))]);
 
-    let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+    let optimized = optimize_depth(&conn, save_id).expect("optimize the reserves");
 
-    // The senior team weighs today more, so it takes the better player now.
+    // The reserves weigh the future more than today, and gain a string for the second winger.
     assert_eq!(
-        assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
-        Some(78)
-    );
-    assert_eq!(
-        assigned_player_uid(&optimized, PlannerTeam::Reserves, "right_winger"),
-        Some(77)
+        lane_players(&optimized, PlannerTeam::Reserves, "right_winger"),
+        [Some(77), Some(78)]
     );
 
-    let depth = get_depth(&conn, save_id).expect("load planner depth");
-    save_team_settings(
-        &conn,
-        save_id,
-        &[PlannerTeamInput {
-            team: "reserves".to_string(),
-            display_name: "Reserves".to_string(),
-            max_age: Some(23),
-            strings: retained_strings(&depth, PlannerTeam::Reserves),
-        }],
-        true,
-    )
-    .expect("keep only reserves");
-
-    let reserves_only = optimize_depth(&conn, save_id).expect("optimize the reserves alone");
+    set_right_winger_scores(&conn, save_id, 78, None);
+    let shallower = optimize_depth(&conn, save_id).expect("optimize without the second winger");
 
     assert_eq!(
-        assigned_player_uid(&reserves_only, PlannerTeam::Reserves, "right_winger"),
-        Some(77)
+        lane_players(&shallower, PlannerTeam::Reserves, "right_winger"),
+        [Some(77)]
     );
 }
 
@@ -232,18 +179,10 @@ fn optimizer_keeps_players_over_a_teams_age_limit_out_of_its_squads() {
     let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
     tactic.lanes[9].importance_rank = Some(1);
     tactic::save_tactic(&conn, save_id, &tactic).expect("rank right winger");
-    let depth = get_depth(&conn, save_id).expect("create planner depth");
-    let reserves = |max_age| PlannerTeamInput {
-        team: "reserves".to_string(),
-        display_name: "Reserves".to_string(),
-        max_age,
-        strings: retained_strings(&depth, PlannerTeam::Reserves),
-    };
 
-    save_team_settings(&conn, save_id, &[reserves(Some(21))], true)
-        .expect("keep only the reserves with a lower limit");
+    keep_teams(&conn, save_id, &[("reserves", Some(21))]);
     let limited = optimize_depth(&conn, save_id).expect("optimize under the limit");
-    save_team_settings(&conn, save_id, &[reserves(None)], true).expect("remove the limit");
+    keep_teams(&conn, save_id, &[("reserves", None)]);
     let unlimited = optimize_depth(&conn, save_id).expect("optimize without a limit");
 
     assert_eq!(
@@ -257,99 +196,186 @@ fn optimizer_keeps_players_over_a_teams_age_limit_out_of_its_squads() {
 }
 
 #[test]
-fn strings_fill_two_senior_strings_then_starters_before_deeper_squads() {
-    let mut strings = Vec::new();
-    for rank in 0..4 {
-        strings.push((PlannerTeam::Youth, rank));
-        strings.push((PlannerTeam::Senior, rank));
-        strings.push((PlannerTeam::Reserves, rank));
-    }
-    strings.sort_by_key(|&(team, rank)| fill_key(team, rank));
-
-    assert_eq!(
-        strings[..10],
-        [
-            (PlannerTeam::Senior, 0),
-            (PlannerTeam::Senior, 1),
-            (PlannerTeam::Reserves, 0),
-            (PlannerTeam::Youth, 0),
-            (PlannerTeam::Reserves, 1),
-            (PlannerTeam::Youth, 1),
-            (PlannerTeam::Senior, 2),
-            (PlannerTeam::Reserves, 2),
-            (PlannerTeam::Youth, 2),
-            (PlannerTeam::Senior, 3),
-        ]
-    );
-}
-
-#[test]
-fn optimizer_starts_a_player_for_a_lower_team_before_a_third_senior_string() {
+fn the_senior_squad_fills_before_the_other_teams_take_the_remaining_players() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     for (player_uid, score) in [(77, 100), (78, 90), (79, 80), (80, 70)] {
         set_right_winger(&conn, save_id, player_uid, score, score);
         set_player_age(&conn, save_id, player_uid, Some(18));
     }
-    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
-    tactic.lanes[9].importance_rank = Some(1);
-    tactic::save_tactic(&conn, save_id, &tactic).expect("rank right winger");
-    let depth = get_depth(&conn, save_id).expect("create planner depth");
-    let with_added_strings = |team: PlannerTeam, added: usize| {
-        let mut strings = retained_strings(&depth, team);
-        strings.extend((0..added).map(|index| PlannerStringInput {
-            id: None,
-            display_name: format!("Added string {index}"),
-        }));
-        strings
-    };
-    save_team_settings(
-        &conn,
-        save_id,
-        &[
-            PlannerTeamInput {
-                team: "senior".to_string(),
-                display_name: "Senior".to_string(),
-                max_age: None,
-                strings: with_added_strings(PlannerTeam::Senior, 2),
-            },
-            PlannerTeamInput {
-                team: "reserves".to_string(),
-                display_name: "Reserves".to_string(),
-                max_age: Some(23),
-                strings: with_added_strings(PlannerTeam::Reserves, 1),
-            },
-            PlannerTeamInput {
-                team: "youth".to_string(),
-                display_name: "Youth".to_string(),
-                max_age: Some(18),
-                strings: with_added_strings(PlannerTeam::Youth, 0),
-            },
-        ],
-        false,
-    )
-    .expect("add deeper strings");
 
     let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
-    let right_wingers = |team: PlannerTeam| {
-        team_strings(&optimized, team)
-            .iter()
-            .map(|planner_string| {
-                planner_string
-                    .assignments
-                    .iter()
-                    .find(|assignment| assignment.lane_id == "right_winger")
-                    .map(|assignment| assignment.player_uid)
-            })
-            .collect::<Vec<_>>()
-    };
+
+    // Starter, Backup, then one rotation player for the slot; the fourth winger is young
+    // enough for the youth team, which comes before the reserves.
+    assert_eq!(
+        lane_players(&optimized, PlannerTeam::Senior, "right_winger"),
+        [Some(77), Some(78), Some(79)]
+    );
+    assert_eq!(
+        lane_players(&optimized, PlannerTeam::Reserves, "right_winger"),
+        [None]
+    );
+    assert_eq!(
+        lane_players(&optimized, PlannerTeam::Youth, "right_winger"),
+        [Some(80)]
+    );
+}
+
+fn rotation_candidate(player_uid: i64, lane_index: usize, score: u16) -> OptimizerCandidate {
+    let mut lane_scores = vec![None; tactic::TACTIC_LANE_COUNT];
+    lane_scores[lane_index] = Some(score);
+    OptimizerCandidate {
+        player_uid,
+        last_known_name: format!("Player {player_uid}"),
+        lane_scores,
+    }
+}
+
+#[test]
+fn the_rotation_keeps_a_goalkeeper_and_the_best_of_one_more_player_per_slot() {
+    let tactic = tactic::default_tactic();
+    let every_lane = (0..tactic.lanes.len()).collect::<Vec<_>>();
+    // The goalkeeper is the weakest candidate. Each outfield lane has a candidate worth ten
+    // times its index, and the right centre-backs' lane has a second, better one.
+    let mut candidates = vec![rotation_candidate(100, 0, 1)];
+    candidates.extend((1..=10).map(|lane_index| {
+        rotation_candidate(100 + lane_index as i64, lane_index, lane_index as u16 * 10)
+    }));
+    candidates.push(rotation_candidate(200, 3, 500));
+
+    let rotation = allocate_rotation(&tactic, &every_lane, &candidates, &HashSet::new(), 8);
+    let mut picked = rotation
+        .iter()
+        .map(|&(lane_index, candidate_index)| (lane_index, candidates[candidate_index].player_uid))
+        .collect::<Vec<_>>();
+    picked.sort_unstable();
+
+    // Lanes 1 and 2 hold the weakest outfield candidates, and lane 3 takes only its best.
+    assert_eq!(
+        picked,
+        [
+            (0, 100),
+            (3, 200),
+            (5, 105),
+            (6, 106),
+            (7, 107),
+            (8, 108),
+            (9, 109),
+            (10, 110),
+        ]
+    );
+    // Pinned players leave fewer places, and the goalkeeper takes the first of them.
+    assert_eq!(
+        allocate_rotation(&tactic, &every_lane, &candidates, &HashSet::new(), 1),
+        [(0, 0)]
+    );
+}
+
+#[test]
+fn a_development_player_goes_to_the_slot_he_stands_out_in_not_his_highest_score() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    let rivals = (201..=210).collect::<Vec<_>>();
+    seed_players(
+        &temp_dir,
+        &mut conn,
+        save_id,
+        &[&[77][..], &rivals].concat(),
+    );
+    clear_current_scores_except(&conn, save_id, &[&[77][..], &rivals].concat(), &[]);
+    set_player_age(&conn, save_id, 77, Some(20));
+    set_player_positions(&conn, save_id, 77, r#"{"AMR": 18, "MR": 18, "ST": 18}"#);
+    set_lane_scores(&conn, save_id, 77, "right_winger", 62, 62);
+    set_lane_scores(&conn, save_id, 77, "centre_forward", 58, 58);
+    // Across the save, right wingers score in the 70s and centre-forwards in the 40s.
+    for (index, rival) in rivals.iter().copied().enumerate() {
+        set_player_club(&conn, save_id, rival, "Elsewhere FC");
+        let step = (index / 2) as u8;
+        if index % 2 == 0 {
+            set_player_positions(&conn, save_id, rival, r#"{"AMR": 18, "MR": 18}"#);
+            set_lane_scores(&conn, save_id, rival, "right_winger", 70 + step, 70 + step);
+        } else {
+            set_player_positions(&conn, save_id, rival, r#"{"ST": 18}"#);
+            set_lane_scores(
+                &conn,
+                save_id,
+                rival,
+                "centre_forward",
+                40 + step,
+                40 + step,
+            );
+        }
+    }
+    keep_teams(&conn, save_id, &[("reserves", Some(23))]);
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize the reserves");
 
     assert_eq!(
-        right_wingers(PlannerTeam::Senior),
-        [Some(77), Some(78), None]
+        lane_players(&optimized, PlannerTeam::Reserves, "centre_forward"),
+        [Some(77)]
     );
-    assert_eq!(right_wingers(PlannerTeam::Reserves), [Some(79), None]);
-    assert_eq!(right_wingers(PlannerTeam::Youth), [Some(80)]);
+    assert_eq!(
+        lane_players(&optimized, PlannerTeam::Reserves, "right_winger"),
+        [None]
+    );
+}
+
+#[test]
+fn a_development_player_joins_the_youngest_team_whose_age_limit_takes_him() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    for (player_uid, age) in [(77, Some(17)), (78, Some(20)), (79, Some(25)), (80, None)] {
+        set_right_winger(&conn, save_id, player_uid, 60, 60);
+        set_player_age(&conn, save_id, player_uid, age);
+    }
+    keep_teams(
+        &conn,
+        save_id,
+        &[("reserves", Some(23)), ("youth", Some(18))],
+    );
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize the development teams");
+
+    assert_eq!(
+        lane_players(&optimized, PlannerTeam::Youth, "right_winger"),
+        [Some(77)]
+    );
+    // A player too old for both, or of unknown age, stays out of every squad.
+    assert_eq!(
+        lane_players(&optimized, PlannerTeam::Reserves, "right_winger"),
+        [Some(78)]
+    );
+}
+
+#[test]
+fn a_development_slot_fills_around_a_pinned_player() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    for (player_uid, score) in [(77, 80), (78, 70), (79, 40)] {
+        set_right_winger(&conn, save_id, player_uid, score, score);
+        set_player_age(&conn, save_id, player_uid, Some(20));
+    }
+    keep_teams(&conn, save_id, &[("reserves", Some(23))]);
+    let depth = get_depth(&conn, save_id).expect("load planner depth");
+    let first_string_id = team_strings(&depth, PlannerTeam::Reserves)[0].id;
+    assign_player(&conn, save_id, first_string_id, "right_winger", 79)
+        .expect("pin the weakest winger first");
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize around the pin");
+
+    assert_eq!(
+        lane_players(&optimized, PlannerTeam::Reserves, "right_winger"),
+        [Some(79), Some(77), Some(78)]
+    );
+
+    // Clearing every squad leaves the team its first string only.
+    clear_all(&conn, save_id, true).expect("clear every squad");
+    let cleared = get_depth(&conn, save_id).expect("load cleared depth");
+
+    assert_eq!(
+        lane_players(&cleared, PlannerTeam::Reserves, "right_winger"),
+        [None]
+    );
 }
 
 #[test]
@@ -396,27 +422,7 @@ fn optimizer_skips_an_unavailable_team() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     set_right_winger_scores(&conn, save_id, 79, Some(100));
-    let depth = get_depth(&conn, save_id).expect("initialize planner depth");
-    save_team_settings(
-        &conn,
-        save_id,
-        &[
-            PlannerTeamInput {
-                team: "senior".to_string(),
-                display_name: "Senior".to_string(),
-                max_age: None,
-                strings: retained_strings(&depth, PlannerTeam::Senior),
-            },
-            PlannerTeamInput {
-                team: "youth".to_string(),
-                display_name: "Youth".to_string(),
-                max_age: Some(18),
-                strings: retained_strings(&depth, PlannerTeam::Youth),
-            },
-        ],
-        false,
-    )
-    .expect("remove reserves before optimization");
+    keep_teams(&conn, save_id, &[("senior", None), ("youth", Some(18))]);
 
     let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
 
@@ -711,89 +717,9 @@ fn optimizer_keeps_senior_priority_over_a_higher_global_total() {
 }
 
 #[test]
-fn optimizer_allocates_strings_in_ascending_order_within_a_team() {
+fn a_development_team_requires_a_known_age_both_positions_and_complete_scores() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
-    let depth = get_depth(&conn, save_id).expect("create planner depth");
-    let first_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
-    let senior_name = team_strings(&depth, PlannerTeam::Senior)[0]
-        .display_name
-        .clone();
-    save_team_settings(
-        &conn,
-        save_id,
-        &[
-            PlannerTeamInput {
-                team: "senior".to_string(),
-                display_name: "Senior".to_string(),
-                max_age: None,
-                strings: vec![
-                    PlannerStringInput {
-                        id: Some(first_string_id),
-                        display_name: senior_name,
-                    },
-                    PlannerStringInput {
-                        id: None,
-                        display_name: "2nd string".to_string(),
-                    },
-                ],
-            },
-            PlannerTeamInput {
-                team: "reserves".to_string(),
-                display_name: "Reserves".to_string(),
-                max_age: Some(23),
-                strings: retained_strings(&depth, PlannerTeam::Reserves),
-            },
-            PlannerTeamInput {
-                team: "youth".to_string(),
-                display_name: "Youth".to_string(),
-                max_age: Some(18),
-                strings: retained_strings(&depth, PlannerTeam::Youth),
-            },
-        ],
-        false,
-    )
-    .expect("add second string");
-    let depth = get_depth(&conn, save_id).expect("reload planner depth");
-    let second_string_id = team_strings(&depth, PlannerTeam::Senior)[1].id;
-    set_right_winger_scores(&conn, save_id, 77, Some(100));
-    set_right_winger_scores(&conn, save_id, 78, Some(90));
-    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
-    tactic.lanes[9].importance_rank = Some(1);
-    tactic::save_tactic(&conn, save_id, &tactic).expect("rank right winger");
-
-    let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
-    let senior_strings = team_strings(&optimized, PlannerTeam::Senior);
-
-    assert_eq!(senior_strings[0].id, first_string_id);
-    assert_eq!(senior_strings[1].id, second_string_id);
-    assert_eq!(
-        senior_strings[0]
-            .assignments
-            .iter()
-            .find(|assignment| assignment.lane_id == "right_winger")
-            .map(|assignment| assignment.player_uid),
-        Some(77)
-    );
-    assert_eq!(
-        senior_strings[1]
-            .assignments
-            .iter()
-            .find(|assignment| assignment.lane_id == "right_winger")
-            .map(|assignment| assignment.player_uid),
-        Some(78)
-    );
-}
-
-#[test]
-fn optimizer_requires_age_both_positions_and_complete_scores() {
-    let (temp_dir, mut conn, save_id) = open_with_snapshot();
-    add_picker_candidates(&temp_dir, &mut conn, save_id);
-    let depth = get_depth(&conn, save_id).expect("create planner depth");
-    let senior_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
-    assign_player(&conn, save_id, senior_string_id, "right_winger", 77)
-        .expect("occupy the senior lane manually");
-
     set_player_age(&conn, save_id, 78, None);
     set_right_winger_scores(&conn, save_id, 78, Some(100));
     set_player_age(&conn, save_id, 79, Some(23));
@@ -801,12 +727,13 @@ fn optimizer_requires_age_both_positions_and_complete_scores() {
     set_player_age(&conn, save_id, 80, Some(23));
     set_player_positions(&conn, save_id, 80, r#"{"AMR": 18}"#);
     set_right_winger_scores(&conn, save_id, 80, Some(100));
+    keep_teams(&conn, save_id, &[("reserves", Some(23))]);
 
-    let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+    let optimized = optimize_depth(&conn, save_id).expect("optimize the reserves");
 
     assert_eq!(
-        assigned_player_uid(&optimized, PlannerTeam::Reserves, "right_winger"),
-        Some(79)
+        lane_players(&optimized, PlannerTeam::Reserves, "right_winger"),
+        [Some(79)]
     );
     assert!(!optimized
         .teams
@@ -848,7 +775,7 @@ fn optimizer_allocates_the_shared_managed_club_pool_in_team_order() {
 }
 
 #[test]
-fn optimizer_does_not_load_scores_outside_the_managed_club() {
+fn the_senior_squad_alone_does_not_load_scores_outside_the_managed_club() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let snapshot_id: i64 = conn
@@ -872,6 +799,8 @@ fn optimizer_does_not_load_scores_outside_the_managed_club() {
     .expect("set invalid outside-club score");
     conn.execute_batch("PRAGMA ignore_check_constraints = OFF")
         .expect("restore score constraints");
+    // Only the other teams rank their players against the whole save.
+    keep_teams(&conn, save_id, &[("senior", None)]);
 
     optimize_depth(&conn, save_id).expect("ignore scores outside managed club");
 }
@@ -885,19 +814,7 @@ fn optimizer_excludes_players_with_a_missing_role_score() {
     set_role_score(&conn, save_id, 78, "winger_ip", None);
     set_player_age(&conn, save_id, 79, Some(23));
     set_right_winger_scores(&conn, save_id, 79, Some(50));
-    let depth = get_depth(&conn, save_id).expect("initialize planner depth");
-    save_team_settings(
-        &conn,
-        save_id,
-        &[PlannerTeamInput {
-            team: "reserves".to_string(),
-            display_name: "Reserves".to_string(),
-            max_age: Some(23),
-            strings: retained_strings(&depth, PlannerTeam::Reserves),
-        }],
-        false,
-    )
-    .expect("keep only reserves");
+    keep_teams(&conn, save_id, &[("reserves", Some(23))]);
 
     let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
 
