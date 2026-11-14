@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-11-14
+
+### Added
+
+- **Loans (N)** in the Planner opens a list of your players aged 18 to 23 outside the senior squad, ranked by how much a loan would help each one. The benefit weighs how much he is expected to grow, how close he is to the senior squad in his slot, and how little he would play at your club. The button counts the recommended players, and the board marks them with an icon. A player already out on loan may be listed, because loans cannot be read from FM27.
+
+### Changed
+
+- **Optimize squads** builds a senior squad of 30. The senior squad's strings are now **Starter**, **Backup**, and **Rotation**: the best lineup, the next best, and eight more players, one of them always a goalkeeper and no two for the same slot.
+- Reserves and Youth are no longer picked as the strongest lineups. A player outside the senior squad joins the team with the lowest age limit that takes him, in the slot he stands out in: where his score ranks highest against every player in the save who can play that slot, not where his score is highest. Each slot lists its players best first, and a slot nobody stands out in stays empty.
+- **Best role fit** lists each player under the slot he stands out in, by the same ranking.
+
+### Removed
+
+- The controls that add, rename, reorder, and remove Planner strings. The senior squad's three strings are fixed, and **Optimize squads** sets how deep Reserves and Youth go. On upgrade, a senior string after the third is deleted with its assignments, and custom string names in Reserves and Youth return to **1st string**, **2nd string**, and so on.
+
 ## [0.26.0] - 2026-11-13
 
 ### Added
