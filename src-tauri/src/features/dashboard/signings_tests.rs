@@ -403,7 +403,7 @@ fn without_a_shortlist_the_candidates_are_the_clubs_realistic_signings() {
     }
     // Far above the club's level, so the club could not sign him.
     fixture.set_player_column(11, "ca", 200);
-    // The club's own player is realistic by definition, but is not a transfer target.
+    // The club's own player, out on loan, is not a transfer target.
     fixture.set_player_column(12, "on_loan", 1);
     fixture.set_player_column(12, "parent_club", HOME_CLUB);
     fixture.set_player_column(12, "parent_club_uid", 1000);
