@@ -4,8 +4,8 @@
 //! the game's player-interest score and leaves out the rest, among them relationships,
 //! rivalries, and league rules. The research is in `.wiki/notes/fm27-player-interest-filter.md`.
 //!
-//! A player is a realistic signing when the club already holds him, or when this score is at
-//! least 5,000, the game's "Interested" level and its own default:
+//! A player is a realistic signing when this score is at least 5,000, the game's "Interested"
+//! level and its own default:
 //!
 //! - **Ability.** The club's level against the player's own, in points per ability point. The
 //!   club's level is the mean current ability of its best players, raised as the game raises
@@ -15,6 +15,9 @@
 //! - **Club reputation.** A step up from his current club adds to the score and a step down
 //!   takes away several times as much.
 //! - **Stature.** A world reputation above the club's takes away more.
+//!
+//! A player the club already holds, at the club or out on loan from it, is not a signing. He
+//! is neither a realistic signing nor one of the rest.
 //!
 //! Every weight below is the game's, read from FM27 build 26577676.
 
@@ -39,7 +42,8 @@ const REPUTATION_CAP: u32 = 9000;
 const REALISTIC_SCORE: i32 = 5000;
 
 /// SQL that is true for the realistic signings among `players` rows (`wanted`) or for the
-/// rest, and null for every row when the managed club has no UID or no players.
+/// rest. Either way it is false for a player the managed club already holds, and for every
+/// row when that club has no UID or no players.
 ///
 /// The clause reads the snapshot from `?1`, which every search statement and the dashboard's
 /// signings statement bind first, so the club's standing is worked out once for the statement
@@ -81,11 +85,9 @@ pub(crate) fn clause(wanted: bool) -> String {
                          WHEN {stature} >= -500 THEN {stature} \
                          ELSE 8 * {stature} END, 0)"
     );
-    let realistic = format!(
-        "(COALESCE(players.current_club_uid = club.uid, 0) \
-          OR COALESCE(players.parent_club_uid = club.uid, 0) \
-          OR {score} >= {REALISTIC_SCORE})"
-    );
+    let own_player = "(COALESCE(players.current_club_uid = club.uid, 0) \
+                       OR COALESCE(players.parent_club_uid = club.uid, 0))";
+    let realistic = format!("({score} >= {REALISTIC_SCORE})");
     let verdict = if wanted {
         realistic
     } else {
@@ -106,7 +108,8 @@ pub(crate) fn clause(wanted: bool) -> String {
            FROM managed_club_settings managed \
            INNER JOIN snapshots ON snapshots.save_id = managed.save_id \
            WHERE snapshots.id = ?1 AND managed.club_uid IS NOT NULL) \
-         SELECT 1 FROM club WHERE club.squad_level IS NOT NULL AND {verdict})"
+         SELECT 1 FROM club \
+         WHERE club.squad_level IS NOT NULL AND NOT {own_player} AND {verdict})"
     )
 }
 

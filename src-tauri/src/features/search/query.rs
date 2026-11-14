@@ -3706,7 +3706,8 @@ mod tests {
     const GIANT_CLUB: (&str, i64, i64) = ("Giant FC", 900, 9800);
 
     /// Small FC's twelve players of ability 100 (UIDs 101–112) and nine players elsewhere.
-    /// UIDs 2, 4, 5, and 8 are realistic signings for Small FC; 1, 3, 6, 7, and 9 are not.
+    /// UIDs 2, 4, and 5 are realistic signings for Small FC; 1, 3, 6, 7, and 9 are not. UID 8
+    /// is Small FC's own player, so he is neither.
     fn seed_signing_targets(conn: &mut rusqlite::Connection) {
         let at = |club, reputation| Standing {
             age: 27,
@@ -3841,11 +3842,12 @@ mod tests {
         seed_signing_targets(&mut conn);
         manage_club(&conn, SMALL_CLUB, true);
 
-        assert_eq!(realistic_signing_uids(&conn, "is", true), vec![2, 4, 5, 8]);
+        assert_eq!(realistic_signing_uids(&conn, "is", true), vec![2, 4, 5]);
         assert_eq!(
             realistic_signing_uids(&conn, "is_not", false),
-            vec![2, 4, 5, 8]
+            vec![2, 4, 5]
         );
+        // The loaned-out player is the club's own, so his score does not make him unrealistic.
         assert_eq!(
             realistic_signing_uids(&conn, "is", false),
             vec![1, 3, 6, 7, 9]
@@ -3855,20 +3857,39 @@ mod tests {
             vec![1, 3, 6, 7, 9]
         );
 
-        // The club's own squad counts as realistic.
+        // A club cannot sign its own players, so its squad matches neither way, although each
+        // of them is within its reach.
+        for realistic in [true, false] {
+            let squad = search_with_filters(
+                &conn,
+                0,
+                DEFAULT_PAGE_LIMIT,
+                SortField::DEFAULT,
+                SortDir::DEFAULT,
+                vec![
+                    filter_rule("realistic_signing", "is", FilterValue::Bool(realistic)),
+                    filter_rule("name", "is", FilterValue::Text("Squad".to_string())),
+                ],
+                Some("and"),
+            )
+            .expect("own squad");
+            assert_eq!(squad.total, 0, "realistic signing is {realistic}");
+        }
+        // Without the rule they are listed as usual.
         let squad = search_with_filters(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
             SortField::DEFAULT,
             SortDir::DEFAULT,
-            vec![
-                filter_rule("realistic_signing", "is", FilterValue::Bool(true)),
-                filter_rule("name", "is", FilterValue::Text("Squad".to_string())),
-            ],
+            vec![filter_rule(
+                "name",
+                "is",
+                FilterValue::Text("Squad".to_string()),
+            )],
             Some("and"),
         )
-        .expect("own squad");
+        .expect("own squad without the rule");
         assert_eq!(squad.total, 12);
     }
 
@@ -3877,12 +3898,13 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("realistic-signings-giant.db"));
         seed_signing_targets(&mut conn);
-        // Giant FC's only player is the superstar, so its level is his ability.
+        // Giant FC's only player is the superstar, so its level is his ability. He is its own
+        // player, so he is not a signing.
         manage_club(&conn, GIANT_CLUB, true);
 
         assert_eq!(
             realistic_signing_uids(&conn, "is", true),
-            vec![1, 2, 3, 4, 5, 6, 7, 8, 9]
+            vec![2, 3, 4, 5, 6, 7, 8, 9]
         );
     }
 
@@ -3934,7 +3956,7 @@ mod tests {
                     .iter()
                     .map(|player| player.uid)
                     .collect::<Vec<_>>(),
-                vec![4, 5, 2, 8]
+                vec![4, 5, 2]
             );
         }
     }
