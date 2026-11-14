@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-11-14
+
+### Fixed
+
+- **Only realistic signings** in Search and Moneyball no longer lists your own club's players, who cannot be signed. They are listed as before when the filter is off.
+
 ## [0.27.0] - 2026-11-14
 
 ### Added
