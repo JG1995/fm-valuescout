@@ -1,10 +1,12 @@
 pub mod commands;
 pub mod depth;
 pub(crate) mod fit;
+mod loans;
 pub(crate) mod optimizer;
 mod outlook;
 mod role_reference;
 pub mod squad;
+mod standout;
 pub mod suggested_training;
 pub mod tactic;
 pub(crate) mod teams;
@@ -14,6 +16,8 @@ mod depth_tests;
 #[cfg(test)]
 mod fit_tests;
 #[cfg(test)]
+mod loans_tests;
+#[cfg(test)]
 mod optimizer_tests;
 #[cfg(test)]
 mod outlook_tests;
@@ -21,6 +25,8 @@ mod outlook_tests;
 mod role_reference_tests;
 #[cfg(test)]
 mod squad_tests;
+#[cfg(test)]
+mod standout_tests;
 #[cfg(test)]
 mod teams_tests;
 #[cfg(test)]

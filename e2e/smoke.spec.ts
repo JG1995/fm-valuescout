@@ -4693,7 +4693,7 @@ test.describe("application smoke", () => {
     await dialog.getByRole("button", { name: "Close" }).click();
   });
 
-  test("planner depth adds strings for Senior, Reserves, and Youth", async ({
+  test("planner depth shows the fixed senior strings beside the other teams", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 844, height: 800 });
@@ -4704,13 +4704,6 @@ test.describe("application smoke", () => {
     await page.getByRole("link", { name: "Planner", exact: true }).click();
     const board = main.getByRole("region", { name: "Squad depth board" });
     await expect(board).toBeVisible();
-    // Each team's header adds a string straight to the board.
-    for (const squad of ["Senior", "Reserves", "Youth"]) {
-      await board
-        .getByRole("button", { name: `Add string to ${squad}` })
-        .click();
-      await expect(main.getByRole("status")).toHaveText("String added.");
-    }
     // Every enabled squad renders at once: no tabs remain.
     await expect(main.getByRole("tab", { name: "Senior" })).toHaveCount(0);
     for (const squad of ["Senior", "Reserves", "Youth"]) {
@@ -4718,9 +4711,14 @@ test.describe("application smoke", () => {
         board.getByRole("columnheader", { name: squad }),
       ).toBeVisible();
     }
+    for (const seniorString of ["Starter", "Backup", "Rotation"]) {
+      await expect(
+        board.getByRole("columnheader", { name: seniorString }),
+      ).toBeVisible();
+    }
     await expect(
-      board.getByRole("columnheader", { name: "2nd string" }),
-    ).toHaveCount(3);
+      board.getByRole("columnheader", { name: "1st string" }),
+    ).toHaveCount(2);
   });
 
   test("planner opens the best role fit reference modal", async ({ page }) => {
@@ -4868,24 +4866,7 @@ test.describe("application smoke", () => {
         .getByRole("columnheader", { name: "B Team" }),
     ).toBeVisible();
 
-    // Strings are added, renamed, and reordered on the board.
     const board = main.getByRole("region", { name: "Squad depth board" });
-    await board
-      .getByRole("button", { name: "Add string to First Team" })
-      .click();
-    await board
-      .getByRole("button", { name: "Edit First Team 2nd string" })
-      .click();
-    const stringEditor = page.getByRole("dialog", {
-      name: "Edit First Team string",
-    });
-    await stringEditor.getByLabel("String name").fill("Second Line");
-    await stringEditor.getByLabel("Position in First Team").selectOption("1st");
-    await stringEditor.getByRole("button", { name: "Save string" }).click();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(
-      board.getByRole("columnheader", { name: /string|Line/ }).first(),
-    ).toHaveAccessibleName("Second Line");
 
     await page.setViewportSize({ width: 1920, height: 900 });
     await expect(
@@ -5043,7 +5024,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
     await expect(
       board.getByRole("columnheader", { name: "1st string" }),
-    ).toHaveCount(3);
+    ).toHaveCount(2);
     await expect(main.getByRole("tab", { name: "Senior" })).toHaveCount(0);
   });
 
@@ -5117,25 +5098,14 @@ test.describe("application smoke", () => {
 
     const main = page.getByRole("main");
     await page.getByRole("link", { name: "Planner", exact: true }).click();
-    // Three strings per squad overflows the 1280 board: 9 fixed string
-    // columns plus the slot band exceed the available content width.
+    // The default board overflows at 1280: the senior squad's three fixed
+    // string columns, one each for Reserves and Youth, and the slot band
+    // exceed the available content width.
     const board = main.getByRole("region", { name: "Squad depth board" });
     await expect(board).toBeVisible();
-    for (const squad of ["Senior", "Reserves", "Youth"]) {
-      for (const count of [2, 3]) {
-        await board
-          .getByRole("button", { name: `Add string to ${squad}` })
-          .click();
-        await expect(
-          board.getByRole("button", {
-            name: `Edit ${squad} ${count === 2 ? "2nd" : "3rd"} string`,
-          }),
-        ).toBeVisible();
-      }
-    }
     await expect(
-      board.getByRole("columnheader", { name: "3rd string" }),
-    ).toHaveCount(3);
+      board.getByRole("columnheader", { name: "Rotation" }),
+    ).toHaveCount(1);
 
     const boardOverflow = await board.evaluate((element) => {
       const boardElement = element as unknown as {
@@ -5231,8 +5201,12 @@ test.describe("application smoke", () => {
     expect(slotBox.x).toBeGreaterThanOrEqual(boardBox.x - 1);
     expect(slotBox.x).toBeLessThanOrEqual(boardBox.x + 1);
 
+    // Unscrolled, the last of the five string columns is cut off at 1280.
+    await board.evaluate((element) => {
+      (element as unknown as { scrollLeft: number }).scrollLeft = 0;
+    });
     const visibleAt1280 = await board
-      .getByRole("columnheader", { name: /string/ })
+      .getByRole("columnheader", { name: /string|Starter|Backup|Rotation/ })
       .evaluateAll(
         (elements, boardBox) => {
           const box = boardBox as unknown as {
@@ -5303,7 +5277,7 @@ test.describe("application smoke", () => {
     expect(emptyCardWidthAt3440).toBeLessThanOrEqual(cardWidthAt3440 + 1);
 
     const visibleAt3440 = await board
-      .getByRole("columnheader", { name: /string/ })
+      .getByRole("columnheader", { name: /string|Starter|Backup|Rotation/ })
       .evaluateAll(
         (elements, boardBox) => {
           const box = boardBox as unknown as {
@@ -5364,7 +5338,7 @@ test.describe("application smoke", () => {
 
     await main
       .getByRole("button", {
-        name: /Senior, 1st string, IP: GK .* Potential Keeper, Resolved/,
+        name: /Senior, Starter, IP: GK .* Potential Keeper, Resolved/,
       })
       .click();
     const picker = page.getByRole("dialog", {
@@ -5387,7 +5361,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
 
     const replaced = main.getByRole("button", {
-      name: /Senior, 1st string, IP: GK .* Left-Footed Keeper, Resolved, .* pinned$/,
+      name: /Senior, Starter, IP: GK .* Left-Footed Keeper, Resolved, .* pinned$/,
     });
     await replaced.click();
     const pinned = page.getByRole("dialog", {
@@ -5397,7 +5371,7 @@ test.describe("application smoke", () => {
     await expect(pinned).toBeHidden();
     await expect(
       main.getByRole("button", {
-        name: /Senior, 1st string, IP: GK .* Left-Footed Keeper, Resolved, .* aged 24$/,
+        name: /Senior, Starter, IP: GK .* Left-Footed Keeper, Resolved, .* aged 24$/,
       }),
     ).toBeVisible();
   });
@@ -5414,7 +5388,7 @@ test.describe("application smoke", () => {
     const main = page.getByRole("main");
     await page.getByRole("link", { name: "Planner", exact: true }).click();
     const scoreCell = main.getByRole("button", {
-      name: /Senior, 1st string, IP: GK .* Potential Keeper, Resolved, current score 82, expected score 88, potential score 91/,
+      name: /Senior, Starter, IP: GK .* Potential Keeper, Resolved, current score 82, expected score 88, potential score 91/,
     });
     const currentScore = scoreCell.getByRole("img", {
       name: /Current combined role score: 82/,

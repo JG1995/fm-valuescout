@@ -1,29 +1,23 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Maximize2 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
-import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
 import { clearPlannerDepth } from "../api/clear-planner-depth";
 import { optimizePlannerDepth } from "../api/optimize-planner-depth";
 import { plannerKeys } from "../api/planner-keys";
-import {
-  type PlannerStringSettingInput,
-  type PlannerTeamSettingInput,
-  savePlannerTeams,
-} from "../api/save-planner-teams";
+import { plannerLoanCandidatesQueryOptions } from "../api/planner-loan-candidates-query-options";
 import type { PlannerDepth } from "../types/depth";
 import type { TacticOptions } from "../types/tactic";
 import type { PlannerTeam } from "../types/team";
-import { teamSettingInputs } from "../utils/team-settings";
 import { PlannerClearAllControl } from "./planner-clear-all-control";
+import { PlannerLoanCandidates } from "./planner-loan-candidates";
 import { PlannerRoleReferenceModal } from "./planner-role-reference-modal";
 import {
   PlannerSlotFitPicker,
   type PlannerSlotTarget,
 } from "./planner-slot-fit-picker";
 import { PlannerSquadBoard } from "./planner-squad-board";
-import { PlannerStringEditor } from "./planner-string-editor";
 import { PlannerTeamManagement } from "./planner-team-management";
 import { PlannerUnassignedPlayers } from "./planner-unassigned-players";
 
@@ -66,12 +60,19 @@ export function PlannerDepthMatrix({
   const [roleReferenceOpen, setRoleReferenceOpen] = useState(false);
   const [roleReferenceReturnFocus, setRoleReferenceReturnFocus] =
     useState<HTMLElement | null>(null);
-  const [editedString, setEditedString] = useState<{
-    team: PlannerTeam;
-    stringId: number;
-  } | null>(null);
-  const [stringError, setStringError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const loanCandidates = useQuery(
+    plannerLoanCandidatesQueryOptions(activeSaveId),
+  );
+  const loanCandidateUids = useMemo(
+    () =>
+      new Set(
+        (loanCandidates.data ?? [])
+          .filter((candidate) => candidate.recommended)
+          .map((candidate) => candidate.playerUid),
+      ),
+    [loanCandidates.data],
+  );
   const closeTimerRef = useRef<number | null>(null);
   const teamFocusTimerRef = useRef<number | null>(null);
 
@@ -146,58 +147,6 @@ export function PlannerDepthMatrix({
     },
   });
 
-  const saveStrings = useMutation({
-    mutationKey: playerResultContextMutationKey,
-    mutationFn: (request: {
-      teams: PlannerTeamSettingInput[];
-      confirmPopulatedRemoval: boolean;
-      status: string;
-    }) => savePlannerTeams(request.teams, request.confirmPopulatedRemoval),
-    onSuccess: async (nextDepth, request) => {
-      queryClient.setQueryData(plannerKeys.depth(), nextDepth);
-      await queryClient.invalidateQueries({
-        queryKey: plannerKeys.slotCandidates(),
-      });
-      setEditedString(null);
-      setActionStatus(request.status);
-    },
-    onError: (error) => {
-      setStringError(errorMessage(error));
-    },
-  });
-  const controlsBusy =
-    clearAll.isPending ||
-    optimize.isPending ||
-    teamManagementPending ||
-    saveStrings.isPending;
-
-  /** Saves one team's new string list, leaving every other team as it is. */
-  const saveTeamStrings = (
-    team: PlannerTeam,
-    strings: PlannerStringSettingInput[],
-    confirmPopulatedRemoval: boolean,
-    status: string,
-  ) => {
-    if (controlsBusy) {
-      return;
-    }
-    setStringError(null);
-    setActionStatus(null);
-    saveStrings.mutate({
-      teams: teamSettingInputs(depth).map((input) =>
-        input.team === team ? { ...input, strings } : input,
-      ),
-      confirmPopulatedRemoval,
-      status,
-    });
-  };
-  const editedTeam = depth.teams.find(
-    (team) => team.team === editedString?.team,
-  );
-  const editedPlannerString = editedTeam?.strings.find(
-    (plannerString) => plannerString.id === editedString?.stringId,
-  );
-
   const requestClearAll = () => {
     if (clearAll.isPending || optimize.isPending || teamManagementPending) {
       return;
@@ -259,163 +208,131 @@ export function PlannerDepthMatrix({
   }
 
   return (
-    <Panel title="Squad depth" flush>
-      <div className="flex flex-col gap-4 p-4">
-        <fieldset
-          aria-label="Squad controls"
-          className="m-0 flex min-w-0 flex-wrap items-center justify-between gap-2 border-0 p-0"
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              disabled={
-                clearAll.isPending ||
-                optimize.isPending ||
-                teamManagementPending
-              }
-              loading={optimize.isPending}
-              loadingLabel="Optimizing…"
-              onClick={runOptimization}
-            >
-              Optimize squads
-            </Button>
-            <ControlDivider />
-            <Button
-              variant="secondary"
-              icon={Maximize2}
-              onClick={(event) => {
-                setRoleReferenceReturnFocus(event.currentTarget);
-                setRoleReferenceOpen(true);
-              }}
-              className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              Best role fit
-            </Button>
-            {actions}
-            <PlannerUnassignedPlayers
-              activeSaveId={activeSaveId}
-              tactic={tactic}
-              options={options}
-            />
-            <ControlDivider />
-            <PlannerTeamManagement
-              depth={depth}
-              disabled={
-                teamManagementPending ||
-                clearAll.isPending ||
-                optimize.isPending
-              }
-              onPendingChange={setTeamManagementPending}
-              onSaved={reconcileTeamSettings}
-            />
-            <PlannerClearAllControl
-              open={clearAllOpen}
-              pending={clearAll.isPending}
-              disabled={
-                clearAll.isPending ||
-                optimize.isPending ||
-                teamManagementPending
-              }
-              error={clearAllError}
-              teamNames={availableTeamNames}
-              onRequest={requestClearAll}
-              onFocus={() => undefined}
-              onClose={closeClearAll}
-              onConfirm={() => {
-                if (
-                  !clearAll.isPending &&
-                  !optimize.isPending &&
-                  !teamManagementPending
-                ) {
-                  clearAll.mutate();
+    <div className="flex flex-col gap-gutter">
+      <Panel title="Squad depth" flush>
+        <div className="flex flex-col gap-4 p-4">
+          <fieldset
+            aria-label="Squad controls"
+            className="m-0 flex min-w-0 flex-wrap items-center justify-between gap-2 border-0 p-0"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                disabled={
+                  clearAll.isPending ||
+                  optimize.isPending ||
+                  teamManagementPending
                 }
-              }}
-            />
-          </div>
-        </fieldset>
-        {actionStatus ? (
-          <p className="text-body-sm text-success" role="status">
-            {actionStatus}
-          </p>
+                loading={optimize.isPending}
+                loadingLabel="Optimizing…"
+                onClick={runOptimization}
+              >
+                Optimize squads
+              </Button>
+              <ControlDivider />
+              <Button
+                variant="secondary"
+                icon={Maximize2}
+                onClick={(event) => {
+                  setRoleReferenceReturnFocus(event.currentTarget);
+                  setRoleReferenceOpen(true);
+                }}
+                className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Best role fit
+              </Button>
+              {actions}
+              <PlannerUnassignedPlayers
+                activeSaveId={activeSaveId}
+                tactic={tactic}
+                options={options}
+              />
+              <ControlDivider />
+              <PlannerTeamManagement
+                depth={depth}
+                disabled={
+                  teamManagementPending ||
+                  clearAll.isPending ||
+                  optimize.isPending
+                }
+                onPendingChange={setTeamManagementPending}
+                onSaved={reconcileTeamSettings}
+              />
+              <PlannerClearAllControl
+                open={clearAllOpen}
+                pending={clearAll.isPending}
+                disabled={
+                  clearAll.isPending ||
+                  optimize.isPending ||
+                  teamManagementPending
+                }
+                error={clearAllError}
+                teamNames={availableTeamNames}
+                onRequest={requestClearAll}
+                onFocus={() => undefined}
+                onClose={closeClearAll}
+                onConfirm={() => {
+                  if (
+                    !clearAll.isPending &&
+                    !optimize.isPending &&
+                    !teamManagementPending
+                  ) {
+                    clearAll.mutate();
+                  }
+                }}
+              />
+            </div>
+          </fieldset>
+          {actionStatus ? (
+            <p className="text-body-sm text-success" role="status">
+              {actionStatus}
+            </p>
+          ) : null}
+          {pickerError ? (
+            <p className="text-body-sm text-error" role="alert">
+              {pickerError}
+            </p>
+          ) : null}
+          {optimizeError ? (
+            <p className="text-body-sm text-error" role="alert">
+              {optimizeError}
+            </p>
+          ) : null}
+          <PlannerSquadBoard
+            teamDepths={orderedTeamDepths}
+            tactic={tactic}
+            options={options}
+            loanCandidateUids={loanCandidateUids}
+            onOpen={openPicker}
+          />
+        </div>
+        {picker ? (
+          <PlannerSlotFitPicker
+            activeSaveId={activeSaveId}
+            open={pickerOpen}
+            target={picker}
+            tactic={tactic}
+            options={options}
+            teamLabels={teamLabels}
+            onClose={closePicker}
+            onMutationError={setPickerError}
+          />
         ) : null}
-        {pickerError ? (
-          <p className="text-body-sm text-error" role="alert">
-            {pickerError}
-          </p>
-        ) : null}
-        {optimizeError ? (
-          <p className="text-body-sm text-error" role="alert">
-            {optimizeError}
-          </p>
-        ) : null}
-        {stringError && !editedString ? (
-          <p className="text-body-sm text-error" role="alert">
-            {stringError}
-          </p>
-        ) : null}
-        <PlannerSquadBoard
-          teamDepths={orderedTeamDepths}
-          tactic={tactic}
-          options={options}
-          stringsDisabled={controlsBusy}
-          onOpen={openPicker}
-          onAddString={(team) => {
-            const strings =
-              teamSettingInputs(depth).find((input) => input.team === team)
-                ?.strings ?? [];
-            // Rust names a blank new string after its place in the team.
-            saveTeamStrings(
-              team,
-              [...strings, { id: null, displayName: "" }],
-              false,
-              "String added.",
-            );
-          }}
-          onEditString={(team, plannerString) => {
-            setStringError(null);
-            setEditedString({ team, stringId: plannerString.id });
-          }}
-        />
-      </div>
-      {picker ? (
-        <PlannerSlotFitPicker
+        <PlannerRoleReferenceModal
           activeSaveId={activeSaveId}
-          open={pickerOpen}
-          target={picker}
+          open={roleReferenceOpen}
           tactic={tactic}
           options={options}
-          teamLabels={teamLabels}
-          onClose={closePicker}
-          onMutationError={setPickerError}
+          onClose={() => setRoleReferenceOpen(false)}
+          returnFocusTo={roleReferenceReturnFocus}
         />
-      ) : null}
-      {editedTeam && editedPlannerString ? (
-        <PlannerStringEditor
-          open
-          team={editedTeam}
-          plannerString={editedPlannerString}
-          pending={saveStrings.isPending}
-          error={stringError}
-          onClose={() => setEditedString(null)}
-          onSave={(strings, confirmPopulatedRemoval) =>
-            saveTeamStrings(
-              editedTeam.team,
-              strings,
-              confirmPopulatedRemoval,
-              strings.length < editedTeam.strings.length
-                ? "String removed."
-                : "String saved.",
-            )
-          }
-        />
-      ) : null}
-      <PlannerRoleReferenceModal
-        activeSaveId={activeSaveId}
-        open={roleReferenceOpen}
+      </Panel>
+      <PlannerLoanCandidates
+        candidates={loanCandidates.data}
+        error={loanCandidates.error}
         tactic={tactic}
         options={options}
-        onClose={() => setRoleReferenceOpen(false)}
-        returnFocusTo={roleReferenceReturnFocus}
+        teamLabels={teamLabels}
       />
-    </Panel>
+    </div>
   );
 }

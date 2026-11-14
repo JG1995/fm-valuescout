@@ -4,6 +4,7 @@ import type {
 } from "@/features/managed-club/types/managed-club";
 import type {
   PlannerDepth,
+  PlannerLoanCandidate,
   PlannerSlotCandidate,
   PlannerUnassignedPlayer,
 } from "@/features/planner/types/depth";
@@ -303,6 +304,7 @@ let depthFetchCount = 0;
 let tacticSaveError: string | null = null;
 let slotCandidates: PlannerSlotCandidate[] = [];
 let unassignedPlayers: PlannerUnassignedPlayer[] = [];
+let loanCandidates: PlannerLoanCandidate[] = [];
 let assignmentError: string | null = null;
 let clearAllError: string | null = null;
 let clearAllPending = false;
@@ -321,7 +323,6 @@ type TeamSaveInput = {
   team: PlannerTeam;
   displayName: string;
   maxAge: number | null;
-  strings: Array<{ id: number | null; displayName: string }>;
 };
 
 let teamSaveCalls: Array<{
@@ -416,26 +417,34 @@ function cloneSlotCandidates(value: PlannerSlotCandidate[]) {
   }));
 }
 
+/** The strings a team starts with: the senior squad's fixed three, or one. */
+function defaultStringNames(team: PlannerTeam): string[] {
+  return team === "senior"
+    ? ["Starter", "Backup", "Rotation"]
+    : [ordinalStringLabel(0)];
+}
+
 function buildDefaultDepth(): PlannerDepth {
   const displayNames = {
     senior: "Senior",
     reserves: "Reserves",
     youth: "Youth",
   } as const;
+  // Each team's first string keeps IDs 1 to 3; the senior Backup and Rotation
+  // follow as 4 and 5.
+  let laterStringId = PLANNER_TEAMS.length + 1;
   return {
     tactic: cloneTactic(DEFAULT_TACTIC),
-    teams: ["senior", "reserves", "youth"].map((team, index) => ({
-      team: team as PlannerDepth["teams"][number]["team"],
-      displayName: displayNames[team as keyof typeof displayNames],
-      maxAge: PLANNER_TEAM_DEFAULT_MAX_AGE[team as PlannerTeam],
-      strings: [
-        {
-          id: index + 1,
-          stringOrder: 0,
-          displayName: ordinalStringLabel(0),
-          assignments: [],
-        },
-      ],
+    teams: PLANNER_TEAMS.map((team, index) => ({
+      team,
+      displayName: displayNames[team],
+      maxAge: PLANNER_TEAM_DEFAULT_MAX_AGE[team],
+      strings: defaultStringNames(team).map((displayName, stringOrder) => ({
+        id: stringOrder === 0 ? index + 1 : laterStringId++,
+        stringOrder,
+        displayName,
+        assignments: [],
+      })),
     })),
   };
 }
@@ -499,6 +508,7 @@ export function resetPlannerIpcMock() {
   tacticSaveError = null;
   slotCandidates = [];
   unassignedPlayers = [];
+  loanCandidates = [];
   assignmentError = null;
   clearAllError = null;
   clearAllPending = false;
@@ -773,7 +783,7 @@ function assignmentLocation(playerUid: number) {
         return {
           team: team.team,
           stringId: plannerString.id,
-          stringOrder: plannerString.stringOrder,
+          stringName: plannerString.displayName,
           laneId: assignment.laneId,
         };
       }
@@ -916,6 +926,16 @@ export function resolvePlannerUnassignedPlayersIpcMock() {
   return unassignedPlayers.map((player) => ({ ...player }));
 }
 
+export function setPlannerLoanCandidatesIpcMock(
+  candidates: PlannerLoanCandidate[],
+) {
+  loanCandidates = candidates.map((candidate) => ({ ...candidate }));
+}
+
+export function resolvePlannerLoanCandidatesIpcMock() {
+  return loanCandidates.map((candidate) => ({ ...candidate }));
+}
+
 export function resolveSetPlannerAssignmentPinnedIpcMock(args: unknown) {
   if (assignmentError) {
     throw assignmentError;
@@ -994,7 +1014,6 @@ export function resolvePlannerTeamRemovalImpactsIpcMock(args: unknown) {
     ? teamRemovalImpactOverride.map((impact) => ({
         ...impact,
         staffingTargets: [...impact.staffingTargets],
-        strings: [...impact.strings],
       }))
     : removalImpactsForTeams({ teams: args.teams });
   if (teamRemovalImpactPending) {
@@ -1006,23 +1025,22 @@ export function resolvePlannerTeamRemovalImpactsIpcMock(args: unknown) {
 }
 
 function removalImpactsForTeams(args: { teams: unknown[] }) {
-  const included = new Map(
+  const included = new Set(
     args.teams
       .filter(
-        (team): team is { team: PlannerTeam; strings?: unknown } =>
+        (team): team is { team: PlannerTeam } =>
           typeof team === "object" &&
           team !== null &&
           "team" in team &&
           typeof team.team === "string" &&
           PLANNER_TEAMS.includes(team.team as PlannerTeam),
       )
-      .map((team) => [team.team, team] as const),
+      .map((team) => team.team),
   );
-  const impacts: PlannerTeamRemovalImpact[] = [];
-  for (const team of depth.teams) {
-    const input = included.get(team.team);
-    if (!input) {
-      impacts.push({
+  return depth.teams
+    .filter((team) => !included.has(team.team))
+    .map(
+      (team): PlannerTeamRemovalImpact => ({
         team: team.team,
         displayName: team.displayName,
         assignmentCount: team.strings.reduce(
@@ -1030,42 +1048,8 @@ function removalImpactsForTeams(args: { teams: unknown[] }) {
           0,
         ),
         staffingTargets: [],
-        strings: team.strings.map((plannerString) => ({
-          stringId: plannerString.id,
-          displayName: plannerString.displayName,
-          assignmentCount: plannerString.assignments.length,
-        })),
-      });
-      continue;
-    }
-    const desiredIds = new Set(
-      Array.isArray((input as { strings?: unknown }).strings)
-        ? ((input as { strings: Array<{ id?: unknown }> }).strings ?? [])
-            .map((plannerString) => plannerString.id)
-            .filter((id): id is number => typeof id === "number")
-        : [],
+      }),
     );
-    const removed = team.strings.filter(
-      (plannerString) => !desiredIds.has(plannerString.id),
-    );
-    if (removed.length > 0) {
-      impacts.push({
-        team: team.team,
-        displayName: team.displayName,
-        assignmentCount: removed.reduce(
-          (count, plannerString) => count + plannerString.assignments.length,
-          0,
-        ),
-        staffingTargets: [],
-        strings: removed.map((plannerString) => ({
-          stringId: plannerString.id,
-          displayName: plannerString.displayName,
-          assignmentCount: plannerString.assignments.length,
-        })),
-      });
-    }
-  }
-  return impacts;
 }
 
 export function resolveSavePlannerTeamsIpcMock(args: unknown) {
@@ -1083,7 +1067,6 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
     team: unknown;
     displayName: unknown;
     maxAge: unknown;
-    strings: unknown;
   }>;
   if (teams.length < 1 || teams.length > PLANNER_TEAMS.length) {
     throw new Error("Planner configuration must contain one to three teams");
@@ -1093,8 +1076,7 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
       typeof team.team !== "string" ||
       !PLANNER_TEAMS.includes(team.team as PlannerTeam) ||
       typeof team.displayName !== "string" ||
-      (team.maxAge !== null && typeof team.maxAge !== "number") ||
-      !Array.isArray(team.strings)
+      (team.maxAge !== null && typeof team.maxAge !== "number")
     ) {
       throw new Error("Invalid planner team settings");
     }
@@ -1102,20 +1084,6 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
       team: team.team as PlannerTeam,
       displayName: team.displayName.trim(),
       maxAge: team.maxAge as number | null,
-      strings: (
-        team.strings as Array<{ id?: unknown; displayName?: unknown }>
-      ).map((plannerString) => {
-        if (
-          (plannerString.id !== null && typeof plannerString.id !== "number") ||
-          typeof plannerString.displayName !== "string"
-        ) {
-          throw new Error("Invalid planner team settings");
-        }
-        return {
-          id: plannerString.id as number | null,
-          displayName: (plannerString.displayName as string).trim(),
-        };
-      }),
     };
   });
   teamSaveCalls.push({
@@ -1173,71 +1141,29 @@ function applyPlannerTeamSave(
         candidate.strings.map((plannerString) => plannerString.id),
       ),
     ) + 1;
-  const nextTeams = PLANNER_TEAMS.filter((team) =>
-    inputs.some((input) => input.team === team),
-  ).map((team) => {
-    const current = depth.teams.find((candidate) => candidate.team === team);
+  // A kept team keeps its strings; a restored one starts with its defaults.
+  depth.teams = PLANNER_TEAMS.flatMap((team) => {
     const input = inputs.find((candidate) => candidate.team === team);
-    const inputStrings = input?.strings ?? [];
-    if (current) {
-      return {
-        ...current,
-        displayName: input?.displayName ?? current.displayName,
-        maxAge: input ? input.maxAge : current.maxAge,
-        strings: inputStrings.map((plannerString, index) => {
-          if (plannerString.id !== null) {
-            const existing = current.strings.find(
-              (candidate) => candidate.id === plannerString.id,
-            );
-            if (existing) {
-              return {
-                ...existing,
-                stringOrder: index,
-                displayName: plannerString.displayName,
-                assignments: existing.assignments.map((assignment) => ({
-                  ...assignment,
-                })),
-              };
-            }
-            return {
-              id: plannerString.id,
-              stringOrder: index,
-              displayName: plannerString.displayName,
-              assignments: [],
-            };
-          }
-          return {
-            id: nextStringId++,
-            stringOrder: index,
-            displayName: plannerString.displayName || ordinalStringLabel(index),
-            assignments: [],
-          };
-        }),
-      };
+    if (!input) {
+      return [];
     }
-    return {
-      team,
-      displayName: input?.displayName ?? team,
-      maxAge: input?.maxAge ?? null,
-      strings:
-        inputStrings.length > 0
-          ? inputStrings.map((plannerString, index) => ({
-              id: plannerString.id !== null ? plannerString.id : nextStringId++,
-              stringOrder: index,
-              displayName: plannerString.displayName,
-              assignments: [],
-            }))
-          : [
-              {
-                id: nextStringId++,
-                stringOrder: 0,
-                displayName: ordinalStringLabel(0),
-                assignments: [],
-              },
-            ],
-    };
+    const current = depth.teams.find((candidate) => candidate.team === team);
+    return [
+      {
+        team,
+        displayName: input.displayName,
+        maxAge: input.maxAge,
+        strings:
+          current?.strings ??
+          defaultStringNames(team).map((displayName, stringOrder) => ({
+            id: nextStringId++,
+            stringOrder,
+            displayName,
+            assignments: [],
+          })),
+      },
+    ];
   });
-  depth.teams = nextTeams;
   return cloneDepth(depth);
 }
 

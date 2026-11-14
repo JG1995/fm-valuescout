@@ -419,6 +419,11 @@ export function PlannerRoleReferenceModal({
       className="max-w-[720px]"
     >
       <div className="space-y-4">
+        <p className="text-body-md text-on-surface-variant">
+          Each player is listed under the slot he stands out in: where his score
+          ranks highest against every player in the save who can play that slot,
+          not where it is highest.
+        </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <fieldset className="min-w-0">
             <legend className="text-label-md text-on-surface">

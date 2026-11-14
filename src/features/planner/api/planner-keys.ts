@@ -28,6 +28,9 @@ export const plannerKeys = {
   // that prefix and every invalidation of it.
   unassignedPlayers: (activeSaveId: number) =>
     [...plannerKeys.slotCandidates(), "unassigned", activeSaveId] as const,
+  // Loan candidates depend on who sits where, as the unassigned players do.
+  loanCandidates: (activeSaveId: number) =>
+    [...plannerKeys.slotCandidates(), "loans", activeSaveId] as const,
   roleReferences: () => [...plannerKeys.all, "role-reference"] as const,
   roleReference: (activeSaveId: number, phase: string, scoreBasis: string) =>
     [...plannerKeys.roleReferences(), activeSaveId, phase, scoreBasis] as const,

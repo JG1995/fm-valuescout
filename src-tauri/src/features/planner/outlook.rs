@@ -90,6 +90,12 @@ fn focus(team: PlannerTeam) -> f64 {
     }
 }
 
+/// How much `team` weighs where the player's potential stands against where he stands now: the
+/// team's focus on the future, scaled by the share of his potential he is expected to reach.
+pub(super) fn future_weight(team: PlannerTeam, development: &Development) -> f64 {
+    focus(team) * development.reach()
+}
+
 /// The score the player is expected to reach in a slot.
 pub(super) fn expected_score(current: u8, potential: u8, development: &Development) -> f64 {
     let current = f64::from(current);

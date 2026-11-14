@@ -396,3 +396,123 @@ pub(super) fn add_picker_candidates(
     managed_club_service::set_managed_club(conn, save_id, "Loan FC", Some(1000))
         .expect("configure managed club");
 }
+
+/// Replaces the snapshot with one copy of the golden right winger for each of `uids`, all at
+/// the managed club.
+pub(super) fn seed_players(
+    temp_dir: &tempfile::TempDir,
+    conn: &mut Connection,
+    save_id: i64,
+    uids: &[i64],
+) {
+    let dump_path = temp_dir.path().join("seeded-players.json");
+    let mut dump: serde_json::Value =
+        serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v9.json"))
+            .expect("parse golden dump");
+    let players = uids
+        .iter()
+        .map(|uid| {
+            let mut player = dump["players"][0].clone();
+            player["uid"] = serde_json::Value::Number((*uid).into());
+            player["name"] = serde_json::Value::String(format!("Player {uid}"));
+            player
+        })
+        .collect::<Vec<_>>();
+    dump["playerCount"] = serde_json::Value::Number(players.len().into());
+    dump["players"] = serde_json::Value::Array(players);
+    std::fs::write(
+        &dump_path,
+        serde_json::to_string(&dump).expect("serialize seeded players"),
+    )
+    .expect("write seeded players");
+    snapshot::ingest::ingest_dump_file_for_save(conn, save_id, &dump_path)
+        .expect("ingest seeded players");
+    managed_club_service::set_managed_club(conn, save_id, "Loan FC", Some(1000))
+        .expect("configure managed club");
+}
+
+/// Moves the player to another club, so he counts in the save but not in the managed club.
+pub(super) fn set_player_club(conn: &Connection, save_id: i64, player_uid: i64, club: &str) {
+    conn.execute(
+        "UPDATE players SET current_club = ?1 WHERE snapshot_id = ?2 AND uid = ?3",
+        params![club, current_snapshot_id(conn, save_id), player_uid],
+    )
+    .expect("set player club");
+}
+
+/// Gives the player one current and one potential score in both roles of a lane of the
+/// default tactic. His positions decide whether he can play it.
+pub(super) fn set_lane_scores(
+    conn: &Connection,
+    save_id: i64,
+    player_uid: i64,
+    lane_id: &str,
+    current: u8,
+    potential: u8,
+) {
+    let tactic = super::tactic::default_tactic();
+    let lane = tactic
+        .lanes
+        .iter()
+        .find(|lane| lane.lane_id == lane_id)
+        .expect("default tactic lane");
+    for role_id in [&lane.ip_role_id, &lane.oop_role_id] {
+        set_role_score(conn, save_id, player_uid, role_id, Some(current));
+        set_potential_role_score(conn, save_id, player_uid, role_id, Some(potential));
+    }
+}
+
+/// The players a team holds in a lane, from its first string down.
+pub(super) fn lane_players(
+    depth: &PlannerDepth,
+    team: PlannerTeam,
+    lane_id: &str,
+) -> Vec<Option<i64>> {
+    team_strings(depth, team)
+        .iter()
+        .map(|planner_string| {
+            planner_string
+                .assignments
+                .iter()
+                .find(|assignment| assignment.lane_id == lane_id)
+                .map(|assignment| assignment.player_uid)
+        })
+        .collect()
+}
+
+/// Gives the player a right-winger score now and a potential one, with full familiarity.
+pub(super) fn set_right_winger(
+    conn: &Connection,
+    save_id: i64,
+    player_uid: i64,
+    current: u8,
+    potential: u8,
+) {
+    set_player_positions(conn, save_id, player_uid, r#"{"AMR": 18, "MR": 18}"#);
+    set_right_winger_scores(conn, save_id, player_uid, Some(current));
+    for role_id in ["winger_ip", "tracking_wide_midfielder_oop"] {
+        set_potential_role_score(conn, save_id, player_uid, role_id, Some(potential));
+    }
+}
+
+pub(super) fn set_development(
+    conn: &Connection,
+    save_id: i64,
+    player_uid: i64,
+    age: i64,
+    [professionalism, ambition, determination]: [u8; 3],
+) {
+    set_player_age(conn, save_id, player_uid, Some(age));
+    set_player_personality(
+        conn,
+        save_id,
+        player_uid,
+        &format!(r#"{{"Professionalism": {professionalism}, "Ambition": {ambition}}}"#),
+    );
+    set_player_attributes(
+        conn,
+        save_id,
+        player_uid,
+        &format!(r#"{{"Determination": {determination}}}"#),
+    );
+}

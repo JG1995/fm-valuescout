@@ -17,7 +17,6 @@ import { setPlannerAssignmentPinned } from "../api/set-planner-assignment-pinned
 import type { PlannerSlotCandidate } from "../types/depth";
 import type { PlannerTactic, TacticOptions } from "../types/tactic";
 import type { PlannerTeam } from "../types/team";
-import { ordinalStringLabel } from "../utils/string-label";
 import { linkedPositionDescriptionForId } from "../utils/tactic-editor";
 
 const SEARCH_DEBOUNCE_MS = 200;
@@ -25,7 +24,7 @@ const SEARCH_DEBOUNCE_MS = 200;
 export type PlannerSlotTarget = {
   team: PlannerTeam;
   stringId: number;
-  stringOrder: number;
+  stringName: string;
   laneId: string;
   laneName: string;
   /** The player in the cell, whom a pick replaces. */
@@ -84,7 +83,7 @@ function assignmentLocation(
   }
   return `Assigned: ${slotLocation(
     location.team,
-    location.stringOrder,
+    location.stringName,
     linkedPositionDescriptionForId(location.laneId, tactic.lanes, options),
     teamLabels,
   )}`;
@@ -92,11 +91,11 @@ function assignmentLocation(
 
 function slotLocation(
   team: PlannerTeam,
-  stringOrder: number,
+  stringName: string,
   laneName: string,
   teamLabels: Partial<Record<PlannerTeam, string>>,
 ) {
-  return `${teamLabels[team] ?? team} · ${ordinalStringLabel(stringOrder)} · ${laneName}`;
+  return `${teamLabels[team] ?? team} · ${stringName} · ${laneName}`;
 }
 
 function targetLocation(
@@ -105,7 +104,7 @@ function targetLocation(
 ) {
   return slotLocation(
     target.team,
-    target.stringOrder,
+    target.stringName,
     target.laneName,
     teamLabels,
   );
@@ -124,7 +123,7 @@ function moveConfirmation(
   }
   return `Move ${candidate.name} from ${slotLocation(
     location.team,
-    location.stringOrder,
+    location.stringName,
     linkedPositionDescriptionForId(location.laneId, tactic.lanes, options),
     teamLabels,
   )} to ${targetLocation(target, teamLabels)}?`;

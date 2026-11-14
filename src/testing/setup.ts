@@ -79,6 +79,7 @@ import {
   resolveMovePlannerPlayerIpcMock,
   resolveOptimizePlannerDepthIpcMock,
   resolvePlannerDepthIpcMock,
+  resolvePlannerLoanCandidatesIpcMock,
   resolvePlannerRoleReferenceIpcMock,
   resolvePlannerSlotCandidatesIpcMock,
   resolvePlannerTacticIpcMock,
@@ -428,6 +429,10 @@ function registerIpcMocks() {
 
     if (cmd === "get_planner_unassigned_players") {
       return resolvePlannerUnassignedPlayersIpcMock();
+    }
+
+    if (cmd === "get_planner_loan_candidates") {
+      return resolvePlannerLoanCandidatesIpcMock();
     }
 
     if (cmd === "move_planner_player") {

@@ -84,6 +84,7 @@ import {
   setPlannerClearAllError,
   setPlannerClearAllPending,
   setPlannerDepthIpcMock,
+  setPlannerLoanCandidatesIpcMock,
   setPlannerOptimizeDepth,
   setPlannerOptimizeError,
   setPlannerOptimizePending,
@@ -171,8 +172,8 @@ async function openMyClubWorkspace(
 }
 
 const KEEPER_POSITION = "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper";
-const SENIOR_FIRST_KEEPER = `Senior · 1st string · ${KEEPER_POSITION}`;
-const SENIOR_SECOND_KEEPER = `Senior · 2nd string · ${KEEPER_POSITION}`;
+const SENIOR_FIRST_KEEPER = `Senior · Starter · ${KEEPER_POSITION}`;
+const SENIOR_SECOND_KEEPER = `Senior · Backup · ${KEEPER_POSITION}`;
 const RESERVES_FIRST_KEEPER = `Reserves · 1st string · ${KEEPER_POSITION}`;
 
 function squadPlayerNamed(name: string, uid: number, ca = 160): SquadPlayer {
@@ -203,7 +204,8 @@ function manySquadPlayers(count: number): SquadPlayer[] {
   );
 }
 
-function withSecondStringForEveryTeam(depth: PlannerDepth): PlannerDepth {
+/** Gives Reserves and Youth the second string a deeper slot would add. */
+function withSecondDevelopmentStrings(depth: PlannerDepth): PlannerDepth {
   let nextStringId =
     Math.max(
       ...depth.teams.flatMap((team) =>
@@ -213,20 +215,22 @@ function withSecondStringForEveryTeam(depth: PlannerDepth): PlannerDepth {
 
   return {
     ...depth,
-    teams: depth.teams.map((team) => ({
-      ...team,
-      strings: [
-        ...team.strings,
-        {
-          id: nextStringId++,
-          stringOrder: team.strings.length,
-          displayName: `${team.strings.length + 1}${
-            team.strings.length + 1 === 2 ? "nd" : "th"
-          } string`,
-          assignments: [],
-        },
-      ],
-    })),
+    teams: depth.teams.map((team) =>
+      team.team === "senior"
+        ? team
+        : {
+            ...team,
+            strings: [
+              ...team.strings,
+              {
+                id: nextStringId++,
+                stringOrder: 1,
+                displayName: "2nd string",
+                assignments: [],
+              },
+            ],
+          },
+    ),
   };
 }
 
@@ -4043,7 +4047,7 @@ describe("My Club route", () => {
     renderMyClubRoute({ staleTime: 60_000 });
 
     const cell = await screen.findByRole("button", {
-      name: /Senior, 1st string, IP: GK .* Empty/,
+      name: /Senior, Starter, IP: GK .* Empty/,
     });
     await user.click(cell);
     expect(
@@ -4374,12 +4378,14 @@ describe("My Club route", () => {
     expect(
       within(board).queryByRole("columnheader", { name: "Senior squad" }),
     ).toBeNull();
+    for (const seniorString of ["Starter", "Backup", "Rotation"]) {
+      expect(
+        within(board).getByRole("columnheader", { name: seniorString }),
+      ).toBeInTheDocument();
+    }
     expect(
       within(board).getAllByRole("columnheader", { name: "1st string" }),
-    ).toHaveLength(3);
-    expect(
-      within(board).getAllByRole("columnheader", { name: "2nd string" }),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
     expect(within(board).getAllByRole("rowheader")).toHaveLength(11);
     expect(
       within(board).getByRole("row", { name: /Goalkeeper/ }),
@@ -4771,7 +4777,7 @@ describe("My Club route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(
-      withSecondStringForEveryTeam(resolvePlannerDepthIpcMock()),
+      withSecondDevelopmentStrings(resolvePlannerDepthIpcMock()),
     );
     renderMyClubRoute();
 
@@ -4789,10 +4795,10 @@ describe("My Club route", () => {
     ).toBeInTheDocument();
     expect(
       within(board).getAllByRole("columnheader", { name: "1st string" }),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
     expect(
       within(board).getAllByRole("columnheader", { name: "2nd string" }),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
     expect(
       within(board).getByRole("button", {
         name: /Youth, 2nd string, IP: GK .* Empty/,
@@ -4829,7 +4835,7 @@ describe("My Club route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
     setPlannerDepthIpcMock(
-      withSecondStringForEveryTeam(resolvePlannerDepthIpcMock()),
+      withSecondDevelopmentStrings(resolvePlannerDepthIpcMock()),
     );
     renderMyClubRoute();
 
@@ -4843,7 +4849,7 @@ describe("My Club route", () => {
     expect(boardTable).toHaveClass("w-max");
     expect(boardTable).not.toHaveClass("w-full");
     const stringCell = within(board)
-      .getByRole("button", { name: /Senior, 1st string, IP: GK .* Empty/ })
+      .getByRole("button", { name: /Senior, Starter, IP: GK .* Empty/ })
       .closest("td");
     expect(stringCell).toHaveClass("min-w-60");
     expect(stringCell).toHaveClass("max-w-60");
@@ -4866,7 +4872,7 @@ describe("My Club route", () => {
       name: /Alex Keeper/,
     });
     const emptyCard = within(board).getByRole("button", {
-      name: /Senior, 2nd string, IP: GK .* Empty/,
+      name: /Senior, Backup, IP: GK .* Empty/,
     });
     expect(assignedCard).toHaveClass(
       "bg-surface-container-high",
@@ -4918,7 +4924,7 @@ describe("My Club route", () => {
     renderMyClubRoute();
 
     const cell = await screen.findByRole("button", {
-      name: /Senior, 1st string, IP: GK .* Empty/,
+      name: /Senior, Starter, IP: GK .* Empty/,
     });
     await user.click(cell);
 
@@ -4967,7 +4973,7 @@ describe("My Club route", () => {
       renderMyClubRoute();
 
       const cell = await screen.findByRole("button", {
-        name: /Senior, 1st string, IP: GK .* Empty/,
+        name: /Senior, Starter, IP: GK .* Empty/,
       });
       await user.click(cell);
       const search = screen.getByRole("combobox", {
@@ -5018,9 +5024,7 @@ describe("My Club route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
-    setPlannerDepthIpcMock(
-      withSecondSeniorString(resolvePlannerDepthIpcMock()),
-    );
+    setPlannerDepthIpcMock(resolvePlannerDepthIpcMock());
     setPlannerSlotCandidates([
       slotCandidate({
         playerUid: 77,
@@ -5035,7 +5039,7 @@ describe("My Club route", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: /Senior, 1st string, IP: GK .* Empty/,
+        name: /Senior, Starter, IP: GK .* Empty/,
       }),
     );
     await user.click(
@@ -5047,7 +5051,7 @@ describe("My Club route", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: /Senior, 2nd string, IP: GK .* Empty/,
+        name: /Senior, Backup, IP: GK .* Empty/,
       }),
     );
     const cacheKeeper = await screen.findByRole("option", {
@@ -5162,7 +5166,7 @@ describe("My Club route", () => {
         assignmentLocation: {
           team: "reserves",
           stringId: 2,
-          stringOrder: 0,
+          stringName: "1st string",
           laneId: "goalkeeper",
         },
       }),
@@ -5171,7 +5175,7 @@ describe("My Club route", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: /Senior, 1st string, IP: GK .* Empty/,
+        name: /Senior, Starter, IP: GK .* Empty/,
       }),
     );
     await user.click(
@@ -5223,7 +5227,7 @@ describe("My Club route", () => {
         assignmentLocation: {
           team: "reserves",
           stringId: 2,
-          stringOrder: 0,
+          stringName: "1st string",
           laneId: "goalkeeper",
         },
       }),
@@ -5231,7 +5235,7 @@ describe("My Club route", () => {
     renderMyClubRoute();
 
     const cell = await screen.findByRole("button", {
-      name: /Senior, 1st string, IP: GK .* Empty/,
+      name: /Senior, Starter, IP: GK .* Empty/,
     });
     cell.focus();
     await user.keyboard("{Enter}");
@@ -5249,7 +5253,7 @@ describe("My Club route", () => {
     await waitFor(() => expect(document.activeElement).toBe(cell));
     expect(
       screen.getByRole("button", {
-        name: /Senior, 1st string, IP: GK .* Empty/,
+        name: /Senior, Starter, IP: GK .* Empty/,
       }),
     ).toBeInTheDocument();
     expect(
@@ -5271,7 +5275,7 @@ describe("My Club route", () => {
     renderMyClubRoute({ staleTime: 60_000 });
 
     const secondSeniorCell = await screen.findByRole("button", {
-      name: /Senior, 2nd string, IP: GK .* Empty/,
+      name: /Senior, Backup, IP: GK .* Empty/,
     });
     await user.click(secondSeniorCell);
     expect(
@@ -5454,7 +5458,6 @@ describe("My Club route", () => {
         staffingTargets: [
           { jobId: "manager", jobLabel: "Manager", slotCount: 2 },
         ],
-        strings: [],
       },
     ]);
     renderMyClubRoute();
@@ -5530,13 +5533,11 @@ describe("My Club route", () => {
             team: "senior",
             displayName: "First Team",
             maxAge: null,
-            strings: [{ id: 1, displayName: "1st string" }],
           },
           {
             team: "youth",
             displayName: "U19",
             maxAge: 18,
-            strings: [{ id: 3, displayName: "1st string" }],
           },
         ],
         confirmPopulatedRemoval: true,
@@ -5596,19 +5597,16 @@ describe("My Club route", () => {
             team: "senior",
             displayName: "First Team",
             maxAge: null,
-            strings: [{ id: 1, displayName: "1st string" }],
           },
           {
             team: "reserves",
             displayName: "B Team",
             maxAge: 23,
-            strings: [{ id: null, displayName: "1st string" }],
           },
           {
             team: "youth",
             displayName: "U19",
             maxAge: 18,
-            strings: [{ id: 3, displayName: "1st string" }],
           },
         ],
         confirmPopulatedRemoval: false,
@@ -5767,227 +5765,11 @@ describe("My Club route", () => {
     ).not.toHaveAccessibleDescription();
   });
 
-  it("submits retained string ids, names, and orders unchanged", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
-    const depth = resolvePlannerDepthIpcMock();
-    setPlannerDepthIpcMock({
-      ...depth,
-      teams: depth.teams.map((team) =>
-        team.team === "senior"
-          ? {
-              ...team,
-              strings: [
-                {
-                  id: 7,
-                  stringOrder: 1,
-                  displayName: "Second",
-                  assignments: [],
-                },
-                {
-                  id: 5,
-                  stringOrder: 0,
-                  displayName: "First",
-                  assignments: [],
-                },
-              ],
-            }
-          : team,
-      ),
-    });
-    renderMyClubRoute();
-
-    await user.click(
-      await screen.findByRole("button", { name: "Manage teams" }),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Manage squad teams",
-    });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save teams" }),
-    );
-
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
-    expect(getPlannerTeamSaveIpcMockCalls()).toEqual([
-      {
-        teams: [
-          {
-            team: "senior",
-            displayName: "Senior",
-            maxAge: null,
-            strings: [
-              { id: 5, displayName: "First" },
-              { id: 7, displayName: "Second" },
-            ],
-          },
-          {
-            team: "reserves",
-            displayName: "Reserves",
-            maxAge: 23,
-            strings: [{ id: 2, displayName: "1st string" }],
-          },
-          {
-            team: "youth",
-            displayName: "Youth",
-            maxAge: 18,
-            strings: [{ id: 3, displayName: "1st string" }],
-          },
-        ],
-        confirmPopulatedRemoval: false,
-      },
-    ]);
-  });
-
-  it("renames a planner string from the board while keeping its assignments", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
-    setPlannerDepthIpcMock(withDepthAssignments(resolvePlannerDepthIpcMock()));
-    renderMyClubRoute();
-
-    await user.click(
-      await screen.findByRole("button", { name: "Edit Senior 1st string" }),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Edit Senior string",
-    });
-    const renameField = within(dialog).getByRole("textbox", {
-      name: "String name",
-    });
-    expect(renameField).toHaveValue("1st string");
-    await user.clear(renameField);
-    await user.type(renameField, "First Choice");
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save string" }),
-    );
-
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
-    expect(
-      getPlannerTeamSaveIpcMockCalls()[0]?.teams.find(
-        (team) => team.team === "senior",
-      )?.strings,
-    ).toEqual([
-      { id: 1, displayName: "First Choice" },
-      { id: 4, displayName: "2nd string" },
-    ]);
-    expect(await screen.findByText("String saved.")).toBeInTheDocument();
-    const matrix = await screen.findByRole("region", {
-      name: "Squad depth board",
-    });
-    expect(
-      within(matrix).getByRole("columnheader", { name: "First Choice" }),
-    ).toBeInTheDocument();
-    expect(
-      within(matrix).getByRole("button", { name: /Alex Keeper/ }),
-    ).toBeInTheDocument();
-  });
-
-  it("reorders planner strings from the board while keeping stable ids", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
-    setPlannerDepthIpcMock(
-      withSecondSeniorString(resolvePlannerDepthIpcMock()),
-    );
-    renderMyClubRoute();
-
-    await user.click(
-      await screen.findByRole("button", { name: "Edit Senior 2nd string" }),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Edit Senior string",
-    });
-    await user.selectOptions(
-      within(dialog).getByRole("combobox", { name: "Position in Senior" }),
-      "1st",
-    );
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save string" }),
-    );
-
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
-    expect(
-      getPlannerTeamSaveIpcMockCalls()[0]?.teams.find(
-        (team) => team.team === "senior",
-      )?.strings,
-    ).toEqual([
-      { id: 4, displayName: "2nd string" },
-      { id: 1, displayName: "1st string" },
-    ]);
-  });
-
-  it("confirms populated string removal by name and deletes only that string", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
-    setPlannerDepthIpcMock(withDepthAssignments(resolvePlannerDepthIpcMock()));
-    renderMyClubRoute();
-
-    await user.click(
-      await screen.findByRole("button", { name: "Edit Senior 1st string" }),
-    );
-    await user.click(
-      within(
-        await screen.findByRole("dialog", { name: "Edit Senior string" }),
-      ).getByRole("button", { name: "Remove string" }),
-    );
-
-    const confirmation = await screen.findByRole("dialog", {
-      name: "Remove 1st string?",
-    });
-    expect(confirmation).toHaveTextContent(
-      "Removing 1st string from Senior permanently deletes its 4 assignments.",
-    );
-    expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(0);
-    await user.click(
-      within(confirmation).getByRole("button", { name: "Remove string" }),
-    );
-
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
-    expect(getPlannerTeamSaveIpcMockCalls()).toEqual([
-      {
-        teams: [
-          {
-            team: "senior",
-            displayName: "Senior",
-            maxAge: null,
-            strings: [{ id: 4, displayName: "2nd string" }],
-          },
-          {
-            team: "reserves",
-            displayName: "Reserves",
-            maxAge: 23,
-            strings: [{ id: 2, displayName: "1st string" }],
-          },
-          {
-            team: "youth",
-            displayName: "Youth",
-            maxAge: 18,
-            strings: [{ id: 3, displayName: "1st string" }],
-          },
-        ],
-        confirmPopulatedRemoval: true,
-      },
-    ]);
-    expect(await screen.findByText("String removed.")).toBeInTheDocument();
-  });
-
   it("names the assignments and staffing targets a removed team loses", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
-    const depth = withSecondSeniorString(
-      withReserveGoalkeeper(resolvePlannerDepthIpcMock()),
-    );
+    const depth = withReserveGoalkeeper(resolvePlannerDepthIpcMock());
     setPlannerDepthIpcMock({
       ...depth,
       teams: depth.teams.map((team) => ({
@@ -6008,7 +5790,6 @@ describe("My Club route", () => {
         staffingTargets: [
           { jobId: "manager", jobLabel: "Manager", slotCount: 2 },
         ],
-        strings: [],
       },
     ]);
     renderMyClubRoute();
@@ -6055,82 +5836,16 @@ describe("My Club route", () => {
             team: "senior",
             displayName: "First Team",
             maxAge: null,
-            strings: [
-              { id: 1, displayName: "1st string" },
-              { id: 4, displayName: "2nd string" },
-            ],
           },
           {
             team: "youth",
             displayName: "U19",
             maxAge: 18,
-            strings: [{ id: 3, displayName: "1st string" }],
           },
         ],
         confirmPopulatedRemoval: true,
       },
     ]);
-  });
-
-  it("adds a planner string from the board under the next ordinal name", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
-    setPlannerDepthIpcMock(
-      withSecondSeniorString(resolvePlannerDepthIpcMock()),
-    );
-    renderMyClubRoute();
-
-    await user.click(
-      await screen.findByRole("button", { name: "Add string to Senior" }),
-    );
-
-    expect(await screen.findByText("String added.")).toBeInTheDocument();
-    expect(
-      getPlannerTeamSaveIpcMockCalls()[0]?.teams.find(
-        (team) => team.team === "senior",
-      )?.strings,
-    ).toEqual([
-      { id: 1, displayName: "1st string" },
-      { id: 4, displayName: "2nd string" },
-      { id: null, displayName: "" },
-    ]);
-    expect(
-      screen.getByRole("columnheader", { name: "3rd string" }),
-    ).toBeInTheDocument();
-  });
-
-  it("blocks invalid planner string names with field errors", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
-    setPlannerDepthIpcMock(
-      withSecondSeniorString(resolvePlannerDepthIpcMock()),
-    );
-    renderMyClubRoute();
-
-    await user.click(
-      await screen.findByRole("button", { name: "Edit Senior 1st string" }),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Edit Senior string",
-    });
-    const name = within(dialog).getByRole("textbox", { name: "String name" });
-    const save = within(dialog).getByRole("button", { name: "Save string" });
-    await user.clear(name);
-    expect(within(dialog).getByText("Enter a string name")).toBeInTheDocument();
-    expect(save).toBeDisabled();
-    await user.type(name, "2ND STRING");
-    expect(
-      within(dialog).getByText("String names must be unique"),
-    ).toBeInTheDocument();
-    expect(save).toBeDisabled();
-    fireEvent.change(name, { target: { value: "x".repeat(41) } });
-    expect(
-      within(dialog).getByText("Use 40 characters or fewer"),
-    ).toBeInTheDocument();
-    expect(save).toBeDisabled();
-    expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(0);
   });
 
   it("keeps team-management drafts on validation and backend failure", async () => {
@@ -6333,7 +6048,7 @@ describe("My Club route", () => {
     renderMyClubRoute({ staleTime: 60_000 });
 
     const seniorCell = await screen.findByRole("button", {
-      name: /Senior, 1st string, IP: GK .* Empty/,
+      name: /Senior, Starter, IP: GK .* Empty/,
     });
     await user.click(seniorCell);
     expect(
@@ -6363,7 +6078,7 @@ describe("My Club route", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: /First Team, 1st string, IP: GK .* Empty/,
+        name: /First Team, Starter, IP: GK .* Empty/,
       }),
     );
     expect(
@@ -6476,13 +6191,13 @@ describe("My Club route", () => {
       name: /Alex Keeper/,
     });
     expect(candidate).toHaveTextContent(
-      `Assigned: First Team · 1st string · ${KEEPER_POSITION}`,
+      `Assigned: First Team · Starter · ${KEEPER_POSITION}`,
     );
     await user.click(candidate);
     expect(
       screen.getByRole("dialog", { name: "Move Alex Keeper?" }),
     ).toHaveTextContent(
-      `Move Alex Keeper from First Team · 1st string · ${KEEPER_POSITION} to U19 · 1st string · ${KEEPER_POSITION}?`,
+      `Move Alex Keeper from First Team · Starter · ${KEEPER_POSITION} to U19 · 1st string · ${KEEPER_POSITION}?`,
     );
   });
 
@@ -6517,7 +6232,7 @@ describe("My Club route", () => {
     renderMyClubRoute({ staleTime: 60_000 });
 
     const seniorCell = await screen.findByRole("button", {
-      name: /Senior, 1st string, IP: GK .* Empty/,
+      name: /Senior, Starter, IP: GK .* Empty/,
     });
     await user.click(seniorCell);
     expect(
@@ -6566,7 +6281,7 @@ describe("My Club route", () => {
     );
     expect(
       screen.getByRole("button", {
-        name: /Senior, 1st string, IP: GK .* Empty/,
+        name: /Senior, Starter, IP: GK .* Empty/,
       }),
     ).toBeInTheDocument();
   });
@@ -6640,6 +6355,78 @@ describe("My Club route", () => {
     expect(
       await screen.findByRole("button", { name: "Unassigned (0)" }),
     ).toBeDisabled();
+  });
+
+  it("ranks loan candidates and marks the recommended ones on the board", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
+    setPlannerDepthIpcMock(withReserveGoalkeeper(resolvePlannerDepthIpcMock()));
+    setPlannerLoanCandidatesIpcMock([
+      {
+        playerUid: 77,
+        name: "Reserve Keeper",
+        age: 19,
+        team: "reserves",
+        stringName: "1st string",
+        laneId: "goalkeeper",
+        currentScore: 70,
+        expectedScore: 89,
+        benefit: 62,
+        recommended: true,
+      },
+      {
+        playerUid: 93,
+        name: "Fringe Keeper",
+        age: 22,
+        team: null,
+        stringName: null,
+        laneId: "goalkeeper",
+        currentScore: 60,
+        expectedScore: 61,
+        benefit: 4,
+        recommended: false,
+      },
+    ]);
+    renderMyClubRoute();
+
+    const loans = (
+      await screen.findByRole("heading", { name: "Loan candidates" })
+    ).closest("section");
+    if (!loans) {
+      throw new Error("Loan candidates panel is missing");
+    }
+    const recommended = await within(loans).findByRole("row", {
+      name: /Reserve Keeper/,
+    });
+    expect(recommended).toHaveTextContent("Reserves · 1st string");
+    expect(recommended).toHaveTextContent(KEEPER_POSITION);
+    expect(recommended).toHaveTextContent("62");
+    expect(recommended).toHaveTextContent("Recommended");
+    expect(
+      within(recommended).getByRole("link", { name: "Reserve Keeper" }),
+    ).toHaveAttribute("href", "/players/77");
+    const fringe = within(loans).getByRole("row", { name: /Fringe Keeper/ });
+    expect(fringe).toHaveTextContent("No squad");
+    expect(fringe).not.toHaveTextContent("Recommended");
+
+    const board = screen.getByRole("region", { name: "Squad depth board" });
+    expect(
+      within(board).getByRole("button", {
+        name: /Reserves, 1st string, IP: GK .* Reserve Keeper, Resolved, .* loan candidate$/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("says when no player is of loan age outside the senior squad", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
+    renderMyClubRoute();
+
+    expect(
+      await screen.findByText(
+        "No player aged 18 to 23 is outside the senior squad.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("opens the Youth XI from the squad controls", async () => {
@@ -6929,28 +6716,6 @@ function withReserveGoalkeeper(depth: PlannerDepth): PlannerDepth {
   };
 }
 
-function withSecondSeniorString(depth: PlannerDepth): PlannerDepth {
-  return {
-    ...depth,
-    teams: depth.teams.map((team) =>
-      team.team === "senior"
-        ? {
-            ...team,
-            strings: [
-              ...team.strings,
-              {
-                id: 4,
-                stringOrder: 1,
-                displayName: "2nd string",
-                assignments: [],
-              },
-            ],
-          }
-        : team,
-    ),
-  };
-}
-
 function withSecondReserveString(depth: PlannerDepth): PlannerDepth {
   return {
     ...depth,
@@ -6961,7 +6726,7 @@ function withSecondReserveString(depth: PlannerDepth): PlannerDepth {
             strings: [
               ...team.strings,
               {
-                id: 4,
+                id: 6,
                 stringOrder: 1,
                 displayName: "2nd string",
                 assignments: [],
@@ -7042,12 +6807,7 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                   },
                 ],
               },
-              {
-                id: 4,
-                stringOrder: 1,
-                displayName: "2nd string",
-                assignments: [],
-              },
+              ...team.strings.slice(1),
             ],
           }
         : team,
@@ -7107,21 +6867,12 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
 
       return {
         ...team,
-        strings:
-          team.team === "senior"
-            ? [
-                { ...team.strings[0], assignments: [assignment] },
-                {
-                  id: 4,
-                  stringOrder: 1,
-                  displayName: "2nd string",
-                  assignments: [],
-                },
-              ]
-            : team.strings.map((plannerString) => ({
-                ...plannerString,
-                assignments: [assignment],
-              })),
+        // Each team's first string holds its keeper.
+        strings: team.strings.map((plannerString, index) =>
+          index === 0
+            ? { ...plannerString, assignments: [assignment] }
+            : plannerString,
+        ),
       };
     }),
   };
