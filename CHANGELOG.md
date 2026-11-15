@@ -6,6 +6,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-11-15
+
+### Added
+
+- **Recruitment filters** for each tactic slot: up to ten Search-style rules on a slot's **Recruitment** tab, over player fields such as foot, height, and role scores, and Moneyball statistics compared by value or by percentile. Recommended signings and Best per slot only suggest a player for the slots whose filters he passes; your own players are never filtered. The Dashboard names the selected slot's filters, says how many candidates they ruled out, links to edit them, and marks filtered slots in the starting XI.
+- **Season stats** on Recommended signings. On, a candidate needs 450 competitive minutes this season and slots' statistic filters apply; off, both are skipped. It is always on in Moneyball mode and unavailable until the save has season stats.
+- **Percentiles vs** in Moneyball Search ranks each player's statistics against the players of his own position (the default) or against one position group, such as centre-backs or wingers. A player under 450 minutes shows muted percentiles.
+- The Moneyball profile names the position group its percentiles compare him with and, for a player who plays several, switches between them. It notes a short sample and a group with no qualifying players yet.
+
+### Changed
+
+- Every Moneyball percentile now compares a player with one position group: players with 450+ minutes this season rated 16 or higher at that group's positions, such as full-backs (left and right back) or wingers (left and right attacking midfield). A role compares with its own position group, a slot's custom metrics and percentile filters with the groups of its two positions, and a player's own statistics with his best position's group, so a role score is the same on the profile, in Search, and on the Dashboard. Moneyball scores in existing saves change accordingly; no stats refresh is needed.
+- Search filters and shortlists now only choose which players are listed; they no longer change the players a percentile compares with.
+- The profile shows Moneyball role scores for every player with season stats, including one without a natural position.
+- The Tactic page fits a maximized 1080p window: the Tactical XI lists both roles of each slot in full with its metric and filter counts, pitch markers show positions only, and the wider Selected Slot panel has **Roles**, **Scoring**, and **Recruitment** tabs.
+- **Refresh stats** and the season-stats step of Load Data are faster, because they no longer rank every player.
+
+### Removed
+
+- The **Filtered cohort | All players** toggle in Moneyball Search, replaced by **Percentiles vs**.
+- The slot importance rank in the Tactic editor. Optimize and the Dashboard's starting XI no longer use a stored rank.
+
+### Fixed
+
+- Search could not add a percentile filter on a counted Moneyball statistic such as Goals or Progressive Passes.
+
 ## [0.27.1] - 2026-11-14
 
 ### Fixed
