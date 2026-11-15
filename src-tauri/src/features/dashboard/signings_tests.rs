@@ -13,6 +13,7 @@ const GENERAL: SigningsRequest<'static> = SigningsRequest {
     mode: ScoreMode::General,
     shortlist_id: None,
     lane_id: None,
+    season_stats: true,
 };
 const MONEYBALL: SigningsRequest<'static> = SigningsRequest {
     mode: ScoreMode::Moneyball,
@@ -762,4 +763,132 @@ fn moneyball_mode_applies_a_role_score_filter() {
         [10]
     );
     assert_eq!(signings.filtered_out, 1);
+}
+
+fn uids(recommendations: &[Recommendation]) -> Vec<i64> {
+    let mut uids = recommendations
+        .iter()
+        .map(|recommendation| recommendation.uid)
+        .collect::<Vec<_>>();
+    uids.sort_unstable();
+    uids
+}
+
+#[test]
+fn season_stats_hold_back_short_samples_and_switch_off_with_their_filters() {
+    let fixture = open_with_players(&[
+        player(1, "Home Centre Back", HOME_CLUB, "DC"),
+        player(2, "Other Home Centre Back", HOME_CLUB, "DC"),
+        player(10, "Regular Target", OTHER_CLUB, "DC"),
+        player(11, "Short Sample Target", OTHER_CLUB, "DC"),
+        player(12, "Target Without Stats", OTHER_CLUB, "DC"),
+        player(13, "Peer Centre Back", OTHER_CLUB, "DC"),
+    ]);
+    for (uid, score) in [(1, 50), (2, 50), (10, 70), (11, 70), (12, 70)] {
+        fixture.set_slot_score(uid, "left_centre_back", score);
+    }
+    for (uid, minutes, progressive_passes) in [(10, 600, 40.0), (11, 300, 100.0), (13, 900, 10.0)] {
+        fixture.set_percentiles(uid, 50, &[]);
+        fixture.set_season_minutes(uid, minutes);
+        fixture.set_statistics(uid, &[("progressive_passes", progressive_passes)]);
+    }
+    fixture.set_recruitment_filters(
+        "left_centre_back",
+        &[("moneyball.progressive_passes", "pct_gte", json!(60))],
+    );
+    let left_centre_back = SigningsRequest {
+        lane_id: Some("left_centre_back"),
+        ..GENERAL
+    };
+
+    // The peers are 10 and 40: the 300-minute sample is too short to count, so 40 ranks at
+    // the 100th percentile, not the 50th. Players under 450 minutes cannot be recommended.
+    let applied = signings(&fixture, left_centre_back);
+    assert!(applied.season_stats_available);
+    assert!(applied.season_stats_applied);
+    assert_eq!(uids(&applied.recommendations), [10]);
+    assert_eq!(
+        (applied.filtered_out, applied.under_minimum_minutes),
+        (2, 2)
+    );
+    // The minimum holds for every slot, filtered or not.
+    let all_slots = signings(&fixture, GENERAL);
+    assert_eq!(uids(&all_slots.recommendations), [10]);
+    assert_eq!(all_slots.under_minimum_minutes, 2);
+
+    let off = signings(
+        &fixture,
+        SigningsRequest {
+            season_stats: false,
+            ..left_centre_back
+        },
+    );
+    assert!(!off.season_stats_applied);
+    assert_eq!(uids(&off.recommendations), [10, 11, 12]);
+    assert_eq!((off.filtered_out, off.under_minimum_minutes), (0, 0));
+}
+
+#[test]
+fn moneyball_mode_always_applies_season_stats() {
+    let fixture = open_with_players(&[
+        player(1, "Home Centre Back", HOME_CLUB, "DC"),
+        player(2, "Other Home Centre Back", HOME_CLUB, "DC"),
+        player(10, "Regular Target", OTHER_CLUB, "DC"),
+        player(11, "Short Sample Target", OTHER_CLUB, "DC"),
+    ]);
+    for (uid, percentile) in [(1, 40), (2, 40), (10, 80), (11, 90)] {
+        fixture.set_percentiles(uid, percentile, &[]);
+    }
+    fixture.set_season_minutes(11, 300);
+
+    let signings = signings(
+        &fixture,
+        SigningsRequest {
+            lane_id: Some("left_centre_back"),
+            season_stats: false,
+            ..MONEYBALL
+        },
+    );
+
+    assert!(signings.season_stats_applied);
+    assert_eq!(uids(&signings.recommendations), [10]);
+    assert_eq!(signings.under_minimum_minutes, 1);
+}
+
+#[test]
+fn without_season_stats_the_stat_filters_are_skipped_and_the_rest_apply() {
+    let fixture = open_with_players(&[
+        player(1, "Home Centre Back", HOME_CLUB, "DC"),
+        player(2, "Other Home Centre Back", HOME_CLUB, "DC"),
+        player(10, "Tall Target", OTHER_CLUB, "DC"),
+        player(11, "Short Target", OTHER_CLUB, "DC"),
+    ]);
+    for (uid, score) in [(1, 50), (2, 50), (10, 70), (11, 70)] {
+        fixture.set_slot_score(uid, "left_centre_back", score);
+    }
+    fixture.set_player_column(10, "height_cm", 190);
+    fixture.set_player_column(11, "height_cm", 175);
+    fixture.set_recruitment_filters(
+        "left_centre_back",
+        &[
+            ("height", "gte", json!(183)),
+            ("moneyball.progressive_passes", "pct_gte", json!(60)),
+        ],
+    );
+
+    let signings = signings(
+        &fixture,
+        SigningsRequest {
+            lane_id: Some("left_centre_back"),
+            ..GENERAL
+        },
+    );
+
+    assert!(!signings.season_stats_available);
+    assert!(!signings.season_stats_applied);
+    assert_eq!(uids(&signings.recommendations), [10]);
+    assert_eq!(
+        (signings.filtered_out, signings.under_minimum_minutes),
+        (1, 0)
+    );
 }

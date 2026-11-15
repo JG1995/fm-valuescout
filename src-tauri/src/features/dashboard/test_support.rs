@@ -261,6 +261,17 @@ impl Fixture {
             .expect("set statistics");
     }
 
+    /// Sets the season minutes of a player who already has a stats row.
+    pub(super) fn set_season_minutes(&self, uid: i64, minutes: i64) {
+        self.conn
+            .execute(
+                "UPDATE player_moneyball_stats SET minutes = ?1
+                 WHERE snapshot_id = ?2 AND player_uid = ?3",
+                params![minutes, self.snapshot_id, uid],
+            )
+            .expect("set season minutes");
+    }
+
     /// Saves the tactic with the slot's recruitment filters, each `(field, op, value)`.
     pub(super) fn set_recruitment_filters(
         &self,

@@ -34,9 +34,10 @@ export function dashboardSigningsQueryOptions(
         mode: request.mode,
         shortlistId: request.shortlistId,
         laneId: request.laneId,
+        seasonStats: request.seasonStats,
       }),
     staleTime,
-    // A mode, shortlist, or slot change keeps the current rows until the
+    // A mode, shortlist, slot, or season-stats change keeps the current rows until the
     // replacement arrives. Another save, snapshot, or club never shows them.
     placeholderData: (previousData, previousQuery) =>
       sameContext(previousQuery?.queryKey[3], context)

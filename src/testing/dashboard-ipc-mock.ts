@@ -59,6 +59,7 @@ export function resolveDashboardSigningsIpcMock(args: unknown) {
     mode: request.mode,
     shortlistId: request.shortlistId ?? null,
     laneId: request.laneId ?? null,
+    seasonStats: request.seasonStats,
   });
   if (signingsError !== null) {
     throw new Error(signingsError);

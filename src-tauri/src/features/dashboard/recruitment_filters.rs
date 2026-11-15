@@ -2,14 +2,16 @@
 //!
 //! Most rules compile to SQL and run as one column per slot in the candidate query. A
 //! percentile rule ranks the candidate's statistic among the slot's position peers: the
-//! players with season statistics rated at least 16 at either of the slot's two positions.
+//! players with `MIN_SEASON_MINUTES` minutes this season rated at least 16 at either of the
+//! slot's two positions. Season-stat rules run only while season stats apply.
 
 use rusqlite::{types::Value, Connection, Row};
 
 use crate::features::moneyball::percentile::percentile_in_population;
 use crate::features::planner::tactic::{base_position, recruitment_filter_rules, PlannerTactic};
-use crate::features::player_metrics::compact::player_metrics_join;
 use crate::features::search::filter::{compile_slot_filters, CompiledFilter, SlotPercentileRule};
+
+use super::signings::MIN_SEASON_MINUTES;
 
 /// The lowest familiarity at which a player counts among a slot's position peers.
 const PEER_FAMILIARITY: i64 = 16;
@@ -32,18 +34,26 @@ struct LaneFilters {
 
 impl SlotFilters {
     /// Compiles the tactic's filters with SQL placeholders from `start_index` and ranks the
-    /// position peers its percentile rules need. `None` when no slot has filters.
+    /// position peers its percentile rules need. Without `season_stats`, rules on Moneyball
+    /// fields are left out. `None` when no slot has a rule to run.
     pub(super) fn load(
         conn: &Connection,
         snapshot_id: i64,
         tactic: &PlannerTactic,
         start_index: usize,
+        season_stats: bool,
     ) -> Result<Option<Self>, String> {
-        if tactic
+        let lane_rules = tactic
             .lanes
             .iter()
-            .all(|lane| lane.recruitment_filters.is_empty())
-        {
+            .map(|lane| {
+                Ok(recruitment_filter_rules(lane)?
+                    .into_iter()
+                    .filter(|rule| season_stats || !rule.field.starts_with("moneyball."))
+                    .collect::<Vec<_>>())
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        if lane_rules.iter().all(Vec::is_empty) {
             return Ok(None);
         }
         let mut filters = Self {
@@ -53,8 +63,8 @@ impl SlotFilters {
             uses_season_stats: false,
         };
         let mut next_index = start_index;
-        for lane in &tactic.lanes {
-            let plan = compile_slot_filters(&recruitment_filter_rules(lane)?, next_index)?;
+        for rules in &lane_rules {
+            let plan = compile_slot_filters(rules, next_index)?;
             next_index += plan.sql.as_ref().map_or(0, |sql| sql.params.len());
             filters.uses_role_scores |= plan.uses_role_scores;
             filters.uses_season_stats |=
@@ -126,11 +136,12 @@ impl SlotFilters {
                  FROM player_moneyball_stats moneyball
                  INNER JOIN players ON players.snapshot_id = moneyball.snapshot_id
                     AND players.uid = moneyball.player_uid
-                 WHERE moneyball.snapshot_id = ?1 AND moneyball.percentiles_json IS NOT NULL"
+                 WHERE moneyball.snapshot_id = ?1 AND moneyball.percentiles_json IS NOT NULL
+                   AND moneyball.minutes >= ?2"
             ))
             .map_err(|error| error.to_string())?;
         let mut rows = statement
-            .query([snapshot_id])
+            .query([snapshot_id, MIN_SEASON_MINUTES])
             .map_err(|error| error.to_string())?;
         while let Some(row) = rows.next().map_err(|error| error.to_string())? {
             let familiarity = |position: &str| -> Result<i64, String> {
@@ -165,20 +176,14 @@ impl SlotFilters {
         Ok(())
     }
 
-    /// The joins the candidate query needs on top of its own, given which table it already has.
-    pub(super) fn extra_joins(&self, has_role_scores: bool, has_season_stats: bool) -> String {
-        let mut joins = String::new();
-        if self.uses_role_scores && !has_role_scores {
-            joins.push_str(&player_metrics_join("players", true, false));
-        }
-        if self.uses_season_stats && !has_season_stats {
-            joins.push_str(
-                " LEFT JOIN player_moneyball_stats moneyball
-                   ON moneyball.snapshot_id = players.snapshot_id
-                  AND moneyball.player_uid = players.uid",
-            );
-        }
-        joins
+    /// Whether the candidate query must join the compact role metrics row.
+    pub(super) fn uses_role_scores(&self) -> bool {
+        self.uses_role_scores
+    }
+
+    /// Whether the candidate query must join the season statistics row (`moneyball`).
+    pub(super) fn uses_season_stats(&self) -> bool {
+        self.uses_season_stats
     }
 
     /// The candidate query's extra columns, which `lane_passes` reads back, and their

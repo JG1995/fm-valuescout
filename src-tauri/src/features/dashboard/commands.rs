@@ -155,8 +155,15 @@ pub struct DashboardSigningsDto {
     pub candidates: Option<usize>,
     pub total_recommendations: usize,
     pub recommendations: Vec<RecommendationDto>,
-    /// Candidates the recruitment filters removed from every slot they would improve.
+    /// Candidates held back from every slot they would improve, by its filters or too few
+    /// minutes.
     pub filtered_out: usize,
+    /// Of `filtered_out`, those under `minimum_minutes`.
+    pub under_minimum_minutes: usize,
+    /// The competitive minutes a candidate needs while season stats apply.
+    pub minimum_minutes: i64,
+    pub season_stats_available: bool,
+    pub season_stats_applied: bool,
 }
 
 impl From<Signings> for DashboardSigningsDto {
@@ -169,6 +176,10 @@ impl From<Signings> for DashboardSigningsDto {
             total_recommendations: value.total_recommendations,
             recommendations: value.recommendations.into_iter().map(Into::into).collect(),
             filtered_out: value.filtered_out,
+            under_minimum_minutes: value.under_minimum_minutes,
+            minimum_minutes: signings::MIN_SEASON_MINUTES,
+            season_stats_available: value.season_stats_available,
+            season_stats_applied: value.season_stats_applied,
         }
     }
 }
@@ -180,11 +191,14 @@ pub async fn get_dashboard_signings(
     mode: String,
     shortlist_id: Option<i64>,
     lane_id: Option<String>,
+    season_stats: bool,
     db: State<'_, Db>,
 ) -> Result<Option<DashboardSigningsDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || read_dashboard_signings(&db, &mode, shortlist_id, lane_id.as_deref()))
-        .await
+    blocking::run(move || {
+        read_dashboard_signings(&db, &mode, shortlist_id, lane_id.as_deref(), season_stats)
+    })
+    .await
 }
 
 fn read_dashboard_signings(
@@ -192,11 +206,13 @@ fn read_dashboard_signings(
     mode: &str,
     shortlist_id: Option<i64>,
     lane_id: Option<&str>,
+    season_stats: bool,
 ) -> Result<Option<DashboardSigningsDto>, String> {
     let request = SigningsRequest {
         mode: ScoreMode::parse(mode)?,
         shortlist_id,
         lane_id,
+        season_stats,
     };
     let conn = db.read()?;
     Ok(signings::get_signings(&conn, active_save_id(&conn)?, request)?.map(Into::into))
@@ -386,7 +402,7 @@ mod tests {
         }
 
         let signings = crate::db::read_while_writer_is_held(&db, |db| {
-            read_dashboard_signings(db, "general", None, None)
+            read_dashboard_signings(db, "general", None, None, true)
         })
         .expect("signings on a reader")
         .expect("signings for a managed club");
@@ -394,7 +410,7 @@ mod tests {
         assert!(signings.tactic_is_default);
         assert_eq!(signings.slots.len(), 11);
         assert_eq!(
-            read_dashboard_signings(&db, "potential", None, None).map(|_| ()),
+            read_dashboard_signings(&db, "potential", None, None, true).map(|_| ()),
             Err("unknown dashboard score mode: potential".to_string())
         );
     }

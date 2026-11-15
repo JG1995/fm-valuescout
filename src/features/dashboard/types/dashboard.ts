@@ -91,10 +91,22 @@ export type DashboardSignings = {
   totalRecommendations: number;
   recommendations: DashboardRecommendation[];
   /**
-   * Candidates who would improve a considered slot but fail the recruitment
-   * filters of every slot they would improve.
+   * Candidates who would improve a considered slot but are held back from
+   * every slot they would improve: by its recruitment filters, or by too few
+   * minutes.
    */
   filteredOut: number;
+  /** Of `filteredOut`, those under `minimumMinutes` minutes. */
+  underMinimumMinutes: number;
+  /** The competitive minutes a candidate needs while season stats apply. */
+  minimumMinutes: number;
+  /** Whether the snapshot has season stats. */
+  seasonStatsAvailable: boolean;
+  /**
+   * Whether season stats applied: candidates needed `minimumMinutes` and the
+   * slots' season-stat filters ran. Always in Moneyball mode with stats.
+   */
+  seasonStatsApplied: boolean;
 };
 
 export type DashboardSigningsRequest = {
@@ -103,6 +115,8 @@ export type DashboardSigningsRequest = {
   shortlistId: number | null;
   /** Restricts the ranked recommendations to one tactic slot. */
   laneId: string | null;
+  /** Whether General mode applies season stats; Moneyball mode always does. */
+  seasonStats: boolean;
 };
 
 export type DashboardExpiringContract = {

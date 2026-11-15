@@ -109,6 +109,10 @@ function signings(
     totalRecommendations: recommendations.length,
     recommendations,
     filteredOut: 0,
+    underMinimumMinutes: 0,
+    minimumMinutes: 450,
+    seasonStatsAvailable: true,
+    seasonStatsApplied: true,
     ...overrides,
   };
 }
@@ -276,7 +280,7 @@ describe("Dashboard", () => {
 
     await waitFor(() => expect(signingCards()).toHaveLength(1));
     expect(getDashboardSigningsIpcRequests()).toEqual([
-      { mode: "moneyball", shortlistId: null, laneId: null },
+      { mode: "moneyball", shortlistId: null, laneId: null, seasonStats: true },
     ]);
   });
 
@@ -296,6 +300,7 @@ describe("Dashboard", () => {
       mode: "general",
       shortlistId: null,
       laneId: "goalkeeper",
+      seasonStats: true,
     });
 
     await user.click(screen.getByRole("button", { name: "Show all slots" }));
@@ -309,6 +314,7 @@ describe("Dashboard", () => {
       mode: "general",
       shortlistId: 7,
       laneId: null,
+      seasonStats: true,
     });
     expect(
       screen.getByText(/^1 of 6 shortlisted players would improve your XI/),
@@ -383,6 +389,82 @@ describe("Dashboard", () => {
       "href",
       "/my-club?view=tactic&slot=left_back",
     );
+  });
+
+  it("turns season stats off for General mode and keeps them for Moneyball", async () => {
+    const user = userEvent.setup();
+    await seedManagedClub();
+    setDashboardSigningsIpcMock((request) =>
+      request.mode === "general" && request.seasonStats
+        ? signings([KEEPER_TARGET], {
+            filteredOut: 3,
+            underMinimumMinutes: 2,
+          })
+        : signings([LEFT_BACK_TARGET, KEEPER_TARGET], {
+            seasonStatsApplied: request.mode === "moneyball",
+          }),
+    );
+    const { router } = renderDashboard();
+    await waitFor(() => expect(signingCards()).toHaveLength(1));
+
+    const toggle = screen.getByRole("checkbox", { name: "Season stats" });
+    expect(toggle).toBeChecked();
+    expect(toggle).toHaveAccessibleDescription(
+      /Candidates need 450\+ competitive minutes this season/,
+    );
+    expect(
+      screen.getByText(
+        "3 realistic signings filtered out, 2 of them under 450 minutes",
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(toggle);
+    await waitFor(() => expect(signingCards()).toHaveLength(2));
+    expect(getDashboardSigningsIpcRequests().at(-1)).toMatchObject({
+      mode: "general",
+      seasonStats: false,
+    });
+    expect(router.state.location.search).toEqual({ stats: false });
+
+    await user.click(screen.getByRole("button", { name: "Moneyball" }));
+    const locked = screen.getByRole("checkbox", { name: "Season stats" });
+    expect(locked).toBeChecked();
+    expect(locked).toBeDisabled();
+    expect(router.state.location.search).toEqual({
+      stats: false,
+      mode: "moneyball",
+    });
+  });
+
+  it("offers to turn season stats off when too few minutes empty a slot", async () => {
+    const user = userEvent.setup();
+    await seedManagedClub();
+    setDashboardSigningsIpcMock((request) =>
+      request.laneId === "left_back" && request.seasonStats
+        ? signings([], { filteredOut: 2, underMinimumMinutes: 2 })
+        : signings([LEFT_BACK_TARGET], { seasonStatsApplied: false }),
+    );
+    renderDashboard();
+    await waitFor(() => expect(signingCards()).toHaveLength(1));
+
+    await user.click(screen.getByRole("button", { name: /Home Left Back/ }));
+
+    expect(
+      await screen.findByText("No realistic signing for DL has enough minutes"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /2 realistic signings would improve it but have under 450 minutes this season/,
+      ),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Turn off season stats" }),
+    );
+    await waitFor(() => expect(signingCards()).toHaveLength(1));
+    expect(getDashboardSigningsIpcRequests().at(-1)).toMatchObject({
+      laneId: "left_back",
+      seasonStats: false,
+    });
   });
 
   it("says what is missing when the save has no linked file and no signing to compare", async () => {
@@ -532,7 +614,7 @@ describe("Dashboard", () => {
       name: "Best signing for each slot",
     });
     expect(dialog).toHaveTextContent(
-      "Realistic signings: the player who would improve each slot most.",
+      "Realistic signings with 450+ minutes: the player who would improve each slot most.",
     );
     // Goalkeeper to striker, whatever order the slots arrive in.
     const [keeper, leftBack, striker] = within(dialog)

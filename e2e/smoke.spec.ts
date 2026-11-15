@@ -3020,7 +3020,10 @@ test.describe("application smoke", () => {
     await page.getByRole("option", { name: "Barcelona", exact: true }).click();
     await main.getByRole("button", { name: "Save managed club" }).click();
     await expect(
-      main.getByText(/^Recruitment filters on 1 slot · 3 realistic signings/),
+      // The stub's snapshot has no season stats, so the stat filters are off.
+      main.getByText(
+        /^Recruitment filters on 1 slot · season-stat filters off · 3 realistic signings/,
+      ),
     ).toBeVisible();
     await main
       .getByRole("button", { name: /^DCR has recruitment filters/ })

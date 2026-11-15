@@ -763,8 +763,15 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             totalRecommendations: 0,
             recommendations: [],
             filteredOut: 0,
+            underMinimumMinutes: 0,
+            minimumMinutes: 450,
+            seasonStatsAvailable: false,
+            seasonStatsApplied: false,
           };
         }
+        const seasonStatsApplied =
+          moneyballStatsGameDate !== null &&
+          (moneyball || request?.seasonStats !== false);
         const slots = dashboardSlots.map((slot, index) => {
           const score = moneyball ? slot[7] : slot[6];
           return {
@@ -849,6 +856,14 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           // The stub's tactic filters only the left centre-back slot.
           filteredOut:
             request?.laneId == null || request.laneId === "left_centre_back" ? 3 : 0,
+          underMinimumMinutes:
+            seasonStatsApplied &&
+            (request?.laneId == null || request.laneId === "left_centre_back")
+              ? 1
+              : 0,
+          minimumMinutes: 450,
+          seasonStatsAvailable: moneyballStatsGameDate !== null,
+          seasonStatsApplied,
         };
       };
       const dashboardExpiringContracts = {

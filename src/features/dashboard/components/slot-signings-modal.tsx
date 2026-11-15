@@ -1,4 +1,5 @@
 import { Modal } from "@/components/ui/modal/modal";
+import { formatCount } from "@/utils/format";
 import type {
   DashboardGraphics,
   DashboardScoreMode,
@@ -56,7 +57,11 @@ export function SlotSigningsModal({
     >
       <div className="flex flex-wrap items-center justify-between gap-2 pb-3">
         <p className="text-body-md text-on-surface-variant" role="status">
-          {poolLabel}: the player who would improve each slot most.
+          {poolLabel}
+          {signings.seasonStatsApplied
+            ? ` with ${formatCount(signings.minimumMinutes)}+ minutes`
+            : null}
+          : the player who would improve each slot most.
           {refreshing ? " Updating…" : null}
         </p>
         <ScoreModeToggle mode={mode} onChange={onModeChange} />

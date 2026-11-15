@@ -26,6 +26,9 @@ use super::{club_snapshot_id, MANAGED_CLUB_NAME_SQL};
 
 /// The most ranked recommendations one read returns: as many as the dashboard shows at once.
 pub(crate) const MAX_RECOMMENDATIONS: usize = 12;
+/// The fewest competitive minutes this season a candidate needs while season stats apply, so
+/// his statistics come from more than a handful of appearances.
+pub(crate) const MIN_SEASON_MINUTES: i64 = 450;
 const MAX_OTHER_LANES: usize = 2;
 
 /// Which scores compare a candidate with the club's player in a slot.
@@ -127,9 +130,16 @@ pub(crate) struct Signings {
     pub(crate) candidates: Option<usize>,
     pub(crate) total_recommendations: usize,
     pub(crate) recommendations: Vec<Recommendation>,
-    /// Candidates who would improve a considered slot but fail the recruitment filters of
-    /// every slot they would improve.
+    /// Candidates who would improve a considered slot but are held back from every slot they
+    /// would improve: by its recruitment filters, or by too few minutes.
     pub(crate) filtered_out: usize,
+    /// Of `filtered_out`, those held back by having under `MIN_SEASON_MINUTES` minutes.
+    pub(crate) under_minimum_minutes: usize,
+    /// Whether the snapshot has season statistics.
+    pub(crate) season_stats_available: bool,
+    /// Whether season stats applied: candidates needed `MIN_SEASON_MINUTES` minutes and the
+    /// slots' season-stat filters ran. Always in Moneyball mode when the snapshot has them.
+    pub(crate) season_stats_applied: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -139,6 +149,8 @@ pub(crate) struct SigningsRequest<'a> {
     pub(crate) shortlist_id: Option<i64>,
     /// Restricts the ranked recommendations to one slot. Each slot's best signing is unaffected.
     pub(crate) lane_id: Option<&'a str>,
+    /// Whether General mode applies season stats; Moneyball mode always does.
+    pub(crate) season_stats: bool,
 }
 
 struct ScoredPlayer {
@@ -151,9 +163,11 @@ struct ScoredPlayer {
     minutes: Option<i64>,
     /// The player's score in each tactic slot, in lane order.
     lane_scores: Vec<Option<u8>>,
-    /// Whether the player passes each slot's recruitment filters. Always true for the club's
-    /// own players.
+    /// Whether the player may be recommended for each slot: he has enough minutes and passes
+    /// its recruitment filters. Always true for the club's own players.
     lane_allowed: Vec<bool>,
+    /// Whether season stats applied and the player has under `MIN_SEASON_MINUTES` minutes.
+    under_minimum_minutes: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -193,19 +207,33 @@ pub(crate) fn get_signings(
         })
         .transpose()?;
     let mode = request.mode;
+    let season_stats_available = snapshot_has_percentiles(conn, snapshot_id)?;
     let scores_available = match mode {
         ScoreMode::General => {
             assert_read_models_complete(conn, snapshot_id, true, false)?;
             true
         }
-        ScoreMode::Moneyball => snapshot_has_percentiles(conn, snapshot_id)?,
+        ScoreMode::Moneyball => season_stats_available,
     };
+    let season_stats =
+        season_stats_available && (mode == ScoreMode::Moneyball || request.season_stats);
 
     let league = match mode {
         ScoreMode::General => LeagueAdjustment::default(),
         ScoreMode::Moneyball => LeagueAdjustment::load(conn, snapshot_id)?,
     };
-    let load = |scope| load_players(conn, save_id, snapshot_id, scope, &tactic, mode, &league);
+    let load = |scope| {
+        load_players(
+            conn,
+            save_id,
+            snapshot_id,
+            scope,
+            &tactic,
+            mode,
+            &league,
+            season_stats,
+        )
+    };
     let club = load(PlayerScope::Club)?;
     let lineup = starting_lineup(&tactic, &club, &first_string_assignments(conn, save_id)?);
     let incumbent_scores = lineup
@@ -232,7 +260,7 @@ pub(crate) fn get_signings(
         .iter()
         .filter_map(|player| recommend(player, &tactic, &incumbent_scores, lane_filter))
         .collect::<Vec<_>>();
-    let filtered_out = candidates
+    let held_back = candidates
         .iter()
         .filter(|player| {
             let mut improving = (0..tactic.lanes.len())
@@ -242,6 +270,11 @@ pub(crate) fn get_signings(
             improving.peek().is_some()
                 && improving.all(|lane_index| !player.lane_allowed[lane_index])
         })
+        .collect::<Vec<_>>();
+    let filtered_out = held_back.len();
+    let under_minimum_minutes = held_back
+        .iter()
+        .filter(|player| player.under_minimum_minutes)
         .count();
     recommendations.sort_by(by_improvement);
     let total_recommendations = recommendations.len();
@@ -276,6 +309,9 @@ pub(crate) fn get_signings(
         total_recommendations,
         recommendations,
         filtered_out,
+        under_minimum_minutes,
+        season_stats_available,
+        season_stats_applied: season_stats,
     }))
 }
 
@@ -419,6 +455,9 @@ fn has_realistic_signings(
 
 /// Reads the scope's players with their score in every tactic slot. Every statement binds
 /// the snapshot as `?1`, where the realistic-signing rule reads it, and the save as `?2`.
+/// With `season_stats`, a candidate needs `MIN_SEASON_MINUTES` minutes and the slots'
+/// season-stat filters run; without it they are left out.
+#[allow(clippy::too_many_arguments)]
 fn load_players(
     conn: &Connection,
     save_id: i64,
@@ -427,6 +466,7 @@ fn load_players(
     tactic: &PlannerTactic,
     mode: ScoreMode,
     league: &LeagueAdjustment,
+    season_stats: bool,
 ) -> Result<Vec<ScoredPlayer>, String> {
     let role_score_columns = match mode {
         ScoreMode::General => role_score_columns(tactic)?,
@@ -493,26 +533,42 @@ fn load_players(
             )
         }
     };
-    let filters = match scope {
-        PlayerScope::Club => None,
-        PlayerScope::Shortlist(_) | PlayerScope::RealisticSignings(_) => {
-            SlotFilters::load(conn, snapshot_id, tactic, bind_values.len() + 1)?
-        }
+    let candidates = !matches!(scope, PlayerScope::Club);
+    let filters = if candidates {
+        SlotFilters::load(
+            conn,
+            snapshot_id,
+            tactic,
+            bind_values.len() + 1,
+            season_stats,
+        )?
+    } else {
+        None
     };
-    let mut filter_columns = String::new();
+    let applies_minimum = candidates && season_stats;
+    let mut extra_columns = Vec::new();
     if let Some(filters) = &filters {
-        let (has_role_scores, has_season_stats) = match mode {
-            ScoreMode::General => (true, false),
-            ScoreMode::Moneyball => (false, true),
-        };
-        from_sql.push_str(&filters.extra_joins(has_role_scores, has_season_stats));
         let (columns, params) = filters.columns();
-        for column in columns {
-            filter_columns.push_str(", ");
-            filter_columns.push_str(&column);
-        }
+        extra_columns.extend(columns);
         bind_values.extend(params);
     }
+    // General mode reads season stats only for the minimum minutes or a filter.
+    if mode == ScoreMode::General
+        && (applies_minimum || filters.as_ref().is_some_and(SlotFilters::uses_season_stats))
+    {
+        from_sql.push_str(MONEYBALL_JOIN_SQL);
+    }
+    if mode == ScoreMode::Moneyball && filters.as_ref().is_some_and(SlotFilters::uses_role_scores) {
+        from_sql.push_str(&player_metrics_join("players", true, false));
+    }
+    let filter_column_count = extra_columns.len();
+    if applies_minimum && mode == ScoreMode::General {
+        extra_columns.push("moneyball.minutes".to_string());
+    }
+    let filter_columns = extra_columns
+        .iter()
+        .map(|column| format!(", {column}"))
+        .collect::<String>();
     // The club's order settles ties when its lineup is allocated. Candidates are ranked by
     // `by_improvement`, a total order, so sorting the many realistic signings is left out.
     let order_sql = match scope {
@@ -536,6 +592,10 @@ fn load_players(
     let first_filter_column = 8 + match mode {
         ScoreMode::General => lane_count * 2,
         ScoreMode::Moneyball => 3,
+    };
+    let minutes_column = match mode {
+        ScoreMode::General => first_filter_column + filter_column_count,
+        ScoreMode::Moneyball => 8,
     };
     let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let mut rows = statement
@@ -601,6 +661,12 @@ fn load_players(
                 (row.get(8).map_err(read)?, scores)
             }
         };
+        let under_minimum_minutes = applies_minimum
+            && row
+                .get::<_, Option<i64>>(minutes_column)
+                .map_err(read)?
+                .unwrap_or(0)
+                < MIN_SEASON_MINUTES;
         players.push(ScoredPlayer {
             uid: row.get(0).map_err(read)?,
             name: row.get(1).map_err(read)?,
@@ -610,10 +676,15 @@ fn load_players(
             market_value_gbp: row.get(5).map_err(read)?,
             minutes,
             lane_scores,
-            lane_allowed: match &filters {
-                Some(filters) => filters.lane_passes(row, first_filter_column)?,
-                None => vec![true; lane_count],
+            lane_allowed: if under_minimum_minutes {
+                vec![false; lane_count]
+            } else {
+                match &filters {
+                    Some(filters) => filters.lane_passes(row, first_filter_column)?,
+                    None => vec![true; lane_count],
+                }
             },
+            under_minimum_minutes,
         });
     }
     Ok(players)
