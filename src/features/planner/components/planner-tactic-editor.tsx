@@ -372,7 +372,7 @@ export function PlannerTacticEditor({
           </Button>
         </section>
 
-        <div className="grid min-h-0 min-w-0 flex-1 gap-4 p-4 lg:grid-cols-[15rem_minmax(0,1fr)_24rem] 2xl:grid-cols-[19rem_minmax(0,1fr)_27rem]">
+        <div className="grid min-h-0 min-w-0 flex-1 gap-4 p-4 lg:grid-cols-[11rem_minmax(0,1fr)_21rem] 2xl:grid-cols-[19rem_minmax(0,1fr)_27rem]">
           <PlannerTacticLaneList
             lanes={draft.lanes}
             options={options}

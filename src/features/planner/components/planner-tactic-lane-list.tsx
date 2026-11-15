@@ -85,6 +85,7 @@ export function PlannerTacticLaneList({
                   linkedPositionDescription(lane, lanes, options),
                   ...counts,
                 ].join(", ")}
+                title={linkedPositionDescription(lane, lanes, options)}
                 onClick={() => onSelectLane(lane.laneId)}
                 className={`grid w-full scroll-m-1 cursor-pointer grid-cols-[3rem_minmax(0,1fr)_auto] items-start gap-x-2 rounded-md border border-transparent px-2 py-1.5 text-left transition-[background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                   selected

@@ -3008,6 +3008,73 @@ test.describe("application smoke", () => {
     ).toContainText("2 processed: 2 updated, 0 skipped, 0 failed.");
   });
 
+  test("tactic editor adds a slot recruitment filter from the Dashboard link", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1000 });
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/");
+
+    const main = page.getByRole("main");
+    await main.getByRole("combobox", { name: "Managed club" }).fill("Bar");
+    await page.getByRole("option", { name: "Barcelona", exact: true }).click();
+    await main.getByRole("button", { name: "Save managed club" }).click();
+    await expect(
+      main.getByText(/^Recruitment filters on 1 slot · 3 realistic signings/),
+    ).toBeVisible();
+    await main
+      .getByRole("button", { name: /^DCR has recruitment filters/ })
+      .click();
+    await expect(
+      main.getByText(/^Filters: Preferred foot: Right · Height ≥ 183 ·/),
+    ).toBeVisible();
+    await main.getByRole("link", { name: "Edit filters" }).click();
+
+    await expect(page).toHaveURL(/view=tactic&slot=left_centre_back/);
+    const settings = main.getByRole("region", { name: "Selected Slot" });
+    await expect(
+      settings.getByRole("tab", { name: /^Recruitment/ }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(settings.getByText("4/10")).toBeVisible();
+
+    await settings.getByRole("button", { name: "Add filter" }).click();
+    await page
+      .getByRole("combobox", { name: "Search fields" })
+      .fill("headers won");
+    await page.getByRole("option", { name: /^Headers Won$/ }).click();
+    const editor = page.getByRole("form", { name: "Add filter" });
+    await editor
+      .getByRole("button", { name: "Percentile", exact: true })
+      .click();
+    await expect(
+      editor.getByText(/rated 16 or higher at either of this slot's positions/),
+    ).toBeVisible();
+    // The editor opens beside its button and stays inside the window.
+    const editorBox = await editor.boundingBox();
+    expect(editorBox).not.toBeNull();
+    if (editorBox) {
+      expect(editorBox.x).toBeGreaterThanOrEqual(0);
+      expect(editorBox.x + editorBox.width).toBeLessThanOrEqual(1920);
+      expect(editorBox.y + editorBox.height).toBeLessThanOrEqual(1000);
+    }
+    await page.screenshot({
+      path: ".work/ui-inspection/tactic-recruitment-filter-editor.png",
+    });
+    await editor.getByRole("button", { name: "Add" }).click();
+
+    await expect(
+      settings.getByRole("button", {
+        name: "Edit filter Headers Won percentile ≥ 90",
+      }),
+    ).toBeVisible();
+    await expect(settings.getByText("5/10")).toBeVisible();
+    await expect(
+      main.getByRole("button", { name: /, 5 recruitment filters$/ }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await main.getByRole("button", { name: "Save tactic" }).click();
+    await expect(main.getByRole("status")).toHaveText("Tactic saved.");
+  });
+
   test("planner tactic editor saves a linked phase adjustment", async ({
     page,
   }) => {

@@ -86,7 +86,7 @@ export function StartingXiList({
                         strokeWidth={1.5}
                         className="shrink-0 text-on-surface-variant"
                       />
-                      <span className="sr-only">has recruitment filters</span>
+                      <span className="sr-only"> has recruitment filters</span>
                     </>
                   ) : null}
                 </span>
