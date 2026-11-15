@@ -18,6 +18,8 @@ import { dashboardSigningsQueryOptions } from "../api/dashboard-query-options";
 import type {
   DashboardContext,
   DashboardGraphics,
+  DashboardLineupSlot,
+  DashboardRecruitmentFilter,
   DashboardScoreMode,
   DashboardSignings,
 } from "../types/dashboard";
@@ -98,12 +100,70 @@ function SigningsSummary({
   );
 }
 
+const textLinkClass = "text-on-surface underline underline-offset-2";
+
+/** Opens the Tactic editor on the slot's recruitment filters, or on the tactic. */
+function EditFiltersLink({ laneId }: { laneId: string | null }) {
+  return (
+    <Link
+      to="/my-club"
+      search={
+        laneId === null ? { view: "tactic" } : { view: "tactic", slot: laneId }
+      }
+      className={cn(aboveExpandClass, textLinkClass)}
+    >
+      Edit filters
+    </Link>
+  );
+}
+
+/**
+ * What the slots' recruitment filters hold back: the selected slot's filters,
+ * or how many slots have filters, with how many candidates they removed.
+ */
+function RecruitmentFilterNote({
+  signings,
+  selectedSlot,
+  candidateNoun,
+  describeFilter,
+}: {
+  signings: DashboardSignings;
+  selectedSlot: DashboardLineupSlot | undefined;
+  candidateNoun: string;
+  describeFilter: (filter: DashboardRecruitmentFilter) => string;
+}) {
+  const filteredSlots = signings.slots.filter(
+    (slot) => slot.recruitmentFilters.length > 0,
+  );
+  if (
+    selectedSlot
+      ? selectedSlot.recruitmentFilters.length === 0
+      : filteredSlots.length === 0
+  ) {
+    return null;
+  }
+  const removed =
+    signings.filteredOut > 0
+      ? `${plural(signings.filteredOut, candidateNoun)} filtered out`
+      : "Nobody filtered out";
+  return (
+    <p className="-mt-1 shrink-0 truncate px-4 pb-2 text-body-sm text-on-surface-variant">
+      {selectedSlot
+        ? `Filters: ${selectedSlot.recruitmentFilters.map(describeFilter).join(" · ")}`
+        : `Recruitment filters on ${plural(filteredSlots.length, "slot")}`}
+      {` · ${removed} · `}
+      <EditFiltersLink laneId={selectedSlot?.laneId ?? null} />
+    </p>
+  );
+}
+
 function SigningsEmptyState({
   signings,
   mode,
   shortlisted,
   candidateNoun,
   selectedSlot,
+  selectedLaneId,
   onClearSlot,
   onUseGeneral,
 }: {
@@ -113,6 +173,7 @@ function SigningsEmptyState({
   shortlisted: boolean;
   candidateNoun: string;
   selectedSlot: string | null;
+  selectedLaneId: string | null;
   onClearSlot: () => void;
   onUseGeneral: () => void;
 }): ReactNode {
@@ -156,6 +217,31 @@ function SigningsEmptyState({
       </EmptyState>
     );
   }
+  if (selectedSlot !== null && signings.filteredOut > 0) {
+    return (
+      <EmptyState
+        icon={UserRoundCheck}
+        title={`No ${candidateNoun} passes ${selectedSlot}'s filters`}
+        action={
+          <div className="flex flex-wrap justify-center gap-2 pt-2">
+            <Link
+              to="/my-club"
+              search={{ view: "tactic", slot: selectedLaneId ?? undefined }}
+              className={linkButtonClass}
+            >
+              Edit filters
+            </Link>
+            <Button variant="secondary" onClick={onClearSlot}>
+              Show all slots
+            </Button>
+          </div>
+        }
+      >
+        {plural(signings.filteredOut, candidateNoun)} would improve it but fail
+        its recruitment filters.
+      </EmptyState>
+    );
+  }
   if (selectedSlot !== null) {
     return (
       <EmptyState
@@ -194,12 +280,15 @@ export function SigningsWorkspace({
   onModeChange,
   shortlists,
   graphics,
+  describeRecruitmentFilter,
 }: {
   context: DashboardContext;
   mode: DashboardScoreMode;
   onModeChange: (mode: DashboardScoreMode) => void;
   shortlists: readonly DashboardShortlistOption[];
   graphics: DashboardGraphics;
+  /** A short label for a recruitment filter rule, such as `Height ≥ 183`. */
+  describeRecruitmentFilter: (filter: DashboardRecruitmentFilter) => string;
 }) {
   const [chosenShortlistId, setChosenShortlistId] = useState<number | null>(
     null,
@@ -317,6 +406,7 @@ export function SigningsWorkspace({
               shortlisted={shortlist !== undefined}
               candidateNoun={candidateNoun}
               selectedSlot={selectedSlotName}
+              selectedLaneId={laneId}
               onClearSlot={() => setLaneId(null)}
               onUseGeneral={() => onModeChange("general")}
             />
@@ -332,6 +422,12 @@ export function SigningsWorkspace({
                 onClearSlot={() => setLaneId(null)}
               />
             </p>
+            <RecruitmentFilterNote
+              signings={signings}
+              selectedSlot={selectedSlot}
+              candidateNoun={candidateNoun}
+              describeFilter={describeRecruitmentFilter}
+            />
             <div
               className={cn(
                 "flex flex-1 border-t border-outline-variant",

@@ -3896,7 +3896,7 @@ test.describe("application smoke", () => {
         // separated sections instead of a compact auto-fit grid.
         for (const sectionName of [
           "Phase Influence",
-          "General Settings",
+          "Foot Rule",
           "In Possession (IP)",
           "Out of Possession (OOP)",
         ] as const) {

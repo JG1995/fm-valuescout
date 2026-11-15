@@ -4,7 +4,7 @@ import { PlayerMetricPicker } from "@/components/ui/player-metric-picker";
 import { useAnchoredPopover } from "@/components/ui/use-anchored-popover";
 import { isPercentileOperator } from "@/utils/moneyball-search-metrics";
 import type { FilterRule } from "../types/filter-rule";
-import type { ComparisonPool, SearchView } from "../types/search-view";
+import type { ComparisonPool, FilterView } from "../types/search-view";
 import {
   defaultOperatorForField,
   defaultValueForRule,
@@ -50,7 +50,7 @@ export function FilterRulePopover({
   anchor: HTMLElement | null;
   rule: FilterRule;
   isNew: boolean;
-  view: SearchView;
+  view: FilterView;
   comparisonPool?: ComparisonPool;
   onApply: (rule: FilterRule) => void;
   onRemove?: () => void;
@@ -73,7 +73,7 @@ export function FilterRulePopover({
   useEffect(() => setShown(true), []);
   const field = getFilterField(draft.field, view);
   const scaleSwitch =
-    view === "moneyball" && field !== undefined && "metric" in field;
+    view !== "general" && field !== undefined && "metric" in field;
   const percentile = isPercentileOperator(draft.op);
   const scored =
     view === "moneyball" &&
@@ -225,6 +225,12 @@ export function FilterRulePopover({
                   onChange={(next) => setDraft(next)}
                 />
               </div>
+              {view === "slot" && percentile ? (
+                <p className="text-body-sm text-on-surface-variant">
+                  Ranked among players with season stats rated 16 or higher at
+                  either of this slot's positions.
+                </p>
+              ) : null}
               {scored ? (
                 <p className="text-body-sm text-on-surface-variant">
                   {comparisonPool === "fullCsv"

@@ -13,7 +13,6 @@ import {
   phaseDescription,
   phasePosition,
   phasePositionLabel,
-  roleLabel,
   TACTIC_PHASES,
   type TacticPhase,
   type TacticView,
@@ -55,7 +54,6 @@ function LaneButton({
   onSelect: () => void;
 }) {
   const position = phasePositionLabel(lane, phase, lanes);
-  const role = roleLabel(lane, phase, options);
   const description = phaseDescription(lane, phase, lanes, options);
   const { shortLabel } = TACTIC_PHASES[phase];
   const highlighted = highlightedLaneId === lane.laneId;
@@ -102,14 +100,10 @@ function LaneButton({
           {shortLabel}
         </span>
       ) : null}
+      {/* Roles are named in full in the Tactical XI; a marker shows only its
+          position, which always fits. */}
       <span className="block truncate text-label-md" title={description}>
         {position}
-      </span>
-      <span
-        className="block truncate text-[11px] leading-[1.4]"
-        title={description}
-      >
-        {role}
       </span>
     </button>
   );

@@ -24,6 +24,7 @@ import {
   managedClubOptionsQueryOptions,
   managedClubQueryOptions,
 } from "@/features/managed-club/api/managed-club-query-options";
+import { formatRecruitmentFilter } from "@/features/search/utils/recruitment-filters";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import type { SaveSummary } from "@/features/snapshot/types/save";
@@ -232,6 +233,7 @@ function DashboardPage() {
           }
           shortlists={save.playerShortlists}
           graphics={dashboardGraphics}
+          describeRecruitmentFilter={formatRecruitmentFilter}
         />
         <DevelopmentProspectsPanel
           context={context}

@@ -1,4 +1,4 @@
-import { Pin, TrendingDown, TriangleAlert } from "lucide-react";
+import { ListFilter, Pin, TrendingDown, TriangleAlert } from "lucide-react";
 import { StatusChip } from "@/components/ui/status-chip/status-chip";
 import { cn } from "@/utils/cn";
 import type {
@@ -73,11 +73,22 @@ export function StartingXiList({
               <span className="min-w-0">
                 <span
                   className={cn(
-                    "block truncate text-body-sm text-on-surface",
+                    "flex min-w-0 items-center gap-1 text-body-sm text-on-surface",
                     selected && "font-semibold",
                   )}
                 >
-                  {label.compact}
+                  <span className="truncate">{label.compact}</span>
+                  {slot.recruitmentFilters.length > 0 ? (
+                    <>
+                      <ListFilter
+                        aria-hidden="true"
+                        size={12}
+                        strokeWidth={1.5}
+                        className="shrink-0 text-on-surface-variant"
+                      />
+                      <span className="sr-only">has recruitment filters</span>
+                    </>
+                  ) : null}
                 </span>
                 <span className={secondaryLineClass}>{slotContext(slot)}</span>
               </span>

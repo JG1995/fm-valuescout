@@ -5,7 +5,7 @@ import type {
   FilterValue,
 } from "../types/filter-rule";
 import { createFilterRuleId, filterValueToIpc } from "../types/filter-rule";
-import type { SearchView } from "../types/search-view";
+import type { FilterView } from "../types/search-view";
 import {
   type FilterFieldDef,
   getFilterField,
@@ -54,7 +54,7 @@ function valueFromRaw(
   fieldId: string,
   op: string,
   raw: unknown,
-  view: SearchView,
+  view: FilterView,
 ): FilterValue | undefined {
   const field = getFilterField(fieldId, view);
   if (!field) {
@@ -124,7 +124,7 @@ function migrateLegacyRule(
 
 function parseOneFilterRule(
   entry: unknown,
-  view: SearchView,
+  view: FilterView,
 ): FilterRule | undefined {
   if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
     return undefined;
@@ -163,7 +163,7 @@ function parseOneFilterRule(
 
 export function parseSearchFilters(
   value: unknown,
-  view: SearchView = "general",
+  view: FilterView = "general",
 ): FilterRule[] {
   if (!Array.isArray(value)) {
     return [];

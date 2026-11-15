@@ -16,7 +16,7 @@ import type {
   FilterValue,
 } from "../types/filter-rule";
 import { createFilterRuleId, filterRuleToIpc } from "../types/filter-rule";
-import type { SearchView } from "../types/search-view";
+import type { FilterView, SearchView } from "../types/search-view";
 
 export type FilterFieldKind = PlayerMetricKind | "number";
 export type FilterOperator = PlayerMetricOperator;
@@ -62,17 +62,47 @@ const MONEYBALL_FILTER_FIELDS: readonly FilterFieldDef[] = [
   ...MONEYBALL_SEARCH_METRICS,
   REALISTIC_SIGNING_FIELDS.moneyball,
 ];
+/**
+ * A tactic slot's recruitment filters: General fields except Club DNA and
+ * potential role scores, which need a query identity or projection the
+ * Dashboard does not read, plus Moneyball playing time and statistics. Mirrors
+ * `resolve_slot_field` in `src-tauri/src/features/search/filter.rs`.
+ */
+const SLOT_FILTER_FIELDS: readonly FilterFieldDef[] = [
+  ...PLAYER_METRICS.filter(
+    (field) =>
+      field.id !== "club_dna" && field.category !== "potential-role-scores",
+  ),
+  // Recommended signings are realistic signings or a shortlist already, so the
+  // realistic-signing rule is left out.
+  ...MONEYBALL_SEARCH_METRICS.filter(
+    (field) => field.context === true || field.metric !== undefined,
+  ),
+];
+const SLOT_FILTER_FIELD_BY_ID = new Map(
+  SLOT_FILTER_FIELDS.map((field) => [field.id, field]),
+);
 
 export function filterFieldsForView(
-  view: SearchView,
+  view: FilterView,
 ): readonly FilterFieldDef[] {
-  return view === "moneyball" ? MONEYBALL_FILTER_FIELDS : GENERAL_FILTER_FIELDS;
+  switch (view) {
+    case "general":
+      return GENERAL_FILTER_FIELDS;
+    case "moneyball":
+      return MONEYBALL_FILTER_FIELDS;
+    case "slot":
+      return SLOT_FILTER_FIELDS;
+  }
 }
 
 export function getFilterField(
   fieldId: string,
-  view: SearchView = "general",
+  view: FilterView = "general",
 ): FilterFieldDef | undefined {
+  if (view === "slot") {
+    return SLOT_FILTER_FIELD_BY_ID.get(fieldId);
+  }
   if (fieldId === REALISTIC_SIGNING_FIELD_ID) {
     return REALISTIC_SIGNING_FIELDS[view];
   }
@@ -93,7 +123,7 @@ export function valueShapeForOperator(op: string): "single" | "range" | "list" {
 export function defaultValueForRule(
   fieldId: string,
   op: string,
-  view: SearchView = "general",
+  view: FilterView = "general",
 ): FilterValue {
   const shape = valueShapeForOperator(op);
   if (shape === "list") {
@@ -113,7 +143,7 @@ export function defaultValueForRule(
 
 function defaultValueForField(
   fieldId: string,
-  view: SearchView = "general",
+  view: FilterView = "general",
 ): FilterValue {
   const field = getFilterField(fieldId, view);
   if (!field) {
@@ -136,7 +166,7 @@ function defaultValueForField(
 
 export function defaultOperatorForField(
   fieldId: string,
-  view: SearchView = "general",
+  view: FilterView = "general",
 ): string {
   const field = getFilterField(fieldId, view);
   return field?.operators[0]?.id ?? "contains";
@@ -154,7 +184,7 @@ export function createBlankFilterRule(): FilterRule {
 
 export function isFilterRuleComplete(
   rule: FilterRule,
-  view: SearchView = "general",
+  view: FilterView = "general",
 ): boolean {
   const field = getFilterField(rule.field, view);
   if (!field) {
@@ -184,11 +214,9 @@ export function isFilterRuleComplete(
       )
     );
   }
-  if (
-    isPercentileOperator(rule.op) &&
-    !(typeof rule.value.value === "number" && inScale(rule.value.value))
-  ) {
-    return false;
+  // A percentile is a 0–100 number whatever the statistic's own kind.
+  if (isPercentileOperator(rule.op)) {
+    return typeof rule.value.value === "number" && inScale(rule.value.value);
   }
 
   switch (field.kind) {
@@ -214,7 +242,7 @@ export function isFilterRuleComplete(
 /** True for a Moneyball statistic shown as a percentage, compared on its raw value. */
 export function isRawPercentageRule(
   rule: FilterRule,
-  view: SearchView = "general",
+  view: FilterView = "general",
 ): boolean {
   const field = getFilterField(rule.field, view);
   return (
@@ -232,7 +260,7 @@ export function isRawPercentageRule(
  */
 export function filterRuleToSearchIpc(
   rule: FilterRule,
-  view: SearchView = "general",
+  view: FilterView = "general",
 ): FilterRuleIpc {
   const ipc = filterRuleToIpc(rule);
   const field = getFilterField(rule.field, view);
@@ -254,7 +282,7 @@ export function filterRuleToSearchIpc(
 
 export function completeFilterRules(
   rules: FilterRule[],
-  view: SearchView = "general",
+  view: FilterView = "general",
 ): FilterRule[] {
   return rules.filter((rule) => isFilterRuleComplete(rule, view));
 }

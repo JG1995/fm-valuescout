@@ -1,18 +1,24 @@
 import { X } from "lucide-react";
-import { useId } from "react";
+import { type KeyboardEvent, type ReactNode, useId } from "react";
 import { SelectField } from "@/components/ui/field/select-field";
 import {
   type MetricPickerMetric,
   PlayerMetricPicker,
 } from "@/components/ui/player-metric-picker";
+import { cn } from "@/utils/cn";
 import {
   MONEYBALL_METRIC_CATEGORIES,
   MONEYBALL_METRICS,
   moneyballMetric,
 } from "@/utils/moneyball-metrics";
 import { orderedTacticPositions } from "@/utils/position-order";
-import type { TacticLane, TacticOptions } from "../types/tactic";
+import type {
+  RecruitmentFilter,
+  TacticLane,
+  TacticOptions,
+} from "../types/tactic";
 import {
+  basePosition,
   linkedPositionDescription,
   phasePosition,
   phasePositionLabel,
@@ -36,6 +42,10 @@ type PlannerTacticInspectorProps = {
   onPositionChange: (phase: TacticPhase, position: string) => void;
   onRoleChange: (phase: TacticPhase, roleId: string) => void;
   onCustomMetricsChange: (customMetricKeys: string[]) => void;
+  onRecruitmentFiltersChange: (filters: RecruitmentFilter[]) => void;
+  renderRecruitmentFilters: RenderRecruitmentFilters;
+  tab: SlotTab;
+  onTabChange: (tab: SlotTab) => void;
 };
 
 const MAX_SLOT_METRICS = 5;
@@ -191,29 +201,160 @@ function SlotMetricControls({
   );
 }
 
+export type SlotTab = "roles" | "scoring" | "recruitment";
+
+const SLOT_TABS: readonly SlotTab[] = ["roles", "scoring", "recruitment"];
+
+const SLOT_TAB_LABELS: Record<SlotTab, string> = {
+  roles: "Roles",
+  scoring: "Scoring",
+  recruitment: "Recruitment",
+};
+
+/** Renders the route-provided editor for one slot's recruitment filters. */
+export type RenderRecruitmentFilters = (props: {
+  filters: RecruitmentFilter[];
+  onChange: (filters: RecruitmentFilter[]) => void;
+}) => ReactNode;
+
+const MAX_RECRUITMENT_FILTERS = 10;
+
+function SlotTabs({
+  tab,
+  counts,
+  idPrefix,
+  onTabChange,
+}: {
+  tab: SlotTab;
+  counts: Partial<Record<SlotTab, number>>;
+  idPrefix: string;
+  onTabChange: (tab: SlotTab) => void;
+}) {
+  const focusTab = (next: SlotTab) =>
+    document.getElementById(`${idPrefix}-tab-${next}`)?.focus();
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const index = SLOT_TABS.indexOf(tab);
+    const next =
+      event.key === "ArrowRight" || event.key === "ArrowDown"
+        ? SLOT_TABS[(index + 1) % SLOT_TABS.length]
+        : event.key === "ArrowLeft" || event.key === "ArrowUp"
+          ? SLOT_TABS[(index - 1 + SLOT_TABS.length) % SLOT_TABS.length]
+          : event.key === "Home"
+            ? SLOT_TABS[0]
+            : event.key === "End"
+              ? SLOT_TABS[SLOT_TABS.length - 1]
+              : null;
+    if (!next) {
+      return;
+    }
+    event.preventDefault();
+    onTabChange(next);
+    focusTab(next);
+  };
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Slot settings"
+      className="grid shrink-0 grid-cols-3 rounded-md bg-surface-container-high p-0.5"
+      onKeyDown={onKeyDown}
+    >
+      {SLOT_TABS.map((id) => {
+        const selected = id === tab;
+        const count = counts[id] ?? 0;
+        return (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            id={`${idPrefix}-tab-${id}`}
+            aria-selected={selected}
+            aria-controls={`${idPrefix}-panel-${id}`}
+            tabIndex={selected ? 0 : -1}
+            className={cn(
+              "inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-sm px-2 text-label-md transition-colors duration-150 ease-out",
+              "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary",
+              selected
+                ? "bg-surface-container-lowest text-on-surface"
+                : "text-on-surface-variant hover:text-on-surface",
+            )}
+            onClick={() => onTabChange(id)}
+          >
+            {SLOT_TAB_LABELS[id]}
+            {count > 0 ? (
+              <span className="rounded-sm bg-surface-container-highest px-1 font-mono text-mono-sm tabular-nums text-on-surface">
+                {count}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SectionHeading({
+  children,
+  count,
+}: {
+  children: ReactNode;
+  count?: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <h3 className="text-label-md text-on-surface-variant">{children}</h3>
+      {count ? (
+        <p className="font-mono text-mono-sm text-on-surface-variant tabular-nums">
+          {count}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** The slot's positions that make a player one of its percentile peers. */
+function peerPositions(lane: TacticLane): string {
+  const positions = [
+    ...new Set([basePosition(lane.ipPosition), basePosition(lane.oopPosition)]),
+  ];
+  return positions.join(" or ");
+}
+
 export function PlannerTacticInspector({
   selectedLane,
   lanes,
   options,
   phases,
   disabled,
+  tab,
+  onTabChange,
   onWeightChange,
   onPreferredFootChange,
   onFootPreferenceChange,
   onPositionChange,
   onRoleChange,
   onCustomMetricsChange,
+  onRecruitmentFiltersChange,
+  renderRecruitmentFilters,
 }: PlannerTacticInspectorProps) {
   const weightId = useId();
   const headingId = useId();
+  const tabIdPrefix = useId();
   const weight = Math.round(selectedLane.ipWeight * 100);
+  const panelProps = (id: SlotTab) => ({
+    id: `${tabIdPrefix}-panel-${id}`,
+    role: "tabpanel" as const,
+    "aria-labelledby": `${tabIdPrefix}-tab-${id}`,
+    hidden: id !== tab,
+    className: "space-y-3 py-3",
+  });
 
   return (
     <section
-      className="flex h-full min-h-0 flex-col overflow-y-auto border-l border-outline-variant pl-4"
+      className="flex h-full min-h-0 flex-col gap-3 border-l border-outline-variant pl-4"
       aria-labelledby={headingId}
     >
-      <div className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1 pb-2">
+      <div className="flex shrink-0 flex-col gap-0.5">
         <h2
           id={headingId}
           className="text-body-md font-semibold text-on-surface"
@@ -228,12 +369,23 @@ export function PlannerTacticInspector({
         </p>
       </div>
 
-      <fieldset disabled={disabled} className="flex shrink-0 flex-col">
-        <div className="space-y-2 pb-2">
-          <h3 className="text-label-md text-on-surface-variant">
-            Phase Influence
-          </h3>
+      <SlotTabs
+        tab={tab}
+        counts={{
+          scoring: selectedLane.customMetricKeys.length,
+          recruitment: selectedLane.recruitmentFilters.length,
+        }}
+        idPrefix={tabIdPrefix}
+        onTabChange={onTabChange}
+      />
+
+      <fieldset
+        disabled={disabled}
+        className="min-h-0 flex-1 overflow-y-auto pr-1"
+      >
+        <div {...panelProps("roles")}>
           <div className="space-y-1">
+            <SectionHeading>Phase Influence</SectionHeading>
             <label
               className="block text-label-md text-on-surface-variant"
               htmlFor={weightId}
@@ -266,81 +418,96 @@ export function PlannerTacticInspector({
               IP {weight}% / OOP {100 - weight}%
             </p>
           </div>
-        </div>
 
-        <div className="space-y-2 border-t border-outline-variant py-2">
-          <h3 className="text-label-md text-on-surface-variant">
-            General Settings
-          </h3>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <SelectField
-              label="Preferred foot"
-              value={selectedLane.preferredFoot}
-              onChange={(event) =>
-                onPreferredFootChange(
-                  event.target.value as TacticLane["preferredFoot"],
-                )
-              }
-            >
-              <option value="any">Either</option>
-              <option value="left">Left</option>
-              <option value="right">Right</option>
-              <option value="both">Both</option>
-            </SelectField>
-            <SelectField
-              label="Foot preference"
-              value={selectedLane.footPreference}
-              disabled={selectedLane.preferredFoot === "any"}
-              onChange={(event) =>
-                onFootPreferenceChange(
-                  event.target.value as TacticLane["footPreference"],
-                )
-              }
-            >
-              <option value="preferred">Preferred</option>
-              <option value="strict">Strict</option>
-            </SelectField>
+          <div className="space-y-2 border-t border-outline-variant pt-3">
+            <SectionHeading>Foot Rule</SectionHeading>
+            <div className="grid grid-cols-2 gap-3">
+              <SelectField
+                label="Preferred foot"
+                value={selectedLane.preferredFoot}
+                onChange={(event) =>
+                  onPreferredFootChange(
+                    event.target.value as TacticLane["preferredFoot"],
+                  )
+                }
+              >
+                <option value="any">Either</option>
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+                <option value="both">Both</option>
+              </SelectField>
+              <SelectField
+                label="Foot preference"
+                value={selectedLane.footPreference}
+                disabled={selectedLane.preferredFoot === "any"}
+                onChange={(event) =>
+                  onFootPreferenceChange(
+                    event.target.value as TacticLane["footPreference"],
+                  )
+                }
+              >
+                <option value="preferred">Preferred</option>
+                <option value="strict">Strict</option>
+              </SelectField>
+            </div>
           </div>
-        </div>
 
-        {phases.map((phase) => (
-          <div
-            key={phase}
-            className="space-y-2 border-t border-outline-variant py-2 last:pb-0"
-          >
-            <h3 className="flex items-center gap-2 text-label-md text-on-surface-variant">
-              <span
-                aria-hidden="true"
-                className={`inline-block size-2 rounded-full ${phase === "ip" ? "bg-chart-2" : "bg-chart-3"}`}
+          {phases.map((phase) => (
+            <div
+              key={phase}
+              className="space-y-2 border-t border-outline-variant pt-3"
+            >
+              <h3 className="flex items-center gap-2 text-label-md text-on-surface-variant">
+                <span
+                  aria-hidden="true"
+                  className={`inline-block size-2 rounded-full ${phase === "ip" ? "bg-chart-2" : "bg-chart-3"}`}
+                />
+                {phase === "ip"
+                  ? "In Possession (IP)"
+                  : "Out of Possession (OOP)"}
+              </h3>
+              <PhaseControls
+                phase={phase}
+                lane={selectedLane}
+                lanes={lanes}
+                options={options}
+                onPositionChange={(position) =>
+                  onPositionChange(phase, position)
+                }
+                onRoleChange={(roleId) => onRoleChange(phase, roleId)}
               />
-              {phase === "ip"
-                ? "In Possession (IP)"
-                : "Out of Possession (OOP)"}
-            </h3>
-            <PhaseControls
-              phase={phase}
-              lane={selectedLane}
-              lanes={lanes}
-              options={options}
-              onPositionChange={(position) => onPositionChange(phase, position)}
-              onRoleChange={(roleId) => onRoleChange(phase, roleId)}
-            />
-          </div>
-        ))}
+            </div>
+          ))}
+        </div>
 
-        <div className="space-y-2 border-t border-outline-variant py-2 last:pb-0">
-          <div className="flex items-baseline justify-between gap-2">
-            <h3 className="text-label-md text-on-surface-variant">
-              Moneyball Metrics
-            </h3>
-            <p className="font-mono text-mono-sm text-on-surface-variant tabular-nums">
-              {selectedLane.customMetricKeys.length}/{MAX_SLOT_METRICS}
-            </p>
-          </div>
+        <div {...panelProps("scoring")}>
+          <SectionHeading
+            count={`${selectedLane.customMetricKeys.length}/${MAX_SLOT_METRICS}`}
+          >
+            Moneyball Metrics
+          </SectionHeading>
           <SlotMetricControls
             metricKeys={selectedLane.customMetricKeys}
             onChange={onCustomMetricsChange}
           />
+        </div>
+
+        <div {...panelProps("recruitment")}>
+          <SectionHeading
+            count={`${selectedLane.recruitmentFilters.length}/${MAX_RECRUITMENT_FILTERS}`}
+          >
+            Recruitment Filters
+          </SectionHeading>
+          <p className="text-body-sm text-on-surface-variant">
+            Recommended signings for this slot must pass every filter. Your own
+            players are never filtered. Percentiles rank a statistic among
+            players with season stats rated 16 or higher at{" "}
+            {peerPositions(selectedLane)}.
+          </p>
+          {renderRecruitmentFilters({
+            filters: selectedLane.recruitmentFilters,
+            onChange: onRecruitmentFiltersChange,
+          })}
         </div>
       </fieldset>
     </section>

@@ -29,6 +29,16 @@ export type DashboardSlotPlacement = {
   oopRoleId: string;
 };
 
+/**
+ * One of a slot's recruitment filter rules, in Search's filter IPC shape. The
+ * route describes it, since only Search knows its fields.
+ */
+export type DashboardRecruitmentFilter = {
+  field: string;
+  op: string;
+  value: string | number | boolean | number[] | string[];
+};
+
 export type DashboardLineupSlot = DashboardSlotPlacement & {
   scoreBasis: DashboardScoreBasis;
   incumbent: DashboardIncumbent | null;
@@ -41,6 +51,8 @@ export type DashboardLineupSlot = DashboardSlotPlacement & {
    * independently, so one player can be the best signing for several.
    */
   bestSigning: DashboardRecommendation | null;
+  /** Rules a candidate must pass to be recommended for the slot. */
+  recruitmentFilters: DashboardRecruitmentFilter[];
 };
 
 export type DashboardOtherLane = {
@@ -78,6 +90,11 @@ export type DashboardSignings = {
   candidates: number | null;
   totalRecommendations: number;
   recommendations: DashboardRecommendation[];
+  /**
+   * Candidates who would improve a considered slot but fail the recruitment
+   * filters of every slot they would improve.
+   */
+  filteredOut: number;
 };
 
 export type DashboardSigningsRequest = {

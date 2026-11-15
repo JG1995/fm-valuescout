@@ -230,6 +230,26 @@ describe("SearchFilterBar", () => {
     );
   });
 
+  it("compares a counted Moneyball statistic by percentile", async () => {
+    const { onApply, user } = renderBar({ view: "moneyball" });
+
+    await user.click(screen.getByRole("button", { name: "Add filter" }));
+    await chooseField(user, "progressive passes", "Progressive Passes");
+    await user.click(screen.getByRole("button", { name: "Percentile" }));
+    await user.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(onApply).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          field: "moneyball.progressive_passes",
+          op: "pct_gte",
+          value: { type: "number", value: 90 },
+        }),
+      ],
+      "and",
+    );
+  });
+
   it("sets All or Any once two or more rules apply", async () => {
     const { onApply, user } = renderBar({ rules: [ca, age] });
 

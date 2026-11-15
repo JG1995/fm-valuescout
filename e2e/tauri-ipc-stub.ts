@@ -762,6 +762,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             candidates: 0,
             totalRecommendations: 0,
             recommendations: [],
+            filteredOut: 0,
           };
         }
         const slots = dashboardSlots.map((slot, index) => {
@@ -788,6 +789,9 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             },
             unscoredPlannerPlayer:
               moneyball && slot[0] === "left_centre_back" ? "Iñigo Martínez" : null,
+            recruitmentFilters:
+              plannerTactic.lanes.find((lane) => lane.laneId === slot[0])
+                ?.recruitmentFilters ?? [],
           };
         });
         const incumbentScore = (laneId) =>
@@ -842,6 +846,9 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           candidates: shortlisted ? candidates.length : null,
           totalRecommendations: recommendations.length,
           recommendations,
+          // The stub's tactic filters only the left centre-back slot.
+          filteredOut:
+            request?.laneId == null || request.laneId === "left_centre_back" ? 3 : 0,
         };
       };
       const dashboardExpiringContracts = {

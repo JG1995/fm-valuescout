@@ -42,6 +42,7 @@ import { PlannerTacticEditor } from "@/features/planner/components/planner-tacti
 import { TacticContextBoundary } from "@/features/planner/components/tactic-context-boundary";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
+import { RecruitmentFilterEditor } from "@/features/search/components/recruitment-filter-editor";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
@@ -76,6 +77,7 @@ import {
   isStaffSortField,
 } from "@/features/staff/types/staff-sort";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import { isValidTacticLaneId } from "@/utils/tactic-ids";
 
 export const MY_CLUB_WORKSPACES = ["squad", "planner", "tactic"] as const;
 export type MyClubWorkspace = (typeof MY_CLUB_WORKSPACES)[number];
@@ -92,6 +94,8 @@ export type MyClubSearch = {
   view?: MyClubWorkspace;
   squadSort?: SquadSortField;
   squadDir?: SquadSortDir;
+  /** A tactic slot to open with its recruitment filters in the Tactic editor. */
+  slot?: string;
 };
 
 function squadSortForSearch(search: MyClubSearch): {
@@ -241,10 +245,15 @@ export const Route = createFileRoute("/my-club")({
     const squadDir = isSquadSortDir(search.squadDir)
       ? search.squadDir
       : undefined;
+    const slot =
+      typeof search.slot === "string" && isValidTacticLaneId(search.slot)
+        ? search.slot
+        : undefined;
     return {
       ...(view ? { view } : {}),
       ...(squadSort ? { squadSort } : {}),
       ...(squadDir ? { squadDir } : {}),
+      ...(slot ? { slot } : {}),
     };
   },
   component: MyClubPage,
@@ -777,6 +786,10 @@ function MyClubPageContent() {
                       readOnly={readOnly}
                       tactic={tactic}
                       options={options}
+                      renderRecruitmentFilters={(props) => (
+                        <RecruitmentFilterEditor {...props} />
+                      )}
+                      recruitmentLaneId={search.slot}
                       onSaved={() =>
                         Promise.all([
                           queryClient.invalidateQueries({

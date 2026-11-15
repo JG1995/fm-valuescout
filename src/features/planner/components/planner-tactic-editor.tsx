@@ -4,7 +4,12 @@ import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
 import { type PlannerContext, plannerKeys } from "../api/planner-keys";
 import { savePlannerTactic } from "../api/save-planner-tactic";
-import type { PlannerTactic, TacticLane, TacticOptions } from "../types/tactic";
+import type {
+  PlannerTactic,
+  RecruitmentFilter,
+  TacticLane,
+  TacticOptions,
+} from "../types/tactic";
 import {
   cloneTactic,
   phasePosition,
@@ -17,7 +22,11 @@ import {
   validateTacticDraft,
 } from "../utils/tactic-editor";
 import { PlannerPhaseAwareTacticPitch } from "./planner-phase-aware-tactic-pitch";
-import { PlannerTacticInspector } from "./planner-tactic-inspector";
+import {
+  PlannerTacticInspector,
+  type RenderRecruitmentFilters,
+  type SlotTab,
+} from "./planner-tactic-inspector";
 import { PlannerTacticLaneList } from "./planner-tactic-lane-list";
 
 type PlannerTacticEditorProps = {
@@ -29,6 +38,13 @@ type PlannerTacticEditorProps = {
   options: TacticOptions;
   /** Runs after a successful save, so the route can refresh other features. */
   onSaved?: () => Promise<unknown>;
+  /** The route's editor for a slot's recruitment filters, from Search. */
+  renderRecruitmentFilters: RenderRecruitmentFilters;
+  /**
+   * A slot to select with its recruitment filters open, such as from the
+   * Dashboard's link. Each new value selects it again.
+   */
+  recruitmentLaneId?: string;
 };
 
 const VIEW_LABELS: Record<TacticView, string> = {
@@ -67,6 +83,8 @@ export function PlannerTacticEditor({
   tactic,
   options,
   onSaved,
+  renderRecruitmentFilters,
+  recruitmentLaneId,
 }: PlannerTacticEditorProps) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(() => cloneTactic(tactic));
@@ -75,11 +93,30 @@ export function PlannerTacticEditor({
   );
   const [view, setView] = useState<TacticView>("both");
   const [selectedLaneId, setSelectedLaneId] = useState(
-    tactic.lanes[0]?.laneId ?? "",
+    tactic.lanes.find((lane) => lane.laneId === recruitmentLaneId)?.laneId ??
+      tactic.lanes[0]?.laneId ??
+      "",
+  );
+  const [slotTab, setSlotTab] = useState<SlotTab>(
+    recruitmentLaneId ? "recruitment" : "roles",
   );
   const [highlightedLaneId, setHighlightedLaneId] = useState<string | null>(
     null,
   );
+  const requestedLaneId = useRef(recruitmentLaneId);
+  useEffect(() => {
+    if (
+      !recruitmentLaneId ||
+      recruitmentLaneId === requestedLaneId.current ||
+      !draft.lanes.some((lane) => lane.laneId === recruitmentLaneId)
+    ) {
+      return;
+    }
+    requestedLaneId.current = recruitmentLaneId;
+    setSelectedLaneId(recruitmentLaneId);
+    setHighlightedLaneId(recruitmentLaneId);
+    setSlotTab("recruitment");
+  }, [draft.lanes, recruitmentLaneId]);
   const [saveSucceeded, setSaveSucceeded] = useState(false);
   const viewButtonRefs = useRef<Record<TacticView, HTMLButtonElement | null>>({
     ip: null,
@@ -192,6 +229,22 @@ export function PlannerTacticEditor({
       lanes: draft.lanes.map((lane) =>
         lane.laneId === selectedLane.laneId
           ? { ...lane, customMetricKeys }
+          : lane,
+      ),
+    });
+  };
+
+  const updateSelectedLaneRecruitmentFilters = (
+    recruitmentFilters: RecruitmentFilter[],
+  ) => {
+    if (!selectedLane) {
+      return;
+    }
+    updateDraft({
+      ...draft,
+      lanes: draft.lanes.map((lane) =>
+        lane.laneId === selectedLane.laneId
+          ? { ...lane, recruitmentFilters }
           : lane,
       ),
     });
@@ -319,7 +372,7 @@ export function PlannerTacticEditor({
           </Button>
         </section>
 
-        <div className="grid min-h-0 min-w-0 flex-1 gap-4 p-4 lg:grid-cols-[12rem_minmax(0,1fr)_20rem] 2xl:grid-cols-[18rem_minmax(0,1fr)_20rem]">
+        <div className="grid min-h-0 min-w-0 flex-1 gap-4 p-4 lg:grid-cols-[15rem_minmax(0,1fr)_24rem] 2xl:grid-cols-[19rem_minmax(0,1fr)_27rem]">
           <PlannerTacticLaneList
             lanes={draft.lanes}
             options={options}
@@ -365,6 +418,12 @@ export function PlannerTacticEditor({
                   updateRole(selectedLane.laneId, phase, roleId)
                 }
                 onCustomMetricsChange={updateSelectedLaneCustomMetrics}
+                onRecruitmentFiltersChange={
+                  updateSelectedLaneRecruitmentFilters
+                }
+                renderRecruitmentFilters={renderRecruitmentFilters}
+                tab={slotTab}
+                onTabChange={setSlotTab}
               />
             </div>
           ) : null}

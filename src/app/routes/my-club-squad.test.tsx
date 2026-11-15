@@ -3836,16 +3836,16 @@ describe("My Club route", () => {
     expect(within(panel).queryByRole("listbox")).toBeNull();
 
     // All 11 lanes render in lane order even though the draft array was
-    // rotated: the goalkeeper still leads with a readable transition.
+    // rotated: the goalkeeper still leads, naming both phases' roles in
+    // full and its custom metric count.
     const rows = within(panel).getAllByRole("button");
     expect(rows).toHaveLength(11);
-    expect(rows[0].textContent).toContain("Goalkeeper\nOOP:");
-    expect(rows[0]).toHaveClass("whitespace-pre-line");
-    expect(rows[0]).toHaveTextContent(
-      "IP: GK · Goalkeeper OOP: GK · Line-Holding Keeper",
+    expect(rows[0]).toHaveTextContent("GKGoalkeeperLine-Holding Keeper2");
+    expect(rows[0]).toHaveAccessibleName(
+      "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper, 2 custom metrics",
     );
-    expect(rows[10]).toHaveTextContent(
-      "IP: STC · Centre Forward OOP: STC · Central Outlet Centre Forward",
+    expect(rows[10]).toHaveAccessibleName(
+      "IP: STC · Centre Forward / OOP: STC · Central Outlet Centre Forward",
     );
     for (const row of rows) {
       expect(row).toHaveAttribute("aria-pressed");
@@ -3859,11 +3859,10 @@ describe("My Club route", () => {
       (row) => row.getAttribute("aria-pressed") === "true",
     );
     expect(initiallyPressed).toHaveLength(1);
-    expect(initiallyPressed[0]).toHaveTextContent("IP: DL · Full-Back");
+    expect(initiallyPressed[0]).toHaveAccessibleName(/^IP: DL · Full-Back/);
     expect(initiallyPressed[0]).toHaveClass(
       "border-transparent",
       "bg-surface-container-high",
-      "font-semibold",
     );
 
     // Panel to pitch and inspector: activating the goalkeeper row selects
@@ -3876,7 +3875,7 @@ describe("My Club route", () => {
       ),
     ).toHaveLength(1);
     expect(afterPanelSelect[0]).toHaveAttribute("aria-pressed", "true");
-    expect(afterPanelSelect[0]).toHaveClass("font-semibold");
+    expect(afterPanelSelect[0]).toHaveClass("bg-surface-container-high");
     expect(
       screen.getByRole("button", { name: "IP: GK · Goalkeeper" }),
     ).toHaveAttribute("aria-pressed", "true");
@@ -3895,7 +3894,7 @@ describe("My Club route", () => {
       (row) => row.getAttribute("aria-pressed") === "true",
     );
     expect(markerPressed).toHaveLength(1);
-    expect(markerPressed[0]).toHaveTextContent("IP: DL · Full-Back");
+    expect(markerPressed[0]).toHaveAccessibleName(/^IP: DL · Full-Back/);
 
     // Ordinary-button rows stay keyboard operable: Enter on the leading
     // row moves selection back and the inspector follows.

@@ -65,14 +65,15 @@ export function PlannerPhaseAwareTacticPitch({
 
   const orientation: PitchOrientation = landscape ? "landscape" : "portrait";
   // Both needs 640px for three adjacent collided pairs: 15% anchor gaps
-  // must fit two 44px targets plus their 4px split. The workspace scroller
-  // owns any overflow; keep the canvas vertical instead of shrinking targets.
+  // must fit two 44px targets plus their 4px split. Its height follows the
+  // window so the whole pitch fits a maximized 1080p window; below 480px the
+  // workspace scroller owns the overflow instead of shrinking targets.
   // Single-phase and role-reference sizing remain independent.
   const workspaceCanvasClassName =
     orientation === "portrait"
       ? view === "both"
-        ? "mx-auto h-[680px] w-full min-w-[640px] max-w-[640px]"
-        : "mx-auto h-[560px] w-full max-w-[520px]"
+        ? "mx-auto h-[clamp(30rem,calc(100dvh-26rem),42.5rem)] w-full min-w-[640px] max-w-[640px]"
+        : "mx-auto h-[min(560px,calc(100dvh-24rem))] min-h-[30rem] w-full max-w-[520px]"
       : undefined;
 
   if (view !== "both") {

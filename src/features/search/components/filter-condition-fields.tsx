@@ -5,7 +5,7 @@ import { TextField } from "@/components/ui/field/text-field";
 import { cn } from "@/utils/cn";
 import { isPercentileOperator } from "@/utils/moneyball-search-metrics";
 import type { FilterRule, FilterValue } from "../types/filter-rule";
-import type { SearchView } from "../types/search-view";
+import type { FilterView } from "../types/search-view";
 import {
   defaultValueForRule,
   type FilterFieldDef,
@@ -17,7 +17,7 @@ import {
 export function filterValueError(
   rule: FilterRule,
   field: FilterFieldDef,
-  view: SearchView,
+  view: FilterView,
 ): string | undefined {
   if (isFilterRuleComplete(rule, view)) {
     return undefined;
@@ -53,7 +53,7 @@ export function FilterConditionFields({
 }: {
   rule: FilterRule;
   field: FilterFieldDef;
-  view: SearchView;
+  view: FilterView;
   error?: string;
   /** The operators to offer; defaults to all of the field's operators. */
   operators?: FilterFieldDef["operators"];
