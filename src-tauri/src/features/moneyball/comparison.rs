@@ -150,6 +150,40 @@ pub(crate) fn statistic_index(key: &str) -> Option<usize> {
         .copied()
 }
 
+/// Calls `found` with the catalog index and raw value text of each statistic in one stored
+/// statistics object. Stored objects list the catalog's keys alphabetically, as their JSON map
+/// serializes them, so each key is matched with one comparison against the next expected key;
+/// a key out of that order falls back to a lookup.
+pub(crate) fn scan_statistic_values(
+    json: &str,
+    mut found: impl FnMut(usize, &str) -> Result<(), String>,
+) -> Result<(), String> {
+    static STORED_ORDER: OnceLock<Vec<(&'static str, usize)>> = OnceLock::new();
+    let order = STORED_ORDER.get_or_init(|| {
+        let mut order = MONEYBALL_STATISTIC_KEYS
+            .iter()
+            .enumerate()
+            .map(|(index, key)| (*key, index))
+            .collect::<Vec<_>>();
+        order.sort_unstable();
+        order
+    });
+    let mut next = 0;
+    scan_json_object(json, |key, text| {
+        let index = match order.get(next) {
+            Some((expected, index)) if *expected == key => {
+                next += 1;
+                Some(*index)
+            }
+            _ => statistic_index(key),
+        };
+        match index {
+            Some(index) => found(index, text),
+            None => Ok(()),
+        }
+    })
+}
+
 fn lower_is_better(index: usize) -> bool {
     static LOWER_IS_BETTER: OnceLock<Vec<bool>> = OnceLock::new();
     LOWER_IS_BETTER.get_or_init(|| {
@@ -523,11 +557,9 @@ fn scan_positions(json: &str) -> Result<(Option<PositionFamily>, u16), String> {
 /// Every statistic of one stored statistics object, NaN when null or absent.
 pub(crate) fn scan_statistics(json: &str) -> Result<Box<[f64]>, String> {
     let mut values = vec![f64::NAN; MONEYBALL_STATISTIC_KEYS.len()].into_boxed_slice();
-    scan_json_object(json, |key, text| {
-        if let Some(index) = statistic_index(key) {
-            if let Some(value) = parse_json_value(text, |text| text.parse::<f64>().ok())? {
-                values[index] = value;
-            }
+    scan_statistic_values(json, |index, text| {
+        if let Some(value) = parse_json_value(text, |text| text.parse::<f64>().ok())? {
+            values[index] = value;
         }
         Ok(())
     })?;
@@ -693,6 +725,26 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn statistics_scan_in_stored_order_and_out_of_it() {
+        let stored = MONEYBALL_STATISTIC_KEYS
+            .iter()
+            .enumerate()
+            .map(|(index, key)| ((*key).to_string(), serde_json::json!(index)))
+            .collect::<serde_json::Map<_, _>>();
+        let values = scan_statistics(&serde_json::Value::Object(stored).to_string()).unwrap();
+        assert!(values
+            .iter()
+            .enumerate()
+            .all(|(index, value)| *value == index as f64));
+
+        let shuffled = r#"{"xg":2.5,"unknown":1,"assists":3,"goals":null}"#;
+        let values = scan_statistics(shuffled).unwrap();
+        let value = |key| values[statistic_index(key).unwrap()];
+        assert_eq!((value("xg"), value("assists")), (2.5, 3.0));
+        assert!(value("goals").is_nan());
     }
 
     #[test]

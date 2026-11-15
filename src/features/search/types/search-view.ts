@@ -1,3 +1,8 @@
+import {
+  isPositionFamilyId,
+  type PositionFamilyId,
+} from "@/utils/position-families";
+
 export type SearchView = "general" | "moneyball";
 
 /**
@@ -7,14 +12,18 @@ export type SearchView = "general" | "moneyball";
  */
 export type FilterView = SearchView | "slot";
 
-export type ComparisonPool = "filtered" | "fullCsv";
+/**
+ * Whom Moneyball Search ranks each player's statistics against: the peers of
+ * his own best position's family, or one family's peers for every player.
+ */
+export type MoneyballComparison = "own" | PositionFamilyId;
 
 export function parseSearchView(value: unknown): SearchView {
   return value === "moneyball" ? "moneyball" : "general";
 }
 
-export function parseComparisonPool(value: unknown): ComparisonPool {
-  return value === "fullCsv" ? "fullCsv" : "filtered";
+export function parseMoneyballComparison(value: unknown): MoneyballComparison {
+  return isPositionFamilyId(value) ? value : "own";
 }
 
 export function defaultSearchSort(view: SearchView): string {

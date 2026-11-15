@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button/button";
 import { PlayerMetricPicker } from "@/components/ui/player-metric-picker";
 import { useAnchoredPopover } from "@/components/ui/use-anchored-popover";
 import { isPercentileOperator } from "@/utils/moneyball-search-metrics";
+import { positionFamilyLabel } from "@/utils/position-families";
 import type { FilterRule } from "../types/filter-rule";
-import type { ComparisonPool, FilterView } from "../types/search-view";
+import type { FilterView, MoneyballComparison } from "../types/search-view";
 import {
   defaultOperatorForField,
   defaultValueForRule,
@@ -42,7 +43,7 @@ export function FilterRulePopover({
   rule,
   isNew,
   view,
-  comparisonPool,
+  comparison,
   onApply,
   onRemove,
   onClose,
@@ -51,7 +52,7 @@ export function FilterRulePopover({
   rule: FilterRule;
   isNew: boolean;
   view: FilterView;
-  comparisonPool?: ComparisonPool;
+  comparison?: MoneyballComparison;
   onApply: (rule: FilterRule) => void;
   onRemove?: () => void;
   onClose: () => void;
@@ -75,9 +76,12 @@ export function FilterRulePopover({
   const scaleSwitch =
     view !== "general" && field !== undefined && "metric" in field;
   const percentile = isPercentileOperator(draft.op);
-  const scored =
+  const roleScore =
     view === "moneyball" &&
-    (percentile || (field !== undefined && "role" in field && field.role));
+    field !== undefined &&
+    "role" in field &&
+    field.role;
+  const statisticPercentile = view === "moneyball" && percentile;
 
   useEffect(() => {
     if (!shown || focusRequest === null) {
@@ -227,15 +231,21 @@ export function FilterRulePopover({
               </div>
               {view === "slot" && percentile ? (
                 <p className="text-body-sm text-on-surface-variant">
-                  Ranked among players with season stats rated 16 or higher at
-                  either of this slot's positions.
+                  Ranked among players with 450+ minutes rated 16 or higher in
+                  the position families of this slot's positions.
                 </p>
               ) : null}
-              {scored ? (
+              {roleScore ? (
                 <p className="text-body-sm text-on-surface-variant">
-                  {comparisonPool === "fullCsv"
-                    ? "Scored against all players with stats."
-                    : "Scored against the players matching your other filters."}{" "}
+                  Scored among the role's position family: players with 450+
+                  minutes rated 16 or higher there.
+                </p>
+              ) : statisticPercentile ? (
+                <p className="text-body-sm text-on-surface-variant">
+                  {comparison === undefined || comparison === "own"
+                    ? "Ranked among the peers of each player's own position."
+                    : `Ranked among ${positionFamilyLabel(comparison).toLowerCase()}.`}{" "}
+                  Peers have 450+ minutes and a rating of 16 or higher there.
                   Change this with Percentiles vs in the toolbar.
                 </p>
               ) : null}

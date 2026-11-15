@@ -17,6 +17,11 @@ export type PlayerSummary = {
   dynamicValues?: Record<string, DynamicCellValue | null>;
   /** Percentile scores for requested Moneyball performance metrics only. */
   moneyballPercentiles?: Record<string, number | null>;
+  /**
+   * Moneyball only: under 450 minutes, so the percentiles rank the player
+   * against peers he is not one of. Absent otherwise.
+   */
+  moneyballShortSample?: boolean;
 };
 
 export type SearchPlayersPageState =

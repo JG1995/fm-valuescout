@@ -6,7 +6,9 @@ use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Ro
 use crate::db::result_cache::{Cancellation, ResultCache, TableRegistry, TableTicket};
 use crate::db::Db;
 
-use crate::features::moneyball::comparison::{ComparisonGroupsCache, GroupsSource, PositionFamily};
+use crate::features::moneyball::comparison::{
+    ComparisonGroupsCache, GroupsSource, PositionFamily, MIN_SEASON_MINUTES,
+};
 use crate::features::moneyball::{league_strength::shifted, role_catalog::builtin_catalog};
 use crate::features::planner::tactic::{base_position, read_tactic};
 use crate::features::player_metrics::{
@@ -237,6 +239,9 @@ pub struct PlayerSummary {
     /// Values for requested non-basic metric fields (field id → nullable cell).
     pub dynamic_values: BTreeMap<String, Option<DynamicValue>>,
     pub moneyball_percentiles: BTreeMap<String, Option<u8>>,
+    /// Moneyball only: fewer than `MIN_SEASON_MINUTES` minutes, so the player's percentiles
+    /// rank him against groups he is not one of the peers of.
+    pub moneyball_short_sample: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1175,6 +1180,7 @@ fn read_moneyball_window(
     if tactic.is_some() {
         select_sql.push_str(", players.positions_json, players.preferred_foot");
     }
+    select_sql.push_str(", moneyball.minutes");
     let members = cohort.window(request.offset, request.limit.clamp(1, MAX_PAGE_LIMIT));
     let uid_placeholders = (0..members.len())
         .map(|index| format!("?{}", index + 2))
@@ -1194,7 +1200,7 @@ fn read_moneyball_window(
         .prepare(&select_sql)
         .map_err(|error| error.to_string())?
         .query_map(params_from_iter(bind_values.iter()), |row| {
-            let player = map_player_summary(row, &sql_fields)?;
+            let mut player = map_player_summary(row, &sql_fields)?;
             let fit = if tactic.is_some() {
                 Some(PlayerFit::from_columns(
                     &row.get::<_, String>(fit_index)?,
@@ -1203,6 +1209,9 @@ fn read_moneyball_window(
             } else {
                 None
             };
+            let minutes_index = fit_index + if tactic.is_some() { 2 } else { 0 };
+            player.moneyball_short_sample =
+                row.get::<_, Option<i64>>(minutes_index)?.unwrap_or(0) < MIN_SEASON_MINUTES;
             Ok((player.uid, (player, fit)))
         })
         .map_err(|error| error.to_string())?
@@ -1419,6 +1428,7 @@ fn map_player_summary(
         market_value_gbp: row.get(11)?,
         dynamic_values,
         moneyball_percentiles: BTreeMap::new(),
+        moneyball_short_sample: false,
     })
 }
 
@@ -1885,7 +1895,7 @@ mod tests {
         requested_fields: &[String],
         rules: Vec<FilterRule>,
         combine: Option<&str>,
-        comparison_pool: Comparison,
+        comparison: Comparison,
     ) -> Result<SearchPlayersPage, String> {
         let ast = if rules.is_empty() {
             None
@@ -1902,7 +1912,7 @@ mod tests {
                 filter_ast: ast.as_ref(),
                 requested_fields,
                 view: SearchView::Moneyball,
-                comparison: comparison_pool,
+                comparison,
                 shortlist_id: None,
             },
         )
@@ -2076,10 +2086,68 @@ mod tests {
         assert!(!own.players[0]
             .moneyball_percentiles
             .contains_key("moneyball.minutes"));
+        assert!(own
+            .players
+            .iter()
+            .all(|player| !player.moneyball_short_sample));
         // Compared with central midfielders, the striker is ranked without joining them.
         assert_eq!(
             goals_percentiles(&page(Comparison::Family(PositionFamily::CentralMidfielder))),
             [(3, Some(100)), (1, Some(100)), (2, Some(0))]
+        );
+    }
+
+    #[test]
+    fn a_short_sample_ranks_against_his_group_without_joining_it_and_is_marked() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-short-sample.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Low", 100),
+                player_template(2, "High", 100),
+                player_template(3, "Short", 100),
+            ],
+        );
+        let snapshot_id = current_snapshot_id(&conn);
+        for (uid, goals) in [(1, 1), (2, 5), (3, 9)] {
+            let statistics = json!({ "goals": goals }).to_string();
+            insert_moneyball_statistics(&conn, snapshot_id, uid, &statistics, Some("{}"));
+        }
+        conn.execute(
+            "UPDATE player_moneyball_stats SET minutes = 449 WHERE player_uid = 3",
+            [],
+        )
+        .expect("shorten a sample");
+
+        let page = search_moneyball(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::Name,
+            SortDir::Asc,
+            &["moneyball.goals".to_string()],
+            Vec::new(),
+            None,
+            Comparison::Own,
+        )
+        .expect("Moneyball page");
+
+        // The peers are 1 and 5, so 5 ranks at 100, not at 50 as it would beside the 9.
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| (
+                    player.uid,
+                    player.moneyball_percentiles["moneyball.goals"],
+                    player.moneyball_short_sample
+                ))
+                .collect::<Vec<_>>(),
+            [
+                (2, Some(100), false),
+                (1, Some(0), false),
+                (3, Some(100), true)
+            ]
         );
     }
 
@@ -3393,7 +3461,7 @@ mod tests {
             insert_moneyball_row(&conn, snapshot_id, uid, Some(r#"{"goals":50}"#));
         }
 
-        for pool in [Comparison::Family(PositionFamily::Striker), Comparison::Own] {
+        for comparison in [Comparison::Family(PositionFamily::Striker), Comparison::Own] {
             let page = search_moneyball(
                 &conn,
                 0,
@@ -3407,7 +3475,7 @@ mod tests {
                     FilterValue::Bool(true),
                 )],
                 None,
-                pool,
+                comparison,
             )
             .expect("Moneyball realistic signing filter");
             assert_eq!(
@@ -5523,7 +5591,7 @@ mod tests {
     }
 
     #[test]
-    fn tactic_moneyball_mapped_numeric_and_uncovered_null_with_sort_and_pool() {
+    fn tactic_moneyball_mapped_numeric_and_uncovered_null_with_sort() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("tactic-moneyball.db"));
         let players = (1..=3)
@@ -5864,7 +5932,7 @@ mod tests {
                 Some("{}"),
             );
         }
-        let custom_page = |conn: &Connection, field: &str, sort_dir, comparison_pool| {
+        let custom_page = |conn: &Connection, field: &str, sort_dir, comparison| {
             search_players_in_view(
                 conn,
                 SearchPlayersRequest {
@@ -5875,7 +5943,7 @@ mod tests {
                     filter_ast: None,
                     requested_fields: &[field.to_string()],
                     view: SearchView::Moneyball,
-                    comparison: comparison_pool,
+                    comparison,
                     shortlist_id: None,
                 },
             )
@@ -6675,7 +6743,7 @@ mod tests {
         name: &'static str,
         sort: String,
         dir: SortDir,
-        pool: Comparison,
+        comparison: Comparison,
         filters: Option<FilterAst>,
         fields: Vec<String>,
         shortlist_id: Option<i64>,
@@ -6687,7 +6755,7 @@ mod tests {
                 name,
                 sort: sort.to_string(),
                 dir,
-                pool: Comparison::Own,
+                comparison: Comparison::Own,
                 filters: None,
                 fields: fields.iter().map(|field| field.to_string()).collect(),
                 shortlist_id: None,
@@ -6709,12 +6777,12 @@ mod tests {
             }
         }
 
-        fn in_pool(&self, pool: Comparison) -> Self {
+        fn compared_with(&self, comparison: Comparison) -> Self {
             Self {
                 name: self.name,
                 sort: self.sort.clone(),
                 dir: self.dir,
-                pool,
+                comparison,
                 filters: self.filters.clone(),
                 fields: self.fields.clone(),
                 shortlist_id: self.shortlist_id,
@@ -6730,7 +6798,7 @@ mod tests {
                 filter_ast: self.filters.as_ref(),
                 requested_fields: &self.fields,
                 view: SearchView::Moneyball,
-                comparison: self.pool,
+                comparison: self.comparison,
                 shortlist_id: self.shortlist_id,
             }
         }
@@ -6857,7 +6925,7 @@ mod tests {
         shape: &MoneyballShape,
     ) {
         let registry = TableRegistry::default();
-        let name = format!("{} ({:?})", shape.name, shape.pool);
+        let name = format!("{} ({:?})", shape.name, shape.comparison);
         let complete = search_players_in_view(
             &db.read().expect("reader"),
             shape.request(0, MAX_PAGE_LIMIT),
@@ -6923,7 +6991,7 @@ mod tests {
         // Each returned player's role score, the same from the cached and uncached paths.
         let scores = |rules: Vec<FilterRule>| {
             let shape = MoneyballShape::new("league", &role, SortDir::Desc, &[&role])
-                .in_pool(Comparison::Family(PositionFamily::Striker));
+                .compared_with(Comparison::Family(PositionFamily::Striker));
             let shape = if rules.is_empty() {
                 shape
             } else {
@@ -7116,8 +7184,12 @@ mod tests {
             ),
         ];
         for shape in &shapes {
-            for pool in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
-                assert_cached_moneyball_windows_match(&db, &cohorts, &shape.in_pool(pool));
+            for comparison in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
+                assert_cached_moneyball_windows_match(
+                    &db,
+                    &cohorts,
+                    &shape.compared_with(comparison),
+                );
             }
         }
 
@@ -7142,8 +7214,12 @@ mod tests {
         .map(MoneyballShape::shortlisted);
         let assert_shortlist_shapes = || {
             for shape in &shortlist_shapes {
-                for pool in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
-                    assert_cached_moneyball_windows_match(&db, &cohorts, &shape.in_pool(pool));
+                for comparison in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
+                    assert_cached_moneyball_windows_match(
+                        &db,
+                        &cohorts,
+                        &shape.compared_with(comparison),
+                    );
                 }
             }
         };
@@ -7174,10 +7250,10 @@ mod tests {
         let registry = TableRegistry::default();
         let role = moneyball_role_field();
         let fields = [role.as_str(), "moneyball.goals", "moneyball.xg"];
-        let shape = |filters: Vec<FilterRule>, combine: &str, pool: Comparison| {
+        let shape = |filters: Vec<FilterRule>, combine: &str, comparison: Comparison| {
             MoneyballShape::new("shortlist", "ca", SortDir::Desc, &fields)
                 .filtered(filters, combine)
-                .in_pool(pool)
+                .compared_with(comparison)
         };
         let page = |shape: &MoneyballShape| {
             search_moneyball_players(
@@ -7344,9 +7420,9 @@ mod tests {
             MoneyballShape::new("role sort", &role, SortDir::Desc, &[&role]),
         ];
         for shape in &shapes {
-            for pool in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
-                let shape = shape.in_pool(pool);
-                let name = format!("{} ({pool:?})", shape.name);
+            for comparison in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
+                let shape = shape.compared_with(comparison);
+                let name = format!("{} ({comparison:?})", shape.name);
                 let mut joined = 0;
                 for offset in (0..PLAYERS).step_by(MAX_PAGE_LIMIT) {
                     let cached = search_moneyball_players(

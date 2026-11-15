@@ -13,10 +13,10 @@ use rusqlite::{params_from_iter, types::Value, Connection, Rows};
 
 use crate::db::result_cache::{Cancellation, ResultCache};
 use crate::features::moneyball::comparison::{
-    statistic_index, ComparisonGroup, ComparisonGroups, GroupsSource, PositionFamily,
-    ResolvedGroups,
+    scan_statistic_values, statistic_index, ComparisonGroup, ComparisonGroups, GroupsSource,
+    PositionFamily, ResolvedGroups,
 };
-use crate::features::moneyball::json_scan::{parse_json_value, scan_json_object};
+use crate::features::moneyball::json_scan::parse_json_value;
 use crate::features::moneyball::league_strength::{shifted, LeagueAdjustment};
 use crate::features::moneyball::role_catalog::{
     builtin_catalog, definition_for_attribute_role, RoleDefinition,
@@ -542,8 +542,8 @@ impl MoneyballCohort {
                     let start = values.len();
                     values.resize(start + indexes.len(), f64::NAN);
                     members.push(member);
-                    result = scan_json_object(&json, |key, text| {
-                        if let Some(slot) = statistic_index(key).and_then(|index| slot_of[index]) {
+                    result = scan_statistic_values(&json, |index, text| {
+                        if let Some(slot) = slot_of[index] {
                             if let Some(value) =
                                 parse_json_value(text, |text| text.parse::<f64>().ok())?
                             {

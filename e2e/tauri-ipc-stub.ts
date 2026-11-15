@@ -1387,7 +1387,9 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   return args?.sortDir === "asc" ? comparison : -comparison;
                 });
               }
-              const players = args?.comparisonPool === "fullCsv"
+              // Comparing everyone with one family moves the stub's percentiles.
+              const players =
+                typeof args?.comparison === "string" && args.comparison !== "own"
                 ? sorted.map((player) => ({
                     ...player,
                     moneyballPercentiles: {
@@ -1873,19 +1875,21 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 xg_per_90: 0.4,
                 xa_per_90: 0.2,
               },
-              percentiles: {
-                goals: 83,
-                average_rating: 83,
-                goals_per_90: 76,
-                assists_per_90: 68,
-                xg_per_90: 72,
-                xa_per_90: 65,
-              },
-              comparisonBasis: {
-                kind: "available",
-                naturalPositions: ["MC"],
-                comparisonPlayerCount: 24,
-              },
+              comparisons: [
+                {
+                  family: "central_midfielder",
+                  peers: 24,
+                  percentiles: {
+                    goals: 83,
+                    average_rating: 83,
+                    goals_per_90: 76,
+                    assists_per_90: 68,
+                    xg_per_90: 72,
+                    xa_per_90: 65,
+                  },
+                },
+              ],
+              minimumMinutes: 450,
               // The stub's player is in the reference league, so his scores do not move.
               leagueAdjustment: moneyballLeagueAdjusted
                 ? {

@@ -339,11 +339,7 @@ function MoneyballPlayerProfile({
         >
           <MoneyballRoleSummary
             positions={player.positions}
-            roleScores={
-              readyProfile?.comparisonBasis.kind === "available"
-                ? readyProfile.roleScores
-                : null
-            }
+            roleScores={readyProfile?.roleScores ?? null}
           />
           <MoneyballProfilePanel
             profile={profile}
@@ -357,7 +353,6 @@ function MoneyballPlayerProfile({
             positions={player.positions}
             roleScores={readyProfile.roleScores}
             catalogVersion={readyProfile.roleCatalogVersion}
-            comparisonBasis={readyProfile.comparisonBasis}
             leagueAdjustment={readyProfile.leagueAdjustment}
           />
         ) : null}

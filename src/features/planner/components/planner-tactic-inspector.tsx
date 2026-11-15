@@ -11,6 +11,10 @@ import {
   MONEYBALL_METRICS,
   moneyballMetric,
 } from "@/utils/moneyball-metrics";
+import {
+  positionFamilyLabel,
+  positionFamilyOf,
+} from "@/utils/position-families";
 import { orderedTacticPositions } from "@/utils/position-order";
 import type {
   RecruitmentFilter,
@@ -142,9 +146,12 @@ function PhaseControls({
 
 function SlotMetricControls({
   metricKeys,
+  peers,
   onChange,
 }: {
   metricKeys: string[];
+  /** Whom each metric ranks the player among. */
+  peers: string;
   onChange: (metricKeys: string[]) => void;
 }) {
   const available = SLOT_METRIC_OPTIONS.filter(
@@ -154,7 +161,9 @@ function SlotMetricControls({
   return (
     <>
       <p className="text-body-sm text-on-surface-variant">
-        The score uses both phases. The IP/OOP weight does not apply.
+        The score is the mean of each metric's percentile among {peers} with
+        450+ minutes rated 16 or higher. It uses both phases; the IP/OOP weight
+        does not apply.
       </p>
       {metricKeys.length === 0 ? (
         <p className="text-body-sm text-on-surface-variant">
@@ -312,12 +321,21 @@ function SectionHeading({
   );
 }
 
-/** The slot's positions that make a player one of its percentile peers. */
-function peerPositions(lane: TacticLane): string {
-  const positions = [
-    ...new Set([basePosition(lane.ipPosition), basePosition(lane.oopPosition)]),
-  ];
-  return positions.join(" or ");
+/**
+ * The peers the slot's metrics and filters rank a player among: the position
+ * families of its two positions, such as "wingers and wide midfielders".
+ */
+function slotPeers(lane: TacticLane): string {
+  const families = [
+    ...new Set(
+      [basePosition(lane.ipPosition), basePosition(lane.oopPosition)].map(
+        (position) => positionFamilyOf(position),
+      ),
+    ),
+  ].filter((family) => family !== null);
+  return families
+    .map((family) => positionFamilyLabel(family).toLowerCase())
+    .join(" and ");
 }
 
 export function PlannerTacticInspector({
@@ -488,6 +506,7 @@ export function PlannerTacticInspector({
           </SectionHeading>
           <SlotMetricControls
             metricKeys={selectedLane.customMetricKeys}
+            peers={slotPeers(selectedLane)}
             onChange={onCustomMetricsChange}
           />
         </div>
@@ -500,9 +519,8 @@ export function PlannerTacticInspector({
           </SectionHeading>
           <p className="text-body-sm text-on-surface-variant">
             Recommended signings for this slot must pass every filter. Your own
-            players are never filtered. Percentiles rank a statistic among
-            players with season stats rated 16 or higher at{" "}
-            {peerPositions(selectedLane)}.
+            players are never filtered. Percentiles rank a statistic among{" "}
+            {slotPeers(selectedLane)} with 450+ minutes rated 16 or higher.
           </p>
           {renderRecruitmentFilters({
             filters: selectedLane.recruitmentFilters,

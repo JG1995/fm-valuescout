@@ -73,6 +73,9 @@ pub struct PlayerSummaryDto {
     pub market_value_gbp: Option<i64>,
     pub dynamic_values: std::collections::BTreeMap<String, Option<DynamicValueDto>>,
     pub moneyball_percentiles: std::collections::BTreeMap<String, Option<u8>>,
+    /// Moneyball only: too few minutes to count among the player's peers.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub moneyball_short_sample: bool,
 }
 
 #[derive(Serialize)]
@@ -114,6 +117,7 @@ impl From<PlayerSummary> for PlayerSummaryDto {
                 .map(|(key, value)| (key, value.map(DynamicValueDto::from)))
                 .collect(),
             moneyball_percentiles: row.moneyball_percentiles,
+            moneyball_short_sample: row.moneyball_short_sample,
         }
     }
 }
@@ -525,10 +529,12 @@ mod tests {
                 Some(DynamicValue::Real(0.75)),
             )]),
             moneyball_percentiles: BTreeMap::from([("moneyball.np-xg".to_string(), Some(83))]),
+            moneyball_short_sample: true,
         });
 
         let value = serde_json::to_value(dto).expect("serialize DTO");
         assert_eq!(value["dynamicValues"]["moneyball.np-xg"], 0.75);
         assert_eq!(value["moneyballPercentiles"]["moneyball.np-xg"], 83);
+        assert_eq!(value["moneyballShortSample"], true);
     }
 }

@@ -56,9 +56,9 @@ import {
   isSearchSortDir,
 } from "@/features/search/types/search-sort";
 import {
-  type ComparisonPool,
   defaultSearchSort,
-  parseComparisonPool,
+  type MoneyballComparison,
+  parseMoneyballComparison,
   parseSearchView,
   type SearchView,
 } from "@/features/search/types/search-view";
@@ -85,6 +85,7 @@ import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { useSearchViewMemory } from "@/stores/use-search-view-memory";
 import { cn } from "@/utils/cn";
 import { moneyballMetric } from "@/utils/moneyball-metrics";
+import { POSITION_FAMILIES } from "@/utils/position-families";
 import {
   isFullTacticGroup,
   isTacticColumnId,
@@ -130,7 +131,7 @@ export type SearchRouteSearch = {
   filters: FilterRuleUrl[];
   combine: FilterCombineMode;
   view?: SearchView;
-  comparisonPool?: ComparisonPool;
+  comparison?: MoneyballComparison;
   shortlistOnly?: boolean;
 };
 
@@ -175,9 +176,9 @@ export const Route = createFileRoute("/search")({
       filters,
       combine: parseSearchCombine(search.combine),
       view: explicitView,
-      comparisonPool:
+      comparison:
         view === "moneyball"
-          ? parseComparisonPool(search.comparisonPool)
+          ? parseMoneyballComparison(search.comparison)
           : undefined,
       shortlistOnly: legacyShortlist
         ? true
@@ -204,14 +205,14 @@ export const Route = createFileRoute("/search")({
     }
   },
   loaderDeps: ({
-    search: { sort, dir, filters, combine, view, comparisonPool },
+    search: { sort, dir, filters, combine, view, comparison },
   }) => ({
     sort,
     dir,
     filters,
     combine,
     view: view ?? useMoneyballPreferences.getState().defaultAnalysisView,
-    comparisonPool: comparisonPool ?? "filtered",
+    comparison: comparison ?? "own",
   }),
   loader: ({ context: { queryClient } }) =>
     Promise.all([
@@ -308,14 +309,14 @@ function SearchPageContent() {
     filters: filterUrls,
     combine,
     view: routeView,
-    comparisonPool: routeComparisonPool,
+    comparison: routeMoneyballComparison,
     shortlistOnly: routeShortlistOnly,
   } = Route.useSearch();
   const defaultAnalysisView = useMoneyballPreferences(
     (state) => state.defaultAnalysisView,
   );
   const view = routeView ?? defaultAnalysisView;
-  const comparisonPool = routeComparisonPool ?? "filtered";
+  const comparison = routeMoneyballComparison ?? "own";
   // Remember this view's state so the top navigation can return to it.
   useEffect(() => {
     useSearchViewMemory.getState().remember(view, {
@@ -323,9 +324,9 @@ function SearchPageContent() {
       dir,
       filters: filterUrls,
       combine,
-      comparisonPool: routeComparisonPool,
+      comparison: routeMoneyballComparison,
     });
-  }, [combine, dir, filterUrls, routeComparisonPool, sort, view]);
+  }, [combine, dir, filterUrls, routeMoneyballComparison, sort, view]);
   // Only a matching active-save + current-snapshot pair shows results, and
   // its save context scopes the shortlist selection.
   const resultContext =
@@ -439,7 +440,7 @@ function SearchPageContent() {
       filters: FilterRule[];
       combine: FilterCombineMode;
       view: SearchView | undefined;
-      comparisonPool: ComparisonPool | undefined;
+      comparison: MoneyballComparison | undefined;
       replace: boolean;
     }>,
   ) =>
@@ -453,10 +454,8 @@ function SearchPageContent() {
             : previous.filters,
         combine: patch.combine ?? previous.combine,
         view: "view" in patch ? patch.view : previous.view,
-        comparisonPool:
-          "comparisonPool" in patch
-            ? patch.comparisonPool
-            : previous.comparisonPool,
+        comparison:
+          "comparison" in patch ? patch.comparison : previous.comparison,
       }),
       replace: patch.replace ?? true,
     });
@@ -507,7 +506,7 @@ function SearchPageContent() {
         </select>
       </label>
     ) : null;
-  const comparisonPoolToggle = (
+  const comparisonControl = (
     <>
       {resultContext ? (
         <MoneyballStatsAsOf
@@ -515,31 +514,28 @@ function SearchPageContent() {
           snapshotGameDate={resultContext.snapshot.gameDate}
         />
       ) : null}
-      <span
-        aria-hidden
-        className="text-label-md text-on-surface-variant"
-        title="Percentile badges and percentile filters compare each player with this group."
+      <label
+        className="flex items-center gap-2 text-body-md text-on-surface"
+        title="Percentile badges and percentile filters rank each player among this group's peers: players with 450+ minutes rated 16 or higher there. Role and tactic scores always rank within their own positions."
       >
         Percentiles vs
-      </span>
-      <fieldset className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5">
-        <legend className="sr-only">Percentiles vs</legend>
-        {(["filtered", "fullCsv"] as const).map((pool) => (
-          <button
-            key={pool}
-            type="button"
-            aria-pressed={comparisonPool === pool}
-            className={
-              comparisonPool === pool
-                ? "h-8 rounded-sm bg-primary px-3 text-label-md text-on-primary"
-                : "h-8 rounded-sm px-3 text-label-md text-on-surface-variant hover:text-on-surface"
-            }
-            onClick={() => updateSearch({ comparisonPool: pool })}
-          >
-            {pool === "filtered" ? "Filtered cohort" : "All players"}
-          </button>
-        ))}
-      </fieldset>
+        <select
+          className="h-8 max-w-64 rounded-md border border-outline bg-surface-container-high px-2 text-body-md text-on-surface"
+          value={comparison}
+          onChange={(event) =>
+            updateSearch({
+              comparison: parseMoneyballComparison(event.target.value),
+            })
+          }
+        >
+          <option value="own">Own position</option>
+          {POSITION_FAMILIES.map((family) => (
+            <option key={family.id} value={family.id}>
+              {family.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <MoneyballLeagueToggle
         onBeforeChange={() => clearPlayerResultContext(queryClient)}
         onChanged={() => {
@@ -562,7 +558,7 @@ function SearchPageContent() {
             : null
         }
       />
-      {view === "moneyball" ? comparisonPoolToggle : null}
+      {view === "moneyball" ? comparisonControl : null}
     </>
   );
 
@@ -747,9 +743,9 @@ function SearchPageContent() {
             onRulesChange={handleRulesChange}
             onApply={handleApplyFilters}
             view={view}
-            comparisonPool={comparisonPool}
+            comparison={comparison}
             datasetToggles={
-              view === "moneyball" ? comparisonPoolToggle : undefined
+              view === "moneyball" ? comparisonControl : undefined
             }
           />
         )}
@@ -781,7 +777,7 @@ function SearchPageContent() {
               filters={filters}
               filterCombine={combine}
               view={view}
-              comparisonPool={comparisonPool}
+              comparison={comparison}
               shortlistId={shortlistId}
               onShortlistMissing={clearMissingShortlist}
               pageContext={{

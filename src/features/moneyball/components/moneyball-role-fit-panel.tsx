@@ -4,6 +4,7 @@ import { ProfilePositionPicker } from "@/components/profile-position-picker/prof
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { formatMissable } from "@/utils/format";
+import { positionFamilyLabel } from "@/utils/position-families";
 import {
   defaultProfilePosition,
   type PositionFamiliarityMap,
@@ -11,7 +12,6 @@ import {
 } from "@/utils/profile-position-roles";
 import { rolePhaseLabel } from "@/utils/role-phase";
 import type {
-  MoneyballComparisonBasis,
   MoneyballLeagueBreakdown,
   MoneyballRoleContribution,
   MoneyballRoleScore,
@@ -91,7 +91,8 @@ function RoleExplanation({
       </summary>
       <div className="pb-2">
         <p className="pb-1 text-[11px] text-on-surface-variant">
-          Catalog v{catalogVersion} · natural-position comparison cohort.
+          Catalog v{catalogVersion} · ranked among{" "}
+          {positionFamilyLabel(role.positionFamily).toLowerCase()}.
         </p>
         {role.score === null ? (
           <p className="pb-1 text-body-sm text-on-surface-variant">
@@ -99,8 +100,9 @@ function RoleExplanation({
           </p>
         ) : (
           <p className="pb-1 text-body-sm text-on-surface-variant">
-            Weighted percentile score from the natural-position comparison
-            cohort
+            Weighted percentile score among{" "}
+            {positionFamilyLabel(role.positionFamily).toLowerCase()} with 450+
+            minutes rated 16 or higher
             {leagueShift === 0
               ? "."
               : `, moved ${signedPoints(leagueShift)} for league strength.`}
@@ -145,13 +147,11 @@ export function MoneyballRoleFitPanel({
   positions,
   roleScores,
   catalogVersion,
-  comparisonBasis,
   leagueAdjustment,
 }: {
   positions: PositionFamiliarityMap;
   roleScores: readonly MoneyballRoleScore[] | null;
   catalogVersion: number | null;
-  comparisonBasis: MoneyballComparisonBasis;
   /** How the player's league moved every role score, or null when it did not. */
   leagueAdjustment: MoneyballLeagueBreakdown | null;
 }) {
@@ -173,16 +173,6 @@ export function MoneyballRoleFitPanel({
     );
   };
   const SortIcon = direction === "ascending" ? ArrowUp : ArrowDown;
-
-  if (comparisonBasis.kind === "unavailableNoNaturalPosition") {
-    return (
-      <Panel title="Moneyball role fit">
-        <p role="status" className="text-body-md text-on-surface-variant">
-          Role scores unavailable: this player has no natural position.
-        </p>
-      </Panel>
-    );
-  }
 
   if (roleScores === null || catalogVersion === null) return null;
 

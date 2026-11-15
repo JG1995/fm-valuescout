@@ -25,7 +25,9 @@ describe("RecruitmentFilterEditor", () => {
     );
     await user.click(screen.getByRole("button", { name: "Percentile" }));
     expect(
-      screen.getByText(/Ranked among players with season stats rated 16/),
+      screen.getByText(
+        /Ranked among players with 450\+ minutes rated 16 or higher in the position families/,
+      ),
     ).toBeInTheDocument();
     const value = screen.getByLabelText("Value");
     await user.clear(value);

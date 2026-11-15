@@ -2792,7 +2792,9 @@ test.describe("application smoke", () => {
     });
     await expect(table.getByText("Moneyball player 051")).toBeVisible();
 
-    await main.getByRole("button", { name: "All players" }).click();
+    await main
+      .getByRole("combobox", { name: "Percentiles vs" })
+      .selectOption("Centre-backs");
     await expect(
       table.getByRole("img", { name: /average rating: 71/i }).first(),
     ).toBeVisible();
@@ -2814,7 +2816,7 @@ test.describe("application smoke", () => {
     await fieldSearch.press("ArrowDown");
     await fieldSearch.press("Enter");
     await expect(
-      dialog.getByText(/Scored against all players with stats/),
+      dialog.getByText(/Scored among the role's position family/),
     ).toBeVisible();
     await dialog.getByLabel("Value").fill("70");
     await dialog.getByRole("button", { name: "Add" }).click();
@@ -2876,15 +2878,15 @@ test.describe("application smoke", () => {
       .click();
     await expect(
       moneyballRoleFit
-        .getByText("Catalog v1 · natural-position comparison cohort.")
+        .getByText("Catalog v1 · ranked among central midfielders.")
         .first(),
     ).toBeVisible();
 
     await page.goBack();
     await expect(page).toHaveURL(/\/search\?.*view=moneyball/);
     await expect(
-      main.getByRole("button", { name: "All players" }),
-    ).toHaveAttribute("aria-pressed", "true");
+      main.getByRole("combobox", { name: "Percentiles vs" }),
+    ).toHaveValue("central_defender");
     await expect(
       main.getByRole("columnheader", {
         name: "Wing-Back (IP · WBR/WBL)",
@@ -3050,7 +3052,9 @@ test.describe("application smoke", () => {
       .getByRole("button", { name: "Percentile", exact: true })
       .click();
     await expect(
-      editor.getByText(/rated 16 or higher at either of this slot's positions/),
+      editor.getByText(
+        /rated 16 or higher in the position families of this slot/,
+      ),
     ).toBeVisible();
     // The editor opens beside its button and stays inside the window.
     const editorBox = await editor.boundingBox();

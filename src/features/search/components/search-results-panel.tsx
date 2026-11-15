@@ -31,6 +31,7 @@ import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { PlayerMetricPicker } from "@/components/ui/player-metric-picker";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
+import { scoreBadgeAccessibleName } from "@/components/ui/score-badge/score-tier";
 import {
   isIdentityColumnId,
   usePlayerTableStore,
@@ -67,7 +68,7 @@ import {
   defaultDirForSortField,
   isBasicSearchSortField,
 } from "../types/search-sort";
-import type { ComparisonPool, SearchView } from "../types/search-view";
+import type { MoneyballComparison, SearchView } from "../types/search-view";
 import { defaultSearchSort } from "../types/search-view";
 import {
   completeFilterRules,
@@ -104,7 +105,7 @@ type SearchResultsPanelProps = {
   onApplyFilters: (rules: FilterRule[], combine: FilterCombineMode) => void;
   datasetToggles?: ReactNode;
   view: SearchView;
-  comparisonPool: ComparisonPool;
+  comparison: MoneyballComparison;
   /** The selected shortlist, or null for no shortlist restriction. */
   shortlistId: number | null;
   /** Called with a requested shortlist that the save no longer has. */
@@ -245,7 +246,7 @@ function SearchResultsVirtualTable({
   onResizeColumn,
   onFilterColumn,
   view,
-  comparisonPool,
+  comparison,
   shortlistId,
   pageContext,
   firstPageQueryOptions,
@@ -267,7 +268,7 @@ function SearchResultsVirtualTable({
   onResizeColumn: (metricId: string, width: number) => void;
   onFilterColumn: (metricId: string) => void;
   view: SearchView;
-  comparisonPool: ComparisonPool;
+  comparison: MoneyballComparison;
   shortlistId: number | null;
   pageContext: SearchPlayerPageContext;
   firstPageQueryOptions: ReturnType<typeof searchPlayersQueryOptions>;
@@ -344,12 +345,12 @@ function SearchResultsVirtualTable({
         filterCombine,
         requestedFields,
         view,
-        comparisonPool,
+        comparison,
         shortlistId,
         pageContext,
       ),
     [
-      comparisonPool,
+      comparison,
       filterCombine,
       filters,
       pageContext,
@@ -420,7 +421,21 @@ function SearchResultsVirtualTable({
                   {text}
                 </span>
                 {moneyballMetric.metric && typeof score === "number" ? (
-                  <ScoreBadge score={score} roleName={column.label} />
+                  player?.moneyballShortSample ? (
+                    <span
+                      role="img"
+                      className="font-mono text-mono-sm text-on-surface-variant tabular-nums"
+                      title="Short sample: under 450 minutes, ranked against peers with 450+"
+                      aria-label={scoreBadgeAccessibleName(
+                        `${column.label}, short sample`,
+                        score,
+                      )}
+                    >
+                      {score}
+                    </span>
+                  ) : (
+                    <ScoreBadge score={score} roleName={column.label} />
+                  )
                 ) : null}
               </span>
             </td>
@@ -531,7 +546,7 @@ export function SearchResultsPanel({
   onApplyFilters,
   datasetToggles,
   view,
-  comparisonPool,
+  comparison,
   shortlistId,
   onShortlistMissing,
   pageContext,
@@ -605,12 +620,12 @@ export function SearchResultsPanel({
       filterCombine,
       requestedFields,
       view,
-      comparisonPool,
+      comparison,
       shortlistId,
       pageContext,
     }),
     [
-      comparisonPool,
+      comparison,
       filterCombine,
       filters,
       pageContext,
@@ -634,7 +649,7 @@ export function SearchResultsPanel({
     committed.filterCombine,
     committed.requestedFields,
     committed.view,
-    committed.comparisonPool,
+    committed.comparison,
     committed.shortlistId,
     committed.pageContext,
   );
@@ -647,7 +662,7 @@ export function SearchResultsPanel({
     requested.filterCombine,
     requested.requestedFields,
     requested.view,
-    requested.comparisonPool,
+    requested.comparison,
     requested.shortlistId,
     requested.pageContext,
     tableId,
@@ -689,13 +704,13 @@ export function SearchResultsPanel({
     : JSON.stringify([
           committed.filters,
           committed.filterCombine,
-          committed.comparisonPool,
+          committed.comparison,
           committed.shortlistId,
         ]) !==
         JSON.stringify([
           requested.filters,
           requested.filterCombine,
-          requested.comparisonPool,
+          requested.comparison,
           requested.shortlistId,
         ])
       ? "filter"
@@ -808,7 +823,7 @@ export function SearchResultsPanel({
     () =>
       [
         committed.view,
-        committed.comparisonPool,
+        committed.comparison,
         String(committed.shortlistId),
         committed.filterCombine,
         ...committed.filters.map(
@@ -921,7 +936,7 @@ export function SearchResultsPanel({
       onRulesChange={onRulesChange}
       onApply={onApplyFilters}
       view={view}
-      comparisonPool={comparisonPool}
+      comparison={comparison}
       fieldRequest={fieldRequest}
       summary={summary}
       columnsControl={columnsControl}
@@ -1066,7 +1081,7 @@ export function SearchResultsPanel({
         identity={identity}
         requestedFields={committed.requestedFields}
         view={committed.view}
-        comparisonPool={committed.comparisonPool}
+        comparison={committed.comparison}
         shortlistId={committed.shortlistId}
         pageContext={committed.pageContext}
         firstPageQueryOptions={committedOptions}
