@@ -71,11 +71,6 @@ describe("MoneyballRoleFitPanel", () => {
         positions={{ MC: 20, GK: null }}
         roleScores={roles}
         catalogVersion={1}
-        comparisonBasis={{
-          kind: "available",
-          naturalPositions: ["MC"],
-          comparisonPlayerCount: 24,
-        }}
       />,
     );
 
@@ -118,12 +113,12 @@ describe("MoneyballRoleFitPanel", () => {
     expect(within(highRow).getByText("Goals per 90")).toBeInTheDocument();
     expect(
       within(highRow).getByText(
-        "Catalog v1 · natural-position comparison cohort.",
+        "Catalog v1 · ranked among central midfielders.",
       ),
     ).toBeInTheDocument();
     expect(
       within(highRow).getByText(
-        "Weighted percentile score from the natural-position comparison cohort.",
+        "Weighted percentile score among central midfielders with 450+ minutes rated 16 or higher.",
       ),
     ).toBeInTheDocument();
     expect(within(highRow).getByText(/Higher is better/)).toBeInTheDocument();
@@ -138,11 +133,6 @@ describe("MoneyballRoleFitPanel", () => {
         leagueAdjustment={null}
         positions={{ MC: null }}
         catalogVersion={1}
-        comparisonBasis={{
-          kind: "available",
-          naturalPositions: ["MC"],
-          comparisonPlayerCount: 24,
-        }}
         roleScores={[
           role({
             roleId: "unavailable",
@@ -184,11 +174,6 @@ describe("MoneyballRoleFitPanel", () => {
         }}
         positions={{ MC: 20 }}
         catalogVersion={1}
-        comparisonBasis={{
-          kind: "available",
-          naturalPositions: ["MC"],
-          comparisonPlayerCount: 24,
-        }}
         roleScores={[
           role({ roleId: "scored", displayName: "Scored Role", score: 60 }),
         ]}
@@ -206,7 +191,7 @@ describe("MoneyballRoleFitPanel", () => {
     await user.click(within(panel).getByText("Scored Role"));
     expect(
       within(panel).getByText(
-        "Weighted percentile score from the natural-position comparison cohort, moved −12 for league strength.",
+        "Weighted percentile score among central midfielders with 450+ minutes rated 16 or higher, moved −12 for league strength.",
       ),
     ).toBeInTheDocument();
 
@@ -215,11 +200,6 @@ describe("MoneyballRoleFitPanel", () => {
         leagueAdjustment={null}
         positions={{ MC: 20 }}
         catalogVersion={1}
-        comparisonBasis={{
-          kind: "available",
-          naturalPositions: ["MC"],
-          comparisonPlayerCount: 24,
-        }}
         roleScores={[
           role({ roleId: "scored", displayName: "Scored Role", score: 60 }),
         ]}
@@ -227,7 +207,7 @@ describe("MoneyballRoleFitPanel", () => {
     );
     expect(
       within(panel).getByText(
-        "Weighted percentile score from the natural-position comparison cohort.",
+        "Weighted percentile score among central midfielders with 450+ minutes rated 16 or higher.",
       ),
     ).toBeInTheDocument();
     expect(within(panel).queryByText(/League strength/)).toBeNull();
@@ -240,11 +220,6 @@ describe("MoneyballRoleFitPanel", () => {
         leagueAdjustment={null}
         positions={{ MC: 20 }}
         catalogVersion={1}
-        comparisonBasis={{
-          kind: "available",
-          naturalPositions: ["MC"],
-          comparisonPlayerCount: 24,
-        }}
         roleScores={[
           role({
             roleId: "pressing",
@@ -287,29 +262,5 @@ describe("MoneyballRoleFitPanel", () => {
       within(panel).queryByText("Percentile unavailable"),
     ).not.toBeInTheDocument();
     expect(within(panel).getByText("Contribution 60")).toBeInTheDocument();
-  });
-
-  it("withholds stale role scores when the player has no natural position", () => {
-    render(
-      <MoneyballRoleFitPanel
-        leagueAdjustment={null}
-        positions={{ MC: 19 }}
-        catalogVersion={1}
-        comparisonBasis={{ kind: "unavailableNoNaturalPosition" }}
-        roleScores={[
-          role({ roleId: "stale", displayName: "Stale Role", score: 50 }),
-        ]}
-      />,
-    );
-
-    expect(
-      screen.getByText(
-        "Role scores unavailable: this player has no natural position.",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("Stale Role")).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Stale Role Moneyball score: 50, Average"),
-    ).not.toBeInTheDocument();
   });
 });

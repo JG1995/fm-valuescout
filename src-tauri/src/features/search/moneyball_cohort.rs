@@ -1,5 +1,10 @@
 //! Moneyball Search's computed cohorts: one entry per table query and data generation, built
 //! with `search_players_in_view`'s cohort, post-cohort filter, and sort rules.
+//!
+//! A cohort keeps its members' raw statistics, one column per statistic read once, and ranks
+//! them against the snapshot's comparison groups (`moneyball::comparison`) when a filter, sort,
+//! or window needs a percentile: the table's comparison for statistic percentiles, each role's
+//! family for role scores, and a slot's group for custom tactic scores.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{mpsc, Arc, Mutex, PoisonError};
@@ -7,11 +12,20 @@ use std::sync::{mpsc, Arc, Mutex, PoisonError};
 use rusqlite::{params_from_iter, types::Value, Connection, Rows};
 
 use crate::db::result_cache::{Cancellation, ResultCache};
+use crate::features::moneyball::comparison::{
+    scan_statistic_values, statistic_index, ComparisonGroup, ComparisonGroups, GroupsSource,
+    PositionFamily, ResolvedGroups,
+};
+use crate::features::moneyball::json_scan::parse_json_value;
 use crate::features::moneyball::league_strength::{shifted, LeagueAdjustment};
-use crate::features::moneyball::percentile::rank_column;
-use crate::features::moneyball::role_catalog::{builtin_catalog, definition_for_attribute_role};
+use crate::features::moneyball::role_catalog::{
+    builtin_catalog, definition_for_attribute_role, RoleDefinition,
+};
 use crate::features::moneyball::role_score::score_role;
-use crate::features::planner::fit::{custom_metrics_lane_score, moneyball_roles_lane_score};
+use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
+use crate::features::planner::fit::{
+    custom_metrics_lane_score, moneyball_roles_lane_score, slot_group,
+};
 use crate::features::planner::tactic::{base_position, read_tactic, PlannerTactic};
 use crate::features::player_metrics::resolver::{MetricField, TacticGroup};
 
@@ -21,19 +35,19 @@ use super::filter::{
 };
 use super::query::{
     active_current_snapshot_id, compare_role_scores, moneyball_base_where_sql, query_matching_uids,
-    requested_shortlist_missing, snapshot_save_id, where_sql_with_filter, ComparisonPool,
+    requested_shortlist_missing, snapshot_save_id, where_sql_with_filter, Comparison,
     SearchPlayersPageState, SearchPlayersRequest, SortField,
 };
 
-/// Moneyball Search's players: the current snapshot's players with stored percentiles.
+/// Moneyball Search's players: the current snapshot's players with season statistics.
 pub(super) const MONEYBALL_FROM_SQL: &str = "FROM players INNER JOIN player_moneyball_stats moneyball ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid AND moneyball.percentiles_json IS NOT NULL";
 
 #[cfg(test)]
 thread_local! {
     /// Moneyball cohort computations run on this thread.
     pub(super) static COHORT_COMPUTATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-    /// Percentile columns ranked or read for an entry on this thread.
-    pub(super) static PERCENTILE_COLUMN_COMPUTATIONS: std::cell::Cell<usize> =
+    /// Statistic columns read for an entry on this thread.
+    pub(super) static STATISTIC_COLUMN_READS: std::cell::Cell<usize> =
         const { std::cell::Cell::new(0) };
     /// Runs once, just before the next cohort query on this thread.
     pub(super) static BEFORE_COHORT_QUERY: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
@@ -48,14 +62,18 @@ pub struct MoneyballCohort {
     pub(super) snapshot_id: i64,
     /// How the snapshot's league strengths move each player's scores.
     pub(super) league: LeagueAdjustment,
-    pool: ComparisonPool,
-    /// The comparison cohort in ascending UID order. Percentile columns follow this order.
+    comparison: Comparison,
+    /// The snapshot's comparison groups; `None` unless the state is `Ready`.
+    groups: Option<Arc<ComparisonGroups>>,
+    /// The comparison cohort in ascending UID order. Statistic columns follow this order.
     uids: Vec<i64>,
+    /// Each member's own family, which an `Own` comparison ranks his statistics within.
+    own: Vec<Option<PositionFamily>>,
     /// The rows after post-cohort filters and the sort, as indexes into `uids`.
     order: Vec<u32>,
-    /// Percentile columns by statistic key, each ranked or read once and then kept. The entry
-    /// is shared between concurrent windows, so the lock is held while a column is computed.
-    percentiles: Mutex<HashMap<String, Arc<[Option<u8>]>>>,
+    /// Statistic columns by statistic index, each read once and then kept (NaN when absent).
+    /// The entry is shared between concurrent windows, so the lock is held while one is read.
+    statistics: Mutex<HashMap<usize, Arc<[f64]>>>,
 }
 
 /// Moneyball Search's computed cohorts, keyed by `search_query_fingerprint`.
@@ -76,25 +94,52 @@ impl PlayerFit {
     }
 }
 
-/// Percentile columns for a set of keys, read from one entry.
-pub(super) struct PercentileColumns(Vec<(String, Arc<[Option<u8>]>)>);
+/// Statistic columns for a set of keys, read from one entry, by statistic index.
+pub(super) struct StatisticColumns(Vec<Option<Arc<[f64]>>>);
 
-impl PercentileColumns {
-    /// One cohort member's percentiles for these keys.
-    pub(super) fn member(&self, member: u32) -> BTreeMap<String, Option<u8>> {
-        self.0
-            .iter()
-            .map(|(key, column)| (key.clone(), column[member as usize]))
-            .collect()
+impl StatisticColumns {
+    fn value(&self, index: usize, member: u32) -> Option<f64> {
+        self.0[index]
+            .as_ref()
+            .map(|column| column[member as usize])
+            .filter(|value| value.is_finite())
     }
 }
 
+/// A cohort member's percentiles: his statistics in `columns`, ranked within `rankings`.
+pub(super) struct MemberPercentiles<'a> {
+    pub(super) rankings: &'a ResolvedGroups,
+    pub(super) columns: &'a StatisticColumns,
+    pub(super) member: u32,
+}
+
+impl MemberPercentiles<'_> {
+    pub(super) fn percentile(&self, group: ComparisonGroup, key: &str) -> Option<u8> {
+        let index = statistic_index(key)?;
+        self.rankings
+            .get(group)?
+            .percentile(index, self.columns.value(index, self.member))
+    }
+
+    /// A role's score, its metrics ranked within the role's family.
+    pub(super) fn role_score(&self, definition: &RoleDefinition) -> Option<u8> {
+        let group = role_group(definition)?;
+        score_role(definition, &|key: &str| self.percentile(group, key)).map(|role| role.score)
+    }
+}
+
+/// The group a role's metrics rank within: its family's.
+pub(super) fn role_group(definition: &RoleDefinition) -> Option<ComparisonGroup> {
+    PositionFamily::from_id(&definition.position_family).map(ComparisonGroup::family)
+}
+
 impl MoneyballCohort {
-    /// Computes the cohort, its build-time percentile columns, and its final order. Role,
-    /// tactic, and custom tactic scores are computed only for the sort and post-cohort filters.
+    /// Computes the cohort and its final order. Role, tactic, and custom tactic scores are
+    /// computed only for the sort and post-cohort filters.
     pub(super) fn compute(
         conn: &Connection,
         generation: u64,
+        groups: &GroupsSource<'_>,
         request: &SearchPlayersRequest<'_>,
         cancellation: &Cancellation,
     ) -> Result<Self, String> {
@@ -104,7 +149,7 @@ impl MoneyballCohort {
             sort_by,
             sort_dir,
             filter_ast,
-            comparison_pool,
+            comparison,
             shortlist_id,
             ..
         } = request;
@@ -133,10 +178,12 @@ impl MoneyballCohort {
             state: SearchPlayersPageState::NoCurrentSnapshot,
             snapshot_id: 0,
             league: LeagueAdjustment::default(),
-            pool: *comparison_pool,
+            comparison: *comparison,
+            groups: None,
             uids: Vec::new(),
+            own: Vec::new(),
             order: Vec::new(),
-            percentiles: Mutex::default(),
+            statistics: Mutex::default(),
         };
         let Some(snapshot_id) = active_current_snapshot_id(conn)? else {
             return Ok(cohort);
@@ -148,6 +195,8 @@ impl MoneyballCohort {
         }
         cohort.state = SearchPlayersPageState::Ready;
         cohort.league = LeagueAdjustment::load(conn, snapshot_id)?;
+        let groups = groups.load(conn, snapshot_id)?;
+        cancellation.check()?;
         let sort_tactic = match sort_by {
             SortField::Dynamic(field) if field.is_tactic_field() => Some((
                 field,
@@ -245,6 +294,12 @@ impl MoneyballCohort {
 
         cohort.uids = rows.iter().map(|(uid, ..)| *uid).collect();
         cohort.uids.sort_unstable();
+        cohort.own = cohort
+            .uids
+            .iter()
+            .map(|uid| groups.own_family(*uid))
+            .collect();
+        cohort.groups = Some(Arc::clone(&groups));
         let mut fits = Vec::with_capacity(rows.len());
         fits.resize_with(rows.len(), || None);
         let mut shifts = vec![0_i16; rows.len()];
@@ -263,31 +318,51 @@ impl MoneyballCohort {
         {
             build_keys.extend(definition.metrics.iter().map(|metric| metric.key.clone()));
         }
-        build_keys.extend(
-            filter_ast
-                .map(moneyball_percentile_keys_from_ast)
-                .unwrap_or_default(),
-        );
+        let percentile_keys = filter_ast
+            .map(moneyball_percentile_keys_from_ast)
+            .unwrap_or_default();
+        build_keys.extend(percentile_keys.iter().cloned());
         if let Some((field, tactic)) = &sort_tactic {
             build_keys.extend(tactic_metric_keys(field, tactic));
         }
         let columns =
-            cohort.percentile_columns(conn, &build_keys.into_iter().collect::<Vec<_>>())?;
+            cohort.statistic_columns(conn, &build_keys.into_iter().collect::<Vec<_>>())?;
+        let rankings = ResolvedGroups::resolve(
+            &groups,
+            conn,
+            sort_tactic
+                .iter()
+                .filter_map(|(field, tactic)| tactic_slot_group(field, tactic)),
+        )?;
         cancellation.check()?;
 
         if let Some(ast) = post_cohort_ast {
             let mut kept = Vec::with_capacity(order.len());
             for member in order {
-                let percentiles = columns.member(member);
+                let percentiles = MemberPercentiles {
+                    rankings: &rankings,
+                    columns: &columns,
+                    member,
+                };
                 let scores = filter_roles
                     .iter()
                     .map(|(definition, role_id)| {
-                        let score = score_role(definition, &percentiles)
-                            .map(|role| shifted(role.score, shifts[member as usize]));
+                        let score = percentiles
+                            .role_score(definition)
+                            .map(|score| shifted(score, shifts[member as usize]));
                         (role_id.clone(), score)
                     })
                     .collect();
-                let post_cohort_match = post_cohort_rules_match(ast, &scores, &percentiles)?;
+                let group = cohort.table_group(member);
+                let statistic_percentiles = percentile_keys
+                    .iter()
+                    .map(|key| {
+                        let percentile = group.and_then(|group| percentiles.percentile(group, key));
+                        (key.clone(), percentile)
+                    })
+                    .collect();
+                let post_cohort_match =
+                    post_cohort_rules_match(ast, &scores, &statistic_percentiles)?;
                 if post_cohort_match
                     || (mixed_or && non_role_uids.contains(&cohort.uids[member as usize]))
                 {
@@ -299,10 +374,15 @@ impl MoneyballCohort {
         }
 
         let sort_score = |member: u32| -> Option<u8> {
-            let percentiles = columns.member(member);
+            let percentiles = MemberPercentiles {
+                rankings: &rankings,
+                columns: &columns,
+                member,
+            };
             match (sort_role, &sort_tactic) {
-                (Some(definition), _) => score_role(definition, &percentiles)
-                    .map(|role| shifted(role.score, shifts[member as usize])),
+                (Some(definition), _) => percentiles
+                    .role_score(definition)
+                    .map(|score| shifted(score, shifts[member as usize])),
                 (None, Some((field, tactic))) => {
                     let fit = fits[member as usize]
                         .as_ref()
@@ -348,83 +428,98 @@ impl MoneyballCohort {
             .map(|member| member as u32)
     }
 
-    /// The percentile columns for `keys`, computing each missing one once: a Filtered pool
-    /// ranks the cohort's statistics, and All players reads the stored percentiles. `conn`
+    /// The group the table's statistic percentiles rank a member within: his own family's,
+    /// or the family the table compares everyone with.
+    pub(super) fn table_group(&self, member: u32) -> Option<ComparisonGroup> {
+        match self.comparison {
+            Comparison::Own => self.own[member as usize].map(ComparisonGroup::family),
+            Comparison::Family(family) => Some(ComparisonGroup::family(family)),
+        }
+    }
+
+    /// The rankings a window looks up: every family's and the given slot groups'. `conn`
     /// must read this entry's data generation.
-    pub(super) fn percentile_columns(
+    pub(super) fn rankings(
+        &self,
+        conn: &Connection,
+        slots: impl IntoIterator<Item = ComparisonGroup>,
+    ) -> Result<ResolvedGroups, String> {
+        let groups = self
+            .groups
+            .as_ref()
+            .ok_or_else(|| "a Moneyball cohort without a snapshot has no groups".to_string())?;
+        ResolvedGroups::resolve(groups, conn, slots)
+    }
+
+    /// The statistic columns for `keys`, reading each missing one once. `conn` must read this
+    /// entry's data generation.
+    pub(super) fn statistic_columns(
         &self,
         conn: &Connection,
         keys: &[String],
-    ) -> Result<PercentileColumns, String> {
+    ) -> Result<StatisticColumns, String> {
+        let indexes = keys
+            .iter()
+            .map(|key| {
+                statistic_index(key).ok_or_else(|| format!("unknown Moneyball statistic: {key}"))
+            })
+            .collect::<Result<BTreeSet<_>, _>>()?;
         let mut memo = self
-            .percentiles
+            .statistics
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        let mut missing = Vec::new();
-        for key in keys {
-            if !memo.contains_key(key) && !missing.contains(&key) {
-                missing.push(key);
-            }
-        }
+        let missing = indexes
+            .iter()
+            .copied()
+            .filter(|index| !memo.contains_key(index))
+            .collect::<Vec<_>>();
         if !missing.is_empty() {
             #[cfg(test)]
-            PERCENTILE_COLUMN_COMPUTATIONS.with(|count| count.set(count.get() + missing.len()));
+            STATISTIC_COLUMN_READS.with(|count| count.set(count.get() + missing.len()));
             let columns = self.read_columns(conn, &missing)?;
-            for (key, column) in missing.into_iter().zip(columns) {
-                memo.insert(key.clone(), column);
+            for (index, column) in missing.into_iter().zip(columns) {
+                memo.insert(index, column);
             }
         }
-        Ok(PercentileColumns(
-            keys.iter()
-                .map(|key| (key.clone(), Arc::clone(&memo[key])))
-                .collect(),
-        ))
+        let mut columns = vec![None; MONEYBALL_STATISTIC_KEYS.len()];
+        for index in indexes {
+            columns[index] = Some(Arc::clone(&memo[&index]));
+        }
+        Ok(StatisticColumns(columns))
     }
 
     fn read_columns(
         &self,
         conn: &Connection,
-        keys: &[&String],
-    ) -> Result<Vec<Arc<[Option<u8>]>>, String> {
-        let source = match self.pool {
-            ComparisonPool::Filtered => "statistics_json",
-            ComparisonPool::FullCsv => "percentiles_json",
-        };
+        indexes: &[usize],
+    ) -> Result<Vec<Arc<[f64]>>, String> {
         // One read and scan of each member's object: `json_extract` per key re-reads and
         // re-parses the object for every key. Rows outside the cohort are skipped.
         let mut statement = conn
-            .prepare(&format!(
-                "SELECT player_uid, {source} FROM player_moneyball_stats WHERE snapshot_id = ?1"
-            ))
+            .prepare(
+                "SELECT player_uid, statistics_json FROM player_moneyball_stats WHERE snapshot_id = ?1",
+            )
             .map_err(|error| error.to_string())?;
         let mut rows = statement
             .query([self.snapshot_id])
             .map_err(|error| error.to_string())?;
-        match self.pool {
-            ComparisonPool::Filtered => {
-                let values = self.scan_members(&mut rows, keys, |text| text.parse::<f64>().ok())?;
-                Ok(keys
-                    .iter()
-                    .zip(values)
-                    .map(|(key, values)| rank_column(&values, key).into())
-                    .collect())
-            }
-            ComparisonPool::FullCsv => {
-                let columns = self.scan_members(&mut rows, keys, |text| text.parse::<u8>().ok())?;
-                Ok(columns.into_iter().map(Into::into).collect())
-            }
-        }
+        let columns = self.scan_members(&mut rows, indexes)?;
+        Ok(columns.into_iter().map(Into::into).collect())
     }
 
-    /// Each member's values for `keys`, one column per key, from rows of UIDs and JSON
-    /// objects. Worker threads scan the objects while this thread reads the rows.
-    fn scan_members<T: Copy + Send>(
+    /// Each member's values of the statistics at `indexes`, one column per index (NaN when
+    /// absent), from rows of UIDs and statistics objects. Worker threads scan the objects
+    /// while this thread reads the rows.
+    fn scan_members(
         &self,
         rows: &mut Rows<'_>,
-        keys: &[&String],
-        parse: fn(&str) -> Option<T>,
-    ) -> Result<Vec<Vec<Option<T>>>, String> {
+        indexes: &[usize],
+    ) -> Result<Vec<Vec<f64>>, String> {
         const CHUNK_ROWS: usize = 1024;
+        let mut slot_of = vec![None; MONEYBALL_STATISTIC_KEYS.len()];
+        for (slot, index) in indexes.iter().enumerate() {
+            slot_of[*index] = Some(slot);
+        }
         let workers = std::thread::available_parallelism()
             .map_or(1, usize::from)
             .min(8);
@@ -445,10 +540,16 @@ impl MoneyballCohort {
                         break;
                     }
                     let start = values.len();
-                    values.resize(start + keys.len(), None);
+                    values.resize(start + indexes.len(), f64::NAN);
                     members.push(member);
-                    result = scan_object_values(&json, keys, |index, text| {
-                        values[start + index] = parse_value(text, parse)?;
+                    result = scan_statistic_values(&json, |index, text| {
+                        if let Some(slot) = slot_of[index] {
+                            if let Some(value) =
+                                parse_json_value(text, |text| text.parse::<f64>().ok())?
+                            {
+                                values[start + slot] = value;
+                            }
+                        }
                         Ok(())
                     });
                 }
@@ -475,10 +576,13 @@ impl MoneyballCohort {
                 sender.send(chunk).map_err(|error| error.to_string())
             })();
             drop(sender);
-            let mut columns = vec![vec![None; self.uids.len()]; keys.len()];
+            let mut columns = vec![vec![f64::NAN; self.uids.len()]; indexes.len()];
             for handle in handles {
                 let (members, values) = handle.join().expect("a Moneyball scan worker panicked")?;
-                for (member, values) in members.into_iter().zip(values.chunks_exact(keys.len())) {
+                for (member, values) in members
+                    .into_iter()
+                    .zip(values.chunks_exact(indexes.len().max(1)))
+                {
                     for (column, value) in columns.iter_mut().zip(values) {
                         column[member as usize] = *value;
                     }
@@ -487,83 +591,6 @@ impl MoneyballCohort {
             read.map(|()| columns)
         })
     }
-}
-
-/// Calls `found` with the index and raw value text of each of `keys` that one stored Moneyball
-/// JSON object holds. Its values are numbers or null.
-fn scan_object_values(
-    json: &str,
-    keys: &[&String],
-    mut found: impl FnMut(usize, &str) -> Result<(), String>,
-) -> Result<(), String> {
-    let malformed = || "malformed Moneyball JSON object".to_string();
-    let bytes = json.as_bytes();
-    let mut at = 0;
-    let skip_whitespace = |at: &mut usize| {
-        while bytes.get(*at).is_some_and(u8::is_ascii_whitespace) {
-            *at += 1;
-        }
-    };
-    skip_whitespace(&mut at);
-    if bytes.get(at) != Some(&b'{') {
-        return Err(malformed());
-    }
-    at += 1;
-    skip_whitespace(&mut at);
-    if bytes.get(at) == Some(&b'}') {
-        return Ok(());
-    }
-    loop {
-        skip_whitespace(&mut at);
-        if bytes.get(at) != Some(&b'"') {
-            return Err(malformed());
-        }
-        let key_start = at + 1;
-        at = key_start;
-        loop {
-            match bytes.get(at) {
-                Some(b'"') => break,
-                Some(b'\\') => at += 2,
-                Some(_) => at += 1,
-                None => return Err(malformed()),
-            }
-        }
-        let key = &json[key_start..at];
-        at += 1;
-        skip_whitespace(&mut at);
-        if bytes.get(at) != Some(&b':') {
-            return Err(malformed());
-        }
-        at += 1;
-        skip_whitespace(&mut at);
-        let value_start = at;
-        while bytes
-            .get(at)
-            .is_some_and(|byte| !matches!(byte, b',' | b'}') && !byte.is_ascii_whitespace())
-        {
-            at += 1;
-        }
-        if let Some(index) = keys.iter().position(|wanted| wanted.as_str() == key) {
-            found(index, &json[value_start..at])?;
-        }
-        skip_whitespace(&mut at);
-        match bytes.get(at) {
-            Some(b',') => at += 1,
-            Some(b'}') => return Ok(()),
-            _ => return Err(malformed()),
-        }
-    }
-}
-
-/// A stored value: `null`, or a number. Rust parses numbers to the nearest value, as SQLite's
-/// JSON functions do for the at most 17 significant digits that stored values carry.
-fn parse_value<T>(text: &str, parse: fn(&str) -> Option<T>) -> Result<Option<T>, String> {
-    if text == "null" {
-        return Ok(None);
-    }
-    parse(text)
-        .map(Some)
-        .ok_or_else(|| format!("malformed Moneyball value: {text}"))
 }
 
 /// The statistic keys a Moneyball tactic column's score reads.
@@ -586,22 +613,34 @@ pub(super) fn tactic_metric_keys(field: &MetricField, tactic: &PlannerTactic) ->
     .collect()
 }
 
-/// A Moneyball tactic column's score from a player's percentiles, fit, and league shift: the
+/// The slot group a custom tactic column ranks its metrics within. Role columns need none:
+/// their roles rank within families.
+pub(super) fn tactic_slot_group(
+    field: &MetricField,
+    tactic: &PlannerTactic,
+) -> Option<ComparisonGroup> {
+    if field.tactic_group() != Some(TacticGroup::Custom) {
+        return None;
+    }
+    slot_group(tactic_lane(field, tactic)?)
+}
+
+/// A Moneyball tactic column's score from a member's percentiles, fit, and league shift: the
 /// custom metrics' mean, or the slot's two role scores when both have Moneyball definitions.
 pub(super) fn tactic_score(
     field: &MetricField,
     tactic: &PlannerTactic,
-    percentiles: &BTreeMap<String, Option<u8>>,
+    percentiles: &MemberPercentiles<'_>,
     fit: &PlayerFit,
     league_shift: i16,
 ) -> Option<u8> {
     let lane = tactic_lane(field, tactic)?;
-    let lane_score = if field.tactic_group() == Some(TacticGroup::Custom) {
-        custom_metrics_lane_score
+    let lookup = |group, key: &str| percentiles.percentile(group, key);
+    if field.tactic_group() == Some(TacticGroup::Custom) {
+        custom_metrics_lane_score(&lookup, &fit.foot, &fit.positions, lane, league_shift)
     } else {
-        moneyball_roles_lane_score
-    };
-    lane_score(percentiles, &fit.foot, &fit.positions, lane, league_shift)
+        moneyball_roles_lane_score(&lookup, &fit.foot, &fit.positions, lane, league_shift)
+    }
 }
 
 fn tactic_lane<'a>(
@@ -610,41 +649,4 @@ fn tactic_lane<'a>(
 ) -> Option<&'a crate::features::planner::tactic::TacticLane> {
     let lane_id = field.tactic_lane_id()?;
     tactic.lanes.iter().find(|lane| lane.lane_id == lane_id)
-}
-
-#[cfg(test)]
-mod tests {
-    use rusqlite::Connection;
-
-    use super::{parse_value, scan_object_values};
-
-    #[test]
-    fn scanned_values_equal_sqlite_json_extract() {
-        let json = r#" { "goals" : 0.30000000000000004 , "own\"goals":7,"xg":-1.5e-3,
-            "minutes":null, "saves" :12345678901234567 } "#;
-        let keys = ["goals", "xg", "minutes", "saves", "assists"].map(str::to_string);
-        let keys = keys.iter().collect::<Vec<_>>();
-        let mut scanned = vec![None; keys.len()];
-        scan_object_values(json, &keys, |index, text| {
-            scanned[index] = parse_value(text, |text| text.parse::<f64>().ok())?;
-            Ok(())
-        })
-        .expect("scan object");
-
-        let conn = Connection::open_in_memory().expect("open database");
-        let extracted = keys
-            .iter()
-            .map(|key| {
-                conn.query_row(
-                    &format!("SELECT json_extract(?1, '$.\"{key}\"')"),
-                    [json],
-                    |row| row.get::<_, Option<f64>>(0),
-                )
-                .expect("extract value")
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(scanned, extracted);
-        assert_eq!(scanned[0], Some(0.30000000000000004));
-        assert_eq!(scanned[2], None);
-    }
 }

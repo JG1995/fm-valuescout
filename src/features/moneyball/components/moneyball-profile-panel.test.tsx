@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import {
   fixturePlayerMoneyball,
-  fixturePlayerMoneyballWithoutNaturalPosition,
+  fixturePlayerMoneyballWithoutPosition,
 } from "@/testing/moneyball-ipc-mock";
 import { MoneyballProfilePanel } from "./moneyball-profile-panel";
 
@@ -17,12 +17,18 @@ describe("MoneyballProfilePanel", () => {
         {...undatedStats}
         profile={fixturePlayerMoneyball({
           statistics: { goals: 10, goals_per_90: 0.6 },
-          percentiles: { goals: 83, goals_per_90: 75 },
-          comparisonBasis: {
-            kind: "available",
-            naturalPositions: ["AMC", "AMR", "DL", "DR"],
-            comparisonPlayerCount: 24,
-          },
+          comparisons: [
+            {
+              family: "winger",
+              peers: 24,
+              percentiles: { goals: 83, goals_per_90: 75 },
+            },
+            {
+              family: "wide_midfielder",
+              peers: 1,
+              percentiles: { goals: 50, goals_per_90: 50 },
+            },
+          ],
         })}
       />,
     );
@@ -32,10 +38,9 @@ describe("MoneyballProfilePanel", () => {
     expect(screen.getByText("1,500")).toBeInTheDocument();
     expect(screen.queryByText("Asking price")).not.toBeInTheDocument();
     expect(
-      screen.getByText(
-        "Natural positions: DR, DL, AMR, AMC · 24 comparison players",
-      ),
-    ).toBeInTheDocument();
+      screen.getByRole("combobox", { name: "Percentiles vs" }),
+    ).toHaveValue("winger");
+    expect(screen.getByText("· 24 peers")).toBeInTheDocument();
     expect(screen.getByText("xGP")).toBeInTheDocument();
     expect(screen.getByText("xG Overperformance")).toBeInTheDocument();
     for (const hiddenLabel of [
@@ -69,30 +74,54 @@ describe("MoneyballProfilePanel", () => {
     expect(results.getByText("Average Rating")).toBeInTheDocument();
     expect(results.getByText("Games Won")).toBeInTheDocument();
 
+    // The switch ranks the same statistics among the other family's peers.
+    await user.click(screen.getByRole("tab", { name: "Shooting" }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Percentiles vs" }),
+      "Wide midfielders",
+    );
+    expect(
+      screen.getByRole("img", { name: "Goals: 50, Average" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("· 1 peer")).toBeInTheDocument();
+
     rerender(
       <MoneyballProfilePanel
         {...undatedStats}
-        profile={fixturePlayerMoneyball({
-          comparisonBasis: {
-            kind: "available",
-            naturalPositions: ["AMR"],
-            comparisonPlayerCount: 1,
-          },
-        })}
+        profile={fixturePlayerMoneyball()}
       />,
     );
-    expect(
-      screen.getByText("Natural positions: AMR · 1 comparison player"),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.getByText("Percentiles vs wingers")).toBeInTheDocument();
   });
 
-  it("keeps raw metrics while withholding stale percentiles without a natural position", () => {
+  it("notes a short sample and a family without peers yet", () => {
     render(
       <MoneyballProfilePanel
         {...undatedStats}
-        profile={fixturePlayerMoneyballWithoutNaturalPosition({
+        profile={fixturePlayerMoneyball({
+          minutes: 300,
+          comparisons: [{ family: "striker", peers: 0, percentiles: {} }],
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Short sample: under 450 minutes, so this player is ranked against the peers without counting among them.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Not enough data: no strikers have 450 minutes yet."),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps raw metrics without percentiles for a player rated at no position", () => {
+    render(
+      <MoneyballProfilePanel
+        {...undatedStats}
+        profile={fixturePlayerMoneyballWithoutPosition({
           statistics: { goals: 10 },
-          percentiles: { goals: 50 },
         })}
       />,
     );
@@ -100,11 +129,11 @@ describe("MoneyballProfilePanel", () => {
     expect(screen.getByText("10")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Percentile scores unavailable: this player has no natural position.",
+        "Percentile scores unavailable: this player is rated at no position.",
       ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("img", { name: "Goals: 50, Average" }),
+      screen.queryByRole("img", { name: /^Goals:/ }),
     ).not.toBeInTheDocument();
   });
 

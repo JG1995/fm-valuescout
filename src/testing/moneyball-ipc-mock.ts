@@ -139,29 +139,25 @@ export function fixturePlayerMoneyball(
     substituteAppearances: 3,
     minutes: 1500,
     statistics: { goals: 10, goals_per_90: 0.6 },
-    percentiles: { goals: 83, goals_per_90: 75 },
+    comparisons: [
+      {
+        family: "winger",
+        peers: 24,
+        percentiles: { goals: 83, goals_per_90: 75 },
+      },
+    ],
+    minimumMinutes: 450,
     roleCatalogVersion: 1,
     roleScores: [],
-    comparisonBasis: {
-      kind: "available",
-      naturalPositions: ["AMR"],
-      comparisonPlayerCount: 24,
-    },
     leagueAdjustment: null,
     ...overrides,
   };
 }
 
-export function fixturePlayerMoneyballWithoutNaturalPosition(
+export function fixturePlayerMoneyballWithoutPosition(
   overrides: Partial<Extract<MoneyballProfile, { state: "ready" }>> = {},
 ): Extract<MoneyballProfile, { state: "ready" }> {
-  return fixturePlayerMoneyball({
-    percentiles: null,
-    roleCatalogVersion: null,
-    roleScores: null,
-    comparisonBasis: { kind: "unavailableNoNaturalPosition" },
-    ...overrides,
-  });
+  return fixturePlayerMoneyball({ comparisons: [], ...overrides });
 }
 
 export function resolveGetPlayerMoneyballIpcMock(

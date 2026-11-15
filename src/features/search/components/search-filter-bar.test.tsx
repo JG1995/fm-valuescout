@@ -36,7 +36,7 @@ function renderBar({
       onApply={onApply}
       onRulesChange={onRulesChange}
       view={view}
-      comparisonPool="filtered"
+      comparison="own"
     />,
   );
   return { onApply, onRulesChange, user: userEvent.setup() };
@@ -212,9 +212,7 @@ describe("SearchFilterBar", () => {
     expect(screen.getByLabelText("Value")).toHaveValue(90);
     expect(operatorValues()).toEqual(["pct_gte", "pct_lte", "pct_between"]);
     expect(
-      screen.getByText(
-        /Scored against the players matching your other filters/,
-      ),
+      screen.getByText(/Ranked among the peers of each player's own position/),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add" }));
 

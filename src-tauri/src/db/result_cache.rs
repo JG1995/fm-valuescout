@@ -214,6 +214,11 @@ pub struct TableTicket {
 pub struct Cancellation(Arc<AtomicBool>);
 
 impl Cancellation {
+    /// A computation that no newer request can supersede.
+    pub fn never() -> Self {
+        Self(Arc::default())
+    }
+
     /// Fails with [`SUPERSEDED`] once the computation was superseded. An interrupt stops only
     /// a statement that is running, so a computation checks this between its statements.
     pub fn check(&self) -> Result<(), String> {

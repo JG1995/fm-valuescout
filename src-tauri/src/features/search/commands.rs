@@ -4,11 +4,12 @@ use tauri::State;
 use crate::blocking;
 use crate::db::result_cache::{parse_table_id, TableRegistry, TableTicket};
 use crate::db::Db;
+use crate::features::moneyball::comparison::ComparisonGroupsCache;
 
 use super::filter::{self, FilterAst, FilterRule};
 use super::moneyball_cohort::MoneyballCohortCache;
 use super::query::{
-    self, ComparisonPool, DynamicValue, GeneralOrderCache, PlayerSummary, SearchPlayersPage,
+    self, Comparison, DynamicValue, GeneralOrderCache, PlayerSummary, SearchPlayersPage,
     SearchPlayersPageState, SearchPlayersRequest, SearchView, SortDir, SortField,
     DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
 };
@@ -72,6 +73,9 @@ pub struct PlayerSummaryDto {
     pub market_value_gbp: Option<i64>,
     pub dynamic_values: std::collections::BTreeMap<String, Option<DynamicValueDto>>,
     pub moneyball_percentiles: std::collections::BTreeMap<String, Option<u8>>,
+    /// Moneyball only: too few minutes to count among the player's peers.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub moneyball_short_sample: bool,
 }
 
 #[derive(Serialize)]
@@ -113,6 +117,7 @@ impl From<PlayerSummary> for PlayerSummaryDto {
                 .map(|(key, value)| (key, value.map(DynamicValueDto::from)))
                 .collect(),
             moneyball_percentiles: row.moneyball_percentiles,
+            moneyball_short_sample: row.moneyball_short_sample,
         }
     }
 }
@@ -154,11 +159,12 @@ pub async fn search_players(
     filter_combine: Option<String>,
     requested_fields: Option<Vec<String>>,
     search_view: Option<String>,
-    comparison_pool: Option<String>,
+    comparison: Option<String>,
     shortlist_id: Option<i64>,
     table_id: Option<String>,
     db: State<'_, Db>,
     caches: State<'_, SearchCaches>,
+    groups: State<'_, ComparisonGroupsCache>,
     registry: State<'_, TableRegistry>,
 ) -> Result<SearchPlayersPageDto, String> {
     let search = PlayerSearch::parse(
@@ -170,7 +176,7 @@ pub async fn search_players(
         filter_combine,
         requested_fields,
         search_view,
-        comparison_pool,
+        comparison,
         shortlist_id,
     )?;
     let table = table_id.as_deref().map(parse_table_id).transpose()?;
@@ -178,9 +184,12 @@ pub async fn search_players(
         .map(|table| registry.arrive(table, &query::search_query_fingerprint(&search.request())));
     let db = db.inner().clone();
     let caches = caches.inner().clone();
+    let groups = groups.inner().clone();
     let registry = registry.inner().clone();
-    blocking::run(move || read_players_page(&db, &caches, &registry, ticket.as_ref(), &search))
-        .await
+    blocking::run(move || {
+        read_players_page(&db, &caches, &groups, &registry, ticket.as_ref(), &search)
+    })
+    .await
 }
 
 /// A validated `search_players` request.
@@ -192,7 +201,7 @@ struct PlayerSearch {
     filter_ast: Option<FilterAst>,
     requested_fields: Vec<String>,
     view: SearchView,
-    comparison_pool: ComparisonPool,
+    comparison: Comparison,
     shortlist_id: Option<i64>,
 }
 
@@ -207,11 +216,13 @@ impl PlayerSearch {
         filter_combine: Option<String>,
         requested_fields: Option<Vec<String>>,
         search_view: Option<String>,
-        comparison_pool: Option<String>,
+        comparison: Option<String>,
         shortlist_id: Option<i64>,
     ) -> Result<Self, String> {
         let view = parse_search_view(search_view.as_deref())?;
-        let comparison_pool = parse_comparison_pool(comparison_pool.as_deref(), view)?;
+        let comparison = comparison
+            .as_deref()
+            .map_or(Ok(Comparison::Own), Comparison::parse)?;
         let sort_by = parse_search_sort_for_view(sort_by.as_deref(), view)?;
         let sort_dir = match sort_dir.as_deref() {
             None => SortDir::DEFAULT,
@@ -241,7 +252,7 @@ impl PlayerSearch {
             filter_ast,
             requested_fields: requested_fields.unwrap_or_default(),
             view,
-            comparison_pool,
+            comparison,
             shortlist_id,
         })
     }
@@ -255,7 +266,7 @@ impl PlayerSearch {
             filter_ast: self.filter_ast.as_ref(),
             requested_fields: &self.requested_fields,
             view: self.view,
-            comparison_pool: self.comparison_pool,
+            comparison: self.comparison,
             shortlist_id: self.shortlist_id,
         }
     }
@@ -264,6 +275,7 @@ impl PlayerSearch {
 fn read_players_page(
     db: &Db,
     caches: &SearchCaches,
+    groups: &ComparisonGroupsCache,
     registry: &TableRegistry,
     ticket: Option<&TableTicket>,
     search: &PlayerSearch,
@@ -279,6 +291,7 @@ fn read_players_page(
         SearchView::Moneyball => query::search_moneyball_players(
             db,
             &caches.moneyball_cohorts,
+            groups,
             registry,
             ticket,
             search.request(),
@@ -306,17 +319,6 @@ fn parse_search_sort_for_view(
         }
         (Some(value), SearchView::General) => SortField::parse(value),
         (Some(value), SearchView::Moneyball) => SortField::parse_for_moneyball(value, true),
-    }
-}
-
-fn parse_comparison_pool(value: Option<&str>, view: SearchView) -> Result<ComparisonPool, String> {
-    match value.unwrap_or(match view {
-        SearchView::General => "fullCsv",
-        SearchView::Moneyball => "filtered",
-    }) {
-        "fullCsv" => Ok(ComparisonPool::FullCsv),
-        "filtered" => Ok(ComparisonPool::Filtered),
-        other => Err(format!("unknown Moneyball comparison pool: {other}")),
     }
 }
 
@@ -369,9 +371,10 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
+    use crate::features::moneyball::comparison::PositionFamily;
 
     #[test]
-    fn parses_closed_search_view_and_comparison_pool_inputs() {
+    fn parses_closed_search_view_and_comparison_inputs() {
         assert_eq!(parse_search_view(None), Ok(SearchView::General));
         assert_eq!(
             parse_search_view(Some("moneyball")),
@@ -380,19 +383,13 @@ mod tests {
         assert!(parse_search_view(Some("shortlist")).is_err());
         assert!(parse_search_view(Some("history")).is_err());
 
+        assert_eq!(Comparison::parse("own"), Ok(Comparison::Own));
         assert_eq!(
-            parse_comparison_pool(None, SearchView::Moneyball),
-            Ok(ComparisonPool::Filtered)
+            Comparison::parse("central_defender"),
+            Ok(Comparison::Family(PositionFamily::CentralDefender))
         );
-        assert_eq!(
-            parse_comparison_pool(Some("fullCsv"), SearchView::Moneyball),
-            Ok(ComparisonPool::FullCsv)
-        );
-        assert!(parse_comparison_pool(Some("allPlayers"), SearchView::Moneyball).is_err());
-        assert_eq!(
-            parse_comparison_pool(None, SearchView::General),
-            Ok(ComparisonPool::FullCsv)
-        );
+        assert!(Comparison::parse("filtered").is_err());
+        assert!(Comparison::parse("DC").is_err());
     }
 
     #[test]
@@ -485,6 +482,7 @@ mod tests {
                 read_players_page(
                     db,
                     &SearchCaches::default(),
+                    &ComparisonGroupsCache::default(),
                     &registry,
                     Some(&ticket),
                     &search,
@@ -531,10 +529,12 @@ mod tests {
                 Some(DynamicValue::Real(0.75)),
             )]),
             moneyball_percentiles: BTreeMap::from([("moneyball.np-xg".to_string(), Some(83))]),
+            moneyball_short_sample: true,
         });
 
         let value = serde_json::to_value(dto).expect("serialize DTO");
         assert_eq!(value["dynamicValues"]["moneyball.np-xg"], 0.75);
         assert_eq!(value["moneyballPercentiles"]["moneyball.np-xg"], 83);
+        assert_eq!(value["moneyballShortSample"], true);
     }
 }

@@ -1,10 +1,22 @@
 use std::collections::BTreeMap;
 
 use super::tactic::{base_position, TacticLane};
+use crate::features::moneyball::comparison::{ComparisonGroup, PositionFamily};
 use crate::features::moneyball::league_strength::shifted;
 use crate::features::moneyball::role_catalog::definition_for_attribute_role;
 use crate::features::moneyball::role_score::{mean_percentile_score, score_role};
 use crate::features::scoring::combine::combine_role_scores;
+
+/// A player's percentile of a statistic within a comparison group.
+pub(crate) trait GroupPercentiles {
+    fn percentile(&self, group: ComparisonGroup, key: &str) -> Option<u8>;
+}
+
+impl<F: Fn(ComparisonGroup, &str) -> Option<u8>> GroupPercentiles for F {
+    fn percentile(&self, group: ComparisonGroup, key: &str) -> Option<u8> {
+        self(group, key)
+    }
+}
 
 pub(super) fn phase_fit_score(
     score: Option<u8>,
@@ -52,10 +64,11 @@ pub(crate) fn tactic_adjusted_score(
 }
 
 /// A slot's Moneyball role score from a player's percentiles: the Moneyball definitions of
-/// the slot's IP and OOP roles, blended by its IP weight and adjusted for fit. No score when
-/// either role has no Moneyball definition at its position.
+/// the slot's IP and OOP roles, each ranked within its own family, blended by the slot's IP
+/// weight and adjusted for fit. No score when either role has no Moneyball definition at its
+/// position.
 pub(crate) fn moneyball_roles_lane_score(
-    percentiles: &BTreeMap<String, Option<u8>>,
+    percentiles: &impl GroupPercentiles,
     player_foot: &str,
     positions: &BTreeMap<String, Option<i64>>,
     lane: &TacticLane,
@@ -66,7 +79,10 @@ pub(crate) fn moneyball_roles_lane_score(
     }
     let role_score = |role_id: &str, position: &str| {
         definition_for_attribute_role(role_id, base_position(position)).map(|definition| {
-            score_role(definition, percentiles).map(|role| shifted(role.score, league_shift))
+            let group =
+                ComparisonGroup::family(PositionFamily::from_id(&definition.position_family)?);
+            score_role(definition, &|key: &str| percentiles.percentile(group, key))
+                .map(|role| shifted(role.score, league_shift))
         })
     };
     let ip_score = role_score(&lane.ip_role_id, &lane.ip_position)?;
@@ -81,10 +97,11 @@ pub(crate) fn moneyball_roles_lane_score(
     )
 }
 
-/// A slot's custom Moneyball score: the equal-weight mean of its chosen metrics' percentiles,
-/// moved by the player's league shift and adjusted for fit without the IP/OOP blend.
+/// A slot's custom Moneyball score: the equal-weight mean of its chosen metrics' percentiles
+/// within the slot's group, moved by the player's league shift and adjusted for fit without
+/// the IP/OOP blend.
 pub(crate) fn custom_metrics_lane_score(
-    percentiles: &BTreeMap<String, Option<u8>>,
+    percentiles: &impl GroupPercentiles,
     player_foot: &str,
     positions: &BTreeMap<String, Option<i64>>,
     lane: &TacticLane,
@@ -93,12 +110,24 @@ pub(crate) fn custom_metrics_lane_score(
     if !plays_lane(positions, lane) {
         return None;
     }
+    let group = slot_group(lane)?;
     lane_fit_score(
-        mean_percentile_score(&lane.custom_metric_keys, percentiles)
-            .map(|score| shifted(score, league_shift)),
+        mean_percentile_score(&lane.custom_metric_keys, &|key: &str| {
+            percentiles.percentile(group, key)
+        })
+        .map(|score| shifted(score, league_shift)),
         player_foot,
         positions,
         lane,
+    )
+}
+
+/// The peers a slot's custom metrics and recruitment filters rank a player among: the
+/// families of its two positions. `None` for a position without a family (the sweeper).
+pub(crate) fn slot_group(lane: &TacticLane) -> Option<ComparisonGroup> {
+    ComparisonGroup::slot(
+        base_position(&lane.ip_position),
+        base_position(&lane.oop_position),
     )
 }
 

@@ -5,7 +5,7 @@ import {
   DEFAULT_SEARCH_SORT_DIR,
   DEFAULT_SEARCH_SORT_FIELD,
 } from "../types/search-sort";
-import type { ComparisonPool, SearchView } from "../types/search-view";
+import type { MoneyballComparison, SearchView } from "../types/search-view";
 import {
   fetchSearchPlayers,
   SEARCH_PAGE_SIZE,
@@ -24,7 +24,7 @@ export function searchPlayersQueryOptions(
   filterCombine: FilterCombineMode = "and",
   requestedFields: string[] = [],
   searchView: SearchView = "general",
-  comparisonPool: ComparisonPool = "filtered",
+  comparison: MoneyballComparison = "own",
   shortlistId: number | null = null,
   context?: SearchPlayerPageContext,
   tableId?: SearchTableId,
@@ -39,7 +39,7 @@ export function searchPlayersQueryOptions(
       filterCombine,
       requestedFields,
       searchView,
-      comparisonPool,
+      comparison,
       shortlistId,
       context,
     ),
@@ -53,7 +53,7 @@ export function searchPlayersQueryOptions(
         filterCombine,
         requestedFields,
         searchView,
-        comparisonPool,
+        comparison,
         shortlistId,
         tableId,
       ),

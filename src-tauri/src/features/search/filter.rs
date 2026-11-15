@@ -161,7 +161,7 @@ pub fn moneyball_role_ids_from_ast(ast: &FilterAst) -> Result<Vec<String>, Strin
 }
 
 /// The statistic key of a rule that compares a Moneyball statistic's 0–100
-/// comparison-pool percentile rather than its raw value.
+/// percentile within the table's comparison rather than its raw value.
 fn moneyball_percentile_key(rule: &FilterRule) -> Option<String> {
     if !matches!(rule.op.as_str(), "pct_gte" | "pct_lte" | "pct_between") {
         return None;

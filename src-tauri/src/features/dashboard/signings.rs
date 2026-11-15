@@ -6,10 +6,12 @@ use std::collections::{BTreeMap, HashSet};
 
 use rusqlite::{params_from_iter, types::Value, Connection};
 
+pub(crate) use crate::features::moneyball::comparison::MIN_SEASON_MINUTES;
+use crate::features::moneyball::comparison::{scan_statistics, GroupsSource, ResolvedGroups};
 use crate::features::moneyball::league_strength::LeagueAdjustment;
 use crate::features::moneyball::role_catalog::definition_for_attribute_role;
 use crate::features::planner::fit::{
-    custom_metrics_lane_score, moneyball_roles_lane_score, tactic_adjusted_score,
+    custom_metrics_lane_score, moneyball_roles_lane_score, slot_group, tactic_adjusted_score,
 };
 use crate::features::planner::optimizer::{allocate_lanes, OptimizerCandidate};
 use crate::features::planner::tactic::{
@@ -26,9 +28,6 @@ use super::{club_snapshot_id, MANAGED_CLUB_NAME_SQL};
 
 /// The most ranked recommendations one read returns: as many as the dashboard shows at once.
 pub(crate) const MAX_RECOMMENDATIONS: usize = 12;
-/// The fewest competitive minutes this season a candidate needs while season stats apply, so
-/// his statistics come from more than a handful of appearances.
-pub(crate) const MIN_SEASON_MINUTES: i64 = 450;
 const MAX_OTHER_LANES: usize = 2;
 
 /// Which scores compare a candidate with the club's player in a slot.
@@ -189,6 +188,7 @@ enum PlayerScope<'a> {
 // takes longer than that.
 pub(crate) fn get_signings(
     conn: &Connection,
+    groups: &GroupsSource<'_>,
     save_id: i64,
     request: SigningsRequest<'_>,
 ) -> Result<Option<Signings>, String> {
@@ -222,6 +222,24 @@ pub(crate) fn get_signings(
         ScoreMode::General => LeagueAdjustment::default(),
         ScoreMode::Moneyball => LeagueAdjustment::load(conn, snapshot_id)?,
     };
+    // Moneyball scores and percentile filters rank statistics within comparison groups: the
+    // roles' families, and the slot's group for custom metrics and filters.
+    let ranks_slot = |lane: &TacticLane| {
+        (mode == ScoreMode::Moneyball && !lane.custom_metric_keys.is_empty())
+            || (season_stats && has_percentile_filter(lane))
+    };
+    let rankings =
+        if season_stats && (mode == ScoreMode::Moneyball || tactic.lanes.iter().any(ranks_slot)) {
+            let groups = groups.load(conn, snapshot_id)?;
+            let slots = tactic
+                .lanes
+                .iter()
+                .filter(|lane| ranks_slot(lane))
+                .filter_map(slot_group);
+            Some(ResolvedGroups::resolve(&groups, conn, slots)?)
+        } else {
+            None
+        };
     let load = |scope| {
         load_players(
             conn,
@@ -232,6 +250,7 @@ pub(crate) fn get_signings(
             mode,
             &league,
             season_stats,
+            rankings.as_ref(),
         )
     };
     let club = load(PlayerScope::Club)?;
@@ -342,6 +361,13 @@ fn score_basis(lane: &TacticLane, mode: ScoreMode) -> ScoreBasis {
     } else {
         ScoreBasis::Unavailable
     }
+}
+
+/// Whether one of the slot's recruitment filters ranks a statistic within the slot's group.
+fn has_percentile_filter(lane: &TacticLane) -> bool {
+    lane.recruitment_filters
+        .iter()
+        .any(|filter| filter.op.starts_with("pct_"))
 }
 
 fn snapshot_has_percentiles(conn: &Connection, snapshot_id: i64) -> Result<bool, String> {
@@ -456,7 +482,8 @@ fn has_realistic_signings(
 /// Reads the scope's players with their score in every tactic slot. Every statement binds
 /// the snapshot as `?1`, where the realistic-signing rule reads it, and the save as `?2`.
 /// With `season_stats`, a candidate needs `MIN_SEASON_MINUTES` minutes and the slots'
-/// season-stat filters run; without it they are left out.
+/// season-stat filters run; without it they are left out. `rankings` holds the comparison
+/// groups that Moneyball scores and percentile filters read.
 #[allow(clippy::too_many_arguments)]
 fn load_players(
     conn: &Connection,
@@ -467,6 +494,7 @@ fn load_players(
     mode: ScoreMode,
     league: &LeagueAdjustment,
     season_stats: bool,
+    rankings: Option<&ResolvedGroups>,
 ) -> Result<Vec<ScoredPlayer>, String> {
     let role_score_columns = match mode {
         ScoreMode::General => role_score_columns(tactic)?,
@@ -478,7 +506,7 @@ fn load_players(
             format!("players{}", player_metrics_join("players", true, false)),
         ),
         ScoreMode::Moneyball => (
-            "moneyball.minutes, moneyball.percentiles_json, players.division".to_string(),
+            "moneyball.minutes, moneyball.statistics_json, players.division".to_string(),
             format!("players{MONEYBALL_JOIN_SQL}"),
         ),
     };
@@ -535,13 +563,7 @@ fn load_players(
     };
     let candidates = !matches!(scope, PlayerScope::Club);
     let filters = if candidates {
-        SlotFilters::load(
-            conn,
-            snapshot_id,
-            tactic,
-            bind_values.len() + 1,
-            season_stats,
-        )?
+        SlotFilters::load(tactic, bind_values.len() + 1, season_stats, rankings)?
     } else {
         None
     };
@@ -625,12 +647,11 @@ fn load_players(
                 (None, scores)
             }
             ScoreMode::Moneyball => {
-                let percentiles = row
+                let statistics = row
                     .get::<_, Option<String>>(9)
                     .map_err(read)?
-                    .map(|json| serde_json::from_str::<BTreeMap<String, Option<u8>>>(&json))
-                    .transpose()
-                    .map_err(|error| error.to_string())?;
+                    .map(|json| scan_statistics(&json))
+                    .transpose()?;
                 let division: Option<String> = row.get(10).map_err(read)?;
                 let league_shift = league.shift(division.as_deref());
                 let scores = tactic
@@ -638,17 +659,20 @@ fn load_players(
                     .iter()
                     .zip(&score_bases)
                     .map(|(lane, score_basis)| {
-                        let percentiles = percentiles.as_ref()?;
+                        let statistics = statistics.as_deref()?;
+                        let rankings = rankings?;
+                        let percentiles =
+                            |group, key: &str| rankings.percentile(group, key, statistics);
                         match score_basis {
                             ScoreBasis::MoneyballCustom => custom_metrics_lane_score(
-                                percentiles,
+                                &percentiles,
                                 &foot,
                                 &positions,
                                 lane,
                                 league_shift,
                             ),
                             ScoreBasis::MoneyballRoles => moneyball_roles_lane_score(
-                                percentiles,
+                                &percentiles,
                                 &foot,
                                 &positions,
                                 lane,

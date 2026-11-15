@@ -8,8 +8,11 @@ import {
   MONEYBALL_METRIC_CATEGORIES,
   MONEYBALL_METRICS,
 } from "@/utils/moneyball-metrics";
-import { orderedPositions } from "@/utils/position-order";
-import type { MoneyballProfile } from "../types/moneyball-profile";
+import { positionFamilyLabel } from "@/utils/position-families";
+import type {
+  MoneyballFamilyComparison,
+  MoneyballProfile,
+} from "../types/moneyball-profile";
 import { MoneyballMetricValue } from "./moneyball-metric-value";
 
 function formattedNumber(value: number | null) {
@@ -106,6 +109,79 @@ export function MoneyballStatsAsOf({
   );
 }
 
+/**
+ * Whom the player's percentiles rank him against, with a switch between the
+ * families he can be compared in, and notes on short samples and empty groups.
+ */
+function ComparisonSummary({
+  comparisons,
+  selected,
+  onSelect,
+  minutes,
+  minimumMinutes,
+}: {
+  comparisons: readonly MoneyballFamilyComparison[];
+  selected: MoneyballFamilyComparison | undefined;
+  onSelect: (family: string) => void;
+  minutes: number | null;
+  minimumMinutes: number;
+}) {
+  if (selected === undefined) {
+    return (
+      <p
+        role="status"
+        className="shrink-0 text-body-sm text-on-surface-variant"
+      >
+        Percentile scores unavailable: this player is rated at no position.
+      </p>
+    );
+  }
+  const label = positionFamilyLabel(selected.family);
+  const peers = `${selected.peers.toLocaleString("en-GB")} ${
+    selected.peers === 1 ? "peer" : "peers"
+  }`;
+  return (
+    <div className="flex shrink-0 flex-col gap-1 text-body-sm text-on-surface-variant">
+      <p
+        className="flex flex-wrap items-center gap-x-2"
+        title={`Peers have ${minimumMinutes}+ minutes this season and a rating of 16 or higher at the family's positions.`}
+      >
+        {comparisons.length > 1 ? (
+          <label className="flex items-center gap-2">
+            Percentiles vs
+            <select
+              className="h-7 rounded-md border border-outline bg-surface-container-high px-1.5 text-body-sm text-on-surface"
+              value={selected.family}
+              onChange={(event) => onSelect(event.target.value)}
+            >
+              {comparisons.map((comparison) => (
+                <option key={comparison.family} value={comparison.family}>
+                  {positionFamilyLabel(comparison.family)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span>Percentiles vs {label.toLowerCase()}</span>
+        )}
+        <span>· {peers}</span>
+      </p>
+      {selected.peers === 0 ? (
+        <p role="status">
+          Not enough data: no {label.toLowerCase()} have {minimumMinutes}{" "}
+          minutes yet.
+        </p>
+      ) : null}
+      {(minutes ?? 0) < minimumMinutes ? (
+        <p>
+          Short sample: under {minimumMinutes} minutes, so this player is ranked
+          against the peers without counting among them.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function MoneyballProfilePanel({
   profile,
   moneyballStatsGameDate,
@@ -119,6 +195,7 @@ export function MoneyballProfilePanel({
   const [categoryId, setCategoryId] = useState(
     MONEYBALL_METRIC_CATEGORIES[0].id,
   );
+  const [family, setFamily] = useState<string | null>(null);
 
   if (profile.state === "noData") {
     return (
@@ -151,6 +228,9 @@ export function MoneyballProfilePanel({
     (candidate) => candidate.id === categoryId,
   );
   if (!category) return null;
+  const comparison =
+    profile.comparisons.find((candidate) => candidate.family === family) ??
+    profile.comparisons[0];
 
   return (
     <Panel
@@ -184,25 +264,13 @@ export function MoneyballProfilePanel({
             </dd>
           </div>
         </dl>
-        {profile.comparisonBasis.kind === "available" ? (
-          <p className="shrink-0 text-body-sm text-on-surface-variant">
-            Natural positions:{" "}
-            {orderedPositions(profile.comparisonBasis.naturalPositions).join(
-              ", ",
-            )}{" "}
-            · {profile.comparisonBasis.comparisonPlayerCount} comparison{" "}
-            {profile.comparisonBasis.comparisonPlayerCount === 1
-              ? "player"
-              : "players"}
-          </p>
-        ) : (
-          <p
-            role="status"
-            className="shrink-0 text-body-sm text-on-surface-variant"
-          >
-            Percentile scores unavailable: this player has no natural position.
-          </p>
-        )}
+        <ComparisonSummary
+          comparisons={profile.comparisons}
+          selected={comparison}
+          onSelect={setFamily}
+          minutes={profile.minutes}
+          minimumMinutes={profile.minimumMinutes}
+        />
         <MoneyballStatsAsOf
           moneyballStatsGameDate={moneyballStatsGameDate}
           snapshotGameDate={snapshotGameDate}
@@ -232,11 +300,7 @@ export function MoneyballProfilePanel({
                       key={metric.id}
                       metric={metric}
                       value={profile.statistics[metric.id] ?? null}
-                      score={
-                        profile.comparisonBasis.kind === "available"
-                          ? (profile.percentiles?.[metric.id] ?? null)
-                          : null
-                      }
+                      score={comparison?.percentiles[metric.id] ?? null}
                     />
                   );
                 })}

@@ -1,11 +1,10 @@
 use std::collections::{BTreeMap, HashMap};
 
 use rusqlite::{params, Connection, OptionalExtension};
-use serde_json::Value;
 
 use super::{
+    comparison::{player_families, GroupsSource, PositionFamily},
     league_strength::{shifted, LeagueAdjustment, LeagueBreakdown},
-    percentile::subject_percentiles,
     role_catalog::{builtin_catalog, RoleDefinition, RolePhase},
     role_score::explain_role,
     MONEYBALL_STATISTIC_KEYS,
@@ -18,13 +17,13 @@ pub enum MoneyballProfileState {
     Ready,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MoneyballComparisonBasis {
-    Available {
-        natural_positions: Vec<String>,
-        comparison_player_count: usize,
-    },
-    UnavailableNoNaturalPosition,
+/// The player's percentiles within one family's peers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MoneyballComparison {
+    pub family: PositionFamily,
+    /// The family's peers, whether or not they have a given statistic.
+    pub peers: usize,
+    pub percentiles: BTreeMap<String, Option<u8>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -34,10 +33,12 @@ pub struct MoneyballProfile {
     pub substitute_appearances: Option<i64>,
     pub minutes: Option<i64>,
     pub statistics: Option<BTreeMap<String, Option<f64>>>,
-    pub percentiles: Option<BTreeMap<String, Option<u8>>>,
+    /// The player's percentiles within each family he can be compared in, his best
+    /// position's first. Empty when he is rated at no position.
+    pub comparisons: Vec<MoneyballComparison>,
     pub role_catalog_version: Option<u32>,
+    /// Each role ranked within its own family.
     pub role_scores: Option<Vec<MoneyballRoleScore>>,
-    pub comparison_basis: Option<MoneyballComparisonBasis>,
     /// What moved every role score for the player's league, or none when nothing did.
     pub league_adjustment: Option<LeagueBreakdown>,
 }
@@ -72,10 +73,9 @@ impl MoneyballProfile {
             substitute_appearances: None,
             minutes: None,
             statistics: None,
-            percentiles: None,
+            comparisons: Vec::new(),
             role_catalog_version: None,
             role_scores: None,
-            comparison_basis: None,
             league_adjustment: None,
         }
     }
@@ -90,8 +90,9 @@ impl MoneyballProfile {
 
 /// Reads only the active save's effective current snapshot for a known player UID.
 /// A current player with no imported cohort is distinct from a pre-v30 unscored row.
-pub fn get_player_moneyball(
+pub(crate) fn get_player_moneyball(
     conn: &Connection,
+    groups: &GroupsSource<'_>,
     uid: i64,
 ) -> Result<Option<MoneyballProfile>, String> {
     let snapshot_id: Option<i64> = conn
@@ -170,36 +171,40 @@ pub fn get_player_moneyball(
         .zip(&statistic_values)
         .map(|(key, value)| ((*key).to_string(), *value))
         .collect::<BTreeMap<_, _>>();
-    let natural_positions = natural_positions(&positions_json)?;
-    if natural_positions.is_empty() {
-        return Ok(Some(MoneyballProfile {
-            state: MoneyballProfileState::Ready,
-            starts,
-            substitute_appearances,
-            minutes,
-            statistics: Some(statistics),
-            percentiles: None,
-            role_catalog_version: None,
-            role_scores: None,
-            comparison_basis: Some(MoneyballComparisonBasis::UnavailableNoNaturalPosition),
-            league_adjustment: None,
-        }));
-    }
-
-    let cohort = load_natural_position_cohort(conn, snapshot_id, &natural_positions)?;
-    if !cohort.contains_key(&uid) {
-        return Err(
-            "subject Moneyball row is missing from its natural-position cohort".to_string(),
-        );
-    }
-    let percentiles = subject_percentiles(&statistic_values, cohort.values());
+    let groups = groups.load(conn, snapshot_id)?;
+    let comparisons = player_families(&positions_json)?
+        .into_iter()
+        .map(|family| {
+            let rankings = groups.family(family);
+            MoneyballComparison {
+                family,
+                peers: rankings.peers(),
+                percentiles: MONEYBALL_STATISTIC_KEYS
+                    .iter()
+                    .zip(&statistic_values)
+                    .enumerate()
+                    .map(|(index, (key, value))| {
+                        ((*key).to_string(), rankings.percentile(index, *value))
+                    })
+                    .collect(),
+            }
+        })
+        .collect();
     let role_catalog = builtin_catalog()?;
     let league_adjustment =
         LeagueAdjustment::load(conn, snapshot_id)?.breakdown(division.as_deref());
     let league_shift = league_adjustment
         .as_ref()
         .map_or(0, |adjustment| adjustment.shift);
-    let role_scores = score_roles(&role_catalog.definitions, &percentiles, league_shift)?;
+    let role_scores = score_roles(
+        &role_catalog.definitions,
+        |family, key| {
+            groups
+                .family(family)
+                .percentile_of(key, statistics.get(key).copied().flatten())
+        },
+        league_shift,
+    )?;
 
     Ok(Some(MoneyballProfile {
         state: MoneyballProfileState::Ready,
@@ -207,86 +212,35 @@ pub fn get_player_moneyball(
         substitute_appearances,
         minutes,
         statistics: Some(statistics),
-        percentiles: Some(percentiles),
+        comparisons,
         role_catalog_version: Some(role_catalog.version),
         role_scores: Some(role_scores),
-        comparison_basis: Some(MoneyballComparisonBasis::Available {
-            natural_positions,
-            comparison_player_count: cohort.len(),
-        }),
         league_adjustment,
     }))
 }
 
-fn natural_positions(json: &str) -> Result<Vec<String>, String> {
-    let value: Value = serde_json::from_str(json).map_err(|error| error.to_string())?;
-    let object = value
-        .as_object()
-        .ok_or_else(|| "positions_json must be an object".to_string())?;
-
-    object
-        .iter()
-        .filter_map(|(position, familiarity)| match familiarity {
-            Value::Number(value) if value.as_i64() == Some(20) => Some(Ok(position.clone())),
-            Value::Null | Value::Number(_) => None,
-            _ => Some(Err(format!(
-                "position `{position}` must be an integer or null"
-            ))),
-        })
-        .collect()
-}
-
-fn load_natural_position_cohort(
-    conn: &Connection,
-    snapshot_id: i64,
-    subject_natural_positions: &[String],
-) -> Result<BTreeMap<i64, Vec<Option<f64>>>, String> {
-    // SQLite selects the peers, so only their statistics are parsed. It applies the
-    // `natural_positions` rule: a natural position has the integer familiarity 20.
-    let mut statement = conn
-        .prepare(
-            "SELECT moneyball.player_uid, moneyball.statistics_json
-             FROM player_moneyball_stats moneyball
-             INNER JOIN players ON players.snapshot_id = moneyball.snapshot_id
-                AND players.uid = moneyball.player_uid
-             WHERE moneyball.snapshot_id = ?1 AND moneyball.percentiles_json IS NOT NULL
-               AND EXISTS (
-                   SELECT 1 FROM json_each(players.positions_json) position
-                   WHERE position.type = 'integer' AND position.value = 20
-                     AND position.key IN (SELECT value FROM json_each(?2))
-               )",
-        )
-        .map_err(|error| error.to_string())?;
-    let subject_natural_positions =
-        serde_json::to_string(subject_natural_positions).map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map(params![snapshot_id, subject_natural_positions], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(|error| error.to_string())?;
-
-    let mut cohort = BTreeMap::new();
-    for row in rows {
-        let (player_uid, statistics_json) = row.map_err(|error| error.to_string())?;
-        cohort.insert(player_uid, parse_statistics(&statistics_json)?);
-    }
-    Ok(cohort)
-}
-
+/// Each role's score, its metrics ranked within the role's family by `percentile`.
 fn score_roles(
     definitions: &[RoleDefinition],
-    percentiles: &BTreeMap<String, Option<u8>>,
+    percentile: impl Fn(PositionFamily, &str) -> Option<u8>,
     league_shift: i16,
 ) -> Result<Vec<MoneyballRoleScore>, String> {
     definitions
         .iter()
         .map(|definition| {
-            let details = explain_role(definition, percentiles).ok_or_else(|| {
+            let family = PositionFamily::from_id(&definition.position_family).ok_or_else(|| {
                 format!(
-                    "built-in Moneyball role definition `{}` cannot be scored",
+                    "built-in Moneyball role definition `{}` has an unknown family",
                     definition.id
                 )
             })?;
+            let details = explain_role(definition, &|key: &str| percentile(family, key))
+                .ok_or_else(|| {
+                    format!(
+                        "built-in Moneyball role definition `{}` cannot be scored",
+                        definition.id
+                    )
+                })?;
             let contributions = definition
                 .metrics
                 .iter()
@@ -357,6 +311,7 @@ mod tests {
 
     use super::get_player_moneyball;
     use crate::db::migrations;
+    use crate::features::moneyball::comparison::{GroupsSource, PositionFamily};
     use crate::features::moneyball::league_strength::test_support::measure_leagues;
     use crate::features::moneyball::role_catalog::builtin_catalog;
     use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
@@ -377,14 +332,6 @@ mod tests {
     }
 
     fn complete_statistics(value: f64) -> String {
-        let values = MONEYBALL_STATISTIC_KEYS
-            .iter()
-            .map(|key| ((*key).to_string(), json!(value)))
-            .collect::<Map<_, _>>();
-        Value::Object(values).to_string()
-    }
-
-    fn complete_percentiles(value: u8) -> String {
         let values = MONEYBALL_STATISTIC_KEYS
             .iter()
             .map(|key| ((*key).to_string(), json!(value)))
@@ -458,66 +405,56 @@ mod tests {
         .expect("set player positions");
     }
 
-    #[test]
-    fn recomputes_exact_natural_position_percentiles_without_partial_peers() {
-        let temp_dir = tempfile::tempdir().expect("temp directory");
-        let mut conn = open_migrated(&temp_dir.path().join("moneyball-profile-cohort.db"));
-        let snapshot_id = ingest_current_player(&mut conn);
-        insert_moneyball_row_for_player(
-            &conn,
-            snapshot_id,
-            77,
-            &statistics_with("goals", Some(10.0)),
-            Some(&complete_percentiles(99)),
-        );
-        insert_player(&conn, snapshot_id, 78, r#"{"AMR":20}"#);
-        insert_moneyball_row_for_player(
-            &conn,
-            snapshot_id,
-            78,
-            &statistics_with("goals", Some(20.0)),
-            Some(&complete_percentiles(1)),
-        );
-        insert_player(&conn, snapshot_id, 79, r#"{"AMR":19}"#);
-        insert_moneyball_row_for_player(
-            &conn,
-            snapshot_id,
-            79,
-            &statistics_with("goals", Some(100.0)),
-            Some(&complete_percentiles(1)),
-        );
+    fn set_minutes(conn: &Connection, snapshot_id: i64, uid: i64, minutes: i64) {
+        conn.execute(
+            "UPDATE player_moneyball_stats SET minutes = ?1 WHERE snapshot_id = ?2 AND player_uid = ?3",
+            params![minutes, snapshot_id, uid],
+        )
+        .expect("set season minutes");
+    }
 
-        let profile = get_player_moneyball(&conn, 77)
+    fn profile(conn: &Connection, uid: i64) -> super::MoneyballProfile {
+        get_player_moneyball(conn, &GroupsSource::Uncached, uid)
             .expect("query player")
-            .expect("known current player");
+            .expect("known current player")
+    }
 
-        assert_eq!(
-            profile.comparison_basis,
-            Some(super::MoneyballComparisonBasis::Available {
-                natural_positions: vec!["AMR".to_owned()],
-                comparison_player_count: 2,
+    /// The player's comparisons as family, peers, and one statistic's percentile.
+    fn comparisons(
+        profile: &super::MoneyballProfile,
+        key: &str,
+    ) -> Vec<(PositionFamily, usize, Option<u8>)> {
+        profile
+            .comparisons
+            .iter()
+            .map(|comparison| {
+                (
+                    comparison.family,
+                    comparison.peers,
+                    comparison.percentiles[key],
+                )
             })
-        );
-        assert_eq!(profile.percentiles.expect("percentiles")["goals"], Some(0));
+            .collect()
     }
 
     #[test]
-    fn deduplicates_overlapping_natural_position_peers() {
+    fn ranks_him_among_his_best_familys_peers_with_enough_minutes() {
         let temp_dir = tempfile::tempdir().expect("temp directory");
-        let mut conn = open_migrated(&temp_dir.path().join("moneyball-profile-union.db"));
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-profile-peers.db"));
         let snapshot_id = ingest_current_player(&mut conn);
-        set_positions(&conn, snapshot_id, 77, r#"{"AMR":20,"ST":20}"#);
         insert_moneyball_row_for_player(
             &conn,
             snapshot_id,
             77,
             &statistics_with("goals", Some(10.0)),
-            Some(&complete_percentiles(99)),
+            Some("{}"),
         );
-        for (uid, positions, goals) in [
-            (78, r#"{"AMR":20}"#, 20.0),
-            (79, r#"{"ST":20}"#, 30.0),
-            (80, r#"{"AMR":20,"ST":20}"#, 40.0),
+        // Peers of the winger family are rated 16 or more at AML or AMR with 450+ minutes.
+        for (uid, positions, goals, minutes) in [
+            (78, r#"{"AMR":20}"#, 20.0, 1_500),
+            (79, r#"{"AML":16}"#, 100.0, 450),
+            (80, r#"{"AMR":15}"#, 0.0, 1_500),
+            (81, r#"{"AMR":20}"#, 0.0, 449),
         ] {
             insert_player(&conn, snapshot_id, uid, positions);
             insert_moneyball_row_for_player(
@@ -525,26 +462,34 @@ mod tests {
                 snapshot_id,
                 uid,
                 &statistics_with("goals", Some(goals)),
-                Some(&complete_percentiles(1)),
+                Some("{}"),
             );
+            set_minutes(&conn, snapshot_id, uid, minutes);
         }
 
-        let profile = get_player_moneyball(&conn, 77)
-            .expect("query player")
-            .expect("known current player");
-
+        // Rated 20 at AMR and 17 at MR, he is compared with wingers first, then wide
+        // midfielders, where he is the only peer.
         assert_eq!(
-            profile.comparison_basis,
-            Some(super::MoneyballComparisonBasis::Available {
-                natural_positions: vec!["AMR".to_owned(), "ST".to_owned()],
-                comparison_player_count: 4,
-            })
+            comparisons(&profile(&conn, 77), "goals"),
+            vec![
+                (PositionFamily::Winger, 3, Some(0)),
+                (PositionFamily::WideMidfielder, 1, Some(50)),
+            ]
         );
-        assert_eq!(profile.percentiles.expect("percentiles")["goals"], Some(0));
+        // A short sample is ranked against the group without joining it.
+        assert_eq!(
+            comparisons(&profile(&conn, 81), "goals"),
+            vec![(PositionFamily::Winger, 3, Some(0))]
+        );
+        set_minutes(&conn, snapshot_id, 81, 450);
+        assert_eq!(
+            comparisons(&profile(&conn, 77), "goals")[0],
+            (PositionFamily::Winger, 4, Some(33))
+        );
     }
 
     #[test]
-    fn preserves_ties_nulls_inversion_and_singleton_neutrality_in_the_cohort() {
+    fn preserves_ties_nulls_inversion_and_singleton_neutrality_in_the_group() {
         let temp_dir = tempfile::tempdir().expect("temp directory");
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-profile-rules.db"));
         let snapshot_id = ingest_current_player(&mut conn);
@@ -558,7 +503,7 @@ mod tests {
                 ("assists", None),
                 ("shots", Some(4.0)),
             ]),
-            Some(&complete_percentiles(99)),
+            Some("{}"),
         );
         for (uid, goals, minutes_per_goal, assists) in
             [(78, 10.0, 60.0, 5.0), (79, 20.0, 30.0, 5.0)]
@@ -574,15 +519,11 @@ mod tests {
                     ("assists", Some(assists)),
                     ("shots", Some(4.0)),
                 ]),
-                Some(&complete_percentiles(1)),
+                Some("{}"),
             );
         }
 
-        let percentiles = get_player_moneyball(&conn, 77)
-            .expect("query player")
-            .expect("known current player")
-            .percentiles
-            .expect("percentiles");
+        let percentiles = profile(&conn, 77).comparisons.remove(0).percentiles;
 
         assert_eq!(percentiles["goals"], Some(0));
         assert_eq!(percentiles["minutes_per_goal"], Some(0));
@@ -600,7 +541,7 @@ mod tests {
             first_snapshot_id,
             77,
             &statistics_with("goals", Some(100.0)),
-            Some(&complete_percentiles(99)),
+            Some("{}"),
         );
         insert_player(&conn, first_snapshot_id, 78, r#"{"AMR":20}"#);
         insert_moneyball_row_for_player(
@@ -608,7 +549,7 @@ mod tests {
             first_snapshot_id,
             78,
             &statistics_with("goals", Some(1.0)),
-            Some(&complete_percentiles(1)),
+            Some("{}"),
         );
 
         let second_snapshot_id = ingest_current_player(&mut conn);
@@ -617,7 +558,7 @@ mod tests {
             second_snapshot_id,
             77,
             &statistics_with("goals", Some(10.0)),
-            Some(&complete_percentiles(99)),
+            Some("{}"),
         );
         insert_player(&conn, second_snapshot_id, 78, r#"{"AMR":20}"#);
         insert_moneyball_row_for_player(
@@ -625,7 +566,7 @@ mod tests {
             second_snapshot_id,
             78,
             &statistics_with("goals", Some(20.0)),
-            Some(&complete_percentiles(1)),
+            Some("{}"),
         );
         conn.execute(
             "UPDATE snapshots SET is_current = id = ?1",
@@ -633,49 +574,37 @@ mod tests {
         )
         .expect("select current snapshot");
 
-        let profile = get_player_moneyball(&conn, 77)
-            .expect("query player")
-            .expect("known current player");
-
-        assert_eq!(profile.percentiles.expect("percentiles")["goals"], Some(0));
         assert_eq!(
-            profile.comparison_basis,
-            Some(super::MoneyballComparisonBasis::Available {
-                natural_positions: vec!["AMR".to_owned()],
-                comparison_player_count: 2,
-            })
+            comparisons(&profile(&conn, 77), "goals")[0],
+            (PositionFamily::Winger, 2, Some(0))
         );
     }
 
     #[test]
-    fn returns_raw_metrics_without_scores_when_no_natural_position_exists() {
+    fn a_player_rated_at_no_position_has_statistics_and_no_comparison() {
         let temp_dir = tempfile::tempdir().expect("temp directory");
-        let mut conn = open_migrated(&temp_dir.path().join("moneyball-profile-no-natural.db"));
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-profile-no-position.db"));
         let snapshot_id = ingest_current_player(&mut conn);
-        set_positions(&conn, snapshot_id, 77, r#"{"AMR":19,"ST":null}"#);
+        set_positions(&conn, snapshot_id, 77, r#"{"AMR":null,"ST":null}"#);
         insert_moneyball_row_for_player(
             &conn,
             snapshot_id,
             77,
             &statistics_with("goals", Some(10.0)),
-            Some(&complete_percentiles(99)),
+            Some("{}"),
         );
 
-        let profile = get_player_moneyball(&conn, 77)
-            .expect("query player")
-            .expect("known current player");
+        let profile = profile(&conn, 77);
 
-        assert_eq!(
-            profile.comparison_basis,
-            Some(super::MoneyballComparisonBasis::UnavailableNoNaturalPosition)
-        );
         assert_eq!(
             profile.statistics.expect("raw metrics")["goals"],
             Some(10.0)
         );
-        assert!(profile.percentiles.is_none());
-        assert!(profile.role_catalog_version.is_none());
-        assert!(profile.role_scores.is_none());
+        assert!(profile.comparisons.is_empty());
+        // Roles still rank him within their families, which have no peers here.
+        let roles = profile.role_scores.expect("role scores");
+        assert_eq!(roles.len(), 88);
+        assert!(roles.iter().all(|role| role.score.is_none()));
     }
 
     #[test]
@@ -684,49 +613,93 @@ mod tests {
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-profile.db"));
         let snapshot_id = ingest_current_player(&mut conn);
 
-        let absent = get_player_moneyball(&conn, 77)
-            .expect("query absent player")
-            .expect("known current player");
+        let absent = profile(&conn, 77);
         assert_eq!(absent.state, super::MoneyballProfileState::NoData);
         assert!(absent.role_scores.is_none());
 
         insert_moneyball_row(&conn, snapshot_id, None);
-        let legacy = get_player_moneyball(&conn, 77)
-            .expect("query legacy player")
-            .expect("known current player");
+        let legacy = profile(&conn, 77);
         assert_eq!(legacy.state, super::MoneyballProfileState::NeedsReimport);
         assert!(legacy.statistics.is_none());
-        assert!(legacy.percentiles.is_none());
+        assert!(legacy.comparisons.is_empty());
         assert!(legacy.role_scores.is_none());
 
         conn.execute(
-            "UPDATE player_moneyball_stats SET percentiles_json = ?1 WHERE snapshot_id = ?2 AND player_uid = 77",
-            params![complete_percentiles(83), snapshot_id],
+            "UPDATE player_moneyball_stats SET percentiles_json = '{}' WHERE snapshot_id = ?1 AND player_uid = 77",
+            [snapshot_id],
         )
         .expect("score imported row");
-        let scored = get_player_moneyball(&conn, 77)
-            .expect("query scored player")
-            .expect("known current player");
+        let scored = profile(&conn, 77);
         assert_eq!(scored.state, super::MoneyballProfileState::Ready);
         assert_eq!(scored.starts, Some(18));
         assert_eq!(scored.statistics.as_ref().expect("raw metrics").len(), 138);
-        assert_eq!(scored.percentiles.as_ref().expect("scores").len(), 138);
+        assert_eq!(scored.comparisons[0].percentiles.len(), 138);
         assert_eq!(
             scored.statistics.as_ref().expect("raw metrics")["goals"],
             Some(2.25)
         );
-        assert_eq!(
-            scored.percentiles.as_ref().expect("scores")["goals"],
-            Some(50)
-        );
+        assert_eq!(scored.comparisons[0].percentiles["goals"], Some(50));
         assert_eq!(scored.role_catalog_version, Some(1));
-        assert_eq!(scored.role_scores.as_ref().expect("role scores").len(), 88);
-        assert!(scored
-            .role_scores
-            .as_ref()
-            .expect("role scores")
-            .iter()
-            .all(|role| role.score == Some(50)));
+        // Alone in his families, he scores 50 in their roles; the others have no peers.
+        let roles = scored.role_scores.as_ref().expect("role scores");
+        assert_eq!(roles.len(), 88);
+        for role in roles {
+            let his_family = ["winger", "wide_midfielder"].contains(&role.position_family.as_str());
+            assert_eq!(role.score, his_family.then_some(50), "{}", role.role_id);
+        }
+    }
+
+    #[test]
+    fn each_role_ranks_within_its_own_family() {
+        let temp_dir = tempfile::tempdir().expect("temp directory");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-profile-role-family.db"));
+        let snapshot_id = ingest_current_player(&mut conn);
+        insert_moneyball_row_for_player(
+            &conn,
+            snapshot_id,
+            77,
+            &complete_statistics(5.0),
+            Some("{}"),
+        );
+        // Strikers have every statistic lower than his, wingers every one higher.
+        for (uid, positions, value) in [
+            (78, r#"{"ST":20}"#, 1.0),
+            (79, r#"{"ST":20}"#, 2.0),
+            (80, r#"{"AMR":20}"#, 9.0),
+        ] {
+            insert_player(&conn, snapshot_id, uid, positions);
+            insert_moneyball_row_for_player(
+                &conn,
+                snapshot_id,
+                uid,
+                &complete_statistics(value),
+                Some("{}"),
+            );
+        }
+
+        let profile = profile(&conn, 77);
+        let catalog = builtin_catalog().expect("built-in catalog");
+        let score = |family: &str| {
+            let definition = catalog
+                .definitions
+                .iter()
+                .find(|definition| {
+                    definition.position_family == family
+                        && definition.metrics.iter().all(|metric| !metric.inverted)
+                })
+                .expect("a role without inverted metrics");
+            profile
+                .role_scores
+                .as_ref()
+                .expect("role scores")
+                .iter()
+                .find(|role| role.role_id == definition.id)
+                .expect("role score")
+                .score
+        };
+
+        assert_eq!(score("striker"), Some(100));
+        assert_eq!(score("winger"), Some(0));
     }
 
     #[test]
@@ -734,25 +707,29 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp directory");
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-league.db"));
         let snapshot_id = ingest_current_player(&mut conn);
-        insert_moneyball_row(&conn, snapshot_id, Some(&complete_percentiles(83)));
+        insert_moneyball_row(&conn, snapshot_id, Some("{}"));
         conn.execute(
             "UPDATE players SET division = 'Middle' WHERE snapshot_id = ?1 AND uid = 77",
             [snapshot_id],
         )
         .expect("set division");
-        let profile = |conn: &Connection| {
-            get_player_moneyball(conn, 77)
-                .expect("query player")
-                .expect("known current player")
+        let scores = |conn: &Connection| {
+            profile(conn, 77)
+                .role_scores
+                .expect("role scores")
+                .into_iter()
+                .filter_map(|role| role.score)
+                .collect::<Vec<_>>()
         };
 
-        // Alone in his cohort, the player scores 50 in every role.
-        let unmeasured = profile(&conn);
-        assert_eq!(unmeasured.league_adjustment, None);
+        // Alone in his families, the player scores 50 in their roles.
+        assert!(profile(&conn, 77).league_adjustment.is_none());
+        assert!(scores(&conn).iter().all(|score| *score == 50));
 
         measure_leagues(&conn, snapshot_id, &[("Top", 150.0), ("Middle", 138.0)]);
-        let adjusted = profile(&conn);
-        let adjustment = adjusted.league_adjustment.expect("league adjustment");
+        let adjustment = profile(&conn, 77)
+            .league_adjustment
+            .expect("league adjustment");
         assert_eq!(
             (
                 adjustment.division.as_deref(),
@@ -763,11 +740,9 @@ mod tests {
             ),
             (Some("Middle"), 138.0, "Top", 150.0, -6)
         );
-        assert!(adjusted
-            .role_scores
-            .expect("role scores")
-            .iter()
-            .all(|role| role.score == Some(44)));
+        let adjusted = scores(&conn);
+        assert!(!adjusted.is_empty());
+        assert!(adjusted.iter().all(|score| *score == 44));
     }
 
     #[test]
@@ -776,35 +751,47 @@ mod tests {
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-role-explanation.db"));
         let snapshot_id = ingest_current_player(&mut conn);
         let catalog = builtin_catalog().expect("built-in catalog");
-        let first_metric = catalog.definitions[0].metrics[0].key.clone();
+        let definition = catalog
+            .definitions
+            .iter()
+            .find(|definition| definition.position_family == "winger")
+            .expect("a winger role");
+        let first_metric = &definition.metrics[0];
         insert_moneyball_row_for_player(
             &conn,
             snapshot_id,
             77,
-            &statistics_with(&first_metric, None),
-            Some(&complete_percentiles(83)),
+            &statistics_with(&first_metric.key, None),
+            Some("{}"),
         );
 
-        let profile = get_player_moneyball(&conn, 77)
-            .expect("query player")
-            .expect("known current player");
+        let profile = profile(&conn, 77);
         let role = profile
             .role_scores
             .as_ref()
             .expect("role scores")
             .iter()
-            .find(|role| role.role_id == catalog.definitions[0].id)
-            .expect("first role");
+            .find(|role| role.role_id == definition.id)
+            .expect("winger role");
 
         assert_eq!(role.score, None);
         let missing = role
             .contributions
             .iter()
-            .find(|contribution| contribution.metric_key == first_metric)
+            .find(|contribution| contribution.metric_key == first_metric.key)
             .expect("missing metric contribution");
         assert_eq!(missing.percentile, None);
         assert_eq!(missing.weighted_contribution, None);
-        assert_eq!(missing.source_label, "xG per 90");
+        assert_eq!(
+            Some(&missing.source_label),
+            first_metric.source_label.as_ref()
+        );
+        // The role's other metrics still rank him alone among wingers.
+        assert!(role
+            .contributions
+            .iter()
+            .filter(|contribution| contribution.metric_key != first_metric.key)
+            .all(|contribution| contribution.percentile == Some(50)));
     }
 
     #[test]
@@ -812,7 +799,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp directory");
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-profile-snapshots.db"));
         let first_snapshot_id = ingest_current_player(&mut conn);
-        insert_moneyball_row(&conn, first_snapshot_id, Some(&complete_percentiles(61)));
+        insert_moneyball_row(&conn, first_snapshot_id, Some("{}"));
         let second_snapshot_id = ingest_current_player(&mut conn);
         conn.execute(
             "UPDATE snapshots SET is_current = id = ?1",
@@ -820,13 +807,15 @@ mod tests {
         )
         .expect("select latest snapshot");
 
-        assert!(get_player_moneyball(&conn, 999_999)
-            .expect("query unknown uid")
-            .is_none());
-        let current = get_player_moneyball(&conn, 77)
-            .expect("query current player")
-            .expect("current player");
-        assert_eq!(current.state, super::MoneyballProfileState::NoData);
+        assert!(
+            get_player_moneyball(&conn, &GroupsSource::Uncached, 999_999)
+                .expect("query unknown uid")
+                .is_none()
+        );
+        assert_eq!(
+            profile(&conn, 77).state,
+            super::MoneyballProfileState::NoData
+        );
     }
 
     #[test]
@@ -834,14 +823,15 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp directory");
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-profile-invalid-json.db"));
         let snapshot_id = ingest_current_player(&mut conn);
-        insert_moneyball_row(&conn, snapshot_id, Some(&complete_percentiles(61)));
+        insert_moneyball_row(&conn, snapshot_id, Some("{}"));
         conn.execute(
             "UPDATE player_moneyball_stats SET statistics_json = '{}' WHERE snapshot_id = ?1 AND player_uid = 77",
             [snapshot_id],
         )
         .expect("corrupt statistics fixture");
 
-        let error = get_player_moneyball(&conn, 77).expect_err("invalid catalogue must fail");
+        let error = get_player_moneyball(&conn, &GroupsSource::Uncached, 77)
+            .expect_err("invalid catalogue must fail");
         assert!(error.contains("exact metric catalogue"));
     }
 }

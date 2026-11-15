@@ -8,7 +8,7 @@ export type SearchViewMemory = {
   dir: string;
   filters: unknown[];
   combine: string;
-  comparisonPool?: string;
+  comparison?: string;
 };
 
 type SearchViewMemoryState = {
@@ -17,7 +17,7 @@ type SearchViewMemoryState = {
 };
 
 /**
- * Session memory of each Search view's filters, sort, and comparison pool, so
+ * Session memory of each Search view's filters, sort, and Moneyball comparison, so
  * switching between Search and Moneyball returns to where each was left.
  * General and Moneyball fields differ, so nothing carries across views.
  */

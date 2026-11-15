@@ -1,11 +1,17 @@
-//! Writes snapshot-owned Moneyball cohorts: the 138-key statistics and percentile JSON, whole
-//! cohort replacement with its as-of date, and current-only retention.
+//! Writes snapshot-owned Moneyball cohorts: the 138-key statistics JSON, whole cohort
+//! replacement with its as-of date, and current-only retention.
+//!
+//! Percentiles are not stored: `moneyball::comparison` ranks the stored statistics when they
+//! are read. The `percentiles_json` column only marks a row written by an import that could be
+//! scored: rows from before v30 have none, and readers ask for a refresh instead.
 
 use rusqlite::{params, Transaction};
 use serde_json::{Map, Number, Value};
 
-use super::percentile::{numeric_statistics, rank_column, MoneyballPercentiles};
-use super::{MoneyballMetricValue, MoneyballStatistics, MONEYBALL_STATISTIC_KEYS};
+use super::{MoneyballMetricValue, MoneyballStatistics};
+
+/// What `percentiles_json` holds for a scored row: an empty object.
+const SCORED_ROW_MARKER: &str = "{}";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MoneyballPersistenceError {
@@ -42,25 +48,8 @@ pub(crate) fn serialize_moneyball_statistics(
         .map_err(|_| MoneyballPersistenceError::InvalidStatistics)
 }
 
-pub(crate) fn serialize_moneyball_percentiles(
-    percentiles: &MoneyballPercentiles,
-) -> Result<String, MoneyballPersistenceError> {
-    let serialized = percentiles
-        .iter()
-        .map(|(key, value)| {
-            (
-                key.clone(),
-                value.map_or(Value::Null, |value| Value::Number(Number::from(value))),
-            )
-        })
-        .collect();
-
-    serde_json::to_string(&Value::Object(serialized))
-        .map_err(|_| MoneyballPersistenceError::InvalidStatistics)
-}
-
-/// A replacement cohort whose statistics and percentile JSON are already built, so writing it
-/// only replaces rows.
+/// A replacement cohort whose statistics JSON is already built, so writing it only replaces
+/// rows.
 #[derive(Debug)]
 pub(crate) struct PreparedCohort {
     rows: Vec<PreparedCohortRow>,
@@ -73,7 +62,6 @@ struct PreparedCohortRow {
     substitute_appearances: i64,
     minutes: i64,
     statistics_json: String,
-    percentiles_json: String,
 }
 
 #[cfg(test)]
@@ -83,43 +71,20 @@ thread_local! {
         std::cell::RefCell::new(None);
 }
 
-/// Scores `rows`' full-cohort percentiles and serializes each row's statistics and
-/// percentiles. It needs no database, so callers run it before taking the writer.
+/// Serializes each row's statistics. It needs no database, so callers run it before taking
+/// the writer.
 pub(crate) fn prepare_snapshot_cohort(
     rows: &[CohortRow],
 ) -> Result<PreparedCohort, MoneyballPersistenceError> {
-    let mut values: Vec<Vec<Option<f64>>> = MONEYBALL_STATISTIC_KEYS
-        .iter()
-        .map(|_| Vec::with_capacity(rows.len()))
-        .collect();
-    for row in rows {
-        let statistics = numeric_statistics(&row.statistics);
-        for (column, key) in values.iter_mut().zip(MONEYBALL_STATISTIC_KEYS) {
-            column.push(statistics.get(key).copied().flatten());
-        }
-    }
-    let columns = MONEYBALL_STATISTIC_KEYS
-        .iter()
-        .zip(values)
-        .map(|(key, values)| rank_column(&values, key))
-        .collect::<Vec<_>>();
-
     let rows = rows
         .iter()
-        .enumerate()
-        .map(|(position, row)| {
-            let percentiles: MoneyballPercentiles = MONEYBALL_STATISTIC_KEYS
-                .iter()
-                .zip(&columns)
-                .map(|(key, column)| ((*key).to_string(), column[position]))
-                .collect();
+        .map(|row| {
             Ok(PreparedCohortRow {
                 player_uid: row.player_uid,
                 starts: row.starts,
                 substitute_appearances: row.substitute_appearances,
                 minutes: row.minutes,
                 statistics_json: serialize_moneyball_statistics(&row.statistics)?,
-                percentiles_json: serialize_moneyball_percentiles(&percentiles)?,
             })
         })
         .collect::<Result<_, _>>()?;
@@ -165,7 +130,7 @@ pub(crate) fn replace_snapshot_cohort(
                 row.substitute_appearances,
                 row.minutes,
                 row.statistics_json,
-                row.percentiles_json,
+                SCORED_ROW_MARKER,
             ])
             .map_err(|_| MoneyballPersistenceError::Database)?;
     }
@@ -256,65 +221,8 @@ mod tests {
 
     use super::*;
     use crate::db::migrations;
-    use crate::features::moneyball::percentile::calculate_percentiles;
+    use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
     use crate::features::snapshot::service as snapshot_service;
-
-    /// The cohort replacement as it was before preparation moved out of the transaction,
-    /// kept as the oracle for the stored JSON.
-    fn previous_replace_snapshot_cohort(
-        tx: &Transaction<'_>,
-        snapshot_id: i64,
-        rows: &[CohortRow],
-        stats_game_date: &str,
-    ) -> Result<(), MoneyballPersistenceError> {
-        tx.execute(
-            "DELETE FROM player_moneyball_stats WHERE snapshot_id = ?1",
-            [snapshot_id],
-        )
-        .map_err(|_| MoneyballPersistenceError::Database)?;
-
-        let percentiles = calculate_percentiles(
-            &rows
-                .iter()
-                .map(|row| (row.player_uid, numeric_statistics(&row.statistics)))
-                .collect(),
-        );
-        let mut insert = tx
-            .prepare(
-                "INSERT INTO player_moneyball_stats (
-                    snapshot_id, player_uid, starts, substitute_appearances, minutes,
-                    statistics_json, percentiles_json
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            )
-            .map_err(|_| MoneyballPersistenceError::Database)?;
-        for row in rows {
-            let player_percentiles = percentiles
-                .get(&row.player_uid)
-                .ok_or(MoneyballPersistenceError::InvalidStatistics)?;
-            insert
-                .execute(params![
-                    snapshot_id,
-                    row.player_uid,
-                    row.starts,
-                    row.substitute_appearances,
-                    row.minutes,
-                    serialize_moneyball_statistics(&row.statistics)?,
-                    serialize_moneyball_percentiles(player_percentiles)?,
-                ])
-                .map_err(|_| MoneyballPersistenceError::Database)?;
-        }
-
-        let changed = tx
-            .execute(
-                "UPDATE snapshots SET moneyball_stats_game_date = ?1 WHERE id = ?2",
-                params![stats_game_date, snapshot_id],
-            )
-            .map_err(|_| MoneyballPersistenceError::Database)?;
-        if changed != 1 {
-            return Err(MoneyballPersistenceError::Database);
-        }
-        Ok(())
-    }
 
     /// Players in an unsorted order, with counts, decimals, ties, negatives, and nulls in
     /// every statistic, including the lower-is-better ones.
@@ -423,22 +331,31 @@ mod tests {
     }
 
     #[test]
-    fn a_prepared_cohort_stores_the_same_json_as_the_previous_replacement() {
+    fn a_replacement_stores_each_rows_statistics_and_marks_it_scored() {
         let rows = fixed_cohort();
-        let (mut previous, previous_snapshot) = database(&rows);
-        let tx = previous.transaction().expect("begin previous write");
-        previous_replace_snapshot_cohort(&tx, previous_snapshot, &rows, "2031-05-01")
-            .expect("previous replacement");
-        tx.commit().expect("commit previous write");
-        let (mut prepared, prepared_snapshot) = database(&rows);
+        let (mut conn, snapshot_id) = database(&rows);
         let cohort = prepare_snapshot_cohort(&rows).expect("prepare cohort");
-        let tx = prepared.transaction().expect("begin prepared write");
-        replace_snapshot_cohort(&tx, prepared_snapshot, &cohort, "2031-05-01")
-            .expect("prepared replacement");
-        tx.commit().expect("commit prepared write");
+        let tx = conn.transaction().expect("begin write");
+        replace_snapshot_cohort(&tx, snapshot_id, &cohort, "2031-05-01").expect("replacement");
+        tx.commit().expect("commit write");
 
-        let expected = stored(&previous, previous_snapshot);
-        assert_eq!(expected.0.len(), rows.len());
-        assert_eq!(stored(&prepared, prepared_snapshot), expected);
+        let mut expected = rows
+            .iter()
+            .map(|row| {
+                (
+                    row.player_uid,
+                    row.starts,
+                    row.substitute_appearances,
+                    row.minutes,
+                    serialize_moneyball_statistics(&row.statistics).expect("statistics"),
+                    "{}".to_string(),
+                )
+            })
+            .collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(
+            stored(&conn, snapshot_id),
+            (expected, Some("2031-05-01".to_string()))
+        );
     }
 }

@@ -21,13 +21,16 @@ export type MoneyballRoleScore = {
   contributions: MoneyballRoleContribution[];
 };
 
-export type MoneyballComparisonBasis =
-  | {
-      kind: "available";
-      naturalPositions: string[];
-      comparisonPlayerCount: number;
-    }
-  | { kind: "unavailableNoNaturalPosition" };
+/**
+ * The player's percentiles among one position family's peers: the players
+ * with `minimumMinutes` this season rated 16 or higher at its positions.
+ */
+export type MoneyballFamilyComparison = {
+  /** A role catalog position family ID. */
+  family: string;
+  peers: number;
+  percentiles: MoneyballPercentiles;
+};
 
 /**
  * What moved a player's role scores for the league he plays in. A strength is
@@ -61,10 +64,16 @@ export type MoneyballProfile =
       substituteAppearances: number | null;
       minutes: number | null;
       statistics: MoneyballStatistics;
-      percentiles: MoneyballPercentiles | null;
+      /**
+       * Each family the player can be compared in, his best position's first.
+       * Empty when he is rated at no position.
+       */
+      comparisons: MoneyballFamilyComparison[];
+      /** The fewest minutes that make a player one of a family's peers. */
+      minimumMinutes: number;
       roleCatalogVersion: number | null;
+      /** Each role ranked among its own family's peers. */
       roleScores: MoneyballRoleScore[] | null;
-      comparisonBasis: MoneyballComparisonBasis;
       /** Null when role scores are not moved for league strength. */
       leagueAdjustment: MoneyballLeagueBreakdown | null;
     };

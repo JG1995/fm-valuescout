@@ -6,13 +6,10 @@ use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Ro
 use crate::db::result_cache::{Cancellation, ResultCache, TableRegistry, TableTicket};
 use crate::db::Db;
 
-use crate::features::moneyball::percentile::{calculate_percentiles, MoneyballNumericStatistics};
-use crate::features::moneyball::{
-    league_strength::{shifted, LeagueAdjustment},
-    role_catalog::{builtin_catalog, definition_for_attribute_role},
-    role_score::score_role,
+use crate::features::moneyball::comparison::{
+    ComparisonGroupsCache, GroupsSource, PositionFamily, MIN_SEASON_MINUTES,
 };
-use crate::features::planner::fit::{custom_metrics_lane_score, moneyball_roles_lane_score};
+use crate::features::moneyball::{league_strength::shifted, role_catalog::builtin_catalog};
 use crate::features::planner::tactic::{base_position, read_tactic};
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
@@ -27,15 +24,13 @@ use crate::features::player_metrics::{
 };
 
 use super::moneyball_cohort::{
-    tactic_metric_keys, tactic_score, MoneyballCohort, MoneyballCohortCache, PlayerFit,
-    MONEYBALL_FROM_SQL,
+    tactic_metric_keys, tactic_score, tactic_slot_group, MemberPercentiles, MoneyballCohort,
+    MoneyballCohortCache, PlayerFit, MONEYBALL_FROM_SQL,
 };
 
 use super::filter::{
-    compile_filters, compile_filters_for_moneyball, compile_filters_with_club_dna,
-    current_role_ids_from_ast, has_post_cohort_rules, moneyball_percentile_keys_from_ast,
-    moneyball_role_ids_from_ast, post_cohort_rules_match, potential_role_ids_from_ast,
-    without_post_cohort_rules, CombineMode, CompiledFilter, FilterAst,
+    compile_filters, compile_filters_with_club_dna, current_role_ids_from_ast,
+    has_post_cohort_rules, potential_role_ids_from_ast, CompiledFilter, FilterAst,
 };
 
 pub use crate::features::player_metrics::resolver::DynamicValue;
@@ -49,10 +44,25 @@ pub enum SearchView {
     Moneyball,
 }
 
+/// Whom Moneyball Search ranks each player's statistics against: the peers of his own best
+/// position's family, or one family's peers for every player. Role and tactic scores always
+/// rank within their roles' families and their slots' groups.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ComparisonPool {
-    FullCsv,
-    Filtered,
+pub enum Comparison {
+    Own,
+    Family(PositionFamily),
+}
+
+impl Comparison {
+    /// `own` or a role catalog family ID.
+    pub fn parse(value: &str) -> Result<Self, String> {
+        if value == "own" {
+            return Ok(Self::Own);
+        }
+        PositionFamily::from_id(value)
+            .map(Self::Family)
+            .ok_or_else(|| format!("unknown Moneyball comparison: {value}"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -229,6 +239,9 @@ pub struct PlayerSummary {
     /// Values for requested non-basic metric fields (field id → nullable cell).
     pub dynamic_values: BTreeMap<String, Option<DynamicValue>>,
     pub moneyball_percentiles: BTreeMap<String, Option<u8>>,
+    /// Moneyball only: fewer than `MIN_SEASON_MINUTES` minutes, so the player's percentiles
+    /// rank him against groups he is not one of the peers of.
+    pub moneyball_short_sample: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -256,7 +269,8 @@ pub struct SearchPlayersRequest<'a> {
     pub filter_ast: Option<&'a FilterAst>,
     pub requested_fields: &'a [String],
     pub view: SearchView,
-    pub comparison_pool: ComparisonPool,
+    /// Moneyball only: whom statistic percentiles rank each player against.
+    pub comparison: Comparison,
     /// Restrict General and Moneyball results to this player shortlist of the save.
     pub shortlist_id: Option<i64>,
 }
@@ -281,20 +295,31 @@ fn search_players(
             filter_ast,
             requested_fields,
             view: SearchView::General,
-            comparison_pool: ComparisonPool::FullCsv,
+            comparison: Comparison::Own,
             shortlist_id: None,
         },
     )
 }
 
+/// One window of a General or Moneyball query, computed without a cache. A Moneyball query
+/// computes its cohort as `search_moneyball_players` does.
 pub fn search_players_in_view(
     conn: &Connection,
     request: SearchPlayersRequest<'_>,
 ) -> Result<SearchPlayersPage, String> {
-    if request_needs_cohort_scoring(&request)
-        || (request.view == SearchView::Moneyball && request_uses_tactic(&request))
-    {
-        return search_players_with_cohort_scoring(conn, request);
+    if request.view == SearchView::Moneyball {
+        let dynamic_fields = moneyball_dynamic_fields(&request)?;
+        let cohort = MoneyballCohort::compute(
+            conn,
+            0,
+            &GroupsSource::Uncached,
+            &request,
+            &Cancellation::never(),
+        )?;
+        return read_moneyball_window(conn, &cohort, &request, &dynamic_fields);
+    }
+    if request_needs_cohort_scoring(&request) {
+        return Err("Moneyball role fields require Moneyball search view".to_string());
     }
 
     let SearchPlayersRequest {
@@ -304,22 +329,13 @@ pub fn search_players_in_view(
         sort_dir,
         filter_ast,
         requested_fields,
-        view,
-        comparison_pool,
         shortlist_id,
+        ..
     } = request;
-    if view == SearchView::Moneyball && !sort_by.is_available_in_moneyball() {
-        return Err("unsupported Moneyball sort field".to_string());
-    }
-    let requested_fields =
-        parse_requested_fields_for_moneyball(requested_fields, view == SearchView::Moneyball)?;
+    let requested_fields = parse_requested_fields_for_moneyball(requested_fields, false)?;
     let dynamic_fields = requested_fields
         .into_iter()
         .filter(|field| !field.is_basic_table_field())
-        .collect::<Vec<_>>();
-    let moneyball_fields = dynamic_fields
-        .iter()
-        .filter_map(|field| field.moneyball_key().map(|key| (field.id(), key)))
         .collect::<Vec<_>>();
     let club_dna_filter =
         filter_ast.is_some_and(|ast| ast.rules.iter().any(|rule| rule.field == "club_dna"));
@@ -349,12 +365,10 @@ pub fn search_players_in_view(
     let compiled = match filter_ast {
         None => None,
         Some(ast) => {
-            let compiled = match view {
-                SearchView::General if club_dna_filter => {
-                    compile_filters_with_club_dna(ast, 4, ClubDnaSqlBindings::new(2, 3))?
-                }
-                SearchView::General => compile_filters(ast, 2)?,
-                SearchView::Moneyball => compile_filters_for_moneyball(ast, 2, true)?,
+            let compiled = if club_dna_filter {
+                compile_filters_with_club_dna(ast, 4, ClubDnaSqlBindings::new(2, 3))?
+            } else {
+                compile_filters(ast, 2)?
             };
             if compiled.sql.is_empty() {
                 None
@@ -432,10 +446,9 @@ pub fn search_players_in_view(
         .flatten();
     let club_dna_sort = sort_by.club_dna_sort_identity(club_dna_definition_version);
 
-    let mut from_sql = match (view, shortlist_id) {
-        (SearchView::General, Some(shortlist_id)) => general_shortlist_from_sql(shortlist_id),
-        (SearchView::General, None) => "FROM players".to_string(),
-        (SearchView::Moneyball, _) => "FROM players INNER JOIN player_moneyball_stats moneyball ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid AND moneyball.percentiles_json IS NOT NULL".to_string(),
+    let mut from_sql = match shortlist_id {
+        Some(shortlist_id) => general_shortlist_from_sql(shortlist_id),
+        None => "FROM players".to_string(),
     };
     if uses_current_role_metrics || uses_potential_role_metrics {
         from_sql.push_str(&player_metrics_join(
@@ -454,10 +467,7 @@ pub fn search_players_in_view(
             bindings.definition_version, bindings.score_model_version
         ));
     }
-    let mut where_sql = match view {
-        SearchView::General => "players.snapshot_id = ?1".to_string(),
-        SearchView::Moneyball => moneyball_base_where_sql(shortlist_id),
-    };
+    let mut where_sql = "players.snapshot_id = ?1".to_string();
     if let Some(compiled) = &compiled {
         where_sql.push_str(" AND ");
         where_sql.push_str(&compiled.sql);
@@ -479,7 +489,6 @@ pub fn search_players_in_view(
         );
         bind_values.push(Value::Integer(identity.score_model_version));
     }
-    let filter_bind_values = bind_values.clone();
     let mut select_bind_values = bind_values.clone();
     if club_dna_requested && !club_dna_filter && club_dna_sort.is_none() {
         select_bind_values.push(club_dna_definition_version.map_or(Value::Null, Value::Integer));
@@ -559,14 +568,6 @@ pub fn search_players_in_view(
             select_sql.push_str(&field.sql_expression_with_club_dna("players", club_dna_bindings));
         }
     }
-    if view == SearchView::Moneyball && comparison_pool == ComparisonPool::FullCsv {
-        for (_, key) in &moneyball_fields {
-            select_sql.push_str(", ");
-            select_sql.push_str(&format!(
-                "json_extract(moneyball.percentiles_json, '$.\"{key}\"')"
-            ));
-        }
-    }
     select_sql.push_str(&format!(
         "
              {from_sql}
@@ -579,31 +580,13 @@ pub fn search_players_in_view(
         .prepare(&select_sql)
         .map_err(|error| error.to_string())?;
 
-    let mut players = stmt
+    let players = stmt
         .query_map(params_from_iter(select_bind_values.iter()), |row| {
-            map_player_summary(
-                row,
-                &dynamic_fields,
-                &moneyball_fields,
-                view == SearchView::Moneyball && comparison_pool == ComparisonPool::FullCsv,
-            )
+            map_player_summary(row, &dynamic_fields)
         })
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
-
-    if view == SearchView::Moneyball && comparison_pool == ComparisonPool::Filtered {
-        let mut percentiles = filtered_moneyball_percentiles(
-            conn,
-            &from_sql,
-            &where_sql,
-            &filter_bind_values,
-            &moneyball_fields,
-        )?;
-        for player in &mut players {
-            player.moneyball_percentiles = percentiles.remove(&player.uid).unwrap_or_default();
-        }
-    }
 
     Ok(SearchPlayersPage {
         players,
@@ -679,7 +662,7 @@ pub struct GeneralOrder {
 pub type GeneralOrderCache = ResultCache<GeneralOrder>;
 
 /// Identifies a General or Moneyball table query by every input that changes its rows, their
-/// order, or a Moneyball comparison pool. The offset, limit, and requested fields only choose
+/// order, or a Moneyball comparison. The offset, limit, and requested fields only choose
 /// which rows and columns a window shows.
 pub fn search_query_fingerprint(request: &SearchPlayersRequest<'_>) -> String {
     format!(
@@ -688,7 +671,7 @@ pub fn search_query_fingerprint(request: &SearchPlayersRequest<'_>) -> String {
         request.filter_ast,
         request.sort_by,
         request.sort_dir,
-        request.comparison_pool,
+        request.comparison,
         request.shortlist_id,
     )
 }
@@ -1042,7 +1025,7 @@ fn read_general_window(
         .prepare(&select_sql)
         .map_err(|error| error.to_string())?
         .query_map(params_from_iter(bind_values.iter()), |row| {
-            map_player_summary(row, &dynamic_fields, &[], false)
+            map_player_summary(row, &dynamic_fields)
         })
         .map_err(|error| error.to_string())?
         .map(|row| row.map(|player| (player.uid, player)))
@@ -1061,24 +1044,25 @@ fn read_general_window(
 pub fn search_moneyball_players(
     db: &Db,
     cohorts: &MoneyballCohortCache,
+    groups: &ComparisonGroupsCache,
     registry: &TableRegistry,
     ticket: Option<&TableTicket>,
     request: SearchPlayersRequest<'_>,
 ) -> Result<SearchPlayersPage, String> {
-    if !request.sort_by.is_available_in_moneyball() {
-        return Err("unsupported Moneyball sort field".to_string());
-    }
-    let dynamic_fields = parse_requested_fields_for_moneyball(request.requested_fields, true)?
-        .into_iter()
-        .filter(|field| !field.is_basic_table_field())
-        .collect::<Vec<_>>();
+    let dynamic_fields = moneyball_dynamic_fields(&request)?;
     let fingerprint = search_query_fingerprint(&request);
     let mut generation = db.generation();
     loop {
         let cohort = cohorts.get_or_compute(&fingerprint, generation, || {
             let reader = db.read()?;
             let cohort = registry.run(ticket, &reader, |cancellation| {
-                MoneyballCohort::compute(&reader, reader.generation(), &request, cancellation)
+                MoneyballCohort::compute(
+                    &reader,
+                    reader.generation(),
+                    &GroupsSource::Cached(groups, reader.generation()),
+                    &request,
+                    cancellation,
+                )
             })?;
             Ok::<_, String>((reader.generation(), cohort))
         })?;
@@ -1092,8 +1076,23 @@ pub fn search_moneyball_players(
     }
 }
 
+/// A Moneyball request's validated non-basic fields. Its sort must be a Moneyball one.
+fn moneyball_dynamic_fields(
+    request: &SearchPlayersRequest<'_>,
+) -> Result<Vec<MetricField>, String> {
+    if !request.sort_by.is_available_in_moneyball() {
+        return Err("unsupported Moneyball sort field".to_string());
+    }
+    Ok(
+        parse_requested_fields_for_moneyball(request.requested_fields, true)?
+            .into_iter()
+            .filter(|field| !field.is_basic_table_field())
+            .collect(),
+    )
+}
+
 /// Reads today's display columns for one window of a computed cohort, and fills its
-/// percentiles, role scores, and tactic scores from the cohort's percentile columns.
+/// percentiles, role scores, and tactic scores from the cohort's statistic columns.
 fn read_moneyball_window(
     conn: &Connection,
     cohort: &MoneyballCohort,
@@ -1149,7 +1148,15 @@ fn read_moneyball_window(
             keys.extend(tactic_metric_keys(field, tactic));
         }
     }
-    let columns = cohort.percentile_columns(conn, &keys.into_iter().collect::<Vec<_>>())?;
+    let columns = cohort.statistic_columns(conn, &keys.into_iter().collect::<Vec<_>>())?;
+    let rankings = cohort.rankings(
+        conn,
+        tactic.iter().flat_map(|tactic| {
+            tactic_fields
+                .iter()
+                .filter_map(move |field| tactic_slot_group(field, tactic))
+        }),
+    )?;
 
     let mut select_sql = String::from(
         "SELECT
@@ -1173,6 +1180,7 @@ fn read_moneyball_window(
     if tactic.is_some() {
         select_sql.push_str(", players.positions_json, players.preferred_foot");
     }
+    select_sql.push_str(", moneyball.minutes");
     let members = cohort.window(request.offset, request.limit.clamp(1, MAX_PAGE_LIMIT));
     let uid_placeholders = (0..members.len())
         .map(|index| format!("?{}", index + 2))
@@ -1192,7 +1200,7 @@ fn read_moneyball_window(
         .prepare(&select_sql)
         .map_err(|error| error.to_string())?
         .query_map(params_from_iter(bind_values.iter()), |row| {
-            let player = map_player_summary(row, &sql_fields, &[], false)?;
+            let mut player = map_player_summary(row, &sql_fields)?;
             let fit = if tactic.is_some() {
                 Some(PlayerFit::from_columns(
                     &row.get::<_, String>(fit_index)?,
@@ -1201,6 +1209,9 @@ fn read_moneyball_window(
             } else {
                 None
             };
+            let minutes_index = fit_index + if tactic.is_some() { 2 } else { 0 };
+            player.moneyball_short_sample =
+                row.get::<_, Option<i64>>(minutes_index)?.unwrap_or(0) < MIN_SEASON_MINUTES;
             Ok((player.uid, (player, fit)))
         })
         .map_err(|error| error.to_string())?
@@ -1211,21 +1222,25 @@ fn read_moneyball_window(
         .iter()
         .filter_map(|&member| {
             let (mut player, fit) = rows.remove(&cohort.uid(member))?;
-            let percentiles = columns.member(member);
+            let percentiles = MemberPercentiles {
+                rankings: &rankings,
+                columns: &columns,
+                member,
+            };
             let league_shift = cohort.league.shift(player.division.as_deref());
+            let group = cohort.table_group(member);
             player.moneyball_percentiles = moneyball_fields
                 .iter()
                 .map(|(field_id, key)| {
-                    (
-                        field_id.to_string(),
-                        percentiles.get(*key).copied().flatten(),
-                    )
+                    let percentile = group.and_then(|group| percentiles.percentile(group, key));
+                    (field_id.to_string(), percentile)
                 })
                 .collect();
             let score_value = |score: Option<u8>| score.map(i64::from).map(DynamicValue::Integer);
             for (field_id, definition) in &role_fields {
-                let score = score_role(definition, &percentiles)
-                    .map(|role| shifted(role.score, league_shift));
+                let score = percentiles
+                    .role_score(definition)
+                    .map(|score| shifted(score, league_shift));
                 player
                     .dynamic_values
                     .insert(field_id.to_string(), score_value(score));
@@ -1261,14 +1276,6 @@ fn current_club_dna_definition_version(
     )
     .optional()
     .map_err(|error| error.to_string())
-}
-
-fn request_uses_tactic(request: &SearchPlayersRequest<'_>) -> bool {
-    request.requested_fields.iter().any(|field| {
-        field.starts_with("tactic_current.")
-            || field.starts_with("tactic_potential.")
-            || field.starts_with("tactic_custom.")
-    }) || request.sort_by.is_tactic()
 }
 
 pub(super) fn snapshot_save_id(conn: &Connection, snapshot_id: i64) -> Result<i64, String> {
@@ -1345,439 +1352,6 @@ fn request_needs_cohort_scoring(request: &SearchPlayersRequest<'_>) -> bool {
         || request.filter_ast.is_some_and(has_post_cohort_rules)
 }
 
-struct RoleSearchCandidate {
-    player: PlayerSummary,
-    role_statistics: MoneyballNumericStatistics,
-    role_percentiles: BTreeMap<String, Option<u8>>,
-    role_scores: BTreeMap<String, Option<u8>>,
-    positions: BTreeMap<String, Option<i64>>,
-    player_foot: String,
-    tactic_scores: BTreeMap<String, Option<u8>>,
-}
-
-fn search_players_with_cohort_scoring(
-    conn: &Connection,
-    request: SearchPlayersRequest<'_>,
-) -> Result<SearchPlayersPage, String> {
-    let SearchPlayersRequest {
-        offset,
-        limit,
-        sort_by,
-        sort_dir,
-        filter_ast,
-        requested_fields,
-        view,
-        comparison_pool,
-        shortlist_id,
-    } = request;
-    if view != SearchView::Moneyball {
-        return Err("Moneyball role fields require Moneyball search view".to_string());
-    }
-    if !sort_by.is_available_in_moneyball() {
-        return Err("unsupported Moneyball sort field".to_string());
-    }
-
-    let requested_fields = parse_requested_fields_for_moneyball(requested_fields, true)?;
-    let dynamic_fields = requested_fields
-        .into_iter()
-        .filter(|field| !field.is_basic_table_field())
-        .collect::<Vec<_>>();
-    let sql_dynamic_fields = dynamic_fields
-        .iter()
-        .filter(|field| field.moneyball_role_id().is_none() && !field.is_tactic_field())
-        .cloned()
-        .collect::<Vec<_>>();
-    let moneyball_fields = sql_dynamic_fields
-        .iter()
-        .filter_map(|field| field.moneyball_key().map(|key| (field.id(), key)))
-        .collect::<Vec<_>>();
-
-    let role_filter_ids = filter_ast
-        .map(moneyball_role_ids_from_ast)
-        .transpose()?
-        .unwrap_or_default();
-    let mut role_ids = Vec::new();
-    for field in &dynamic_fields {
-        if let Some(role_id) = field.moneyball_role_id() {
-            add_role_once(&mut role_ids, role_id);
-        }
-    }
-    if let Some(role_id) = sort_by.moneyball_role_id() {
-        add_role_once(&mut role_ids, role_id);
-    }
-    for role_id in role_filter_ids {
-        add_role_once(&mut role_ids, &role_id);
-    }
-
-    let catalog = builtin_catalog()?;
-    let definitions = role_ids
-        .iter()
-        .map(|role_id| {
-            catalog
-                .definitions
-                .iter()
-                .find(|definition| definition.id == *role_id)
-                .ok_or_else(|| format!("unknown Moneyball role: {role_id}"))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let mut role_metric_keys: BTreeSet<String> = definitions
-        .iter()
-        .flat_map(|definition| definition.metrics.iter().map(|metric| metric.key.clone()))
-        .collect();
-    // Percentile filters read their statistics' cohort percentiles alongside the roles'.
-    role_metric_keys.extend(
-        filter_ast
-            .map(moneyball_percentile_keys_from_ast)
-            .unwrap_or_default(),
-    );
-    let tactic_fields_for_moneyball: Vec<MetricField> = dynamic_fields
-        .iter()
-        .filter(|f| f.is_tactic_field())
-        .cloned()
-        .collect();
-    let sort_tactic_field: Option<MetricField> = match &sort_by {
-        SortField::Dynamic(field) if field.is_tactic_field() => Some(field.clone()),
-        _ => None,
-    };
-    let mut tactic_moneyball_worklist: Vec<MetricField> = tactic_fields_for_moneyball.clone();
-    if let Some(sort_field) = &sort_tactic_field {
-        if !tactic_moneyball_worklist
-            .iter()
-            .any(|field| field.id() == sort_field.id())
-        {
-            tactic_moneyball_worklist.push(sort_field.clone());
-        }
-    }
-    let uses_tactic_moneyball = !tactic_moneyball_worklist.is_empty();
-
-    let snapshot_id: Option<i64> = conn
-        .query_row(
-            "SELECT s.id
-             FROM snapshots s
-             INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
-             WHERE s.is_current = 1
-             LIMIT 1",
-            [],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    let Some(snapshot_id) = snapshot_id else {
-        return Ok(SearchPlayersPage {
-            players: Vec::new(),
-            total: 0,
-            state: SearchPlayersPageState::NoCurrentSnapshot,
-        });
-    };
-    if requested_shortlist_missing(conn, snapshot_id, shortlist_id)? {
-        return Ok(SearchPlayersPage {
-            players: Vec::new(),
-            total: 0,
-            state: SearchPlayersPageState::NoShortlist,
-        });
-    }
-    // Load tactic for Moneyball tactic scoring if needed and extend metric keys
-    let tactic_for_moneyball: Option<crate::features::planner::tactic::PlannerTactic> =
-        if uses_tactic_moneyball {
-            let save_id = snapshot_save_id(conn, snapshot_id)?;
-            Some(read_tactic(conn, save_id)?)
-        } else {
-            None
-        };
-    if let Some(tactic) = tactic_for_moneyball.as_ref() {
-        let mut extra_keys = BTreeSet::new();
-        for field in &tactic_moneyball_worklist {
-            if let Some(lane_id) = field.tactic_lane_id() {
-                if let Some(lane) = tactic.lanes.iter().find(|l| l.lane_id == lane_id) {
-                    // Loaded custom keys passed the catalog checks in `load_tactic`,
-                    // so they are safe to interpolate into the percentile SQL.
-                    if field.tactic_group() == Some(TacticGroup::Custom) {
-                        extra_keys.extend(lane.custom_metric_keys.iter().cloned());
-                        continue;
-                    }
-                    for (role_id, pos) in [
-                        (lane.ip_role_id.as_str(), lane.ip_position.as_str()),
-                        (lane.oop_role_id.as_str(), lane.oop_position.as_str()),
-                    ] {
-                        let base = base_position(pos);
-                        if let Some(def) = definition_for_attribute_role(role_id, base) {
-                            for m in &def.metrics {
-                                extra_keys.insert(m.key.clone());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        role_metric_keys.extend(extra_keys);
-    }
-    // A Filtered pool ranks the displayed statistics with the cohort's other percentiles.
-    if comparison_pool == ComparisonPool::Filtered {
-        role_metric_keys.extend(moneyball_fields.iter().map(|(_, key)| key.to_string()));
-    }
-    let role_metric_keys: Vec<String> = role_metric_keys.into_iter().collect();
-
-    let limit = limit.clamp(1, MAX_PAGE_LIMIT);
-    let offset = i64::try_from(offset).map_err(|_| "search offset out of range".to_string())?;
-    let limit = i64::try_from(limit).map_err(|_| "search limit out of range".to_string())?;
-    let from_sql = "FROM players INNER JOIN player_moneyball_stats moneyball ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid AND moneyball.percentiles_json IS NOT NULL".to_string();
-
-    let non_role_ast = match filter_ast {
-        Some(ast) => without_post_cohort_rules(ast)?,
-        None => None,
-    };
-    let compiled_non_role = non_role_ast
-        .as_ref()
-        .map(|ast| compile_filters_for_moneyball(ast, 2, true))
-        .transpose()?;
-    let base_where_sql = moneyball_base_where_sql(shortlist_id);
-    let non_role_where_sql = where_sql_with_filter(&base_where_sql, compiled_non_role.as_ref());
-    let has_post_cohort_rules = filter_ast.is_some_and(has_post_cohort_rules);
-    let mixed_or = has_post_cohort_rules
-        && filter_ast.is_some_and(|ast| matches!(ast.combine, CombineMode::Or));
-
-    let mut non_role_bind_values = vec![Value::Integer(snapshot_id)];
-    if let Some(compiled) = &compiled_non_role {
-        non_role_bind_values.extend(compiled.params.clone());
-    }
-    let (candidate_where_sql, candidate_bind_values) = if mixed_or {
-        (base_where_sql, vec![Value::Integer(snapshot_id)])
-    } else {
-        (non_role_where_sql.clone(), non_role_bind_values.clone())
-    };
-    let non_role_uids = if mixed_or && compiled_non_role.is_some() {
-        query_matching_uids(conn, &from_sql, &non_role_where_sql, &non_role_bind_values)?
-    } else {
-        HashSet::new()
-    };
-
-    let order_sql = if sort_by.moneyball_role_id().is_some() || sort_by.is_tactic() {
-        "ORDER BY players.uid ASC".to_string()
-    } else {
-        format!(
-            "ORDER BY {} {}, players.uid ASC",
-            sort_by.sql_expr(None),
-            sort_dir.sql_keyword()
-        )
-    };
-    let mut select_sql = String::from(
-        "SELECT
-                players.uid,
-                players.name,
-                players.age,
-                players.birth_year,
-                players.birth_day_of_year,
-                players.nationalities_json,
-                players.current_club,
-                players.current_club_uid,
-                players.division,
-                players.ca,
-                players.pa,
-                players.market_value_gbp",
-    );
-    for field in &sql_dynamic_fields {
-        select_sql.push_str(", ");
-        select_sql.push_str(&field.sql_expression("players"));
-    }
-    if comparison_pool == ComparisonPool::FullCsv {
-        for (_, key) in &moneyball_fields {
-            select_sql.push_str(", ");
-            select_sql.push_str(&format!(
-                "json_extract(moneyball.percentiles_json, '$.\"{key}\"')"
-            ));
-        }
-    }
-    let need_positions = uses_tactic_moneyball;
-    if need_positions {
-        select_sql.push_str(", players.positions_json");
-        select_sql.push_str(", players.preferred_foot");
-    }
-    for key in &role_metric_keys {
-        let column = match comparison_pool {
-            ComparisonPool::FullCsv => "percentiles_json",
-            ComparisonPool::Filtered => "statistics_json",
-        };
-        select_sql.push_str(", ");
-        select_sql.push_str(&format!("json_extract(moneyball.{column}, '$.\"{key}\"')"));
-    }
-    select_sql.push_str(&format!(
-        " {from_sql} WHERE {candidate_where_sql} {order_sql}"
-    ));
-
-    let mut stmt = conn
-        .prepare(&select_sql)
-        .map_err(|error| error.to_string())?;
-    let mut candidates = stmt
-        .query_map(params_from_iter(candidate_bind_values.iter()), |row| {
-            map_role_search_candidate(
-                row,
-                &sql_dynamic_fields,
-                &moneyball_fields,
-                comparison_pool == ComparisonPool::FullCsv,
-                &role_metric_keys,
-                comparison_pool,
-            )
-        })
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-
-    if comparison_pool == ComparisonPool::Filtered {
-        let statistics_by_player = candidates
-            .iter()
-            .map(|candidate| (candidate.player.uid, candidate.role_statistics.clone()))
-            .collect::<BTreeMap<_, _>>();
-        let percentile_scores = calculate_percentiles(&statistics_by_player);
-        for candidate in &mut candidates {
-            candidate.role_percentiles = percentile_scores
-                .get(&candidate.player.uid)
-                .cloned()
-                .unwrap_or_default();
-        }
-    }
-
-    let league = LeagueAdjustment::load(conn, snapshot_id)?;
-    for candidate in &mut candidates {
-        let league_shift = league.shift(candidate.player.division.as_deref());
-        for (role_id, definition) in role_ids.iter().zip(&definitions) {
-            let score = score_role(definition, &candidate.role_percentiles)
-                .map(|result| shifted(result.score, league_shift));
-            candidate.role_scores.insert(role_id.clone(), score);
-        }
-        if let Some(tactic) = tactic_for_moneyball.as_ref() {
-            for field in &tactic_moneyball_worklist {
-                if let Some(lane_id) = field.tactic_lane_id() {
-                    if let Some(lane) = tactic.lanes.iter().find(|l| l.lane_id == lane_id) {
-                        let lane_score = if field.tactic_group() == Some(TacticGroup::Custom) {
-                            custom_metrics_lane_score
-                        } else {
-                            moneyball_roles_lane_score
-                        };
-                        let score = lane_score(
-                            &candidate.role_percentiles,
-                            &candidate.player_foot,
-                            &candidate.positions,
-                            lane,
-                            league_shift,
-                        );
-                        candidate
-                            .tactic_scores
-                            .insert(field.id().to_string(), score);
-                    }
-                }
-            }
-        }
-    }
-
-    if let Some(ast) = filter_ast {
-        if has_post_cohort_rules {
-            let mut filtered_candidates = Vec::with_capacity(candidates.len());
-            for candidate in candidates {
-                let post_cohort_match = post_cohort_rules_match(
-                    ast,
-                    &candidate.role_scores,
-                    &candidate.role_percentiles,
-                )?;
-                let keep = if mixed_or {
-                    non_role_uids.contains(&candidate.player.uid) || post_cohort_match
-                } else {
-                    post_cohort_match
-                };
-                if keep {
-                    filtered_candidates.push(candidate);
-                }
-            }
-            candidates = filtered_candidates;
-        }
-    }
-
-    if let Some(role_id) = sort_by.moneyball_role_id() {
-        candidates.sort_by(|left, right| {
-            compare_role_scores(
-                left.role_scores.get(role_id).copied().flatten(),
-                right.role_scores.get(role_id).copied().flatten(),
-                sort_dir,
-            )
-            .then_with(|| left.player.uid.cmp(&right.player.uid))
-        });
-    } else if sort_by.is_tactic() {
-        if let Some(lane_id) = sort_by.tactic_lane_id() {
-            let key = sort_by
-                .tactic_group()
-                .map(|g| match g {
-                    TacticGroup::Current => format!("tactic_current.{lane_id}"),
-                    TacticGroup::Potential => format!("tactic_potential.{lane_id}"),
-                    TacticGroup::Custom => format!("tactic_custom.{lane_id}"),
-                })
-                .unwrap_or_else(|| format!("tactic_current.{lane_id}"));
-            candidates.sort_by(|left, right| {
-                let left_score = left.tactic_scores.get(&key).copied().flatten();
-                let right_score = right.tactic_scores.get(&key).copied().flatten();
-                compare_role_scores(left_score, right_score, sort_dir)
-                    .then_with(|| left.player.uid.cmp(&right.player.uid))
-            });
-        }
-    }
-
-    if comparison_pool == ComparisonPool::Filtered {
-        for candidate in &mut candidates {
-            candidate.player.moneyball_percentiles = moneyball_fields
-                .iter()
-                .map(|(field_id, key)| {
-                    let percentile = candidate.role_percentiles.get(*key).copied().flatten();
-                    ((*field_id).to_string(), percentile)
-                })
-                .collect();
-        }
-    }
-
-    let total =
-        i64::try_from(candidates.len()).map_err(|_| "search total out of range".to_string())?;
-    let start = usize::try_from(offset).map_err(|_| "search offset out of range".to_string())?;
-    let limit = usize::try_from(limit).map_err(|_| "search limit out of range".to_string())?;
-    let players = candidates
-        .into_iter()
-        .skip(start)
-        .take(limit)
-        .map(|mut candidate| {
-            for field in &dynamic_fields {
-                if let Some(role_id) = field.moneyball_role_id() {
-                    let value = candidate
-                        .role_scores
-                        .get(role_id)
-                        .copied()
-                        .flatten()
-                        .map(i64::from)
-                        .map(DynamicValue::Integer);
-                    candidate
-                        .player
-                        .dynamic_values
-                        .insert(field.id().to_string(), value);
-                } else if field.is_tactic_field() {
-                    let value = candidate
-                        .tactic_scores
-                        .get(field.id())
-                        .copied()
-                        .flatten()
-                        .map(i64::from)
-                        .map(DynamicValue::Integer);
-                    candidate
-                        .player
-                        .dynamic_values
-                        .insert(field.id().to_string(), value);
-                }
-            }
-            candidate.player
-        })
-        .collect::<Vec<_>>();
-
-    Ok(SearchPlayersPage {
-        players,
-        total,
-        state: SearchPlayersPageState::Ready,
-    })
-}
-
 pub(super) fn where_sql_with_filter(base: &str, compiled: Option<&CompiledFilter>) -> String {
     compiled.map_or_else(
         || base.to_string(),
@@ -1800,82 +1374,6 @@ pub(super) fn query_matching_uids(
         .map_err(|error| error.to_string())
 }
 
-fn map_role_search_candidate(
-    row: &Row<'_>,
-    sql_dynamic_fields: &[MetricField],
-    moneyball_fields: &[(&str, &str)],
-    include_persisted_percentiles: bool,
-    role_metric_keys: &[String],
-    comparison_pool: ComparisonPool,
-) -> rusqlite::Result<RoleSearchCandidate> {
-    let player = map_player_summary(
-        row,
-        sql_dynamic_fields,
-        moneyball_fields,
-        include_persisted_percentiles,
-    )?;
-    let total_cols = row.as_ref().column_count();
-    let expected_without_tactic = 12
-        + sql_dynamic_fields.len()
-        + if include_persisted_percentiles {
-            moneyball_fields.len()
-        } else {
-            0
-        }
-        + role_metric_keys.len();
-    let has_positions = total_cols > expected_without_tactic;
-    let mut positions: BTreeMap<String, Option<i64>> = BTreeMap::new();
-    let mut player_foot = "right".to_string();
-    let mut offset_adjust = 0;
-    if has_positions {
-        let pos_idx = 12
-            + sql_dynamic_fields.len()
-            + if include_persisted_percentiles {
-                moneyball_fields.len()
-            } else {
-                0
-            };
-        let pos_json: String = row.get(pos_idx)?;
-        let foot: String = row.get(pos_idx + 1)?;
-        if let Ok(map) = serde_json::from_str::<BTreeMap<String, Option<i64>>>(&pos_json) {
-            positions = map;
-        }
-        player_foot = foot;
-        offset_adjust = 2;
-    }
-    let role_metric_start = 12
-        + sql_dynamic_fields.len()
-        + if include_persisted_percentiles {
-            moneyball_fields.len()
-        } else {
-            0
-        }
-        + offset_adjust;
-    let mut role_statistics = BTreeMap::new();
-    let mut role_percentiles = BTreeMap::new();
-    for (offset, key) in role_metric_keys.iter().enumerate() {
-        let index = role_metric_start + offset;
-        match comparison_pool {
-            ComparisonPool::FullCsv => {
-                role_percentiles.insert(key.clone(), row.get(index)?);
-            }
-            ComparisonPool::Filtered => {
-                role_statistics.insert(key.clone(), row.get(index)?);
-            }
-        }
-    }
-
-    Ok(RoleSearchCandidate {
-        player,
-        role_statistics,
-        role_percentiles,
-        role_scores: BTreeMap::new(),
-        positions,
-        player_foot,
-        tactic_scores: BTreeMap::new(),
-    })
-}
-
 pub(super) fn compare_role_scores(
     left: Option<u8>,
     right: Option<u8>,
@@ -1895,8 +1393,6 @@ pub(super) fn compare_role_scores(
 fn map_player_summary(
     row: &Row<'_>,
     dynamic_fields: &[MetricField],
-    moneyball_fields: &[(&str, &str)],
-    include_persisted_percentiles: bool,
 ) -> rusqlite::Result<PlayerSummary> {
     let nationalities_json: String = row.get(5)?;
     let nationalities = parse_nationalities(&nationalities_json).map_err(|message| {
@@ -1916,13 +1412,6 @@ fn map_player_summary(
         let cell = read_dynamic_value(row, idx, field)?;
         dynamic_values.insert(field.id().to_string(), cell);
     }
-    let mut moneyball_percentiles = BTreeMap::new();
-    if include_persisted_percentiles {
-        for (offset, (field_id, _)) in moneyball_fields.iter().enumerate() {
-            let index = 12 + dynamic_fields.len() + offset;
-            moneyball_percentiles.insert((*field_id).to_string(), row.get(index)?);
-        }
-    }
 
     Ok(PlayerSummary {
         uid: row.get(0)?,
@@ -1938,61 +1427,9 @@ fn map_player_summary(
         pa: row.get(10)?,
         market_value_gbp: row.get(11)?,
         dynamic_values,
-        moneyball_percentiles,
+        moneyball_percentiles: BTreeMap::new(),
+        moneyball_short_sample: false,
     })
-}
-
-fn filtered_moneyball_percentiles(
-    conn: &Connection,
-    from_sql: &str,
-    where_sql: &str,
-    bind_values: &[Value],
-    moneyball_fields: &[(&str, &str)],
-) -> Result<BTreeMap<i64, BTreeMap<String, Option<u8>>>, String> {
-    if moneyball_fields.is_empty() {
-        return Ok(BTreeMap::new());
-    }
-    let mut sql = String::from("SELECT players.uid");
-    for (_, key) in moneyball_fields {
-        sql.push_str(", ");
-        sql.push_str(&format!(
-            "json_extract(moneyball.statistics_json, '$.\"{key}\"')"
-        ));
-    }
-    sql.push_str(&format!(" {from_sql} WHERE {where_sql}"));
-    let mut stmt = conn.prepare(&sql).map_err(|error| error.to_string())?;
-    let rows = stmt
-        .query_map(params_from_iter(bind_values.iter()), |row| {
-            let uid = row.get(0)?;
-            let values = moneyball_fields
-                .iter()
-                .enumerate()
-                .map(|(offset, (_, key))| Ok(((*key).to_string(), row.get(offset + 1)?)))
-                .collect::<rusqlite::Result<MoneyballNumericStatistics>>()?;
-            Ok((uid, values))
-        })
-        .map_err(|error| error.to_string())?
-        .collect::<Result<BTreeMap<_, _>, _>>()
-        .map_err(|error| error.to_string())?;
-    let scores = calculate_percentiles(&rows);
-    Ok(scores
-        .into_iter()
-        .map(|(uid, scores)| {
-            (
-                uid,
-                moneyball_fields
-                    .iter()
-                    .map(|(field_id, key)| ((*field_id).to_string(), scores[*key]))
-                    .collect(),
-            )
-        })
-        .collect())
-}
-
-fn add_role_once(role_ids: &mut Vec<String>, role_id: &str) {
-    if !role_ids.iter().any(|existing| existing == role_id) {
-        role_ids.push(role_id.to_string());
-    }
 }
 
 fn parse_nationalities(json: &str) -> Result<Vec<String>, String> {
@@ -2040,7 +1477,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &[],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -2066,7 +1503,7 @@ mod tests {
                 filter_ast: Some(&ast),
                 requested_fields: &[],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -2317,10 +1754,11 @@ mod tests {
         statistics_json: &str,
         percentiles_json: Option<&str>,
     ) {
+        // 900 minutes: enough to count among the player's comparison groups' peers.
         conn.execute(
             "INSERT INTO player_moneyball_stats (
-                snapshot_id, player_uid, statistics_json, percentiles_json
-             ) VALUES (?1, ?2, ?3, ?4)",
+                snapshot_id, player_uid, minutes, statistics_json, percentiles_json
+             ) VALUES (?1, ?2, 900, ?3, ?4)",
             rusqlite::params![snapshot_id, player_uid, statistics_json, percentiles_json],
         )
         .expect("insert Moneyball row");
@@ -2457,7 +1895,7 @@ mod tests {
         requested_fields: &[String],
         rules: Vec<FilterRule>,
         combine: Option<&str>,
-        comparison_pool: ComparisonPool,
+        comparison: Comparison,
     ) -> Result<SearchPlayersPage, String> {
         let ast = if rules.is_empty() {
             None
@@ -2474,7 +1912,7 @@ mod tests {
                 filter_ast: ast.as_ref(),
                 requested_fields,
                 view: SearchView::Moneyball,
-                comparison_pool,
+                comparison,
                 shortlist_id: None,
             },
         )
@@ -2559,7 +1997,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -2574,54 +2012,147 @@ mod tests {
     }
 
     #[test]
-    fn moneyball_full_csv_pool_returns_persisted_percentiles_only_for_statistics() {
+    fn moneyball_percentiles_rank_each_player_within_his_own_family_or_the_chosen_one() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("moneyball-full-csv.db"));
-        ingest_players(&mut conn, vec![player_template(1, "Scored", 160)]);
-        let snapshot_id = current_snapshot_id(&conn);
-        insert_moneyball_statistics(
-            &conn,
-            snapshot_id,
-            1,
-            r#"{"goals":12}"#,
-            Some(r#"{"goals":83}"#),
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-comparison.db"));
+        let mut striker = player_template(3, "Striker", 160);
+        striker["positions"] = json!({ "ST": 20 });
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Scorer", 160),
+                player_template(2, "Passer", 160),
+                striker,
+            ],
         );
+        let snapshot_id = current_snapshot_id(&conn);
+        for (uid, goals) in [(1, 12), (2, 4), (3, 100)] {
+            insert_moneyball_statistics(
+                &conn,
+                snapshot_id,
+                uid,
+                &json!({ "goals": goals }).to_string(),
+                Some("{}"),
+            );
+        }
 
         let requested_fields = [
             "moneyball.goals".to_string(),
             "moneyball.minutes".to_string(),
         ];
-        let page = search_players_in_view(
-            &conn,
-            SearchPlayersRequest {
-                offset: 0,
-                limit: DEFAULT_PAGE_LIMIT,
-                sort_by: SortField::parse_for_moneyball("moneyball.goals", true).expect("sort"),
-                sort_dir: SortDir::Desc,
-                filter_ast: None,
-                requested_fields: &requested_fields,
-                view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::FullCsv,
-                shortlist_id: None,
-            },
-        )
-        .expect("search Moneyball players");
+        let page = |comparison| {
+            search_players_in_view(
+                &conn,
+                SearchPlayersRequest {
+                    offset: 0,
+                    limit: DEFAULT_PAGE_LIMIT,
+                    sort_by: SortField::parse_for_moneyball("moneyball.goals", true).expect("sort"),
+                    sort_dir: SortDir::Desc,
+                    filter_ast: None,
+                    requested_fields: &requested_fields,
+                    view: SearchView::Moneyball,
+                    comparison,
+                    shortlist_id: None,
+                },
+            )
+            .expect("search Moneyball players")
+        };
+        let goals_percentiles = |page: &SearchPlayersPage| {
+            page.players
+                .iter()
+                .map(|player| {
+                    (
+                        player.uid,
+                        player
+                            .moneyball_percentiles
+                            .get("moneyball.goals")
+                            .copied()
+                            .flatten(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
 
+        // On their own, the central midfielders rank among each other and the striker alone.
+        let own = page(Comparison::Own);
         assert_eq!(
-            page.players[0].dynamic_values.get("moneyball.goals"),
+            own.players[1].dynamic_values.get("moneyball.goals"),
             Some(&Some(DynamicValue::Real(12.0)))
         );
         assert_eq!(
-            page.players[0].moneyball_percentiles.get("moneyball.goals"),
-            Some(&Some(83))
+            goals_percentiles(&own),
+            [(3, Some(50)), (1, Some(100)), (2, Some(0))]
         );
-        assert!(!page.players[0]
+        assert!(!own.players[0]
             .moneyball_percentiles
             .contains_key("moneyball.minutes"));
+        assert!(own
+            .players
+            .iter()
+            .all(|player| !player.moneyball_short_sample));
+        // Compared with central midfielders, the striker is ranked without joining them.
+        assert_eq!(
+            goals_percentiles(&page(Comparison::Family(PositionFamily::CentralMidfielder))),
+            [(3, Some(100)), (1, Some(100)), (2, Some(0))]
+        );
     }
 
     #[test]
-    fn moneyball_filtered_pool_scores_the_full_filtered_cohort_across_pages() {
+    fn a_short_sample_ranks_against_his_group_without_joining_it_and_is_marked() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-short-sample.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Low", 100),
+                player_template(2, "High", 100),
+                player_template(3, "Short", 100),
+            ],
+        );
+        let snapshot_id = current_snapshot_id(&conn);
+        for (uid, goals) in [(1, 1), (2, 5), (3, 9)] {
+            let statistics = json!({ "goals": goals }).to_string();
+            insert_moneyball_statistics(&conn, snapshot_id, uid, &statistics, Some("{}"));
+        }
+        conn.execute(
+            "UPDATE player_moneyball_stats SET minutes = 449 WHERE player_uid = 3",
+            [],
+        )
+        .expect("shorten a sample");
+
+        let page = search_moneyball(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::Name,
+            SortDir::Asc,
+            &["moneyball.goals".to_string()],
+            Vec::new(),
+            None,
+            Comparison::Own,
+        )
+        .expect("Moneyball page");
+
+        // The peers are 1 and 5, so 5 ranks at 100, not at 50 as it would beside the 9.
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| (
+                    player.uid,
+                    player.moneyball_percentiles["moneyball.goals"],
+                    player.moneyball_short_sample
+                ))
+                .collect::<Vec<_>>(),
+            [
+                (2, Some(100), false),
+                (1, Some(0), false),
+                (3, Some(100), true)
+            ]
+        );
+    }
+
+    #[test]
+    fn moneyball_percentiles_rank_against_the_whole_group_whatever_the_filters() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-filtered.db"));
         ingest_players(
@@ -2633,13 +2164,7 @@ mod tests {
         let snapshot_id = current_snapshot_id(&conn);
         for uid in 1001..=1101 {
             let statistics_json = json!({ "goals": uid - 1001 }).to_string();
-            insert_moneyball_statistics(
-                &conn,
-                snapshot_id,
-                uid,
-                &statistics_json,
-                Some(r#"{"goals":50}"#),
-            );
+            insert_moneyball_statistics(&conn, snapshot_id, uid, &statistics_json, Some("{}"));
         }
 
         let requested_fields = ["moneyball.goals".to_string()];
@@ -2663,7 +2188,7 @@ mod tests {
                 filter_ast: Some(&filter_ast),
                 requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::Filtered,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -2678,19 +2203,21 @@ mod tests {
                 filter_ast: Some(&filter_ast),
                 requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::Filtered,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
         .expect("second page");
 
+        // The filter leaves out the player with no goals, but he still counts among the
+        // central midfielders who rank the rest: one goal is above one of the 101.
         assert_eq!(first_page.total, 100);
         assert_eq!(first_page.players[0].uid, 1002);
         assert_eq!(
             first_page.players[0]
                 .moneyball_percentiles
                 .get("moneyball.goals"),
-            Some(&Some(0))
+            Some(&Some(1))
         );
         assert_eq!(second_page.players[0].uid, 1052);
         assert_eq!(
@@ -2738,7 +2265,7 @@ mod tests {
                 filter_ast: Some(&filter_ast),
                 requested_fields: &requested_fields,
                 view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::Filtered,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -2790,7 +2317,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &requested_fields,
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -2808,7 +2335,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &requested_fields,
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: shortlist,
             },
         )
@@ -2836,7 +2363,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &[],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: Some(loans),
             },
         )
@@ -2866,7 +2393,7 @@ mod tests {
                 filter_ast: Some(&ast),
                 requested_fields: &[],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: shortlist,
             },
         )
@@ -2888,7 +2415,7 @@ mod tests {
                 filter_ast: Some(&ast),
                 requested_fields: &[],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: shortlist,
             },
         )
@@ -2912,7 +2439,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &[],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: shortlist,
             },
         )
@@ -2944,7 +2471,7 @@ mod tests {
                     filter_ast: None,
                     requested_fields: &[],
                     view: SearchView::General,
-                    comparison_pool: ComparisonPool::FullCsv,
+                    comparison: Comparison::Own,
                     shortlist_id: Some(shortlist_id),
                 },
             )
@@ -3934,7 +3461,7 @@ mod tests {
             insert_moneyball_row(&conn, snapshot_id, uid, Some(r#"{"goals":50}"#));
         }
 
-        for pool in [ComparisonPool::FullCsv, ComparisonPool::Filtered] {
+        for comparison in [Comparison::Family(PositionFamily::Striker), Comparison::Own] {
             let page = search_moneyball(
                 &conn,
                 0,
@@ -3948,7 +3475,7 @@ mod tests {
                     FilterValue::Bool(true),
                 )],
                 None,
-                pool,
+                comparison,
             )
             .expect("Moneyball realistic signing filter");
             assert_eq!(
@@ -5466,7 +4993,7 @@ mod tests {
     }
 
     #[test]
-    fn returns_moneyball_role_scores_from_full_and_filtered_cohorts() {
+    fn moneyball_role_scores_rank_within_the_roles_family_whatever_the_filters() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-role-cohorts.db"));
         ingest_players(
@@ -5484,25 +5011,33 @@ mod tests {
         insert_role_row(&conn, snapshot_id, 3, role_id, Some(30.0), Some(83), None);
         let requested_fields = [format!("moneyball_role.{role_id}")];
 
-        let full = search_moneyball(
-            &conn,
-            0,
-            DEFAULT_PAGE_LIMIT,
-            SortField::Name,
-            SortDir::Asc,
-            &requested_fields,
-            Vec::new(),
-            None,
-            ComparisonPool::FullCsv,
-        )
-        .expect("full Moneyball role search");
-        assert_eq!(full.total, 3);
-        assert_eq!(
-            full.players[0]
-                .dynamic_values
-                .get(&format!("moneyball_role.{role_id}")),
-            Some(&Some(DynamicValue::Integer(17)))
-        );
+        // The table's comparison ranks statistics, not roles: the central midfielder role
+        // ranks the three central midfielders' 10, 20, and 30 at 0, 50, and 100.
+        for comparison in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
+            let full = search_moneyball(
+                &conn,
+                0,
+                DEFAULT_PAGE_LIMIT,
+                SortField::Name,
+                SortDir::Asc,
+                &requested_fields,
+                Vec::new(),
+                None,
+                comparison,
+            )
+            .expect("full Moneyball role search");
+            assert_eq!(full.total, 3);
+            assert_eq!(
+                full.players
+                    .iter()
+                    .map(
+                        |player| player.dynamic_values[&format!("moneyball_role.{role_id}")]
+                            .clone()
+                    )
+                    .collect::<Vec<_>>(),
+                [0, 50, 100].map(|score| Some(DynamicValue::Integer(score)))
+            );
+        }
 
         let rules = vec![filter_rule(
             "name",
@@ -5518,7 +5053,7 @@ mod tests {
             &requested_fields,
             rules.clone(),
             None,
-            ComparisonPool::Filtered,
+            Comparison::Own,
         )
         .expect("filtered first page");
         let filtered_second = search_moneyball(
@@ -5530,9 +5065,10 @@ mod tests {
             &requested_fields,
             rules,
             None,
-            ComparisonPool::Filtered,
+            Comparison::Own,
         )
         .expect("filtered second page");
+        // The filter leaves out the best player, who still ranks the others.
         assert_eq!(filtered_first.total, 2);
         assert_eq!(filtered_second.total, 2);
         assert_eq!(
@@ -5545,7 +5081,7 @@ mod tests {
             filtered_second.players[0]
                 .dynamic_values
                 .get(&format!("moneyball_role.{role_id}")),
-            Some(&Some(DynamicValue::Integer(100)))
+            Some(&Some(DynamicValue::Integer(50)))
         );
     }
 
@@ -5568,12 +5104,13 @@ mod tests {
         insert_role_row(&conn, snapshot_id, 3, role_id, Some(20.0), Some(50), None);
         let requested_fields = [format!("moneyball_role.{role_id}")];
 
+        // The three central midfielders' 10, 30, and 20 score 0, 100, and 50.
         let and_rules = vec![
-            filter_rule("name", "contains", FilterValue::Text("Name".to_string())),
+            filter_rule("name", "contains", FilterValue::Text("Only".to_string())),
             filter_rule(
                 &format!("moneyball_role.{role_id}"),
-                "gt",
-                FilterValue::Integer(10),
+                "lt",
+                FilterValue::Integer(50),
             ),
         ];
         let and_page = search_moneyball(
@@ -5585,7 +5122,7 @@ mod tests {
             &requested_fields,
             and_rules,
             Some("and"),
-            ComparisonPool::Filtered,
+            Comparison::Own,
         )
         .expect("post-score AND filter");
         assert_eq!(and_page.total, 1);
@@ -5594,7 +5131,7 @@ mod tests {
             and_page.players[0]
                 .dynamic_values
                 .get(&format!("moneyball_role.{role_id}")),
-            Some(&Some(DynamicValue::Integer(50)))
+            Some(&Some(DynamicValue::Integer(0)))
         );
 
         let or_rules = vec![
@@ -5619,7 +5156,7 @@ mod tests {
             &requested_fields,
             or_rules,
             Some("or"),
-            ComparisonPool::Filtered,
+            Comparison::Own,
         )
         .expect("mixed OR role filter");
         assert_eq!(or_page.total, 2);
@@ -5640,9 +5177,11 @@ mod tests {
     }
 
     #[test]
-    fn filters_moneyball_percentiles_within_the_selected_comparison_pool() {
+    fn filters_moneyball_percentiles_within_the_tables_comparison() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-percentile-filters.db"));
+        let mut striker = player_template(5, "Cohort striker", 100);
+        striker["positions"] = json!({ "ST": 20 });
         ingest_players(
             &mut conn,
             vec![
@@ -5650,19 +5189,21 @@ mod tests {
                 player_template(2, "Cohort high", 100),
                 player_template(3, "Outside top", 100),
                 player_template(4, "Cohort missing", 100),
+                striker,
             ],
         );
         let snapshot_id = current_snapshot_id(&conn);
-        for (uid, statistics, percentiles) in [
-            (1, r#"{"goals":1}"#, r#"{"goals":10}"#),
-            (2, r#"{"goals":5}"#, r#"{"goals":60}"#),
-            (3, r#"{"goals":9}"#, r#"{"goals":100}"#),
-            (4, r#"{"goals":null}"#, r#"{"goals":null}"#),
+        for (uid, statistics) in [
+            (1, r#"{"goals":1}"#),
+            (2, r#"{"goals":5}"#),
+            (3, r#"{"goals":9}"#),
+            (4, r#"{"goals":null}"#),
+            (5, r#"{"goals":10}"#),
         ] {
-            insert_moneyball_statistics(&conn, snapshot_id, uid, statistics, Some(percentiles));
+            insert_moneyball_statistics(&conn, snapshot_id, uid, statistics, Some("{}"));
         }
         let requested_fields = ["moneyball.goals".to_string()];
-        let search = |op: &str, target: i64, pool: ComparisonPool| {
+        let search = |op: &str, target: i64, comparison: Comparison| {
             search_moneyball(
                 &conn,
                 0,
@@ -5675,7 +5216,7 @@ mod tests {
                     filter_rule("moneyball.goals", op, FilterValue::Integer(target)),
                 ],
                 Some("and"),
-                pool,
+                comparison,
             )
             .expect("percentile filter")
         };
@@ -5686,23 +5227,25 @@ mod tests {
                 .collect::<Vec<_>>()
         };
 
-        // Within the "Cohort" players, the higher scorer ranks best.
-        let filtered = search("pct_gte", 90, ComparisonPool::Filtered);
-        assert_eq!(uids(&filtered), [2]);
+        // The central midfielders' 1, 5, and 9 rank at 0, 50, and 100, though the name
+        // filter leaves out the 9; the striker, alone in his family, ranks at 50.
+        let own = search("pct_gte", 50, Comparison::Own);
+        assert_eq!(uids(&own), [2, 5]);
         assert_eq!(
-            filtered.players[0]
-                .moneyball_percentiles
-                .get("moneyball.goals"),
-            Some(&Some(100))
+            own.players[0].moneyball_percentiles.get("moneyball.goals"),
+            Some(&Some(50))
         );
-        // Across all players, the same player's stored percentile is 60.
-        assert!(uids(&search("pct_gte", 90, ComparisonPool::FullCsv)).is_empty());
+        // Compared with central midfielders, the striker's 10 is the best.
         assert_eq!(
-            uids(&search("pct_lte", 60, ComparisonPool::FullCsv)),
-            [2, 1]
+            uids(&search(
+                "pct_gte",
+                90,
+                Comparison::Family(PositionFamily::CentralMidfielder)
+            )),
+            [5]
         );
         // A player without the statistic matches neither bound.
-        assert_eq!(uids(&search("pct_lte", 50, ComparisonPool::Filtered)), [1]);
+        assert_eq!(uids(&search("pct_lte", 50, Comparison::Own)), [2, 1, 5]);
     }
 
     #[test]
@@ -5744,7 +5287,7 @@ mod tests {
                 ),
             ],
             Some("or"),
-            ComparisonPool::Filtered,
+            Comparison::Own,
         )
         .expect("mixed OR percentile filter");
 
@@ -5772,9 +5315,10 @@ mod tests {
         );
         let snapshot_id = current_snapshot_id(&conn);
         let role_id = "mc_central_midfielder_ip";
-        insert_role_row(&conn, snapshot_id, 1, role_id, Some(1.0), Some(50), None);
+        // Two tied central midfielders above a third score 50, 50, and 0.
+        insert_role_row(&conn, snapshot_id, 1, role_id, Some(2.0), Some(50), None);
         insert_role_row(&conn, snapshot_id, 2, role_id, Some(2.0), Some(50), None);
-        insert_role_row(&conn, snapshot_id, 3, role_id, Some(3.0), Some(0), None);
+        insert_role_row(&conn, snapshot_id, 3, role_id, Some(1.0), Some(0), None);
         insert_role_row(&conn, snapshot_id, 4, role_id, None, None, Some(0));
         let requested_fields = [format!("moneyball_role.{role_id}")];
         let sort_by = SortField::parse_for_moneyball(&format!("moneyball_role.{role_id}"), true)
@@ -5789,7 +5333,7 @@ mod tests {
             &requested_fields,
             Vec::new(),
             None,
-            ComparisonPool::FullCsv,
+            Comparison::Family(PositionFamily::Striker),
         )
         .expect("descending role sort");
         assert_eq!(descending.total, 4);
@@ -5808,7 +5352,7 @@ mod tests {
                 FilterValue::Integer(50),
             )],
             None,
-            ComparisonPool::FullCsv,
+            Comparison::Family(PositionFamily::Striker),
         )
         .expect("ascending role sort and null filter");
         assert_eq!(ascending.total, 1);
@@ -5835,7 +5379,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &[role_field],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -5858,7 +5402,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &[role_field],
                 view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -5934,7 +5478,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -5970,7 +5514,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &["tactic_potential.goalkeeper".to_string()],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -6014,7 +5558,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -6034,7 +5578,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -6047,7 +5591,7 @@ mod tests {
     }
 
     #[test]
-    fn tactic_moneyball_mapped_numeric_and_uncovered_null_with_sort_and_pool() {
+    fn tactic_moneyball_mapped_numeric_and_uncovered_null_with_sort() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("tactic-moneyball.db"));
         let players = (1..=3)
@@ -6109,8 +5653,12 @@ mod tests {
                 std::collections::BTreeMap::new();
             let mut perc: std::collections::BTreeMap<String, serde_json::Value> =
                 std::collections::BTreeMap::new();
+            // UIDs 1 and 3, the keepers, tie; UID 2 is rated too low to keep goal.
             for m in gk_ip_def.metrics.iter().chain(gk_oop_def.metrics.iter()) {
-                stats.insert(m.key.clone(), serde_json::json!(10.0 + uid as f64));
+                stats.insert(
+                    m.key.clone(),
+                    serde_json::json!(if uid == 2 { 10.0 } else { 11.0 }),
+                );
                 perc.insert(m.key.clone(), serde_json::json!(70));
             }
             let stats_json = serde_json::to_string(&stats).unwrap();
@@ -6129,7 +5677,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -6168,7 +5716,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &["tactic_current.centre_forward".to_string()],
                 view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -6191,7 +5739,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -6211,7 +5759,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::Filtered,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -6281,7 +5829,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &[],
                 view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -6309,7 +5857,7 @@ mod tests {
                     filter_ast: None,
                     requested_fields: &[field.to_string()],
                     view,
-                    comparison_pool: ComparisonPool::FullCsv,
+                    comparison: Comparison::Own,
                     shortlist_id: None,
                 },
             )
@@ -6333,7 +5881,7 @@ mod tests {
     }
 
     #[test]
-    fn tactic_moneyball_custom_scores_fit_adjusted_mean_per_pool_with_null_last_sort() {
+    fn tactic_moneyball_custom_scores_rank_within_the_slots_group_with_null_last_sort() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("tactic-moneyball-custom.db"));
         // uid 2 cannot play GK (familiarity 10); uid 3 is GK 14, a 5-point
@@ -6356,37 +5904,35 @@ mod tests {
         let mut tactic =
             crate::features::planner::tactic::get_tactic(&conn, save_id).expect("tactic");
         assert_eq!(tactic.lanes[0].lane_id, "goalkeeper");
-        // goals_conceded_per_90 is lower-is-better, so its stored percentile is already inverted.
+        // goals_conceded_per_90 is lower-is-better, so fewer goals rank higher.
         tactic.lanes[0].custom_metric_keys = vec![
             "save_ratio".to_string(),
             "goals_conceded_per_90".to_string(),
         ];
         crate::features::planner::tactic::save_tactic(&conn, save_id, &tactic)
             .expect("save metrics");
-        // uid 4 has no goals_conceded_per_90 statistic or stored percentile.
+        // uid 4 has no goals_conceded_per_90 statistic.
         let rows = [
-            (1, 0.5, Some((1.0, 31)), 80),
-            (2, 0.1, Some((2.0, 31)), 80),
-            (3, 0.3, Some((3.0, 41)), 60),
-            (4, 0.9, None, 90),
-            (5, 0.5, Some((1.0, 31)), 80),
+            (1, 0.5, Some(1.0)),
+            (2, 0.1, Some(2.0)),
+            (3, 0.95, Some(3.0)),
+            (4, 0.9, None),
+            (5, 0.5, Some(2.0)),
         ];
-        for (uid, save_ratio, conceded, save_ratio_percentile) in rows {
+        for (uid, save_ratio, conceded) in rows {
             let mut statistics = serde_json::json!({ "save_ratio": save_ratio });
-            let mut percentiles = serde_json::json!({ "save_ratio": save_ratio_percentile });
-            if let Some((value, percentile)) = conceded {
+            if let Some(value) = conceded {
                 statistics["goals_conceded_per_90"] = serde_json::json!(value);
-                percentiles["goals_conceded_per_90"] = serde_json::json!(percentile);
             }
             insert_moneyball_statistics(
                 &conn,
                 snapshot_id,
                 uid,
                 &statistics.to_string(),
-                Some(&percentiles.to_string()),
+                Some("{}"),
             );
         }
-        let custom_page = |conn: &Connection, field: &str, sort_dir, comparison_pool| {
+        let custom_page = |conn: &Connection, field: &str, sort_dir, comparison| {
             search_players_in_view(
                 conn,
                 SearchPlayersRequest {
@@ -6397,7 +5943,7 @@ mod tests {
                     filter_ast: None,
                     requested_fields: &[field.to_string()],
                     view: SearchView::Moneyball,
-                    comparison_pool,
+                    comparison,
                     shortlist_id: None,
                 },
             )
@@ -6405,51 +5951,55 @@ mod tests {
         };
         let field = "tactic_custom.goalkeeper";
 
-        // All players: uid 1 and 5 average 80 and 31 to 56; uid 3 averages
-        // 60 and 41 to 51, minus 10 for GK 14. Nulls stay last, ties by UID.
-        let full_desc = custom_page(&conn, field, SortDir::Desc, ComparisonPool::FullCsv);
+        // The slot ranks among keepers rated 16 or more: UIDs 1, 4, and 5. Their save
+        // ratios of 0.5, 0.9, and 0.5 put UIDs 1 and 5 at 0, and UID 3's 0.95 above them
+        // all; their goals conceded of 1.0 and 2.0 put UID 1 at 100 and UID 5 at 0, and
+        // UID 3's 3.0 below both. UID 3 averages 50, minus 10 for GK 14. Nulls stay last.
+        let full_desc = custom_page(&conn, field, SortDir::Desc, Comparison::Own);
         assert_eq!(
             tactic_scores_by_uid(&full_desc, field),
             [
-                (1, Some(56)),
-                (5, Some(56)),
-                (3, Some(41)),
+                (1, Some(50)),
+                (3, Some(40)),
+                (5, Some(0)),
                 (2, None),
                 (4, None)
             ]
         );
-        let full_asc = custom_page(&conn, field, SortDir::Asc, ComparisonPool::FullCsv);
+        let full_asc = custom_page(&conn, field, SortDir::Asc, Comparison::Own);
         assert_eq!(
             tactic_scores_by_uid(&full_asc, field),
             [
-                (3, Some(41)),
-                (1, Some(56)),
-                (5, Some(56)),
+                (5, Some(0)),
+                (3, Some(40)),
+                (1, Some(50)),
                 (2, None),
                 (4, None)
             ]
         );
 
-        // Filtered cohort recalculates both percentiles over the five players:
-        // uid 1 and 5 rank 50 on save_ratio and best (100) on goals conceded;
-        // uid 3 ranks 25 and worst (0), so (12.5 -> 13) - 10 = 3.
-        let filtered = custom_page(&conn, field, SortDir::Desc, ComparisonPool::Filtered);
+        // The table's comparison ranks statistic columns, not slot scores.
+        let compared_with_strikers = custom_page(
+            &conn,
+            field,
+            SortDir::Desc,
+            Comparison::Family(PositionFamily::Striker),
+        );
         assert_eq!(
-            tactic_scores_by_uid(&filtered, field),
-            [
-                (1, Some(75)),
-                (5, Some(75)),
-                (3, Some(3)),
-                (2, None),
-                (4, None)
-            ]
+            tactic_scores_by_uid(&compared_with_strikers, field),
+            tactic_scores_by_uid(&full_desc, field)
         );
 
         // The custom score covers both phases and ignores the IP/OOP weight.
         tactic.lanes[0].ip_weight = 0.9;
         crate::features::planner::tactic::save_tactic(&conn, save_id, &tactic)
             .expect("save weight");
-        let reweighted = custom_page(&conn, field, SortDir::Desc, ComparisonPool::FullCsv);
+        let reweighted = custom_page(
+            &conn,
+            field,
+            SortDir::Desc,
+            Comparison::Family(PositionFamily::Striker),
+        );
         assert_eq!(
             tactic_scores_by_uid(&reweighted, field),
             tactic_scores_by_uid(&full_desc, field)
@@ -6457,7 +6007,12 @@ mod tests {
 
         // A slot without metrics has no custom score.
         let empty_field = "tactic_custom.left_back";
-        let empty = custom_page(&conn, empty_field, SortDir::Desc, ComparisonPool::FullCsv);
+        let empty = custom_page(
+            &conn,
+            empty_field,
+            SortDir::Desc,
+            Comparison::Family(PositionFamily::Striker),
+        );
         assert_eq!(
             tactic_scores_by_uid(&empty, empty_field),
             [(1, None), (2, None), (3, None), (4, None), (5, None)]
@@ -6577,7 +6132,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
@@ -6642,7 +6197,7 @@ mod tests {
                     filter_ast: None,
                     requested_fields: &[field.to_string()],
                     view: SearchView::General,
-                    comparison_pool: ComparisonPool::FullCsv,
+                    comparison: Comparison::Own,
                     shortlist_id: None,
                 },
             )
@@ -6662,7 +6217,7 @@ mod tests {
                     filter_ast: None,
                     requested_fields: &[],
                     view: SearchView::General,
-                    comparison_pool: ComparisonPool::FullCsv,
+                    comparison: Comparison::Own,
                     shortlist_id: None,
                 },
             )
@@ -6702,7 +6257,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: shortlist,
             },
         )
@@ -6738,7 +6293,7 @@ mod tests {
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: shortlist,
             },
         )
@@ -6747,7 +6302,7 @@ mod tests {
     }
 
     #[test]
-    fn tactic_moneyball_filtered_pool_divergent_from_stored_fullcsv() {
+    fn tactic_moneyball_role_scores_ignore_the_tables_filters() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("tactic-filtered-divergent.db"));
         let players = (1..=4)
@@ -6785,50 +6340,60 @@ mod tests {
             .map(|m| m.key.clone())
             .collect();
         for (uid, raw) in [(1, 0.0), (2, 10.0), (3, 20.0), (4, 30.0)] {
-            let mut stats = std::collections::BTreeMap::new();
-            let mut perc = std::collections::BTreeMap::new();
-            for k in &keys {
-                stats.insert(k.clone(), serde_json::json!(raw));
-                perc.insert(k.clone(), serde_json::json!(99));
-            }
+            let stats = keys
+                .iter()
+                .map(|key| (key.clone(), serde_json::json!(raw)))
+                .collect::<std::collections::BTreeMap<_, _>>();
             insert_moneyball_statistics(
                 &conn,
                 snapshot_id,
                 uid,
                 &serde_json::to_string(&stats).unwrap(),
-                Some(&serde_json::to_string(&perc).unwrap()),
+                Some("{}"),
             );
         }
-        // FullCsv uses stored percentiles (99) -> all tactic scores equal high (99 percentile -> high role score)
-        let page_full = search_players_in_view(
-            &conn,
-            SearchPlayersRequest {
-                offset: 0,
-                limit: 10,
-                sort_by: SortField::parse_for_moneyball("tactic_current.goalkeeper", true)
-                    .expect("sort"),
-                sort_dir: SortDir::Desc,
-                filter_ast: None,
-                requested_fields: &["tactic_current.goalkeeper".to_string()],
-                view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::FullCsv,
-                shortlist_id: None,
-            },
-        )
-        .expect("full");
-        // All should be numeric and similar (stored 99), order by UID
-        assert!(page_full.players.iter().all(|p| p
-            .dynamic_values
-            .get("tactic_current.goalkeeper")
-            .unwrap()
-            .is_some()));
+        let page = |filter_ast: Option<&FilterAst>| {
+            search_players_in_view(
+                &conn,
+                SearchPlayersRequest {
+                    offset: 0,
+                    limit: 10,
+                    sort_by: SortField::parse_for_moneyball("tactic_current.goalkeeper", true)
+                        .expect("sort"),
+                    sort_dir: SortDir::Desc,
+                    filter_ast,
+                    requested_fields: &["tactic_current.goalkeeper".to_string()],
+                    view: SearchView::Moneyball,
+                    comparison: Comparison::Own,
+                    shortlist_id: None,
+                },
+            )
+            .expect("goalkeeper slot page")
+        };
+        let scores = |page: &SearchPlayersPage| {
+            page.players
+                .iter()
+                .map(|player| {
+                    let score = player
+                        .dynamic_values
+                        .get("tactic_current.goalkeeper")
+                        .cloned()
+                        .flatten();
+                    (player.uid, score)
+                })
+                .collect::<Vec<_>>()
+        };
+
+        // The four keepers rank among each other, so their scores are tiered.
+        let unfiltered = scores(&page(None));
         assert_eq!(
-            page_full.players.iter().map(|p| p.uid).collect::<Vec<_>>(),
-            vec![1, 2, 3, 4]
+            unfiltered.iter().map(|(uid, _)| *uid).collect::<Vec<_>>(),
+            [4, 3, 2, 1]
         );
-        // Filtered: cohort filtered by raw statistic >5 (excludes uid1), tactic scores computed from filtered cohort percentiles -> uid2 lowest percentile 0, uid4 highest 100
-        // Use a moneyball numeric filter via moneyball.* key instead
-        let ast2 = parse_filter_ast(
+        assert!(unfiltered.iter().all(|(_, score)| score.is_some()));
+        assert_ne!(unfiltered[0].1, unfiltered[3].1);
+        // A filter that leaves out the weakest keeper keeps everyone else's score.
+        let filter = parse_filter_ast(
             vec![FilterRule {
                 field: format!("moneyball.{}", keys[0]),
                 op: "gt".to_string(),
@@ -6837,56 +6402,7 @@ mod tests {
             None,
         )
         .expect("filter");
-        let page_filtered = search_players_in_view(
-            &conn,
-            SearchPlayersRequest {
-                offset: 0,
-                limit: 10,
-                sort_by: SortField::parse_for_moneyball("tactic_current.goalkeeper", true)
-                    .expect("sort"),
-                sort_dir: SortDir::Desc,
-                filter_ast: Some(&ast2),
-                requested_fields: &["tactic_current.goalkeeper".to_string()],
-                view: SearchView::Moneyball,
-                comparison_pool: ComparisonPool::Filtered,
-                shortlist_id: None,
-            },
-        )
-        .expect("filtered");
-        assert_eq!(page_filtered.total, 3);
-        // Filtered scores must be tiered: uid4 highest, uid2 lowest, proving pool selection not stored percentiles
-        let scores: Vec<Option<i64>> = page_filtered
-            .players
-            .iter()
-            .map(|p| {
-                p.dynamic_values
-                    .get("tactic_current.goalkeeper")
-                    .and_then(|v| v.as_ref())
-                    .and_then(|v| match v {
-                        DynamicValue::Integer(i) => Some(*i),
-                        _ => None,
-                    })
-            })
-            .collect();
-        assert!(
-            scores[0].unwrap() > scores[2].unwrap(),
-            "highest vs lowest must differ"
-        );
-        assert_eq!(page_filtered.players[0].uid, 4);
-        assert_eq!(page_filtered.players[2].uid, 2);
-        assert_ne!(
-            page_filtered.players[0]
-                .dynamic_values
-                .get("tactic_current.goalkeeper"),
-            page_full
-                .players
-                .iter()
-                .find(|p| p.uid == 4)
-                .unwrap()
-                .dynamic_values
-                .get("tactic_current.goalkeeper"),
-            "filtered vs full must diverge for same player"
-        );
+        assert_eq!(scores(&page(Some(&filter))), unfiltered[..3]);
     }
 
     struct GeneralShape {
@@ -6926,7 +6442,7 @@ mod tests {
                 filter_ast: self.filters.as_ref(),
                 requested_fields: &self.fields,
                 view: SearchView::General,
-                comparison_pool: ComparisonPool::FullCsv,
+                comparison: Comparison::Own,
                 shortlist_id: self.shortlist_id,
             }
         }
@@ -7227,7 +6743,7 @@ mod tests {
         name: &'static str,
         sort: String,
         dir: SortDir,
-        pool: ComparisonPool,
+        comparison: Comparison,
         filters: Option<FilterAst>,
         fields: Vec<String>,
         shortlist_id: Option<i64>,
@@ -7239,7 +6755,7 @@ mod tests {
                 name,
                 sort: sort.to_string(),
                 dir,
-                pool: ComparisonPool::Filtered,
+                comparison: Comparison::Own,
                 filters: None,
                 fields: fields.iter().map(|field| field.to_string()).collect(),
                 shortlist_id: None,
@@ -7261,12 +6777,12 @@ mod tests {
             }
         }
 
-        fn in_pool(&self, pool: ComparisonPool) -> Self {
+        fn compared_with(&self, comparison: Comparison) -> Self {
             Self {
                 name: self.name,
                 sort: self.sort.clone(),
                 dir: self.dir,
-                pool,
+                comparison,
                 filters: self.filters.clone(),
                 fields: self.fields.clone(),
                 shortlist_id: self.shortlist_id,
@@ -7282,7 +6798,7 @@ mod tests {
                 filter_ast: self.filters.as_ref(),
                 requested_fields: &self.fields,
                 view: SearchView::Moneyball,
-                comparison_pool: self.pool,
+                comparison: self.comparison,
                 shortlist_id: self.shortlist_id,
             }
         }
@@ -7409,7 +6925,7 @@ mod tests {
         shape: &MoneyballShape,
     ) {
         let registry = TableRegistry::default();
-        let name = format!("{} ({:?})", shape.name, shape.pool);
+        let name = format!("{} ({:?})", shape.name, shape.comparison);
         let complete = search_players_in_view(
             &db.read().expect("reader"),
             shape.request(0, MAX_PAGE_LIMIT),
@@ -7417,9 +6933,15 @@ mod tests {
         .unwrap_or_else(|error| panic!("{name} uncached: {error}"));
         let mut joined = Vec::new();
         for offset in (0..complete.players.len() + 3).step_by(3) {
-            let cached =
-                search_moneyball_players(db, cohorts, &registry, None, shape.request(offset, 3))
-                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+            let cached = search_moneyball_players(
+                db,
+                cohorts,
+                &ComparisonGroupsCache::default(),
+                &registry,
+                None,
+                shape.request(offset, 3),
+            )
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
             let uncached =
                 search_players_in_view(&db.read().expect("reader"), shape.request(offset, 3))
                     .expect("uncached page");
@@ -7450,24 +6972,18 @@ mod tests {
                 snapshot_id,
                 &[("Top", 150.0), ("Middle", 120.0), ("Weak", 90.0)],
             );
-            // Every player has the same percentiles, so the same score before his league
-            // moves it.
-            let catalog = builtin_catalog().expect("catalog");
-            let definition = catalog
-                .definitions
-                .iter()
-                .find(|definition| definition.id == MONEYBALL_ROLE)
-                .expect("role definition");
-            let percentiles = Value::Object(
-                definition
-                    .metrics
-                    .iter()
-                    .map(|metric| (metric.key.clone(), json!(80)))
-                    .collect::<Map<_, _>>(),
-            )
-            .to_string();
+            // Every player has the same statistics, so the same score of 50 before his
+            // league moves it.
             for uid in 1..=3 {
-                insert_moneyball_row(&writer, snapshot_id, uid, Some(&percentiles));
+                insert_role_row(
+                    &writer,
+                    snapshot_id,
+                    uid,
+                    MONEYBALL_ROLE,
+                    Some(4.0),
+                    None,
+                    None,
+                );
             }
             snapshot_save_id(&writer, snapshot_id).expect("save")
         };
@@ -7475,7 +6991,7 @@ mod tests {
         // Each returned player's role score, the same from the cached and uncached paths.
         let scores = |rules: Vec<FilterRule>| {
             let shape = MoneyballShape::new("league", &role, SortDir::Desc, &[&role])
-                .in_pool(ComparisonPool::FullCsv);
+                .compared_with(Comparison::Family(PositionFamily::Striker));
             let shape = if rules.is_empty() {
                 shape
             } else {
@@ -7484,6 +7000,7 @@ mod tests {
             let cached = search_moneyball_players(
                 &db,
                 &MoneyballCohortCache::new(2),
+                &ComparisonGroupsCache::default(),
                 &TableRegistry::default(),
                 None,
                 shape.request(0, 10),
@@ -7505,18 +7022,18 @@ mod tests {
         // with no league counts as in the weakest measured one, 60 points weaker.
         assert_eq!(
             scores(vec![]),
-            [(1, score(80)), (2, score(65)), (3, score(50))]
+            [(1, score(50)), (2, score(35)), (3, score(20))]
         );
         assert_eq!(
-            scores(vec![filter_rule(&role, "gte", FilterValue::Integer(60))]),
-            [(1, score(80)), (2, score(65))]
+            scores(vec![filter_rule(&role, "gte", FilterValue::Integer(30))]),
+            [(1, score(50)), (2, score(35))]
         );
 
         league_strength::set_enabled(&db.0.lock().expect("lock writer"), save_id, false)
             .expect("turn the adjustment off");
         assert_eq!(
             scores(vec![]),
-            [(1, score(80)), (2, score(80)), (3, score(80))]
+            [(1, score(50)), (2, score(50)), (3, score(50))]
         );
     }
 
@@ -7667,8 +7184,12 @@ mod tests {
             ),
         ];
         for shape in &shapes {
-            for pool in [ComparisonPool::Filtered, ComparisonPool::FullCsv] {
-                assert_cached_moneyball_windows_match(&db, &cohorts, &shape.in_pool(pool));
+            for comparison in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
+                assert_cached_moneyball_windows_match(
+                    &db,
+                    &cohorts,
+                    &shape.compared_with(comparison),
+                );
             }
         }
 
@@ -7693,8 +7214,12 @@ mod tests {
         .map(MoneyballShape::shortlisted);
         let assert_shortlist_shapes = || {
             for shape in &shortlist_shapes {
-                for pool in [ComparisonPool::Filtered, ComparisonPool::FullCsv] {
-                    assert_cached_moneyball_windows_match(&db, &cohorts, &shape.in_pool(pool));
+                for comparison in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
+                    assert_cached_moneyball_windows_match(
+                        &db,
+                        &cohorts,
+                        &shape.compared_with(comparison),
+                    );
                 }
             }
         };
@@ -7719,24 +7244,31 @@ mod tests {
     }
 
     #[test]
-    fn moneyball_shortlist_restricts_rows_and_the_filtered_cohort() {
+    fn moneyball_shortlist_restricts_rows_but_not_the_comparison_groups() {
         let (_temp_dir, db) = open_moneyball_equivalence_db();
         let cohorts = MoneyballCohortCache::new(4);
         let registry = TableRegistry::default();
         let role = moneyball_role_field();
         let fields = [role.as_str(), "moneyball.goals", "moneyball.xg"];
-        let shape = |filters: Vec<FilterRule>, combine: &str, pool: ComparisonPool| {
+        let shape = |filters: Vec<FilterRule>, combine: &str, comparison: Comparison| {
             MoneyballShape::new("shortlist", "ca", SortDir::Desc, &fields)
                 .filtered(filters, combine)
-                .in_pool(pool)
+                .compared_with(comparison)
         };
         let page = |shape: &MoneyballShape| {
-            search_moneyball_players(&db, &cohorts, &registry, None, shape.request(0, 50))
-                .expect("Moneyball page")
+            search_moneyball_players(
+                &db,
+                &cohorts,
+                &ComparisonGroupsCache::default(),
+                &registry,
+                None,
+                shape.request(0, 50),
+            )
+            .expect("Moneyball page")
         };
         let ca = |op: &str, value: i64| vec![filter_rule("ca", op, FilterValue::Integer(value))];
 
-        let unlinked = page(&shape(ca("lte", 120), "and", ComparisonPool::Filtered).shortlisted());
+        let unlinked = page(&shape(ca("lte", 120), "and", Comparison::Own).shortlisted());
         assert_eq!(unlinked.state, SearchPlayersPageState::NoShortlist);
         assert!(unlinked.players.is_empty());
 
@@ -7757,7 +7289,7 @@ mod tests {
                 .collect::<Vec<_>>()
         };
 
-        let filtered = page(&shape(ca("lte", 120), "and", ComparisonPool::Filtered).shortlisted());
+        let filtered = page(&shape(ca("lte", 120), "and", Comparison::Own).shortlisted());
         assert_eq!(filtered.state, SearchPlayersPageState::Ready);
         assert_eq!(
             filtered
@@ -7768,25 +7300,34 @@ mod tests {
             vec![2, 5, 9]
         );
         assert_eq!(filtered.total, 3);
-        // Filtered cohort percentiles and role scores rank exactly the shortlisted rows.
-        let same_players = page(&shape(ca("eq", 120), "and", ComparisonPool::Filtered));
+        let same_players = page(&shape(ca("eq", 120), "and", Comparison::Own));
         assert_eq!(filtered.players, same_players.players);
-        let unrestricted = page(&shape(ca("lte", 120), "and", ComparisonPool::Filtered));
-        assert_ne!(filtered.players, in_shortlist(unrestricted));
-
-        // All players keeps the stored full-cohort percentiles; only rows are restricted.
-        let all_players =
-            page(&shape(ca("lte", 120), "and", ComparisonPool::FullCsv).shortlisted());
-        let shortlist_off = page(&shape(ca("lte", 120), "and", ComparisonPool::FullCsv));
-        assert_eq!(all_players.players, in_shortlist(shortlist_off));
+        // Percentiles and role scores rank within the same groups with or without the
+        // shortlist, for either comparison; only the rows are restricted.
+        for comparison in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
+            let shortlisted = page(&shape(ca("lte", 120), "and", comparison).shortlisted());
+            let shortlist_off = page(&shape(ca("lte", 120), "and", comparison));
+            assert_eq!(shortlisted.players, in_shortlist(shortlist_off));
+        }
 
         // A mixed OR filter keeps the shortlist as its base.
         let mixed_or = vec![
             filter_rule("name", "contains", FilterValue::Text("e".to_string())),
             filter_rule(&role, "gt", FilterValue::Integer(40)),
         ];
-        let mixed = page(&shape(mixed_or.clone(), "or", ComparisonPool::FullCsv).shortlisted());
-        let mixed_off = page(&shape(mixed_or, "or", ComparisonPool::FullCsv));
+        let mixed = page(
+            &shape(
+                mixed_or.clone(),
+                "or",
+                Comparison::Family(PositionFamily::Striker),
+            )
+            .shortlisted(),
+        );
+        let mixed_off = page(&shape(
+            mixed_or,
+            "or",
+            Comparison::Family(PositionFamily::Striker),
+        ));
         assert!(mixed_off
             .players
             .iter()
@@ -7879,14 +7420,15 @@ mod tests {
             MoneyballShape::new("role sort", &role, SortDir::Desc, &[&role]),
         ];
         for shape in &shapes {
-            for pool in [ComparisonPool::Filtered, ComparisonPool::FullCsv] {
-                let shape = shape.in_pool(pool);
-                let name = format!("{} ({pool:?})", shape.name);
+            for comparison in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
+                let shape = shape.compared_with(comparison);
+                let name = format!("{} ({comparison:?})", shape.name);
                 let mut joined = 0;
                 for offset in (0..PLAYERS).step_by(MAX_PAGE_LIMIT) {
                     let cached = search_moneyball_players(
                         &db,
                         &cohorts,
+                        &ComparisonGroupsCache::default(),
                         &registry,
                         None,
                         shape.request(offset, MAX_PAGE_LIMIT),
@@ -7908,7 +7450,7 @@ mod tests {
     #[test]
     fn moneyball_windows_reuse_the_cohort_and_rank_an_added_column_once() {
         use crate::features::search::moneyball_cohort::{
-            COHORT_COMPUTATIONS, PERCENTILE_COLUMN_COMPUTATIONS,
+            COHORT_COMPUTATIONS, STATISTIC_COLUMN_READS,
         };
         let (_temp_dir, db) = open_moneyball_equivalence_db();
         let cohorts = MoneyballCohortCache::new(2);
@@ -7926,20 +7468,35 @@ mod tests {
             &["moneyball.goals", "moneyball.xg"],
         );
         COHORT_COMPUTATIONS.with(|count| count.set(0));
-        PERCENTILE_COLUMN_COMPUTATIONS.with(|count| count.set(0));
+        STATISTIC_COLUMN_READS.with(|count| count.set(0));
 
-        search_moneyball_players(&db, &cohorts, &registry, None, shape.request(0, 3))
-            .expect("first window");
-        search_moneyball_players(&db, &cohorts, &registry, None, shape.request(6, 3))
-            .expect("later window");
+        search_moneyball_players(
+            &db,
+            &cohorts,
+            &ComparisonGroupsCache::default(),
+            &registry,
+            None,
+            shape.request(0, 3),
+        )
+        .expect("first window");
+        search_moneyball_players(
+            &db,
+            &cohorts,
+            &ComparisonGroupsCache::default(),
+            &registry,
+            None,
+            shape.request(6, 3),
+        )
+        .expect("later window");
         assert_eq!(COHORT_COMPUTATIONS.with(Cell::get), 1);
-        assert_eq!(PERCENTILE_COLUMN_COMPUTATIONS.with(Cell::get), 1);
+        assert_eq!(STATISTIC_COLUMN_READS.with(Cell::get), 1);
 
         // Adding a column ranks it once; later windows reuse it.
         for offset in [3, 0, 6] {
             search_moneyball_players(
                 &db,
                 &cohorts,
+                &ComparisonGroupsCache::default(),
                 &registry,
                 None,
                 with_column.request(offset, 3),
@@ -7947,7 +7504,7 @@ mod tests {
             .expect("window with another column");
         }
         assert_eq!(COHORT_COMPUTATIONS.with(Cell::get), 1);
-        assert_eq!(PERCENTILE_COLUMN_COMPUTATIONS.with(Cell::get), 2);
+        assert_eq!(STATISTIC_COLUMN_READS.with(Cell::get), 2);
 
         db.0.lock()
             .expect("lock writer")
@@ -7956,8 +7513,15 @@ mod tests {
                 [],
             )
             .expect("change a statistic");
-        let fresh = search_moneyball_players(&db, &cohorts, &registry, None, shape.request(0, 3))
-            .expect("window after a write");
+        let fresh = search_moneyball_players(
+            &db,
+            &cohorts,
+            &ComparisonGroupsCache::default(),
+            &registry,
+            None,
+            shape.request(0, 3),
+        )
+        .expect("window after a write");
         assert_eq!(COHORT_COMPUTATIONS.with(Cell::get), 2);
         assert_eq!(fresh.players[0].uid, 4);
         assert_eq!(
@@ -7995,6 +7559,7 @@ mod tests {
                         .send(search_moneyball_players(
                             &db,
                             &cohorts,
+                            &ComparisonGroupsCache::default(),
                             &registry,
                             Some(&ticket),
                             newer.request(0, 3),
@@ -8007,6 +7572,7 @@ mod tests {
         let superseded = search_moneyball_players(
             &db,
             &cohorts,
+            &ComparisonGroupsCache::default(),
             &registry,
             Some(&older_ticket),
             older.request(0, 3),

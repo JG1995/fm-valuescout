@@ -1,11 +1,11 @@
 //! Snapshots with several players at chosen clubs and positions, and setters for the scores,
-//! shortlists, and Moneyball percentiles the dashboard reads.
+//! shortlists, and season statistics the dashboard reads.
 
 use rusqlite::{params, Connection};
 
 use crate::db::migrations;
 use crate::features::managed_club::service as managed_club_service;
-use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
+use crate::features::moneyball::{is_lower_is_better_statistic_key, MONEYBALL_STATISTIC_KEYS};
 use crate::features::planner::tactic::{
     default_tactic, get_tactic, save_tactic, RecruitmentFilter,
 };
@@ -218,25 +218,33 @@ impl Fixture {
         shortlist_id
     }
 
-    /// Gives the player season stats whose every stored percentile is `percentile`, apart
-    /// from the listed overrides.
-    pub(super) fn set_percentiles(&self, uid: i64, percentile: u8, overrides: &[(&str, u8)]) {
-        let mut percentiles = MONEYBALL_STATISTIC_KEYS
+    /// Gives the player 900 minutes of season statistics at `level`: every higher-is-better
+    /// statistic is `level` and every lower-is-better one `1000 - level`, so among peers a
+    /// higher level ranks higher at every statistic. The overrides set raw values.
+    pub(super) fn set_season_stats(&self, uid: i64, level: f64, overrides: &[(&str, f64)]) {
+        let mut statistics = MONEYBALL_STATISTIC_KEYS
             .iter()
-            .map(|key| ((*key).to_string(), serde_json::Value::from(percentile)))
+            .map(|key| {
+                let value = if is_lower_is_better_statistic_key(key) {
+                    1000.0 - level
+                } else {
+                    level
+                };
+                ((*key).to_string(), serde_json::Value::from(value))
+            })
             .collect::<serde_json::Map<_, _>>();
         for (key, value) in overrides {
-            percentiles.insert((*key).to_string(), (*value).into());
+            statistics.insert((*key).to_string(), (*value).into());
         }
         self.conn
             .execute(
                 "INSERT INTO player_moneyball_stats (
                      snapshot_id, player_uid, minutes, statistics_json, percentiles_json
-                 ) VALUES (?1, ?2, 900, '{}', ?3)",
+                 ) VALUES (?1, ?2, 900, ?3, '{}')",
                 params![
                     self.snapshot_id,
                     uid,
-                    serde_json::Value::Object(percentiles).to_string()
+                    serde_json::Value::Object(statistics).to_string()
                 ],
             )
             .expect("insert moneyball stats");

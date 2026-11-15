@@ -3,6 +3,7 @@ use tauri::State;
 
 use crate::blocking;
 use crate::db::Db;
+use crate::features::moneyball::comparison::{ComparisonGroupsCache, GroupsSource};
 use crate::features::planner::commands::RecruitmentFilterDto;
 use crate::features::snapshot::service::active_save_id;
 
@@ -193,16 +194,26 @@ pub async fn get_dashboard_signings(
     lane_id: Option<String>,
     season_stats: bool,
     db: State<'_, Db>,
+    groups: State<'_, ComparisonGroupsCache>,
 ) -> Result<Option<DashboardSigningsDto>, String> {
     let db = db.inner().clone();
+    let groups = groups.inner().clone();
     blocking::run(move || {
-        read_dashboard_signings(&db, &mode, shortlist_id, lane_id.as_deref(), season_stats)
+        read_dashboard_signings(
+            &db,
+            &groups,
+            &mode,
+            shortlist_id,
+            lane_id.as_deref(),
+            season_stats,
+        )
     })
     .await
 }
 
 fn read_dashboard_signings(
     db: &Db,
+    groups: &ComparisonGroupsCache,
     mode: &str,
     shortlist_id: Option<i64>,
     lane_id: Option<&str>,
@@ -215,7 +226,8 @@ fn read_dashboard_signings(
         season_stats,
     };
     let conn = db.read()?;
-    Ok(signings::get_signings(&conn, active_save_id(&conn)?, request)?.map(Into::into))
+    let groups = GroupsSource::Cached(groups, conn.generation());
+    Ok(signings::get_signings(&conn, &groups, active_save_id(&conn)?, request)?.map(Into::into))
 }
 
 #[derive(Debug, Serialize)]
@@ -402,7 +414,14 @@ mod tests {
         }
 
         let signings = crate::db::read_while_writer_is_held(&db, |db| {
-            read_dashboard_signings(db, "general", None, None, true)
+            read_dashboard_signings(
+                db,
+                &ComparisonGroupsCache::default(),
+                "general",
+                None,
+                None,
+                true,
+            )
         })
         .expect("signings on a reader")
         .expect("signings for a managed club");
@@ -410,7 +429,15 @@ mod tests {
         assert!(signings.tactic_is_default);
         assert_eq!(signings.slots.len(), 11);
         assert_eq!(
-            read_dashboard_signings(&db, "potential", None, None, true).map(|_| ()),
+            read_dashboard_signings(
+                &db,
+                &ComparisonGroupsCache::default(),
+                "potential",
+                None,
+                None,
+                true
+            )
+            .map(|_| ()),
             Err("unknown dashboard score mode: potential".to_string())
         );
     }

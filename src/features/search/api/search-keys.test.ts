@@ -13,7 +13,7 @@ describe("searchKeys.players", () => {
       "and",
       [],
       "general",
-      "filtered",
+      "own",
       null,
       {
         activeSave: { id: 1, contextToken: "save-token" },
@@ -48,7 +48,7 @@ describe("searchKeys.players", () => {
       "and",
       ["position", "role.goalkeeper_ip"],
       "general",
-      "filtered",
+      "own",
       null,
       contextOne,
     );
@@ -61,7 +61,7 @@ describe("searchKeys.players", () => {
       "and",
       ["role.goalkeeper_ip", "position"],
       "general",
-      "filtered",
+      "own",
       null,
       contextOne,
     );
@@ -77,7 +77,7 @@ describe("searchKeys.players", () => {
         "and",
         [],
         "general",
-        "filtered",
+        "own",
         null,
         contextTwo,
       ),
@@ -105,7 +105,7 @@ describe("searchKeys.players", () => {
         "and",
         [],
         "general",
-        "filtered",
+        "own",
         shortlistId,
         context,
       );

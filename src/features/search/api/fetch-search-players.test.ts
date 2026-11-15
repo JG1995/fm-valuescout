@@ -33,7 +33,7 @@ describe("search player fetch", () => {
       "and",
       [],
       "general",
-      "fullCsv",
+      "own",
       null,
       "search",
     );
@@ -50,7 +50,7 @@ describe("search player fetch", () => {
       "and",
       [],
       "moneyball",
-      "filtered",
+      "own",
       null,
       context,
     );
@@ -63,7 +63,7 @@ describe("search player fetch", () => {
       "and",
       [],
       "moneyball",
-      "filtered",
+      "own",
       null,
       context,
       "moneyball-search",

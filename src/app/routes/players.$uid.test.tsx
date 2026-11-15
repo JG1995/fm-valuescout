@@ -20,7 +20,7 @@ import { routeTree } from "@/routeTree.gen";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
   fixturePlayerMoneyball,
-  fixturePlayerMoneyballWithoutNaturalPosition,
+  fixturePlayerMoneyballWithoutPosition,
   resolvePendingPlayerMoneyball,
   setPlayerMoneyballOverride,
   setPlayerMoneyballPending,
@@ -238,7 +238,13 @@ describe("player profile route", () => {
     setPlayerMoneyballOverride(
       fixturePlayerMoneyball({
         statistics: { goals: 10, goals_per_90: 0.6 },
-        percentiles: { goals: 83, goals_per_90: 75 },
+        comparisons: [
+          {
+            family: "winger",
+            peers: 24,
+            percentiles: { goals: 83, goals_per_90: 75 },
+          },
+        ],
       }),
     );
     const user = userEvent.setup();
@@ -386,12 +392,13 @@ describe("player profile route", () => {
     setPlayerMoneyballOverride(
       fixturePlayerMoneyball({
         statistics: { goals: 10, goals_per_90: 0.6 },
-        percentiles: { goals: 83, goals_per_90: 75 },
-        comparisonBasis: {
-          kind: "available",
-          naturalPositions: ["MC"],
-          comparisonPlayerCount: 24,
-        },
+        comparisons: [
+          {
+            family: "central_midfielder",
+            peers: 24,
+            percentiles: { goals: 83, goals_per_90: 75 },
+          },
+        ],
         roleScores: [
           {
             roleId: "mc-moneyball-ip",
@@ -427,9 +434,7 @@ describe("player profile route", () => {
       within(profilePanel).getByRole("img", { name: "Goals: 83, Excellent" }),
     ).toBeInTheDocument();
     expect(
-      within(profilePanel).getByText(
-        "Natural positions: MC · 24 comparison players",
-      ),
+      within(profilePanel).getByText("Percentiles vs central midfielders"),
     ).toBeInTheDocument();
     expect(
       within(profilePanel).queryByText(/Potential/),
@@ -516,18 +521,17 @@ describe("player profile route", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps no-natural-position raw metrics distinct from unavailable scores", async () => {
+  it("shows role scores but no percentiles for a player rated at no position", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail({ positions: { MC: 20 } }));
     setPlayerMoneyballOverride(
-      fixturePlayerMoneyballWithoutNaturalPosition({
+      fixturePlayerMoneyballWithoutPosition({
         statistics: { goals: 10 },
-        percentiles: { goals: 50 },
         roleCatalogVersion: 1,
         roleScores: [
           {
-            roleId: "stale-score",
-            displayName: "Stale score",
+            roleId: "mc-ranked-role",
+            displayName: "Ranked role",
             phase: "in_possession",
             positionFamily: "central_midfielder",
             positionTags: ["MC"],
@@ -541,30 +545,20 @@ describe("player profile route", () => {
     renderProfileRoute("/players/42?view=moneyball");
 
     expect(await screen.findByText("10")).toBeInTheDocument();
+    // Roles rank within their own families, whatever the player's positions.
     const tacticalSummary = screen.getByRole("region", {
       name: "Moneyball tactical summaries",
     });
     expect(
-      within(tacticalSummary).getByLabelText("Moneyball IP: unavailable"),
-    ).toBeInTheDocument();
-    expect(
-      within(tacticalSummary).queryByLabelText("Moneyball IP: 50, Average"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Percentile scores unavailable: this player has no natural position.",
-      ),
+      within(tacticalSummary).getByLabelText("Moneyball IP: 50, Average"),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Role scores unavailable: this player has no natural position.",
+        "Percentile scores unavailable: this player is rated at no position.",
       ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("img", { name: "Goals: 50, Average" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Stale score Moneyball score: 50, Average"),
+      screen.queryByRole("img", { name: /^Goals:/ }),
     ).not.toBeInTheDocument();
   });
 
@@ -577,15 +571,7 @@ describe("player profile route", () => {
         positions: { MC: 20, AMC: 20, AMR: 20 },
       }),
     );
-    setPlayerMoneyballOverride(
-      fixturePlayerMoneyball({
-        comparisonBasis: {
-          kind: "available",
-          naturalPositions: ["MC", "AMC", "AMR"],
-          comparisonPlayerCount: 24,
-        },
-      }),
-    );
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
@@ -749,11 +735,7 @@ describe("player profile route", () => {
         name: "Moneyball tactical summaries",
       }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Natural positions: MC, AMR, AMC · 24 comparison players",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("· 24 peers")).toBeInTheDocument();
     const moneyballRoleFit = screen.getByRole("region", {
       name: /^Moneyball role fit for /,
     });

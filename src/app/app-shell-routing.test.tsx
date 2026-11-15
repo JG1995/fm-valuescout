@@ -244,7 +244,7 @@ describe("app shell routing", () => {
           filters: [],
           combine: "and",
           view: "moneyball",
-          comparisonPool: "filtered",
+          comparison: "own",
         },
         hash: "filters",
       });

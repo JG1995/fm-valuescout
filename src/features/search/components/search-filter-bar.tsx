@@ -9,7 +9,7 @@ import {
 import { TableToolbar } from "@/components/player-table/table-toolbar";
 import { Button } from "@/components/ui/button/button";
 import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
-import type { ComparisonPool, SearchView } from "../types/search-view";
+import type { MoneyballComparison, SearchView } from "../types/search-view";
 import {
   completeFilterRules,
   createBlankFilterRule,
@@ -29,7 +29,7 @@ type SearchFilterBarProps = {
   onRulesChange: (rules: FilterRule[]) => void;
   onApply: (rules: FilterRule[], combine: FilterCombineMode) => void;
   view?: SearchView;
-  comparisonPool?: ComparisonPool;
+  comparison?: MoneyballComparison;
   fieldRequest?: FilterFieldRequest | null;
   summary?: ReactNode;
   columnsControl?: ReactNode;
@@ -53,7 +53,7 @@ export function SearchFilterBar({
   onRulesChange,
   onApply,
   view = "general",
-  comparisonPool,
+  comparison,
   fieldRequest,
   summary,
   columnsControl,
@@ -166,7 +166,7 @@ export function SearchFilterBar({
           rule={editing.rule}
           isNew={editing.kind === "new"}
           view={view}
-          comparisonPool={comparisonPool}
+          comparison={comparison}
           onApply={apply}
           onRemove={
             editing.kind === "edit"

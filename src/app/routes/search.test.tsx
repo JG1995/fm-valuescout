@@ -1084,9 +1084,42 @@ describe("search route", () => {
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         searchView: "moneyball",
-        comparisonPool: "filtered",
+        comparison: "own",
       });
     });
+  });
+
+  it("marks the percentiles of a player with a short sample", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Regular Scout", 160),
+        dynamicValues: { "moneyball.average_rating": 7.25 },
+        moneyballPercentiles: { "moneyball.average_rating": 83 },
+      },
+      {
+        ...playerNamed("Short Sample Scout", 150),
+        dynamicValues: { "moneyball.average_rating": 7.5 },
+        moneyballPercentiles: { "moneyball.average_rating": 90 },
+        moneyballShortSample: true,
+      },
+    ]);
+    renderSearchRoute("/search?view=moneyball");
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(
+      within(table).getByRole("img", { name: "Average Rating: 83, Excellent" }),
+    ).toBeInTheDocument();
+    const shortSample = within(table).getByRole("img", {
+      name: "Average Rating, short sample: 90, Excellent",
+    });
+    expect(shortSample).toHaveAttribute(
+      "title",
+      "Short sample: under 450 minutes, ranked against peers with 450+",
+    );
+    expect(shortSample).toHaveClass("text-on-surface-variant");
   });
 
   it("selects, requests, sorts, and renders Moneyball role columns without changing raw percentiles", async () => {
@@ -1180,9 +1213,7 @@ describe("search route", () => {
       }),
     );
     expect(
-      within(dialog).getByText(
-        /Scored against the players matching your other filters/,
-      ),
+      within(dialog).getByText(/Scored among the role's position family/),
     ).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText("Value"), {
       target: { value: "70" },
@@ -1202,10 +1233,13 @@ describe("search route", () => {
       });
     });
 
-    await user.click(screen.getByRole("button", { name: "All players" }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Percentiles vs" }),
+      "Wing-backs",
+    );
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
-        comparisonPool: "fullCsv",
+        comparison: "wing_back",
         filters: [{ field: roleField, op: "gte", value: 70 }],
       });
     });
@@ -1228,7 +1262,7 @@ describe("search route", () => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
         searchView: "moneyball",
         sortBy: "moneyball.average_rating",
-        comparisonPool: "filtered",
+        comparison: "own",
       });
     });
   });
@@ -3364,7 +3398,7 @@ describe("search route", () => {
         dir: "desc",
         combine: "and",
         filters: [],
-        comparisonPool: "filtered",
+        comparison: "own",
       });
     });
 
@@ -3572,7 +3606,7 @@ describe("search route", () => {
       within(toolbar).getByRole("combobox", { name: "Shortlist" }),
     ).toHaveValue("1");
     expect(
-      within(toolbar).getByRole("group", { name: "Percentiles vs" }),
+      within(toolbar).getByRole("combobox", { name: "Percentiles vs" }),
     ).toBeInTheDocument();
 
     await user.selectOptions(
@@ -4005,7 +4039,7 @@ describe("search route", () => {
       expect(await screen.findByText("Low CA")).toBeInTheDocument();
     });
 
-    it("hosts the comparison-pool toggle in the toolbar dataset slot", async () => {
+    it("hosts the comparison select in the toolbar dataset slot", async () => {
       const user = userEvent.setup();
       await resolveLoadDataIpcMock();
       setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
@@ -4015,15 +4049,27 @@ describe("search route", () => {
       const toolbar = screen.getByRole("toolbar", {
         name: "Player results toolbar",
       });
+      const comparison = within(toolbar).getByRole("combobox", {
+        name: "Percentiles vs",
+      });
+      expect(comparison).toHaveValue("own");
       expect(
-        within(toolbar).getByRole("button", { name: "Filtered cohort" }),
-      ).toBeInTheDocument();
-      expect(
-        within(toolbar).getByRole("button", { name: "All players" }),
-      ).toBeInTheDocument();
-      expect(
-        within(toolbar).getByRole("group", { name: "Percentiles vs" }),
-      ).toBeInTheDocument();
+        within(comparison)
+          .getAllByRole("option")
+          .map((option) => option.textContent),
+      ).toEqual([
+        "Own position",
+        "Goalkeepers",
+        "Centre-backs",
+        "Full-backs",
+        "Wing-backs",
+        "Defensive midfielders",
+        "Central midfielders",
+        "Wide midfielders",
+        "Attacking midfielders",
+        "Wingers",
+        "Strikers",
+      ]);
       expect(
         within(toolbar).getByRole("button", { name: "Add filter" }),
       ).toBeInTheDocument();
@@ -4045,12 +4091,10 @@ describe("search route", () => {
         expect(within(toolbar).queryByRole("button", { name })).toBeNull();
       }
 
-      await user.click(
-        within(toolbar).getByRole("button", { name: "All players" }),
-      );
+      await user.selectOptions(comparison, "Centre-backs");
       await waitFor(() => {
         expect(getLastSearchPlayersArgs()).toMatchObject({
-          comparisonPool: "fullCsv",
+          comparison: "central_defender",
         });
       });
     });
