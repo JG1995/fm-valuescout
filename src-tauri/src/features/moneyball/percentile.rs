@@ -107,6 +107,16 @@ pub(crate) fn subject_percentiles<'a>(
         .collect()
 }
 
+/// The percentile of `value` among `population`, which holds finite values in ascending order.
+/// The value need not belong to the population. Lower-is-better statistics are inverted, as
+/// stored percentiles are.
+pub(crate) fn percentile_in_population(population: &[f64], value: f64, key: &str) -> Option<u8> {
+    value
+        .is_finite()
+        .then(|| percentile_score(population, value, key))
+        .flatten()
+}
+
 fn percentile_score(population: &[f64], value: f64, key: &str) -> Option<u8> {
     ranked_score(
         population.partition_point(|candidate| *candidate < value),

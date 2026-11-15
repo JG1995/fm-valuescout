@@ -270,9 +270,7 @@ pub(crate) fn get_prospects(conn: &Connection, save_id: i64) -> Result<Option<Pr
         })
         .collect::<Vec<_>>();
     let every_lane = (0..tactic.lanes.len()).collect::<Vec<_>>();
-    for (lane_index, player_index) in
-        allocate_lanes(&tactic, &every_lane, &candidates, &HashSet::new())
-    {
+    for (lane_index, player_index) in allocate_lanes(&every_lane, &candidates, &HashSet::new()) {
         let player = &young[player_index];
         youth_xi[lane_index].player =
             player.lane_scores[lane_index].map(|(current_score, potential_score)| YouthXiPlayer {

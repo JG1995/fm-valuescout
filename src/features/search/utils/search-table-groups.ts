@@ -2,7 +2,7 @@ import type { TableGroupInput } from "@/components/player-table/table-groups";
 import { getMoneyballSearchMetric } from "@/utils/moneyball-search-metrics";
 import { getPlayerMetric } from "@/utils/player-metrics";
 import { isValidTacticColumnId } from "@/utils/tactic-ids";
-import type { SearchView } from "../types/search-view";
+import type { FilterView } from "../types/search-view";
 
 /**
  * Header groups for each Search view. The header, Columns, field pickers, and
@@ -88,6 +88,29 @@ export const MONEYBALL_TABLE_GROUPS: TableGroupInput = {
   },
 };
 
-export function searchTableGroups(view: SearchView): TableGroupInput {
-  return view === "moneyball" ? MONEYBALL_TABLE_GROUPS : SEARCH_TABLE_GROUPS;
+/**
+ * A tactic slot's recruitment filter fields: General's groups, then
+ * Moneyball's playing time and statistics.
+ */
+export const SLOT_FILTER_GROUPS: TableGroupInput = {
+  groups: [
+    ...SEARCH_TABLE_GROUPS.groups,
+    { id: "playing-time", label: "Playing Time" },
+    { id: "performance", label: "Performance" },
+  ],
+  groupForColumn: (columnId) =>
+    columnId.startsWith("moneyball.")
+      ? MONEYBALL_TABLE_GROUPS.groupForColumn(columnId)
+      : SEARCH_TABLE_GROUPS.groupForColumn(columnId),
+};
+
+export function searchTableGroups(view: FilterView): TableGroupInput {
+  switch (view) {
+    case "general":
+      return SEARCH_TABLE_GROUPS;
+    case "moneyball":
+      return MONEYBALL_TABLE_GROUPS;
+    case "slot":
+      return SLOT_FILTER_GROUPS;
+  }
 }

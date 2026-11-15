@@ -24,6 +24,7 @@ import {
   managedClubOptionsQueryOptions,
   managedClubQueryOptions,
 } from "@/features/managed-club/api/managed-club-query-options";
+import { formatRecruitmentFilter } from "@/features/search/utils/recruitment-filters";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import type { SaveSummary } from "@/features/snapshot/types/save";
@@ -38,13 +39,19 @@ import {
 type DashboardSearch = {
   /** The score mode; absent uses the configured default analysis view. */
   mode?: DashboardScoreMode;
+  /** `false` turns season stats off for General mode; absent keeps them on. */
+  stats?: false;
 };
 
 export const Route = createFileRoute("/")({
-  validateSearch: (search: Record<string, unknown>): DashboardSearch =>
-    search.mode === "general" || search.mode === "moneyball"
+  validateSearch: (search: Record<string, unknown>): DashboardSearch => ({
+    ...(search.mode === "general" || search.mode === "moneyball"
       ? { mode: search.mode }
-      : {},
+      : {}),
+    ...(search.stats === false || search.stats === "false"
+      ? { stats: false as const }
+      : {}),
+  }),
   loader: ({ context: { queryClient } }) =>
     Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
@@ -228,10 +235,22 @@ function DashboardPage() {
           context={context}
           mode={mode}
           onModeChange={(nextMode) =>
-            void navigate({ search: { mode: nextMode }, replace: true })
+            void navigate({
+              search: (previous) => ({ ...previous, mode: nextMode }),
+              replace: true,
+            })
+          }
+          seasonStats={search.stats !== false}
+          onSeasonStatsChange={(on) =>
+            void navigate({
+              search: ({ stats: _stats, ...previous }) =>
+                on ? previous : { ...previous, stats: false as const },
+              replace: true,
+            })
           }
           shortlists={save.playerShortlists}
           graphics={dashboardGraphics}
+          describeRecruitmentFilter={formatRecruitmentFilter}
         />
         <DevelopmentProspectsPanel
           context={context}

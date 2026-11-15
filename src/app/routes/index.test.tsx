@@ -37,6 +37,7 @@ const KEEPER_SLOT: DashboardLineupSlot = {
   cover: { uid: 3, name: "Reserve Keeper", score: 55 },
   unscoredPlannerPlayer: null,
   bestSigning: null,
+  recruitmentFilters: [],
 };
 const LEFT_BACK_SLOT: DashboardLineupSlot = {
   laneId: "left_back",
@@ -49,6 +50,7 @@ const LEFT_BACK_SLOT: DashboardLineupSlot = {
   cover: null,
   unscoredPlannerPlayer: null,
   bestSigning: null,
+  recruitmentFilters: [],
 };
 const STRIKER_SLOT: DashboardLineupSlot = {
   laneId: "centre_forward",
@@ -61,6 +63,7 @@ const STRIKER_SLOT: DashboardLineupSlot = {
   cover: null,
   unscoredPlannerPlayer: null,
   bestSigning: null,
+  recruitmentFilters: [],
 };
 
 function recommendation(
@@ -105,6 +108,11 @@ function signings(
     candidates: null,
     totalRecommendations: recommendations.length,
     recommendations,
+    filteredOut: 0,
+    underMinimumMinutes: 0,
+    minimumMinutes: 450,
+    seasonStatsAvailable: true,
+    seasonStatsApplied: true,
     ...overrides,
   };
 }
@@ -272,7 +280,7 @@ describe("Dashboard", () => {
 
     await waitFor(() => expect(signingCards()).toHaveLength(1));
     expect(getDashboardSigningsIpcRequests()).toEqual([
-      { mode: "moneyball", shortlistId: null, laneId: null },
+      { mode: "moneyball", shortlistId: null, laneId: null, seasonStats: true },
     ]);
   });
 
@@ -292,6 +300,7 @@ describe("Dashboard", () => {
       mode: "general",
       shortlistId: null,
       laneId: "goalkeeper",
+      seasonStats: true,
     });
 
     await user.click(screen.getByRole("button", { name: "Show all slots" }));
@@ -305,10 +314,157 @@ describe("Dashboard", () => {
       mode: "general",
       shortlistId: 7,
       laneId: null,
+      seasonStats: true,
     });
     expect(
       screen.getByText(/^1 of 6 shortlisted players would improve your XI/),
     ).toBeInTheDocument();
+  });
+
+  it("shows each slot's recruitment filters and links to edit them", async () => {
+    const user = userEvent.setup();
+    await seedManagedClub();
+    const filteredSlots = [
+      {
+        ...KEEPER_SLOT,
+        recruitmentFilters: [{ field: "height", op: "gte", value: 190 }],
+      },
+      {
+        ...LEFT_BACK_SLOT,
+        recruitmentFilters: [
+          { field: "moneyball.progressive_passes", op: "pct_gte", value: 25 },
+        ],
+      },
+      STRIKER_SLOT,
+    ];
+    setDashboardSigningsIpcMock((request) =>
+      request.laneId === "goalkeeper"
+        ? signings([KEEPER_TARGET], { slots: filteredSlots, filteredOut: 3 })
+        : request.laneId === "left_back"
+          ? signings([], { slots: filteredSlots, filteredOut: 2 })
+          : signings([LEFT_BACK_TARGET, KEEPER_TARGET], {
+              slots: filteredSlots,
+              filteredOut: 1,
+            }),
+    );
+    renderDashboard();
+    await waitFor(() => expect(signingCards()).toHaveLength(2));
+
+    expect(
+      screen.getByText(
+        /^Recruitment filters on 2 slots · 1 realistic signing filtered out ·/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit filters" })).toHaveAttribute(
+      "href",
+      "/my-club?view=tactic",
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /has recruitment filters.*Home Keeper/,
+      }),
+    );
+    await waitFor(() => expect(signingCards()).toHaveLength(1));
+    expect(
+      screen.getByText(
+        /^Filters: Height ≥ 190 · 3 realistic signings filtered out ·/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit filters" })).toHaveAttribute(
+      "href",
+      "/my-club?view=tactic&slot=goalkeeper",
+    );
+
+    await user.click(screen.getByRole("button", { name: /Home Left Back/ }));
+    expect(
+      await screen.findByText("No realistic signing passes DL's filters"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /2 realistic signings would improve it but fail its recruitment filters/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit filters" })).toHaveAttribute(
+      "href",
+      "/my-club?view=tactic&slot=left_back",
+    );
+  });
+
+  it("turns season stats off for General mode and keeps them for Moneyball", async () => {
+    const user = userEvent.setup();
+    await seedManagedClub();
+    setDashboardSigningsIpcMock((request) =>
+      request.mode === "general" && request.seasonStats
+        ? signings([KEEPER_TARGET], {
+            filteredOut: 3,
+            underMinimumMinutes: 2,
+          })
+        : signings([LEFT_BACK_TARGET, KEEPER_TARGET], {
+            seasonStatsApplied: request.mode === "moneyball",
+          }),
+    );
+    const { router } = renderDashboard();
+    await waitFor(() => expect(signingCards()).toHaveLength(1));
+
+    const toggle = screen.getByRole("checkbox", { name: "Season stats" });
+    expect(toggle).toBeChecked();
+    expect(toggle).toHaveAccessibleDescription(
+      /Candidates need 450\+ competitive minutes this season/,
+    );
+    expect(
+      screen.getByText(
+        "3 realistic signings filtered out, 2 of them under 450 minutes",
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(toggle);
+    await waitFor(() => expect(signingCards()).toHaveLength(2));
+    expect(getDashboardSigningsIpcRequests().at(-1)).toMatchObject({
+      mode: "general",
+      seasonStats: false,
+    });
+    expect(router.state.location.search).toEqual({ stats: false });
+
+    await user.click(screen.getByRole("button", { name: "Moneyball" }));
+    const locked = screen.getByRole("checkbox", { name: "Season stats" });
+    expect(locked).toBeChecked();
+    expect(locked).toBeDisabled();
+    expect(router.state.location.search).toEqual({
+      stats: false,
+      mode: "moneyball",
+    });
+  });
+
+  it("offers to turn season stats off when too few minutes empty a slot", async () => {
+    const user = userEvent.setup();
+    await seedManagedClub();
+    setDashboardSigningsIpcMock((request) =>
+      request.laneId === "left_back" && request.seasonStats
+        ? signings([], { filteredOut: 2, underMinimumMinutes: 2 })
+        : signings([LEFT_BACK_TARGET], { seasonStatsApplied: false }),
+    );
+    renderDashboard();
+    await waitFor(() => expect(signingCards()).toHaveLength(1));
+
+    await user.click(screen.getByRole("button", { name: /Home Left Back/ }));
+
+    expect(
+      await screen.findByText("No realistic signing for DL has enough minutes"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /2 realistic signings would improve it but have under 450 minutes this season/,
+      ),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Turn off season stats" }),
+    );
+    await waitFor(() => expect(signingCards()).toHaveLength(1));
+    expect(getDashboardSigningsIpcRequests().at(-1)).toMatchObject({
+      laneId: "left_back",
+      seasonStats: false,
+    });
   });
 
   it("says what is missing when the save has no linked file and no signing to compare", async () => {
@@ -458,7 +614,7 @@ describe("Dashboard", () => {
       name: "Best signing for each slot",
     });
     expect(dialog).toHaveTextContent(
-      "Realistic signings: the player who would improve each slot most.",
+      "Realistic signings with 450+ minutes: the player who would improve each slot most.",
     );
     // Goalkeeper to striker, whatever order the slots arrive in.
     const [keeper, leftBack, striker] = within(dialog)

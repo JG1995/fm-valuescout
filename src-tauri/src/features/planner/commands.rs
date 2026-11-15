@@ -19,7 +19,9 @@ use super::squad::{
     self as squad_service, SquadPlayer, SquadPlayersPage, SquadSortDir, SquadSortField,
     DEFAULT_SQUAD_PAGE_LIMIT, MAX_SQUAD_PAGE_LIMIT,
 };
-use super::tactic::{self as tactic_service, PlannerTactic, TacticLane, TacticOptions};
+use super::tactic::{
+    self as tactic_service, PlannerTactic, RecruitmentFilter, TacticLane, TacticOptions,
+};
 use super::teams::{
     self as teams_service, PlannerStaffingTargetRemovalImpact, PlannerTeamInput,
     PlannerTeamRemovalImpact,
@@ -120,6 +122,36 @@ pub struct TacticLaneDto {
     pub oop_position: String,
     pub oop_role_id: String,
     pub custom_metric_keys: Vec<String>,
+    pub recruitment_filters: Vec<RecruitmentFilterDto>,
+}
+
+/// A recruitment filter rule in Search's filter IPC shape.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecruitmentFilterDto {
+    pub field: String,
+    pub op: String,
+    pub value: serde_json::Value,
+}
+
+impl From<RecruitmentFilterDto> for RecruitmentFilter {
+    fn from(filter: RecruitmentFilterDto) -> Self {
+        Self {
+            field: filter.field,
+            op: filter.op,
+            value: filter.value,
+        }
+    }
+}
+
+impl From<RecruitmentFilter> for RecruitmentFilterDto {
+    fn from(filter: RecruitmentFilter) -> Self {
+        Self {
+            field: filter.field,
+            op: filter.op,
+            value: filter.value,
+        }
+    }
 }
 
 impl From<TacticLaneDto> for TacticLane {
@@ -135,6 +167,11 @@ impl From<TacticLaneDto> for TacticLane {
             oop_position: lane.oop_position,
             oop_role_id: lane.oop_role_id,
             custom_metric_keys: lane.custom_metric_keys,
+            recruitment_filters: lane
+                .recruitment_filters
+                .into_iter()
+                .map(RecruitmentFilter::from)
+                .collect(),
         }
     }
 }
@@ -166,6 +203,7 @@ pub struct TacticLaneResponseDto {
     pub oop_position: String,
     pub oop_role_id: String,
     pub custom_metric_keys: Vec<String>,
+    pub recruitment_filters: Vec<RecruitmentFilterDto>,
 }
 
 #[derive(Serialize)]
@@ -191,6 +229,11 @@ impl From<PlannerTactic> for PlannerTacticDto {
                     oop_position: lane.oop_position,
                     oop_role_id: lane.oop_role_id,
                     custom_metric_keys: lane.custom_metric_keys,
+                    recruitment_filters: lane
+                        .recruitment_filters
+                        .into_iter()
+                        .map(RecruitmentFilterDto::from)
+                        .collect(),
                 })
                 .collect(),
         }

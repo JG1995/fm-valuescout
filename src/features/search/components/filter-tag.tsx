@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import type { FilterRule } from "../types/filter-rule";
-import type { SearchView } from "../types/search-view";
+import type { FilterView } from "../types/search-view";
 import { formatFilterTagLabel } from "../utils/format-filter-label";
 
 type FilterTagProps = {
@@ -8,7 +8,7 @@ type FilterTagProps = {
   onRemove: () => void;
   /** Opens the rule's editor, anchored to the chip. */
   onEdit?: (anchor: HTMLElement) => void;
-  view?: SearchView;
+  view?: FilterView;
 };
 
 export function FilterTag({

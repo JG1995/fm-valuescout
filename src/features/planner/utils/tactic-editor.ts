@@ -229,6 +229,7 @@ export function cloneTactic(tactic: PlannerTactic): PlannerTactic {
     lanes: tactic.lanes.map((lane) => ({
       ...lane,
       customMetricKeys: [...lane.customMetricKeys],
+      recruitmentFilters: structuredClone(lane.recruitmentFilters),
     })),
   };
 }
@@ -248,7 +249,6 @@ export function validateTacticDraft(
     return `The tactic must contain ${TACTIC_LANE_IDS.length} linked positions.`;
   }
 
-  const importanceRanks = new Set<number>();
   const phasePlacements = {
     ip: new Set<string>(),
     oop: new Set<string>(),
@@ -260,23 +260,6 @@ export function validateTacticDraft(
       lane.ipWeight > 1
     ) {
       return `${phaseDescription(lane, "ip", tactic.lanes, options)} IP score weight must be between 0% and 100%.`;
-    }
-    if (
-      lane.importanceRank !== null &&
-      (!Number.isInteger(lane.importanceRank) ||
-        lane.importanceRank < 1 ||
-        lane.importanceRank > TACTIC_LANE_IDS.length)
-    ) {
-      return `${linkedPositionDescription(lane, tactic.lanes, options)} importance rank must be between 1 and ${TACTIC_LANE_IDS.length}.`;
-    }
-    if (
-      lane.importanceRank !== null &&
-      importanceRanks.has(lane.importanceRank)
-    ) {
-      return `${linkedPositionDescription(lane, tactic.lanes, options)} cannot use importance rank ${lane.importanceRank}; it is already used.`;
-    }
-    if (lane.importanceRank !== null) {
-      importanceRanks.add(lane.importanceRank);
     }
     for (const phase of ["ip", "oop"] as const) {
       const position = phasePosition(lane, phase);

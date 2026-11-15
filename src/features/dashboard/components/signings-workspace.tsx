@@ -18,6 +18,8 @@ import { dashboardSigningsQueryOptions } from "../api/dashboard-query-options";
 import type {
   DashboardContext,
   DashboardGraphics,
+  DashboardLineupSlot,
+  DashboardRecruitmentFilter,
   DashboardScoreMode,
   DashboardSignings,
 } from "../types/dashboard";
@@ -36,6 +38,7 @@ import {
 } from "./panel-expand-button";
 import { cardGridMinHeightClass, PLAYER_CARD_MIN } from "./player-card";
 import { ScoreModeToggle } from "./score-mode-toggle";
+import { SeasonStatsToggle } from "./season-stats-toggle";
 import { SigningCard } from "./signing-card";
 import { SlotSigningsModal } from "./slot-signings-modal";
 import { StartingXiList } from "./starting-xi-list";
@@ -98,14 +101,116 @@ function SigningsSummary({
   );
 }
 
+const textLinkClass = "text-on-surface underline underline-offset-2";
+
+/** How many candidates were held back, and how many of them for too few minutes. */
+function heldBackPhrase(signings: DashboardSignings, candidateNoun: string) {
+  const { filteredOut, underMinimumMinutes, minimumMinutes } = signings;
+  if (filteredOut === 0) {
+    return "Nobody filtered out";
+  }
+  const heldBack = `${plural(filteredOut, candidateNoun)} filtered out`;
+  const minutes = `under ${formatCount(minimumMinutes)} minutes`;
+  if (underMinimumMinutes === 0) {
+    return heldBack;
+  }
+  return underMinimumMinutes === filteredOut
+    ? `${heldBack}, all ${minutes}`
+    : `${heldBack}, ${formatCount(underMinimumMinutes)} of them ${minutes}`;
+}
+
+/** Why the held-back candidates are not recommended. */
+function heldBackReason(signings: DashboardSignings) {
+  const minutes = `have under ${formatCount(signings.minimumMinutes)} minutes this season`;
+  if (signings.underMinimumMinutes === 0) {
+    return "fail its recruitment filters";
+  }
+  return signings.underMinimumMinutes === signings.filteredOut
+    ? minutes
+    : `fail its recruitment filters or ${minutes}`;
+}
+
+function isSeasonStatFilter(filter: DashboardRecruitmentFilter) {
+  return filter.field.startsWith("moneyball.");
+}
+
+/** Opens the Tactic editor on the slot's recruitment filters, or on the tactic. */
+function EditFiltersLink({ laneId }: { laneId: string | null }) {
+  return (
+    <Link
+      to="/my-club"
+      search={
+        laneId === null ? { view: "tactic" } : { view: "tactic", slot: laneId }
+      }
+      className={cn(aboveExpandClass, textLinkClass)}
+    >
+      Edit filters
+    </Link>
+  );
+}
+
+/**
+ * What the slots' recruitment filters and the season-stats minimum hold back:
+ * the selected slot's filters, or how many slots have filters, with how many
+ * candidates were filtered out and how many of them for too few minutes.
+ */
+function RecruitmentFilterNote({
+  signings,
+  selectedSlot,
+  candidateNoun,
+  describeFilter,
+}: {
+  signings: DashboardSignings;
+  selectedSlot: DashboardLineupSlot | undefined;
+  candidateNoun: string;
+  describeFilter: (filter: DashboardRecruitmentFilter) => string;
+}) {
+  const filters = selectedSlot
+    ? selectedSlot.recruitmentFilters
+    : signings.slots.flatMap((slot) => slot.recruitmentFilters);
+  const filteredSlots = signings.slots.filter(
+    (slot) => slot.recruitmentFilters.length > 0,
+  );
+  if (filters.length === 0 && signings.filteredOut === 0) {
+    return null;
+  }
+  const lead =
+    filters.length === 0
+      ? null
+      : selectedSlot
+        ? `Filters: ${filters.map(describeFilter).join(" · ")}`
+        : `Recruitment filters on ${plural(filteredSlots.length, "slot")}`;
+  const statFiltersOff =
+    !signings.seasonStatsApplied && filters.some(isSeasonStatFilter);
+  return (
+    <p className="-mt-1 shrink-0 truncate px-4 pb-2 text-body-sm text-on-surface-variant">
+      {[
+        lead,
+        statFiltersOff ? "season-stat filters off" : null,
+        heldBackPhrase(signings, candidateNoun),
+      ]
+        .filter((part) => part !== null)
+        .join(" · ")}
+      {filters.length > 0 ? (
+        <>
+          {" · "}
+          <EditFiltersLink laneId={selectedSlot?.laneId ?? null} />
+        </>
+      ) : null}
+    </p>
+  );
+}
+
 function SigningsEmptyState({
   signings,
   mode,
   shortlisted,
   candidateNoun,
   selectedSlot,
+  selectedLaneId,
   onClearSlot,
   onUseGeneral,
+  onSeasonStatsOff,
 }: {
   signings: DashboardSignings;
   mode: DashboardScoreMode;
@@ -113,9 +218,18 @@ function SigningsEmptyState({
   shortlisted: boolean;
   candidateNoun: string;
   selectedSlot: string | null;
+  selectedLaneId: string | null;
   onClearSlot: () => void;
   onUseGeneral: () => void;
+  onSeasonStatsOff: () => void;
 }): ReactNode {
+  // Only General mode can drop the minimum; Moneyball scores need the stats.
+  const seasonStatsOff =
+    mode === "general" && signings.underMinimumMinutes > 0 ? (
+      <Button variant="secondary" onClick={onSeasonStatsOff}>
+        Turn off season stats
+      </Button>
+    ) : null;
   if (!signings.scoresAvailable) {
     return (
       <EmptyState
@@ -156,6 +270,41 @@ function SigningsEmptyState({
       </EmptyState>
     );
   }
+  if (selectedSlot !== null && signings.filteredOut > 0) {
+    const slotFilters =
+      signings.slots.find((slot) => slot.laneId === selectedLaneId)
+        ?.recruitmentFilters.length ?? 0;
+    return (
+      <EmptyState
+        icon={UserRoundCheck}
+        title={
+          signings.underMinimumMinutes === signings.filteredOut
+            ? `No ${candidateNoun} for ${selectedSlot} has enough minutes`
+            : `No ${candidateNoun} passes ${selectedSlot}'s filters`
+        }
+        action={
+          <div className="flex flex-wrap justify-center gap-2 pt-2">
+            {slotFilters > 0 ? (
+              <Link
+                to="/my-club"
+                search={{ view: "tactic", slot: selectedLaneId ?? undefined }}
+                className={linkButtonClass}
+              >
+                Edit filters
+              </Link>
+            ) : null}
+            {seasonStatsOff}
+            <Button variant="secondary" onClick={onClearSlot}>
+              Show all slots
+            </Button>
+          </div>
+        }
+      >
+        {plural(signings.filteredOut, candidateNoun)} would improve it but{" "}
+        {heldBackReason(signings)}.
+      </EmptyState>
+    );
+  }
   if (selectedSlot !== null) {
     return (
       <EmptyState
@@ -169,6 +318,22 @@ function SigningsEmptyState({
       >
         Your current player scores at least as high there as every{" "}
         {candidateNoun}.
+      </EmptyState>
+    );
+  }
+  if (signings.filteredOut > 0) {
+    return (
+      <EmptyState
+        icon={UserRoundCheck}
+        title={`No ${candidateNoun} improves your XI within your requirements`}
+        action={
+          seasonStatsOff ? (
+            <div className="flex justify-center pt-2">{seasonStatsOff}</div>
+          ) : undefined
+        }
+      >
+        {plural(signings.filteredOut, candidateNoun)} would improve a slot but{" "}
+        {heldBackReason(signings)}.
       </EmptyState>
     );
   }
@@ -194,12 +359,20 @@ export function SigningsWorkspace({
   onModeChange,
   shortlists,
   graphics,
+  describeRecruitmentFilter,
+  seasonStats,
+  onSeasonStatsChange,
 }: {
   context: DashboardContext;
   mode: DashboardScoreMode;
   onModeChange: (mode: DashboardScoreMode) => void;
+  /** Whether General mode applies season stats; Moneyball mode always does. */
+  seasonStats: boolean;
+  onSeasonStatsChange: (seasonStats: boolean) => void;
   shortlists: readonly DashboardShortlistOption[];
   graphics: DashboardGraphics;
+  /** A short label for a recruitment filter rule, such as `Height ≥ 183`. */
+  describeRecruitmentFilter: (filter: DashboardRecruitmentFilter) => string;
 }) {
   const [chosenShortlistId, setChosenShortlistId] = useState<number | null>(
     null,
@@ -211,7 +384,12 @@ export function SigningsWorkspace({
   const shortlistId = shortlist?.id ?? null;
   const candidateNoun = shortlist ? "shortlisted player" : "realistic signing";
   const query = useQuery(
-    dashboardSigningsQueryOptions(context, { mode, shortlistId, laneId }),
+    dashboardSigningsQueryOptions(context, {
+      mode,
+      shortlistId,
+      laneId,
+      seasonStats,
+    }),
   );
   const signings = query.data ?? null;
   const slots = useMemo(
@@ -258,6 +436,13 @@ export function SigningsWorkspace({
           </label>
         ) : null}
         <ScoreModeToggle mode={mode} onChange={onModeChange} />
+        <SeasonStatsToggle
+          mode={mode}
+          checked={seasonStats}
+          available={signings?.seasonStatsAvailable}
+          minimumMinutes={signings?.minimumMinutes}
+          onChange={onSeasonStatsChange}
+        />
       </div>
       {expandable ? (
         <PanelExpandButton onClick={() => setSlotsOpen(true)}>
@@ -317,8 +502,10 @@ export function SigningsWorkspace({
               shortlisted={shortlist !== undefined}
               candidateNoun={candidateNoun}
               selectedSlot={selectedSlotName}
+              selectedLaneId={laneId}
               onClearSlot={() => setLaneId(null)}
               onUseGeneral={() => onModeChange("general")}
+              onSeasonStatsOff={() => onSeasonStatsChange(false)}
             />
           </div>
         ) : (
@@ -332,6 +519,12 @@ export function SigningsWorkspace({
                 onClearSlot={() => setLaneId(null)}
               />
             </p>
+            <RecruitmentFilterNote
+              signings={signings}
+              selectedSlot={selectedSlot}
+              candidateNoun={candidateNoun}
+              describeFilter={describeRecruitmentFilter}
+            />
             <div
               className={cn(
                 "flex flex-1 border-t border-outline-variant",

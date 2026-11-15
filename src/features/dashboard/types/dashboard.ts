@@ -29,6 +29,16 @@ export type DashboardSlotPlacement = {
   oopRoleId: string;
 };
 
+/**
+ * One of a slot's recruitment filter rules, in Search's filter IPC shape. The
+ * route describes it, since only Search knows its fields.
+ */
+export type DashboardRecruitmentFilter = {
+  field: string;
+  op: string;
+  value: string | number | boolean | number[] | string[];
+};
+
 export type DashboardLineupSlot = DashboardSlotPlacement & {
   scoreBasis: DashboardScoreBasis;
   incumbent: DashboardIncumbent | null;
@@ -41,6 +51,8 @@ export type DashboardLineupSlot = DashboardSlotPlacement & {
    * independently, so one player can be the best signing for several.
    */
   bestSigning: DashboardRecommendation | null;
+  /** Rules a candidate must pass to be recommended for the slot. */
+  recruitmentFilters: DashboardRecruitmentFilter[];
 };
 
 export type DashboardOtherLane = {
@@ -78,6 +90,23 @@ export type DashboardSignings = {
   candidates: number | null;
   totalRecommendations: number;
   recommendations: DashboardRecommendation[];
+  /**
+   * Candidates who would improve a considered slot but are held back from
+   * every slot they would improve: by its recruitment filters, or by too few
+   * minutes.
+   */
+  filteredOut: number;
+  /** Of `filteredOut`, those under `minimumMinutes` minutes. */
+  underMinimumMinutes: number;
+  /** The competitive minutes a candidate needs while season stats apply. */
+  minimumMinutes: number;
+  /** Whether the snapshot has season stats. */
+  seasonStatsAvailable: boolean;
+  /**
+   * Whether season stats applied: candidates needed `minimumMinutes` and the
+   * slots' season-stat filters ran. Always in Moneyball mode with stats.
+   */
+  seasonStatsApplied: boolean;
 };
 
 export type DashboardSigningsRequest = {
@@ -86,6 +115,8 @@ export type DashboardSigningsRequest = {
   shortlistId: number | null;
   /** Restricts the ranked recommendations to one tactic slot. */
   laneId: string | null;
+  /** Whether General mode applies season stats; Moneyball mode always does. */
+  seasonStats: boolean;
 };
 
 export type DashboardExpiringContract = {

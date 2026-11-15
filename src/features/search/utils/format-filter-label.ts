@@ -1,5 +1,5 @@
 import type { FilterRule } from "../types/filter-rule";
-import type { SearchView } from "../types/search-view";
+import type { FilterView } from "../types/search-view";
 import { getFilterField, isRawPercentageRule } from "./filter-registry";
 
 function operatorSymbol(op: string): string {
@@ -30,7 +30,7 @@ function operatorSymbol(op: string): string {
 /** Short label for compact filter tags, e.g. `Age 18–23` or `Position: DR, DL`. */
 export function formatFilterTagLabel(
   rule: FilterRule,
-  view: SearchView = "general",
+  view: FilterView = "general",
 ): string {
   const field = getFilterField(rule.field, view);
   if (!field) {

@@ -21,6 +21,7 @@ function lane(
     oopPosition,
     oopRoleId,
     customMetricKeys: [],
+    recruitmentFilters: [],
     ...overrides,
   };
 }
@@ -139,6 +140,7 @@ describe("swapPhasePlacement", () => {
           preferredFoot: "left",
           footPreference: "strict",
           customMetricKeys: ["goals", "assists"],
+          recruitmentFilters: [{ field: "height", op: "gte", value: 183 }],
         },
       ),
       lane(
@@ -166,6 +168,7 @@ describe("swapPhasePlacement", () => {
       preferredFoot: "left",
       footPreference: "strict",
       customMetricKeys: ["goals", "assists"],
+      recruitmentFilters: [{ field: "height", op: "gte", value: 183 }],
     });
     expect(next.find((candidate) => candidate.laneId === "b")).toMatchObject({
       ipPosition: "MCR",

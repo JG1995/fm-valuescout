@@ -3242,11 +3242,6 @@ describe("My Club route", () => {
       }),
     ).toHaveLength(1);
     expect(
-      within(settings).getAllByRole("combobox", {
-        name: "Importance rank",
-      }),
-    ).toHaveLength(1);
-    expect(
       within(settings).getByRole("group", {
         name: "In-Possession settings",
       }),
@@ -3841,16 +3836,16 @@ describe("My Club route", () => {
     expect(within(panel).queryByRole("listbox")).toBeNull();
 
     // All 11 lanes render in lane order even though the draft array was
-    // rotated: the goalkeeper still leads with a readable transition.
+    // rotated: the goalkeeper still leads, naming both phases' roles in
+    // full and its custom metric count.
     const rows = within(panel).getAllByRole("button");
     expect(rows).toHaveLength(11);
-    expect(rows[0].textContent).toContain("Goalkeeper\nOOP:");
-    expect(rows[0]).toHaveClass("whitespace-pre-line");
-    expect(rows[0]).toHaveTextContent(
-      "IP: GK · Goalkeeper OOP: GK · Line-Holding Keeper",
+    expect(rows[0]).toHaveTextContent("GKGoalkeeperLine-Holding Keeper2");
+    expect(rows[0]).toHaveAccessibleName(
+      "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper, 2 custom metrics",
     );
-    expect(rows[10]).toHaveTextContent(
-      "IP: STC · Centre Forward OOP: STC · Central Outlet Centre Forward",
+    expect(rows[10]).toHaveAccessibleName(
+      "IP: STC · Centre Forward / OOP: STC · Central Outlet Centre Forward",
     );
     for (const row of rows) {
       expect(row).toHaveAttribute("aria-pressed");
@@ -3864,11 +3859,10 @@ describe("My Club route", () => {
       (row) => row.getAttribute("aria-pressed") === "true",
     );
     expect(initiallyPressed).toHaveLength(1);
-    expect(initiallyPressed[0]).toHaveTextContent("IP: DL · Full-Back");
+    expect(initiallyPressed[0]).toHaveAccessibleName(/^IP: DL · Full-Back/);
     expect(initiallyPressed[0]).toHaveClass(
       "border-transparent",
       "bg-surface-container-high",
-      "font-semibold",
     );
 
     // Panel to pitch and inspector: activating the goalkeeper row selects
@@ -3881,7 +3875,7 @@ describe("My Club route", () => {
       ),
     ).toHaveLength(1);
     expect(afterPanelSelect[0]).toHaveAttribute("aria-pressed", "true");
-    expect(afterPanelSelect[0]).toHaveClass("font-semibold");
+    expect(afterPanelSelect[0]).toHaveClass("bg-surface-container-high");
     expect(
       screen.getByRole("button", { name: "IP: GK · Goalkeeper" }),
     ).toHaveAttribute("aria-pressed", "true");
@@ -3900,7 +3894,7 @@ describe("My Club route", () => {
       (row) => row.getAttribute("aria-pressed") === "true",
     );
     expect(markerPressed).toHaveLength(1);
-    expect(markerPressed[0]).toHaveTextContent("IP: DL · Full-Back");
+    expect(markerPressed[0]).toHaveAccessibleName(/^IP: DL · Full-Back/);
 
     // Ordinary-button rows stay keyboard operable: Enter on the leading
     // row moves selection back and the inspector follows.
@@ -3925,27 +3919,6 @@ describe("My Club route", () => {
     expect(
       validateTacticDraft(tactic, resolvePlannerTacticOptionsIpcMock()),
     ).toBe("STC is already used in the In-Possession phase.");
-  });
-
-  it("saves and reloads the selected lane importance rank", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
-    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
-
-    await screen.findByRole("region", { name: "Tactic controls" });
-    await user.click(
-      screen.getByRole("button", { name: "IP: DL · Full-Back" }),
-    );
-    const rank = screen.getByRole("combobox", {
-      name: "Importance rank",
-    });
-    await user.selectOptions(rank, "3");
-    await user.click(screen.getByRole("button", { name: "Save tactic" }));
-
-    expect(resolvePlannerTacticIpcMock().lanes[0].importanceRank).toBeNull();
-    expect(resolvePlannerTacticIpcMock().lanes[1].importanceRank).toBe(3);
-    expect(rank).toHaveValue("3");
   });
 
   it("saves the selected lane foot rule and disables its mode for Either", async () => {
@@ -3993,41 +3966,6 @@ describe("My Club route", () => {
     );
     expect(preferredFoot).toHaveValue("left");
     expect(resolvePlannerTacticIpcMock().lanes[0].preferredFoot).toBe("any");
-  });
-
-  it("shows duplicate importance ranks inline and retains them after a failed save", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
-    setPlannerTacticSaveError("Tactic save failed");
-    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
-
-    await screen.findByRole("region", { name: "Tactic controls" });
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Importance rank" }),
-      "1",
-    );
-    await user.click(
-      screen.getByRole("button", { name: "IP: DL · Full-Back" }),
-    );
-    const duplicateRank = screen.getByRole("combobox", {
-      name: "Importance rank",
-    });
-    await user.selectOptions(duplicateRank, "1");
-
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "IP: DL · Full-Back / OOP: DL · Holding Full-Back cannot use importance rank 1; it is already used.",
-    );
-    expect(screen.getByRole("button", { name: "Save tactic" })).toBeDisabled();
-
-    await user.selectOptions(duplicateRank, "2");
-    await user.click(screen.getByRole("button", { name: "Save tactic" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Tactic save failed",
-    );
-    expect(duplicateRank).toHaveValue("2");
-    expect(resolvePlannerTacticIpcMock().lanes[1].importanceRank).toBeNull();
   });
 
   it("refreshes 60-second cached candidates after saving a tactic", async () => {

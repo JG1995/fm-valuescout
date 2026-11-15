@@ -94,6 +94,7 @@ const DEFAULT_TACTIC: PlannerTactic = {
     oopRoleId,
     customMetricKeys:
       laneId === "goalkeeper" ? ["save_ratio", "clean_sheets_ratio"] : [],
+    recruitmentFilters: [],
   })),
 };
 
@@ -355,6 +356,7 @@ function cloneTactic(value: PlannerTactic): PlannerTactic {
     lanes: value.lanes.map((lane) => ({
       ...lane,
       customMetricKeys: [...lane.customMetricKeys],
+      recruitmentFilters: structuredClone(lane.recruitmentFilters),
     })),
   };
 }

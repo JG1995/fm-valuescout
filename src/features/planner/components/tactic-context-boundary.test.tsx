@@ -12,6 +12,7 @@ import { moneyballMetric } from "@/utils/moneyball-metrics";
 import { type PlannerContext, plannerKeys } from "../api/planner-keys";
 import type { PlannerTactic } from "../types/tactic";
 import { PlannerTacticEditor } from "./planner-tactic-editor";
+import type { RenderRecruitmentFilters } from "./planner-tactic-inspector";
 import {
   TacticContextBoundary,
   type TacticContextBoundaryState,
@@ -188,6 +189,7 @@ describe("PlannerTacticEditor captured context", () => {
         key={contextKey(context)}
         context={context}
         activeSaveRefreshError={false}
+        renderRecruitmentFilters={() => null}
         isActiveSaveUnavailable={false}
         tactic={tactic}
         options={options}
@@ -283,12 +285,14 @@ describe("PlannerTacticEditor slot metrics", () => {
         <PlannerTacticEditor
           context={contextA}
           activeSaveRefreshError={false}
+          renderRecruitmentFilters={() => null}
           isActiveSaveUnavailable={false}
           tactic={tactic}
           options={resolvePlannerTacticOptionsIpcMock()}
         />,
       ),
     );
+    await user.click(screen.getByRole("tab", { name: "Scoring" }));
     expect(screen.getByText("No metrics chosen.")).toBeInTheDocument();
     expect(screen.getByText("0/5")).toBeInTheDocument();
 
@@ -330,7 +334,8 @@ describe("PlannerTacticEditor slot metrics", () => {
     );
   });
 
-  it("disables the metric controls when the tactic is read-only", () => {
+  it("disables the metric controls when the tactic is read-only", async () => {
+    const user = userEvent.setup();
     const tactic = resolvePlannerTacticIpcMock();
     tactic.lanes[0].customMetricKeys = ["save_ratio"];
     render(
@@ -339,6 +344,7 @@ describe("PlannerTacticEditor slot metrics", () => {
         <PlannerTacticEditor
           context={contextA}
           activeSaveRefreshError={false}
+          renderRecruitmentFilters={() => null}
           isActiveSaveUnavailable={false}
           readOnly
           tactic={tactic}
@@ -347,7 +353,94 @@ describe("PlannerTacticEditor slot metrics", () => {
       ),
     );
 
+    await user.click(screen.getByRole("tab", { name: /^Scoring/ }));
     expect(screen.getByRole("button", { name: /^Remove / })).toBeDisabled();
     expect(addTrigger()).toBeDisabled();
+  });
+});
+
+describe("PlannerTacticEditor recruitment filters", () => {
+  const height = { field: "height", op: "gte", value: 183 };
+  const renderFilters: RenderRecruitmentFilters = ({ filters, onChange }) => (
+    <button type="button" onClick={() => onChange([...filters, height])}>
+      Add height filter ({filters.length})
+    </button>
+  );
+
+  it("edits the selected slot's filters in the Recruitment tab and saves them", async () => {
+    const user = userEvent.setup();
+    const tactic = resolvePlannerTacticIpcMock();
+    const saveRequests: PlannerTactic[] = [];
+    vi.mocked(invokeCommand).mockImplementation(async (command, args) => {
+      if (command !== "save_planner_tactic") {
+        throw new Error(`Unexpected command ${command}`);
+      }
+      const request = args as PlannerContext & { tactic: PlannerTactic };
+      saveRequests.push(request.tactic);
+      return request.tactic;
+    });
+    render(
+      provider(
+        queryClient(),
+        <PlannerTacticEditor
+          context={contextA}
+          activeSaveRefreshError={false}
+          isActiveSaveUnavailable={false}
+          tactic={tactic}
+          options={resolvePlannerTacticOptionsIpcMock()}
+          renderRecruitmentFilters={renderFilters}
+          recruitmentLaneId="right_back"
+        />,
+      ),
+    );
+
+    // The requested slot opens on its Recruitment tab.
+    expect(screen.getByRole("tab", { name: "Recruitment" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByText("0/10")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Add height filter (0)" }),
+    );
+    expect(screen.getByText("1/10")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /^IP: DR · .*, 1 recruitment filter$/,
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    await waitFor(() => expect(saveRequests).toHaveLength(1));
+    expect(
+      saveRequests[0].lanes.map((lane) => lane.recruitmentFilters),
+    ).toEqual(
+      tactic.lanes.map((lane) =>
+        lane.laneId === "right_back" ? [height] : [],
+      ),
+    );
+  });
+
+  it("disables the filter editor when the tactic is read-only", () => {
+    render(
+      provider(
+        queryClient(),
+        <PlannerTacticEditor
+          context={contextA}
+          activeSaveRefreshError={false}
+          isActiveSaveUnavailable={false}
+          readOnly
+          tactic={resolvePlannerTacticIpcMock()}
+          options={resolvePlannerTacticOptionsIpcMock()}
+          renderRecruitmentFilters={renderFilters}
+          recruitmentLaneId="goalkeeper"
+        />,
+      ),
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Add height filter (0)" }),
+    ).toBeDisabled();
   });
 });

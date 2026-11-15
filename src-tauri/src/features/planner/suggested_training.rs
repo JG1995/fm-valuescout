@@ -292,6 +292,7 @@ mod tests {
             oop_position: "STC".to_string(),
             oop_role_id: oop_role_id.to_string(),
             custom_metric_keys: Vec::new(),
+            recruitment_filters: Vec::new(),
         }
     }
 
