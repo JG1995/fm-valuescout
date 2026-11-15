@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use rusqlite::types::Value;
 
-use crate::features::moneyball::is_moneyball_statistic_key;
+use crate::features::moneyball::{is_moneyball_statistic_key, is_save_unavailable_statistic_key};
 use crate::features::player_metrics::compact::{
     player_current_column, player_potential_column, PLAYER_METRICS_ALIAS,
 };
@@ -454,6 +454,133 @@ fn resolve_potential_role_score(field: &str) -> Result<Option<FieldKind>, String
     Ok(Some(FieldKind::PotentialRoleScore {
         role_id: catalog_role_id(role_id)?.to_string(),
     }))
+}
+
+/// The most rules one tactic slot's recruitment filters hold.
+pub const MAX_SLOT_FILTER_RULES: usize = 10;
+
+/// A slot recruitment rule on a Moneyball statistic's 0–100 percentile among the slot's
+/// position peers. It runs in Rust once those peers are ranked.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SlotPercentileRule {
+    pub key: String,
+    /// `gte`, `lte`, or `between`.
+    op: String,
+    value: FilterValue,
+}
+
+impl SlotPercentileRule {
+    /// A player without a percentile, such as one without season statistics, never matches.
+    pub fn matches(&self, percentile: Option<u8>) -> bool {
+        number_matches(
+            percentile.map(f64::from),
+            &self.op,
+            &self.value,
+            value_as_real,
+        )
+        .unwrap_or(false)
+    }
+}
+
+/// One slot's recruitment filters, split by where each rule runs. All of them must match.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SlotFilterPlan {
+    /// The other rules, as SQL over `players`, the compact role metrics row
+    /// (`PLAYER_METRICS_ALIAS`), and the season statistics row (`moneyball`).
+    pub sql: Option<CompiledFilter>,
+    pub percentile_rules: Vec<SlotPercentileRule>,
+    /// Whether `sql` reads `PLAYER_METRICS_ALIAS`.
+    pub uses_role_scores: bool,
+    /// Whether `sql` reads `moneyball`.
+    pub uses_season_stats: bool,
+}
+
+/// The fields a tactic slot's recruitment filters accept: General Search's fields except the
+/// ones that need a query identity or a scored cohort, plus Moneyball playing time and
+/// statistics.
+fn resolve_slot_field(field: &str) -> Result<FieldKind, String> {
+    if let Some(column) = moneyball_context_column(field) {
+        return Ok(FieldKind::MoneyballInteger { column });
+    }
+    if let Some(key) = field.strip_prefix("moneyball.") {
+        if !is_moneyball_statistic_key(key) || is_save_unavailable_statistic_key(key) {
+            return Err(format!("unknown Moneyball metric: {key}"));
+        }
+        return Ok(FieldKind::MoneyballReal {
+            key: key.to_string(),
+        });
+    }
+    match resolve_field(field, false)? {
+        FieldKind::ClubDnaScore
+        | FieldKind::RealisticSigning
+        | FieldKind::PotentialRoleScore { .. }
+        | FieldKind::MoneyballRoleScore => Err(format!("{field} cannot filter a tactic slot")),
+        kind => Ok(kind),
+    }
+}
+
+/// Validates and compiles one slot's recruitment filters. SQL placeholders start at
+/// `start_index`.
+pub fn compile_slot_filters(
+    rules: &[FilterRule],
+    start_index: usize,
+) -> Result<SlotFilterPlan, String> {
+    if rules.len() > MAX_SLOT_FILTER_RULES {
+        return Err(format!(
+            "a slot can have at most {MAX_SLOT_FILTER_RULES} recruitment filters"
+        ));
+    }
+    let mut plan = SlotFilterPlan::default();
+    let mut clauses = Vec::new();
+    let mut params = Vec::new();
+    let mut next_index = start_index;
+    for rule in rules {
+        let kind = resolve_slot_field(&rule.field)?;
+        if let Some(op) = rule.op.strip_prefix("pct_") {
+            let FieldKind::MoneyballReal { key } = kind else {
+                return Err(format!("{} has no percentile", rule.field));
+            };
+            validate_percentile_bounds(op, &rule.value)?;
+            plan.percentile_rules.push(SlotPercentileRule {
+                key,
+                op: op.to_string(),
+                value: rule.value.clone(),
+            });
+            continue;
+        }
+        plan.uses_role_scores |= matches!(kind, FieldKind::RoleScore { .. });
+        plan.uses_season_stats |= matches!(
+            kind,
+            FieldKind::MoneyballReal { .. } | FieldKind::MoneyballInteger { .. }
+        );
+        let (clause, rule_params) =
+            compile_rule(kind, &rule.op, &rule.value, &mut next_index, None)?;
+        clauses.push(clause);
+        params.extend(rule_params);
+    }
+    if !clauses.is_empty() {
+        plan.sql = Some(CompiledFilter {
+            sql: format!("({})", clauses.join(" AND ")),
+            params,
+        });
+    }
+    Ok(plan)
+}
+
+fn validate_percentile_bounds(op: &str, value: &FilterValue) -> Result<(), String> {
+    let (low, high) = if op == "between" {
+        let (low, high) = range_bounds(value)?;
+        (value_as_real(low)?, value_as_real(high)?)
+    } else if matches!(op, "gte" | "lte") {
+        let bound = value_as_real(value)?;
+        (bound, bound)
+    } else {
+        return Err(format!("invalid percentile filter operator: pct_{op}"));
+    };
+    if !(0.0..=100.0).contains(&low) || !(0.0..=100.0).contains(&high) || low > high {
+        return Err("a percentile filter needs bounds from 0 to 100, lowest first".to_string());
+    }
+    Ok(())
 }
 
 pub fn filter_value_from_json(value: serde_json::Value) -> Result<FilterValue, String> {
@@ -1771,5 +1898,107 @@ mod tests {
                 "expected {field} to be rejected in non-Moneyball filter path"
             );
         }
+    }
+
+    #[test]
+    fn slot_filters_split_percentile_rules_from_sql_rules() {
+        let plan = compile_slot_filters(
+            &[
+                rule(
+                    "preferred_foot",
+                    "in",
+                    FilterValue::List(vec![FilterValue::Text("right".into())]),
+                ),
+                rule("height", "gte", FilterValue::Integer(183)),
+                rule("role.centre_back_ip", "gte", FilterValue::Integer(60)),
+                rule("moneyball.minutes", "gte", FilterValue::Integer(900)),
+                rule(
+                    "moneyball.progressive_passes",
+                    "pct_gte",
+                    FilterValue::Integer(25),
+                ),
+                rule(
+                    "moneyball.dribbles_made",
+                    "pct_between",
+                    FilterValue::List(vec![FilterValue::Integer(50), FilterValue::Integer(100)]),
+                ),
+            ],
+            3,
+        )
+        .expect("compile slot filters");
+
+        let sql = plan.sql.expect("SQL rules");
+        assert!(sql.sql.contains("preferred_foot IN (?3)"), "{}", sql.sql);
+        assert!(sql.sql.contains("height_cm >= ?4"), "{}", sql.sql);
+        assert!(sql.sql.contains("moneyball.minutes >= ?6"), "{}", sql.sql);
+        assert_eq!(sql.params.len(), 4);
+        assert!(plan.uses_role_scores);
+        assert!(plan.uses_season_stats);
+        let keys = plan
+            .percentile_rules
+            .iter()
+            .map(|rule| rule.key.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(keys, ["progressive_passes", "dribbles_made"]);
+        assert!(plan.percentile_rules[0].matches(Some(25)));
+        assert!(!plan.percentile_rules[0].matches(Some(24)));
+        assert!(!plan.percentile_rules[0].matches(None));
+        assert!(plan.percentile_rules[1].matches(Some(100)));
+        assert!(!plan.percentile_rules[1].matches(Some(49)));
+    }
+
+    #[test]
+    fn slot_filters_without_rules_compile_to_nothing() {
+        assert_eq!(compile_slot_filters(&[], 1), Ok(SlotFilterPlan::default()));
+    }
+
+    #[test]
+    fn slot_filters_reject_fields_and_bounds_they_cannot_evaluate() {
+        let invalid = [
+            rule("club_dna", "gte", FilterValue::Integer(50)),
+            rule("realistic_signing", "is", FilterValue::Bool(true)),
+            rule(
+                "potential_role.centre_back_ip",
+                "gte",
+                FilterValue::Integer(50),
+            ),
+            rule(
+                "moneyball_role.ball_playing_defender",
+                "gte",
+                FilterValue::Integer(50),
+            ),
+            rule(
+                "moneyball.goals_from_outside_the_box",
+                "gte",
+                FilterValue::Integer(1),
+            ),
+            rule("moneyball.not_a_metric", "gte", FilterValue::Integer(1)),
+            rule("height", "pct_gte", FilterValue::Integer(50)),
+            rule(
+                "moneyball.progressive_passes",
+                "pct_gte",
+                FilterValue::Integer(101),
+            ),
+            rule(
+                "moneyball.progressive_passes",
+                "pct_eq",
+                FilterValue::Integer(50),
+            ),
+            rule(
+                "moneyball.progressive_passes",
+                "pct_between",
+                FilterValue::List(vec![FilterValue::Integer(60), FilterValue::Integer(40)]),
+            ),
+            rule("height", "contains", FilterValue::Text("1".into())),
+        ];
+        for invalid in invalid {
+            assert!(
+                compile_slot_filters(std::slice::from_ref(&invalid), 1).is_err(),
+                "{invalid:?} is rejected"
+            );
+        }
+        let eleven =
+            vec![rule("height", "gte", FilterValue::Integer(170)); MAX_SLOT_FILTER_RULES + 1];
+        assert!(compile_slot_filters(&eleven, 1).is_err());
     }
 }

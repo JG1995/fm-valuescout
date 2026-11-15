@@ -1,3 +1,5 @@
+use serde_json::json;
+
 use crate::features::planner::tactic::{default_tactic, save_tactic};
 use crate::features::snapshot;
 
@@ -601,4 +603,163 @@ fn has_no_signings_without_a_managed_club() {
         get_signings(&fixture.conn, fixture.save_id, GENERAL),
         Ok(None)
     );
+}
+
+#[test]
+fn a_signing_is_recommended_only_for_slots_whose_recruitment_filters_he_passes() {
+    let fixture = open_with_players(&[
+        player(1, "Home Centre Back", HOME_CLUB, "DC"),
+        player(2, "Other Home Centre Back", HOME_CLUB, "DC"),
+        player(10, "Right-Footed Target", OTHER_CLUB, "DC"),
+        player(11, "Left-Footed Target", OTHER_CLUB, "DC"),
+    ]);
+    for (uid, score) in [(1, 50), (2, 50), (10, 70), (11, 80)] {
+        fixture.set_slot_score(uid, "left_centre_back", score);
+    }
+    fixture.set_player_column(10, "preferred_foot", "right");
+    fixture.set_player_column(11, "preferred_foot", "left");
+    fixture.set_recruitment_filters(
+        "left_centre_back",
+        &[
+            ("preferred_foot", "in", json!(["right"])),
+            ("height", "gte", json!(150)),
+        ],
+    );
+    let shortlist = fixture.add_shortlist("Targets", &[10, 11]);
+
+    for request in [
+        GENERAL,
+        SigningsRequest {
+            shortlist_id: Some(shortlist),
+            ..GENERAL
+        },
+    ] {
+        let all_slots = signings(&fixture, request);
+        // The left-footed target fails the left centre-back's filters, so he moves to the
+        // unfiltered right centre-back slot and nobody counts as filtered out.
+        assert_eq!(
+            ranked(&all_slots.recommendations),
+            [
+                (11, "right_centre_back", 80, 30),
+                (10, "left_centre_back", 70, 20)
+            ]
+        );
+        assert_eq!(all_slots.filtered_out, 0);
+        assert_eq!(
+            slot(&all_slots, "left_centre_back")
+                .best_signing
+                .as_ref()
+                .map(|best| best.uid),
+            Some(10)
+        );
+        assert_eq!(
+            slot(&all_slots, "left_centre_back")
+                .lane
+                .recruitment_filters
+                .len(),
+            2
+        );
+
+        let one_slot = signings(
+            &fixture,
+            SigningsRequest {
+                lane_id: Some("left_centre_back"),
+                ..request
+            },
+        );
+        assert_eq!(
+            ranked(&one_slot.recommendations),
+            [(10, "left_centre_back", 70, 20)]
+        );
+        assert_eq!(one_slot.filtered_out, 1);
+    }
+}
+
+#[test]
+fn a_percentile_filter_ranks_a_signing_among_the_slots_position_peers() {
+    let fixture = open_with_players(&[
+        player(1, "Home Centre Back", HOME_CLUB, "DC"),
+        player(2, "Other Home Centre Back", HOME_CLUB, "DC"),
+        player(10, "Progressive Target", OTHER_CLUB, "DC"),
+        player(11, "Average Target", OTHER_CLUB, "DC"),
+        player(12, "Target Without Stats", OTHER_CLUB, "DC"),
+        player(13, "Peer Centre Back", OTHER_CLUB, "DC"),
+        player(14, "Peer At Sixteen", OTHER_CLUB, "DM"),
+        player(15, "Striker At Fifteen", OTHER_CLUB, "ST"),
+    ]);
+    for (uid, score) in [(1, 50), (2, 50), (10, 70), (11, 70), (12, 70)] {
+        fixture.set_slot_score(uid, "left_centre_back", score);
+    }
+    fixture.set_player_column(14, "positions_json", r#"{"DM": 20, "DC": 16}"#);
+    fixture.set_player_column(15, "positions_json", r#"{"ST": 20, "DC": 15}"#);
+    for (uid, progressive_passes) in [(10, 40.0), (11, 20.0), (13, 10.0), (14, 5.0), (15, 100.0)] {
+        fixture.set_percentiles(uid, 50, &[]);
+        fixture.set_statistics(uid, &[("progressive_passes", progressive_passes)]);
+    }
+    fixture.set_recruitment_filters(
+        "left_centre_back",
+        &[
+            ("moneyball.progressive_passes", "pct_gte", json!(60)),
+            ("moneyball.minutes", "gte", json!(900)),
+        ],
+    );
+
+    let signings = signings(
+        &fixture,
+        SigningsRequest {
+            lane_id: Some("left_centre_back"),
+            ..GENERAL
+        },
+    );
+
+    // The peers are 5, 10, 20, and 40: the striker's familiarity of 15 leaves him out, and
+    // the 16 of the defensive midfielder brings him in. 20 then ranks at the 67th percentile;
+    // with the striker, or without the midfielder, it would rank at the 50th. The target
+    // without season statistics cannot be ranked.
+    let mut recommended = signings
+        .recommendations
+        .iter()
+        .map(|recommendation| recommendation.uid)
+        .collect::<Vec<_>>();
+    recommended.sort_unstable();
+    assert_eq!(recommended, [10, 11]);
+    assert_eq!(signings.filtered_out, 1);
+}
+
+#[test]
+fn moneyball_mode_applies_a_role_score_filter() {
+    let fixture = open_with_players(&[
+        player(1, "Home Centre Back", HOME_CLUB, "DC"),
+        player(2, "Other Home Centre Back", HOME_CLUB, "DC"),
+        player(10, "Strong Target", OTHER_CLUB, "DC"),
+        player(11, "Weak Target", OTHER_CLUB, "DC"),
+    ]);
+    for (uid, percentile) in [(1, 40), (2, 40), (10, 80), (11, 80)] {
+        fixture.set_percentiles(uid, percentile, &[]);
+    }
+    fixture.set_slot_score(10, "left_centre_back", 70);
+    fixture.set_slot_score(11, "left_centre_back", 50);
+    let centre_back = default_tactic().lanes[2].ip_role_id.clone();
+    fixture.set_recruitment_filters(
+        "left_centre_back",
+        &[(format!("role.{centre_back}").as_str(), "gte", json!(60))],
+    );
+
+    let signings = signings(
+        &fixture,
+        SigningsRequest {
+            lane_id: Some("left_centre_back"),
+            ..MONEYBALL
+        },
+    );
+
+    assert_eq!(
+        signings
+            .recommendations
+            .iter()
+            .map(|recommendation| recommendation.uid)
+            .collect::<Vec<_>>(),
+        [10]
+    );
+    assert_eq!(signings.filtered_out, 1);
 }

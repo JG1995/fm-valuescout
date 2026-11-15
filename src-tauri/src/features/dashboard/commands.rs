@@ -3,6 +3,7 @@ use tauri::State;
 
 use crate::blocking;
 use crate::db::Db;
+use crate::features::planner::commands::RecruitmentFilterDto;
 use crate::features::snapshot::service::active_save_id;
 
 use super::signings::{
@@ -55,6 +56,7 @@ pub struct LineupSlotDto {
     pub cover: Option<LineupPlayerDto>,
     pub unscored_planner_player: Option<String>,
     pub best_signing: Option<RecommendationDto>,
+    pub recruitment_filters: Vec<RecruitmentFilterDto>,
 }
 
 impl From<LineupSlot> for LineupSlotDto {
@@ -83,6 +85,12 @@ impl From<LineupSlot> for LineupSlotDto {
             cover: value.cover.map(Into::into),
             unscored_planner_player: value.unscored_planner_player,
             best_signing: value.best_signing.map(Into::into),
+            recruitment_filters: value
+                .lane
+                .recruitment_filters
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         }
     }
 }
@@ -147,6 +155,8 @@ pub struct DashboardSigningsDto {
     pub candidates: Option<usize>,
     pub total_recommendations: usize,
     pub recommendations: Vec<RecommendationDto>,
+    /// Candidates the recruitment filters removed from every slot they would improve.
+    pub filtered_out: usize,
 }
 
 impl From<Signings> for DashboardSigningsDto {
@@ -158,6 +168,7 @@ impl From<Signings> for DashboardSigningsDto {
             candidates: value.candidates,
             total_recommendations: value.total_recommendations,
             recommendations: value.recommendations.into_iter().map(Into::into).collect(),
+            filtered_out: value.filtered_out,
         }
     }
 }

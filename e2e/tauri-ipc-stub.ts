@@ -345,6 +345,15 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           oopRoleId,
           customMetricKeys:
             laneId === "goalkeeper" ? ["save_ratio", "clean_sheets_ratio"] : [],
+          recruitmentFilters:
+            laneId === "left_centre_back"
+              ? [
+                  { field: "preferred_foot", op: "in", value: ["right"] },
+                  { field: "height", op: "gte", value: 183 },
+                  { field: "moneyball.progressive_passes", op: "pct_gte", value: 25 },
+                  { field: "moneyball.dribbles_made", op: "pct_gte", value: 50 },
+                ]
+              : [],
         })),
       };
       const plannerTacticStore = new Map([

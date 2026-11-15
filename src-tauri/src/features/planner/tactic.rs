@@ -4,6 +4,9 @@ use rusqlite::{params, Connection, Transaction};
 
 use crate::features::moneyball::{is_moneyball_statistic_key, is_save_unavailable_statistic_key};
 use crate::features::scoring::catalog::{all_roles, RolePhase};
+use crate::features::search::filter::{
+    compile_slot_filters, filter_value_from_json, FilterRule, MAX_SLOT_FILTER_RULES,
+};
 
 pub const TACTIC_LANE_COUNT: usize = 11;
 const MAX_SLOT_METRICS: usize = 5;
@@ -34,6 +37,51 @@ pub struct TacticLane {
     pub oop_role_id: String,
     /// Ordered Moneyball statistic keys for the slot's custom score.
     pub custom_metric_keys: Vec<String>,
+    /// Rules a signing must pass to be recommended for the slot. They never apply to the
+    /// club's own players.
+    pub recruitment_filters: Vec<RecruitmentFilter>,
+}
+
+/// One recruitment filter rule: a Search filter field, its operator, and the value in Search's
+/// IPC form. `search::filter::compile_slot_filters` owns which rules are valid.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecruitmentFilter {
+    pub field: String,
+    pub op: String,
+    pub value: serde_json::Value,
+}
+
+impl RecruitmentFilter {
+    pub(crate) fn to_filter_rule(&self) -> Result<FilterRule, String> {
+        Ok(FilterRule {
+            field: self.field.clone(),
+            op: self.op.clone(),
+            value: filter_value_from_json(self.value.clone())?,
+        })
+    }
+
+    fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({ "field": self.field, "op": self.op, "value": self.value })
+    }
+
+    fn from_json(value: serde_json::Value) -> Option<Self> {
+        let serde_json::Value::Object(mut object) = value else {
+            return None;
+        };
+        Some(Self {
+            field: object.remove("field")?.as_str()?.to_string(),
+            op: object.remove("op")?.as_str()?.to_string(),
+            value: object.remove("value")?,
+        })
+    }
+}
+
+/// The lane's recruitment filters as Search filter rules.
+pub(crate) fn recruitment_filter_rules(lane: &TacticLane) -> Result<Vec<FilterRule>, String> {
+    lane.recruitment_filters
+        .iter()
+        .map(RecruitmentFilter::to_filter_rule)
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -188,6 +236,7 @@ pub fn default_tactic() -> PlannerTactic {
                 oop_position: lane.oop_position.to_string(),
                 oop_role_id: lane.oop_role_id.to_string(),
                 custom_metric_keys: Vec::new(),
+                recruitment_filters: Vec::new(),
             })
             .collect(),
     }
@@ -262,10 +311,17 @@ pub(crate) fn save_tactic_in_tx(
     for (lane_order, lane) in tactic.lanes.iter().enumerate() {
         let custom_metric_keys_json =
             serde_json::to_string(&lane.custom_metric_keys).map_err(|error| error.to_string())?;
+        let recruitment_filters_json = serde_json::Value::Array(
+            lane.recruitment_filters
+                .iter()
+                .map(RecruitmentFilter::to_json)
+                .collect(),
+        )
+        .to_string();
         tx.execute(
             "INSERT INTO planner_tactic_lanes (
-                 save_id, lane_order, lane_id, ip_weight, importance_rank, preferred_foot, foot_preference, ip_position, ip_role_id, oop_position, oop_role_id, custom_metric_keys_json
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 save_id, lane_order, lane_id, ip_weight, importance_rank, preferred_foot, foot_preference, ip_position, ip_role_id, oop_position, oop_role_id, custom_metric_keys_json, recruitment_filters_json
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 save_id,
                 lane_order as i64,
@@ -283,6 +339,7 @@ pub(crate) fn save_tactic_in_tx(
                 lane.oop_position,
                 lane.oop_role_id,
                 custom_metric_keys_json,
+                recruitment_filters_json,
             ],
         )
         .map_err(|error| error.to_string())?;
@@ -325,7 +382,7 @@ pub fn get_tactic_options() -> TacticOptions {
 pub(super) fn load_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String> {
     let mut statement = conn
         .prepare(
-            "SELECT lane_id, ip_weight, importance_rank, preferred_foot, foot_preference, ip_position, ip_role_id, oop_position, oop_role_id, custom_metric_keys_json
+            "SELECT lane_id, ip_weight, importance_rank, preferred_foot, foot_preference, ip_position, ip_role_id, oop_position, oop_role_id, custom_metric_keys_json, recruitment_filters_json
              FROM planner_tactic_lanes
              WHERE save_id = ?1
              ORDER BY lane_order",
@@ -352,6 +409,14 @@ pub(super) fn load_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTact
                         )
                     },
                 )?,
+                recruitment_filters: parse_recruitment_filters(&row.get::<_, String>(10)?)
+                    .map_err(|error| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            10,
+                            rusqlite::types::Type::Text,
+                            Box::new(error),
+                        )
+                    })?,
             })
         })
         .map_err(|error| error.to_string())?
@@ -376,6 +441,23 @@ fn parse_custom_metric_keys(json: &str) -> Result<Vec<String>, serde_json::Error
         .into_iter()
         .filter_map(|value| value.as_str().map(str::to_string))
         .filter(|key| is_offered_slot_metric(key) && seen.insert(key.clone()))
+        .collect())
+}
+
+/// Keeps the stored rules that still compile, such as after a catalog change. The dashboard
+/// interpolates their statistic keys into SQL, so this filter must stay on the load path.
+fn parse_recruitment_filters(json: &str) -> Result<Vec<RecruitmentFilter>, serde_json::Error> {
+    let stored: Vec<serde_json::Value> = serde_json::from_str(json)?;
+    Ok(stored
+        .into_iter()
+        .filter_map(RecruitmentFilter::from_json)
+        .filter(|filter| {
+            filter
+                .to_filter_rule()
+                .and_then(|rule| compile_slot_filters(&[rule], 1))
+                .is_ok()
+        })
+        .take(MAX_SLOT_FILTER_RULES)
         .collect())
 }
 
@@ -479,6 +561,9 @@ fn validate_tactic_contents(
             RolePhase::OutOfPossession,
         )?;
         validate_custom_metric_keys(lane)?;
+        recruitment_filter_rules(lane)
+            .and_then(|rules| compile_slot_filters(&rules, 1))
+            .map_err(|error| format!("Lane `{}` recruitment filters: {error}", lane.lane_id))?;
     }
 
     Ok(())
@@ -860,6 +945,71 @@ mod tests {
         assert_eq!(
             tactic.lanes[0].custom_metric_keys,
             ["save_ratio", "clean_sheets_ratio"]
+        );
+    }
+
+    fn filter(field: &str, op: &str, value: serde_json::Value) -> RecruitmentFilter {
+        RecruitmentFilter {
+            field: field.to_string(),
+            op: op.to_string(),
+            value,
+        }
+    }
+
+    #[test]
+    fn persists_recruitment_filters_per_lane_and_rejects_invalid_ones() {
+        let (_temp_dir, conn, save_id) = open_with_save();
+        let mut stored = get_tactic(&conn, save_id).expect("load default tactic");
+        stored.lanes[3].recruitment_filters = vec![
+            filter("preferred_foot", "in", serde_json::json!(["right"])),
+            filter("height", "gte", serde_json::json!(183)),
+            filter(
+                "moneyball.progressive_passes",
+                "pct_gte",
+                serde_json::json!(25),
+            ),
+        ];
+        save_tactic(&conn, save_id, &stored).expect("save recruitment filters");
+
+        let reloaded = get_tactic(&conn, save_id).expect("reload tactic");
+        assert_eq!(reloaded, stored);
+
+        let mut attempted = stored.clone();
+        attempted.lanes[0].recruitment_filters =
+            vec![filter("club_dna", "gte", serde_json::json!(50))];
+        let error = save_tactic(&conn, save_id, &attempted).expect_err("reject Club DNA");
+        assert_eq!(
+            error,
+            "Lane `goalkeeper` recruitment filters: club_dna cannot filter a tactic slot"
+        );
+        attempted.lanes[0].recruitment_filters =
+            vec![filter("height", "gte", serde_json::json!(170)); MAX_SLOT_FILTER_RULES + 1];
+        save_tactic(&conn, save_id, &attempted).expect_err("reject too many filters");
+        assert_eq!(get_tactic(&conn, save_id).expect("reload tactic"), stored);
+    }
+
+    #[test]
+    fn loading_drops_stored_recruitment_filters_that_no_longer_compile() {
+        let (_temp_dir, conn, save_id) = open_with_save();
+        get_tactic(&conn, save_id).expect("initialize tactic");
+        conn.execute(
+            r#"UPDATE planner_tactic_lanes
+               SET recruitment_filters_json = '[
+                   {"field":"moneyball.retired_metric","op":"pct_gte","value":50},
+                   {"field":"height","op":"gte","value":183},
+                   {"field":"height"},
+                   "not an object"
+               ]'
+               WHERE save_id = ?1 AND lane_id = 'goalkeeper'"#,
+            params![save_id],
+        )
+        .expect("store drifted filters");
+
+        let tactic = get_tactic(&conn, save_id).expect("load drifted tactic");
+
+        assert_eq!(
+            tactic.lanes[0].recruitment_filters,
+            [filter("height", "gte", serde_json::json!(183))]
         );
     }
 

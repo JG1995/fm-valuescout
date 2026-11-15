@@ -6,7 +6,9 @@ use rusqlite::{params, Connection};
 use crate::db::migrations;
 use crate::features::managed_club::service as managed_club_service;
 use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
-use crate::features::planner::tactic::default_tactic;
+use crate::features::planner::tactic::{
+    default_tactic, get_tactic, save_tactic, RecruitmentFilter,
+};
 use crate::features::player_metrics::compact::{player_current_column, player_potential_column};
 use crate::features::snapshot;
 
@@ -238,6 +240,48 @@ impl Fixture {
                 ],
             )
             .expect("insert moneyball stats");
+    }
+
+    /// Replaces the season statistics of a player who already has a stats row.
+    pub(super) fn set_statistics(&self, uid: i64, statistics: &[(&str, f64)]) {
+        let statistics = statistics
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), serde_json::Value::from(*value)))
+            .collect::<serde_json::Map<_, _>>();
+        self.conn
+            .execute(
+                "UPDATE player_moneyball_stats SET statistics_json = ?1
+                 WHERE snapshot_id = ?2 AND player_uid = ?3",
+                params![
+                    serde_json::Value::Object(statistics).to_string(),
+                    self.snapshot_id,
+                    uid
+                ],
+            )
+            .expect("set statistics");
+    }
+
+    /// Saves the tactic with the slot's recruitment filters, each `(field, op, value)`.
+    pub(super) fn set_recruitment_filters(
+        &self,
+        lane_id: &str,
+        filters: &[(&str, &str, serde_json::Value)],
+    ) {
+        let mut tactic = get_tactic(&self.conn, self.save_id).expect("load tactic");
+        let lane = tactic
+            .lanes
+            .iter_mut()
+            .find(|lane| lane.lane_id == lane_id)
+            .expect("tactic lane");
+        lane.recruitment_filters = filters
+            .iter()
+            .map(|(field, op, value)| RecruitmentFilter {
+                field: (*field).to_string(),
+                op: (*op).to_string(),
+                value: value.clone(),
+            })
+            .collect();
+        save_tactic(&self.conn, self.save_id, &tactic).expect("save recruitment filters");
     }
 
     /// Assigns the player to a slot of the Senior first string, creating the string if needed.

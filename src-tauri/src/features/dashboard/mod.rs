@@ -4,6 +4,7 @@
 use rusqlite::{Connection, OptionalExtension};
 
 pub mod commands;
+mod recruitment_filters;
 pub(crate) mod signings;
 pub(crate) mod squad;
 

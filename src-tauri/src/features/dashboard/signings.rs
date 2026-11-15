@@ -21,6 +21,7 @@ use crate::features::player_metrics::compact::{
 };
 use crate::features::search::realistic_signing;
 
+use super::recruitment_filters::SlotFilters;
 use super::{club_snapshot_id, MANAGED_CLUB_NAME_SQL};
 
 /// The most ranked recommendations one read returns: as many as the dashboard shows at once.
@@ -126,6 +127,9 @@ pub(crate) struct Signings {
     pub(crate) candidates: Option<usize>,
     pub(crate) total_recommendations: usize,
     pub(crate) recommendations: Vec<Recommendation>,
+    /// Candidates who would improve a considered slot but fail the recruitment filters of
+    /// every slot they would improve.
+    pub(crate) filtered_out: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -147,6 +151,9 @@ struct ScoredPlayer {
     minutes: Option<i64>,
     /// The player's score in each tactic slot, in lane order.
     lane_scores: Vec<Option<u8>>,
+    /// Whether the player passes each slot's recruitment filters. Always true for the club's
+    /// own players.
+    lane_allowed: Vec<bool>,
 }
 
 #[derive(Clone, Copy)]
@@ -225,6 +232,17 @@ pub(crate) fn get_signings(
         .iter()
         .filter_map(|player| recommend(player, &tactic, &incumbent_scores, lane_filter))
         .collect::<Vec<_>>();
+    let filtered_out = candidates
+        .iter()
+        .filter(|player| {
+            let mut improving = (0..tactic.lanes.len())
+                .filter(|&lane_index| lane_filter.map_or(true, |filter| filter == lane_index))
+                .filter(|&lane_index| improvement(player, &incumbent_scores, lane_index).is_some())
+                .peekable();
+            improving.peek().is_some()
+                && improving.all(|lane_index| !player.lane_allowed[lane_index])
+        })
+        .count();
     recommendations.sort_by(by_improvement);
     let total_recommendations = recommendations.len();
     recommendations.truncate(MAX_RECOMMENDATIONS);
@@ -257,6 +275,7 @@ pub(crate) fn get_signings(
         candidates: candidate_count,
         total_recommendations,
         recommendations,
+        filtered_out,
     }))
 }
 
@@ -474,6 +493,26 @@ fn load_players(
             )
         }
     };
+    let filters = match scope {
+        PlayerScope::Club => None,
+        PlayerScope::Shortlist(_) | PlayerScope::RealisticSignings(_) => {
+            SlotFilters::load(conn, snapshot_id, tactic, bind_values.len() + 1)?
+        }
+    };
+    let mut filter_columns = String::new();
+    if let Some(filters) = &filters {
+        let (has_role_scores, has_season_stats) = match mode {
+            ScoreMode::General => (true, false),
+            ScoreMode::Moneyball => (false, true),
+        };
+        from_sql.push_str(&filters.extra_joins(has_role_scores, has_season_stats));
+        let (columns, params) = filters.columns();
+        for column in columns {
+            filter_columns.push_str(", ");
+            filter_columns.push_str(&column);
+        }
+        bind_values.extend(params);
+    }
     // The club's order settles ties when its lineup is allocated. Candidates are ranked by
     // `by_improvement`, a total order, so sorting the many realistic signings is left out.
     let order_sql = match scope {
@@ -483,7 +522,7 @@ fn load_players(
     let sql = format!(
         "SELECT players.uid, players.name, players.age, players.current_club,
                 players.current_club_uid, players.market_value_gbp, players.preferred_foot,
-                players.positions_json, {score_columns}
+                players.positions_json, {score_columns}{filter_columns}
          FROM {from_sql}
          WHERE players.snapshot_id = ?1 AND {scope_sql}
          {order_sql}"
@@ -494,6 +533,10 @@ fn load_players(
         .iter()
         .map(|lane| score_basis(lane, mode))
         .collect::<Vec<_>>();
+    let first_filter_column = 8 + match mode {
+        ScoreMode::General => lane_count * 2,
+        ScoreMode::Moneyball => 3,
+    };
     let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let mut rows = statement
         .query(params_from_iter(bind_values.iter()))
@@ -567,6 +610,10 @@ fn load_players(
             market_value_gbp: row.get(5).map_err(read)?,
             minutes,
             lane_scores,
+            lane_allowed: match &filters {
+                Some(filters) => filters.lane_passes(row, first_filter_column)?,
+                None => vec![true; lane_count],
+            },
         });
     }
     Ok(players)
@@ -653,22 +700,32 @@ fn cover(club: &[ScoredPlayer], lineup: &Lineup, lane_index: usize) -> Option<Li
         .max_by_key(|player| (player.score, Reverse(player.uid)))
 }
 
-/// The player's best improving slot, or `None` when they improve none of the considered slots.
+/// The player's score in the slot and how far it exceeds the incumbent's, or the whole score
+/// for an empty slot. `None` when it does not exceed it.
+fn improvement(
+    player: &ScoredPlayer,
+    incumbent_scores: &[Option<u8>],
+    lane_index: usize,
+) -> Option<(u8, u8)> {
+    let score = player.lane_scores[lane_index]?;
+    let improvement = score.checked_sub(incumbent_scores[lane_index].unwrap_or(0))?;
+    (improvement > 0).then_some((score, improvement))
+}
+
+/// The player's best improving slot whose recruitment filters they pass, or `None` when there
+/// is none among the considered slots.
 fn recommend(
     player: &ScoredPlayer,
     tactic: &PlannerTactic,
     incumbent_scores: &[Option<u8>],
     lane_filter: Option<usize>,
 ) -> Option<Recommendation> {
-    let mut fits = player
-        .lane_scores
-        .iter()
-        .enumerate()
-        .filter(|(lane_index, _)| lane_filter.map_or(true, |filter| filter == *lane_index))
-        .filter_map(|(lane_index, score)| {
-            let score = (*score)?;
-            let improvement = score.checked_sub(incumbent_scores[lane_index].unwrap_or(0))?;
-            (improvement > 0).then_some((lane_index, score, improvement))
+    let mut fits = (0..player.lane_scores.len())
+        .filter(|&lane_index| lane_filter.map_or(true, |filter| filter == lane_index))
+        .filter(|&lane_index| player.lane_allowed[lane_index])
+        .filter_map(|lane_index| {
+            let (score, improvement) = improvement(player, incumbent_scores, lane_index)?;
+            Some((lane_index, score, improvement))
         })
         .collect::<Vec<_>>();
     // The stable sort keeps lane order between equal fits.

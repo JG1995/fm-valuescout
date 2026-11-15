@@ -229,6 +229,7 @@ export function cloneTactic(tactic: PlannerTactic): PlannerTactic {
     lanes: tactic.lanes.map((lane) => ({
       ...lane,
       customMetricKeys: [...lane.customMetricKeys],
+      recruitmentFilters: structuredClone(lane.recruitmentFilters),
     })),
   };
 }
