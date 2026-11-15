@@ -621,9 +621,7 @@ fn starting_lineup(
                 .collect(),
         })
         .collect::<Vec<_>>();
-    for (lane_index, player_index) in
-        allocate_lanes(tactic, &open_lanes, &candidates, &reserved_uids)
-    {
+    for (lane_index, player_index) in allocate_lanes(&open_lanes, &candidates, &reserved_uids) {
         incumbents[lane_index] = Some((player_index, IncumbentSource::BestFit));
     }
 

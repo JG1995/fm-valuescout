@@ -11,11 +11,7 @@ import {
   moneyballMetric,
 } from "@/utils/moneyball-metrics";
 import { orderedTacticPositions } from "@/utils/position-order";
-import {
-  TACTIC_LANE_IDS,
-  type TacticLane,
-  type TacticOptions,
-} from "../types/tactic";
+import type { TacticLane, TacticOptions } from "../types/tactic";
 import {
   linkedPositionDescription,
   phasePosition,
@@ -33,7 +29,6 @@ type PlannerTacticInspectorProps = {
   phases: TacticPhase[];
   disabled: boolean;
   onWeightChange: (ipWeight: number) => void;
-  onRankChange: (importanceRank: number | null) => void;
   onPreferredFootChange: (preferredFoot: TacticLane["preferredFoot"]) => void;
   onFootPreferenceChange: (
     footPreference: TacticLane["footPreference"],
@@ -203,7 +198,6 @@ export function PlannerTacticInspector({
   phases,
   disabled,
   onWeightChange,
-  onRankChange,
   onPreferredFootChange,
   onFootPreferenceChange,
   onPositionChange,
@@ -279,22 +273,6 @@ export function PlannerTacticInspector({
             General Settings
           </h3>
           <div className="grid gap-3 sm:grid-cols-2">
-            <SelectField
-              label="Importance rank"
-              value={selectedLane.importanceRank?.toString() ?? ""}
-              onChange={(event) =>
-                onRankChange(
-                  event.target.value === "" ? null : Number(event.target.value),
-                )
-              }
-            >
-              <option value="">No rank</option>
-              {TACTIC_LANE_IDS.map((laneId, index) => (
-                <option key={laneId} value={index + 1}>
-                  {index + 1}
-                </option>
-              ))}
-            </SelectField>
             <SelectField
               label="Preferred foot"
               value={selectedLane.preferredFoot}

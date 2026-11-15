@@ -3395,9 +3395,6 @@ test.describe("application smoke", () => {
     await weight.press("ArrowRight");
     await expect(main.getByText("IP 51% / OOP 49%")).toBeVisible();
     await main
-      .getByRole("combobox", { name: "Importance rank" })
-      .selectOption("1");
-    await main
       .getByRole("combobox", { name: "Preferred foot" })
       .selectOption("left");
     await main

@@ -630,7 +630,7 @@ fn optimizer_uses_the_exact_matcher_when_lanes_are_unranked() {
 }
 
 #[test]
-fn optimizer_assigns_ranked_lanes_in_ascending_order() {
+fn optimizer_ignores_stored_importance_ranks() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     clear_current_scores_except(
@@ -643,10 +643,11 @@ fn optimizer_assigns_ranked_lanes_in_ascending_order() {
     set_right_winger_scores(&conn, save_id, 78, Some(100));
     let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
     set_player_positions(&conn, save_id, 77, r#"{"ML": 18, "MR": 18, "AMR": 18}"#);
-    set_player_positions(&conn, save_id, 78, r#"{"ML": 18, "MR": 18, "AMR": 18}"#);
+    // Only player 77 can play the left winger slot, which defends at ML.
+    set_player_positions(&conn, save_id, 78, r#"{"MR": 18, "AMR": 18}"#);
     tactic.lanes[8].ip_position = "MR".to_string();
     tactic.lanes[8].oop_position = "ML".to_string();
-    tactic.lanes[8].importance_rank = Some(11);
+    // Filling the right winger first would hand it player 77 and leave the left winger empty.
     tactic.lanes[9].importance_rank = Some(1);
     tactic::save_tactic(&conn, save_id, &tactic).expect("save ranked tactic");
 
@@ -654,11 +655,11 @@ fn optimizer_assigns_ranked_lanes_in_ascending_order() {
 
     assert_eq!(
         assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
-        Some(77)
+        Some(78)
     );
     assert_eq!(
         assigned_player_uid(&optimized, PlannerTeam::Senior, "left_winger"),
-        Some(78)
+        Some(77)
     );
 }
 

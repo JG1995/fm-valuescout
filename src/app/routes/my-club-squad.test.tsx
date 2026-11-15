@@ -3242,11 +3242,6 @@ describe("My Club route", () => {
       }),
     ).toHaveLength(1);
     expect(
-      within(settings).getAllByRole("combobox", {
-        name: "Importance rank",
-      }),
-    ).toHaveLength(1);
-    expect(
       within(settings).getByRole("group", {
         name: "In-Possession settings",
       }),
@@ -3927,27 +3922,6 @@ describe("My Club route", () => {
     ).toBe("STC is already used in the In-Possession phase.");
   });
 
-  it("saves and reloads the selected lane importance rank", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
-    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
-
-    await screen.findByRole("region", { name: "Tactic controls" });
-    await user.click(
-      screen.getByRole("button", { name: "IP: DL · Full-Back" }),
-    );
-    const rank = screen.getByRole("combobox", {
-      name: "Importance rank",
-    });
-    await user.selectOptions(rank, "3");
-    await user.click(screen.getByRole("button", { name: "Save tactic" }));
-
-    expect(resolvePlannerTacticIpcMock().lanes[0].importanceRank).toBeNull();
-    expect(resolvePlannerTacticIpcMock().lanes[1].importanceRank).toBe(3);
-    expect(rank).toHaveValue("3");
-  });
-
   it("saves the selected lane foot rule and disables its mode for Either", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -3993,41 +3967,6 @@ describe("My Club route", () => {
     );
     expect(preferredFoot).toHaveValue("left");
     expect(resolvePlannerTacticIpcMock().lanes[0].preferredFoot).toBe("any");
-  });
-
-  it("shows duplicate importance ranks inline and retains them after a failed save", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
-    setPlannerTacticSaveError("Tactic save failed");
-    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
-
-    await screen.findByRole("region", { name: "Tactic controls" });
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Importance rank" }),
-      "1",
-    );
-    await user.click(
-      screen.getByRole("button", { name: "IP: DL · Full-Back" }),
-    );
-    const duplicateRank = screen.getByRole("combobox", {
-      name: "Importance rank",
-    });
-    await user.selectOptions(duplicateRank, "1");
-
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "IP: DL · Full-Back / OOP: DL · Holding Full-Back cannot use importance rank 1; it is already used.",
-    );
-    expect(screen.getByRole("button", { name: "Save tactic" })).toBeDisabled();
-
-    await user.selectOptions(duplicateRank, "2");
-    await user.click(screen.getByRole("button", { name: "Save tactic" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Tactic save failed",
-    );
-    expect(duplicateRank).toHaveValue("2");
-    expect(resolvePlannerTacticIpcMock().lanes[1].importanceRank).toBeNull();
   });
 
   it("refreshes 60-second cached candidates after saving a tactic", async () => {

@@ -146,20 +146,6 @@ export function PlannerTacticEditor({
     });
   };
 
-  const updateSelectedLaneRank = (importanceRank: number | null) => {
-    if (!selectedLane) {
-      return;
-    }
-    updateDraft({
-      ...draft,
-      lanes: draft.lanes.map((lane) =>
-        lane.laneId === selectedLane.laneId
-          ? { ...lane, importanceRank }
-          : lane,
-      ),
-    });
-  };
-
   const updateSelectedLaneFoot = (
     preferredFoot: TacticLane["preferredFoot"],
   ) => {
@@ -370,7 +356,6 @@ export function PlannerTacticEditor({
                 phases={["ip", "oop"]}
                 disabled={readOnly}
                 onWeightChange={updateSelectedLaneWeight}
-                onRankChange={updateSelectedLaneRank}
                 onPreferredFootChange={updateSelectedLaneFoot}
                 onFootPreferenceChange={updateSelectedLaneFootPreference}
                 onPositionChange={(phase, position) =>

@@ -228,66 +228,30 @@ pub(super) fn match_lanes(
         .collect()
 }
 
-/// Fills `lane_indices` from the candidates outside `reserved_uids`. Lanes with an importance
-/// rank take their best remaining candidate in rank order; the other lanes then share an exact
-/// maximum-score match. Returns each filled lane's index with its candidate's index, in the
-/// order filled.
+/// Fills `lane_indices` from the candidates outside `reserved_uids` with an exact maximum-score
+/// match. Returns each filled lane's index with its candidate's index, in lane order.
+///
+/// Stored importance ranks are ignored: the Tactic editor no longer offers them, so they could
+/// not be seen or cleared.
 pub(crate) fn allocate_lanes(
-    tactic: &PlannerTactic,
     lane_indices: &[usize],
     candidates: &[OptimizerCandidate],
     reserved_uids: &HashSet<i64>,
 ) -> Vec<(usize, usize)> {
-    let mut taken_uids = reserved_uids.clone();
-    let mut allocation = Vec::with_capacity(lane_indices.len());
-
-    let mut ranked_lane_indices = lane_indices
-        .iter()
-        .copied()
-        .filter(|&index| tactic.lanes[index].importance_rank.is_some())
-        .collect::<Vec<_>>();
-    ranked_lane_indices.sort_by_key(|&index| tactic.lanes[index].importance_rank);
-    for lane_index in ranked_lane_indices {
-        let best = candidates
-            .iter()
-            .enumerate()
-            .filter(|(_, candidate)| !taken_uids.contains(&candidate.player_uid))
-            .filter_map(|(candidate_index, candidate)| {
-                candidate
-                    .lane_scores
-                    .get(lane_index)
-                    .copied()
-                    .flatten()
-                    .map(|score| (candidate_index, candidate.player_uid, score))
-            })
-            .max_by_key(|&(_, player_uid, score)| (score, Reverse(player_uid)));
-        let Some((candidate_index, player_uid, _)) = best else {
-            continue;
-        };
-        allocation.push((lane_index, candidate_index));
-        taken_uids.insert(player_uid);
-    }
-
-    let unranked_lane_indices = lane_indices
-        .iter()
-        .copied()
-        .filter(|&index| tactic.lanes[index].importance_rank.is_none())
-        .collect::<Vec<_>>();
     let available_indices = (0..candidates.len())
-        .filter(|&index| !taken_uids.contains(&candidates[index].player_uid))
+        .filter(|&index| !reserved_uids.contains(&candidates[index].player_uid))
         .collect::<Vec<_>>();
     let available_candidates = available_indices
         .iter()
         .map(|&index| candidates[index].clone())
         .collect::<Vec<_>>();
-    let matches = match_lanes(&unranked_lane_indices, &available_candidates);
-    allocation.extend(
-        unranked_lane_indices
-            .into_iter()
-            .zip(matches)
-            .filter_map(|(lane_index, matched)| Some((lane_index, available_indices[matched?]))),
-    );
-    allocation
+    let matches = match_lanes(lane_indices, &available_candidates);
+    lane_indices
+        .iter()
+        .copied()
+        .zip(matches)
+        .filter_map(|(lane_index, matched)| Some((lane_index, available_indices[matched?])))
+        .collect()
 }
 
 /// Picks the senior rotation: one more player for each open lane ([`allocate_lanes`]), of whom
@@ -300,7 +264,7 @@ pub(super) fn allocate_rotation(
     reserved_uids: &HashSet<i64>,
     places: usize,
 ) -> Vec<(usize, usize)> {
-    let mut allocation = allocate_lanes(tactic, lane_indices, candidates, reserved_uids);
+    let mut allocation = allocate_lanes(lane_indices, candidates, reserved_uids);
     allocation.sort_by_key(|&(lane_index, candidate_index)| {
         let candidate = &candidates[candidate_index];
         (
@@ -373,7 +337,7 @@ pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerD
             .filter(|&index| !is_pinned(planner_string.id, &tactic.lanes[index].lane_id))
             .collect::<Vec<_>>();
         let allocation = if string_index < ROTATION_STRING_INDEX {
-            allocate_lanes(&tactic, &open_lanes, &candidates, &reserved_uids)
+            allocate_lanes(&open_lanes, &candidates, &reserved_uids)
         } else {
             let pinned = tactic.lanes.len() - open_lanes.len();
             allocate_rotation(
