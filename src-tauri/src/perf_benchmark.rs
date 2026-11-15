@@ -21,6 +21,7 @@ use serde_json::{json, Map, Value};
 use crate::db::result_cache::TableRegistry;
 use crate::db::{self, Db};
 use crate::features::memory_read::service::DumpRequestResult;
+use crate::features::moneyball::comparison::{ComparisonGroupsCache, GroupsSource, PositionFamily};
 use crate::features::moneyball::persistence::{
     prepare_snapshot_cohort, replace_snapshot_cohort, CohortRow,
 };
@@ -34,8 +35,8 @@ use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
 use crate::features::search::commands::SearchCaches;
 use crate::features::search::filter::{parse_filter_ast, FilterAst, FilterRule, FilterValue};
 use crate::features::search::query::{
-    search_general_players, search_moneyball_players, ComparisonPool, SearchPlayersRequest,
-    SearchView, SortDir, SortField, DEFAULT_PAGE_LIMIT,
+    search_general_players, search_moneyball_players, Comparison, SearchPlayersRequest, SearchView,
+    SortDir, SortField, DEFAULT_PAGE_LIMIT,
 };
 use crate::features::search::suggest::{suggest_players, SuggestionCache, DEFAULT_SUGGEST_LIMIT};
 use crate::features::snapshot::{load_data, service};
@@ -609,7 +610,7 @@ fn later_window_offset(total: usize, deep: bool) -> usize {
 struct PlayerShape {
     name: &'static str,
     view: SearchView,
-    pool: ComparisonPool,
+    comparison: Comparison,
     sort: SortField,
     fields: Vec<String>,
     filters: Option<FilterAst>,
@@ -623,7 +624,7 @@ impl PlayerShape {
         Self {
             name,
             view: SearchView::General,
-            pool: ComparisonPool::FullCsv,
+            comparison: Comparison::Own,
             sort: SortField::parse(sort).expect("general sort"),
             fields,
             filters: None,
@@ -632,11 +633,11 @@ impl PlayerShape {
         }
     }
 
-    fn moneyball(name: &'static str, pool: ComparisonPool, fields: Vec<String>) -> Self {
+    fn moneyball(name: &'static str, comparison: Comparison, fields: Vec<String>) -> Self {
         Self {
             name,
             view: SearchView::Moneyball,
-            pool,
+            comparison,
             sort: SortField::parse_for_moneyball("moneyball.average_rating", true)
                 .expect("moneyball sort"),
             fields,
@@ -735,21 +736,27 @@ fn player_shapes() -> Vec<PlayerShape> {
             ..PlayerShape::general("general_deep_window", "role.centre_back_ip", role_fields)
         },
         PlayerShape::moneyball(
-            "moneyball_role_filtered_pool",
-            ComparisonPool::Filtered,
+            "moneyball_role_own_family",
+            Comparison::Own,
             moneyball_role_fields.clone(),
         ),
         PlayerShape::moneyball(
-            "moneyball_role_all_players_pool",
-            ComparisonPool::FullCsv,
+            "moneyball_role_one_family",
+            Comparison::Family(PositionFamily::CentralDefender),
             moneyball_role_fields,
         ),
     ]
 }
 
 /// Requests one page as `search_players` does, through the computed General orders or
-/// Moneyball cohorts in `caches`.
-fn search_player_page(db: &Db, caches: &SearchCaches, shape: &PlayerShape, offset: usize) -> usize {
+/// Moneyball cohorts in `caches` and the comparison groups in `groups`.
+fn search_player_page(
+    db: &Db,
+    caches: &SearchCaches,
+    groups: &ComparisonGroupsCache,
+    shape: &PlayerShape,
+    offset: usize,
+) -> usize {
     let request = SearchPlayersRequest {
         offset,
         limit: DEFAULT_PAGE_LIMIT,
@@ -758,7 +765,7 @@ fn search_player_page(db: &Db, caches: &SearchCaches, shape: &PlayerShape, offse
         filter_ast: shape.filters.as_ref(),
         requested_fields: &shape.fields,
         view: shape.view,
-        comparison_pool: shape.pool,
+        comparison: shape.comparison,
         shortlist_id: None,
     };
     match shape.view {
@@ -772,6 +779,7 @@ fn search_player_page(db: &Db, caches: &SearchCaches, shape: &PlayerShape, offse
         SearchView::Moneyball => search_moneyball_players(
             db,
             &caches.moneyball_cohorts,
+            groups,
             &TableRegistry::default(),
             None,
             request,
@@ -781,7 +789,9 @@ fn search_player_page(db: &Db, caches: &SearchCaches, shape: &PlayerShape, offse
     .total as usize
 }
 
-fn measure_player_shape(db: &Db, shape: &PlayerShape) -> Value {
+/// Times one shape's first page and a later window. The comparison groups in `groups` are
+/// already built: the app keeps them while queries change, until its data changes.
+fn measure_player_shape(db: &Db, groups: &ComparisonGroupsCache, shape: &PlayerShape) -> Value {
     let first_page = match &shape.warm_base_fields {
         // A column change keeps the query's fingerprint, so the app reuses its computed order.
         Some(base_fields) => {
@@ -790,22 +800,22 @@ fn measure_player_shape(db: &Db, shape: &PlayerShape) -> Value {
                 fields: base_fields.clone(),
                 ..shape.clone()
             };
-            search_player_page(db, &caches, &base, 0);
+            search_player_page(db, &caches, groups, &base, 0);
             time_repeated(|| {
-                search_player_page(db, &caches, shape, 0);
+                search_player_page(db, &caches, groups, shape, 0);
             })
         }
         // Every other first page computes its query afresh, as after a sort or filter change.
         None => time_repeated(|| {
-            search_player_page(db, &SearchCaches::default(), shape, 0);
+            search_player_page(db, &SearchCaches::default(), groups, shape, 0);
         }),
     };
     // Later windows reuse the query computed by its first page.
     let caches = SearchCaches::default();
-    let total = search_player_page(db, &caches, shape, 0);
+    let total = search_player_page(db, &caches, groups, shape, 0);
     let offset = later_window_offset(total, shape.deep_window);
     let later_window = time_repeated(|| {
-        search_player_page(db, &caches, shape, offset);
+        search_player_page(db, &caches, groups, shape, offset);
     });
     json!({
         "total": total,
@@ -842,8 +852,30 @@ fn search_staff_page(db: &Db, orders: &staff::query::StaffOrderCache, offset: us
 /// Runs every request on a read connection, as the commands do.
 fn measure_requests(db: &Db) -> Map<String, Value> {
     let mut requests = Map::new();
+    // Every Moneyball read first builds the snapshot's comparison groups once per data
+    // generation; this times that build on its own.
+    let snapshot_id: i64 = db
+        .read()
+        .expect("reader")
+        .query_row("SELECT id FROM snapshots WHERE is_current = 1", [], |row| {
+            row.get(0)
+        })
+        .expect("current snapshot");
+    requests.insert(
+        "moneyball_comparison_groups".to_string(),
+        time_repeated(|| {
+            let reader = db.read().expect("reader");
+            GroupsSource::Uncached
+                .load(&reader, snapshot_id)
+                .expect("comparison groups");
+        }),
+    );
+    let groups = ComparisonGroupsCache::default();
     for shape in player_shapes() {
-        requests.insert(shape.name.to_string(), measure_player_shape(db, &shape));
+        requests.insert(
+            shape.name.to_string(),
+            measure_player_shape(db, &groups, &shape),
+        );
     }
 
     // Every first page computes its query afresh; later windows reuse the first page's.

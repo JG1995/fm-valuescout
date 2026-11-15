@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 
 mod catalog;
 pub(crate) mod commands;
+pub(crate) mod comparison;
+pub(crate) mod json_scan;
 pub(crate) mod league_strength;
-pub(crate) mod percentile;
 pub(crate) mod persistence;
 pub(crate) mod query;
 #[allow(dead_code)]
@@ -13,6 +14,8 @@ pub(crate) mod role_score;
 mod save_statistics;
 pub(crate) mod save_stats_import;
 
+#[cfg(test)]
+pub(crate) use catalog::is_lower_is_better_statistic_key;
 pub(crate) use catalog::{
     is_moneyball_statistic_key, is_save_unavailable_statistic_key, MONEYBALL_STATISTIC_KEYS,
 };

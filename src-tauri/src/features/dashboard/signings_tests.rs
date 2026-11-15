@@ -1,5 +1,6 @@
 use serde_json::json;
 
+use crate::features::moneyball::comparison::GroupsSource;
 use crate::features::planner::tactic::{default_tactic, save_tactic};
 use crate::features::snapshot;
 
@@ -21,9 +22,14 @@ const MONEYBALL: SigningsRequest<'static> = SigningsRequest {
 };
 
 fn signings(fixture: &Fixture, request: SigningsRequest<'_>) -> Signings {
-    get_signings(&fixture.conn, fixture.save_id, request)
-        .expect("read signings")
-        .expect("signings for a managed club")
+    get_signings(
+        &fixture.conn,
+        &GroupsSource::Uncached,
+        fixture.save_id,
+        request,
+    )
+    .expect("read signings")
+    .expect("signings for a managed club")
 }
 
 fn slot<'a>(signings: &'a Signings, lane_id: &str) -> &'a LineupSlot {
@@ -241,6 +247,7 @@ fn a_slot_without_an_incumbent_counts_the_whole_score_and_a_slot_filter_narrows_
     assert_eq!(
         get_signings(
             &fixture.conn,
+            &GroupsSource::Uncached,
             fixture.save_id,
             SigningsRequest {
                 lane_id: Some("sweeper"),
@@ -319,10 +326,11 @@ fn moneyball_mode_scores_a_slot_by_its_custom_metrics_or_else_its_roles() {
     save_tactic(&fixture.conn, fixture.save_id, &tactic).expect("save tactic");
     // Attribute scores would rank the home striker first; Moneyball mode must ignore them.
     fixture.set_slot_score(1, "centre_forward", 99);
-    fixture.set_percentiles(1, 50, &[("goals_per_90", 40), ("xg_per_90", 20)]);
-    fixture.set_percentiles(2, 60, &[]);
-    fixture.set_percentiles(10, 50, &[("goals_per_90", 90), ("xg_per_90", 70)]);
-    fixture.set_percentiles(11, 75, &[]);
+    // The home striker ranks above the target at everything but the slot's custom metrics.
+    fixture.set_season_stats(1, 80.0, &[("goals_per_90", 1.0), ("xg_per_90", 1.0)]);
+    fixture.set_season_stats(10, 20.0, &[("goals_per_90", 9.0), ("xg_per_90", 9.0)]);
+    fixture.set_season_stats(2, 40.0, &[]);
+    fixture.set_season_stats(11, 60.0, &[]);
 
     let signings = signings(&fixture, MONEYBALL);
 
@@ -336,19 +344,76 @@ fn moneyball_mode_scores_a_slot_by_its_custom_metrics_or_else_its_roles() {
         slot(&signings, "goalkeeper").score_basis,
         ScoreBasis::MoneyballRoles
     );
+    // Each pair of peers ranks at 0 and 100: the custom metrics put the target striker
+    // first, and the goalkeeper slot's roles the target keeper.
     assert_eq!(
         incumbent(&signings, "centre_forward"),
-        Some((1, 30, IncumbentSource::BestFit))
+        Some((1, 0, IncumbentSource::BestFit))
     );
     assert_eq!(
         incumbent(&signings, "goalkeeper"),
-        Some((2, 60, IncumbentSource::BestFit))
+        Some((2, 0, IncumbentSource::BestFit))
     );
     assert_eq!(
         ranked(&signings.recommendations),
-        [(10, "centre_forward", 80, 50), (11, "goalkeeper", 75, 15)]
+        [
+            (11, "goalkeeper", 100, 100),
+            (10, "centre_forward", 100, 100)
+        ]
     );
     assert_eq!(signings.recommendations[0].minutes, Some(900));
+}
+
+#[test]
+fn moneyball_scores_rank_within_the_roles_families_and_the_slots_group() {
+    let fixture = open_with_players(&[
+        player(1, "Home Wide Player", HOME_CLUB, "AML"),
+        player(2, "Home Keeper", HOME_CLUB, "GK"),
+        player(10, "Target Wide Player", OTHER_CLUB, "AML"),
+        player(11, "Target Keeper", OTHER_CLUB, "GK"),
+        player(13, "Winger", OTHER_CLUB, "AML"),
+        player(14, "Wide Midfielder", OTHER_CLUB, "ML"),
+        player(15, "Striker", OTHER_CLUB, "ST"),
+    ]);
+    for uid in [1, 10] {
+        fixture.set_player_column(uid, "positions_json", r#"{"AML": 20, "ML": 20}"#);
+    }
+    let mut tactic = default_tactic();
+    tactic
+        .lanes
+        .iter_mut()
+        .find(|lane| lane.lane_id == "left_winger")
+        .expect("left winger")
+        .custom_metric_keys = vec!["goals_per_90".to_string()];
+    save_tactic(&fixture.conn, fixture.save_id, &tactic).expect("save tactic");
+    for (uid, goals_per_90) in [(1, 2.0), (10, 6.0), (13, 4.0), (14, 8.0)] {
+        fixture.set_season_stats(uid, 50.0, &[("goals_per_90", goals_per_90)]);
+    }
+    fixture.set_season_stats(2, 40.0, &[]);
+    fixture.set_season_stats(11, 60.0, &[]);
+    // Better than everyone at everything, but neither a keeper nor a wide player.
+    fixture.set_season_stats(15, 90.0, &[("goals_per_90", 100.0)]);
+    let slot_signings = |lane_id| {
+        signings(
+            &fixture,
+            SigningsRequest {
+                lane_id: Some(lane_id),
+                ..MONEYBALL
+            },
+        )
+    };
+
+    // The AML/ML slot ranks among wingers and wide midfielders together: 2, 4, 6, and 8, so
+    // 6 is at the 67th percentile. Wingers alone would put it at 100, everyone at 50.
+    assert_eq!(
+        ranked(&slot_signings("left_winger").recommendations),
+        [(10, "left_winger", 67, 67)]
+    );
+    // The goalkeeper's roles rank among keepers only, so the striker does not count.
+    assert_eq!(
+        ranked(&slot_signings("goalkeeper").recommendations),
+        [(11, "goalkeeper", 100, 100)]
+    );
 }
 
 #[test]
@@ -357,23 +422,23 @@ fn moneyball_mode_marks_a_signing_down_for_playing_in_a_weaker_league() {
         player(1, "Home Keeper", HOME_CLUB, "GK"),
         player(10, "Target Keeper", OTHER_CLUB, "GK"),
     ]);
-    fixture.set_percentiles(1, 60, &[]);
-    fixture.set_percentiles(10, 75, &[]);
+    fixture.set_season_stats(1, 60.0, &[]);
+    fixture.set_season_stats(10, 75.0, &[]);
     fixture.set_player_column(1, "division", "Top");
     fixture.set_player_column(10, "division", "Second");
     fixture.measure_leagues(&[("Top", 150.0), ("Second", 140.0)]);
 
     let signings = signings(&fixture, MONEYBALL);
 
-    // The managed club's league is the reference, so its own keeper keeps his 60. The
-    // target's 75 loses half of the 10 points between the leagues.
+    // The managed club's league is the reference, so its own keeper keeps his 0. The
+    // target's 100 loses half of the 10 points between the leagues.
     assert_eq!(
         incumbent(&signings, "goalkeeper"),
-        Some((1, 60, IncumbentSource::BestFit))
+        Some((1, 0, IncumbentSource::BestFit))
     );
     assert_eq!(
         ranked(&signings.recommendations),
-        [(10, "goalkeeper", 70, 10)]
+        [(10, "goalkeeper", 95, 95)]
     );
 }
 
@@ -476,16 +541,17 @@ fn realistic_signings_in_moneyball_mode_are_those_with_season_stats() {
         player(11, "Keeper Without Stats", OTHER_CLUB, "GK"),
         player(12, "Keeper Out Of Reach", OTHER_CLUB, "GK"),
     ]);
-    fixture.set_percentiles(1, 60, &[]);
-    fixture.set_percentiles(10, 75, &[]);
-    fixture.set_percentiles(12, 90, &[]);
+    fixture.set_season_stats(1, 60.0, &[]);
+    fixture.set_season_stats(10, 75.0, &[]);
+    fixture.set_season_stats(12, 90.0, &[]);
     fixture.set_player_column(12, "ca", 200);
 
     let with_stats = signings(&fixture, MONEYBALL);
 
+    // The three keepers with season stats rank at 0, 50, and 100.
     assert_eq!(
         ranked(&with_stats.recommendations),
-        [(10, "goalkeeper", 75, 15)]
+        [(10, "goalkeeper", 50, 50)]
     );
     assert_eq!(with_stats.candidates, None);
 
@@ -601,7 +667,12 @@ fn has_no_signings_without_a_managed_club() {
         .expect("clear managed club");
 
     assert_eq!(
-        get_signings(&fixture.conn, fixture.save_id, GENERAL),
+        get_signings(
+            &fixture.conn,
+            &GroupsSource::Uncached,
+            fixture.save_id,
+            GENERAL
+        ),
         Ok(None)
     );
 }
@@ -694,7 +765,7 @@ fn a_percentile_filter_ranks_a_signing_among_the_slots_position_peers() {
     fixture.set_player_column(14, "positions_json", r#"{"DM": 20, "DC": 16}"#);
     fixture.set_player_column(15, "positions_json", r#"{"ST": 20, "DC": 15}"#);
     for (uid, progressive_passes) in [(10, 40.0), (11, 20.0), (13, 10.0), (14, 5.0), (15, 100.0)] {
-        fixture.set_percentiles(uid, 50, &[]);
+        fixture.set_season_stats(uid, 50.0, &[]);
         fixture.set_statistics(uid, &[("progressive_passes", progressive_passes)]);
     }
     fixture.set_recruitment_filters(
@@ -735,8 +806,8 @@ fn moneyball_mode_applies_a_role_score_filter() {
         player(10, "Strong Target", OTHER_CLUB, "DC"),
         player(11, "Weak Target", OTHER_CLUB, "DC"),
     ]);
-    for (uid, percentile) in [(1, 40), (2, 40), (10, 80), (11, 80)] {
-        fixture.set_percentiles(uid, percentile, &[]);
+    for (uid, level) in [(1, 40.0), (2, 40.0), (10, 80.0), (11, 80.0)] {
+        fixture.set_season_stats(uid, level, &[]);
     }
     fixture.set_slot_score(10, "left_centre_back", 70);
     fixture.set_slot_score(11, "left_centre_back", 50);
@@ -788,7 +859,7 @@ fn season_stats_hold_back_short_samples_and_switch_off_with_their_filters() {
         fixture.set_slot_score(uid, "left_centre_back", score);
     }
     for (uid, minutes, progressive_passes) in [(10, 600, 40.0), (11, 300, 100.0), (13, 900, 10.0)] {
-        fixture.set_percentiles(uid, 50, &[]);
+        fixture.set_season_stats(uid, 50.0, &[]);
         fixture.set_season_minutes(uid, minutes);
         fixture.set_statistics(uid, &[("progressive_passes", progressive_passes)]);
     }
@@ -836,8 +907,8 @@ fn moneyball_mode_always_applies_season_stats() {
         player(10, "Regular Target", OTHER_CLUB, "DC"),
         player(11, "Short Sample Target", OTHER_CLUB, "DC"),
     ]);
-    for (uid, percentile) in [(1, 40), (2, 40), (10, 80), (11, 90)] {
-        fixture.set_percentiles(uid, percentile, &[]);
+    for (uid, level) in [(1, 40.0), (2, 40.0), (10, 80.0), (11, 90.0)] {
+        fixture.set_season_stats(uid, level, &[]);
     }
     fixture.set_season_minutes(11, 300);
 

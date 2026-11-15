@@ -3,6 +3,24 @@ use std::collections::BTreeMap;
 use super::catalog::is_save_unavailable_statistic_key;
 use super::role_catalog::{validate_role_definition, RoleDefinition};
 
+/// Where a score reads each statistic's percentile: a map by statistic key, or a lookup that
+/// ranks the player's statistic within the score's comparison group.
+pub(crate) trait Percentiles {
+    fn percentile(&self, key: &str) -> Option<u8>;
+}
+
+impl Percentiles for BTreeMap<String, Option<u8>> {
+    fn percentile(&self, key: &str) -> Option<u8> {
+        self.get(key).copied().flatten()
+    }
+}
+
+impl<F: Fn(&str) -> Option<u8>> Percentiles for F {
+    fn percentile(&self, key: &str) -> Option<u8> {
+        self(key)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RoleScore {
     pub(crate) score: u8,
@@ -30,7 +48,7 @@ pub(crate) struct RoleScoreDetails {
 /// weights are rescaled to sum to one.
 pub(crate) fn explain_role(
     definition: &RoleDefinition,
-    percentiles: &BTreeMap<String, Option<u8>>,
+    percentiles: &impl Percentiles,
 ) -> Option<RoleScoreDetails> {
     validate_role_definition(definition).ok()?;
     let available_weight = definition
@@ -47,8 +65,7 @@ pub(crate) fn explain_role(
         let available_from_source = !is_save_unavailable_statistic_key(&metric.key);
         let percentile = if available_from_source {
             percentiles
-                .get(&metric.key)
-                .and_then(|value| *value)
+                .percentile(&metric.key)
                 .map(|value| value.min(100))
         } else {
             None
@@ -80,21 +97,21 @@ pub(crate) fn explain_role(
 /// used as stored. No score without metrics or when any percentile is missing.
 pub(crate) fn mean_percentile_score(
     metric_keys: &[String],
-    percentiles: &BTreeMap<String, Option<u8>>,
+    percentiles: &impl Percentiles,
 ) -> Option<u8> {
     if metric_keys.is_empty() {
         return None;
     }
     let mut sum = 0.0;
     for key in metric_keys {
-        sum += f64::from(percentiles.get(key).copied().flatten()?);
+        sum += f64::from(percentiles.percentile(key)?);
     }
     Some((sum / metric_keys.len() as f64).round().clamp(0.0, 100.0) as u8)
 }
 
 pub(crate) fn score_role(
     definition: &RoleDefinition,
-    percentiles: &BTreeMap<String, Option<u8>>,
+    percentiles: &impl Percentiles,
 ) -> Option<RoleScore> {
     let details = explain_role(definition, percentiles)?;
     let score = details.score?;
@@ -109,8 +126,9 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{explain_role, mean_percentile_score, score_role};
-    use crate::features::moneyball::percentile::calculate_percentiles;
+    use crate::features::moneyball::comparison::{statistic_index, GroupRankings};
     use crate::features::moneyball::role_catalog::{RoleDefinition, RoleMetric, RolePhase};
+    use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
 
     fn definition(metrics: Vec<RoleMetric>) -> RoleDefinition {
         RoleDefinition {
@@ -224,20 +242,23 @@ mod tests {
     #[test]
     fn composes_lower_raw_values_into_higher_role_contributions_once() {
         let definition = definition(vec![metric("minutes_per_goal", 1.0, true)]);
-        let raw_values = BTreeMap::from([
-            (
-                1,
-                BTreeMap::from([("minutes_per_goal".to_owned(), Some(30.0))]),
-            ),
-            (
-                2,
-                BTreeMap::from([("minutes_per_goal".to_owned(), Some(60.0))]),
-            ),
-        ]);
-        let percentiles = calculate_percentiles(&raw_values);
+        let index = statistic_index("minutes_per_goal").expect("catalog key");
+        let player = |minutes_per_goal: f64| {
+            let mut values = vec![f64::NAN; MONEYBALL_STATISTIC_KEYS.len()];
+            values[index] = minutes_per_goal;
+            values
+        };
+        let (quick, slow) = (player(30.0), player(60.0));
+        let rankings = GroupRankings::rank(&[&quick, &slow]);
 
-        let better = score_role(&definition, &percentiles[&1]).expect("score should be calculable");
-        let worse = score_role(&definition, &percentiles[&2]).expect("score should be calculable");
+        let better = score_role(&definition, &|key: &str| {
+            rankings.percentile_of(key, Some(quick[index]))
+        })
+        .expect("score should be calculable");
+        let worse = score_role(&definition, &|key: &str| {
+            rankings.percentile_of(key, Some(slow[index]))
+        })
+        .expect("score should be calculable");
 
         assert_eq!(better.score, 100);
         assert_eq!(worse.score, 0);

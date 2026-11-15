@@ -539,12 +539,12 @@ mod tests {
             shortlists
         }
 
-        fn cohort(&self) -> Vec<(i64, Option<i64>, Option<i64>)> {
+        /// Each stored row's UID, goals, and scored-row marker.
+        fn cohort(&self) -> Vec<(i64, Option<i64>, Option<String>)> {
             let conn = self.db.0.lock().expect("lock");
             let rows = conn
                 .prepare(
-                    "SELECT player_uid, json_extract(statistics_json, '$.goals'),
-                        json_extract(percentiles_json, '$.goals')
+                    "SELECT player_uid, json_extract(statistics_json, '$.goals'), percentiles_json
                  FROM player_moneyball_stats WHERE snapshot_id = ?1 ORDER BY player_uid",
                 )
                 .expect("prepare cohort query")
@@ -584,7 +584,7 @@ mod tests {
     }
 
     #[test]
-    fn a_linked_save_replaces_the_cohort_scores_percentiles_and_sets_the_as_of_date() {
+    fn a_linked_save_replaces_the_cohort_marks_it_scored_and_sets_the_as_of_date() {
         let fixture = fixture();
         fixture.link_matching_save();
 
@@ -598,7 +598,10 @@ mod tests {
         );
         assert_eq!(
             fixture.cohort(),
-            vec![(10, Some(1), Some(0)), (20, Some(3), Some(100))]
+            vec![
+                (10, Some(1), Some("{}".to_string())),
+                (20, Some(3), Some("{}".to_string()))
+            ]
         );
         assert_eq!(fixture.state(), (2, Some(GAME_DATE.to_string())));
     }

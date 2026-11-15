@@ -10,10 +10,11 @@ use crate::features::player::boost_gate;
 use crate::features::snapshot::service::active_save_id;
 
 use super::catalog::is_save_unavailable_statistic_key;
+use super::comparison::{ComparisonGroupsCache, GroupsSource, MIN_SEASON_MINUTES};
 use super::league_strength::{self, LeagueAdjustment, LeagueBreakdown};
 use super::query::{
-    self, MoneyballComparisonBasis, MoneyballProfile, MoneyballProfileState,
-    MoneyballRoleContribution, MoneyballRoleScore,
+    self, MoneyballComparison, MoneyballProfile, MoneyballProfileState, MoneyballRoleContribution,
+    MoneyballRoleScore,
 };
 use super::save_stats_import::{attach_season_stats, SeasonStatsOutcome};
 
@@ -25,11 +26,33 @@ pub struct MoneyballProfileDto {
     pub substitute_appearances: Option<i64>,
     pub minutes: Option<i64>,
     pub statistics: Option<BTreeMap<String, Option<f64>>>,
-    pub percentiles: Option<BTreeMap<String, Option<u8>>>,
+    /// The player's percentiles within each family he can be compared in, his best
+    /// position's first.
+    pub comparisons: Vec<MoneyballComparisonDto>,
+    /// The fewest minutes that make a player one of a family's peers.
+    pub minimum_minutes: i64,
     pub role_catalog_version: Option<u32>,
     pub role_scores: Option<Vec<MoneyballRoleScoreDto>>,
-    pub comparison_basis: Option<MoneyballComparisonBasisDto>,
     pub league_adjustment: Option<MoneyballLeagueBreakdownDto>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoneyballComparisonDto {
+    /// The role catalog's position family ID.
+    pub family: &'static str,
+    pub peers: usize,
+    pub percentiles: BTreeMap<String, Option<u8>>,
+}
+
+impl From<MoneyballComparison> for MoneyballComparisonDto {
+    fn from(comparison: MoneyballComparison) -> Self {
+        Self {
+            family: comparison.family.id(),
+            peers: comparison.peers,
+            percentiles: comparison.percentiles,
+        }
+    }
 }
 
 /// What moved a player's role scores for his league. Strengths are mean current abilities.
@@ -53,37 +76,6 @@ impl From<LeagueBreakdown> for MoneyballLeagueBreakdownDto {
             reference_division: breakdown.reference_division,
             reference_strength: breakdown.reference_strength,
             shift: breakdown.shift,
-        }
-    }
-}
-
-#[derive(Serialize)]
-#[serde(
-    tag = "kind",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub enum MoneyballComparisonBasisDto {
-    Available {
-        natural_positions: Vec<String>,
-        comparison_player_count: usize,
-    },
-    UnavailableNoNaturalPosition,
-}
-
-impl From<MoneyballComparisonBasis> for MoneyballComparisonBasisDto {
-    fn from(basis: MoneyballComparisonBasis) -> Self {
-        match basis {
-            MoneyballComparisonBasis::Available {
-                natural_positions,
-                comparison_player_count,
-            } => Self::Available {
-                natural_positions,
-                comparison_player_count,
-            },
-            MoneyballComparisonBasis::UnavailableNoNaturalPosition => {
-                Self::UnavailableNoNaturalPosition
-            }
         }
     }
 }
@@ -156,14 +148,16 @@ impl From<MoneyballProfile> for MoneyballProfileDto {
             substitute_appearances: profile.substitute_appearances,
             minutes: profile.minutes,
             statistics: profile.statistics,
-            percentiles: profile.percentiles,
+            comparisons: profile
+                .comparisons
+                .into_iter()
+                .map(MoneyballComparisonDto::from)
+                .collect(),
+            minimum_minutes: MIN_SEASON_MINUTES,
             role_catalog_version: profile.role_catalog_version,
             role_scores: profile
                 .role_scores
                 .map(|roles| roles.into_iter().map(MoneyballRoleScoreDto::from).collect()),
-            comparison_basis: profile
-                .comparison_basis
-                .map(MoneyballComparisonBasisDto::from),
             league_adjustment: profile
                 .league_adjustment
                 .map(MoneyballLeagueBreakdownDto::from),
@@ -176,14 +170,22 @@ impl From<MoneyballProfile> for MoneyballProfileDto {
 pub async fn get_player_moneyball(
     uid: i64,
     db: State<'_, Db>,
+    groups: State<'_, ComparisonGroupsCache>,
 ) -> Result<Option<MoneyballProfileDto>, String> {
     let db = db.inner().clone();
-    blocking::run(move || read_player_moneyball(&db, uid)).await
+    let groups = groups.inner().clone();
+    blocking::run(move || read_player_moneyball(&db, &groups, uid)).await
 }
 
-fn read_player_moneyball(db: &Db, uid: i64) -> Result<Option<MoneyballProfileDto>, String> {
+fn read_player_moneyball(
+    db: &Db,
+    groups: &ComparisonGroupsCache,
+    uid: i64,
+) -> Result<Option<MoneyballProfileDto>, String> {
     let conn = db.read()?;
-    query::get_player_moneyball(&conn, uid).map(|profile| profile.map(MoneyballProfileDto::from))
+    let groups = GroupsSource::Cached(groups, conn.generation());
+    query::get_player_moneyball(&conn, &groups, uid)
+        .map(|profile| profile.map(MoneyballProfileDto::from))
 }
 
 /// Whether the active save adjusts Moneyball scores for league strength, and the league it
@@ -290,10 +292,11 @@ mod tests {
     use super::LOAD_DATA_RUNNING;
     use super::{refresh_season_stats_with, MoneyballProfileDto, RefreshSeasonStatsError};
     use crate::db::{migrations, Db};
+    use crate::features::moneyball::comparison::{ComparisonGroupsCache, PositionFamily};
     use crate::features::moneyball::persistence::test_support::{cohort_state, seed_cohort};
     use crate::features::moneyball::query::{
-        MoneyballComparisonBasis, MoneyballProfile, MoneyballProfileState,
-        MoneyballRoleContribution, MoneyballRoleScore,
+        MoneyballComparison, MoneyballProfile, MoneyballProfileState, MoneyballRoleContribution,
+        MoneyballRoleScore,
     };
     use crate::features::moneyball::save_stats_import::SeasonStatsResult;
     use crate::features::player::boost_gate::{
@@ -302,17 +305,16 @@ mod tests {
     use crate::features::save_stats::synthetic::{write_season_stats_save, GAME_DATE};
     use crate::features::snapshot::service::{self as snapshot_service, LinkedSaveFile};
 
-    fn ready_profile(comparison_basis: MoneyballComparisonBasis) -> MoneyballProfile {
+    fn ready_profile(comparisons: Vec<MoneyballComparison>) -> MoneyballProfile {
         MoneyballProfile {
             state: MoneyballProfileState::Ready,
             starts: Some(18),
             substitute_appearances: Some(3),
             minutes: Some(1_500),
             statistics: Some(BTreeMap::new()),
-            percentiles: Some(BTreeMap::new()),
+            comparisons,
             role_catalog_version: Some(1),
             role_scores: Some(Vec::new()),
-            comparison_basis: Some(comparison_basis),
             league_adjustment: None,
         }
     }
@@ -330,55 +332,31 @@ mod tests {
             seed_cohort(&conn, snapshot_id, 77, PRIOR_AS_OF);
         }
 
-        let profile =
-            crate::db::read_while_writer_is_held(&db, |db| super::read_player_moneyball(db, 77))
-                .expect("Moneyball profile on a reader")
-                .expect("cohort player");
+        let profile = crate::db::read_while_writer_is_held(&db, |db| {
+            super::read_player_moneyball(db, &ComparisonGroupsCache::default(), 77)
+        })
+        .expect("Moneyball profile on a reader")
+        .expect("cohort player");
 
         // The seeded cohort row has no statistics, which the profile reports for reimport.
         assert_eq!(profile.state, "needsReimport");
     }
 
     #[test]
-    fn serializes_available_comparison_basis_with_camel_case_fields() {
-        let dto = MoneyballProfileDto::from(ready_profile(MoneyballComparisonBasis::Available {
-            natural_positions: vec!["AMR".to_owned(), "ST".to_owned()],
-            comparison_player_count: 12,
-        }));
+    fn serializes_each_comparison_with_its_family_id_and_the_minimum_minutes() {
+        let dto = MoneyballProfileDto::from(ready_profile(vec![MoneyballComparison {
+            family: PositionFamily::Winger,
+            peers: 12,
+            percentiles: BTreeMap::from([("goals".to_owned(), Some(40))]),
+        }]));
 
         let value = serde_json::to_value(dto).expect("serialize profile");
 
         assert_eq!(
-            value["comparisonBasis"],
-            json!({
-                "kind": "available",
-                "naturalPositions": ["AMR", "ST"],
-                "comparisonPlayerCount": 12,
-            })
+            value["comparisons"],
+            json!([{ "family": "winger", "peers": 12, "percentiles": { "goals": 40 } }])
         );
-        assert!(value["comparisonBasis"].get("natural_positions").is_none());
-        assert!(value["comparisonBasis"]
-            .get("comparison_player_count")
-            .is_none());
-    }
-
-    #[test]
-    fn serializes_unavailable_comparison_basis_without_neutral_scores() {
-        let mut profile = ready_profile(MoneyballComparisonBasis::UnavailableNoNaturalPosition);
-        profile.percentiles = None;
-        profile.role_catalog_version = None;
-        profile.role_scores = None;
-
-        let dto = MoneyballProfileDto::from(profile);
-        let value = serde_json::to_value(dto).expect("serialize profile");
-
-        assert_eq!(
-            value["comparisonBasis"],
-            json!({ "kind": "unavailableNoNaturalPosition" })
-        );
-        assert_eq!(value["percentiles"], serde_json::Value::Null);
-        assert_eq!(value["roleCatalogVersion"], serde_json::Value::Null);
-        assert_eq!(value["roleScores"], serde_json::Value::Null);
+        assert_eq!(value["minimumMinutes"], json!(450));
     }
 
     fn contribution(metric_key: &str, percentile: Option<u8>) -> MoneyballRoleContribution {
@@ -394,10 +372,7 @@ mod tests {
 
     #[test]
     fn marks_contributions_that_save_files_cannot_provide() {
-        let mut profile = ready_profile(MoneyballComparisonBasis::Available {
-            natural_positions: vec!["MC".to_owned()],
-            comparison_player_count: 12,
-        });
+        let mut profile = ready_profile(Vec::new());
         profile.role_scores = Some(vec![MoneyballRoleScore {
             role_id: "mc_pressing_central_midfielder_oop".to_owned(),
             display_name: "Pressing Central Midfielder".to_owned(),
