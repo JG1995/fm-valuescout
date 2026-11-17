@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-11-17
+
+### Added
+
+- **Season stats from kept snapshots.** A player with under 450 competitive minutes this season is now scored on his season stats from the latest kept snapshot in which he has 450 or more, when those stats are less than a year older than the current snapshot's in-game date. They are ranked against that snapshot's players and adjusted for the league he played in then. Recommended signings, Best per slot, and the starting XI use them, so early in a season a candidate is no longer held back for too few minutes when last season's stats are kept. Signing cards date borrowed minutes, and the Moneyball profile names the kept snapshot's date and this season's minutes. Moneyball Search still shows this season's stats only.
+
+### Changed
+
+- Snapshots keep their season stats after a newer load replaces them as current, until they are deleted. Keep a snapshot before the next Load Data to lend its stats later; each kept snapshot with stats takes more disk space. Snapshots kept before this release have no stats to lend.
+- Updated compatible Rust dependencies.
+
 ## [0.28.0] - 2026-11-15
 
 ### Added
