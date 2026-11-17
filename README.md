@@ -15,13 +15,13 @@ Published GitHub releases provide an unsigned Windows x64 installer with a match
 | Area | Supported early-alpha boundary |
 | --- | --- |
 | Desktop OS | Windows x64 only |
-| Game | Steam Football Manager 27.0 on Windows (live validated on 27.0) |
+| Game | Steam Football Manager 27 on Windows (live validated on 27.0) |
 | Bridge prerequisite | BepInEx 6 IL2CPP already installed in the FM27 folder |
 | Database scope | Men's database only |
 | Data refresh | Explicit **Load Data** while FM27 is running with a save loaded |
 | Network use | Core use is local; there are no accounts, cloud sync, telemetry, or automatic data upload |
 
-FM patches can change memory layouts. Current Load Data support is limited to the FM 27.0 layout; FM27 and other FM27 builds are unsupported. If a game build is unsupported, the bridge is designed to fail closed rather than guess. The two player-boost actions are especially constrained: they are optional, require a fresh successful live load, and are supported only on the exact FM 27.0 build. Back up the FM save before using either action.
+FM patches can change memory layouts. The bridge uses one FM27 layout for every 27.x patch and checks every scan against the data it reads. If the players and staff no longer look like FM data, for example CA above PA or personality values outside 1–20 across the database, Load Data stops and names the fields that moved. The previous snapshot stays current. Other Football Manager editions are refused. The two player-boost actions are optional and require a successful live load of the running game. Back up the FM save before using either action, and again after a game patch.
 
 The app does not support macOS, Linux, non-Steam FM27, FM27 or other Football Manager editions, women's or combined databases, automatic updates, BepInEx installation, save-file import, or downgrade/rollback of an upgraded app database.
 

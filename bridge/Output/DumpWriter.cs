@@ -222,6 +222,15 @@ public static class DiagnosticsWriter
         sb.AppendLine($"playersExcludedByDatabaseScope={diagnostics.PlayersExcludedByDatabaseScope}");
         sb.AppendLine($"identitySkippedEmptyName={diagnostics.IdentitySkippedEmptyName}");
         sb.AppendLine($"identitySkippedImpossibleDob={diagnostics.IdentitySkippedImpossibleDob}");
+        sb.AppendLine($"playerObjectsFound={diagnostics.PlayerObjectsFound}");
+        sb.AppendLine($"playerAbilityRejects={diagnostics.PlayerAbilityRejects}");
+        foreach (var group in diagnostics.LayoutFit)
+        {
+            var verdict = !group.Judged
+                ? $"not judged below {Scanning.LayoutFitCheck.MinSample}"
+                : group.Fits ? $"fits, needs {group.Required:P0}" : $"FAILS, needs {group.Required:P0}";
+            sb.AppendLine($"layoutFit.{group.Name}={group.Passed}/{group.Sample} ({verdict})");
+        }
         sb.AppendLine($"regionEnumerationMs={diagnostics.RegionEnumerationMs}");
         sb.AppendLine($"candidateDiscoveryMs={diagnostics.CandidateDiscoveryMs}");
         sb.AppendLine($"extractionMs={diagnostics.ExtractionMs}");
@@ -286,7 +295,12 @@ public static class DiagnosticsWriter
             && diagnostics.FailureReason.Contains("unsupported", StringComparison.OrdinalIgnoreCase))
         {
             sb.AppendLine(
-                "hint=Add or update a layout under bridge/Layouts for this FM major.minor, then rebuild the plugin.");
+                "hint=Add a layout under bridge/Layouts for this FM major version, then rebuild the plugin.");
+        }
+        else if (diagnostics.LayoutFit.Any(group => !group.Fits))
+        {
+            sb.AppendLine(
+                "hint=FM moved the fields behind the failing layoutFit groups. Re-pin those offsets in bridge/Layouts against a live save, then rebuild the plugin.");
         }
         else if (diagnostics.CandidatesAccepted == 0 && diagnostics.LayoutProvisional)
         {

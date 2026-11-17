@@ -5,17 +5,8 @@ namespace FmDataBridge.Layouts;
 /// </summary>
 public interface IFmMemoryLayout
 {
-    /// <summary>Major.minor key, e.g. <c>27.0</c>.</summary>
+    /// <summary>FM major version key, e.g. <c>27</c>.</summary>
     string VersionKey { get; }
-
-    /// <summary>
-    /// True only for an exact FM build approved for the two bounded player-boost writes.
-    /// Read-layout resolution remains major.minor based and must not use this capability.
-    /// </summary>
-    bool SupportsPlayerBoosts(string gameVersion);
-
-    /// <summary>True only for an exact FM build approved for the bounded staff CA write.</summary>
-    bool SupportsStaffBoosts(string gameVersion);
 
     string DisplayName { get; }
 

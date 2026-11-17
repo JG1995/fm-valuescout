@@ -302,8 +302,7 @@ public class Plugin : BasePlugin
 
             if (result.Success)
             {
-                if (result.LivePlayerCandidates.Count > 0
-                    && PlayerBoosts.SupportsExactGameBuild(gameVersion))
+                if (result.LivePlayerCandidates.Count > 0)
                 {
                     PlayerMutationIndex.Replace(requestId, gameVersion, result.LivePlayerCandidates);
                 }
@@ -312,8 +311,7 @@ public class Plugin : BasePlugin
                     PlayerMutationIndex.Clear();
                 }
 
-                if (result.LiveStaffCandidates.Count > 0
-                    && StaffBoosts.SupportsExactGameBuild(gameVersion))
+                if (result.LiveStaffCandidates.Count > 0)
                 {
                     StaffMutationIndex.Replace(requestId, gameVersion, result.LiveStaffCandidates);
                 }

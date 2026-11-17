@@ -44,6 +44,15 @@ public sealed class ScanDiagnostics
 
     public int VtableHits { get; set; }
 
+    /// <summary>Player objects with a valid UID whose CA and PA the scanner read.</summary>
+    public int PlayerObjectsFound { get; set; }
+
+    /// <summary>Player objects whose CA or PA was unreadable or outside 1..200.</summary>
+    public int PlayerAbilityRejects { get; set; }
+
+    /// <summary>Population checks of the layout's offsets; empty until extraction finishes.</summary>
+    public IReadOnlyList<LayoutFitGroup> LayoutFit { get; set; } = Array.Empty<LayoutFitGroup>();
+
     public int CandidatesAccepted { get; set; }
 
     public int StaffCandidatesAccepted { get; set; }

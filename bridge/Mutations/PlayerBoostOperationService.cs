@@ -53,12 +53,12 @@ internal sealed class PlayerBoostOperationService
         _nextRandom = nextRandom ?? Random.Shared.Next;
     }
 
-    public bool SupportsExactGameBuild(string gameVersion) =>
-        _layouts.TryResolveFromGameVersion(gameVersion, out var layout)
-        && layout.SupportsPlayerBoosts(gameVersion);
-
+    /// <summary>
+    /// True when this game has a layout and a live scan of it passed the layout fit check; only
+    /// such a scan fills the index.
+    /// </summary>
     public bool HasSupportedLiveIndex(string gameVersion) =>
-        SupportsExactGameBuild(gameVersion)
+        _layouts.TryResolveFromGameVersion(gameVersion, out _)
         && _index.HasCandidatesForGameVersion(gameVersion);
 
     internal static bool PreservesLiveIndexOnFailure(PlayerBoostFailure failure) =>
@@ -84,8 +84,7 @@ internal sealed class PlayerBoostOperationService
             return Failed(PlayerBoostFailure.InvalidRequest);
         }
 
-        if (!_layouts.TryResolveFromGameVersion(gameVersion, out var layout)
-            || !layout.SupportsPlayerBoosts(gameVersion))
+        if (!_layouts.TryResolveFromGameVersion(gameVersion, out var layout))
         {
             return Failed(PlayerBoostFailure.UnsupportedGameBuild);
         }

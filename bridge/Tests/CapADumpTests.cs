@@ -32,13 +32,18 @@ public sealed class CapADumpTests
         }
     }
 
-    [Fact]
-    public void Layout_registry_resolves_27_0_from_full_game_version()
+    [Theory]
+    [InlineData("27.0.0.2329565")]
+    [InlineData("27.0")]
+    [InlineData("27.1")]
+    [InlineData("27.1.0.2505117")]
+    [InlineData("27.4")]
+    public void Layout_registry_resolves_every_fm27_version(string gameVersion)
     {
         var registry = LayoutRegistry.CreateDefault();
 
-        Assert.True(registry.TryResolveFromGameVersion("27.0.0.2329565", out var layout));
-        Assert.Equal("27.0", layout.VersionKey);
+        Assert.True(registry.TryResolveFromGameVersion(gameVersion, out var layout));
+        Assert.Equal("27", layout.VersionKey);
         Assert.Equal(0x0C, layout.ObjectUidOffset);
         Assert.Contains(0x288, layout.PlayerClassOffsets);
         Assert.Contains(0x100, layout.StaffClassOffsets);
@@ -52,12 +57,104 @@ public sealed class CapADumpTests
         Assert.True(layout.IsProvisional);
     }
 
-    [Fact]
-    public void Layout_registry_rejects_unsupported_version()
+    [Theory]
+    [InlineData("26.3.2")]
+    [InlineData("28.0")]
+    public void Layout_registry_rejects_other_fm_games(string gameVersion)
     {
         var registry = LayoutRegistry.CreateDefault();
 
-        Assert.False(registry.TryResolveFromGameVersion("26.3.2", out _));
+        Assert.False(registry.TryResolveFromGameVersion(gameVersion, out _));
+    }
+
+    [Fact]
+    public void Pipeline_refuses_a_layout_whose_personality_no_longer_reads_and_keeps_the_prior_dump()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            Assert.True(DumpWriter.TryWriteReplaceOnSuccess(bridgeDir, PriorDump()));
+            var reader = new FakeMemoryReader();
+            PlacePlayers(reader, count: 120, startUid: 1, personality: 0);
+
+            var result = new CapADumpPipeline().Run(
+                reader,
+                bridgeDir,
+                gameVersion: "27.1",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.False(result.Success);
+            Assert.False(result.DumpReplaced);
+            Assert.Contains("personality", result.Error, StringComparison.Ordinal);
+            Assert.DoesNotContain("height", result.Error, StringComparison.Ordinal);
+
+            using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
+            Assert.Equal(1, doc.RootElement.GetProperty("playerCount").GetInt32());
+
+            var diagnostics = File.ReadAllText(BridgePaths.GetDiagnosticsPath(bridgeDir));
+            Assert.Contains("layoutFit.personality=0/120", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("layoutFit.height=120/120", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Pipeline_refuses_when_most_player_objects_have_no_readable_ability()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var reader = new FakeMemoryReader();
+            PlacePlayers(reader, count: 40, startUid: 1);
+            PlacePlayers(reader, count: 110, startUid: 1001, ca: 0, firstSlot: 40);
+
+            var result = new CapADumpPipeline().Run(
+                reader,
+                bridgeDir,
+                gameVersion: "27.1",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.False(result.Success);
+            Assert.Contains("players found", result.Error, StringComparison.Ordinal);
+            Assert.False(File.Exists(BridgePaths.GetDumpPath(bridgeDir)));
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Pipeline_accepts_a_new_fm27_build_whose_data_fits()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var reader = new FakeMemoryReader();
+            PlacePlayers(reader, count: 120, startUid: 1);
+
+            var result = new CapADumpPipeline().Run(
+                reader,
+                bridgeDir,
+                gameVersion: "27.1",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.True(result.Success, result.Error);
+            Assert.Equal(120, result.PlayerCount);
+            using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
+            Assert.Equal("27.1", doc.RootElement.GetProperty("gameVersion").GetString());
+            Assert.Equal("27", doc.RootElement.GetProperty("supportedGameVersion").GetString());
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
     }
 
     [Fact]
@@ -1699,7 +1796,8 @@ public sealed class CapADumpTests
         ulong? playerBlockBase = null,
         string? name = "Fixture Player",
         int birthYear = 1999,
-        int birthDoy = 50)
+        int birthDoy = 50,
+        byte personality = 10)
     {
         var playerBase = playerBlockBase ?? (personAddress - (ulong)PlayerClassOffset);
 
@@ -1738,7 +1836,66 @@ public sealed class CapADumpTests
             ? 0u
             : ((uint)birthYear << 16) | (uint)birthDoy;
         reader.AddBytes(personAddress + (ulong)layout.DobOffset, BitConverter.GetBytes(dob));
+
+        var personalityStart = layout.PersonalityEntries.Min(entry => entry.Offset);
+        var personalityEnd = layout.PersonalityEntries.Max(entry => entry.Offset);
+        reader.AddBytes(
+            personAddress + (ulong)personalityStart,
+            Enumerable.Repeat(personality, personalityEnd - personalityStart + 1).ToArray());
     }
+
+    /// <summary>Places <paramref name="count"/> scannable players in one region, one per 0x20000 slot.</summary>
+    private static void PlacePlayers(
+        FakeMemoryReader reader,
+        int count,
+        uint startUid,
+        int ca = 120,
+        byte personality = 10,
+        int firstSlot = 0)
+    {
+        const ulong slotSpacing = 0x20000;
+        var layout = Fm27Layout.Instance;
+        var firstBlock = PlayerBlockBase + slotSpacing * (ulong)firstSlot;
+        AddCandidateRegion(reader, firstBlock, slotSpacing * (ulong)count + 0x1000);
+        for (var index = 0; index < count; index++)
+        {
+            var blockBase = firstBlock + slotSpacing * (ulong)index;
+            PlacePlayerBytes(
+                reader,
+                layout,
+                blockBase + (ulong)PlayerClassOffset,
+                uid: startUid + (uint)index,
+                ca: ca,
+                pa: 170,
+                playerBlockBase: blockBase,
+                name: $"Player {startUid + (uint)index}",
+                personality: personality);
+        }
+    }
+
+    private static DumpDocument PriorDump() => new()
+    {
+        SchemaVersion = 2,
+        GeneratedAtUtc = "2026-07-28T00:00:00Z",
+        GameVersion = "27.0.0",
+        SupportedGameVersion = "27.0",
+        BridgeVersion = "0.1.0",
+        ProtocolVersion = 1,
+        PlayerCount = 1,
+        Players = new[]
+        {
+            new DumpPlayer
+            {
+                Uid = 1,
+                Ca = 10,
+                Pa = 20,
+                Name = "Prior Player",
+                BirthYear = 2000,
+                BirthDayOfYear = 1,
+                PreferredFoot = "right",
+            },
+        },
+    };
 
     private static void PlaceNestedName(
         FakeMemoryReader reader,

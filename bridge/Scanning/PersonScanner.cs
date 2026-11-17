@@ -258,9 +258,19 @@ public static class PersonScanner
                         var abilityOffsets = facet == PersonFacet.Player
                             ? (layout.CurrentAbilityOffset, layout.PotentialAbilityOffset)
                             : (layout.StaffCurrentAbilityOffset, layout.StaffPotentialAbilityOffset);
+                        if (facet == PersonFacet.Player)
+                        {
+                            diagnostics.PlayerObjectsFound++;
+                        }
+
                         if (!TryReadAbilities(reader, blockAddress, abilityOffsets.Item1, abilityOffsets.Item2, out var ca, out var pa))
                         {
                             diagnostics.CandidatesRejected++;
+                            if (facet == PersonFacet.Player)
+                            {
+                                diagnostics.PlayerAbilityRejects++;
+                            }
+
                             continue;
                         }
 
@@ -488,6 +498,8 @@ public static class PersonScanner
         diagnostics.BytesScanned += workerDiagnostics.BytesScanned;
         diagnostics.VtableHits += workerDiagnostics.VtableHits;
         diagnostics.CandidatesRejected += workerDiagnostics.CandidatesRejected;
+        diagnostics.PlayerObjectsFound += workerDiagnostics.PlayerObjectsFound;
+        diagnostics.PlayerAbilityRejects += workerDiagnostics.PlayerAbilityRejects;
         diagnostics.DuplicatesSkipped += workerDiagnostics.DuplicatesSkipped;
         diagnostics.ClubCandidatesRejected += workerDiagnostics.ClubCandidatesRejected;
         diagnostics.ClubCandidateDuplicatesSkipped += workerDiagnostics.ClubCandidateDuplicatesSkipped;

@@ -47,7 +47,7 @@ For Wonderkid Mentality, a `null` expected field means the source snapshot did n
 
 `sourceRequestId` binds the action to the plugin's separate in-memory player or staff candidate index. The indexes are replaced only after a successful live dump and are absent after a snapshot-backed scan or plugin restart. Manual force scans receive a distinct source request ID each time. Requests never carry memory addresses, field selectors, or arbitrary target values.
 
-`status.json` may add `playerBoostsSupported` and `playerBoost`, plus `staffBoostsSupported` and `staffBoost`. Results report only verified CA/PA or mentality values plus rollback state. They contain no UID, address, raw bytes, or process path. `staffBoostsSupported` is true only for a live candidate index on the exact FM 27.0 build. Existing full-dump readers can ignore these optional fields.
+`status.json` may add `playerBoostsSupported` and `playerBoost`, plus `staffBoostsSupported` and `staffBoost`. Results report only verified CA/PA or mentality values plus rollback state. They contain no UID, address, raw bytes, or process path. `staffBoostsSupported` is true only while the bridge holds a live candidate index from a scan of the running FM27 game that passed the layout fit check. Existing full-dump readers can ignore these optional fields.
 
 ## Player object
 
@@ -98,7 +98,7 @@ Each staff record is snapshot-owned and has this shape:
 
 The fixed keys are `Attacking`, `Defending`, `Fitness`, `Possession`, `Technical`, `Tactical`, `SetPieces`, `Determination`, `ManManagement`, `Motivating`, `JudgingPlayerAbility`, `JudgingPlayerPotential`, `JudgingStaffAbility`, `Negotiating`, `TacticalKnowledge`, `Physiotherapy`, `SportsScience`, `Authority`, `Adaptability`, `DataAnalysis`, `WorkingWithYoungsters`, `GoalkeepingDistribution`, `GoalkeepingHandling`, and `GoalkeepingReflexes`.
 
-`Authority` is the current FM name for the former Level of Discipline concept. The FM 27.0 layout reads its scaled byte from `StaffAttrsOffset + 0x30`. `Adaptability` is a raw 1–20 person personality byte at `person + 0x70`; staff extraction publishes it in the staff attribute map because staff scoring consumes it. Either value is `null` when the read fails or the decoded value is outside 1–20.
+`Authority` is the current FM name for the former Level of Discipline concept. The FM27 layout reads its scaled byte from `StaffAttrsOffset + 0x30`. `Adaptability` is a raw 1–20 person personality byte at `person + 0x70`; staff extraction publishes it in the staff attribute map because staff scoring consumes it. Either value is `null` when the read fails or the decoded value is outside 1–20.
 
 The dump contract defines no query, UI, per-attribute SQL-column, or search-index semantics.
 
