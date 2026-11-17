@@ -1,5 +1,5 @@
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
-import { formatCount, formatMoney } from "@/utils/format";
+import { formatCount, formatMoney, formatShortDate } from "@/utils/format";
 import type {
   DashboardGraphics,
   DashboardLineupSlot,
@@ -20,17 +20,23 @@ export function signingClubLine(recommendation: DashboardRecommendation) {
     .join(" · ");
 }
 
-/** A recommended signing's value and, behind a Moneyball score, season minutes. */
+/**
+ * A recommended signing's value and, behind a Moneyball score, season minutes,
+ * dated when they come from a kept snapshot.
+ */
 export function signingValueLine(
   recommendation: DashboardRecommendation,
   mode: DashboardScoreMode,
 ) {
+  const borrowed = recommendation.borrowedStatsDate;
   return [
     recommendation.marketValueGbp === null
       ? "Value unknown"
       : formatMoney(recommendation.marketValueGbp),
     mode === "moneyball" && recommendation.minutes !== null
-      ? `${formatCount(recommendation.minutes)} min`
+      ? `${formatCount(recommendation.minutes)} min${
+          borrowed === null ? "" : ` as of ${formatShortDate(borrowed)}`
+        }`
       : null,
   ]
     .filter((part) => part !== null)

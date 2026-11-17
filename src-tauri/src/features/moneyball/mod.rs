@@ -4,6 +4,7 @@ mod catalog;
 pub(crate) mod commands;
 pub(crate) mod comparison;
 pub(crate) mod json_scan;
+pub(crate) mod kept_stats;
 pub(crate) mod league_strength;
 pub(crate) mod persistence;
 pub(crate) mod query;

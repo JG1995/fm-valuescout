@@ -8,6 +8,7 @@ use rusqlite::{params_from_iter, types::Value, Connection};
 
 pub(crate) use crate::features::moneyball::comparison::MIN_SEASON_MINUTES;
 use crate::features::moneyball::comparison::{scan_statistics, GroupsSource, ResolvedGroups};
+use crate::features::moneyball::kept_stats::{kept_stats_snapshots, stats_join_sql};
 use crate::features::moneyball::league_strength::LeagueAdjustment;
 use crate::features::moneyball::role_catalog::definition_for_attribute_role;
 use crate::features::planner::fit::{
@@ -107,6 +108,9 @@ pub(crate) struct Recommendation {
     pub(crate) market_value_gbp: Option<i64>,
     /// Season minutes behind a Moneyball score; absent in General mode.
     pub(crate) minutes: Option<i64>,
+    /// The in-game date of the kept snapshot's statistics behind a Moneyball score, when the
+    /// player has under `MIN_SEASON_MINUTES` minutes this season and borrows them.
+    pub(crate) borrowed_stats_date: Option<String>,
     pub(crate) lane_id: String,
     pub(crate) score: u8,
     /// Points above the slot's incumbent, or the whole score when the slot has none.
@@ -134,7 +138,7 @@ pub(crate) struct Signings {
     pub(crate) filtered_out: usize,
     /// Of `filtered_out`, those held back by having under `MIN_SEASON_MINUTES` minutes.
     pub(crate) under_minimum_minutes: usize,
-    /// Whether the snapshot has season statistics.
+    /// Whether the snapshot has season statistics, or a kept snapshot has some to lend.
     pub(crate) season_stats_available: bool,
     /// Whether season stats applied: candidates needed `MIN_SEASON_MINUTES` minutes and the
     /// slots' season-stat filters ran. Always in Moneyball mode when the snapshot has them.
@@ -160,6 +164,8 @@ struct ScoredPlayer {
     club_uid: Option<i64>,
     market_value_gbp: Option<i64>,
     minutes: Option<i64>,
+    /// The date of the kept statistics behind his Moneyball scores; `None` in General mode.
+    borrowed_stats_date: Option<String>,
     /// The player's score in each tactic slot, in lane order.
     lane_scores: Vec<Option<u8>>,
     /// Whether the player may be recommended for each slot: he has enough minutes and passes
@@ -167,6 +173,18 @@ struct ScoredPlayer {
     lane_allowed: Vec<bool>,
     /// Whether season stats applied and the player has under `MIN_SEASON_MINUTES` minutes.
     under_minimum_minutes: bool,
+}
+
+/// A snapshot whose season statistics score players: the current one, or a kept one that
+/// players under `MIN_SEASON_MINUTES` minutes borrow from (see `moneyball::kept_stats`).
+struct StatsSource {
+    snapshot_id: i64,
+    /// The in-game date of a kept snapshot's statistics; `None` for the current snapshot.
+    kept_date: Option<String>,
+    /// The comparison groups its statistics rank within, when the request ranks any.
+    rankings: Option<ResolvedGroups>,
+    /// How its league strengths move Moneyball scores.
+    league: LeagueAdjustment,
 }
 
 #[derive(Clone, Copy)]
@@ -207,7 +225,8 @@ pub(crate) fn get_signings(
         })
         .transpose()?;
     let mode = request.mode;
-    let season_stats_available = snapshot_has_percentiles(conn, snapshot_id)?;
+    let kept = kept_stats_snapshots(conn, snapshot_id)?;
+    let season_stats_available = !kept.is_empty() || snapshot_has_percentiles(conn, snapshot_id)?;
     let scores_available = match mode {
         ScoreMode::General => {
             assert_read_models_complete(conn, snapshot_id, true, false)?;
@@ -218,28 +237,52 @@ pub(crate) fn get_signings(
     let season_stats =
         season_stats_available && (mode == ScoreMode::Moneyball || request.season_stats);
 
-    let league = match mode {
-        ScoreMode::General => LeagueAdjustment::default(),
-        ScoreMode::Moneyball => LeagueAdjustment::load(conn, snapshot_id)?,
-    };
     // Moneyball scores and percentile filters rank statistics within comparison groups: the
     // roles' families, and the slot's group for custom metrics and filters.
     let ranks_slot = |lane: &TacticLane| {
         (mode == ScoreMode::Moneyball && !lane.custom_metric_keys.is_empty())
             || (season_stats && has_percentile_filter(lane))
     };
-    let rankings =
-        if season_stats && (mode == ScoreMode::Moneyball || tactic.lanes.iter().any(ranks_slot)) {
-            let groups = groups.load(conn, snapshot_id)?;
-            let slots = tactic
-                .lanes
-                .iter()
-                .filter(|lane| ranks_slot(lane))
-                .filter_map(slot_group);
-            Some(ResolvedGroups::resolve(&groups, conn, slots)?)
-        } else {
+    let ranks =
+        season_stats && (mode == ScoreMode::Moneyball || tactic.lanes.iter().any(ranks_slot));
+    let slots = tactic
+        .lanes
+        .iter()
+        .filter(|lane| ranks_slot(lane))
+        .filter_map(slot_group)
+        .collect::<Vec<_>>();
+    let source = |snapshot_id: i64, kept_date: Option<String>| {
+        let rankings = if !ranks {
             None
+        } else {
+            let groups = match &kept_date {
+                None => groups.load(conn, snapshot_id)?,
+                Some(stats_date) => groups.load_kept(conn, snapshot_id, stats_date)?,
+            };
+            Some(ResolvedGroups::resolve(
+                &groups,
+                conn,
+                slots.iter().copied(),
+            )?)
         };
+        let league = match mode {
+            ScoreMode::General => LeagueAdjustment::default(),
+            ScoreMode::Moneyball => LeagueAdjustment::load(conn, snapshot_id)?,
+        };
+        Ok::<_, String>(StatsSource {
+            snapshot_id,
+            kept_date,
+            rankings,
+            league,
+        })
+    };
+    // The current snapshot first, then the kept snapshots players can borrow from.
+    let mut sources = vec![source(snapshot_id, None)?];
+    if season_stats {
+        for kept in kept {
+            sources.push(source(kept.snapshot_id, Some(kept.stats_date))?);
+        }
+    }
     let load = |scope| {
         load_players(
             conn,
@@ -248,9 +291,8 @@ pub(crate) fn get_signings(
             scope,
             &tactic,
             mode,
-            &league,
             season_stats,
-            rankings.as_ref(),
+            &sources,
         )
     };
     let club = load(PlayerScope::Club)?;
@@ -271,7 +313,7 @@ pub(crate) fn get_signings(
     let candidate_count = match request.shortlist_id {
         Some(_) => Some(candidates.len()),
         None if !candidates.is_empty() => None,
-        None if has_realistic_signings(conn, save_id, snapshot_id, mode)? => None,
+        None if has_realistic_signings(conn, save_id, snapshot_id, mode, &sources)? => None,
         None => Some(0),
     };
 
@@ -413,11 +455,24 @@ fn outside_managed_club_sql() -> String {
     )
 }
 
-const MONEYBALL_JOIN_SQL: &str = " LEFT JOIN player_moneyball_stats moneyball
-     ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid";
-
 /// Only a player with season statistics has a Moneyball score to compare.
 const HAS_PERCENTILES_SQL: &str = "moneyball.percentiles_json IS NOT NULL";
+
+/// The league a player played his season statistics in: his division in the snapshot they
+/// come from.
+const STATS_DIVISION_SQL: &str = "CASE WHEN moneyball.snapshot_id = players.snapshot_id
+         THEN players.division
+         ELSE (SELECT source.division FROM players source
+               WHERE source.snapshot_id = moneyball.snapshot_id AND source.uid = players.uid)
+     END";
+
+/// The kept snapshots of `sources`, latest first.
+fn kept_snapshot_ids(sources: &[StatsSource]) -> Vec<i64> {
+    sources[1..]
+        .iter()
+        .map(|source| source.snapshot_id)
+        .collect()
+}
 
 /// The tactic's role score columns, two for each slot in lane order.
 fn role_score_columns(tactic: &PlannerTactic) -> Result<Vec<String>, String> {
@@ -459,10 +514,14 @@ fn has_realistic_signings(
     save_id: i64,
     snapshot_id: i64,
     mode: ScoreMode,
+    sources: &[StatsSource],
 ) -> Result<bool, String> {
     let (join, comparable) = match mode {
-        ScoreMode::General => ("", "1"),
-        ScoreMode::Moneyball => (MONEYBALL_JOIN_SQL, HAS_PERCENTILES_SQL),
+        ScoreMode::General => (String::new(), "1"),
+        ScoreMode::Moneyball => (
+            stats_join_sql("players", &kept_snapshot_ids(sources)),
+            HAS_PERCENTILES_SQL,
+        ),
     };
     conn.query_row(
         &format!(
@@ -482,8 +541,8 @@ fn has_realistic_signings(
 /// Reads the scope's players with their score in every tactic slot. Every statement binds
 /// the snapshot as `?1`, where the realistic-signing rule reads it, and the save as `?2`.
 /// With `season_stats`, a candidate needs `MIN_SEASON_MINUTES` minutes and the slots'
-/// season-stat filters run; without it they are left out. `rankings` holds the comparison
-/// groups that Moneyball scores and percentile filters read.
+/// season-stat filters run; without it they are left out. Each player's statistics come from
+/// one of `sources`, whose rankings Moneyball scores and percentile filters read.
 #[allow(clippy::too_many_arguments)]
 fn load_players(
     conn: &Connection,
@@ -492,10 +551,11 @@ fn load_players(
     scope: PlayerScope<'_>,
     tactic: &PlannerTactic,
     mode: ScoreMode,
-    league: &LeagueAdjustment,
     season_stats: bool,
-    rankings: Option<&ResolvedGroups>,
+    sources: &[StatsSource],
 ) -> Result<Vec<ScoredPlayer>, String> {
+    let kept_snapshot_ids = kept_snapshot_ids(sources);
+    let stats_join = stats_join_sql("players", &kept_snapshot_ids);
     let role_score_columns = match mode {
         ScoreMode::General => role_score_columns(tactic)?,
         ScoreMode::Moneyball => Vec::new(),
@@ -506,8 +566,11 @@ fn load_players(
             format!("players{}", player_metrics_join("players", true, false)),
         ),
         ScoreMode::Moneyball => (
-            "moneyball.minutes, moneyball.statistics_json, players.division".to_string(),
-            format!("players{MONEYBALL_JOIN_SQL}"),
+            format!(
+                "moneyball.minutes, moneyball.statistics_json, {STATS_DIVISION_SQL},
+                 moneyball.snapshot_id"
+            ),
+            format!("players{stats_join}"),
         ),
     };
     let mut bind_values = vec![Value::Integer(snapshot_id), Value::Integer(save_id)];
@@ -545,13 +608,33 @@ fn load_players(
                         could_improve_sql(&role_score_columns, incumbent_scores)
                     )
                 }
-                ScoreMode::Moneyball => {
+                ScoreMode::Moneyball if kept_snapshot_ids.is_empty() => {
                     from_sql = "player_moneyball_stats moneyball
                          CROSS JOIN players
                            ON players.snapshot_id = moneyball.snapshot_id
                           AND players.uid = moneyball.player_uid"
                         .to_string();
                     format!("moneyball.snapshot_id = ?1 AND {HAS_PERCENTILES_SQL}")
+                }
+                // A player without statistics this season can borrow a kept snapshot's, so
+                // the scan starts from everyone with statistics in either.
+                ScoreMode::Moneyball => {
+                    let kept = kept_snapshot_ids
+                        .iter()
+                        .map(i64::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    from_sql = format!(
+                        "(SELECT player_uid FROM player_moneyball_stats WHERE snapshot_id = ?1
+                          UNION
+                          SELECT player_uid FROM player_moneyball_stats
+                          WHERE snapshot_id IN ({kept}) AND minutes >= {MIN_SEASON_MINUTES}
+                         ) stats_players
+                         CROSS JOIN players
+                           ON players.snapshot_id = ?1
+                          AND players.uid = stats_players.player_uid{stats_join}"
+                    );
+                    HAS_PERCENTILES_SQL.to_string()
                 }
             };
             format!(
@@ -563,7 +646,7 @@ fn load_players(
     };
     let candidates = !matches!(scope, PlayerScope::Club);
     let filters = if candidates {
-        SlotFilters::load(tactic, bind_values.len() + 1, season_stats, rankings)?
+        SlotFilters::load(tactic, bind_values.len() + 1, season_stats)?
     } else {
         None
     };
@@ -575,10 +658,10 @@ fn load_players(
         bind_values.extend(params);
     }
     // General mode reads season stats only for the minimum minutes or a filter.
-    if mode == ScoreMode::General
-        && (applies_minimum || filters.as_ref().is_some_and(SlotFilters::uses_season_stats))
-    {
-        from_sql.push_str(MONEYBALL_JOIN_SQL);
+    let general_reads_stats = mode == ScoreMode::General
+        && (applies_minimum || filters.as_ref().is_some_and(SlotFilters::uses_season_stats));
+    if general_reads_stats {
+        from_sql.push_str(&stats_join);
     }
     if mode == ScoreMode::Moneyball && filters.as_ref().is_some_and(SlotFilters::uses_role_scores) {
         from_sql.push_str(&player_metrics_join("players", true, false));
@@ -586,6 +669,9 @@ fn load_players(
     let filter_column_count = extra_columns.len();
     if applies_minimum && mode == ScoreMode::General {
         extra_columns.push("moneyball.minutes".to_string());
+    }
+    if general_reads_stats {
+        extra_columns.push("moneyball.snapshot_id".to_string());
     }
     let filter_columns = extra_columns
         .iter()
@@ -613,11 +699,19 @@ fn load_players(
         .collect::<Vec<_>>();
     let first_filter_column = 8 + match mode {
         ScoreMode::General => lane_count * 2,
-        ScoreMode::Moneyball => 3,
+        ScoreMode::Moneyball => 4,
     };
     let minutes_column = match mode {
         ScoreMode::General => first_filter_column + filter_column_count,
         ScoreMode::Moneyball => 8,
+    };
+    // The snapshot the player's statistics come from, when the query reads them.
+    let source_column = match mode {
+        ScoreMode::General if general_reads_stats => {
+            Some(first_filter_column + extra_columns.len() - 1)
+        }
+        ScoreMode::General => None,
+        ScoreMode::Moneyball => Some(11),
     };
     let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let mut rows = statement
@@ -626,12 +720,19 @@ fn load_players(
     let mut players = Vec::new();
     while let Some(row) = rows.next().map_err(|error| error.to_string())? {
         let read = |error: rusqlite::Error| error.to_string();
+        let source_id = match source_column {
+            Some(column) => row.get::<_, Option<i64>>(column).map_err(read)?,
+            None => None,
+        };
+        let source = source_id
+            .and_then(|id| sources.iter().find(|source| source.snapshot_id == id))
+            .unwrap_or(&sources[0]);
         let foot: String = row.get(6).map_err(read)?;
         let positions = serde_json::from_str::<BTreeMap<String, Option<i64>>>(
             &row.get::<_, String>(7).map_err(read)?,
         )
         .map_err(|error| error.to_string())?;
-        let (minutes, lane_scores) = match mode {
+        let (minutes, borrowed_stats_date, lane_scores) = match mode {
             ScoreMode::General => {
                 let mut scores = Vec::with_capacity(lane_count);
                 for (lane_index, lane) in tactic.lanes.iter().enumerate() {
@@ -644,7 +745,7 @@ fn load_players(
                         lane,
                     ));
                 }
-                (None, scores)
+                (None, None, scores)
             }
             ScoreMode::Moneyball => {
                 let statistics = row
@@ -653,14 +754,14 @@ fn load_players(
                     .map(|json| scan_statistics(&json))
                     .transpose()?;
                 let division: Option<String> = row.get(10).map_err(read)?;
-                let league_shift = league.shift(division.as_deref());
+                let league_shift = source.league.shift(division.as_deref());
                 let scores = tactic
                     .lanes
                     .iter()
                     .zip(&score_bases)
                     .map(|(lane, score_basis)| {
                         let statistics = statistics.as_deref()?;
-                        let rankings = rankings?;
+                        let rankings = source.rankings.as_ref()?;
                         let percentiles =
                             |group, key: &str| rankings.percentile(group, key, statistics);
                         match score_basis {
@@ -682,7 +783,7 @@ fn load_players(
                         }
                     })
                     .collect();
-                (row.get(8).map_err(read)?, scores)
+                (row.get(8).map_err(read)?, source.kept_date.clone(), scores)
             }
         };
         let under_minimum_minutes = applies_minimum
@@ -699,12 +800,15 @@ fn load_players(
             club_uid: row.get(4).map_err(read)?,
             market_value_gbp: row.get(5).map_err(read)?,
             minutes,
+            borrowed_stats_date,
             lane_scores,
             lane_allowed: if under_minimum_minutes {
                 vec![false; lane_count]
             } else {
                 match &filters {
-                    Some(filters) => filters.lane_passes(row, first_filter_column)?,
+                    Some(filters) => {
+                        filters.lane_passes(row, first_filter_column, source.rankings.as_ref())?
+                    }
                     None => vec![true; lane_count],
                 }
             },
@@ -834,6 +938,7 @@ fn recommend(
         club_uid: player.club_uid,
         market_value_gbp: player.market_value_gbp,
         minutes: player.minutes,
+        borrowed_stats_date: player.borrowed_stats_date.clone(),
         lane_id: tactic.lanes[lane_index].lane_id.clone(),
         score,
         improvement,

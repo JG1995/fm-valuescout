@@ -4,6 +4,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use super::{
     comparison::{player_families, GroupsSource, PositionFamily},
+    kept_stats::{kept_stats_snapshots, stats_join_sql},
     league_strength::{shifted, LeagueAdjustment, LeagueBreakdown},
     role_catalog::{builtin_catalog, RoleDefinition, RolePhase},
     role_score::explain_role,
@@ -41,6 +42,18 @@ pub struct MoneyballProfile {
     pub role_scores: Option<Vec<MoneyballRoleScore>>,
     /// What moved every role score for the player's league, or none when nothing did.
     pub league_adjustment: Option<LeagueBreakdown>,
+    /// Set when the player has under `MIN_SEASON_MINUTES` minutes this season and the profile
+    /// shows a kept snapshot's statistics instead (see `kept_stats`).
+    pub borrowed_stats: Option<BorrowedStats>,
+}
+
+/// Where a profile's borrowed statistics come from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BorrowedStats {
+    /// The in-game date of the kept snapshot's statistics.
+    pub stats_date: String,
+    /// The player's minutes this season.
+    pub current_minutes: i64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,6 +90,7 @@ impl MoneyballProfile {
             role_catalog_version: None,
             role_scores: None,
             league_adjustment: None,
+            borrowed_stats: None,
         }
     }
 
@@ -88,8 +102,9 @@ impl MoneyballProfile {
     }
 }
 
-/// Reads only the active save's effective current snapshot for a known player UID.
-/// A current player with no imported cohort is distinct from a pre-v30 unscored row.
+/// Reads only the active save's effective current snapshot for a known player UID, or the
+/// kept snapshot whose statistics he borrows. A current player with no imported cohort is
+/// distinct from a pre-v30 unscored row.
 pub(crate) fn get_player_moneyball(
     conn: &Connection,
     groups: &GroupsSource<'_>,
@@ -124,31 +139,11 @@ pub(crate) fn get_player_moneyball(
         return Ok(None);
     }
 
-    let row = conn
-        .query_row(
-            "SELECT moneyball.starts, moneyball.substitute_appearances, moneyball.minutes,
-                    moneyball.statistics_json, moneyball.percentiles_json, players.positions_json,
-                    players.division
-             FROM player_moneyball_stats moneyball
-             INNER JOIN players ON players.snapshot_id = moneyball.snapshot_id
-                AND players.uid = moneyball.player_uid
-             WHERE moneyball.snapshot_id = ?1 AND moneyball.player_uid = ?2",
-            params![snapshot_id, uid],
-            |row| {
-                Ok((
-                    row.get::<_, Option<i64>>(0)?,
-                    row.get::<_, Option<i64>>(1)?,
-                    row.get::<_, Option<i64>>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, Option<String>>(4)?,
-                    row.get::<_, String>(5)?,
-                    row.get::<_, Option<String>>(6)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    let Some((
+    // His positions are today's, while his league is the one he played the statistics in.
+    let kept = kept_stats_snapshots(conn, snapshot_id)?;
+    let kept_ids = kept.iter().map(|kept| kept.snapshot_id).collect::<Vec<_>>();
+    let (
+        source_id,
         starts,
         substitute_appearances,
         minutes,
@@ -156,10 +151,43 @@ pub(crate) fn get_player_moneyball(
         percentiles_json,
         positions_json,
         division,
-    )) = row
-    else {
+        current_minutes,
+    ) = conn
+        .query_row(
+            &format!(
+                "SELECT moneyball.snapshot_id, moneyball.starts, moneyball.substitute_appearances,
+                        moneyball.minutes, moneyball.statistics_json, moneyball.percentiles_json,
+                        players.positions_json,
+                        (SELECT source.division FROM players source
+                         WHERE source.snapshot_id = moneyball.snapshot_id
+                           AND source.uid = players.uid),
+                        (SELECT own.minutes FROM player_moneyball_stats own
+                         WHERE own.snapshot_id = players.snapshot_id
+                           AND own.player_uid = players.uid)
+                 FROM players{}
+                 WHERE players.snapshot_id = ?1 AND players.uid = ?2",
+                stats_join_sql("players", &kept_ids)
+            ),
+            params![snapshot_id, uid],
+            |row| {
+                Ok((
+                    row.get::<_, Option<i64>>(0)?,
+                    row.get::<_, Option<i64>>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, Option<i64>>(8)?,
+                ))
+            },
+        )
+        .map_err(|error| error.to_string())?;
+    let (Some(source_id), Some(statistics_json)) = (source_id, statistics_json) else {
         return Ok(Some(MoneyballProfile::no_data()));
     };
+    let borrowed = kept.into_iter().find(|kept| kept.snapshot_id == source_id);
 
     if percentiles_json.is_none() {
         return Ok(Some(MoneyballProfile::needs_reimport()));
@@ -171,7 +199,10 @@ pub(crate) fn get_player_moneyball(
         .zip(&statistic_values)
         .map(|(key, value)| ((*key).to_string(), *value))
         .collect::<BTreeMap<_, _>>();
-    let groups = groups.load(conn, snapshot_id)?;
+    let groups = match &borrowed {
+        None => groups.load(conn, snapshot_id)?,
+        Some(kept) => groups.load_kept(conn, kept.snapshot_id, &kept.stats_date)?,
+    };
     let comparisons = player_families(&positions_json)?
         .into_iter()
         .map(|family| {
@@ -191,8 +222,7 @@ pub(crate) fn get_player_moneyball(
         })
         .collect();
     let role_catalog = builtin_catalog()?;
-    let league_adjustment =
-        LeagueAdjustment::load(conn, snapshot_id)?.breakdown(division.as_deref());
+    let league_adjustment = LeagueAdjustment::load(conn, source_id)?.breakdown(division.as_deref());
     let league_shift = league_adjustment
         .as_ref()
         .map_or(0, |adjustment| adjustment.shift);
@@ -216,6 +246,10 @@ pub(crate) fn get_player_moneyball(
         role_catalog_version: Some(role_catalog.version),
         role_scores: Some(role_scores),
         league_adjustment,
+        borrowed_stats: borrowed.map(|kept| BorrowedStats {
+            stats_date: kept.stats_date,
+            current_minutes: current_minutes.unwrap_or(0),
+        }),
     }))
 }
 
@@ -312,6 +346,7 @@ mod tests {
     use super::get_player_moneyball;
     use crate::db::migrations;
     use crate::features::moneyball::comparison::{GroupsSource, PositionFamily};
+    use crate::features::moneyball::kept_stats::test_support::add_kept_snapshot;
     use crate::features::moneyball::league_strength::test_support::measure_leagues;
     use crate::features::moneyball::role_catalog::builtin_catalog;
     use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
@@ -792,6 +827,81 @@ mod tests {
             .iter()
             .filter(|contribution| contribution.metric_key != first_metric.key)
             .all(|contribution| contribution.percentile == Some(50)));
+    }
+
+    #[test]
+    fn a_short_sample_shows_the_kept_stats_he_borrows_ranked_in_their_season() {
+        let temp_dir = tempfile::tempdir().expect("temp directory");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-profile-borrowed.db"));
+        let snapshot_id = ingest_current_player(&mut conn);
+        insert_moneyball_row_for_player(
+            &conn,
+            snapshot_id,
+            77,
+            &statistics_with("goals", Some(50.0)),
+            Some("{}"),
+        );
+        set_minutes(&conn, snapshot_id, 77, 200);
+        insert_player(&conn, snapshot_id, 78, r#"{"AMR":20}"#);
+        insert_moneyball_row_for_player(
+            &conn,
+            snapshot_id,
+            78,
+            &statistics_with("goals", Some(100.0)),
+            Some("{}"),
+        );
+        conn.execute(
+            "UPDATE players SET division = 'Top' WHERE snapshot_id = ?1",
+            [snapshot_id],
+        )
+        .expect("set current divisions");
+        let kept = add_kept_snapshot(&conn, snapshot_id, "2026-05-20", &[77, 78]);
+        conn.execute(
+            "UPDATE snapshots SET moneyball_stats_game_date = '2026-05-20' WHERE id = ?1",
+            [kept],
+        )
+        .expect("date kept stats");
+        for (uid, goals) in [(77, 10.0), (78, 5.0)] {
+            insert_moneyball_row_for_player(
+                &conn,
+                kept,
+                uid,
+                &statistics_with("goals", Some(goals)),
+                Some("{}"),
+            );
+        }
+        conn.execute(
+            "UPDATE players SET division = 'Second' WHERE snapshot_id = ?1 AND uid = 77",
+            [kept],
+        )
+        .expect("set kept division");
+        measure_leagues(&conn, kept, &[("Top", 150.0), ("Second", 140.0)]);
+
+        let profile = profile(&conn, 77);
+
+        assert_eq!(
+            profile.borrowed_stats,
+            Some(super::BorrowedStats {
+                stats_date: "2026-05-20".to_string(),
+                current_minutes: 200,
+            })
+        );
+        assert_eq!(profile.minutes, Some(1500));
+        assert_eq!(
+            profile.statistics.as_ref().expect("statistics")["goals"],
+            Some(10.0)
+        );
+        // Among that season's wingers, 5 and 10, his 10 ranks at 100. Today he would be
+        // ranked against the one 100.
+        assert_eq!(
+            comparisons(&profile, "goals")[0],
+            (PositionFamily::Winger, 2, Some(100))
+        );
+        let league = profile.league_adjustment.expect("league adjustment");
+        assert_eq!(
+            (league.division.as_deref(), league.shift),
+            (Some("Second"), -5)
+        );
     }
 
     #[test]

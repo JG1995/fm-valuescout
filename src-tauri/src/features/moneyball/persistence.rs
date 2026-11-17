@@ -1,5 +1,5 @@
-//! Writes snapshot-owned Moneyball cohorts: the 138-key statistics JSON, whole cohort
-//! replacement with its as-of date, and current-only retention.
+//! Writes snapshot-owned Moneyball cohorts: the 138-key statistics JSON and whole cohort
+//! replacement with its as-of date. A cohort stays with its snapshot until that is deleted.
 //!
 //! Percentiles are not stored: `moneyball::comparison` ranks the stored statistics when they
 //! are read. The `percentiles_json` column only marks a row written by an import that could be
@@ -144,30 +144,6 @@ pub(crate) fn replace_snapshot_cohort(
     if changed != 1 {
         return Err(MoneyballPersistenceError::Database);
     }
-    Ok(())
-}
-
-/// Deletes Moneyball rows and the as-of date from every non-current snapshot of one save,
-/// so only the current snapshot keeps a cohort. Call it in the transaction that changes the
-/// current snapshot.
-pub(crate) fn clear_non_current_snapshots(
-    tx: &Transaction<'_>,
-    save_id: i64,
-) -> Result<(), String> {
-    tx.execute(
-        "DELETE FROM player_moneyball_stats
-         WHERE snapshot_id IN (
-             SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0
-         )",
-        [save_id],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE snapshots SET moneyball_stats_game_date = NULL
-         WHERE save_id = ?1 AND is_current = 0 AND moneyball_stats_game_date IS NOT NULL",
-        [save_id],
-    )
-    .map_err(|error| error.to_string())?;
     Ok(())
 }
 

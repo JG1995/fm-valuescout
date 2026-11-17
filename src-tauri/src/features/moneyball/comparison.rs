@@ -9,7 +9,9 @@
 //!
 //! The groups are built once per snapshot and data generation and kept in
 //! `ComparisonGroupsCache`. Each statistic keeps 100 cut values instead of its population, so a
-//! lookup is a binary search over 100 numbers and the groups take about a megabyte.
+//! lookup is a binary search over 100 numbers and the groups take about a megabyte. The groups
+//! of a kept snapshot whose statistics a player borrows (see `kept_stats`) are kept across
+//! data generations, because a snapshot's statistics change only while it is current.
 
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Mutex, OnceLock, PoisonError};
@@ -623,13 +625,28 @@ fn scan_in_parallel<I: Send, T: Send>(
     })
 }
 
-/// The comparison groups of the newest data generation, kept as app state. Clones share them.
+/// The most kept snapshots whose groups the app keeps: one a month for the year a player can
+/// borrow statistics from.
+const KEPT_GROUPS_BOUND: usize = 12;
+
+/// The groups of a kept snapshot, by snapshot ID and statistics date.
+type KeptGroups = Vec<((i64, String), Arc<ComparisonGroups>)>;
+
+/// The comparison groups of the newest data generation, kept as app state, and those of the
+/// kept snapshots statistics were last borrowed from. Clones share them.
 #[derive(Clone)]
-pub struct ComparisonGroupsCache(ResultCache<ComparisonGroups>);
+pub struct ComparisonGroupsCache {
+    current: ResultCache<ComparisonGroups>,
+    /// Least recently used first.
+    kept: Arc<Mutex<KeptGroups>>,
+}
 
 impl Default for ComparisonGroupsCache {
     fn default() -> Self {
-        Self(ResultCache::new(1))
+        Self {
+            current: ResultCache::new(1),
+            kept: Arc::default(),
+        }
     }
 }
 
@@ -652,7 +669,7 @@ impl GroupsSource<'_> {
             Self::Cached(cache, generation) => {
                 let groups =
                     cache
-                        .0
+                        .current
                         .get_or_compute(&snapshot_id.to_string(), *generation, || {
                             Ok::<_, String>((
                                 *generation,
@@ -663,6 +680,33 @@ impl GroupsSource<'_> {
             }
             Self::Uncached => ComparisonGroups::load(conn, snapshot_id).map(Arc::new),
         }
+    }
+
+    /// The groups of a kept snapshot whose statistics, dated `stats_date`, a player borrows.
+    pub(crate) fn load_kept(
+        &self,
+        conn: &Connection,
+        snapshot_id: i64,
+        stats_date: &str,
+    ) -> Result<Arc<ComparisonGroups>, String> {
+        let Self::Cached(cache, _) = self else {
+            return ComparisonGroups::load(conn, snapshot_id).map(Arc::new);
+        };
+        let key = (snapshot_id, stats_date.to_string());
+        // Held while a missing entry is built, so concurrent requests build it once.
+        let mut entries = cache.kept.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(index) = entries.iter().position(|(known, _)| *known == key) {
+            let entry = entries.remove(index);
+            let groups = Arc::clone(&entry.1);
+            entries.push(entry);
+            return Ok(groups);
+        }
+        let groups = Arc::new(ComparisonGroups::load(conn, snapshot_id)?);
+        if entries.len() == KEPT_GROUPS_BOUND {
+            entries.remove(0);
+        }
+        entries.push((key, Arc::clone(&groups)));
+        Ok(groups)
     }
 }
 

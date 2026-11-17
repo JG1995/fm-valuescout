@@ -13,8 +13,8 @@ use super::catalog::is_save_unavailable_statistic_key;
 use super::comparison::{ComparisonGroupsCache, GroupsSource, MIN_SEASON_MINUTES};
 use super::league_strength::{self, LeagueAdjustment, LeagueBreakdown};
 use super::query::{
-    self, MoneyballComparison, MoneyballProfile, MoneyballProfileState, MoneyballRoleContribution,
-    MoneyballRoleScore,
+    self, BorrowedStats, MoneyballComparison, MoneyballProfile, MoneyballProfileState,
+    MoneyballRoleContribution, MoneyballRoleScore,
 };
 use super::save_stats_import::{attach_season_stats, SeasonStatsOutcome};
 
@@ -34,6 +34,25 @@ pub struct MoneyballProfileDto {
     pub role_catalog_version: Option<u32>,
     pub role_scores: Option<Vec<MoneyballRoleScoreDto>>,
     pub league_adjustment: Option<MoneyballLeagueBreakdownDto>,
+    /// Set when the player is under `minimum_minutes` this season and the statistics are a
+    /// kept snapshot's.
+    pub borrowed_stats: Option<BorrowedStatsDto>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BorrowedStatsDto {
+    pub stats_date: String,
+    pub current_minutes: i64,
+}
+
+impl From<BorrowedStats> for BorrowedStatsDto {
+    fn from(borrowed: BorrowedStats) -> Self {
+        Self {
+            stats_date: borrowed.stats_date,
+            current_minutes: borrowed.current_minutes,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -161,6 +180,7 @@ impl From<MoneyballProfile> for MoneyballProfileDto {
             league_adjustment: profile
                 .league_adjustment
                 .map(MoneyballLeagueBreakdownDto::from),
+            borrowed_stats: profile.borrowed_stats.map(BorrowedStatsDto::from),
         }
     }
 }
@@ -316,6 +336,7 @@ mod tests {
             role_catalog_version: Some(1),
             role_scores: Some(Vec::new()),
             league_adjustment: None,
+            borrowed_stats: None,
         }
     }
 

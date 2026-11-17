@@ -6,13 +6,13 @@
 
 use rusqlite::{types::Value, Row};
 
-use crate::features::moneyball::comparison::{GroupRankings, ResolvedGroups};
+use crate::features::moneyball::comparison::{ComparisonGroup, ResolvedGroups};
 use crate::features::planner::fit::slot_group;
 use crate::features::planner::tactic::{recruitment_filter_rules, PlannerTactic};
 use crate::features::search::filter::{compile_slot_filters, CompiledFilter, SlotPercentileRule};
 
-pub(super) struct SlotFilters<'a> {
-    lanes: Vec<LaneFilters<'a>>,
+pub(super) struct SlotFilters {
+    lanes: Vec<LaneFilters>,
     /// The statistic keys percentile rules read, in candidate column order.
     statistic_keys: Vec<String>,
     uses_role_scores: bool,
@@ -20,23 +20,22 @@ pub(super) struct SlotFilters<'a> {
 }
 
 #[derive(Default)]
-struct LaneFilters<'a> {
+struct LaneFilters {
     sql: Option<CompiledFilter>,
     /// Each percentile rule with its key's index in `statistic_keys`.
     percentile_rules: Vec<(usize, SlotPercentileRule)>,
     /// The slot's group, which its percentile rules rank within.
-    rankings: Option<&'a GroupRankings>,
+    group: Option<ComparisonGroup>,
 }
 
-impl<'a> SlotFilters<'a> {
+impl SlotFilters {
     /// Compiles the tactic's filters with SQL placeholders from `start_index`. Without
-    /// `season_stats`, rules on Moneyball fields are left out; with them, `rankings` must hold
-    /// the group of every slot with a percentile rule. `None` when no slot has a rule to run.
+    /// `season_stats`, rules on Moneyball fields are left out. `None` when no slot has a rule
+    /// to run.
     pub(super) fn load(
         tactic: &PlannerTactic,
         start_index: usize,
         season_stats: bool,
-        rankings: Option<&'a ResolvedGroups>,
     ) -> Result<Option<Self>, String> {
         let lane_rules = tactic
             .lanes
@@ -69,14 +68,15 @@ impl<'a> SlotFilters<'a> {
                 .into_iter()
                 .map(|rule| (filters.statistic_key_index(&rule.key), rule))
                 .collect::<Vec<_>>();
-            let rankings = match (percentile_rules.is_empty(), slot_group(lane)) {
-                (false, Some(group)) => rankings.and_then(|rankings| rankings.get(group)),
-                _ => None,
+            let group = if percentile_rules.is_empty() {
+                None
+            } else {
+                slot_group(lane)
             };
             filters.lanes.push(LaneFilters {
                 sql: plan.sql,
                 percentile_rules,
-                rankings,
+                group,
             });
         }
         Ok(Some(filters))
@@ -120,11 +120,13 @@ impl<'a> SlotFilters<'a> {
     }
 
     /// Whether the candidate in `row` passes each slot's filters, reading the extra columns
-    /// from `first_column`.
+    /// from `first_column`. `rankings` are those of the snapshot his statistics come from,
+    /// holding the group of every slot with a percentile rule.
     pub(super) fn lane_passes(
         &self,
         row: &Row<'_>,
         first_column: usize,
+        rankings: Option<&ResolvedGroups>,
     ) -> Result<Vec<bool>, String> {
         let read = |error: rusqlite::Error| error.to_string();
         let sql_lane_count = self.lanes.iter().filter(|lane| lane.sql.is_some()).count();
@@ -142,10 +144,15 @@ impl<'a> SlotFilters<'a> {
             }
             pass = pass
                 && lane.percentile_rules.iter().all(|(key_index, rule)| {
-                    let percentile = lane.rankings.and_then(|rankings| {
-                        rankings
-                            .percentile_of(&self.statistic_keys[*key_index], statistics[*key_index])
-                    });
+                    let percentile =
+                        lane.group
+                            .and_then(|group| rankings?.get(group))
+                            .and_then(|rankings| {
+                                rankings.percentile_of(
+                                    &self.statistic_keys[*key_index],
+                                    statistics[*key_index],
+                                )
+                            });
                     rule.matches(percentile)
                 });
             passes.push(pass);

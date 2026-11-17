@@ -55,6 +55,13 @@ export type MoneyballLeagueAdjustment = {
   referenceDivision: string | null;
 };
 
+export type MoneyballBorrowedStats = {
+  /** The in-game date of the kept snapshot's stats. */
+  statsDate: string;
+  /** The player's minutes this season. */
+  currentMinutes: number;
+};
+
 export type MoneyballProfile =
   | { state: "noData" }
   | { state: "needsReimport" }
@@ -76,4 +83,10 @@ export type MoneyballProfile =
       roleScores: MoneyballRoleScore[] | null;
       /** Null when role scores are not moved for league strength. */
       leagueAdjustment: MoneyballLeagueBreakdown | null;
+      /**
+       * Set when the player has under `minimumMinutes` this season, so the
+       * stats, percentiles, and role scores are those of the latest kept
+       * snapshot in which he has enough, ranked among that snapshot's peers.
+       */
+      borrowedStats: MoneyballBorrowedStats | null;
     };

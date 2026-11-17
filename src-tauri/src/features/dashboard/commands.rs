@@ -122,6 +122,8 @@ pub struct RecommendationDto {
     pub club_uid: Option<i64>,
     pub market_value_gbp: Option<i64>,
     pub minutes: Option<i64>,
+    /// The in-game date of kept statistics behind a Moneyball score.
+    pub borrowed_stats_date: Option<String>,
     pub lane_id: String,
     pub score: u8,
     pub improvement: u8,
@@ -138,6 +140,7 @@ impl From<Recommendation> for RecommendationDto {
             club_uid: value.club_uid,
             market_value_gbp: value.market_value_gbp,
             minutes: value.minutes,
+            borrowed_stats_date: value.borrowed_stats_date,
             lane_id: value.lane_id,
             score: value.score,
             improvement: value.improvement,
