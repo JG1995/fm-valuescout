@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-11-17
+
+### Fixed
+
+- **Load Data on FM 27.1.** Load Data failed on FM 27.1 because the bridge refused any game version other than 27.0. The bridge now reads every FM27 patch and checks each scan against the data it reads instead of the game version. If the players and staff no longer look like FM data, for example CA above PA across the database, Load Data stops, names the fields that moved, and keeps the previous snapshot. Use **Install / Update plugin** in Settings and restart FM to get the new plugin.
+
+### Changed
+
+- Player and staff boosts are no longer limited to one exact FM build. They are available on any FM27 patch once a Load Data of the running game passes that check. Back up the save before the first boost after a game patch.
+
 ## [0.29.0] - 2026-11-17
 
 ### Added
