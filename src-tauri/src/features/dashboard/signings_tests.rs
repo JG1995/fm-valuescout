@@ -963,3 +963,150 @@ fn without_season_stats_the_stat_filters_are_skipped_and_the_rest_apply() {
         (1, 0)
     );
 }
+
+#[test]
+fn a_short_sample_borrows_kept_stats_ranked_among_that_snapshots_peers() {
+    let fixture = open_with_players(&[
+        player(1, "Home Keeper", HOME_CLUB, "GK"),
+        player(10, "Short Sample Keeper", OTHER_CLUB, "GK"),
+        player(11, "Keeper Without Minutes", OTHER_CLUB, "GK"),
+        player(12, "Weaker Kept Keeper", OTHER_CLUB, "GK"),
+        player(13, "Weakest Kept Keeper", OTHER_CLUB, "GK"),
+    ]);
+    // This season the home keeper is the only peer, so everyone ranks at 50 against him.
+    fixture.set_season_stats(1, 50.0, &[]);
+    fixture.set_season_stats(10, 90.0, &[]);
+    fixture.set_season_minutes(10, 300);
+    let kept = fixture.add_kept_snapshot("2026-05-20", &[10, 11, 12, 13]);
+    for (uid, level) in [(10, 70.0), (11, 80.0), (12, 30.0), (13, 20.0)] {
+        fixture.set_kept_season_stats(kept, uid, level, 2000, &[]);
+    }
+
+    let signings = signings(
+        &fixture,
+        SigningsRequest {
+            lane_id: Some("goalkeeper"),
+            ..MONEYBALL
+        },
+    );
+
+    // Among the kept peers 20, 30, 70, and 80, the keeper with no minutes this season ranks
+    // at 100 and the short sample at 67.
+    assert!(signings.season_stats_available);
+    assert_eq!(
+        incumbent(&signings, "goalkeeper"),
+        Some((1, 50, IncumbentSource::BestFit))
+    );
+    assert_eq!(
+        ranked(&signings.recommendations),
+        [(11, "goalkeeper", 100, 50), (10, "goalkeeper", 67, 17)]
+    );
+    for recommendation in &signings.recommendations {
+        assert_eq!(recommendation.minutes, Some(2000));
+        assert_eq!(
+            recommendation.borrowed_stats_date.as_deref(),
+            Some("2026-05-20")
+        );
+    }
+    assert_eq!(signings.under_minimum_minutes, 0);
+}
+
+#[test]
+fn borrowed_stats_are_moved_for_the_league_they_were_played_in() {
+    let fixture = open_with_players(&[
+        player(1, "Home Keeper", HOME_CLUB, "GK"),
+        player(10, "Promoted Keeper", OTHER_CLUB, "GK"),
+    ]);
+    fixture.set_season_stats(1, 60.0, &[]);
+    fixture.set_season_stats(10, 75.0, &[]);
+    fixture.set_season_minutes(10, 300);
+    for uid in [1, 10] {
+        fixture.set_player_column(uid, "division", "Top");
+    }
+    fixture.measure_leagues(&[("Top", 150.0), ("Second", 140.0)]);
+    let kept = fixture.add_kept_snapshot("2026-05-20", &[1, 10]);
+    fixture.set_kept_season_stats(kept, 1, 60.0, 2000, &[]);
+    fixture.set_kept_season_stats(kept, 10, 75.0, 2000, &[]);
+    fixture.set_snapshot_player_column(kept, 10, "division", "Second");
+    crate::features::moneyball::league_strength::test_support::measure_leagues(
+        &fixture.conn,
+        kept,
+        &[("Top", 150.0), ("Second", 140.0)],
+    );
+
+    let signings = signings(&fixture, MONEYBALL);
+
+    // He played those minutes in the league 10 points weaker, so his 100 loses 5.
+    assert_eq!(
+        ranked(&signings.recommendations),
+        [(10, "goalkeeper", 95, 45)]
+    );
+}
+
+#[test]
+fn a_short_sample_without_kept_minutes_from_the_last_year_stays_held_back() {
+    let fixture = open_with_players(&[
+        player(1, "Home Keeper", HOME_CLUB, "GK"),
+        player(10, "Short Sample Keeper", OTHER_CLUB, "GK"),
+        player(11, "Regular Keeper", OTHER_CLUB, "GK"),
+    ]);
+    fixture.set_season_stats(1, 40.0, &[]);
+    fixture.set_season_stats(11, 50.0, &[]);
+    fixture.set_season_stats(10, 90.0, &[]);
+    fixture.set_season_minutes(10, 300);
+    // A year old to the day, and too short in the latest kept snapshot.
+    let year_old = fixture.add_kept_snapshot("2025-08-14", &[10]);
+    fixture.set_kept_season_stats(year_old, 10, 90.0, 2000, &[]);
+    let short = fixture.add_kept_snapshot("2026-05-20", &[10]);
+    fixture.set_kept_season_stats(short, 10, 90.0, 400, &[]);
+
+    let signings = signings(&fixture, MONEYBALL);
+
+    assert_eq!(
+        ranked(&signings.recommendations),
+        [(11, "goalkeeper", 100, 100)]
+    );
+    assert_eq!(
+        (signings.filtered_out, signings.under_minimum_minutes),
+        (1, 1)
+    );
+}
+
+#[test]
+fn a_borrowed_sample_meets_the_minimum_and_ranks_among_its_kept_peers_in_filters() {
+    let fixture = open_with_players(&[
+        player(1, "Home Centre Back", HOME_CLUB, "DC"),
+        player(2, "Other Home Centre Back", HOME_CLUB, "DC"),
+        player(10, "Short Sample Target", OTHER_CLUB, "DC"),
+        player(11, "Kept Peer", OTHER_CLUB, "DC"),
+        player(13, "Current Peer", OTHER_CLUB, "DC"),
+    ]);
+    for (uid, score) in [(1, 50), (2, 50), (10, 70)] {
+        fixture.set_slot_score(uid, "left_centre_back", score);
+    }
+    fixture.set_season_stats(13, 50.0, &[("progressive_passes", 100.0)]);
+    fixture.set_season_stats(10, 50.0, &[("progressive_passes", 40.0)]);
+    fixture.set_season_minutes(10, 300);
+    let kept = fixture.add_kept_snapshot("2026-05-20", &[10, 11]);
+    fixture.set_kept_season_stats(kept, 10, 50.0, 2000, &[("progressive_passes", 40.0)]);
+    fixture.set_kept_season_stats(kept, 11, 50.0, 2000, &[("progressive_passes", 10.0)]);
+    fixture.set_recruitment_filters(
+        "left_centre_back",
+        &[("moneyball.progressive_passes", "pct_gte", json!(60))],
+    );
+
+    let signings = signings(
+        &fixture,
+        SigningsRequest {
+            lane_id: Some("left_centre_back"),
+            ..GENERAL
+        },
+    );
+
+    // Against this season's peer his 40 would rank at 0; against his kept peer's 10, at 100.
+    assert_eq!(uids(&signings.recommendations), [10]);
+    assert_eq!(
+        (signings.filtered_out, signings.under_minimum_minutes),
+        (0, 0)
+    );
+}

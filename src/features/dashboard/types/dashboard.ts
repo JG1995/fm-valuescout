@@ -69,6 +69,11 @@ export type DashboardRecommendation = {
   marketValueGbp: number | null;
   /** Season minutes behind a Moneyball score; null in General mode. */
   minutes: number | null;
+  /**
+   * The in-game date of the kept snapshot's stats behind a Moneyball score,
+   * borrowed because the player has under `minimumMinutes` this season.
+   */
+  borrowedStatsDate: string | null;
   laneId: string;
   score: number;
   /** Points above the slot's incumbent, or the whole score for an empty slot. */
@@ -100,7 +105,7 @@ export type DashboardSignings = {
   underMinimumMinutes: number;
   /** The competitive minutes a candidate needs while season stats apply. */
   minimumMinutes: number;
-  /** Whether the snapshot has season stats. */
+  /** Whether the snapshot has season stats, or a kept snapshot has some to lend. */
   seasonStatsAvailable: boolean;
   /**
    * Whether season stats applied: candidates needed `minimumMinutes` and the

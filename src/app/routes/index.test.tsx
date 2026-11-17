@@ -81,6 +81,7 @@ function recommendation(
     clubUid: 2000,
     marketValueGbp: 12_500_000,
     minutes: null,
+    borrowedStatsDate: null,
     laneId,
     score,
     improvement,

@@ -825,6 +825,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               clubUid: target[2] === null ? null : 9000 + target[0],
               marketValueGbp: target[4],
               minutes: moneyball ? target[8] : null,
+              borrowedStatsDate: null,
               laneId: target[5],
               score,
               improvement: score - incumbentScore(target[5]),
@@ -1902,6 +1903,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   }
                 : null,
               roleCatalogVersion: 1,
+              borrowedStats: null,
               roleScores: [
                 {
                   roleId: "mc_central_midfielder_ip",

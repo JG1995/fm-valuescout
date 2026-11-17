@@ -150,6 +150,7 @@ export function fixturePlayerMoneyball(
     roleCatalogVersion: 1,
     roleScores: [],
     leagueAdjustment: null,
+    borrowedStats: null,
     ...overrides,
   };
 }

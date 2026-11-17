@@ -5,6 +5,7 @@ use rusqlite::{params, Connection};
 
 use crate::db::migrations;
 use crate::features::managed_club::service as managed_club_service;
+use crate::features::moneyball::kept_stats;
 use crate::features::moneyball::{is_lower_is_better_statistic_key, MONEYBALL_STATISTIC_KEYS};
 use crate::features::planner::tactic::{
     default_tactic, get_tactic, save_tactic, RecruitmentFilter,
@@ -180,12 +181,41 @@ impl Fixture {
 
     /// Sets one `players` column of the player's current-snapshot row.
     pub(super) fn set_player_column(&self, uid: i64, column: &str, value: impl rusqlite::ToSql) {
+        self.set_snapshot_player_column(self.snapshot_id, uid, column, value);
+    }
+
+    /// Sets one `players` column of the player's row in `snapshot_id`.
+    pub(super) fn set_snapshot_player_column(
+        &self,
+        snapshot_id: i64,
+        uid: i64,
+        column: &str,
+        value: impl rusqlite::ToSql,
+    ) {
         self.conn
             .execute(
                 &format!("UPDATE players SET {column} = ?1 WHERE snapshot_id = ?2 AND uid = ?3"),
-                params![value, self.snapshot_id, uid],
+                params![value, snapshot_id, uid],
             )
             .expect("set player column");
+    }
+
+    /// Adds a kept snapshot dated `game_date`, with season statistics as of that date, holding
+    /// copies of the current rows of the players `uids`. Returns its ID.
+    pub(super) fn add_kept_snapshot(&self, game_date: &str, uids: &[i64]) -> i64 {
+        let kept_id = kept_stats::test_support::add_kept_snapshot(
+            &self.conn,
+            self.snapshot_id,
+            game_date,
+            uids,
+        );
+        self.conn
+            .execute(
+                "UPDATE snapshots SET moneyball_stats_game_date = ?1 WHERE id = ?2",
+                params![game_date, kept_id],
+            )
+            .expect("date kept season stats");
+        kept_id
     }
 
     /// Records each league's measured strength for the current snapshot.
@@ -222,6 +252,19 @@ impl Fixture {
     /// statistic is `level` and every lower-is-better one `1000 - level`, so among peers a
     /// higher level ranks higher at every statistic. The overrides set raw values.
     pub(super) fn set_season_stats(&self, uid: i64, level: f64, overrides: &[(&str, f64)]) {
+        self.set_kept_season_stats(self.snapshot_id, uid, level, 900, overrides);
+    }
+
+    /// Gives the player `minutes` of season statistics at `level` in `snapshot_id`, as
+    /// `set_season_stats` does in the current snapshot.
+    pub(super) fn set_kept_season_stats(
+        &self,
+        snapshot_id: i64,
+        uid: i64,
+        level: f64,
+        minutes: i64,
+        overrides: &[(&str, f64)],
+    ) {
         let mut statistics = MONEYBALL_STATISTIC_KEYS
             .iter()
             .map(|key| {
@@ -240,10 +283,11 @@ impl Fixture {
             .execute(
                 "INSERT INTO player_moneyball_stats (
                      snapshot_id, player_uid, minutes, statistics_json, percentiles_json
-                 ) VALUES (?1, ?2, 900, ?3, '{}')",
+                 ) VALUES (?1, ?2, ?3, ?4, '{}')",
                 params![
-                    self.snapshot_id,
+                    snapshot_id,
                     uid,
+                    minutes,
                     serde_json::Value::Object(statistics).to_string()
                 ],
             )

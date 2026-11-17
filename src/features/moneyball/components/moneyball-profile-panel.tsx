@@ -271,10 +271,19 @@ export function MoneyballProfilePanel({
           minutes={profile.minutes}
           minimumMinutes={profile.minimumMinutes}
         />
-        <MoneyballStatsAsOf
-          moneyballStatsGameDate={moneyballStatsGameDate}
-          snapshotGameDate={snapshotGameDate}
-        />
+        {profile.borrowedStats ? (
+          <p className="shrink-0 text-body-sm text-on-surface-variant">
+            Stats as of {formatLongGameDate(profile.borrowedStats.statsDate)},
+            from a kept snapshot:{" "}
+            {formattedNumber(profile.borrowedStats.currentMinutes)} minutes this
+            season is under {profile.minimumMinutes}.
+          </p>
+        ) : (
+          <MoneyballStatsAsOf
+            moneyballStatsGameDate={moneyballStatsGameDate}
+            snapshotGameDate={snapshotGameDate}
+          />
+        )}
         <div className="shrink-0 p-0.5">
           <MoneyballTabs
             activeId={category.id}

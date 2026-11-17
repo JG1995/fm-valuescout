@@ -12,7 +12,6 @@ use serde_json::Value;
 use crate::features::academy::service as academy_service;
 use crate::features::memory_read::dump_validation::read_validated_dump;
 use crate::features::moneyball::league_strength;
-use crate::features::moneyball::persistence as moneyball_persistence;
 use crate::features::player_metrics::club_dna as club_dna_scores;
 use crate::features::player_metrics::compact as player_compact;
 use crate::features::player_metrics::potential_scores;
@@ -568,7 +567,6 @@ pub(crate) fn publish_prepared_snapshot_canonical(
             .map_err(|e| e.to_string())?;
         }
         potential_scores::clear_non_current_snapshots(&tx, save_id)?;
-        moneyball_persistence::clear_non_current_snapshots(&tx, save_id)?;
         crate::features::staff::scoring::clear_non_current_snapshots(&tx, save_id)?;
         if let Some(effective) = current_id {
             if effective == snapshot_id {
@@ -2369,7 +2367,11 @@ mod tests {
         let later = ingest_dump_file(&mut conn, &later_path).expect("later ingest");
 
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(later.id));
-        assert_eq!(cohort_state(&conn, earlier.id), (0, None));
+        // The kept snapshot keeps its season stats after it stops being current.
+        assert_eq!(
+            cohort_state(&conn, earlier.id),
+            (1, Some("2026-08-01".to_string()))
+        );
         assert_empty_potential_state(&conn, earlier.id);
         assert_complete_potential_state(&conn, later.id);
         assert_eq!(compact_row_count(&conn, earlier.id), 0);

@@ -137,6 +137,30 @@ describe("MoneyballProfilePanel", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("dates stats borrowed from a kept snapshot in place of the current ones", () => {
+    render(
+      <MoneyballProfilePanel
+        profile={fixturePlayerMoneyball({
+          minutes: 2100,
+          borrowedStats: { statsDate: "2026-05-20", currentMinutes: 120 },
+        })}
+        moneyballStatsGameDate="2026-08-14"
+        snapshotGameDate="2026-08-14"
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Stats as of 20th May 2026, from a kept snapshot: 120 minutes this season is under 450.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("2,100")).toBeInTheDocument();
+    expect(screen.queryByText(/Short sample/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Stats as of 14th August 2026"),
+    ).not.toBeInTheDocument();
+  });
+
   it("labels the stats as-of date and notes a different snapshot date", () => {
     const { rerender } = render(
       <MoneyballProfilePanel

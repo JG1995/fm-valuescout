@@ -5,7 +5,6 @@ use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 use crate::features::{
     academy::service as academy_service,
     memory_read::dump_validation::canonical_game_date,
-    moneyball::persistence as moneyball_persistence,
     player_metrics::potential_scores,
     save_stats::{self, SaveStatsError},
     staff::scoring as staff_scoring,
@@ -611,7 +610,6 @@ pub(crate) fn select_current_snapshot(
         .map_err(|error| error.to_string())?;
     }
 
-    moneyball_persistence::clear_non_current_snapshots(tx, save_id)?;
     potential_scores::reconcile_current_selection(
         tx,
         save_id,
@@ -1594,7 +1592,7 @@ mod tests {
     }
 
     #[test]
-    fn deleting_the_current_snapshot_clears_moneyball_data_from_every_non_current_snapshot() {
+    fn deleting_the_current_snapshot_leaves_the_other_snapshots_their_season_stats() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("delete-moneyball-retention.db"));
         let save = list_saves(&conn).expect("seed default save").remove(0);
@@ -1612,7 +1610,6 @@ mod tests {
         let [oldest, promoted, current] = snapshots;
         select_current_snapshot_for_test(&mut conn, save.id);
         seed_cohort(&conn, current, 77, "2027-01-01");
-        // Rows a pre-retention CSV import could have left on a demoted snapshot.
         seed_cohort(&conn, oldest, 77, "2025-01-01");
 
         let current_token = snapshot_token(&conn, current);
@@ -1620,7 +1617,10 @@ mod tests {
 
         assert_eq!(current_snapshot_id(&conn, save.id), Some(promoted));
         assert_eq!(cohort_state(&conn, promoted), (0, None));
-        assert_eq!(cohort_state(&conn, oldest), (0, None));
+        assert_eq!(
+            cohort_state(&conn, oldest),
+            (1, Some("2025-01-01".to_string()))
+        );
     }
 
     #[test]
@@ -2233,7 +2233,10 @@ mod tests {
 
         let promoted = update_snapshot_game_date(&mut conn, older, &older_token, "2027-01-01")
             .expect("promote older snapshot");
-        assert_eq!(cohort_state(&conn, current), (0, None));
+        assert_eq!(
+            cohort_state(&conn, current),
+            (1, Some("2026-06-01".to_string()))
+        );
         assert_eq!(promoted.previous_current_snapshot_id, Some(current));
         assert_eq!(promoted.current_snapshot_id, Some(older));
         assert!(promoted.snapshot.is_current);
@@ -2252,7 +2255,10 @@ mod tests {
 
         let demoted = update_snapshot_game_date(&mut conn, older, &older_token, "2025-01-01")
             .expect("demote edited snapshot");
-        assert_eq!(cohort_state(&conn, older), (0, None));
+        assert_eq!(
+            cohort_state(&conn, older),
+            (1, Some("2027-01-01".to_string()))
+        );
         assert_eq!(demoted.previous_current_snapshot_id, Some(older));
         assert_eq!(demoted.current_snapshot_id, Some(current));
         assert!(!demoted.snapshot.is_current);
