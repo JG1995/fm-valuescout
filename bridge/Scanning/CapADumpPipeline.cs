@@ -64,7 +64,7 @@ public sealed class CapADumpPipeline
         if (!_layouts.TryResolveFromGameVersion(gameVersion, out var layout))
         {
             diagnostics.FailureReason =
-                $"unsupported FM version '{gameVersion}'; no layout for major.minor key";
+                $"unsupported FM version '{gameVersion}'; no layout for this FM major version";
             WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
         }
@@ -332,6 +332,27 @@ public sealed class CapADumpPipeline
         {
             diagnostics.FailureReason =
                 "scan produced candidates but none passed identity sanity (name/DOB)";
+            WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
+            return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
+        }
+
+        diagnostics.LayoutFit = LayoutFitCheck.Evaluate(
+            diagnostics.PlayerObjectsFound,
+            diagnostics.PlayerAbilityRejects,
+            candidates.Count,
+            drafts.Select(draft => new PlayerFitSample(
+                draft.Candidate.Ca,
+                draft.Candidate.Pa,
+                draft.Identity.Positions.GetValueOrDefault("GK"),
+                draft.Attrs.Attributes,
+                draft.Attrs.Personality,
+                draft.Identity.HeightCm)).ToList(),
+            staffDrafts.Select(draft => draft.Record).ToList());
+        var misfits = diagnostics.LayoutFit.Where(group => !group.Fits).Select(group => group.Name).ToList();
+        if (misfits.Count > 0)
+        {
+            diagnostics.FailureReason =
+                $"FM {gameVersion} no longer matches the bridge's memory layout: {string.Join(", ", misfits)}";
             WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
         }

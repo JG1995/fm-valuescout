@@ -33,7 +33,8 @@ public sealed class LayoutRegistry
         TryResolve(NormalizeVersionKey(gameVersion), out layout);
 
     /// <summary>
-    /// Maps <c>27.0.0.2329565</c> or <c>27.0</c> to the major.minor key <c>27.0</c>.
+    /// Maps <c>27.1.0.2505117</c> or <c>27.1</c> to the major key <c>27</c>. Patches within a
+    /// major share its layout; the scan's fit check, not the version, decides whether it still reads.
     /// </summary>
     public static string NormalizeVersionKey(string gameVersion)
     {
@@ -42,14 +43,7 @@ public sealed class LayoutRegistry
             return string.Empty;
         }
 
-        var parts = gameVersion.Trim().Split('.');
-        if (parts.Length >= 2
-            && int.TryParse(parts[0], out _)
-            && int.TryParse(parts[1], out _))
-        {
-            return $"{parts[0]}.{parts[1]}";
-        }
-
-        return gameVersion.Trim();
+        var major = gameVersion.Trim().Split('.')[0];
+        return int.TryParse(major, out _) ? major : gameVersion.Trim();
     }
 }

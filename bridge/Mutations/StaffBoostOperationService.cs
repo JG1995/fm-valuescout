@@ -35,25 +35,19 @@ internal sealed class StaffBoostOperationService
 
     private readonly LayoutRegistry _layouts;
     private readonly StaffMutationIndex _index;
-    private readonly Func<string, bool>? _supportsExactGameBuild;
 
-    public StaffBoostOperationService(
-        LayoutRegistry layouts,
-        StaffMutationIndex index,
-        Func<string, bool>? supportsExactGameBuild = null)
+    public StaffBoostOperationService(LayoutRegistry layouts, StaffMutationIndex index)
     {
         _layouts = layouts ?? throw new ArgumentNullException(nameof(layouts));
         _index = index ?? throw new ArgumentNullException(nameof(index));
-        _supportsExactGameBuild = supportsExactGameBuild;
     }
 
-    public bool SupportsExactGameBuild(string gameVersion) =>
-        _layouts.TryResolveFromGameVersion(gameVersion, out var layout)
-        && (_supportsExactGameBuild?.Invoke(gameVersion)
-            ?? layout.SupportsStaffBoosts(gameVersion));
-
+    /// <summary>
+    /// True when this game has a layout and a live scan of it passed the layout fit check; only
+    /// such a scan fills the index.
+    /// </summary>
     public bool HasSupportedLiveIndex(string gameVersion) =>
-        SupportsExactGameBuild(gameVersion)
+        _layouts.TryResolveFromGameVersion(gameVersion, out _)
         && _index.HasCandidatesForGameVersion(gameVersion);
 
     internal static bool PreservesLiveIndexOnFailure(StaffBoostFailure failure) =>
@@ -75,8 +69,7 @@ internal sealed class StaffBoostOperationService
             return Failed(StaffBoostFailure.InvalidRequest);
         }
 
-        if (!_layouts.TryResolveFromGameVersion(gameVersion, out var layout)
-            || !SupportsExactGameBuild(gameVersion))
+        if (!_layouts.TryResolveFromGameVersion(gameVersion, out var layout))
         {
             return Failed(StaffBoostFailure.UnsupportedGameBuild);
         }

@@ -115,8 +115,7 @@ public sealed class StaffBoostOperationServiceTests
         index.Replace(SourceRequestId, GameVersion, new[] { staff with { Facet = PersonFacet.Player } });
         var service = new StaffBoostOperationService(
             new LayoutRegistry(new[] { Layout }),
-            index,
-            supportsExactGameBuild: _ => true);
+            index);
         var playerCandidate = service.Execute(Request(120, 150), GameVersion, reader, reader);
 
         Assert.False(playerCandidate.Succeeded);
@@ -124,18 +123,31 @@ public sealed class StaffBoostOperationServiceTests
     }
 
     [Fact]
-    public void Staff_boost_is_advertised_only_for_the_live_proved_exact_build()
+    public void Staff_boost_runs_on_any_fm27_build_its_live_scan_came_from()
     {
         var (reader, candidate) = CreateStaffMemory(ca: 120, pa: 150);
         var index = new StaffMutationIndex();
-        index.Replace(SourceRequestId, GameVersion, new[] { candidate });
+        index.Replace(SourceRequestId, "27.1", new[] { candidate });
         var service = new StaffBoostOperationService(new LayoutRegistry(new[] { Layout }), index);
 
-        var result = service.Execute(Request(120, 150), "27.0.1", reader, reader);
+        var result = service.Execute(Request(120, 150), "27.1", reader, reader);
 
-        Assert.True(service.SupportsExactGameBuild(GameVersion));
-        Assert.True(service.HasSupportedLiveIndex(GameVersion));
-        Assert.False(service.SupportsExactGameBuild("27.0.1"));
+        Assert.True(service.HasSupportedLiveIndex("27.1"));
+        Assert.True(result.Succeeded);
+        Assert.Equal(130, ReadUInt16(reader, StaffBlockAddress + (ulong)Layout.StaffCurrentAbilityOffset));
+    }
+
+    [Fact]
+    public void Staff_boost_rejects_a_game_without_a_layout_without_writing()
+    {
+        var (reader, candidate) = CreateStaffMemory(ca: 120, pa: 150);
+        var index = new StaffMutationIndex();
+        index.Replace(SourceRequestId, "28.0", new[] { candidate });
+        var service = new StaffBoostOperationService(new LayoutRegistry(new[] { Layout }), index);
+
+        var result = service.Execute(Request(120, 150), "28.0", reader, reader);
+
+        Assert.False(service.HasSupportedLiveIndex("28.0"));
         Assert.False(result.Succeeded);
         Assert.Equal(StaffBoostFailure.UnsupportedGameBuild, result.Failure);
         Assert.Equal(120, ReadUInt16(reader, StaffBlockAddress + (ulong)Layout.StaffCurrentAbilityOffset));
@@ -207,8 +219,7 @@ public sealed class StaffBoostOperationServiceTests
         index.Replace(SourceRequestId, GameVersion, new[] { candidate });
         return new StaffBoostOperationService(
             new LayoutRegistry(new[] { Layout }),
-            index,
-            supportsExactGameBuild: _ => true);
+            index);
     }
 
     private static BridgeRequest Request(

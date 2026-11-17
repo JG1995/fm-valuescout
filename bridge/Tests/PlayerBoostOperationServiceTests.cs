@@ -96,17 +96,35 @@ public sealed class PlayerBoostOperationServiceTests
     }
 
     [Fact]
-    public void Boost_current_ability_rejects_an_unsupported_exact_game_build_without_writing()
+    public void Boost_current_ability_runs_on_any_fm27_build_its_live_scan_came_from()
     {
         var (reader, candidate) = CreatePlayerMemory(ca: 120, pa: 150);
-        var service = CreateService(candidate);
+        var service = CreateService(candidate, gameVersion: "27.1");
 
         var result = service.Execute(
             CurrentAbilityRequest(expectedCa: 120, expectedPa: 150, increment: 5),
-            gameVersion: "27.0.1",
+            gameVersion: "27.1",
             reader,
             reader);
 
+        Assert.True(service.HasSupportedLiveIndex("27.1"));
+        Assert.True(result.Succeeded);
+        Assert.Equal(125, ReadUInt16(reader, PlayerBlockAddress + (ulong)Layout.CurrentAbilityOffset));
+    }
+
+    [Fact]
+    public void Boost_current_ability_rejects_a_game_without_a_layout_without_writing()
+    {
+        var (reader, candidate) = CreatePlayerMemory(ca: 120, pa: 150);
+        var service = CreateService(candidate, gameVersion: "28.0");
+
+        var result = service.Execute(
+            CurrentAbilityRequest(expectedCa: 120, expectedPa: 150, increment: 5),
+            gameVersion: "28.0",
+            reader,
+            reader);
+
+        Assert.False(service.HasSupportedLiveIndex("28.0"));
         Assert.False(result.Succeeded);
         Assert.Equal(PlayerBoostFailure.UnsupportedGameBuild, result.Failure);
         Assert.Equal(120, ReadUInt16(reader, PlayerBlockAddress + (ulong)Layout.CurrentAbilityOffset));
@@ -367,10 +385,11 @@ public sealed class PlayerBoostOperationServiceTests
 
     private static PlayerBoostOperationService CreateService(
         PersonCandidate candidate,
-        Func<int, int, int>? nextRandom = null)
+        Func<int, int, int>? nextRandom = null,
+        string gameVersion = SupportedGameVersion)
     {
         var index = new PlayerMutationIndex();
-        index.Replace(SourceRequestId, SupportedGameVersion, new[] { candidate });
+        index.Replace(SourceRequestId, gameVersion, new[] { candidate });
         return new PlayerBoostOperationService(
             new LayoutRegistry(new[] { Layout }),
             index,
