@@ -6,6 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-11-18
+
+### Added
+
+- **One Player Search.** Search and Moneyball are now one page. Filters, columns, and sort offer FM attributes, role scores, and Club DNA beside playing time, season statistics with their percentiles, and Moneyball scores, so one search can combine scouting and performance, such as PA 150 or higher with xG / 90 in the top fifth. Every player is listed. A player needs 450 minutes of season stats, this season or in a kept snapshot from the last year, to have statistics, percentiles, and Moneyball scores, and drops out of any filter on them otherwise. Playing-time filters count a player who has not played as 0 minutes.
+- **Saved filters** beside **Add filter** save the applied filters, how they combine, and **Percentiles vs** under a name, to apply, rename, or delete later. They also list each tactic slot's recruitment filters: applying one keeps players rated 12 or higher at the slot's positions and ranks percentiles against the slot's two position groups, so Search lists the players the Dashboard compares for that slot.
+- **Add Tactic (Moneyball Score)** shows each slot's Moneyball score, the one the Dashboard compares in Moneyball mode: from the slot's chosen metrics, or from its roles when it has none. With **Add Tactic (Role Score)** also on, each slot's two scores sit side by side.
+- **Percentiles vs** can rank against two position groups together, such as wingers and wide midfielders.
+
+### Changed
+
+- The two kinds of role score are named apart everywhere: **Role Score** (and **Potential Role Score**) from attributes, **Moneyball Score** from season stats, including filter chips and Squad's role columns.
+- Search uses season stats from kept snapshots as the Dashboard and the profile do. Values from a kept snapshot read muted, with their date on hover.
+- **Stats as of**, **Percentiles vs**, and **League-adjusted | Raw** appear only while a season column, filter, or sort is in use. **Refresh stats** is always in Search's header.
+- Clicking a Search row opens the profile on the view chosen in Settings, which now sets the default for the profile and the Dashboard.
+
+### Removed
+
+- The separate Moneyball page and its navigation link; old Moneyball links open Search. Its saved columns are not carried over, and Search keeps its own.
+- **Add Tactic (Roles)** and **Add Tactic (Custom)**, replaced by **Add Tactic (Moneyball Score)**.
+- Muted short-sample percentiles. A player under 450 minutes without kept stats has none.
+
 ## [0.29.1] - 2026-11-17
 
 ### Fixed
