@@ -1,5 +1,6 @@
+use std::cell::Cell;
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Row};
 
@@ -7,10 +8,13 @@ use crate::db::result_cache::{Cancellation, ResultCache, TableRegistry, TableTic
 use crate::db::Db;
 
 use crate::features::moneyball::comparison::{
-    ComparisonGroupsCache, GroupsSource, PositionFamily, MIN_SEASON_MINUTES,
+    scan_in_parallel, ComparisonGroup, ComparisonGroupsCache, GroupsSource,
 };
-use crate::features::moneyball::{league_strength::shifted, role_catalog::builtin_catalog};
-use crate::features::planner::tactic::{base_position, read_tactic};
+use crate::features::moneyball::kept_stats::{
+    kept_stats_snapshots, stats_join_sql, KeptStats, STATS_DIVISION_SQL,
+};
+use crate::features::moneyball::role_catalog::{builtin_catalog, RoleDefinition};
+use crate::features::planner::tactic::{base_position, read_tactic, TacticLane};
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
     compact::{
@@ -18,19 +22,20 @@ use crate::features::player_metrics::{
         player_potential_column, PLAYER_METRICS_ALIAS,
     },
     resolver::{
-        parse_requested_fields_for_moneyball, read_dynamic_value, ClubDnaSqlBindings, MetricField,
-        TacticGroup,
+        parse_search_requested_fields, qualified_season_stats_sql, read_dynamic_value,
+        ClubDnaSqlBindings, MetricField, TacticGroup,
     },
 };
 
-use super::moneyball_cohort::{
-    tactic_metric_keys, tactic_score, tactic_slot_group, MemberPercentiles, MoneyballCohort,
-    MoneyballCohortCache, PlayerFit, MONEYBALL_FROM_SQL,
-};
-
 use super::filter::{
-    compile_filters, compile_filters_with_club_dna, current_role_ids_from_ast,
-    has_post_cohort_rules, potential_role_ids_from_ast, CompiledFilter, FilterAst,
+    ast_reads_season_stats, compile_filters, compile_filters_with_club_dna,
+    current_role_ids_from_ast, has_post_cohort_rules, moneyball_percentile_keys_from_ast,
+    moneyball_role_ids_from_ast, post_cohort_rules_match, potential_role_ids_from_ast,
+    without_post_cohort_rules, CombineMode, FilterAst,
+};
+use super::season_scores::{
+    lane_group, lane_statistic_keys, needed_statistics, scan_needed_statistics, tactic_lane,
+    PlayerFit, SeasonSources,
 };
 
 pub use crate::features::player_metrics::resolver::DynamicValue;
@@ -38,29 +43,23 @@ pub use crate::features::player_metrics::resolver::DynamicValue;
 pub const DEFAULT_PAGE_LIMIT: usize = 50;
 pub const MAX_PAGE_LIMIT: usize = 200;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SearchView {
-    General,
-    Moneyball,
-}
-
-/// Whom Moneyball Search ranks each player's statistics against: the peers of his own best
-/// position's family, or one family's peers for every player. Role and tactic scores always
+/// Whom a statistic's percentile ranks each player against: the peers of his own best
+/// position's family, or one group of one or two families for everyone. Moneyball Scores always
 /// rank within their roles' families and their slots' groups.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Comparison {
     Own,
-    Family(PositionFamily),
+    Group(ComparisonGroup),
 }
 
 impl Comparison {
-    /// `own` or a role catalog family ID.
+    /// `own`, a role catalog family ID, or two family IDs joined by `+`.
     pub fn parse(value: &str) -> Result<Self, String> {
         if value == "own" {
             return Ok(Self::Own);
         }
-        PositionFamily::from_id(value)
-            .map(Self::Family)
+        ComparisonGroup::parse(value)
+            .map(Self::Group)
             .ok_or_else(|| format!("unknown Moneyball comparison: {value}"))
     }
 }
@@ -75,7 +74,7 @@ pub enum SortField {
     Ca,
     Pa,
     Value,
-    /// Whitelisted player metric (`role.*`, `attr.*`, potential role, Position, …).
+    /// Any other Player Search field (`role.*`, `attr.*`, statistics, Moneyball Scores, …).
     Dynamic(MetricField),
 }
 
@@ -83,10 +82,6 @@ impl SortField {
     pub const DEFAULT: Self = Self::Ca;
 
     pub fn parse(value: &str) -> Result<Self, String> {
-        Self::parse_for_moneyball(value, false)
-    }
-
-    pub fn parse_for_moneyball(value: &str, moneyball: bool) -> Result<Self, String> {
         match value {
             "name" => Ok(Self::Name),
             "age" => Ok(Self::Age),
@@ -96,9 +91,7 @@ impl SortField {
             "ca" => Ok(Self::Ca),
             "pa" => Ok(Self::Pa),
             "value" => Ok(Self::Value),
-            other => Ok(Self::Dynamic(MetricField::parse_for_moneyball(
-                other, moneyball,
-            )?)),
+            other => Ok(Self::Dynamic(MetricField::parse_search(other)?)),
         }
     }
 
@@ -148,14 +141,14 @@ impl SortField {
         }
     }
 
-    pub(super) fn moneyball_role_id(&self) -> Option<&str> {
+    fn moneyball_role_id(&self) -> Option<&str> {
         match self {
             Self::Dynamic(field) => field.moneyball_role_id(),
             _ => None,
         }
     }
 
-    pub(super) fn is_tactic(&self) -> bool {
+    fn is_tactic(&self) -> bool {
         matches!(self, Self::Dynamic(field) if field.is_tactic_field())
     }
 
@@ -177,23 +170,14 @@ impl SortField {
         }
     }
 
-    fn is_available_in_moneyball(&self) -> bool {
-        match self {
-            Self::Name
-            | Self::Age
-            | Self::Nationality
-            | Self::Club
-            | Self::Division
-            | Self::Ca
-            | Self::Pa
-            | Self::Value => true,
-            Self::Dynamic(field) => {
-                field.is_tactic_field()
-                    || crate::features::player_metrics::resolver::is_moneyball_search_field(
-                        field.id(),
-                    )
-            }
-        }
+    /// Whether the sort is a Moneyball Score, which Rust computes and SQL cannot order by.
+    fn is_moneyball_score(&self) -> bool {
+        matches!(self, Self::Dynamic(field) if field.is_moneyball_score())
+    }
+
+    /// Whether the sort reads the season statistics row aliased `moneyball`.
+    fn reads_season_stats(&self) -> bool {
+        matches!(self, Self::Dynamic(field) if field.reads_season_stats())
     }
 }
 
@@ -238,10 +222,11 @@ pub struct PlayerSummary {
     pub market_value_gbp: Option<i64>,
     /// Values for requested non-basic metric fields (field id → nullable cell).
     pub dynamic_values: BTreeMap<String, Option<DynamicValue>>,
+    /// The requested statistics' percentiles, for a player with a qualified sample.
     pub moneyball_percentiles: BTreeMap<String, Option<u8>>,
-    /// Moneyball only: fewer than `MIN_SEASON_MINUTES` minutes, so the player's percentiles
-    /// rank him against groups he is not one of the peers of.
-    pub moneyball_short_sample: bool,
+    /// The in-game date of the kept snapshot whose statistics the player's season values come
+    /// from, when this season has too few minutes; `None` for this season's.
+    pub moneyball_stats_date: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -268,101 +253,169 @@ pub struct SearchPlayersRequest<'a> {
     pub sort_dir: SortDir,
     pub filter_ast: Option<&'a FilterAst>,
     pub requested_fields: &'a [String],
-    pub view: SearchView,
-    /// Moneyball only: whom statistic percentiles rank each player against.
+    /// Whom statistic percentiles rank each player against.
     pub comparison: Comparison,
-    /// Restrict General and Moneyball results to this player shortlist of the save.
+    /// Restrict the results to this player shortlist of the save.
     pub shortlist_id: Option<i64>,
 }
 
-#[cfg(test)]
-fn search_players(
-    conn: &Connection,
-    offset: usize,
-    limit: usize,
-    sort_by: SortField,
-    sort_dir: SortDir,
-    filter_ast: Option<&FilterAst>,
-    requested_fields: &[String],
-) -> Result<SearchPlayersPage, String> {
-    search_players_in_view(
-        conn,
-        SearchPlayersRequest {
-            offset,
-            limit,
-            sort_by,
-            sort_dir,
-            filter_ast,
-            requested_fields,
-            view: SearchView::General,
-            comparison: Comparison::Own,
-            shortlist_id: None,
-        },
+/// One table query's complete row order, computed once per data generation.
+pub struct PlayerOrder {
+    /// The data generation of the reader that computed it.
+    generation: u64,
+    state: SearchPlayersPageState,
+    snapshot_id: i64,
+    uids: Vec<i64>,
+}
+
+/// Player Search's computed orders, keyed by [`search_query_fingerprint`].
+pub type PlayerOrderCache = ResultCache<PlayerOrder>;
+
+/// Identifies a table query by every input that changes its rows or their order. The offset,
+/// limit, and requested fields only choose which rows and columns a window shows.
+pub fn search_query_fingerprint(request: &SearchPlayersRequest<'_>) -> String {
+    format!(
+        "{:?}|{:?}|{:?}|{:?}|{:?}",
+        request.filter_ast,
+        request.sort_by,
+        request.sort_dir,
+        request.comparison,
+        request.shortlist_id,
     )
 }
 
-/// One window of a General or Moneyball query, computed without a cache. A Moneyball query
-/// computes its cohort as `search_moneyball_players` does.
-pub fn search_players_in_view(
+/// Serves one window from its query's computed order, computing the order on a miss. With a
+/// ticket, the computation is its table's in `registry`, so a newer request for the table can
+/// supersede it. Returns the same page as [`search_players_uncached`].
+pub fn search_players(
+    db: &Db,
+    orders: &PlayerOrderCache,
+    groups: &ComparisonGroupsCache,
+    registry: &TableRegistry,
+    ticket: Option<&TableTicket>,
+    request: SearchPlayersRequest<'_>,
+) -> Result<SearchPlayersPage, String> {
+    let fields = window_fields(request.requested_fields)?;
+    let fingerprint = search_query_fingerprint(&request);
+    let mut generation = db.generation();
+    loop {
+        let order = orders.get_or_compute(&fingerprint, generation, || {
+            let reader = db.read()?;
+            let order = registry.run(ticket, &reader, |cancellation| {
+                compute_order(
+                    &reader,
+                    reader.generation(),
+                    &GroupsSource::Cached(groups, reader.generation()),
+                    &request,
+                    cancellation,
+                )
+            })?;
+            Ok::<_, String>((reader.generation(), order))
+        })?;
+        let reader = db.read()?;
+        if reader.generation() > order.generation {
+            // Data changed since the order was read, so the window reads a fresh order.
+            generation = reader.generation();
+            continue;
+        }
+        return read_window(
+            &reader,
+            &GroupsSource::Cached(groups, reader.generation()),
+            &order,
+            &request,
+            &fields,
+        );
+    }
+}
+
+/// One window of a table query, computed without a cache.
+#[cfg(test)]
+pub fn search_players_uncached(
     conn: &Connection,
     request: SearchPlayersRequest<'_>,
 ) -> Result<SearchPlayersPage, String> {
-    if request.view == SearchView::Moneyball {
-        let dynamic_fields = moneyball_dynamic_fields(&request)?;
-        let cohort = MoneyballCohort::compute(
-            conn,
-            0,
-            &GroupsSource::Uncached,
-            &request,
-            &Cancellation::never(),
-        )?;
-        return read_moneyball_window(conn, &cohort, &request, &dynamic_fields);
-    }
-    if request_needs_cohort_scoring(&request) {
-        return Err("Moneyball role fields require Moneyball search view".to_string());
-    }
+    let fields = window_fields(request.requested_fields)?;
+    let order = compute_order(
+        conn,
+        0,
+        &GroupsSource::Uncached,
+        &request,
+        &Cancellation::never(),
+    )?;
+    read_window(conn, &GroupsSource::Uncached, &order, &request, &fields)
+}
 
-    let SearchPlayersRequest {
-        offset,
-        limit,
-        sort_by,
-        sort_dir,
-        filter_ast,
-        requested_fields,
-        shortlist_id,
-        ..
-    } = request;
-    let requested_fields = parse_requested_fields_for_moneyball(requested_fields, false)?;
-    let dynamic_fields = requested_fields
+/// A request's validated fields beyond the basic columns every row reads.
+fn window_fields(requested_fields: &[String]) -> Result<Vec<MetricField>, String> {
+    Ok(parse_search_requested_fields(requested_fields)?
         .into_iter()
         .filter(|field| !field.is_basic_table_field())
-        .collect::<Vec<_>>();
-    let club_dna_filter =
-        filter_ast.is_some_and(|ast| ast.rules.iter().any(|rule| rule.field == "club_dna"));
-    let club_dna_requested = club_dna_filter
-        || sort_by.is_club_dna()
-        || dynamic_fields.iter().any(MetricField::is_club_dna);
-    let Some(snapshot_id) = active_current_snapshot_id(conn)? else {
-        return Ok(SearchPlayersPage {
-            players: Vec::new(),
-            total: 0,
-            state: SearchPlayersPageState::NoCurrentSnapshot,
-        });
+        .collect())
+}
+
+/// Computes a query's complete row order: in SQL, or in Rust when a rule or the sort is a
+/// Moneyball Score or a percentile.
+fn compute_order(
+    conn: &Connection,
+    generation: u64,
+    groups: &GroupsSource<'_>,
+    request: &SearchPlayersRequest<'_>,
+    cancellation: &Cancellation,
+) -> Result<PlayerOrder, String> {
+    #[cfg(test)]
+    tests::ORDER_COMPUTATIONS.with(|count| count.set(count.get() + 1));
+    let empty = |state| PlayerOrder {
+        generation,
+        state,
+        snapshot_id: 0,
+        uids: Vec::new(),
     };
-
-    if requested_shortlist_missing(conn, snapshot_id, shortlist_id)? {
-        return Ok(SearchPlayersPage {
-            players: Vec::new(),
-            total: 0,
-            state: SearchPlayersPageState::NoShortlist,
-        });
+    let Some(snapshot_id) = active_current_snapshot_id(conn)? else {
+        return Ok(empty(SearchPlayersPageState::NoCurrentSnapshot));
+    };
+    if requested_shortlist_missing(conn, snapshot_id, request.shortlist_id)? {
+        return Ok(empty(SearchPlayersPageState::NoShortlist));
     }
+    let scored = request.filter_ast.is_some_and(has_post_cohort_rules)
+        || request.sort_by.is_moneyball_score();
+    let uids = if scored {
+        scored_order(conn, snapshot_id, groups, request, cancellation)?
+    } else {
+        sql_order(conn, snapshot_id, request, cancellation)?
+    };
+    Ok(PlayerOrder {
+        generation,
+        state: SearchPlayersPageState::Ready,
+        snapshot_id,
+        uids,
+    })
+}
 
-    let limit = limit.clamp(1, MAX_PAGE_LIMIT);
-    let offset = i64::try_from(offset).map_err(|_| "search offset out of range".to_string())?;
-    let limit = i64::try_from(limit).map_err(|_| "search limit out of range".to_string())?;
+/// The FROM, WHERE, and ORDER BY of an order's query: the snapshot `?1`, the shortlist, the
+/// SQL rules, and the joins they and the sort read.
+struct OrderQuery {
+    from_sql: String,
+    /// The compiled SQL rules, if any.
+    filter_sql: Option<String>,
+    order_sql: String,
+    bind_values: Vec<Value>,
+}
 
-    let compiled = match filter_ast {
+/// Builds an order's query from its SQL rules `sql_ast`. A Moneyball Score sort orders by UID,
+/// for Rust to sort stably. With `season_stats`, it joins the statistics row whatever the rules
+/// and sort read.
+fn order_query(
+    conn: &Connection,
+    snapshot_id: i64,
+    request: &SearchPlayersRequest<'_>,
+    sql_ast: Option<&FilterAst>,
+    kept_ids: &[i64],
+    season_stats: bool,
+) -> Result<OrderQuery, String> {
+    let sort_by = &request.sort_by;
+    let club_dna_filter =
+        sql_ast.is_some_and(|ast| ast.rules.iter().any(|rule| rule.field == "club_dna"));
+    let compiled = match sql_ast {
         None => None,
         Some(ast) => {
             let compiled = if club_dna_filter {
@@ -370,85 +423,52 @@ pub fn search_players_in_view(
             } else {
                 compile_filters(ast, 2)?
             };
-            if compiled.sql.is_empty() {
-                None
-            } else {
-                Some(compiled)
-            }
+            (!compiled.sql.is_empty()).then_some(compiled)
         }
     };
-
-    let current_filter_roles = filter_ast
-        .map(current_role_ids_from_ast)
-        .transpose()?
-        .unwrap_or_default();
-    let potential_filter_roles = filter_ast
-        .map(potential_role_ids_from_ast)
-        .transpose()?
-        .unwrap_or_default();
-    let current_role_sort = sort_by.current_role_id();
-    let potential_role_sort = sort_by.potential_role_id();
-    let mut uses_current_role_metrics = current_role_sort.is_some()
-        || dynamic_fields
-            .iter()
-            .any(|field| field.current_role_id().is_some())
-        || !current_filter_roles.is_empty();
-    let mut uses_potential_role_metrics = potential_role_sort.is_some()
-        || dynamic_fields
-            .iter()
-            .any(|field| field.potential_role_id().is_some())
-        || !potential_filter_roles.is_empty();
-    let uses_tactic_current =
-        dynamic_fields.iter().any(|f| f.is_tactic_current()) || sort_by.is_tactic_current();
-    let uses_tactic_potential = dynamic_fields
-        .iter()
-        .any(|f| f.is_tactic_field() && !f.is_tactic_current())
-        || (sort_by.is_tactic() && !sort_by.is_tactic_current());
-    let uses_tactic = uses_tactic_current || uses_tactic_potential;
-    if uses_tactic {
-        uses_current_role_metrics = true;
-        if uses_tactic_potential {
-            uses_potential_role_metrics = true;
-        }
-    }
+    let (uses_current_role_metrics, uses_potential_role_metrics) =
+        role_metric_requirements(sql_ast, sort_by, &[])?;
     assert_read_models_complete(
         conn,
         snapshot_id,
         uses_current_role_metrics,
         uses_potential_role_metrics,
     )?;
-    // Load tactic once when needed for General tactic scoring and validation
-    let tactic_for_sql: Option<crate::features::planner::tactic::PlannerTactic> = if uses_tactic {
-        let save_id = snapshot_save_id(conn, snapshot_id)?;
-        let tactic = read_tactic(conn, save_id)?;
-        Some(tactic)
-    } else {
-        None
-    };
 
-    let club_dna_bindings = club_dna_requested.then(|| {
+    let tactic = (sort_by.is_tactic() && !sort_by.is_moneyball_score())
+        .then(|| read_tactic(conn, snapshot_save_id(conn, snapshot_id)?))
+        .transpose()?;
+    let club_dna_bindings = (club_dna_filter || sort_by.is_club_dna()).then(|| {
         if club_dna_filter {
             ClubDnaSqlBindings::new(2, 3)
         } else {
-            ClubDnaSqlBindings::new(
-                compiled
-                    .as_ref()
-                    .map_or(2, |filter| filter.params.len() + 2),
-                compiled
-                    .as_ref()
-                    .map_or(3, |filter| filter.params.len() + 3),
-            )
+            let filter_params = compiled.as_ref().map_or(0, |filter| filter.params.len());
+            ClubDnaSqlBindings::new(filter_params + 2, filter_params + 3)
         }
     });
-    let club_dna_definition_version = club_dna_requested
+    let club_dna_definition_version = club_dna_bindings
+        .is_some()
         .then(|| current_club_dna_definition_version(conn, snapshot_id))
         .transpose()?
         .flatten();
     let club_dna_sort = sort_by.club_dna_sort_identity(club_dna_definition_version);
 
-    let mut from_sql = match shortlist_id {
-        Some(shortlist_id) => general_shortlist_from_sql(shortlist_id),
-        None => "FROM players".to_string(),
+    // Without statistics, SQLite seeks an unfiltered snapshot through `idx_players_snapshot_ca`
+    // and visits its rows in CA order, one random table read each. Unless a covering index
+    // already holds the sort key and UID, an unfiltered order reads the snapshot in primary-key
+    // order, which follows storage order. Filters keep the planner's choice, which can use
+    // their own indexes.
+    let reads_in_key_order = compiled.is_none()
+        && !matches!(
+            sort_by,
+            SortField::Pa | SortField::Age | SortField::Value | SortField::Club
+        );
+    let mut from_sql = if let Some(shortlist_id) = request.shortlist_id {
+        shortlist_from_sql(shortlist_id)
+    } else if reads_in_key_order {
+        "FROM players INDEXED BY sqlite_autoindex_players_1".to_string()
+    } else {
+        "FROM players".to_string()
     };
     if uses_current_role_metrics || uses_potential_role_metrics {
         from_sql.push_str(&player_metrics_join(
@@ -456,6 +476,9 @@ pub fn search_players_in_view(
             uses_current_role_metrics,
             uses_potential_role_metrics,
         ));
+    }
+    if season_stats || sql_ast.is_some_and(ast_reads_season_stats) || sort_by.reads_season_stats() {
+        from_sql.push_str(&stats_join_sql("players", kept_ids));
     }
     if let Some((_, bindings)) = club_dna_sort.zip(club_dna_bindings) {
         from_sql.push_str(&format!(
@@ -467,19 +490,13 @@ pub fn search_players_in_view(
             bindings.definition_version, bindings.score_model_version
         ));
     }
-    let mut where_sql = "players.snapshot_id = ?1".to_string();
-    if let Some(compiled) = &compiled {
-        where_sql.push_str(" AND ");
-        where_sql.push_str(&compiled.sql);
-    }
-
     let mut bind_values = vec![Value::Integer(snapshot_id)];
     if club_dna_filter {
         bind_values.push(club_dna_definition_version.map_or(Value::Null, Value::Integer));
         bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
     }
     if let Some(compiled) = &compiled {
-        bind_values.extend(compiled.params.clone());
+        bind_values.extend(compiled.params.iter().cloned());
     }
     if let Some(identity) = club_dna_sort.filter(|_| !club_dna_filter) {
         bind_values.push(
@@ -489,28 +506,16 @@ pub fn search_players_in_view(
         );
         bind_values.push(Value::Integer(identity.score_model_version));
     }
-    let mut select_bind_values = bind_values.clone();
-    if club_dna_requested && !club_dna_filter && club_dna_sort.is_none() {
-        select_bind_values.push(club_dna_definition_version.map_or(Value::Null, Value::Integer));
-        select_bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
-    }
-
-    let count_sql = format!("SELECT COUNT(*) {from_sql} WHERE {where_sql}");
-    let mut count_stmt = conn
-        .prepare(&count_sql)
-        .map_err(|error| error.to_string())?;
-    let total: i64 = count_stmt
-        .query_row(params_from_iter(bind_values.iter()), |row| row.get(0))
-        .map_err(|error| error.to_string())?;
 
     // Whitelisted expr + dir only — never interpolate raw client strings.
-    let order_sql = if club_dna_sort.is_some() {
+    let dir = request.sort_dir.sql_keyword();
+    let order_sql = if sort_by.is_moneyball_score() {
+        "ORDER BY players.uid ASC".to_string()
+    } else if club_dna_sort.is_some() {
         format!(
-            "ORDER BY club_dna_sort.score IS NULL ASC, club_dna_sort.score {}, players.uid ASC",
-            sort_dir.sql_keyword()
+            "ORDER BY club_dna_sort.score IS NULL ASC, club_dna_sort.score {dir}, players.uid ASC"
         )
-    } else if sort_by.is_tactic() {
-        let tactic = tactic_for_sql.as_ref().expect("tactic loaded for sort");
+    } else if let Some(tactic) = &tactic {
         let lane_id = sort_by.tactic_lane_id().expect("tactic lane");
         let lane = tactic
             .lanes
@@ -519,99 +524,296 @@ pub fn search_players_in_view(
             .ok_or_else(|| format!("unknown tactic lane: {lane_id}"))?;
         let group = sort_by.tactic_group().expect("tactic group");
         let expr = tactic_sql_expression(lane, group, "players");
-        format!(
-            "ORDER BY ({expr} IS NULL) ASC, {expr} {}, players.uid ASC",
-            sort_dir.sql_keyword()
-        )
+        format!("ORDER BY ({expr} IS NULL) ASC, {expr} {dir}, players.uid ASC")
+    } else if sort_by.reads_season_stats() {
+        // Most players have no qualified sample; they follow those who do in either direction.
+        let expr = sort_by.sql_expr(None);
+        format!("ORDER BY ({expr}) IS NULL ASC, {expr} {dir}, players.uid ASC")
     } else {
-        let sort_expression = sort_by.sql_expr(club_dna_bindings);
         format!(
-            "ORDER BY {sort_expression} {}, players.uid ASC",
-            sort_dir.sql_keyword()
+            "ORDER BY {} {dir}, players.uid ASC",
+            sort_by.sql_expr(club_dna_bindings)
         )
     };
-
-    let mut select_sql = String::from(
-        "SELECT
-                players.uid,
-                players.name,
-                players.age,
-                players.birth_year,
-                players.birth_day_of_year,
-                players.nationalities_json,
-                players.current_club,
-                players.current_club_uid,
-                players.division,
-                players.ca,
-                players.pa,
-                players.market_value_gbp",
-    );
-    let limit_index = select_bind_values.len() + 1;
-    let offset_index = select_bind_values.len() + 2;
-    select_bind_values.push(Value::Integer(limit));
-    select_bind_values.push(Value::Integer(offset));
-
-    for field in &dynamic_fields {
-        select_sql.push_str(", ");
-        if field.is_tactic_field() {
-            let tactic = tactic_for_sql.as_ref().expect("tactic loaded for select");
-            let lane_id = field.tactic_lane_id().expect("tactic lane");
-            let lane = tactic
-                .lanes
-                .iter()
-                .find(|l| l.lane_id == lane_id)
-                .ok_or_else(|| format!("unknown tactic lane: {lane_id}"))?;
-            let group = field.tactic_group().expect("tactic group");
-            let expr = tactic_sql_expression(lane, group, "players");
-            select_sql.push_str(&expr);
-        } else {
-            select_sql.push_str(&field.sql_expression_with_club_dna("players", club_dna_bindings));
-        }
-    }
-    select_sql.push_str(&format!(
-        "
-             {from_sql}
-             WHERE {where_sql}
-             {order_sql}
-             LIMIT ?{limit_index} OFFSET ?{offset_index}"
-    ));
-
-    let mut stmt = conn
-        .prepare(&select_sql)
-        .map_err(|error| error.to_string())?;
-
-    let players = stmt
-        .query_map(params_from_iter(select_bind_values.iter()), |row| {
-            map_player_summary(row, &dynamic_fields)
-        })
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-
-    Ok(SearchPlayersPage {
-        players,
-        total,
-        state: SearchPlayersPageState::Ready,
+    Ok(OrderQuery {
+        from_sql,
+        filter_sql: compiled.map(|compiled| compiled.sql),
+        order_sql,
+        bind_values,
     })
 }
 
-/// Restricts General results to shortlist `shortlist_id`'s players by UID. The ID is a typed
-/// integer written as a literal, so it adds no bind and every parameter index stays unchanged.
-/// Callers first check that the shortlist belongs to the snapshot's save.
-fn general_shortlist_from_sql(shortlist_id: i64) -> String {
-    format!("FROM players INNER JOIN player_shortlist_entries shortlist ON shortlist.player_uid = players.uid AND shortlist.shortlist_id = {shortlist_id}")
+/// A query's order when SQL can sort and filter every row.
+fn sql_order(
+    conn: &Connection,
+    snapshot_id: i64,
+    request: &SearchPlayersRequest<'_>,
+    cancellation: &Cancellation,
+) -> Result<Vec<i64>, String> {
+    let reads_stats = request.filter_ast.is_some_and(ast_reads_season_stats)
+        || request.sort_by.reads_season_stats();
+    let kept_ids = if reads_stats {
+        kept_ids(&kept_stats_snapshots(conn, snapshot_id)?)
+    } else {
+        Vec::new()
+    };
+    let query = order_query(
+        conn,
+        snapshot_id,
+        request,
+        request.filter_ast,
+        &kept_ids,
+        false,
+    )?;
+    let where_sql = match &query.filter_sql {
+        Some(filter) => format!("players.snapshot_id = ?1 AND {filter}"),
+        None => "players.snapshot_id = ?1".to_string(),
+    };
+    #[cfg(test)]
+    if let Some(hook) = tests::BEFORE_ORDER_QUERY.with(|hook| hook.borrow_mut().take()) {
+        hook();
+    }
+    cancellation.check()?;
+    conn.prepare(&format!(
+        "SELECT players.uid {} WHERE {where_sql} {}",
+        query.from_sql, query.order_sql
+    ))
+    .map_err(|error| error.to_string())?
+    .query_map(params_from_iter(query.bind_values.iter()), |row| row.get(0))
+    .map_err(|error| error.to_string())?
+    .collect::<Result<Vec<i64>, _>>()
+    .map_err(|error| error.to_string())
 }
 
-/// Moneyball's base condition: the snapshot `?1`, restricted by UID to shortlist
-/// `shortlist_id`'s players when one is given. The ID is a typed integer written as a
-/// literal, so it adds no bind. As the base, it bounds the rows, a mixed OR filter's cohort,
-/// and Filtered cohort percentiles. Callers first check that the shortlist belongs to the
-/// snapshot's save.
-pub(super) fn moneyball_base_where_sql(shortlist_id: Option<i64>) -> String {
-    match shortlist_id {
-        Some(shortlist_id) => format!("players.snapshot_id = ?1 AND players.uid IN (SELECT player_uid FROM player_shortlist_entries WHERE shortlist_id = {shortlist_id})"),
-        None => "players.snapshot_id = ?1".to_string(),
+/// One row of a scored order's query.
+struct ScoredRow {
+    /// The row's place in the SQL order.
+    index: usize,
+    uid: i64,
+    /// Whether the SQL rules keep the row; under OR the Moneyball rules can keep it as well.
+    sql_match: bool,
+    /// The snapshot of the statistics row, when the player has a qualified sample.
+    source_id: Option<i64>,
+    statistics_json: Option<String>,
+    division: Option<String>,
+    fit: Option<PlayerFit>,
+}
+
+/// A query's order when a rule or the sort is a Moneyball Score or a statistic's percentile.
+/// SQL selects the rows its rules allow; Rust scores the players with a qualified sample,
+/// applies the Moneyball rules, and sorts by a Moneyball Score.
+fn scored_order(
+    conn: &Connection,
+    snapshot_id: i64,
+    groups: &GroupsSource<'_>,
+    request: &SearchPlayersRequest<'_>,
+    cancellation: &Cancellation,
+) -> Result<Vec<i64>, String> {
+    let catalog = builtin_catalog()?;
+    let definition = |role_id: &str| {
+        catalog
+            .definitions
+            .iter()
+            .find(|definition| definition.id == role_id)
+            .ok_or_else(|| format!("unknown Moneyball role: {role_id}"))
+    };
+    let post_ast = request.filter_ast.filter(|ast| has_post_cohort_rules(ast));
+    let sql_ast = request
+        .filter_ast
+        .map(without_post_cohort_rules)
+        .transpose()?
+        .flatten();
+    // Under OR, a player kept by an SQL rule stays whatever his Moneyball values.
+    let mixed_or = post_ast.is_some_and(|ast| ast.combine == CombineMode::Or) && sql_ast.is_some();
+    let sort_role = request
+        .sort_by
+        .moneyball_role_id()
+        .map(definition)
+        .transpose()?;
+    let filter_roles = post_ast
+        .map(moneyball_role_ids_from_ast)
+        .transpose()?
+        .unwrap_or_default()
+        .into_iter()
+        .map(|role_id| Ok((definition(&role_id)?, role_id)))
+        .collect::<Result<Vec<(&RoleDefinition, String)>, String>>()?;
+    let percentile_keys = post_ast
+        .map(moneyball_percentile_keys_from_ast)
+        .unwrap_or_default();
+    let sort_tactic = match &request.sort_by {
+        SortField::Dynamic(field) if field.tactic_group() == Some(TacticGroup::Moneyball) => {
+            Some(read_tactic(conn, snapshot_save_id(conn, snapshot_id)?)?)
+        }
+        _ => None,
+    };
+    let sort_lane = match (&request.sort_by, &sort_tactic) {
+        (SortField::Dynamic(field), Some(tactic)) => Some(
+            tactic_lane(field, tactic)
+                .ok_or_else(|| format!("unknown tactic lane: {}", field.id()))?,
+        ),
+        _ => None,
+    };
+
+    let mut keys = BTreeSet::new();
+    for definition in sort_role
+        .iter()
+        .chain(filter_roles.iter().map(|(definition, _)| definition))
+    {
+        keys.extend(definition.metrics.iter().map(|metric| metric.key.clone()));
     }
+    keys.extend(percentile_keys.iter().cloned());
+    if let Some(lane) = sort_lane {
+        keys.extend(lane_statistic_keys(lane));
+    }
+    let needed = needed_statistics(keys.iter().map(String::as_str))?;
+    let kept = kept_stats_snapshots(conn, snapshot_id)?;
+    let groups_to_rank = match request.comparison {
+        Comparison::Group(group) => Some(group),
+        Comparison::Own => None,
+    }
+    .into_iter()
+    .chain(sort_lane.and_then(lane_group))
+    .collect::<Vec<_>>();
+    let sources = SeasonSources::load(conn, groups, snapshot_id, &kept, &groups_to_rank)?;
+    cancellation.check()?;
+
+    let query = order_query(
+        conn,
+        snapshot_id,
+        request,
+        sql_ast.as_ref(),
+        &kept_ids(&kept),
+        true,
+    )?;
+    let qualified = qualified_season_stats_sql();
+    let (match_column, mut where_sql) = match (&query.filter_sql, mixed_or) {
+        (Some(filter), true) => (
+            format!("CASE WHEN {filter} THEN 1 ELSE 0 END"),
+            "players.snapshot_id = ?1".to_string(),
+        ),
+        (Some(filter), false) => (
+            "1".to_string(),
+            format!("players.snapshot_id = ?1 AND {filter}"),
+        ),
+        (None, _) => ("1".to_string(), "players.snapshot_id = ?1".to_string()),
+    };
+    // Only a qualified sample passes a Moneyball rule, so without an SQL rule under OR to keep
+    // him, a player without one is never a row.
+    if post_ast.is_some() && !mixed_or {
+        where_sql.push_str(&format!(" AND {qualified}"));
+    }
+    let fit_columns = if sort_lane.is_some() {
+        ", players.positions_json, players.preferred_foot"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "SELECT players.uid, {match_column},
+                CASE WHEN {qualified} THEN moneyball.snapshot_id END,
+                CASE WHEN {qualified} THEN moneyball.statistics_json END,
+                CASE WHEN {qualified} THEN {STATS_DIVISION_SQL} END{fit_columns}
+         {} WHERE {where_sql} {}",
+        query.from_sql, query.order_sql
+    );
+    #[cfg(test)]
+    if let Some(hook) = tests::BEFORE_ORDER_QUERY.with(|hook| hook.borrow_mut().take()) {
+        hook();
+    }
+    cancellation.check()?;
+    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
+    let mut rows = statement
+        .query(params_from_iter(query.bind_values.iter()))
+        .map_err(|error| error.to_string())?;
+    let next_index = Cell::new(0);
+    let read = |row: &Row<'_>| {
+        let index = next_index.get();
+        next_index.set(index + 1);
+        Ok(ScoredRow {
+            index,
+            uid: row.get(0)?,
+            sql_match: row.get::<_, i64>(1)? == 1,
+            source_id: row.get(2)?,
+            statistics_json: row.get(3)?,
+            division: row.get(4)?,
+            fit: if sort_lane.is_some() {
+                Some(PlayerFit::from_columns(
+                    &row.get::<_, String>(5)?,
+                    row.get(6)?,
+                ))
+            } else {
+                None
+            },
+        })
+    };
+    let scan = |row: ScoredRow| -> Result<(usize, i64, bool, Option<u8>), String> {
+        let sample = match (
+            row.source_id.and_then(|id| sources.get(id)),
+            &row.statistics_json,
+        ) {
+            (Some(source), Some(json)) => Some((source, scan_needed_statistics(json, &needed)?)),
+            _ => None,
+        };
+        let league_shift = sample.as_ref().map_or(0, |(source, _)| {
+            source.league_shift(row.division.as_deref())
+        });
+        let role_score = |definition: &RoleDefinition| {
+            sample.as_ref().and_then(|(source, statistics)| {
+                source.role_score(definition, statistics, league_shift)
+            })
+        };
+        let keep = match post_ast {
+            None => true,
+            Some(ast) => {
+                let scores = filter_roles
+                    .iter()
+                    .map(|(definition, role_id)| (role_id.clone(), role_score(definition)))
+                    .collect();
+                let percentiles = percentile_keys
+                    .iter()
+                    .map(|key| {
+                        let percentile = sample.as_ref().and_then(|(source, statistics)| {
+                            let group = source.table_group(request.comparison, row.uid)?;
+                            source.percentile(group, key, statistics)
+                        });
+                        (key.clone(), percentile)
+                    })
+                    .collect();
+                let passes = post_cohort_rules_match(ast, &scores, &percentiles)?;
+                passes || (mixed_or && row.sql_match)
+            }
+        };
+        let score = match (sort_role, sort_lane) {
+            (Some(definition), _) => role_score(definition),
+            (None, Some(lane)) => sample.as_ref().and_then(|(source, statistics)| {
+                let fit = row.fit.as_ref().expect("a tactic sort reads fit");
+                source.lane_score(lane, statistics, fit, league_shift)
+            }),
+            (None, None) => None,
+        };
+        Ok((row.index, row.uid, keep, score))
+    };
+    let mut scored = scan_in_parallel(&mut rows, read, scan)?;
+    cancellation.check()?;
+    scored.sort_unstable_by_key(|(index, ..)| *index);
+    scored.retain(|(_, _, keep, _)| *keep);
+    if request.sort_by.is_moneyball_score() {
+        // Rows arrive in UID order, so a stable sort breaks ties by UID.
+        scored.sort_by(|(_, _, _, left), (_, _, _, right)| {
+            compare_role_scores(*left, *right, request.sort_dir)
+        });
+    }
+    Ok(scored.into_iter().map(|(_, uid, ..)| uid).collect())
+}
+
+fn kept_ids(kept: &[KeptStats]) -> Vec<i64> {
+    kept.iter().map(|kept| kept.snapshot_id).collect()
+}
+
+/// Restricts the results to shortlist `shortlist_id`'s players by UID. The ID is a typed
+/// integer written as a literal, so it adds no bind and every parameter index stays unchanged.
+/// Callers first check that the shortlist belongs to the snapshot's save.
+fn shortlist_from_sql(shortlist_id: i64) -> String {
+    format!("FROM players INNER JOIN player_shortlist_entries shortlist ON shortlist.player_uid = players.uid AND shortlist.shortlist_id = {shortlist_id}")
 }
 
 pub(super) fn active_current_snapshot_id(conn: &Connection) -> Result<Option<i64>, String> {
@@ -649,275 +851,39 @@ pub(super) fn requested_shortlist_missing(
     .map_err(|error| error.to_string())
 }
 
-/// One General table query's complete ordering, computed once per data generation.
-pub struct GeneralOrder {
-    /// The data generation of the reader that computed it.
-    generation: u64,
-    state: SearchPlayersPageState,
-    snapshot_id: i64,
-    uids: Vec<i64>,
-}
-
-/// General Search's computed orders, keyed by [`search_query_fingerprint`].
-pub type GeneralOrderCache = ResultCache<GeneralOrder>;
-
-/// Identifies a General or Moneyball table query by every input that changes its rows, their
-/// order, or a Moneyball comparison. The offset, limit, and requested fields only choose
-/// which rows and columns a window shows.
-pub fn search_query_fingerprint(request: &SearchPlayersRequest<'_>) -> String {
-    format!(
-        "{:?}|{:?}|{:?}|{:?}|{:?}|{:?}",
-        request.view,
-        request.filter_ast,
-        request.sort_by,
-        request.sort_dir,
-        request.comparison,
-        request.shortlist_id,
-    )
-}
-
-/// Serves one General Search window from its query's computed order, computing the order on a
-/// miss. With a ticket, the computation is its table's in `registry`, so a newer request for
-/// the table can supersede it. Returns the same page as [`search_players_in_view`].
-pub fn search_general_players(
-    db: &Db,
-    orders: &GeneralOrderCache,
-    registry: &TableRegistry,
-    ticket: Option<&TableTicket>,
-    request: SearchPlayersRequest<'_>,
-) -> Result<SearchPlayersPage, String> {
-    if request_needs_cohort_scoring(&request) {
-        // Moneyball-only queries keep failing on the uncached path, as they always have.
-        return search_players_in_view(&*db.read()?, request);
-    }
-    let fingerprint = search_query_fingerprint(&request);
-    let mut generation = db.generation();
-    loop {
-        let order = orders.get_or_compute(&fingerprint, generation, || {
-            let reader = db.read()?;
-            let order = registry.run(ticket, &reader, |cancellation| {
-                compute_general_order(&reader, reader.generation(), &request, cancellation)
-            })?;
-            Ok::<_, String>((reader.generation(), order))
-        })?;
-        let reader = db.read()?;
-        if reader.generation() > order.generation {
-            // Data changed since the order was read, so the window reads a fresh order.
-            generation = reader.generation();
-            continue;
-        }
-        return read_general_window(&reader, &order, &request);
-    }
-}
-
-/// Computes a General query's complete key-only ordering with `search_players_in_view`'s
-/// snapshot, shortlist, filter, join, and sort SQL.
-fn compute_general_order(
-    conn: &Connection,
-    generation: u64,
-    request: &SearchPlayersRequest<'_>,
-    cancellation: &Cancellation,
-) -> Result<GeneralOrder, String> {
-    #[cfg(test)]
-    tests::ORDER_COMPUTATIONS.with(|count| count.set(count.get() + 1));
-    let SearchPlayersRequest {
-        sort_by,
-        sort_dir,
-        filter_ast,
-        shortlist_id,
-        ..
-    } = request;
-    let empty = |state| GeneralOrder {
-        generation,
-        state,
-        snapshot_id: 0,
-        uids: Vec::new(),
-    };
-    let Some(snapshot_id) = active_current_snapshot_id(conn)? else {
-        return Ok(empty(SearchPlayersPageState::NoCurrentSnapshot));
-    };
-    if requested_shortlist_missing(conn, snapshot_id, *shortlist_id)? {
-        return Ok(empty(SearchPlayersPageState::NoShortlist));
-    }
-
-    let club_dna_filter =
-        filter_ast.is_some_and(|ast| ast.rules.iter().any(|rule| rule.field == "club_dna"));
-    let compiled = match filter_ast {
-        None => None,
-        Some(ast) => {
-            let compiled = if club_dna_filter {
-                compile_filters_with_club_dna(ast, 4, ClubDnaSqlBindings::new(2, 3))?
-            } else {
-                compile_filters(ast, 2)?
-            };
-            (!compiled.sql.is_empty()).then_some(compiled)
-        }
-    };
-    let (uses_current_role_metrics, uses_potential_role_metrics) =
-        general_role_metric_requirements(request, &[])?;
-    assert_read_models_complete(
-        conn,
-        snapshot_id,
-        uses_current_role_metrics,
-        uses_potential_role_metrics,
-    )?;
-    cancellation.check()?;
-
-    let tactic = sort_by
-        .is_tactic()
-        .then(|| read_tactic(conn, snapshot_save_id(conn, snapshot_id)?))
-        .transpose()?;
-    let club_dna_bindings = (club_dna_filter || sort_by.is_club_dna()).then(|| {
-        if club_dna_filter {
-            ClubDnaSqlBindings::new(2, 3)
-        } else {
-            let filter_params = compiled.as_ref().map_or(0, |filter| filter.params.len());
-            ClubDnaSqlBindings::new(filter_params + 2, filter_params + 3)
-        }
-    });
-    let club_dna_definition_version = club_dna_bindings
-        .is_some()
-        .then(|| current_club_dna_definition_version(conn, snapshot_id))
-        .transpose()?
-        .flatten();
-    let club_dna_sort = sort_by.club_dna_sort_identity(club_dna_definition_version);
-
-    // Without statistics, SQLite seeks an unfiltered snapshot through `idx_players_snapshot_ca`
-    // and visits its rows in CA order, one random table read each. Unless a covering index
-    // already holds the sort key and UID, an unfiltered order reads the snapshot in primary-key
-    // order, which follows storage order. Filters keep the planner's choice, which can use
-    // their own indexes.
-    let reads_in_key_order = compiled.is_none()
-        && !matches!(
-            sort_by,
-            SortField::Pa | SortField::Age | SortField::Value | SortField::Club
-        );
-    let mut from_sql = if let Some(shortlist_id) = *shortlist_id {
-        general_shortlist_from_sql(shortlist_id)
-    } else if reads_in_key_order {
-        "FROM players INDEXED BY sqlite_autoindex_players_1".to_string()
-    } else {
-        "FROM players".to_string()
-    };
-    if uses_current_role_metrics || uses_potential_role_metrics {
-        from_sql.push_str(&player_metrics_join(
-            "players",
-            uses_current_role_metrics,
-            uses_potential_role_metrics,
-        ));
-    }
-    if let Some((_, bindings)) = club_dna_sort.zip(club_dna_bindings) {
-        from_sql.push_str(&format!(
-            " LEFT JOIN club_dna_scores club_dna_sort
-              ON club_dna_sort.snapshot_id = players.snapshot_id
-              AND club_dna_sort.uid = players.uid
-              AND club_dna_sort.definition_version = ?{}
-              AND club_dna_sort.score_model_version = ?{}",
-            bindings.definition_version, bindings.score_model_version
-        ));
-    }
-    let mut where_sql = "players.snapshot_id = ?1".to_string();
-    let mut bind_values = vec![Value::Integer(snapshot_id)];
-    if club_dna_filter {
-        bind_values.push(club_dna_definition_version.map_or(Value::Null, Value::Integer));
-        bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
-    }
-    if let Some(compiled) = &compiled {
-        where_sql.push_str(" AND ");
-        where_sql.push_str(&compiled.sql);
-        bind_values.extend(compiled.params.iter().cloned());
-    }
-    if let Some(identity) = club_dna_sort.filter(|_| !club_dna_filter) {
-        bind_values.push(
-            identity
-                .definition_version
-                .map_or(Value::Null, Value::Integer),
-        );
-        bind_values.push(Value::Integer(identity.score_model_version));
-    }
-
-    // Whitelisted expr + dir only — never interpolate raw client strings.
-    let order_sql = if club_dna_sort.is_some() {
-        format!(
-            "ORDER BY club_dna_sort.score IS NULL ASC, club_dna_sort.score {}, players.uid ASC",
-            sort_dir.sql_keyword()
-        )
-    } else if let Some(tactic) = &tactic {
-        let lane_id = sort_by.tactic_lane_id().expect("tactic lane");
-        let lane = tactic
-            .lanes
-            .iter()
-            .find(|l| l.lane_id == lane_id)
-            .ok_or_else(|| format!("unknown tactic lane: {lane_id}"))?;
-        let group = sort_by.tactic_group().expect("tactic group");
-        let expr = tactic_sql_expression(lane, group, "players");
-        format!(
-            "ORDER BY ({expr} IS NULL) ASC, {expr} {}, players.uid ASC",
-            sort_dir.sql_keyword()
-        )
-    } else {
-        format!(
-            "ORDER BY {} {}, players.uid ASC",
-            sort_by.sql_expr(club_dna_bindings),
-            sort_dir.sql_keyword()
-        )
-    };
-
-    #[cfg(test)]
-    if let Some(hook) = tests::BEFORE_ORDER_QUERY.with(|hook| hook.borrow_mut().take()) {
-        hook();
-    }
-    cancellation.check()?;
-    let uids = conn
-        .prepare(&format!(
-            "SELECT players.uid {from_sql} WHERE {where_sql} {order_sql}"
-        ))
-        .map_err(|error| error.to_string())?
-        .query_map(params_from_iter(bind_values.iter()), |row| row.get(0))
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<i64>, _>>()
-        .map_err(|error| error.to_string())?;
-    Ok(GeneralOrder {
-        generation,
-        state: SearchPlayersPageState::Ready,
-        snapshot_id,
-        uids,
-    })
-}
-
-/// Whether a General request reads current and potential compact role metrics, through its
-/// filters, sort, tactic columns, or requested fields.
-fn general_role_metric_requirements(
-    request: &SearchPlayersRequest<'_>,
-    dynamic_fields: &[MetricField],
+/// Whether a request reads current and potential compact role metrics, through its SQL rules,
+/// sort, tactic columns, or requested fields.
+fn role_metric_requirements(
+    sql_ast: Option<&FilterAst>,
+    sort_by: &SortField,
+    fields: &[MetricField],
 ) -> Result<(bool, bool), String> {
-    let current_filter_roles = request
-        .filter_ast
+    let current_filter_roles = sql_ast
         .map(current_role_ids_from_ast)
         .transpose()?
         .unwrap_or_default();
-    let potential_filter_roles = request
-        .filter_ast
+    let potential_filter_roles = sql_ast
         .map(potential_role_ids_from_ast)
         .transpose()?
         .unwrap_or_default();
-    let sort_by = &request.sort_by;
+    let is_role_tactic = |field: &MetricField| {
+        field.is_tactic_field() && field.tactic_group() != Some(TacticGroup::Moneyball)
+    };
+    let sort_role_tactic = matches!(sort_by, SortField::Dynamic(field) if is_role_tactic(field));
     let mut uses_current = sort_by.current_role_id().is_some()
-        || dynamic_fields
-            .iter()
-            .any(|field| field.current_role_id().is_some())
+        || fields.iter().any(|field| field.current_role_id().is_some())
         || !current_filter_roles.is_empty();
     let mut uses_potential = sort_by.potential_role_id().is_some()
-        || dynamic_fields
+        || fields
             .iter()
             .any(|field| field.potential_role_id().is_some())
         || !potential_filter_roles.is_empty();
     let uses_tactic_current =
-        dynamic_fields.iter().any(MetricField::is_tactic_current) || sort_by.is_tactic_current();
-    let uses_tactic_potential = dynamic_fields
+        fields.iter().any(MetricField::is_tactic_current) || sort_by.is_tactic_current();
+    let uses_tactic_potential = fields
         .iter()
-        .any(|field| field.is_tactic_field() && !field.is_tactic_current())
-        || (sort_by.is_tactic() && !sort_by.is_tactic_current());
+        .any(|field| is_role_tactic(field) && !field.is_tactic_current())
+        || (sort_role_tactic && !sort_by.is_tactic_current());
     if uses_tactic_current || uses_tactic_potential {
         uses_current = true;
         uses_potential |= uses_tactic_potential;
@@ -925,17 +891,15 @@ fn general_role_metric_requirements(
     Ok((uses_current, uses_potential))
 }
 
-/// Reads today's display columns and the requested fields for one window of a computed order,
-/// in the order's sequence.
-fn read_general_window(
+/// Reads the display columns and requested fields of one window of a computed order, in the
+/// order's sequence, and computes its Moneyball values from each player's qualified sample.
+fn read_window(
     conn: &Connection,
-    order: &GeneralOrder,
+    groups: &GroupsSource<'_>,
+    order: &PlayerOrder,
     request: &SearchPlayersRequest<'_>,
+    fields: &[MetricField],
 ) -> Result<SearchPlayersPage, String> {
-    let dynamic_fields = parse_requested_fields_for_moneyball(request.requested_fields, false)?
-        .into_iter()
-        .filter(|field| !field.is_basic_table_field())
-        .collect::<Vec<_>>();
     if order.state != SearchPlayersPageState::Ready {
         return Ok(SearchPlayersPage {
             players: Vec::new(),
@@ -944,22 +908,63 @@ fn read_general_window(
         });
     }
     let snapshot_id = order.snapshot_id;
+    let sql_fields = fields
+        .iter()
+        .filter(|field| !field.is_moneyball_score())
+        .cloned()
+        .collect::<Vec<_>>();
+    let statistic_fields = fields
+        .iter()
+        .filter_map(|field| field.moneyball_key().map(|key| (field.id(), key)))
+        .collect::<Vec<_>>();
+    let catalog = builtin_catalog()?;
+    let role_fields = fields
+        .iter()
+        .filter_map(|field| {
+            field
+                .moneyball_role_id()
+                .map(|role_id| (field.id(), role_id))
+        })
+        .map(|(field_id, role_id)| {
+            catalog
+                .definitions
+                .iter()
+                .find(|definition| definition.id == role_id)
+                .map(|definition| (field_id, definition))
+                .ok_or_else(|| format!("unknown Moneyball role: {role_id}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let tactic = fields
+        .iter()
+        .any(MetricField::is_tactic_field)
+        .then(|| read_tactic(conn, snapshot_save_id(conn, snapshot_id)?))
+        .transpose()?;
+    let lane_fields = match &tactic {
+        Some(tactic) => fields
+            .iter()
+            .filter(|field| field.tactic_group() == Some(TacticGroup::Moneyball))
+            .map(|field| {
+                tactic_lane(field, tactic)
+                    .map(|lane| (field.id(), lane))
+                    .ok_or_else(|| format!("unknown tactic lane: {}", field.id()))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        None => Vec::new(),
+    };
+    let scores_needed =
+        !statistic_fields.is_empty() || !role_fields.is_empty() || !lane_fields.is_empty();
+    let reads_stats = scores_needed || fields.iter().any(MetricField::reads_season_stats);
+
     let (uses_current_role_metrics, uses_potential_role_metrics) =
-        general_role_metric_requirements(request, &dynamic_fields)?;
+        role_metric_requirements(None, &SortField::Ca, fields)?;
     assert_read_models_complete(
         conn,
         snapshot_id,
         uses_current_role_metrics,
         uses_potential_role_metrics,
     )?;
-    let tactic = dynamic_fields
-        .iter()
-        .any(MetricField::is_tactic_field)
-        .then(|| read_tactic(conn, snapshot_save_id(conn, snapshot_id)?))
-        .transpose()?;
-
     let mut bind_values = vec![Value::Integer(snapshot_id)];
-    let club_dna_bindings = dynamic_fields
+    let club_dna_bindings = fields
         .iter()
         .any(MetricField::is_club_dna)
         .then(|| ClubDnaSqlBindings::new(2, 3));
@@ -968,195 +973,11 @@ fn read_general_window(
         bind_values.push(definition_version.map_or(Value::Null, Value::Integer));
         bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
     }
-
-    let mut select_sql = String::from(
-        "SELECT
-                players.uid,
-                players.name,
-                players.age,
-                players.birth_year,
-                players.birth_day_of_year,
-                players.nationalities_json,
-                players.current_club,
-                players.current_club_uid,
-                players.division,
-                players.ca,
-                players.pa,
-                players.market_value_gbp",
-    );
-    for field in &dynamic_fields {
-        select_sql.push_str(", ");
-        if let Some(tactic) = tactic.as_ref().filter(|_| field.is_tactic_field()) {
-            let lane_id = field.tactic_lane_id().expect("tactic lane");
-            let lane = tactic
-                .lanes
-                .iter()
-                .find(|l| l.lane_id == lane_id)
-                .ok_or_else(|| format!("unknown tactic lane: {lane_id}"))?;
-            let group = field.tactic_group().expect("tactic group");
-            select_sql.push_str(&tactic_sql_expression(lane, group, "players"));
-        } else {
-            select_sql.push_str(&field.sql_expression_with_club_dna("players", club_dna_bindings));
-        }
-    }
-    select_sql.push_str(" FROM players");
-    if uses_current_role_metrics || uses_potential_role_metrics {
-        select_sql.push_str(&player_metrics_join(
-            "players",
-            uses_current_role_metrics,
-            uses_potential_role_metrics,
-        ));
-    }
-
-    let limit = request.limit.clamp(1, MAX_PAGE_LIMIT);
-    let start = request.offset.min(order.uids.len());
-    let window = &order.uids[start..(start + limit).min(order.uids.len())];
-    let first_uid_index = bind_values.len() + 1;
-    let uid_placeholders = (0..window.len())
-        .map(|index| format!("?{}", first_uid_index + index))
-        .collect::<Vec<_>>()
-        .join(", ");
-    bind_values.extend(window.iter().map(|uid| Value::Integer(*uid)));
-    select_sql.push_str(&format!(
-        " WHERE players.snapshot_id = ?1 AND players.uid IN ({uid_placeholders})"
-    ));
-
-    let mut rows = conn
-        .prepare(&select_sql)
-        .map_err(|error| error.to_string())?
-        .query_map(params_from_iter(bind_values.iter()), |row| {
-            map_player_summary(row, &dynamic_fields)
-        })
-        .map_err(|error| error.to_string())?
-        .map(|row| row.map(|player| (player.uid, player)))
-        .collect::<Result<HashMap<_, _>, _>>()
-        .map_err(|error| error.to_string())?;
-    Ok(SearchPlayersPage {
-        players: window.iter().filter_map(|uid| rows.remove(uid)).collect(),
-        total: i64::try_from(order.uids.len()).map_err(|error| error.to_string())?,
-        state: SearchPlayersPageState::Ready,
-    })
-}
-
-/// Serves one Moneyball Search window from its query's computed cohort, computing the cohort
-/// on a miss. With a ticket, the computation is its table's in `registry`, so a newer request
-/// for the table can supersede it. Returns the same page as [`search_players_in_view`].
-pub fn search_moneyball_players(
-    db: &Db,
-    cohorts: &MoneyballCohortCache,
-    groups: &ComparisonGroupsCache,
-    registry: &TableRegistry,
-    ticket: Option<&TableTicket>,
-    request: SearchPlayersRequest<'_>,
-) -> Result<SearchPlayersPage, String> {
-    let dynamic_fields = moneyball_dynamic_fields(&request)?;
-    let fingerprint = search_query_fingerprint(&request);
-    let mut generation = db.generation();
-    loop {
-        let cohort = cohorts.get_or_compute(&fingerprint, generation, || {
-            let reader = db.read()?;
-            let cohort = registry.run(ticket, &reader, |cancellation| {
-                MoneyballCohort::compute(
-                    &reader,
-                    reader.generation(),
-                    &GroupsSource::Cached(groups, reader.generation()),
-                    &request,
-                    cancellation,
-                )
-            })?;
-            Ok::<_, String>((reader.generation(), cohort))
-        })?;
-        let reader = db.read()?;
-        if reader.generation() > cohort.generation {
-            // Data changed since the cohort was read, so the window reads a fresh cohort.
-            generation = reader.generation();
-            continue;
-        }
-        return read_moneyball_window(&reader, &cohort, &request, &dynamic_fields);
-    }
-}
-
-/// A Moneyball request's validated non-basic fields. Its sort must be a Moneyball one.
-fn moneyball_dynamic_fields(
-    request: &SearchPlayersRequest<'_>,
-) -> Result<Vec<MetricField>, String> {
-    if !request.sort_by.is_available_in_moneyball() {
-        return Err("unsupported Moneyball sort field".to_string());
-    }
-    Ok(
-        parse_requested_fields_for_moneyball(request.requested_fields, true)?
-            .into_iter()
-            .filter(|field| !field.is_basic_table_field())
-            .collect(),
-    )
-}
-
-/// Reads today's display columns for one window of a computed cohort, and fills its
-/// percentiles, role scores, and tactic scores from the cohort's statistic columns.
-fn read_moneyball_window(
-    conn: &Connection,
-    cohort: &MoneyballCohort,
-    request: &SearchPlayersRequest<'_>,
-    dynamic_fields: &[MetricField],
-) -> Result<SearchPlayersPage, String> {
-    if cohort.state != SearchPlayersPageState::Ready {
-        return Ok(SearchPlayersPage {
-            players: Vec::new(),
-            total: 0,
-            state: cohort.state,
-        });
-    }
-    let sql_fields = dynamic_fields
-        .iter()
-        .filter(|field| field.moneyball_role_id().is_none() && !field.is_tactic_field())
-        .cloned()
-        .collect::<Vec<_>>();
-    let moneyball_fields = sql_fields
-        .iter()
-        .filter_map(|field| field.moneyball_key().map(|key| (field.id(), key)))
-        .collect::<Vec<_>>();
-    let catalog = builtin_catalog()?;
-    let role_fields = dynamic_fields
-        .iter()
-        .filter_map(|field| field.moneyball_role_id().map(|role_id| (field, role_id)))
-        .map(|(field, role_id)| {
-            catalog
-                .definitions
-                .iter()
-                .find(|definition| definition.id == role_id)
-                .map(|definition| (field.id(), definition))
-                .ok_or_else(|| format!("unknown Moneyball role: {role_id}"))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let tactic_fields = dynamic_fields
-        .iter()
-        .filter(|field| field.is_tactic_field())
-        .collect::<Vec<_>>();
-    let tactic = (!tactic_fields.is_empty())
-        .then(|| read_tactic(conn, snapshot_save_id(conn, cohort.snapshot_id)?))
-        .transpose()?;
-
-    let mut keys = moneyball_fields
-        .iter()
-        .map(|(_, key)| key.to_string())
-        .collect::<BTreeSet<_>>();
-    for (_, definition) in &role_fields {
-        keys.extend(definition.metrics.iter().map(|metric| metric.key.clone()));
-    }
-    if let Some(tactic) = &tactic {
-        for field in &tactic_fields {
-            keys.extend(tactic_metric_keys(field, tactic));
-        }
-    }
-    let columns = cohort.statistic_columns(conn, &keys.into_iter().collect::<Vec<_>>())?;
-    let rankings = cohort.rankings(
-        conn,
-        tactic.iter().flat_map(|tactic| {
-            tactic_fields
-                .iter()
-                .filter_map(move |field| tactic_slot_group(field, tactic))
-        }),
-    )?;
+    let kept = if reads_stats {
+        kept_stats_snapshots(conn, snapshot_id)?
+    } else {
+        Vec::new()
+    };
 
     let mut select_sql = String::from(
         "SELECT
@@ -1175,90 +996,178 @@ fn read_moneyball_window(
     );
     for field in &sql_fields {
         select_sql.push_str(", ");
-        select_sql.push_str(&field.sql_expression("players"));
+        if let Some(tactic) = tactic.as_ref().filter(|_| field.is_tactic_field()) {
+            let lane_id = field.tactic_lane_id().expect("tactic lane");
+            let lane = tactic
+                .lanes
+                .iter()
+                .find(|l| l.lane_id == lane_id)
+                .ok_or_else(|| format!("unknown tactic lane: {lane_id}"))?;
+            let group = field.tactic_group().expect("tactic group");
+            select_sql.push_str(&tactic_sql_expression(lane, group, "players"));
+        } else {
+            select_sql.push_str(&field.sql_expression_with_club_dna("players", club_dna_bindings));
+        }
     }
-    if tactic.is_some() {
+    let qualified = qualified_season_stats_sql();
+    if reads_stats {
+        select_sql.push_str(&format!(
+            ", CASE WHEN {qualified} THEN moneyball.snapshot_id END"
+        ));
+    }
+    if scores_needed {
+        select_sql.push_str(&format!(
+            ", CASE WHEN {qualified} THEN moneyball.statistics_json END,
+               CASE WHEN {qualified} THEN {STATS_DIVISION_SQL} END"
+        ));
+    }
+    if !lane_fields.is_empty() {
         select_sql.push_str(", players.positions_json, players.preferred_foot");
     }
-    select_sql.push_str(", moneyball.minutes");
-    let members = cohort.window(request.offset, request.limit.clamp(1, MAX_PAGE_LIMIT));
-    let uid_placeholders = (0..members.len())
-        .map(|index| format!("?{}", index + 2))
+    select_sql.push_str(" FROM players");
+    if uses_current_role_metrics || uses_potential_role_metrics {
+        select_sql.push_str(&player_metrics_join(
+            "players",
+            uses_current_role_metrics,
+            uses_potential_role_metrics,
+        ));
+    }
+    if reads_stats {
+        select_sql.push_str(&stats_join_sql("players", &kept_ids(&kept)));
+    }
+
+    let limit = request.limit.clamp(1, MAX_PAGE_LIMIT);
+    let start = request.offset.min(order.uids.len());
+    let window = &order.uids[start..(start + limit).min(order.uids.len())];
+    let first_uid_index = bind_values.len() + 1;
+    let uid_placeholders = (0..window.len())
+        .map(|index| format!("?{}", first_uid_index + index))
         .collect::<Vec<_>>()
         .join(", ");
+    bind_values.extend(window.iter().map(|uid| Value::Integer(*uid)));
     select_sql.push_str(&format!(
-        " {MONEYBALL_FROM_SQL} WHERE players.snapshot_id = ?1 AND players.uid IN ({uid_placeholders})"
+        " WHERE players.snapshot_id = ?1 AND players.uid IN ({uid_placeholders})"
     ));
-    let mut bind_values = vec![Value::Integer(cohort.snapshot_id)];
-    bind_values.extend(
-        members
-            .iter()
-            .map(|&member| Value::Integer(cohort.uid(member))),
-    );
-    let fit_index = 12 + sql_fields.len();
+
+    let source_index = 12 + sql_fields.len();
+    let json_index = source_index + 1;
+    let fit_index = source_index + 3;
     let mut rows = conn
         .prepare(&select_sql)
         .map_err(|error| error.to_string())?
         .query_map(params_from_iter(bind_values.iter()), |row| {
-            let mut player = map_player_summary(row, &sql_fields)?;
-            let fit = if tactic.is_some() {
+            let player = map_player_summary(row, &sql_fields)?;
+            let source_id: Option<i64> = if reads_stats {
+                row.get(source_index)?
+            } else {
+                None
+            };
+            let (statistics_json, division): (Option<String>, Option<String>) = if scores_needed {
+                (row.get(json_index)?, row.get(json_index + 1)?)
+            } else {
+                (None, None)
+            };
+            let fit = if lane_fields.is_empty() {
+                None
+            } else {
                 Some(PlayerFit::from_columns(
                     &row.get::<_, String>(fit_index)?,
                     row.get(fit_index + 1)?,
                 ))
-            } else {
-                None
             };
-            let minutes_index = fit_index + if tactic.is_some() { 2 } else { 0 };
-            player.moneyball_short_sample =
-                row.get::<_, Option<i64>>(minutes_index)?.unwrap_or(0) < MIN_SEASON_MINUTES;
-            Ok((player.uid, (player, fit)))
+            Ok((
+                player.uid,
+                (player, source_id, statistics_json, division, fit),
+            ))
         })
         .map_err(|error| error.to_string())?
         .collect::<Result<HashMap<_, _>, _>>()
         .map_err(|error| error.to_string())?;
 
-    let players = members
+    let sources = if scores_needed {
+        let groups_to_rank = match request.comparison {
+            Comparison::Group(group) => Some(group),
+            Comparison::Own => None,
+        }
+        .into_iter()
+        .chain(lane_fields.iter().filter_map(|(_, lane)| lane_group(lane)))
+        .collect::<Vec<_>>();
+        Some(SeasonSources::load(
+            conn,
+            groups,
+            snapshot_id,
+            &kept,
+            &groups_to_rank,
+        )?)
+    } else {
+        None
+    };
+    let mut keys = statistic_fields
         .iter()
-        .filter_map(|&member| {
-            let (mut player, fit) = rows.remove(&cohort.uid(member))?;
-            let percentiles = MemberPercentiles {
-                rankings: &rankings,
-                columns: &columns,
-                member,
+        .map(|(_, key)| (*key).to_string())
+        .collect::<Vec<_>>();
+    for (_, definition) in &role_fields {
+        keys.extend(definition.metrics.iter().map(|metric| metric.key.clone()));
+    }
+    for (_, lane) in &lane_fields {
+        keys.extend(lane_statistic_keys(lane));
+    }
+    let needed = needed_statistics(keys.iter().map(String::as_str))?;
+
+    let mut players = Vec::with_capacity(window.len());
+    for uid in window {
+        let Some((mut player, source_id, statistics_json, division, fit)) = rows.remove(uid) else {
+            continue;
+        };
+        player.moneyball_stats_date = source_id
+            .filter(|id| *id != snapshot_id)
+            .and_then(|id| kept.iter().find(|kept| kept.snapshot_id == id))
+            .map(|kept| kept.stats_date.clone());
+        if let Some(sources) = &sources {
+            let sample = match (source_id.and_then(|id| sources.get(id)), &statistics_json) {
+                (Some(source), Some(json)) => {
+                    Some((source, scan_needed_statistics(json, &needed)?))
+                }
+                _ => None,
             };
-            let league_shift = cohort.league.shift(player.division.as_deref());
-            let group = cohort.table_group(member);
-            player.moneyball_percentiles = moneyball_fields
-                .iter()
-                .map(|(field_id, key)| {
-                    let percentile = group.and_then(|group| percentiles.percentile(group, key));
-                    (field_id.to_string(), percentile)
-                })
-                .collect();
+            let league_shift = sample
+                .as_ref()
+                .map_or(0, |(source, _)| source.league_shift(division.as_deref()));
+            for (field_id, key) in &statistic_fields {
+                let percentile = sample.as_ref().and_then(|(source, statistics)| {
+                    let group = source.table_group(request.comparison, player.uid)?;
+                    source.percentile(group, key, statistics)
+                });
+                player
+                    .moneyball_percentiles
+                    .insert((*field_id).to_string(), percentile);
+            }
             let score_value = |score: Option<u8>| score.map(i64::from).map(DynamicValue::Integer);
             for (field_id, definition) in &role_fields {
-                let score = percentiles
-                    .role_score(definition)
-                    .map(|score| shifted(score, league_shift));
+                let score = sample.as_ref().and_then(|(source, statistics)| {
+                    source.role_score(definition, statistics, league_shift)
+                });
                 player
                     .dynamic_values
-                    .insert(field_id.to_string(), score_value(score));
+                    .insert((*field_id).to_string(), score_value(score));
             }
-            if let (Some(tactic), Some(fit)) = (&tactic, &fit) {
-                for field in &tactic_fields {
-                    let score = tactic_score(field, tactic, &percentiles, fit, league_shift);
-                    player
-                        .dynamic_values
-                        .insert(field.id().to_string(), score_value(score));
-                }
+            for (field_id, lane) in &lane_fields {
+                let score = match (&sample, &fit) {
+                    (Some((source, statistics)), Some(fit)) => {
+                        source.lane_score(lane, statistics, fit, league_shift)
+                    }
+                    _ => None,
+                };
+                player
+                    .dynamic_values
+                    .insert((*field_id).to_string(), score_value(score));
             }
-            Some(player)
-        })
-        .collect();
+        }
+        players.push(player);
+    }
     Ok(SearchPlayersPage {
         players,
-        total: i64::try_from(cohort.total()).map_err(|error| error.to_string())?,
+        total: i64::try_from(order.uids.len()).map_err(|error| error.to_string())?,
         state: SearchPlayersPageState::Ready,
     })
 }
@@ -1287,11 +1196,8 @@ pub(super) fn snapshot_save_id(conn: &Connection, snapshot_id: i64) -> Result<i6
     .map_err(|error| error.to_string())
 }
 
-fn tactic_sql_expression(
-    lane: &crate::features::planner::tactic::TacticLane,
-    group: TacticGroup,
-    player_alias: &str,
-) -> String {
+/// A tactic slot's Role Score or Potential Role Score in SQL. Moneyball Scores are Rust's.
+fn tactic_sql_expression(lane: &TacticLane, group: TacticGroup, player_alias: &str) -> String {
     let base_ip = base_position(&lane.ip_position);
     let base_oop = base_position(&lane.oop_position);
     let ip_current = player_current_column(&lane.ip_role_id).unwrap_or("goalkeeper_ip");
@@ -1305,14 +1211,14 @@ fn tactic_sql_expression(
         TacticGroup::Potential => format!(
             "CASE WHEN {player_alias}.age >= 29 THEN {PLAYER_METRICS_ALIAS}.{ip_current} ELSE {PLAYER_METRICS_ALIAS}.{ip_pot} END"
         ),
-        TacticGroup::Custom => unreachable!("Custom tactic fields parse only in Moneyball"),
+        TacticGroup::Moneyball => unreachable!("Moneyball Scores are computed in Rust"),
     };
     let oop_expr = match group {
         TacticGroup::Current => format!("{PLAYER_METRICS_ALIAS}.{oop_current}"),
         TacticGroup::Potential => format!(
             "CASE WHEN {player_alias}.age >= 29 THEN {PLAYER_METRICS_ALIAS}.{oop_current} ELSE {PLAYER_METRICS_ALIAS}.{oop_pot} END"
         ),
-        TacticGroup::Custom => unreachable!("Custom tactic fields parse only in Moneyball"),
+        TacticGroup::Moneyball => unreachable!("Moneyball Scores are computed in Rust"),
     };
     let weight = lane.ip_weight;
     let oop_weight = 1.0 - weight;
@@ -1343,42 +1249,7 @@ fn tactic_sql_expression(
     )
 }
 
-fn request_needs_cohort_scoring(request: &SearchPlayersRequest<'_>) -> bool {
-    request
-        .requested_fields
-        .iter()
-        .any(|field| field.starts_with("moneyball_role."))
-        || request.sort_by.moneyball_role_id().is_some()
-        || request.filter_ast.is_some_and(has_post_cohort_rules)
-}
-
-pub(super) fn where_sql_with_filter(base: &str, compiled: Option<&CompiledFilter>) -> String {
-    compiled.map_or_else(
-        || base.to_string(),
-        |compiled| format!("{base} AND {}", compiled.sql),
-    )
-}
-
-pub(super) fn query_matching_uids(
-    conn: &Connection,
-    from_sql: &str,
-    where_sql: &str,
-    bind_values: &[Value],
-) -> Result<HashSet<i64>, String> {
-    let sql = format!("SELECT players.uid {from_sql} WHERE {where_sql}");
-    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map(params_from_iter(bind_values.iter()), |row| row.get(0))
-        .map_err(|error| error.to_string())?;
-    rows.collect::<Result<HashSet<_>, _>>()
-        .map_err(|error| error.to_string())
-}
-
-pub(super) fn compare_role_scores(
-    left: Option<u8>,
-    right: Option<u8>,
-    direction: SortDir,
-) -> Ordering {
+fn compare_role_scores(left: Option<u8>, right: Option<u8>, direction: SortDir) -> Ordering {
     match (left, right) {
         (None, None) => Ordering::Equal,
         (None, Some(_)) => Ordering::Greater,
@@ -1428,7 +1299,7 @@ fn map_player_summary(
         market_value_gbp: row.get(11)?,
         dynamic_values,
         moneyball_percentiles: BTreeMap::new(),
-        moneyball_short_sample: false,
+        moneyball_stats_date: None,
     })
 }
 
@@ -1440,6 +1311,7 @@ fn parse_nationalities(json: &str) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
     use crate::db::migrations;
+    use crate::features::moneyball::comparison::{ComparisonGroup, PositionFamily};
     use crate::features::moneyball::league_strength::{self, test_support::measure_leagues};
     use crate::features::moneyball::role_catalog::builtin_catalog;
     use crate::features::player_metrics::{
@@ -1460,6 +1332,30 @@ mod tests {
             const { RefCell::new(None) };
     }
 
+    fn search_players_page(
+        conn: &Connection,
+        offset: usize,
+        limit: usize,
+        sort_by: SortField,
+        sort_dir: SortDir,
+        filter_ast: Option<&FilterAst>,
+        requested_fields: &[String],
+    ) -> Result<SearchPlayersPage, String> {
+        search_players_uncached(
+            conn,
+            SearchPlayersRequest {
+                offset,
+                limit,
+                sort_by,
+                sort_dir,
+                filter_ast,
+                requested_fields,
+                comparison: Comparison::Own,
+                shortlist_id: None,
+            },
+        )
+    }
+
     fn search_without_filters(
         conn: &Connection,
         offset: usize,
@@ -1467,7 +1363,7 @@ mod tests {
         sort_by: SortField,
         sort_dir: SortDir,
     ) -> Result<SearchPlayersPage, String> {
-        search_players_in_view(
+        search_players_uncached(
             conn,
             SearchPlayersRequest {
                 offset,
@@ -1476,7 +1372,6 @@ mod tests {
                 sort_dir,
                 filter_ast: None,
                 requested_fields: &[],
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -1493,7 +1388,7 @@ mod tests {
         combine: Option<&str>,
     ) -> Result<SearchPlayersPage, String> {
         let ast = parse_filter_ast(rules, combine)?;
-        search_players_in_view(
+        search_players_uncached(
             conn,
             SearchPlayersRequest {
                 offset,
@@ -1502,7 +1397,6 @@ mod tests {
                 sort_dir,
                 filter_ast: Some(&ast),
                 requested_fields: &[],
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -1902,7 +1796,7 @@ mod tests {
         } else {
             Some(parse_filter_ast(rules, combine)?)
         };
-        search_players_in_view(
+        search_players_uncached(
             conn,
             SearchPlayersRequest {
                 offset,
@@ -1911,7 +1805,6 @@ mod tests {
                 sort_dir,
                 filter_ast: ast.as_ref(),
                 requested_fields,
-                view: SearchView::Moneyball,
                 comparison,
                 shortlist_id: None,
             },
@@ -1962,7 +1855,7 @@ mod tests {
     }
 
     #[test]
-    fn moneyball_view_returns_only_current_scored_players() {
+    fn statistics_come_from_the_current_snapshots_rows_and_every_player_is_a_row() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-search.db"));
         ingest_players_for_game_date(
@@ -1987,27 +1880,30 @@ mod tests {
         insert_moneyball_row(&conn, current_snapshot_id, 2, None);
 
         let requested_fields = ["moneyball.goals".to_string()];
-        let page = search_players_in_view(
+        let page = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
                 limit: DEFAULT_PAGE_LIMIT,
-                sort_by: SortField::parse_for_moneyball("moneyball.goals", true).expect("sort"),
+                sort_by: SortField::parse("moneyball.goals").expect("sort"),
                 sort_dir: SortDir::Desc,
                 filter_ast: None,
                 requested_fields: &requested_fields,
-                view: SearchView::Moneyball,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
         .expect("search Moneyball players");
 
-        assert_eq!(page.total, 1);
-        assert_eq!(page.players[0].uid, 1);
+        // The unscored and absent players follow the scored one; the older snapshot's player
+        // is not a row.
+        assert_eq!(page.total, 3);
         assert_eq!(
-            page.players[0].dynamic_values.get("moneyball.goals"),
-            Some(&Some(DynamicValue::Real(1.5)))
+            page.players
+                .iter()
+                .map(|player| (player.uid, player.dynamic_values["moneyball.goals"].clone()))
+                .collect::<Vec<_>>(),
+            [(1, Some(DynamicValue::Real(1.5))), (2, None), (3, None)]
         );
     }
 
@@ -2041,16 +1937,15 @@ mod tests {
             "moneyball.minutes".to_string(),
         ];
         let page = |comparison| {
-            search_players_in_view(
+            search_players_uncached(
                 &conn,
                 SearchPlayersRequest {
                     offset: 0,
                     limit: DEFAULT_PAGE_LIMIT,
-                    sort_by: SortField::parse_for_moneyball("moneyball.goals", true).expect("sort"),
+                    sort_by: SortField::parse("moneyball.goals").expect("sort"),
                     sort_dir: SortDir::Desc,
                     filter_ast: None,
                     requested_fields: &requested_fields,
-                    view: SearchView::Moneyball,
                     comparison,
                     shortlist_id: None,
                 },
@@ -2089,16 +1984,18 @@ mod tests {
         assert!(own
             .players
             .iter()
-            .all(|player| !player.moneyball_short_sample));
+            .all(|player| player.moneyball_stats_date.is_none()));
         // Compared with central midfielders, the striker is ranked without joining them.
         assert_eq!(
-            goals_percentiles(&page(Comparison::Family(PositionFamily::CentralMidfielder))),
+            goals_percentiles(&page(Comparison::Group(ComparisonGroup::family(
+                PositionFamily::CentralMidfielder
+            )))),
             [(3, Some(100)), (1, Some(100)), (2, Some(0))]
         );
     }
 
     #[test]
-    fn a_short_sample_ranks_against_his_group_without_joining_it_and_is_marked() {
+    fn a_short_sample_has_no_moneyball_values_and_every_moneyball_rule_drops_him() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-short-sample.db"));
         ingest_players(
@@ -2107,6 +2004,7 @@ mod tests {
                 player_template(1, "Low", 100),
                 player_template(2, "High", 100),
                 player_template(3, "Short", 100),
+                player_template(4, "Unplayed", 100),
             ],
         );
         let snapshot_id = current_snapshot_id(&conn);
@@ -2119,36 +2017,237 @@ mod tests {
             [],
         )
         .expect("shorten a sample");
+        let fields = [
+            "moneyball.goals".to_string(),
+            "moneyball.minutes".to_string(),
+        ];
+        let page = |rules: Vec<FilterRule>| {
+            search_moneyball(
+                &conn,
+                0,
+                DEFAULT_PAGE_LIMIT,
+                SortField::Name,
+                SortDir::Asc,
+                &fields,
+                rules,
+                None,
+                Comparison::Own,
+            )
+            .expect("page")
+        };
+        let rows = |page: &SearchPlayersPage| {
+            page.players
+                .iter()
+                .map(|player| {
+                    (
+                        player.uid,
+                        player.dynamic_values["moneyball.goals"].clone(),
+                        player.dynamic_values["moneyball.minutes"].clone(),
+                        player.moneyball_percentiles["moneyball.goals"],
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
 
-        let page = search_moneyball(
+        // Every player is a row. The peers are 1 and 5, so 5 ranks at 100; the short sample
+        // and the player who has not played have no statistics and no percentile, though
+        // their minutes still show.
+        assert_eq!(
+            rows(&page(Vec::new())),
+            [
+                (
+                    2,
+                    Some(DynamicValue::Real(5.0)),
+                    Some(DynamicValue::Integer(900)),
+                    Some(100)
+                ),
+                (
+                    1,
+                    Some(DynamicValue::Real(1.0)),
+                    Some(DynamicValue::Integer(900)),
+                    Some(0)
+                ),
+                (3, None, Some(DynamicValue::Integer(449)), None),
+                (4, None, Some(DynamicValue::Integer(0)), None),
+            ]
+        );
+        let uids = |page: SearchPlayersPage| {
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>()
+        };
+        // An "at most" rule on a statistic or its percentile drops them too.
+        assert_eq!(
+            uids(page(vec![filter_rule(
+                "moneyball.goals",
+                "lte",
+                FilterValue::Integer(20)
+            )])),
+            [2, 1]
+        );
+        assert_eq!(
+            uids(page(vec![filter_rule(
+                "moneyball.goals",
+                "pct_lte",
+                FilterValue::Integer(100)
+            )])),
+            [2, 1]
+        );
+        // Playing time counts a missing row as 0 minutes.
+        assert_eq!(
+            uids(page(vec![filter_rule(
+                "moneyball.minutes",
+                "lte",
+                FilterValue::Integer(500)
+            )])),
+            [3, 4]
+        );
+        // Under OR, a player rule keeps a player without a sample.
+        let either = search_moneyball(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
             SortField::Name,
             SortDir::Asc,
-            &["moneyball.goals".to_string()],
-            Vec::new(),
+            &fields,
+            vec![
+                filter_rule("name", "is", FilterValue::Text("Unplayed".to_string())),
+                filter_rule("moneyball.goals", "pct_gte", FilterValue::Integer(100)),
+            ],
+            Some("or"),
+            Comparison::Own,
+        )
+        .expect("OR page");
+        assert_eq!(uids(either), [2, 4]);
+    }
+
+    #[test]
+    fn percentiles_can_rank_within_two_families_together() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-two-families.db"));
+        let mut striker = player_template(3, "Striker", 100);
+        striker["positions"] = json!({ "ST": 18 });
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Low", 100),
+                player_template(2, "High", 100),
+                striker,
+            ],
+        );
+        let snapshot_id = current_snapshot_id(&conn);
+        for (uid, goals) in [(1, 1), (2, 5), (3, 9)] {
+            let statistics = json!({ "goals": goals }).to_string();
+            insert_moneyball_statistics(&conn, snapshot_id, uid, &statistics, Some("{}"));
+        }
+        let percentiles = |comparison: &str| {
+            search_moneyball(
+                &conn,
+                0,
+                DEFAULT_PAGE_LIMIT,
+                SortField::Name,
+                SortDir::Asc,
+                &["moneyball.goals".to_string()],
+                Vec::new(),
+                None,
+                Comparison::parse(comparison).expect("comparison"),
+            )
+            .expect("page")
+            .players
+            .iter()
+            .map(|player| (player.uid, player.moneyball_percentiles["moneyball.goals"]))
+            .collect::<Vec<_>>()
+        };
+
+        // Apart, the striker is alone among strikers; together, all three are peers.
+        assert_eq!(
+            percentiles("own"),
+            [(2, Some(100)), (1, Some(0)), (3, Some(50))]
+        );
+        assert_eq!(
+            percentiles("central_midfielder+striker"),
+            [(2, Some(50)), (1, Some(0)), (3, Some(100))]
+        );
+    }
+
+    #[test]
+    fn a_short_sample_borrows_a_kept_snapshots_qualified_sample() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-borrowed.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Borrower", 100),
+                player_template(2, "Regular", 100),
+            ],
+        );
+        let snapshot_id = current_snapshot_id(&conn);
+        for (uid, goals) in [(1, 50), (2, 100)] {
+            let statistics = json!({ "goals": goals }).to_string();
+            insert_moneyball_statistics(&conn, snapshot_id, uid, &statistics, Some("{}"));
+        }
+        conn.execute(
+            "UPDATE player_moneyball_stats SET minutes = 200 WHERE player_uid = 1",
+            [],
+        )
+        .expect("shorten a sample");
+        let kept = crate::features::moneyball::kept_stats::test_support::add_kept_snapshot(
+            &conn,
+            snapshot_id,
+            "2026-05-20",
+            &[1, 2],
+        );
+        conn.execute(
+            "UPDATE snapshots SET moneyball_stats_game_date = '2026-05-20' WHERE id = ?1",
+            [kept],
+        )
+        .expect("date kept stats");
+        for (uid, goals) in [(1, 10), (2, 5)] {
+            let statistics = json!({ "goals": goals }).to_string();
+            insert_moneyball_statistics(&conn, kept, uid, &statistics, Some("{}"));
+        }
+
+        let page = search_moneyball(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::parse("moneyball.goals").expect("sort"),
+            SortDir::Desc,
+            &[
+                "moneyball.goals".to_string(),
+                "moneyball.minutes".to_string(),
+            ],
+            vec![filter_rule(
+                "moneyball.goals",
+                "pct_gte",
+                FilterValue::Integer(50),
+            )],
             None,
             Comparison::Own,
         )
-        .expect("Moneyball page");
+        .expect("page");
 
-        // The peers are 1 and 5, so 5 ranks at 100, not at 50 as it would beside the 9.
+        // His kept 10 goals and 900 minutes stand in, ranked among that season's 5 and 10.
+        // The regular, alone among this season's peers, ranks at 50.
+        assert_eq!(page.players.len(), 2);
+        let borrower = page
+            .players
+            .iter()
+            .find(|player| player.uid == 1)
+            .expect("borrower");
         assert_eq!(
-            page.players
-                .iter()
-                .map(|player| (
-                    player.uid,
-                    player.moneyball_percentiles["moneyball.goals"],
-                    player.moneyball_short_sample
-                ))
-                .collect::<Vec<_>>(),
-            [
-                (2, Some(100), false),
-                (1, Some(0), false),
-                (3, Some(100), true)
-            ]
+            borrower.dynamic_values["moneyball.goals"],
+            Some(DynamicValue::Real(10.0))
         );
+        assert_eq!(
+            borrower.dynamic_values["moneyball.minutes"],
+            Some(DynamicValue::Integer(900))
+        );
+        assert_eq!(borrower.moneyball_percentiles["moneyball.goals"], Some(100));
+        assert_eq!(borrower.moneyball_stats_date.as_deref(), Some("2026-05-20"));
+        assert_eq!(page.players[0].uid, 2);
+        assert_eq!(page.players[0].moneyball_stats_date, None);
     }
 
     #[test]
@@ -2168,7 +2267,7 @@ mod tests {
         }
 
         let requested_fields = ["moneyball.goals".to_string()];
-        let sort_by = SortField::parse_for_moneyball("moneyball.goals", true).expect("sort");
+        let sort_by = SortField::parse("moneyball.goals").expect("sort");
         let filter_ast = parse_filter_ast(
             vec![FilterRule {
                 field: "moneyball.goals".to_string(),
@@ -2178,7 +2277,7 @@ mod tests {
             None,
         )
         .expect("Moneyball filter");
-        let first_page = search_players_in_view(
+        let first_page = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
@@ -2187,13 +2286,12 @@ mod tests {
                 sort_dir: SortDir::Asc,
                 filter_ast: Some(&filter_ast),
                 requested_fields: &requested_fields,
-                view: SearchView::Moneyball,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
         .expect("first page");
-        let second_page = search_players_in_view(
+        let second_page = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 50,
@@ -2202,7 +2300,6 @@ mod tests {
                 sort_dir: SortDir::Asc,
                 filter_ast: Some(&filter_ast),
                 requested_fields: &requested_fields,
-                view: SearchView::Moneyball,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -2255,16 +2352,15 @@ mod tests {
         .expect("CA filter");
         let requested_fields = ["wage".to_string(), "reputation".to_string()];
 
-        let page = search_players_in_view(
+        let page = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
                 limit: DEFAULT_PAGE_LIMIT,
-                sort_by: SortField::parse_for_moneyball("pa", true).expect("PA sort"),
+                sort_by: SortField::parse("pa").expect("PA sort"),
                 sort_dir: SortDir::Desc,
                 filter_ast: Some(&filter_ast),
                 requested_fields: &requested_fields,
-                view: SearchView::Moneyball,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -2307,7 +2403,7 @@ mod tests {
         let requested_fields = vec!["role.deep_lying_playmaker_ip".to_string()];
 
         // Unrestricted General still returns every current player.
-        let unrestricted = search_players_in_view(
+        let unrestricted = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
@@ -2316,7 +2412,6 @@ mod tests {
                 sort_dir: SortDir::Desc,
                 filter_ast: None,
                 requested_fields: &requested_fields,
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -2325,7 +2420,7 @@ mod tests {
         assert_eq!(unrestricted.total, 4);
 
         // Restricted General returns only saved current UIDs; the stale UID drops out.
-        let restricted = search_players_in_view(
+        let restricted = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
@@ -2334,7 +2429,6 @@ mod tests {
                 sort_dir: SortDir::Desc,
                 filter_ast: None,
                 requested_fields: &requested_fields,
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: shortlist,
             },
@@ -2353,7 +2447,7 @@ mod tests {
         );
 
         // Another shortlist of the same save restricts to its own players only.
-        let other = search_players_in_view(
+        let other = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
@@ -2362,7 +2456,6 @@ mod tests {
                 sort_dir: SortDir::Desc,
                 filter_ast: None,
                 requested_fields: &[],
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: Some(loans),
             },
@@ -2383,7 +2476,7 @@ mod tests {
             None,
         )
         .expect("parse filter");
-        let filtered = search_players_in_view(
+        let filtered = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
@@ -2392,7 +2485,6 @@ mod tests {
                 sort_dir: SortDir::Desc,
                 filter_ast: Some(&ast),
                 requested_fields: &[],
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: shortlist,
             },
@@ -2405,7 +2497,7 @@ mod tests {
         );
 
         // Totals survive paging.
-        let paged = search_players_in_view(
+        let paged = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 1,
@@ -2414,7 +2506,6 @@ mod tests {
                 sort_dir: SortDir::Desc,
                 filter_ast: Some(&ast),
                 requested_fields: &[],
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: shortlist,
             },
@@ -2429,7 +2520,7 @@ mod tests {
         // An empty saved list restricts to nothing.
         conn.execute("DELETE FROM player_shortlist_entries", [])
             .expect("clear shortlist");
-        let empty = search_players_in_view(
+        let empty = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
@@ -2438,7 +2529,6 @@ mod tests {
                 sort_dir: SortDir::Desc,
                 filter_ast: None,
                 requested_fields: &[],
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: shortlist,
             },
@@ -2461,7 +2551,7 @@ mod tests {
         );
 
         let probe = |conn: &Connection, shortlist_id: i64| {
-            search_players_in_view(
+            search_players_uncached(
                 conn,
                 SearchPlayersRequest {
                     offset: 0,
@@ -2470,7 +2560,6 @@ mod tests {
                     sort_dir: SortDir::Desc,
                     filter_ast: None,
                     requested_fields: &[],
-                    view: SearchView::General,
                     comparison: Comparison::Own,
                     shortlist_id: Some(shortlist_id),
                 },
@@ -2546,7 +2635,7 @@ mod tests {
         let score_row_count_before = score_rows_before.len();
         let requested_fields = vec!["club_dna".to_string()];
 
-        let page = search_players(
+        let page = search_players_page(
             &conn,
             0,
             7,
@@ -2573,7 +2662,7 @@ mod tests {
         assert_eq!(page.players[5].dynamic_values.get("club_dna"), Some(&None));
         assert_eq!(page.players[6].dynamic_values.get("club_dna"), Some(&None));
 
-        let bounded_page = search_players(
+        let bounded_page = search_players_page(
             &conn,
             1,
             2,
@@ -2592,7 +2681,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [15, 20]
         );
-        let unavailable_page = search_players(
+        let unavailable_page = search_players_page(
             &conn,
             3,
             4,
@@ -2637,7 +2726,7 @@ mod tests {
                 None,
             )
             .expect("parse Club DNA filter");
-            let page = search_players(
+            let page = search_players_page(
                 &conn,
                 0,
                 6,
@@ -2665,7 +2754,7 @@ mod tests {
             Some("and"),
         )
         .expect("parse Club DNA AND filter");
-        let and_page = search_players(
+        let and_page = search_players_page(
             &conn,
             0,
             6,
@@ -2692,7 +2781,7 @@ mod tests {
             Some("or"),
         )
         .expect("parse Club DNA OR filter");
-        let or_page = search_players(
+        let or_page = search_players_page(
             &conn,
             0,
             6,
@@ -2711,7 +2800,7 @@ mod tests {
             [10, 15, 40]
         );
 
-        let descending = search_players(
+        let descending = search_players_page(
             &conn,
             0,
             7,
@@ -2729,7 +2818,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [20, 10, 15, 30, 40, 50, 60]
         );
-        let bounded_page = search_players(
+        let bounded_page = search_players_page(
             &conn,
             1,
             2,
@@ -2747,7 +2836,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [10, 15]
         );
-        let unavailable_page = search_players(
+        let unavailable_page = search_players_page(
             &conn,
             3,
             4,
@@ -2777,7 +2866,7 @@ mod tests {
         conn.execute("DELETE FROM club_dna_definitions", [])
             .expect("remove Club DNA definition");
 
-        let page = search_players(
+        let page = search_players_page(
             &conn,
             0,
             7,
@@ -3461,12 +3550,15 @@ mod tests {
             insert_moneyball_row(&conn, snapshot_id, uid, Some(r#"{"goals":50}"#));
         }
 
-        for comparison in [Comparison::Family(PositionFamily::Striker), Comparison::Own] {
+        for comparison in [
+            Comparison::Group(ComparisonGroup::family(PositionFamily::Striker)),
+            Comparison::Own,
+        ] {
             let page = search_moneyball(
                 &conn,
                 0,
                 DEFAULT_PAGE_LIMIT,
-                SortField::parse_for_moneyball("ca", true).expect("CA sort"),
+                SortField::parse("ca").expect("CA sort"),
                 SortDir::Asc,
                 &[],
                 vec![filter_rule(
@@ -4305,7 +4397,7 @@ mod tests {
             filter_rule("attr.Acceleration", "gt", FilterValue::Integer(12)),
         ];
         let ast = parse_filter_ast(filters, None).expect("parse filters");
-        let page = search_players(
+        let page = search_players_page(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
@@ -4384,7 +4476,7 @@ mod tests {
             "attr.Acceleration".to_string(),
             "ca".to_string(),
         ];
-        let page = search_players(
+        let page = search_players_page(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
@@ -4478,7 +4570,7 @@ mod tests {
         );
 
         let requested_fields = vec!["position".to_string()];
-        let page = search_players(
+        let page = search_players_page(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
@@ -4541,7 +4633,7 @@ mod tests {
         let before = potential_state(&conn);
         deny_potential_writes(&conn);
 
-        let page = search_players(
+        let page = search_players_page(
             &conn,
             0,
             1,
@@ -4558,7 +4650,7 @@ mod tests {
                 .get("potential_role.line_holding_keeper_oop"),
             Some(Some(DynamicValue::Integer(_)))
         ));
-        search_players(
+        search_players_page(
             &conn,
             1,
             1,
@@ -4597,7 +4689,7 @@ mod tests {
             deny_potential_writes(&conn);
 
             assert_eq!(
-                search_players(
+                search_players_page(
                     &conn,
                     0,
                     DEFAULT_PAGE_LIMIT,
@@ -4648,7 +4740,7 @@ mod tests {
 
         let before = potential_state(&conn);
         deny_potential_writes(&conn);
-        let page = search_players(
+        let page = search_players_page(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
@@ -4696,7 +4788,7 @@ mod tests {
             deny_potential_writes(&conn);
 
             assert_eq!(
-                search_players(
+                search_players_page(
                     &conn,
                     0,
                     DEFAULT_PAGE_LIMIT,
@@ -4744,7 +4836,7 @@ mod tests {
             (SortDir::Asc, vec![4, 3, 1, 2]),
             (SortDir::Desc, vec![1, 2, 3, 4]),
         ] {
-            let page = search_players(&conn, 0, 4, sort_by.clone(), direction, None, &[])
+            let page = search_players_page(&conn, 0, 4, sort_by.clone(), direction, None, &[])
                 .expect("sort warm potential scores");
             assert_eq!(page.total, 4);
             assert_eq!(
@@ -4756,7 +4848,7 @@ mod tests {
             );
         }
 
-        let page = search_players(
+        let page = search_players_page(
             &conn,
             1,
             2,
@@ -4812,11 +4904,11 @@ mod tests {
     fn club_dna_sort_uses_a_missing_preserving_exact_identity_relation() {
         let source = include_str!("query.rs");
         let query = &source[source
-            .find("pub fn search_players_in_view")
-            .expect("search query function")
+            .find("fn order_query(")
+            .expect("order query function")
             ..source
-                .find("fn current_club_dna_definition_version")
-                .expect("following helper")];
+                .find("/// A query's order when SQL can sort and filter every row.")
+                .expect("following function")];
 
         assert!(query.contains("LEFT JOIN club_dna_scores club_dna_sort"));
         assert!(query.contains("club_dna_sort.snapshot_id = players.snapshot_id"));
@@ -4829,7 +4921,7 @@ mod tests {
     #[test]
     fn rejects_unknown_requested_metric_ids_before_reading_the_snapshot() {
         let conn = Connection::open_in_memory().expect("open database");
-        let error = search_players(
+        let error = search_players_page(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
@@ -4966,7 +5058,7 @@ mod tests {
         set_potential_role_score(&conn, 4, "line_holding_keeper_oop", Some(70));
         let before = potential_state(&conn);
         deny_potential_writes(&conn);
-        let page = search_players(
+        let page = search_players_page(
             &conn,
             1,
             2,
@@ -4995,7 +5087,7 @@ mod tests {
     #[test]
     fn moneyball_role_scores_rank_within_the_roles_family_whatever_the_filters() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("moneyball-role-cohorts.db"));
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-role-orders.db"));
         ingest_players(
             &mut conn,
             vec![
@@ -5013,7 +5105,10 @@ mod tests {
 
         // The table's comparison ranks statistics, not roles: the central midfielder role
         // ranks the three central midfielders' 10, 20, and 30 at 0, 50, and 100.
-        for comparison in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
+        for comparison in [
+            Comparison::Own,
+            Comparison::Group(ComparisonGroup::family(PositionFamily::Striker)),
+        ] {
             let full = search_moneyball(
                 &conn,
                 0,
@@ -5150,8 +5245,7 @@ mod tests {
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
-            SortField::parse_for_moneyball(&format!("moneyball_role.{role_id}"), true)
-                .expect("role sort"),
+            SortField::parse(&format!("moneyball_role.{role_id}")).expect("role sort"),
             SortDir::Desc,
             &requested_fields,
             or_rules,
@@ -5240,7 +5334,7 @@ mod tests {
             uids(&search(
                 "pct_gte",
                 90,
-                Comparison::Family(PositionFamily::CentralMidfielder)
+                Comparison::Group(ComparisonGroup::family(PositionFamily::CentralMidfielder))
             )),
             [5]
         );
@@ -5321,8 +5415,7 @@ mod tests {
         insert_role_row(&conn, snapshot_id, 3, role_id, Some(1.0), Some(0), None);
         insert_role_row(&conn, snapshot_id, 4, role_id, None, None, Some(0));
         let requested_fields = [format!("moneyball_role.{role_id}")];
-        let sort_by = SortField::parse_for_moneyball(&format!("moneyball_role.{role_id}"), true)
-            .expect("role sort");
+        let sort_by = SortField::parse(&format!("moneyball_role.{role_id}")).expect("role sort");
 
         let descending = search_moneyball(
             &conn,
@@ -5333,7 +5426,7 @@ mod tests {
             &requested_fields,
             Vec::new(),
             None,
-            Comparison::Family(PositionFamily::Striker),
+            Comparison::Group(ComparisonGroup::family(PositionFamily::Striker)),
         )
         .expect("descending role sort");
         assert_eq!(descending.total, 4);
@@ -5352,7 +5445,7 @@ mod tests {
                 FilterValue::Integer(50),
             )],
             None,
-            Comparison::Family(PositionFamily::Striker),
+            Comparison::Group(ComparisonGroup::family(PositionFamily::Striker)),
         )
         .expect("ascending role sort and null filter");
         assert_eq!(ascending.total, 1);
@@ -5366,48 +5459,72 @@ mod tests {
     }
 
     #[test]
-    fn rejects_moneyball_role_queries_outside_moneyball_view() {
-        let conn = Connection::open_in_memory().expect("open database");
-        let role_field = "moneyball_role.mc_central_midfielder_ip".to_string();
-        let error = search_players_in_view(
-            &conn,
-            SearchPlayersRequest {
-                offset: 0,
-                limit: DEFAULT_PAGE_LIMIT,
-                sort_by: SortField::DEFAULT,
-                sort_dir: SortDir::DEFAULT,
-                filter_ast: None,
-                requested_fields: &[role_field],
-                view: SearchView::General,
-                comparison: Comparison::Own,
-                shortlist_id: None,
-            },
+    fn one_request_reads_player_fields_beside_moneyball_values() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("merged-fields.db"));
+        let players = (1..=3)
+            .map(|uid| {
+                let mut player = player_template(uid, &format!("P{uid}"), 100);
+                player["attributes"] = json!({ "Acceleration": 10 + uid });
+                player
+            })
+            .collect();
+        ingest_players(&mut conn, players);
+        let snapshot_id = current_snapshot_id(&conn);
+        for (uid, value) in [(1, 1.0), (2, 4.0)] {
+            insert_role_row(
+                &conn,
+                snapshot_id,
+                uid,
+                MONEYBALL_ROLE,
+                Some(value),
+                None,
+                None,
+            );
+        }
+        let role = moneyball_role_field();
+        let fields = [
+            "attr.Acceleration".to_string(),
+            role.clone(),
+            "moneyball.minutes".to_string(),
+        ];
+        let filter = parse_filter_ast(
+            vec![
+                filter_rule("attr.Acceleration", "gte", FilterValue::Integer(12)),
+                filter_rule(&role, "gte", FilterValue::Integer(0)),
+            ],
+            Some("and"),
         )
-        .expect_err("General role field");
-        assert!(error.contains("Moneyball search view"));
-    }
+        .expect("filter");
 
-    #[test]
-    fn preserves_moneyball_sort_restrictions_for_role_queries() {
-        let conn = Connection::open_in_memory().expect("open database");
-        let role_field = "moneyball_role.mc_central_midfielder_ip".to_string();
-        let error = search_players_in_view(
+        let page = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
                 limit: DEFAULT_PAGE_LIMIT,
-                // FM attributes stay General-only, so they cannot sort Moneyball.
-                sort_by: SortField::parse("attr.Acceleration").expect("General sort field"),
-                sort_dir: SortDir::DEFAULT,
-                filter_ast: None,
-                requested_fields: &[role_field],
-                view: SearchView::Moneyball,
+                sort_by: SortField::parse("attr.Acceleration").expect("attribute sort"),
+                sort_dir: SortDir::Desc,
+                filter_ast: Some(&filter),
+                requested_fields: &fields,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
         )
-        .expect_err("attribute sort in Moneyball role query");
-        assert!(error.contains("unsupported Moneyball sort field"));
+        .expect("merged page");
+
+        // UID 3 has the pace but no season stats, so the Moneyball rule drops him; UID 1 lacks
+        // the pace.
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| (
+                    player.uid,
+                    player.dynamic_values["attr.Acceleration"].clone(),
+                    player.dynamic_values[&role].is_some(),
+                ))
+                .collect::<Vec<_>>(),
+            [(2, Some(DynamicValue::Integer(12)), true)]
+        );
     }
 
     #[test]
@@ -5468,7 +5585,7 @@ mod tests {
             }
         }
         // Current column should give 70 for uid1, None for 2 (familiarity), 70 for 3 (not using potential), None for 4 (strict foot)
-        let page_cur = search_players_in_view(
+        let page_cur = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
@@ -5477,7 +5594,6 @@ mod tests {
                 sort_dir: SortDir::Asc,
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -5504,7 +5620,7 @@ mod tests {
         assert_eq!(vals.get(&3), Some(&Some(70)));
         assert_eq!(vals.get(&4), Some(&None));
         // Potential for uid3 age 30 should fallback to current 70, not potential 20
-        let page_pot = search_players_in_view(
+        let page_pot = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
@@ -5513,7 +5629,6 @@ mod tests {
                 sort_dir: SortDir::Asc,
                 filter_ast: None,
                 requested_fields: &["tactic_potential.goalkeeper".to_string()],
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -5548,7 +5663,7 @@ mod tests {
         tactic2.lanes[0].foot_preference = "preferred".to_string();
         crate::features::planner::tactic::save_tactic(&conn, save_id, &tactic2).expect("save");
         // p4 now eligible with 80/60 -> 70; p1 now 90, p3 70
-        let page_desc = search_players_in_view(
+        let page_desc = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
@@ -5557,7 +5672,6 @@ mod tests {
                 sort_dir: SortDir::Desc,
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -5568,7 +5682,7 @@ mod tests {
             page_desc.players.iter().map(|p| p.uid).collect::<Vec<_>>(),
             vec![1, 3, 4, 2]
         );
-        let page_asc = search_players_in_view(
+        let page_asc = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
@@ -5577,7 +5691,6 @@ mod tests {
                 sort_dir: SortDir::Asc,
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -5666,17 +5779,15 @@ mod tests {
             insert_moneyball_statistics(&conn, snapshot_id, uid, &stats_json, Some(&perc_json));
         }
         // Query mapped goalkeeper tactic should be numeric for uid1 and 3, null for uid2
-        let page = search_players_in_view(
+        let page = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
                 limit: 10,
-                sort_by: SortField::parse_for_moneyball("tactic_current.goalkeeper", true)
-                    .expect("sort"),
+                sort_by: SortField::parse("tactic_moneyball.goalkeeper").expect("sort"),
                 sort_dir: SortDir::Asc,
                 filter_ast: None,
-                requested_fields: &["tactic_current.goalkeeper".to_string()],
-                view: SearchView::Moneyball,
+                requested_fields: &["tactic_moneyball.goalkeeper".to_string()],
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -5689,7 +5800,7 @@ mod tests {
                 (
                     p.uid,
                     p.dynamic_values
-                        .get("tactic_current.goalkeeper")
+                        .get("tactic_moneyball.goalkeeper")
                         .and_then(|v| v.as_ref())
                         .and_then(|v| match v {
                             DynamicValue::Integer(i) => Some(*i),
@@ -5705,17 +5816,15 @@ mod tests {
         assert_eq!(vals.get(&2), Some(&None), "uid2 familiarity low -> null");
         assert!(vals.get(&3).unwrap().is_some());
         // Uncovered centre_forward should be null for all
-        let page_uncovered = search_players_in_view(
+        let page_uncovered = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
                 limit: 10,
-                sort_by: SortField::parse_for_moneyball("tactic_current.centre_forward", true)
-                    .expect("sort"),
+                sort_by: SortField::parse("tactic_moneyball.centre_forward").expect("sort"),
                 sort_dir: SortDir::Asc,
                 filter_ast: None,
-                requested_fields: &["tactic_current.centre_forward".to_string()],
-                view: SearchView::Moneyball,
+                requested_fields: &["tactic_moneyball.centre_forward".to_string()],
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -5723,22 +5832,20 @@ mod tests {
         .expect("uncovered");
         for p in &page_uncovered.players {
             assert_eq!(
-                p.dynamic_values.get("tactic_current.centre_forward"),
+                p.dynamic_values.get("tactic_moneyball.centre_forward"),
                 Some(&None)
             );
         }
         // Sort nulls last both directions
-        let page_desc = search_players_in_view(
+        let page_desc = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
                 limit: 10,
-                sort_by: SortField::parse_for_moneyball("tactic_current.goalkeeper", true)
-                    .expect("sort"),
+                sort_by: SortField::parse("tactic_moneyball.goalkeeper").expect("sort"),
                 sort_dir: SortDir::Desc,
                 filter_ast: None,
-                requested_fields: &["tactic_current.goalkeeper".to_string()],
-                view: SearchView::Moneyball,
+                requested_fields: &["tactic_moneyball.goalkeeper".to_string()],
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -5748,17 +5855,15 @@ mod tests {
         assert_eq!(page_desc.players.last().unwrap().uid, 2);
         assert_eq!(page_desc.players[0].uid, 1);
         assert_eq!(page_desc.players[1].uid, 3);
-        let page_filt = search_players_in_view(
+        let page_filt = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
                 limit: 10,
-                sort_by: SortField::parse_for_moneyball("tactic_current.goalkeeper", true)
-                    .expect("sort"),
+                sort_by: SortField::parse("tactic_moneyball.goalkeeper").expect("sort"),
                 sort_dir: SortDir::Asc,
                 filter_ast: None,
-                requested_fields: &["tactic_current.goalkeeper".to_string()],
-                view: SearchView::Moneyball,
+                requested_fields: &["tactic_moneyball.goalkeeper".to_string()],
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -5772,7 +5877,7 @@ mod tests {
     }
 
     #[test]
-    fn tactic_moneyball_sort_only_and_view_gated_groups() {
+    fn tactic_moneyball_sort_without_chosen_metrics_scores_the_slots_roles() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("tactic-moneyball-sortonly.db"));
         let players = (1..=2)
@@ -5817,18 +5922,17 @@ mod tests {
                 Some(&serde_json::to_string(&perc).unwrap()),
             );
         }
-        // Sort-only: request no tactic field, but sort by tactic_current.goalkeeper
-        let page_sort_only = search_players_in_view(
+        // Sort-only: request no tactic field, but sort by the goalkeeper slot's Moneyball
+        // Score, which has no chosen metrics and so scores its roles' Moneyball definitions.
+        let page_sort_only = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
                 limit: 10,
-                sort_by: SortField::parse_for_moneyball("tactic_current.goalkeeper", true)
-                    .expect("sort"),
+                sort_by: SortField::parse("tactic_moneyball.goalkeeper").expect("sort"),
                 sort_dir: SortDir::Desc,
                 filter_ast: None,
                 requested_fields: &[],
-                view: SearchView::Moneyball,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -5837,33 +5941,11 @@ mod tests {
         assert_eq!(page_sort_only.total, 2);
         assert_eq!(page_sort_only.players[0].uid, 2);
         assert_eq!(page_sort_only.players[1].uid, 1);
-        // Moneyball has no Potential group, and General has no Custom group.
-        for (field, view) in [
-            ("tactic_potential.goalkeeper", SearchView::Moneyball),
-            ("tactic_custom.goalkeeper", SearchView::General),
-        ] {
-            let expected = format!("unknown player metric: {field}");
-            assert_eq!(
-                SortField::parse_for_moneyball(field, view == SearchView::Moneyball).unwrap_err(),
-                expected
-            );
-            let error = search_players_in_view(
-                &conn,
-                SearchPlayersRequest {
-                    offset: 0,
-                    limit: 10,
-                    sort_by: SortField::DEFAULT,
-                    sort_dir: SortDir::Desc,
-                    filter_ast: None,
-                    requested_fields: &[field.to_string()],
-                    view,
-                    comparison: Comparison::Own,
-                    shortlist_id: None,
-                },
-            )
-            .unwrap_err();
-            assert_eq!(error, expected);
-        }
+        // The old Custom group is gone.
+        assert_eq!(
+            SortField::parse("tactic_custom.goalkeeper").unwrap_err(),
+            "unknown player metric: tactic_custom.goalkeeper"
+        );
     }
 
     fn tactic_scores_by_uid(page: &SearchPlayersPage, field: &str) -> Vec<(i64, Option<i64>)> {
@@ -5933,23 +6015,22 @@ mod tests {
             );
         }
         let custom_page = |conn: &Connection, field: &str, sort_dir, comparison| {
-            search_players_in_view(
+            search_players_uncached(
                 conn,
                 SearchPlayersRequest {
                     offset: 0,
                     limit: 10,
-                    sort_by: SortField::parse_for_moneyball(field, true).expect("custom sort"),
+                    sort_by: SortField::parse(field).expect("custom sort"),
                     sort_dir,
                     filter_ast: None,
                     requested_fields: &[field.to_string()],
-                    view: SearchView::Moneyball,
                     comparison,
                     shortlist_id: None,
                 },
             )
             .expect("custom search")
         };
-        let field = "tactic_custom.goalkeeper";
+        let field = "tactic_moneyball.goalkeeper";
 
         // The slot ranks among keepers rated 16 or more: UIDs 1, 4, and 5. Their save
         // ratios of 0.5, 0.9, and 0.5 put UIDs 1 and 5 at 0, and UID 3's 0.95 above them
@@ -5983,7 +6064,7 @@ mod tests {
             &conn,
             field,
             SortDir::Desc,
-            Comparison::Family(PositionFamily::Striker),
+            Comparison::Group(ComparisonGroup::family(PositionFamily::Striker)),
         );
         assert_eq!(
             tactic_scores_by_uid(&compared_with_strikers, field),
@@ -5998,7 +6079,7 @@ mod tests {
             &conn,
             field,
             SortDir::Desc,
-            Comparison::Family(PositionFamily::Striker),
+            Comparison::Group(ComparisonGroup::family(PositionFamily::Striker)),
         );
         assert_eq!(
             tactic_scores_by_uid(&reweighted, field),
@@ -6006,12 +6087,12 @@ mod tests {
         );
 
         // A slot without metrics has no custom score.
-        let empty_field = "tactic_custom.left_back";
+        let empty_field = "tactic_moneyball.left_back";
         let empty = custom_page(
             &conn,
             empty_field,
             SortDir::Desc,
-            Comparison::Family(PositionFamily::Striker),
+            Comparison::Group(ComparisonGroup::family(PositionFamily::Striker)),
         );
         assert_eq!(
             tactic_scores_by_uid(&empty, empty_field),
@@ -6122,7 +6203,7 @@ mod tests {
         );
         assert_eq!(expected_sat, Some(0));
         // Query via SQL and compare
-        let page = search_players_in_view(
+        let page = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
@@ -6131,7 +6212,6 @@ mod tests {
                 sort_dir: SortDir::Desc,
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: None,
             },
@@ -6187,7 +6267,7 @@ mod tests {
             } else {
                 "tactic_current.goalkeeper"
             };
-            let err = search_players_in_view(
+            let err = search_players_uncached(
                 &conn,
                 SearchPlayersRequest {
                     offset: 0,
@@ -6196,7 +6276,6 @@ mod tests {
                     sort_dir: SortDir::Asc,
                     filter_ast: None,
                     requested_fields: &[field.to_string()],
-                    view: SearchView::General,
                     comparison: Comparison::Own,
                     shortlist_id: None,
                 },
@@ -6207,7 +6286,7 @@ mod tests {
                 "err was {err}"
             );
             // Ensure potential completeness also fails for General sort without requested field (sort-only)
-            let err2 = search_players_in_view(
+            let err2 = search_players_uncached(
                 &conn,
                 SearchPlayersRequest {
                     offset: 0,
@@ -6216,7 +6295,6 @@ mod tests {
                     sort_dir: SortDir::Asc,
                     filter_ast: None,
                     requested_fields: &[],
-                    view: SearchView::General,
                     comparison: Comparison::Own,
                     shortlist_id: None,
                 },
@@ -6247,7 +6325,7 @@ mod tests {
         set_role_score(&conn, 2, "line_holding_keeper_oop", Some(60));
         set_role_score(&conn, 3, "goalkeeper_ip", Some(80));
         set_role_score(&conn, 3, "line_holding_keeper_oop", Some(80));
-        let page = search_players_in_view(
+        let page = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
@@ -6256,7 +6334,6 @@ mod tests {
                 sort_dir: SortDir::Desc,
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: shortlist,
             },
@@ -6283,7 +6360,7 @@ mod tests {
             [snapshot_id],
         )
         .expect("make null");
-        let page2 = search_players_in_view(
+        let page2 = search_players_uncached(
             &conn,
             SearchPlayersRequest {
                 offset: 0,
@@ -6292,7 +6369,6 @@ mod tests {
                 sort_dir: SortDir::Asc,
                 filter_ast: None,
                 requested_fields: &["tactic_current.goalkeeper".to_string()],
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: shortlist,
             },
@@ -6353,17 +6429,15 @@ mod tests {
             );
         }
         let page = |filter_ast: Option<&FilterAst>| {
-            search_players_in_view(
+            search_players_uncached(
                 &conn,
                 SearchPlayersRequest {
                     offset: 0,
                     limit: 10,
-                    sort_by: SortField::parse_for_moneyball("tactic_current.goalkeeper", true)
-                        .expect("sort"),
+                    sort_by: SortField::parse("tactic_moneyball.goalkeeper").expect("sort"),
                     sort_dir: SortDir::Desc,
                     filter_ast,
-                    requested_fields: &["tactic_current.goalkeeper".to_string()],
-                    view: SearchView::Moneyball,
+                    requested_fields: &["tactic_moneyball.goalkeeper".to_string()],
                     comparison: Comparison::Own,
                     shortlist_id: None,
                 },
@@ -6376,7 +6450,7 @@ mod tests {
                 .map(|player| {
                     let score = player
                         .dynamic_values
-                        .get("tactic_current.goalkeeper")
+                        .get("tactic_moneyball.goalkeeper")
                         .cloned()
                         .flatten();
                     (player.uid, score)
@@ -6441,7 +6515,6 @@ mod tests {
                 sort_dir: self.dir,
                 filter_ast: self.filters.as_ref(),
                 requested_fields: &self.fields,
-                view: SearchView::General,
                 comparison: Comparison::Own,
                 shortlist_id: self.shortlist_id,
             }
@@ -6537,20 +6610,26 @@ mod tests {
     }
 
     /// Joins three-row cached windows and compares each with the uncached page at its offset.
-    fn assert_cached_windows_match(db: &Db, orders: &GeneralOrderCache, shape: &GeneralShape) {
+    fn assert_cached_windows_match(db: &Db, orders: &PlayerOrderCache, shape: &GeneralShape) {
         let registry = TableRegistry::default();
-        let complete = search_players_in_view(
+        let complete = search_players_uncached(
             &db.read().expect("reader"),
             shape.request(0, MAX_PAGE_LIMIT),
         )
         .expect("uncached complete page");
         let mut joined = Vec::new();
         for offset in (0..complete.players.len() + 3).step_by(3) {
-            let cached =
-                search_general_players(db, orders, &registry, None, shape.request(offset, 3))
-                    .unwrap_or_else(|error| panic!("{}: {error}", shape.name));
+            let cached = search_players(
+                db,
+                orders,
+                &ComparisonGroupsCache::default(),
+                &registry,
+                None,
+                shape.request(offset, 3),
+            )
+            .unwrap_or_else(|error| panic!("{}: {error}", shape.name));
             let uncached =
-                search_players_in_view(&db.read().expect("reader"), shape.request(offset, 3))
+                search_players_uncached(&db.read().expect("reader"), shape.request(offset, 3))
                     .expect("uncached page");
             assert_eq!(cached, uncached, "{} at offset {offset}", shape.name);
             joined.extend(cached.players);
@@ -6561,7 +6640,7 @@ mod tests {
     #[test]
     fn cached_general_windows_equal_uncached_pages_for_every_shape() {
         let (_temp_dir, db) = open_general_equivalence_db();
-        let orders = GeneralOrderCache::new(4);
+        let orders = PlayerOrderCache::new(4);
         let shapes = vec![
             GeneralShape::new("CA", "ca", SortDir::Desc, &["height"]),
             GeneralShape::new("name", "name", SortDir::Asc, &[]),
@@ -6655,31 +6734,59 @@ mod tests {
     #[test]
     fn later_windows_reuse_the_order_until_a_write() {
         let (_temp_dir, db) = open_general_equivalence_db();
-        let orders = GeneralOrderCache::new(4);
+        let orders = PlayerOrderCache::new(4);
         let registry = TableRegistry::default();
         let shape = GeneralShape::new("CA", "ca", SortDir::Desc, &["height"]);
         let with_column = GeneralShape::new("CA", "ca", SortDir::Desc, &["attr.Acceleration"]);
         ORDER_COMPUTATIONS.with(|count| count.set(0));
 
-        search_general_players(&db, &orders, &registry, None, shape.request(0, 3))
-            .expect("first window");
-        search_general_players(&db, &orders, &registry, None, shape.request(6, 3))
-            .expect("later window");
-        search_general_players(&db, &orders, &registry, None, with_column.request(3, 3))
-            .expect("window with another column");
+        search_players(
+            &db,
+            &orders,
+            &ComparisonGroupsCache::default(),
+            &registry,
+            None,
+            shape.request(0, 3),
+        )
+        .expect("first window");
+        search_players(
+            &db,
+            &orders,
+            &ComparisonGroupsCache::default(),
+            &registry,
+            None,
+            shape.request(6, 3),
+        )
+        .expect("later window");
+        search_players(
+            &db,
+            &orders,
+            &ComparisonGroupsCache::default(),
+            &registry,
+            None,
+            with_column.request(3, 3),
+        )
+        .expect("window with another column");
         assert_eq!(ORDER_COMPUTATIONS.with(Cell::get), 1);
 
         db.0.lock()
             .expect("lock writer")
             .execute("UPDATE players SET ca = 200 WHERE uid = 4", [])
             .expect("change a player");
-        let fresh = search_general_players(&db, &orders, &registry, None, shape.request(0, 3))
-            .expect("window after a write");
+        let fresh = search_players(
+            &db,
+            &orders,
+            &ComparisonGroupsCache::default(),
+            &registry,
+            None,
+            shape.request(0, 3),
+        )
+        .expect("window after a write");
         assert_eq!(ORDER_COMPUTATIONS.with(Cell::get), 2);
         assert_eq!(fresh.players[0].uid, 4);
         assert_eq!(
             fresh,
-            search_players_in_view(&db.read().expect("reader"), shape.request(0, 3))
+            search_players_uncached(&db.read().expect("reader"), shape.request(0, 3))
                 .expect("uncached page")
         );
     }
@@ -6687,7 +6794,7 @@ mod tests {
     #[test]
     fn a_newer_general_query_supersedes_a_running_one_and_completes() {
         let (_temp_dir, db) = open_general_equivalence_db();
-        let orders = GeneralOrderCache::new(4);
+        let orders = PlayerOrderCache::new(4);
         let registry = TableRegistry::default();
         let older = GeneralShape::new("CA", "ca", SortDir::Desc, &[]);
         let newer = || GeneralShape::new("name", "name", SortDir::Asc, &[]);
@@ -6703,9 +6810,10 @@ mod tests {
                     let ticket =
                         registry.arrive("search", &search_query_fingerprint(&newer.request(0, 3)));
                     sender
-                        .send(search_general_players(
+                        .send(search_players(
                             &db,
                             &orders,
+                            &ComparisonGroupsCache::default(),
                             &registry,
                             Some(&ticket),
                             newer.request(0, 3),
@@ -6715,9 +6823,10 @@ mod tests {
             });
         }
 
-        let superseded = search_general_players(
+        let superseded = search_players(
             &db,
             &orders,
+            &ComparisonGroupsCache::default(),
             &registry,
             Some(&older_ticket),
             older.request(0, 3),
@@ -6729,7 +6838,7 @@ mod tests {
         let newer = newer();
         assert_eq!(
             receiver.recv().expect("newer page"),
-            search_players_in_view(&db.read().expect("reader"), newer.request(0, 3))
+            search_players_uncached(&db.read().expect("reader"), newer.request(0, 3))
         );
     }
 
@@ -6793,11 +6902,10 @@ mod tests {
             SearchPlayersRequest {
                 offset,
                 limit,
-                sort_by: SortField::parse_for_moneyball(&self.sort, true).expect("sort"),
+                sort_by: SortField::parse(&self.sort).expect("sort"),
                 sort_dir: self.dir,
                 filter_ast: self.filters.as_ref(),
                 requested_fields: &self.fields,
-                view: SearchView::Moneyball,
                 comparison: self.comparison,
                 shortlist_id: self.shortlist_id,
             }
@@ -6921,21 +7029,21 @@ mod tests {
     /// Joins three-row cached windows and compares each with the uncached page at its offset.
     fn assert_cached_moneyball_windows_match(
         db: &Db,
-        cohorts: &MoneyballCohortCache,
+        orders: &PlayerOrderCache,
         shape: &MoneyballShape,
     ) {
         let registry = TableRegistry::default();
         let name = format!("{} ({:?})", shape.name, shape.comparison);
-        let complete = search_players_in_view(
+        let complete = search_players_uncached(
             &db.read().expect("reader"),
             shape.request(0, MAX_PAGE_LIMIT),
         )
         .unwrap_or_else(|error| panic!("{name} uncached: {error}"));
         let mut joined = Vec::new();
         for offset in (0..complete.players.len() + 3).step_by(3) {
-            let cached = search_moneyball_players(
+            let cached = search_players(
                 db,
-                cohorts,
+                orders,
                 &ComparisonGroupsCache::default(),
                 &registry,
                 None,
@@ -6943,7 +7051,7 @@ mod tests {
             )
             .unwrap_or_else(|error| panic!("{name}: {error}"));
             let uncached =
-                search_players_in_view(&db.read().expect("reader"), shape.request(offset, 3))
+                search_players_uncached(&db.read().expect("reader"), shape.request(offset, 3))
                     .expect("uncached page");
             assert_eq!(cached, uncached, "{name} at offset {offset}");
             joined.extend(cached.players);
@@ -6991,15 +7099,17 @@ mod tests {
         // Each returned player's role score, the same from the cached and uncached paths.
         let scores = |rules: Vec<FilterRule>| {
             let shape = MoneyballShape::new("league", &role, SortDir::Desc, &[&role])
-                .compared_with(Comparison::Family(PositionFamily::Striker));
+                .compared_with(Comparison::Group(ComparisonGroup::family(
+                    PositionFamily::Striker,
+                )));
             let shape = if rules.is_empty() {
                 shape
             } else {
                 shape.filtered(rules, "and")
             };
-            let cached = search_moneyball_players(
+            let cached = search_players(
                 &db,
-                &MoneyballCohortCache::new(2),
+                &PlayerOrderCache::new(2),
                 &ComparisonGroupsCache::default(),
                 &TableRegistry::default(),
                 None,
@@ -7007,7 +7117,7 @@ mod tests {
             )
             .expect("cached page");
             let uncached =
-                search_players_in_view(&db.read().expect("reader"), shape.request(0, 10))
+                search_players_uncached(&db.read().expect("reader"), shape.request(0, 10))
                     .expect("uncached page");
             assert_eq!(cached, uncached);
             cached
@@ -7040,7 +7150,7 @@ mod tests {
     #[test]
     fn cached_moneyball_windows_equal_uncached_pages_for_every_shape() {
         let (_temp_dir, db) = open_moneyball_equivalence_db();
-        let cohorts = MoneyballCohortCache::new(2);
+        let orders = PlayerOrderCache::new(2);
         let role = moneyball_role_field();
         let role = role.as_str();
         let shapes = vec![
@@ -7144,9 +7254,9 @@ mod tests {
             ),
             MoneyballShape::new(
                 "custom tactic sort",
-                "tactic_custom.goalkeeper",
+                "tactic_moneyball.goalkeeper",
                 SortDir::Desc,
-                &["tactic_custom.goalkeeper", "moneyball.save_ratio"],
+                &["tactic_moneyball.goalkeeper", "moneyball.save_ratio"],
             ),
             MoneyballShape::new(
                 "uncovered tactic sort",
@@ -7160,7 +7270,7 @@ mod tests {
                 SortDir::Desc,
                 &[
                     "tactic_current.goalkeeper",
-                    "tactic_custom.goalkeeper",
+                    "tactic_moneyball.goalkeeper",
                     role,
                 ],
             ),
@@ -7184,10 +7294,13 @@ mod tests {
             ),
         ];
         for shape in &shapes {
-            for comparison in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
+            for comparison in [
+                Comparison::Own,
+                Comparison::Group(ComparisonGroup::family(PositionFamily::Striker)),
+            ] {
                 assert_cached_moneyball_windows_match(
                     &db,
-                    &cohorts,
+                    &orders,
                     &shape.compared_with(comparison),
                 );
             }
@@ -7206,18 +7319,21 @@ mod tests {
             ),
             MoneyballShape::new(
                 "shortlist tactic sort",
-                "tactic_custom.goalkeeper",
+                "tactic_moneyball.goalkeeper",
                 SortDir::Desc,
-                &["tactic_custom.goalkeeper", "moneyball.save_ratio"],
+                &["tactic_moneyball.goalkeeper", "moneyball.save_ratio"],
             ),
         ]
         .map(MoneyballShape::shortlisted);
         let assert_shortlist_shapes = || {
             for shape in &shortlist_shapes {
-                for comparison in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
+                for comparison in [
+                    Comparison::Own,
+                    Comparison::Group(ComparisonGroup::family(PositionFamily::Striker)),
+                ] {
                     assert_cached_moneyball_windows_match(
                         &db,
-                        &cohorts,
+                        &orders,
                         &shape.compared_with(comparison),
                     );
                 }
@@ -7238,7 +7354,7 @@ mod tests {
         };
         assert_cached_moneyball_windows_match(
             &empty_db,
-            &MoneyballCohortCache::new(2),
+            &PlayerOrderCache::new(2),
             &MoneyballShape::new("no snapshot", "ca", SortDir::Desc, &[role]),
         );
     }
@@ -7246,7 +7362,7 @@ mod tests {
     #[test]
     fn moneyball_shortlist_restricts_rows_but_not_the_comparison_groups() {
         let (_temp_dir, db) = open_moneyball_equivalence_db();
-        let cohorts = MoneyballCohortCache::new(4);
+        let orders = PlayerOrderCache::new(4);
         let registry = TableRegistry::default();
         let role = moneyball_role_field();
         let fields = [role.as_str(), "moneyball.goals", "moneyball.xg"];
@@ -7256,9 +7372,9 @@ mod tests {
                 .compared_with(comparison)
         };
         let page = |shape: &MoneyballShape| {
-            search_moneyball_players(
+            search_players(
                 &db,
-                &cohorts,
+                &orders,
                 &ComparisonGroupsCache::default(),
                 &registry,
                 None,
@@ -7273,9 +7389,8 @@ mod tests {
         assert!(unlinked.players.is_empty());
 
         // UID 11 has no stored percentiles and UID 99 is not in the snapshot. Of the
-        // shortlist, CA 120 or less leaves UIDs 2, 5, and 9: exactly the players with CA 120.
-        // Another shortlist of the save holds UIDs 4, 8, and 12, which also have CA 120 or
-        // less, and must not leak into the rows or the cohort.
+        // shortlist, CA 120 or less leaves UIDs 2, 5, 9, and 11. Another shortlist of the save
+        // holds UIDs 4, 8, and 12, which also have CA 120 or less, and must not leak in.
         let shortlist = [1, 2, 5, 7, 9, 11, 99];
         {
             let writer = db.0.lock().expect("lock writer");
@@ -7297,14 +7412,15 @@ mod tests {
                 .iter()
                 .map(|player| player.uid)
                 .collect::<Vec<_>>(),
-            vec![2, 5, 9]
+            vec![2, 5, 9, 11]
         );
-        assert_eq!(filtered.total, 3);
-        let same_players = page(&shape(ca("eq", 120), "and", Comparison::Own));
-        assert_eq!(filtered.players, same_players.players);
+        assert_eq!(filtered.total, 4);
         // Percentiles and role scores rank within the same groups with or without the
         // shortlist, for either comparison; only the rows are restricted.
-        for comparison in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
+        for comparison in [
+            Comparison::Own,
+            Comparison::Group(ComparisonGroup::family(PositionFamily::Striker)),
+        ] {
             let shortlisted = page(&shape(ca("lte", 120), "and", comparison).shortlisted());
             let shortlist_off = page(&shape(ca("lte", 120), "and", comparison));
             assert_eq!(shortlisted.players, in_shortlist(shortlist_off));
@@ -7319,14 +7435,14 @@ mod tests {
             &shape(
                 mixed_or.clone(),
                 "or",
-                Comparison::Family(PositionFamily::Striker),
+                Comparison::Group(ComparisonGroup::family(PositionFamily::Striker)),
             )
             .shortlisted(),
         );
         let mixed_off = page(&shape(
             mixed_or,
             "or",
-            Comparison::Family(PositionFamily::Striker),
+            Comparison::Group(ComparisonGroup::family(PositionFamily::Striker)),
         ));
         assert!(mixed_off
             .players
@@ -7407,7 +7523,7 @@ mod tests {
         transaction.commit().expect("commit Moneyball rows");
         drop(writer);
 
-        let cohorts = MoneyballCohortCache::new(2);
+        let orders = PlayerOrderCache::new(2);
         let registry = TableRegistry::default();
         let role = moneyball_role_field();
         let shapes = [
@@ -7420,21 +7536,24 @@ mod tests {
             MoneyballShape::new("role sort", &role, SortDir::Desc, &[&role]),
         ];
         for shape in &shapes {
-            for comparison in [Comparison::Own, Comparison::Family(PositionFamily::Striker)] {
+            for comparison in [
+                Comparison::Own,
+                Comparison::Group(ComparisonGroup::family(PositionFamily::Striker)),
+            ] {
                 let shape = shape.compared_with(comparison);
                 let name = format!("{} ({comparison:?})", shape.name);
                 let mut joined = 0;
                 for offset in (0..PLAYERS).step_by(MAX_PAGE_LIMIT) {
-                    let cached = search_moneyball_players(
+                    let cached = search_players(
                         &db,
-                        &cohorts,
+                        &orders,
                         &ComparisonGroupsCache::default(),
                         &registry,
                         None,
                         shape.request(offset, MAX_PAGE_LIMIT),
                     )
                     .unwrap_or_else(|error| panic!("{name}: {error}"));
-                    let uncached = search_players_in_view(
+                    let uncached = search_players_uncached(
                         &db.read().expect("reader"),
                         shape.request(offset, MAX_PAGE_LIMIT),
                     )
@@ -7442,123 +7561,88 @@ mod tests {
                     assert_eq!(cached, uncached, "{name} at offset {offset}");
                     joined += cached.players.len();
                 }
-                assert_eq!(joined, PLAYERS - 2, "{name} rows");
+                assert_eq!(joined, PLAYERS, "{name} rows");
             }
         }
     }
 
     #[test]
-    fn moneyball_windows_reuse_the_cohort_and_rank_an_added_column_once() {
-        use crate::features::search::moneyball_cohort::{
-            COHORT_COMPUTATIONS, STATISTIC_COLUMN_READS,
-        };
+    fn scored_windows_reuse_the_order_and_an_added_column_reads_only_its_window() {
         let (_temp_dir, db) = open_moneyball_equivalence_db();
-        let cohorts = MoneyballCohortCache::new(2);
+        let orders = PlayerOrderCache::new(2);
         let registry = TableRegistry::default();
-        let shape = MoneyballShape::new(
-            "statistic sort",
-            "moneyball.goals",
-            SortDir::Desc,
-            &["moneyball.goals"],
-        );
-        let with_column = MoneyballShape::new(
-            "statistic sort",
-            "moneyball.goals",
-            SortDir::Desc,
-            &["moneyball.goals", "moneyball.xg"],
-        );
-        COHORT_COMPUTATIONS.with(|count| count.set(0));
-        STATISTIC_COLUMN_READS.with(|count| count.set(0));
-
-        search_moneyball_players(
-            &db,
-            &cohorts,
-            &ComparisonGroupsCache::default(),
-            &registry,
-            None,
-            shape.request(0, 3),
-        )
-        .expect("first window");
-        search_moneyball_players(
-            &db,
-            &cohorts,
-            &ComparisonGroupsCache::default(),
-            &registry,
-            None,
-            shape.request(6, 3),
-        )
-        .expect("later window");
-        assert_eq!(COHORT_COMPUTATIONS.with(Cell::get), 1);
-        assert_eq!(STATISTIC_COLUMN_READS.with(Cell::get), 1);
-
-        // Adding a column ranks it once; later windows reuse it.
-        for offset in [3, 0, 6] {
-            search_moneyball_players(
+        let role = moneyball_role_field();
+        let shape = MoneyballShape::new("role sort", &role, SortDir::Desc, &[&role]);
+        let with_column =
+            MoneyballShape::new("role sort", &role, SortDir::Desc, &[&role, "moneyball.xg"]);
+        let window = |shape: &MoneyballShape, offset: usize| {
+            search_players(
                 &db,
-                &cohorts,
+                &orders,
                 &ComparisonGroupsCache::default(),
                 &registry,
                 None,
-                with_column.request(offset, 3),
+                shape.request(offset, 3),
             )
-            .expect("window with another column");
+            .expect("window")
+        };
+        ORDER_COMPUTATIONS.with(|count| count.set(0));
+
+        window(&shape, 0);
+        window(&shape, 6);
+        let pages = [3, 0, 6].map(|offset| (offset, window(&with_column, offset)));
+        assert_eq!(ORDER_COMPUTATIONS.with(Cell::get), 1);
+        for (offset, page) in pages {
+            assert_eq!(
+                page,
+                search_players_uncached(
+                    &db.read().expect("reader"),
+                    with_column.request(offset, 3)
+                )
+                .expect("uncached page")
+            );
         }
-        assert_eq!(COHORT_COMPUTATIONS.with(Cell::get), 1);
-        assert_eq!(STATISTIC_COLUMN_READS.with(Cell::get), 2);
+        ORDER_COMPUTATIONS.with(|count| count.set(1));
 
         db.0.lock()
             .expect("lock writer")
             .execute(
-                "UPDATE player_moneyball_stats SET statistics_json = json_set(statistics_json, '$.goals', 99) WHERE player_uid = 4",
+                "UPDATE player_moneyball_stats SET minutes = 100 WHERE player_uid = 1",
                 [],
             )
-            .expect("change a statistic");
-        let fresh = search_moneyball_players(
-            &db,
-            &cohorts,
-            &ComparisonGroupsCache::default(),
-            &registry,
-            None,
-            shape.request(0, 3),
-        )
-        .expect("window after a write");
-        assert_eq!(COHORT_COMPUTATIONS.with(Cell::get), 2);
-        assert_eq!(fresh.players[0].uid, 4);
+            .expect("shorten a sample");
+        let fresh = window(&shape, 0);
+        assert_eq!(ORDER_COMPUTATIONS.with(Cell::get), 2);
         assert_eq!(
             fresh,
-            search_players_in_view(&db.read().expect("reader"), shape.request(0, 3))
+            search_players_uncached(&db.read().expect("reader"), shape.request(0, 3))
                 .expect("uncached page")
         );
     }
 
     #[test]
     fn a_newer_moneyball_query_supersedes_a_running_one_and_completes() {
-        use crate::features::search::moneyball_cohort::BEFORE_COHORT_QUERY;
         let (_temp_dir, db) = open_moneyball_equivalence_db();
-        let cohorts = MoneyballCohortCache::new(2);
+        let orders = PlayerOrderCache::new(2);
         let registry = TableRegistry::default();
         let role = moneyball_role_field();
         let older = MoneyballShape::new("role sort", &role, SortDir::Desc, &[&role]);
         let newer = || MoneyballShape::new("name", "name", SortDir::Asc, &[]);
-        let older_ticket = registry.arrive(
-            "moneyball-search",
-            &search_query_fingerprint(&older.request(0, 3)),
-        );
+        let older_ticket =
+            registry.arrive("search", &search_query_fingerprint(&older.request(0, 3)));
 
         let (sender, receiver) = std::sync::mpsc::channel();
         {
-            let (db, cohorts, registry) = (db.clone(), cohorts.clone(), registry.clone());
-            BEFORE_COHORT_QUERY.with(|hook| {
+            let (db, orders, registry) = (db.clone(), orders.clone(), registry.clone());
+            BEFORE_ORDER_QUERY.with(|hook| {
                 *hook.borrow_mut() = Some(Box::new(move || {
                     let newer = newer();
-                    let ticket = registry.arrive(
-                        "moneyball-search",
-                        &search_query_fingerprint(&newer.request(0, 3)),
-                    );
+                    let ticket =
+                        registry.arrive("search", &search_query_fingerprint(&newer.request(0, 3)));
                     sender
-                        .send(search_moneyball_players(
+                        .send(search_players(
                             &db,
-                            &cohorts,
+                            &orders,
                             &ComparisonGroupsCache::default(),
                             &registry,
                             Some(&ticket),
@@ -7569,9 +7653,9 @@ mod tests {
             });
         }
 
-        let superseded = search_moneyball_players(
+        let superseded = search_players(
             &db,
-            &cohorts,
+            &orders,
             &ComparisonGroupsCache::default(),
             &registry,
             Some(&older_ticket),
@@ -7584,7 +7668,7 @@ mod tests {
         let newer = newer();
         assert_eq!(
             receiver.recv().expect("newer page"),
-            search_players_in_view(&db.read().expect("reader"), newer.request(0, 3))
+            search_players_uncached(&db.read().expect("reader"), newer.request(0, 3))
         );
     }
 }

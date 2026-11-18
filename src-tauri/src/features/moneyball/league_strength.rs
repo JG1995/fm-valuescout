@@ -175,11 +175,6 @@ impl LeagueAdjustment {
             .map(|strengths| strengths.reference_division))
     }
 
-    /// Whether any score is moved.
-    pub(crate) fn applies(&self) -> bool {
-        self.0.is_some()
-    }
-
     /// The score points a player in `division` gains: negative in a league weaker than the
     /// reference, zero without an adjustment.
     pub(crate) fn shift(&self, division: Option<&str>) -> i16 {
