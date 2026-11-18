@@ -3874,7 +3874,7 @@ describe("search route", () => {
       ).toBeInTheDocument();
     });
 
-    it("applies a tactic slot's recruitment filters, ranked among the slot's two families", async () => {
+    it("applies a tactic slot's positions and recruitment filters, ranked among the slot's two families", async () => {
       const user = userEvent.setup();
       await resolveLoadDataIpcMock();
       const tactic = resolvePlannerTacticIpcMock();
@@ -3902,7 +3902,10 @@ describe("search route", () => {
         within(slots).getByRole("button", { name: /^AML\/ML slot: / }),
       );
 
+      // The slot only scores a player rated 12 or higher at both positions.
       const expected = [
+        { field: "pos.AML", op: "gte", value: 12 },
+        { field: "pos.ML", op: "gte", value: 12 },
         { field: "height", op: "gte", value: 180 },
         { field: "moneyball.progressive_passes", op: "pct_gte", value: 25 },
       ];
@@ -3925,6 +3928,11 @@ describe("search route", () => {
         within(comparison).getByRole("option", {
           name: "Wingers + Wide midfielders",
           selected: true,
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "Edit filter Position · AML suitability ≥ 12",
         }),
       ).toBeInTheDocument();
     });

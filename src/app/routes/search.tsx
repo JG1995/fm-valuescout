@@ -256,32 +256,48 @@ function tacticLaneLabels(
 }
 
 /**
- * Each tactic slot's recruitment filters as a ready-made filter set, ranking
- * percentiles among the slot's two position families as the Dashboard does.
+ * The lowest rating at a slot's position that lets the slot score a player.
+ * Mirrors `suitable_familiarity` in `src-tauri/src/features/planner/fit.rs`.
+ */
+const SLOT_POSITION_FAMILIARITY = 12;
+
+/**
+ * Each tactic slot's recruitment filters as a ready-made filter set, keeping
+ * the players its positions let it score and ranking percentiles among its two
+ * position families, as the Dashboard does.
  */
 function slotFilterPresets(
   tactic: PlannerTactic,
   laneLabels: ReadonlyMap<string, TacticLaneLabel>,
 ): SlotFilterPreset[] {
   return orderedTacticLanes(tactic.lanes).flatMap((lane) => {
-    const rules = lane.recruitmentFilters.flatMap(
+    const recruitmentRules = lane.recruitmentFilters.flatMap(
       (filter) => recruitmentFilterToRule(filter, createFilterRuleId()) ?? [],
     );
-    if (rules.length === 0) {
+    if (recruitmentRules.length === 0) {
       return [];
     }
-    const families = [
-      positionFamilyOf(basePosition(lane.ipPosition)),
-      positionFamilyOf(basePosition(lane.oopPosition)),
+    const positions = [
+      ...new Set([
+        basePosition(lane.ipPosition),
+        basePosition(lane.oopPosition),
+      ]),
     ];
-    const comparison =
-      families[0] === null || families[1] === null
-        ? "own"
-        : parseMoneyballComparison(
-            families[0] === families[1]
-              ? families[0]
-              : `${families[0]}+${families[1]}`,
-          );
+    const rules: FilterRule[] = [
+      ...positions.map(
+        (position): FilterRule => ({
+          id: createFilterRuleId(),
+          field: `pos.${position}`,
+          op: "gte",
+          value: { type: "integer", value: SLOT_POSITION_FAMILIARITY },
+        }),
+      ),
+      ...recruitmentRules,
+    ];
+    const families = positions.map(positionFamilyOf);
+    const comparison = families.includes(null)
+      ? "own"
+      : parseMoneyballComparison([...new Set(families)].join("+"));
     const label = laneLabels.get(lane.laneId);
     return [
       {
