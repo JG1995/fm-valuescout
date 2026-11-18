@@ -8,10 +8,7 @@ import {
   groupsForMetrics,
   type MetricPickerMetric,
 } from "@/components/ui/player-metric-picker";
-import {
-  MONEYBALL_TABLE_GROUPS,
-  SEARCH_TABLE_GROUPS,
-} from "@/features/search/utils/search-table-groups";
+import { SEARCH_TABLE_GROUPS } from "@/features/search/utils/search-table-groups";
 import { SQUAD_TABLE_GROUPS } from "@/features/squad/components/squad-overview-panel";
 import {
   STAFF_SHORTLIST_TABLE_GROUPS,
@@ -19,6 +16,7 @@ import {
 } from "@/features/staff/components/staff-search-results-panel";
 import { MONEYBALL_SEARCH_METRICS } from "@/utils/moneyball-search-metrics";
 import { PLAYER_METRICS } from "@/utils/player-metrics";
+import { SEARCH_METRICS } from "@/utils/search-metrics";
 
 type LayoutCase = {
   layout: string;
@@ -60,26 +58,33 @@ const CASES: LayoutCase[] = [
       { label: "Profile", span: 3 },
       { label: "Ability", span: 1 },
       { label: "Market", span: 1 },
-      { label: "Tactic Fit", span: 1 },
+      { label: "Tactic", span: 1 },
     ],
   },
   {
-    layout: "Moneyball",
-    input: MONEYBALL_TABLE_GROUPS,
+    layout: "Search with season fields",
+    input: SEARCH_TABLE_GROUPS,
     columns: [
       { id: "age" },
-      { id: "height" },
+      { id: "attr.Pace" },
       { id: "value" },
+      { id: "role.goalkeeper_ip" },
+      { id: "club_dna" },
       { id: "moneyball.starts" },
       { id: "moneyball.average_rating" },
       { id: "moneyball_role.amc_attacking_midfielder_ip" },
+      { id: "tactic_current.goalkeeper" },
+      { id: "tactic_moneyball.goalkeeper" },
     ],
     expected: [
-      { label: "Profile", span: 2 },
+      { label: "Profile", span: 1 },
+      { label: "Ability", span: 1 },
       { label: "Market", span: 1 },
+      { label: "Role Scores", span: 2 },
       { label: "Playing Time", span: 1 },
       { label: "Performance", span: 1 },
-      { label: "Role Fit", span: 1 },
+      { label: "Moneyball Scores", span: 1 },
+      { label: "Tactic", span: 2 },
     ],
   },
   {
@@ -152,35 +157,37 @@ describe("one field grouping across pickers, Columns, and headers", () => {
     ]);
   });
 
-  it("files Position under Identity and Profile in both views", () => {
-    const views: [readonly MetricPickerMetric[], TableGroupInput][] = [
-      [PLAYER_METRICS, SEARCH_TABLE_GROUPS],
-      [MONEYBALL_SEARCH_METRICS, MONEYBALL_TABLE_GROUPS],
-    ];
-    for (const [metrics, input] of views) {
-      const identity = groupsForMetrics(metrics, "position", input).find(
-        (group) => group.metrics.some((metric) => metric.id === "position"),
-      );
-      expect(identity?.label).toBe("Identity");
-      expect(input.groupForColumn("position")).toBe("profile");
-    }
+  it("files Position under Identity and Profile", () => {
+    const identity = groupsForMetrics(
+      SEARCH_METRICS as readonly MetricPickerMetric[],
+      "position",
+      SEARCH_TABLE_GROUPS,
+    ).find((group) => group.metrics.some((metric) => metric.id === "position"));
+    expect(identity?.label).toBe("Identity");
+    expect(SEARCH_TABLE_GROUPS.groupForColumn("position")).toBe("profile");
   });
 
-  it("names Moneyball playing-time fields like their table group", () => {
+  it("lists season fields after the player fields, named like their table groups", () => {
     const labels = groupsForMetrics(
-      MONEYBALL_SEARCH_METRICS,
+      SEARCH_METRICS as readonly MetricPickerMetric[],
       "",
-      MONEYBALL_TABLE_GROUPS,
+      SEARCH_TABLE_GROUPS,
     ).map((group) => group.label);
+    const playingTime = labels.indexOf("Playing time");
 
-    expect(labels.slice(0, 4)).toEqual([
-      "Identity",
-      "Ability and reputation",
-      "Club and value",
-      "Playing time",
-    ]);
-    expect(MONEYBALL_TABLE_GROUPS.groupForColumn("ca")).toBe("ability");
-    expect(MONEYBALL_TABLE_GROUPS.groupForColumn("wage")).toBe("market");
+    expect(playingTime).toBeGreaterThan(labels.indexOf("Club and contract"));
+    expect(
+      labels.findIndex((label) => label.startsWith("Moneyball Scores ·")),
+    ).toBeGreaterThan(playingTime);
+    for (const metric of MONEYBALL_SEARCH_METRICS) {
+      expect(SEARCH_TABLE_GROUPS.groupForColumn(metric.id)).toBe(
+        metric.context
+          ? "playing-time"
+          : metric.role
+            ? "moneyball-scores"
+            : "performance",
+      );
+    }
   });
 
   it("inserts added columns at the end of their group instead of the far right", () => {

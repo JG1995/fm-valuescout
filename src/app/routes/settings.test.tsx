@@ -402,7 +402,7 @@ describe("Settings", () => {
     expect(control).toHaveValue("general");
     expect(
       screen.getByText(
-        "Used by Player Search and Player Profile when their URL does not specify a view.",
+        "Used by the Player Profile and the Dashboard when their URL does not specify a view.",
       ),
     ).toBeInTheDocument();
 

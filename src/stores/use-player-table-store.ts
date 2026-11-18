@@ -5,15 +5,12 @@ import {
   type TableGroupInput,
 } from "@/components/player-table/table-groups";
 import {
-  DEFAULT_MONEYBALL_TABLE_COLUMN_IDS,
-  getMoneyballSearchMetric,
-} from "@/utils/moneyball-search-metrics";
-import {
   DEFAULT_PLAYER_TABLE_COLUMN_IDS,
   getPlayerMetric,
   PLAYER_TABLE_MAX_COLUMN_WIDTH,
   PLAYER_TABLE_MIN_COLUMN_WIDTH,
 } from "@/utils/player-metrics";
+import { getSearchMetric } from "@/utils/search-metrics";
 import { DEFAULT_STAFF_TABLE_COLUMN_IDS } from "@/utils/staff-table-layout";
 import {
   isSuggestedTrainingColumnId,
@@ -43,7 +40,8 @@ const DEFAULT_STAFF_SHORTLIST_COLUMN_IDS = [
 export const PLAYER_TABLE_LAYOUT_STORAGE_KEY =
   "fm-valuescout-player-table-layouts";
 
-const PLAYER_TABLE_LAYOUT_VERSION = 8;
+/** v9 dropped the separate Moneyball Search layout when Search merged. */
+const PLAYER_TABLE_LAYOUT_VERSION = 9;
 
 export const IDENTITY_COLUMN_MIN_WIDTH = 240;
 export const IDENTITY_COLUMN_DEFAULT_WIDTH = 280;
@@ -82,7 +80,6 @@ export const DEFAULT_SQUAD_TABLE_COLUMN_IDS = [
 
 export type PlayerTableId =
   | "search"
-  | "moneyball-search"
   | "squad"
   | "staff-search"
   | "my-staff"
@@ -144,16 +141,10 @@ function isAllowedV7ColumnId(table: PlayerTableId, id: string): boolean {
     return table === "squad";
   }
   if (isValidTacticColumnId(id)) {
-    return table === "search" || table === "moneyball-search";
+    return table === "search";
   }
   if (isTacticColumnId(id)) {
     return false;
-  }
-  if (table === "moneyball-search") {
-    return (
-      getMoneyballSearchMetric(id)?.sortable === true ||
-      ["name", "age", "nationality", "club", "division", "value"].includes(id)
-    );
   }
   if (table === "search" || table === "squad") {
     return getPlayerMetric(id)?.sortable === true;
@@ -168,18 +159,15 @@ function isAllowedColumnId(table: PlayerTableId, id: string): boolean {
   if (isSuggestedTrainingColumnId(id)) {
     return table === "squad";
   }
-  // Moneyball layouts lose Potential tactic columns and General layouts never
-  // keep Custom ones; `merge` sanitizes every load through this check.
+  // `merge` sanitizes every load through this check, so a column the table no
+  // longer offers, such as an old Custom tactic column, is dropped.
   if (isTacticColumnId(id)) {
     return isValidTacticColumnIdForTable(id, table);
   }
-  if (table === "moneyball-search") {
-    return (
-      getMoneyballSearchMetric(id)?.sortable === true ||
-      ["name", "age", "nationality", "club", "division", "value"].includes(id)
-    );
+  if (table === "search") {
+    return getSearchMetric(id)?.sortable === true;
   }
-  if (table === "search" || table === "squad") {
+  if (table === "squad") {
     return getPlayerMetric(id)?.sortable === true;
   }
   return id.length > 0;
@@ -192,19 +180,6 @@ function withoutDuplicateIdentityColumns(columnIds: readonly string[]) {
 }
 
 function defaultColumnIds(table: PlayerTableId): string[] {
-  if (table === "moneyball-search") {
-    return [
-      "age",
-      "nationality",
-      "height",
-      "moneyball.minutes",
-      "moneyball.average_rating",
-      "moneyball.goals_per_90",
-      "moneyball.assists_per_90",
-      "moneyball.xg_per_90",
-      "moneyball.xa_per_90",
-    ];
-  }
   if (table === "squad") {
     return [
       "age",
@@ -231,18 +206,6 @@ function defaultColumnIds(table: PlayerTableId): string[] {
  * arrays; fresh defaults and explicit resets use `defaultColumnIds`.
  */
 function historicalV8DefaultColumnIds(table: PlayerTableId): string[] {
-  if (table === "moneyball-search") {
-    return [
-      "age",
-      "nationality",
-      "moneyball.minutes",
-      "moneyball.average_rating",
-      "moneyball.goals_per_90",
-      "moneyball.assists_per_90",
-      "moneyball.xg_per_90",
-      "moneyball.xa_per_90",
-    ];
-  }
   if (table === "squad") {
     return [
       "age",
@@ -261,9 +224,6 @@ function historicalV8DefaultColumnIds(table: PlayerTableId): string[] {
 
 /** Resulting v7 defaults per table, used only for default-like detection. */
 function v7DefaultColumnIds(table: PlayerTableId): string[] {
-  if (table === "moneyball-search") {
-    return withoutDuplicateIdentityColumns(DEFAULT_MONEYBALL_TABLE_COLUMN_IDS);
-  }
   if (table === "squad") {
     return [...DEFAULT_SQUAD_TABLE_COLUMN_IDS];
   }
@@ -287,7 +247,6 @@ function defaultLayout(table: PlayerTableId): PlayerTableLayout {
 export function defaultPlayerTableLayouts(): PlayerTableLayouts {
   return {
     search: defaultLayout("search"),
-    "moneyball-search": defaultLayout("moneyball-search"),
     squad: defaultLayout("squad"),
     "staff-search": defaultLayout("staff-search"),
     "my-staff": defaultLayout("my-staff"),
@@ -345,10 +304,6 @@ function sanitizePersistedState(value: unknown): PersistedPlayerTableState {
   return {
     layouts: {
       search: sanitizeLayout(layouts.search, "search"),
-      "moneyball-search": sanitizeLayout(
-        layouts["moneyball-search"],
-        "moneyball-search",
-      ),
       squad: sanitizeLayout(layouts.squad, "squad"),
       "staff-search": sanitizeLayout(layouts["staff-search"], "staff-search"),
       "my-staff": sanitizeLayout(layouts["my-staff"], "my-staff"),
@@ -381,7 +336,7 @@ function sanitizeV7Layout(
     : [];
   const useNameFallback =
     identityOnlyFallback &&
-    (table === "search" || table === "moneyball-search" || table === "squad") &&
+    (table === "search" || table === "squad") &&
     columnIds.length > 0 &&
     withoutDuplicateIdentityColumns(columnIds).length === 0;
   const visibleColumnIds = useNameFallback
@@ -443,11 +398,7 @@ function migrateTableToV8(
   // (2) Run the pre-v8 upgrades unchanged to produce a v7-equivalent layout.
   let v7 = sanitizeV7Layout(value, table, version < 5);
   if (version < 5) {
-    if (
-      table === "search" ||
-      table === "moneyball-search" ||
-      table === "squad"
-    ) {
+    if (table === "search" || table === "squad") {
       v7 = removeDuplicateIdentityColumns(v7);
     }
   }
@@ -511,7 +462,9 @@ function migratePersistedState(
   persistedState: unknown,
   version: number,
 ): PersistedPlayerTableState {
-  if (version >= PLAYER_TABLE_LAYOUT_VERSION) {
+  // v9 only drops the Moneyball Search layout, which sanitizing leaves out;
+  // Search keeps its own layout.
+  if (version >= 8) {
     return sanitizePersistedState(persistedState);
   }
   const record = isRecord(persistedState) ? persistedState : {};
@@ -519,11 +472,6 @@ function migratePersistedState(
   return {
     layouts: {
       search: migrateTableToV8(layouts.search, "search", version),
-      "moneyball-search": migrateTableToV8(
-        layouts["moneyball-search"],
-        "moneyball-search",
-        version,
-      ),
       squad: migrateTableToV8(layouts.squad, "squad", version),
       "staff-search": migrateTableToV8(
         layouts["staff-search"],

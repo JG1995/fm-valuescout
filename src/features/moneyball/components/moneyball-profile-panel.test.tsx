@@ -203,7 +203,7 @@ describe("MoneyballProfilePanel", () => {
     expect(
       screen.getByText(/has no Moneyball stats in the current snapshot/i),
     ).toHaveTextContent(
-      "Moneyball stats come from the FM save file linked in Settings. Use Refresh stats in Moneyball Search to read the latest save.",
+      "Moneyball stats come from the FM save file linked in Settings. Use Refresh stats in Player Search to read the latest save.",
     );
 
     rerender(
@@ -215,7 +215,7 @@ describe("MoneyballProfilePanel", () => {
     expect(
       screen.getByText(/before percentile scores were available/i),
     ).toHaveTextContent(
-      "Use Refresh stats in Moneyball Search to read the linked FM save file again.",
+      "Use Refresh stats in Player Search to read the linked FM save file again.",
     );
   });
 });

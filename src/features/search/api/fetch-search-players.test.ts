@@ -23,6 +23,7 @@ describe("search player fetch", () => {
   it("passes a table ID only when one is given", async () => {
     await fetchSearchPlayers();
     expect(lastArgs()).not.toHaveProperty("tableId");
+    expect(lastArgs()).not.toHaveProperty("searchView");
 
     await fetchSearchPlayers(
       0,
@@ -32,7 +33,6 @@ describe("search player fetch", () => {
       [],
       "and",
       [],
-      "general",
       "own",
       null,
       "search",
@@ -49,7 +49,6 @@ describe("search player fetch", () => {
       [],
       "and",
       [],
-      "moneyball",
       "own",
       null,
       context,
@@ -62,15 +61,14 @@ describe("search player fetch", () => {
       [],
       "and",
       [],
-      "moneyball",
       "own",
       null,
       context,
-      "moneyball-search",
+      "search",
     );
     expect(named.queryKey).toEqual(plain.queryKey);
 
     await named.queryFn?.({} as never);
-    expect(lastArgs()).toMatchObject({ tableId: "moneyball-search" });
+    expect(lastArgs()).toMatchObject({ tableId: "search" });
   });
 });

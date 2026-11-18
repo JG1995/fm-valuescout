@@ -35,7 +35,7 @@ test.describe("application smoke", () => {
         );
         const nav = page.getByRole("navigation", { name: "Primary" });
         await expect(nav).toHaveCSS("height", "48px");
-        await expect(nav.getByRole("link")).toHaveCount(10);
+        await expect(nav.getByRole("link")).toHaveCount(9);
         for (const link of await nav.getByRole("link").all()) {
           const box = await link.boundingBox();
           expect(box).not.toBeNull();
@@ -862,7 +862,6 @@ test.describe("application smoke", () => {
     for (const name of [
       "Dashboard",
       "Search",
-      "Moneyball",
       "Staff Search",
       "My Staff",
       "Squad",
@@ -873,6 +872,7 @@ test.describe("application smoke", () => {
     ] as const) {
       await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
     }
+    await expect(nav.getByRole("link", { name: "Moneyball" })).toHaveCount(0);
     for (const caption of ["Players", "Staff", "Club"]) {
       await expect(nav.getByText(caption, { exact: true })).toHaveCount(0);
     }
@@ -2580,7 +2580,7 @@ test.describe("application smoke", () => {
     await expect(menu).toHaveCount(0);
   });
 
-  test("Moneyball Search and Squad offer no Moneyball upload while Squad keeps Youth Academy", async ({
+  test("Search and Squad offer no Moneyball upload while Squad keeps Youth Academy", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
@@ -2588,7 +2588,7 @@ test.describe("application smoke", () => {
       squadOverview: true,
       csvImportFormat: "youthTracker",
     });
-    await page.goto("/search?view=moneyball");
+    await page.goto("/search");
 
     const main = page.getByRole("main");
     await expect(
@@ -2620,7 +2620,7 @@ test.describe("application smoke", () => {
     );
   });
 
-  test("Moneyball Search refreshes save stats and both views show their as-of date", async ({
+  test("Search refreshes save stats and shows their as-of date once a season field is in use", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
@@ -2633,10 +2633,24 @@ test.describe("application smoke", () => {
     await page.goto("/players/42?section=moneyball");
     await expect(main.getByText("Stats as of 30th July 2026")).toBeVisible();
 
-    await page.goto("/search?view=moneyball");
+    // Without a season column, rule, or sort, the season controls stay out of
+    // the toolbar while Refresh stats stays in the page header.
+    await page.goto("/search");
     const toolbar = main.getByRole("toolbar", {
       name: "Player results toolbar",
     });
+    await expect(
+      toolbar.getByRole("button", { name: "Columns" }),
+    ).toBeVisible();
+    await expect(toolbar.getByText(/Stats as of/)).toHaveCount(0);
+    await expect(
+      toolbar.getByRole("combobox", { name: "Percentiles vs" }),
+    ).toHaveCount(0);
+    await expect(
+      main.getByRole("button", { name: "Refresh stats" }),
+    ).toBeVisible();
+
+    await page.goto("/search?sort=moneyball.average_rating");
     await expect(toolbar.getByText("Stats as of 30th July 2026")).toBeVisible();
 
     await main.getByRole("button", { name: "Refresh stats" }).click();
@@ -2658,18 +2672,25 @@ test.describe("application smoke", () => {
       plannerSnapshot: true,
       playerProfile: true,
     });
-    await page.goto("/search?view=moneyball");
+    await page.goto("/search?sort=moneyball.average_rating");
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "Player search results" });
     const scores = main.getByRole("group", { name: "Scores" });
     const leagueLine = page.getByText(
       "League strength: role scores not moved (Premier Division is the reference league)",
     );
+    const openMoneyballProfile = async () => {
+      await table.getByText("Moneyball player 001").click();
+      await page.getByRole("tab", { name: "Moneyball" }).click();
+      await expect(
+        page.getByRole("heading", { name: "Moneyball", exact: true }),
+      ).toBeVisible();
+    };
 
     await expect(
       scores.getByRole("button", { name: "League-adjusted" }),
     ).toHaveAttribute("aria-pressed", "true");
-    await table.getByText("Moneyball player 001").click();
+    await openMoneyballProfile();
     await expect(leagueLine).toBeVisible();
 
     await page.goBack();
@@ -2678,14 +2699,11 @@ test.describe("application smoke", () => {
       "aria-pressed",
       "true",
     );
-    await table.getByText("Moneyball player 001").click();
-    await expect(
-      page.getByRole("heading", { name: "Moneyball", exact: true }),
-    ).toBeVisible();
+    await openMoneyballProfile();
     await expect(leagueLine).toHaveCount(0);
   });
 
-  test("Moneyball restricts rows to the selected shortlist and carries it to General", async ({
+  test("Search restricts Moneyball rows to the selected shortlist and keeps it across navigation", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
@@ -2693,7 +2711,7 @@ test.describe("application smoke", () => {
       plannerSnapshot: true,
       shortlistSearch: true,
     });
-    await page.goto("/search?view=moneyball");
+    await page.goto("/search");
 
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "Player search results" });
@@ -2714,27 +2732,55 @@ test.describe("application smoke", () => {
     await expect(table.getByText("Moneyball player 002")).toHaveCount(0);
     await expect(table.locator("tbody tr[data-index]")).toHaveCount(2);
 
-    await page
-      .getByTestId("app-nav-bar")
-      .getByRole("link", { name: "Search", exact: true })
-      .click();
-    await expect(page).toHaveURL(/\/search\?.*view=general/);
+    const nav = page.getByTestId("app-nav-bar");
+    await nav.getByRole("link", { name: "Settings", exact: true }).click();
+    await expect(
+      main.getByRole("heading", { level: 1, name: "Settings" }),
+    ).toBeVisible();
+    await nav.getByRole("link", { name: "Search", exact: true }).click();
     await expect(page).not.toHaveURL(/shortlist/);
     await expect(page.getByRole("combobox", { name: "Shortlist" })).toHaveValue(
       "2",
     );
+    await expect(table.locator("tbody tr[data-index]")).toHaveCount(2);
   });
 
-  test("Moneyball Search exposes role scores and restores its analysis state", async ({
+  test("Search exposes Moneyball Scores beside player fields and restores its analysis state", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
+    await page.addInitScript(() => {
+      const browser = globalThis as unknown as {
+        localStorage: { setItem: (key: string, value: string) => void };
+      };
+      browser.localStorage.setItem(
+        "fm-valuescout-player-table-layouts",
+        JSON.stringify({
+          state: {
+            layouts: {
+              search: {
+                columnIds: [
+                  "age",
+                  "nationality",
+                  "ca",
+                  "moneyball.minutes",
+                  "moneyball.average_rating",
+                ],
+                widths: {},
+                identityWidth: 280,
+              },
+            },
+          },
+          version: 9,
+        }),
+      );
+    });
     await stubTauriIpc(page, {
       moneyballSearch: true,
       plannerSnapshot: true,
       playerProfile: true,
     });
-    await page.goto("/search?view=moneyball");
+    await page.goto("/search");
 
     const main = page.getByRole("main");
     const scroller = main.getByTestId("search-results-scroller");
@@ -2742,6 +2788,7 @@ test.describe("application smoke", () => {
       name: "Player search results",
     });
     await expect(table.getByText("Moneyball player 001")).toBeVisible();
+    await expect(table.getByRole("columnheader", { name: "CA" })).toBeVisible();
     await expect(
       table.getByRole("img", { name: /average rating: 50/i }),
     ).toBeVisible();
@@ -2749,6 +2796,7 @@ test.describe("application smoke", () => {
       101,
     );
 
+    const roleName = "Moneyball Score · Wing-Back (IP · WBR/WBL)";
     const averageRatingHeader = table.getByRole("columnheader", {
       name: "Average Rating",
     });
@@ -2761,27 +2809,17 @@ test.describe("application smoke", () => {
     await columnDialog
       .getByRole("button", { name: "Column: Choose a metric" })
       .click();
-    const columnSearch = columnDialog.getByRole("combobox", {
-      name: "Search columns",
-    });
-    await columnSearch.fill("wing-back");
-    await expect(
-      columnDialog.getByRole("option", {
-        name: "Wing-Back (IP · WBR/WBL)",
-        exact: true,
-      }),
-    ).toBeVisible();
-    await columnSearch.press("ArrowDown");
-    await columnSearch.press("ArrowDown");
-    await columnSearch.press("ArrowDown");
-    await columnSearch.press("Enter");
-    const roleHeader = table.getByRole("columnheader", {
-      name: "Wing-Back (IP · WBR/WBL)",
-    });
+    await columnDialog
+      .getByRole("combobox", { name: "Search columns" })
+      .fill("wing-back (ip · wbr");
+    await columnDialog
+      .getByRole("option", { name: roleName, exact: true })
+      .click();
+    const roleHeader = table.getByRole("columnheader", { name: roleName });
     await expect(roleHeader).toBeVisible();
     await expect(
       table.getByRole("img", {
-        name: /Moneyball role · Wing-Back \(IP · WBR\/WBL\): 0, Weak/,
+        name: /Moneyball Score · Wing-Back \(IP · WBR\/WBL\): 0, Weak/,
       }),
     ).toBeVisible();
 
@@ -2801,20 +2839,10 @@ test.describe("application smoke", () => {
 
     await main.getByRole("button", { name: "Add filter" }).click();
     const dialog = page.getByRole("form", { name: "Add filter" });
-    const fieldSearch = dialog.getByRole("combobox", {
-      name: "Search fields",
-    });
-    await fieldSearch.fill("wing-back");
-    await expect(
-      dialog.getByRole("option", {
-        name: "Wing-Back (IP · WBR/WBL)",
-        exact: true,
-      }),
-    ).toBeVisible();
-    await fieldSearch.press("ArrowDown");
-    await fieldSearch.press("ArrowDown");
-    await fieldSearch.press("ArrowDown");
-    await fieldSearch.press("Enter");
+    await dialog
+      .getByRole("combobox", { name: "Search fields" })
+      .fill("wing-back (ip · wbr");
+    await dialog.getByRole("option", { name: roleName, exact: true }).click();
     await expect(
       dialog.getByText(/Scored among the role's position family/),
     ).toBeVisible();
@@ -2826,19 +2854,16 @@ test.describe("application smoke", () => {
     await expect(table.getByText("Moneyball player 001")).not.toBeVisible();
     await expect(table.getByText("Moneyball player 027")).toBeVisible();
 
-    await roleHeader
-      .getByRole("button", {
-        name: "Wing-Back (IP · WBR/WBL)",
-      })
-      .click();
+    await roleHeader.getByRole("button", { name: roleName }).click();
     await expect(roleHeader).toHaveAttribute("aria-sort", "descending");
     await expect(table.getByText("Moneyball player 055")).toBeVisible();
 
     await table.getByText("Moneyball player 055").click();
-    await expect(page).toHaveURL(/\/players\/55\?view=moneyball$/);
+    await expect(page).toHaveURL(/\/players\/55$/);
     await expect(
       page.getByRole("heading", { name: "Potential Scout" }),
     ).toBeVisible();
+    await page.getByRole("tab", { name: "Moneyball" }).click();
     await expect(
       page.getByRole("heading", { name: "Moneyball", exact: true }),
     ).toBeVisible();
@@ -2883,21 +2908,19 @@ test.describe("application smoke", () => {
     ).toBeVisible();
 
     await page.goBack();
-    await expect(page).toHaveURL(/\/search\?.*view=moneyball/);
+    await expect(page).toHaveURL(/\/search\?.*comparison=central_defender/);
     await expect(
       main.getByRole("combobox", { name: "Percentiles vs" }),
     ).toHaveValue("central_defender");
     await expect(
-      main.getByRole("columnheader", {
-        name: "Wing-Back (IP · WBR/WBL)",
-      }),
+      main.getByRole("columnheader", { name: roleName }),
     ).toBeVisible();
     await expect(
       main.getByRole("button", { name: /Remove filter/i }),
     ).toBeVisible();
   });
 
-  test("Moneyball default applies to silent routes while explicit General stays in history", async ({
+  test("the Moneyball default still opens the profile's Moneyball section", async ({
     page,
   }) => {
     await page.addInitScript({
@@ -2918,26 +2941,19 @@ test.describe("application smoke", () => {
 
     await page.goto("/search");
     const nav = page.getByTestId("app-nav-bar");
-    const searchLink = nav.getByRole("link", { name: "Search", exact: true });
-    const moneyballLink = nav.getByRole("link", { name: "Moneyball" });
-    await expect(moneyballLink).toHaveAttribute("aria-current", "page");
+    await expect(
+      nav.getByRole("link", { name: "Search", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(
+      page
+        .getByRole("main")
+        .getByRole("heading", { level: 1, name: "Player Search" }),
+    ).toBeVisible();
 
     await page.goto("/players/1");
     await expect(
       page.getByRole("tab", { name: "Moneyball", selected: true }),
     ).toBeVisible();
-
-    await page.goto("/search");
-    await searchLink.click();
-    await expect(page).toHaveURL(/\/search\?.*view=general/);
-    await expect(searchLink).toHaveAttribute("aria-current", "page");
-
-    await page.reload();
-    await expect(searchLink).toHaveAttribute("aria-current", "page");
-
-    await page.goBack();
-    await expect(page).not.toHaveURL(/view=/);
-    await expect(moneyballLink).toHaveAttribute("aria-current", "page");
   });
 
   test("configured Squad confirms and reports a closed CA boost", async ({
@@ -6245,7 +6261,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
-  test("Search shows General and Moneyball views in navigation with legacy shortlist normalization", async ({
+  test("Search has one navigation entry and normalizes legacy view links", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
@@ -6253,25 +6269,22 @@ test.describe("application smoke", () => {
 
     const nav = page.getByTestId("app-nav-bar");
     const searchLink = nav.getByRole("link", { name: "Search", exact: true });
-    const moneyballLink = nav.getByRole("link", { name: "Moneyball" });
 
-    await expect(searchLink).toBeVisible();
-    await expect(moneyballLink).toBeVisible();
     await expect(searchLink).toHaveAttribute("aria-current", "page");
+    await expect(nav.getByRole("link", { name: "Moneyball" })).toHaveCount(0);
     await expect(
       page.getByRole("tablist", { name: "Search view" }),
     ).toHaveCount(0);
 
-    await moneyballLink.click();
-    await expect(page).toHaveURL(/\/search\?.*view=moneyball/);
-    await expect(moneyballLink).toHaveAttribute("aria-current", "page");
-    await expect(
-      page.getByRole("tablist", { name: "Search view" }),
-    ).toHaveCount(0);
-
-    await searchLink.click();
-    await expect(page).toHaveURL(/\/search\?.*view=general/);
+    // An old Moneyball link opens the one Search page at a clean URL.
+    await page.goto("/search?view=moneyball");
     await expect(searchLink).toHaveAttribute("aria-current", "page");
+    await expect(page).not.toHaveURL(/view=/);
+    await expect(
+      page
+        .getByRole("main")
+        .getByRole("heading", { level: 1, name: "Player Search" }),
+    ).toBeVisible();
 
     // A save without shortlists offers no shortlist to choose.
     const shortlist = page.getByRole("combobox", { name: "Shortlist" });
@@ -6279,13 +6292,11 @@ test.describe("application smoke", () => {
 
     await page.goto("/search?view=shortlist");
     await expect(searchLink).toHaveAttribute("aria-current", "page");
-    await expect(page).toHaveURL(/\/search\?.*view=general/);
+    await expect(page).toHaveURL(/\/search/);
+    await expect(page).not.toHaveURL(/view=/);
     await expect(page).not.toHaveURL(/shortlist/);
     await expect(shortlist).toHaveCount(0);
     await expect(page.getByText("No shortlist yet")).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Go to Moneyball" }),
-    ).toHaveCount(0);
   });
 
   test("Shortlist selection filters General rows with virtual paging and desktop layout", async ({
@@ -6318,7 +6329,7 @@ test.describe("application smoke", () => {
     await expect(table.getByText("No shortlist yet")).toHaveCount(0);
 
     await table.getByText("Shortlist player 001").click();
-    await expect(page).toHaveURL(/\/players\/1001\?view=general/);
+    await expect(page).toHaveURL(/\/players\/1001$/);
     await expect(
       page.getByRole("heading", { name: "Shortlist player 001" }),
     ).toHaveCount(0);

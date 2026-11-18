@@ -23,21 +23,18 @@ import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
+import { useSavedFiltersStore } from "@/features/search/stores/use-saved-filters-store";
 import type { PlayerSummary } from "@/features/search/types/player-summary";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { staffKeys } from "@/features/staff/api/staff-keys";
 import { routeTree } from "@/routeTree.gen";
-import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
   playerShortlistSelectionKey,
   usePlayerShortlistSelectionStore,
 } from "@/stores/use-player-shortlist-selection-store";
-import {
-  PLAYER_TABLE_LAYOUT_STORAGE_KEY,
-  usePlayerTableStore,
-} from "@/stores/use-player-table-store";
+import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { useSearchViewMemory } from "@/stores/use-search-view-memory";
 import {
   getLastRefreshSeasonStatsIpcArgs,
@@ -246,8 +243,8 @@ function retainedRow(table: HTMLElement): HTMLElement {
 
 describe("search route", () => {
   beforeEach(() => {
-    useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
-    useSearchViewMemory.setState({ views: {} });
+    useSearchViewMemory.setState({ memory: null });
+    useSavedFiltersStore.setState({ savedFilters: [] });
   });
 
   it("uses protocol URLs for visible exact-UID graphics and preserves rows", async () => {
@@ -373,10 +370,13 @@ describe("search route", () => {
       screen.getByRole("button", { name: "Add filter" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+      screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
     ).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Add Tactic (Potential)" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Add Tactic (Moneyball Score)" }),
     ).toBeDisabled();
     expect(screen.getByText("No snapshot loaded: use Load Data")).toBeVisible();
     expect(
@@ -427,25 +427,25 @@ describe("search route", () => {
     renderSearchRoute();
 
     await screen.findByRole("button", {
-      name: "Add Tactic (Current)",
+      name: "Add Tactic (Role Score)",
     });
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Add Tactic (Current)" }),
+        screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
       ).toBeEnabled(),
     );
     const orderedLaneIds = ORDERED_TACTIC_LANE_IDS;
     const nonTacticIds = ["age", "nationality", "height", "ca", "pa", "value"];
 
     await user.click(
-      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+      screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
     );
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
       ...nonTacticIds,
       ...orderedLaneIds.map((laneId) => `tactic_current.${laneId}`),
     ]);
     expect(
-      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+      screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
     ).toHaveAttribute("aria-pressed", "true");
 
     await user.click(
@@ -460,14 +460,14 @@ describe("search route", () => {
     ]);
 
     await user.click(
-      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+      screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
     );
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
       ...nonTacticIds,
       ...orderedLaneIds.map((laneId) => `tactic_potential.${laneId}`),
     ]);
     expect(
-      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+      screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
     ).toHaveAttribute("aria-pressed", "false");
     expect(
       screen.getByRole("button", { name: "Add Tactic (Potential)" }),
@@ -480,15 +480,15 @@ describe("search route", () => {
     renderSearchRoute();
 
     await screen.findByRole("button", {
-      name: "Add Tactic (Current)",
+      name: "Add Tactic (Role Score)",
     });
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Add Tactic (Current)" }),
+        screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
       ).toBeEnabled(),
     );
     await user.click(
-      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+      screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
     );
 
     const full = "GK (Goalkeeper) / GK (Line-Holding Keeper)";
@@ -609,7 +609,7 @@ describe("search route", () => {
       usePlayerTableStore.getState().layouts.search.widths[currentIds[0]],
     ).toBeUndefined();
     expect(
-      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+      screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
     ).toHaveAttribute("aria-pressed", "false");
     expect(
       screen.getByRole("button", { name: "Add Tactic (Potential)" }),
@@ -646,7 +646,7 @@ describe("search route", () => {
       name: "Player search results",
     });
     expect(
-      screen.getByRole("button", { name: "Add Tactic (Current)" }),
+      screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
     ).toBeDisabled();
     fireEvent.contextMenu(
       within(table).getAllByRole("columnheader", { name: "goalkeeper" })[0],
@@ -669,51 +669,37 @@ describe("search route", () => {
     ).toBe(false);
   });
 
-  it.each([
-    {
-      tableId: "search",
-      entry: (sort: string) => `/search?sort=${sort}&dir=desc`,
-    },
-    {
-      tableId: "moneyball-search",
-      entry: (sort: string) => `/search?view=moneyball&sort=${sort}&dir=desc`,
-    },
-  ] as const)(
-    "preserves identity-only after tactic-only leaf removal ($tableId)",
-    async ({ tableId, entry }) => {
-      const user = userEvent.setup();
-      await resolveLoadDataIpcMock();
-      const currentIds = ORDERED_TACTIC_LANE_IDS.map(
-        (laneId) => `tactic_current.${laneId}`,
-      );
-      usePlayerTableStore.getState().replaceLayout(tableId, currentIds);
-      renderSearchRoute(entry(currentIds[0]));
+  it("preserves identity-only after tactic-only leaf removal", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const currentIds = ORDERED_TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_current.${laneId}`,
+    );
+    usePlayerTableStore.getState().replaceLayout("search", currentIds);
+    renderSearchRoute(`/search?sort=${currentIds[0]}&dir=desc`);
 
-      const table = await screen.findByRole("table", {
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const label = "GK (Goalkeeper) / GK (Line-Holding Keeper)";
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: label }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: `Remove ${label}` }));
+
+    // Identity-only is valid: the emptied tactic group normalizes away
+    // without rolling back to defaults.
+    await waitFor(() => {
+      expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual(
+        [],
+      );
+    });
+    expect(
+      await screen.findByRole("table", {
         name: "Player search results",
-      });
-      const label = "GK (Goalkeeper) / GK (Line-Holding Keeper)";
-      fireEvent.contextMenu(
-        within(table).getByRole("columnheader", { name: label }),
-      );
-      await user.click(
-        screen.getByRole("menuitem", { name: `Remove ${label}` }),
-      );
-
-      // Identity-only is valid: the emptied tactic group normalizes away
-      // without rolling back to defaults.
-      await waitFor(() => {
-        expect(
-          usePlayerTableStore.getState().layouts[tableId].columnIds,
-        ).toEqual([]);
-      });
-      expect(
-        await screen.findByRole("table", {
-          name: "Player search results",
-        }),
-      ).toBeInTheDocument();
-    },
-  );
+      }),
+    ).toBeInTheDocument();
+  });
 
   it("falls back from a tactic sort when its active group is toggled off", async () => {
     const user = userEvent.setup();
@@ -729,7 +715,7 @@ describe("search route", () => {
     );
 
     const currentToggle = await screen.findByRole("button", {
-      name: "Add Tactic (Current)",
+      name: "Add Tactic (Role Score)",
     });
     await waitFor(() => expect(currentToggle).toBeEnabled());
     await user.click(currentToggle);
@@ -745,49 +731,35 @@ describe("search route", () => {
     ]);
   });
 
-  it.each([
-    {
-      tableId: "search",
-      entry: (sort: string) => `/search?sort=${sort}&dir=desc`,
-      expectedSort: "ca",
-      toggleName: "Add Tactic (Current)",
-    },
-    {
-      tableId: "moneyball-search",
-      entry: (sort: string) => `/search?view=moneyball&sort=${sort}&dir=desc`,
-      expectedSort: "moneyball.average_rating",
-      toggleName: "Add Tactic (Roles)",
-    },
-  ] as const)(
-    "keeps identity-only when its tactic-only group is toggled off ($tableId)",
-    async ({ tableId, entry, expectedSort, toggleName }) => {
-      const user = userEvent.setup();
-      await resolveLoadDataIpcMock();
-      const currentIds = ORDERED_TACTIC_LANE_IDS.map(
-        (laneId) => `tactic_current.${laneId}`,
+  it("keeps identity-only when its tactic-only group is toggled off", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const currentIds = ORDERED_TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_current.${laneId}`,
+    );
+    usePlayerTableStore.getState().replaceLayout("search", currentIds);
+    const { router } = renderSearchRoute(
+      `/search?sort=${currentIds[0]}&dir=desc`,
+    );
+
+    const currentToggle = await screen.findByRole("button", {
+      name: "Add Tactic (Role Score)",
+    });
+    await waitFor(() => expect(currentToggle).toBeEnabled());
+    await user.click(currentToggle);
+
+    await waitFor(() => {
+      expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual(
+        [],
       );
-      usePlayerTableStore.getState().replaceLayout(tableId, currentIds);
-      const { router } = renderSearchRoute(entry(currentIds[0]));
-
-      const currentToggle = await screen.findByRole("button", {
-        name: toggleName,
+    });
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        sort: "ca",
+        dir: "desc",
       });
-      await waitFor(() => expect(currentToggle).toBeEnabled());
-      await user.click(currentToggle);
-
-      await waitFor(() => {
-        expect(
-          usePlayerTableStore.getState().layouts[tableId].columnIds,
-        ).toEqual([]);
-      });
-      await waitFor(() => {
-        expect(router.state.location.search).toMatchObject({
-          sort: expectedSort,
-          dir: "desc",
-        });
-      });
-    },
-  );
+    });
+  });
 
   it("refreshes tactic labels for a new save without replacing its table layout", async () => {
     const user = userEvent.setup();
@@ -843,34 +815,18 @@ describe("search route", () => {
     ).toBe(176);
   });
 
-  it("stores tactic toggles in the moneyball table layout without touching search", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    renderSearchRoute("/search?view=moneyball");
-
-    const toggle = await screen.findByRole("button", {
-      name: "Add Tactic (Roles)",
-    });
-    await waitFor(() => expect(toggle).toBeEnabled());
-    await user.click(toggle);
-
-    expect(
-      usePlayerTableStore.getState().layouts["moneyball-search"].columnIds,
-    ).toContain("tactic_current.goalkeeper");
-    expect(
-      usePlayerTableStore.getState().layouts.search.columnIds,
-    ).not.toContain("tactic_current.goalkeeper");
-  });
-
-  describe("Moneyball custom tactic columns", () => {
-    const rolesIds = ORDERED_TACTIC_LANE_IDS.map(
+  describe("Moneyball Score tactic columns", () => {
+    const roleScoreIds = ORDERED_TACTIC_LANE_IDS.map(
       (laneId) => `tactic_current.${laneId}`,
     );
-    const customIds = ORDERED_TACTIC_LANE_IDS.map(
-      (laneId) => `tactic_custom.${laneId}`,
+    const potentialIds = ORDERED_TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_potential.${laneId}`,
     );
-    const moneyballColumnIds = () =>
-      usePlayerTableStore.getState().layouts["moneyball-search"].columnIds;
+    const moneyballIds = ORDERED_TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_moneyball.${laneId}`,
+    );
+    const searchColumnIds = () =>
+      usePlayerTableStore.getState().layouts.search.columnIds;
 
     async function enabledToggle(name: string) {
       const toggle = await screen.findByRole("button", { name });
@@ -878,7 +834,8 @@ describe("search route", () => {
       return toggle;
     }
 
-    function storeTacticWithoutMetrics() {
+    it("offers Role Score, Potential, and Moneyball Score toggles, even without chosen metrics", async () => {
+      await resolveLoadDataIpcMock();
       const tactic = resolvePlannerTacticIpcMock();
       for (const lane of tactic.lanes) {
         lane.customMetricKeys = [];
@@ -887,147 +844,82 @@ describe("search route", () => {
         { saveId: 1, contextToken: "save-token-1" },
         tactic,
       );
-    }
+      renderSearchRoute();
 
-    it("offers Roles and Custom in place of Current and Potential", async () => {
-      await resolveLoadDataIpcMock();
-      renderSearchRoute("/search?view=moneyball");
-
-      await enabledToggle("Add Tactic (Roles)");
+      await enabledToggle("Add Tactic (Role Score)");
       expect(
-        screen.getByRole("button", { name: "Add Tactic (Custom)" }),
+        screen.getByRole("button", { name: "Add Tactic (Potential)" }),
+      ).toBeEnabled();
+      // A slot without chosen metrics scores its roles, so the group can
+      // always be added.
+      expect(
+        screen.getByRole("button", { name: "Add Tactic (Moneyball Score)" }),
       ).toBeEnabled();
       expect(
-        screen.queryByRole("button", { name: "Add Tactic (Current)" }),
+        screen.queryByRole("button", { name: /Custom|Roles\)/ }),
       ).toBeNull();
-      expect(screen.queryByRole("button", { name: /Potential/ })).toBeNull();
       expect(screen.queryByRole("link", { name: "Tactic editor" })).toBeNull();
     });
 
-    it("adds and removes all 11 Custom columns, interleaved after Roles", async () => {
+    it("interleaves each slot's Moneyball Score after its Role Score", async () => {
       const user = userEvent.setup();
       await resolveLoadDataIpcMock();
-      renderSearchRoute("/search?view=moneyball");
-      const nonTacticIds = moneyballColumnIds();
+      renderSearchRoute();
+      const nonTacticIds = searchColumnIds();
 
-      const custom = await enabledToggle("Add Tactic (Custom)");
-      await user.click(custom);
-      expect(moneyballColumnIds()).toEqual([...nonTacticIds, ...customIds]);
-      expect(custom).toHaveAttribute("aria-pressed", "true");
+      const moneyball = await enabledToggle("Add Tactic (Moneyball Score)");
+      await user.click(moneyball);
+      expect(searchColumnIds()).toEqual([...nonTacticIds, ...moneyballIds]);
+      expect(moneyball).toHaveAttribute("aria-pressed", "true");
 
       await user.click(
-        screen.getByRole("button", { name: "Add Tactic (Roles)" }),
+        screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
       );
-      expect(moneyballColumnIds()).toEqual([
+      expect(searchColumnIds()).toEqual([
         ...nonTacticIds,
-        ...rolesIds.flatMap((rolesId, index) => [rolesId, customIds[index]]),
+        ...roleScoreIds.flatMap((id, index) => [id, moneyballIds[index]]),
       ]);
 
-      await user.click(custom);
-      expect(moneyballColumnIds()).toEqual([...nonTacticIds, ...rolesIds]);
-      expect(custom).toHaveAttribute("aria-pressed", "false");
+      await user.click(
+        screen.getByRole("button", { name: "Add Tactic (Potential)" }),
+      );
+      expect(searchColumnIds()).toEqual([
+        ...nonTacticIds,
+        ...roleScoreIds.flatMap((id, index) => [
+          id,
+          potentialIds[index],
+          moneyballIds[index],
+        ]),
+      ]);
+
+      await user.click(moneyball);
+      expect(searchColumnIds()).toEqual([
+        ...nonTacticIds,
+        ...roleScoreIds.flatMap((id, index) => [id, potentialIds[index]]),
+      ]);
+      expect(moneyball).toHaveAttribute("aria-pressed", "false");
     });
 
-    it("names each Custom header by its slot and metrics in order", async () => {
+    it("names each Moneyball Score header by its slot's chosen metrics or its roles", async () => {
       await resolveLoadDataIpcMock();
       usePlayerTableStore
         .getState()
-        .replaceLayout("moneyball-search", ["age", ...customIds]);
-      renderSearchRoute("/search?view=moneyball");
+        .replaceLayout("search", ["age", ...moneyballIds]);
+      renderSearchRoute();
 
       const table = await screen.findByRole("table", {
         name: "Player search results",
       });
       const goalkeeper = await within(table).findByRole("columnheader", {
-        name: "GK custom: Save %, Clean Sheets %",
+        name: "GK Moneyball Score: Save %, Clean Sheets %",
       });
       expect(within(goalkeeper).getByText("GK")).toBeVisible();
-      expect(within(goalkeeper).getByText("Custom")).toBeVisible();
+      expect(within(goalkeeper).getByText("Moneyball Score")).toBeVisible();
       expect(
         within(table).getByRole("columnheader", {
-          name: "DR custom: no metrics chosen",
+          name: "DR Moneyball Score: Full-Back / Holding Full-Back",
         }),
       ).toBeInTheDocument();
-    });
-
-    it("cannot add Custom columns while no slot has metrics and links to the Tactic editor", async () => {
-      const user = userEvent.setup();
-      await resolveLoadDataIpcMock();
-      storeTacticWithoutMetrics();
-      const { router } = renderSearchRoute("/search?view=moneyball");
-      const before = moneyballColumnIds();
-
-      await enabledToggle("Add Tactic (Roles)");
-      const custom = screen.getByRole("button", {
-        name: "Add Tactic (Custom)",
-      });
-      expect(custom).toBeDisabled();
-      await user.click(custom);
-      expect(moneyballColumnIds()).toEqual(before);
-
-      const link = screen.getByRole("link", { name: "Tactic editor" });
-      expect(link).toHaveAttribute("href", "/my-club?view=tactic");
-      await user.click(link);
-      await waitFor(() => {
-        expect(router.state.location.pathname).toBe("/my-club");
-      });
-      expect(router.state.location.search).toMatchObject({ view: "tactic" });
-    });
-
-    it("still removes shown Custom columns while no slot has metrics", async () => {
-      const user = userEvent.setup();
-      await resolveLoadDataIpcMock();
-      storeTacticWithoutMetrics();
-      usePlayerTableStore
-        .getState()
-        .replaceLayout("moneyball-search", ["age", ...customIds]);
-      renderSearchRoute("/search?view=moneyball");
-
-      const custom = await enabledToggle("Add Tactic (Custom)");
-      expect(custom).toHaveAttribute("aria-pressed", "true");
-      expect(screen.queryByRole("link", { name: "Tactic editor" })).toBeNull();
-      await user.click(custom);
-
-      expect(moneyballColumnIds()).toEqual(["age"]);
-      expect(custom).toBeDisabled();
-      expect(
-        screen.getByRole("link", { name: "Tactic editor" }),
-      ).toBeInTheDocument();
-    });
-
-    it("falls back to the default sort for a stored Potential tactic sort", async () => {
-      localStorage.setItem(
-        PLAYER_TABLE_LAYOUT_STORAGE_KEY,
-        JSON.stringify({
-          state: {
-            layouts: {
-              "moneyball-search": {
-                columnIds: [
-                  "age",
-                  ...rolesIds.flatMap((rolesId) => [
-                    rolesId,
-                    rolesId.replace("tactic_current.", "tactic_potential."),
-                  ]),
-                ],
-                widths: {},
-              },
-            },
-          },
-          version: 8,
-        }),
-      );
-      await usePlayerTableStore.persist.rehydrate();
-      expect(moneyballColumnIds()).toEqual(["age", ...rolesIds]);
-
-      const { router } = renderSearchRoute(
-        "/search?view=moneyball&sort=tactic_potential.goalkeeper",
-      );
-
-      await screen.findByRole("heading", { level: 1, name: "Moneyball" });
-      expect(router.state.location.search).toMatchObject({
-        sort: "moneyball.average_rating",
-        dir: "desc",
-      });
     });
   });
 
@@ -1044,53 +936,96 @@ describe("search route", () => {
     });
   });
 
-  it("falls back when a tactic sort exists only in another table layout", async () => {
-    const tacticSort = "tactic_custom.goalkeeper";
+  it("falls back from a tactic sort whose column is not in the layout or no longer exists", async () => {
     usePlayerTableStore
       .getState()
-      .replaceLayout("moneyball-search", [tacticSort]);
+      .replaceLayout("search", ["ca", "tactic_moneyball.goalkeeper"]);
 
-    const { router } = renderSearchRoute(`/search?sort=${tacticSort}`);
-
-    await screen.findByRole("heading", { level: 1, name: "Player Search" });
-    expect(router.state.location.search).toMatchObject({
-      sort: "ca",
-      dir: "desc",
-    });
+    for (const tacticSort of [
+      "tactic_current.goalkeeper",
+      "tactic_custom.goalkeeper",
+    ]) {
+      const { router, unmount } = renderSearchRoute(
+        `/search?sort=${tacticSort}`,
+      );
+      await screen.findByRole("heading", { level: 1, name: "Player Search" });
+      expect(router.state.location.search).toMatchObject({
+        sort: "ca",
+        dir: "desc",
+      });
+      unmount();
+    }
   });
 
-  it("opens the opt-in Moneyball workspace with its own query view and pool", async () => {
+  it("shows Moneyball controls only while a season column, rule, or sort is in use", async () => {
     await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([
-      {
-        ...playerNamed("Moneyball Scout", 160),
-        dynamicValues: { "moneyball.average_rating": 7.25 },
-        moneyballPercentiles: { "moneyball.average_rating": 83 },
-      },
-    ]);
-    renderSearchRoute("/search?view=moneyball");
+    setSearchPlayersOverride([playerNamed("Scout", 160)]);
+    const { unmount } = renderSearchRoute();
 
-    const moneyballLink = await screen.findByRole("link", {
-      name: "Moneyball",
-    });
-    expect(moneyballLink).toHaveAttribute("aria-current", "page");
-    expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
+    await screen.findByText("Scout");
+    const toolbar = () =>
+      screen.getByRole("toolbar", { name: "Player results toolbar" });
     expect(
-      screen.getByRole("button", { name: "Refresh stats" }),
+      within(toolbar()).queryByRole("combobox", { name: "Percentiles vs" }),
+    ).toBeNull();
+    expect(screen.queryByRole("group", { name: "Scores" })).toBeNull();
+    // Refresh stats stays a page action whatever the columns.
+    expect(
+      within(screen.getByTestId("search-page-header")).getByRole("button", {
+        name: "Refresh stats",
+      }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({ comparison: "own" });
+    });
+    expect(getLastSearchPlayersArgs()).not.toHaveProperty("searchView");
+
+    // A season column shows them; removing it hides them again.
+    act(() => {
+      usePlayerTableStore
+        .getState()
+        .addColumns("search", ["moneyball.average_rating"]);
+    });
+    expect(
+      await within(toolbar()).findByRole("combobox", {
+        name: "Percentiles vs",
+      }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
-    ).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "moneyball",
-        comparison: "own",
-      });
+      await screen.findByRole("group", { name: "Scores" }),
+    ).toBeInTheDocument();
+    act(() => {
+      usePlayerTableStore
+        .getState()
+        .removeColumn("search", "moneyball.average_rating");
     });
+    await waitFor(() =>
+      expect(
+        within(toolbar()).queryByRole("combobox", { name: "Percentiles vs" }),
+      ).toBeNull(),
+    );
+    unmount();
+
+    // So does a season rule or sort with no season column.
+    for (const query of [
+      `filters=${encodeURIComponent(
+        JSON.stringify([{ field: "moneyball.minutes", op: "gte", value: 900 }]),
+      )}`,
+      "sort=moneyball.average_rating",
+    ]) {
+      const rendered = renderSearchRoute(`/search?${query}`);
+      expect(
+        await screen.findByRole("combobox", { name: "Percentiles vs" }),
+      ).toBeInTheDocument();
+      rendered.unmount();
+    }
   });
 
-  it("marks the percentiles of a player with a short sample", async () => {
+  it("mutes and dates season values borrowed from a kept snapshot", async () => {
     await resolveLoadDataIpcMock();
+    usePlayerTableStore
+      .getState()
+      .addColumns("search", ["moneyball.average_rating"]);
     setSearchPlayersOverride([
       {
         ...playerNamed("Regular Scout", 160),
@@ -1098,13 +1033,13 @@ describe("search route", () => {
         moneyballPercentiles: { "moneyball.average_rating": 83 },
       },
       {
-        ...playerNamed("Short Sample Scout", 150),
+        ...playerNamed("Borrowed Scout", 150),
         dynamicValues: { "moneyball.average_rating": 7.5 },
         moneyballPercentiles: { "moneyball.average_rating": 90 },
-        moneyballShortSample: true,
+        moneyballStatsDate: "2026-05-20",
       },
     ]);
-    renderSearchRoute("/search?view=moneyball");
+    renderSearchRoute();
 
     const table = await screen.findByRole("table", {
       name: "Player search results",
@@ -1112,23 +1047,32 @@ describe("search route", () => {
     expect(
       within(table).getByRole("img", { name: "Average Rating: 83, Excellent" }),
     ).toBeInTheDocument();
-    const shortSample = within(table).getByRole("img", {
-      name: "Average Rating, short sample: 90, Excellent",
-    });
-    expect(shortSample).toHaveAttribute(
+    // A borrowed sample's percentile is a full one, ranked in its season.
+    expect(
+      within(table).getByRole("img", { name: "Average Rating: 90, Excellent" }),
+    ).toBeInTheDocument();
+    const regular = within(table).getByText("7.25");
+    expect(regular.closest("td")).toHaveAttribute("title", "7.25");
+    expect(regular).not.toHaveClass("text-on-surface-variant");
+    const borrowed = within(table).getByText("7.50");
+    expect(borrowed).toHaveClass("text-on-surface-variant");
+    expect(borrowed.closest("td")).toHaveAttribute(
       "title",
-      "Short sample: under 450 minutes, ranked against peers with 450+",
+      "7.50, as of 20th May 2026: under 450 minutes this season",
     );
-    expect(shortSample).toHaveClass("text-on-surface-variant");
   });
 
-  it("selects, requests, sorts, and renders Moneyball role columns without changing raw percentiles", async () => {
+  it("selects, requests, sorts, and renders Moneyball Score columns without changing raw percentiles", async () => {
     await resolveLoadDataIpcMock();
     const wingBackIp = "moneyball_role.wbl_wbr_wing_back_ip";
     const fullBackIp = "moneyball_role.dl_dr_wing_back_ip";
     usePlayerTableStore
       .getState()
-      .addColumns("moneyball-search", [wingBackIp, fullBackIp]);
+      .addColumns("search", [
+        "moneyball.average_rating",
+        wingBackIp,
+        fullBackIp,
+      ]);
     setSearchPlayersOverride([
       {
         ...playerNamed("Role-fit Scout", 160),
@@ -1140,24 +1084,24 @@ describe("search route", () => {
         moneyballPercentiles: { "moneyball.average_rating": 83 },
       },
     ]);
-    const { router } = renderSearchRoute("/search?view=moneyball");
+    const { router } = renderSearchRoute();
 
     const table = await screen.findByRole("table", {
       name: "Player search results",
     });
     expect(
       within(table).getByRole("columnheader", {
-        name: "Wing-Back (IP · WBR/WBL)",
+        name: "Moneyball Score · Wing-Back (IP · WBR/WBL)",
       }),
     ).toBeInTheDocument();
     expect(
       within(table).getByRole("columnheader", {
-        name: "Wing-Back (IP · DR/DL)",
+        name: "Moneyball Score · Wing-Back (IP · DR/DL)",
       }),
     ).toBeInTheDocument();
     expect(
       within(table).getByRole("img", {
-        name: "Moneyball role · Wing-Back (IP · WBR/WBL): 0, Weak",
+        name: "Moneyball Score · Wing-Back (IP · WBR/WBL): 0, Weak",
       }),
     ).toBeInTheDocument();
     expect(within(table).getAllByText("—").length).toBeGreaterThan(0);
@@ -1168,14 +1112,13 @@ describe("search route", () => {
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "moneyball",
         requestedFields: expect.arrayContaining([fullBackIp, wingBackIp]),
       });
     });
 
     await userEvent.setup().click(
       within(table).getByRole("button", {
-        name: "Wing-Back (IP · WBR/WBL)",
+        name: "Moneyball Score · Wing-Back (IP · WBR/WBL)",
       }),
     );
     expect(router.state.location.search).toMatchObject({
@@ -1184,7 +1127,7 @@ describe("search route", () => {
     });
   });
 
-  it("applies a Moneyball role filter to the URL and comparison-pool request", async () => {
+  it("applies a Moneyball Score filter to the URL and comparison request", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     const roleField = "moneyball_role.wbl_wbr_wing_back_ip";
@@ -1198,7 +1141,7 @@ describe("search route", () => {
         moneyballPercentiles: { "moneyball.average_rating": 83 },
       },
     ]);
-    const { router } = renderSearchRoute("/search?view=moneyball");
+    const { router } = renderSearchRoute();
 
     await screen.findByText("Role-fit Scout");
     await user.click(screen.getByRole("button", { name: "Add filter" }));
@@ -1209,7 +1152,7 @@ describe("search route", () => {
     );
     await user.click(
       within(dialog).getByRole("option", {
-        name: "Wing-Back (IP · WBR/WBL)",
+        name: "Moneyball Score · Wing-Back (IP · WBR/WBL)",
       }),
     );
     expect(
@@ -1222,7 +1165,6 @@ describe("search route", () => {
 
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        view: "moneyball",
         filters: [
           expect.objectContaining({ field: roleField, op: "gte", value: 70 }),
         ],
@@ -1232,12 +1174,22 @@ describe("search route", () => {
         requestedFields: expect.arrayContaining([roleField]),
       });
     });
+    expect(router.state.location.search).not.toHaveProperty("view");
+    expect(
+      screen.getByRole("button", {
+        name: "Remove filter Moneyball Score · Wing-Back (IP · WBR/WBL) ≥ 70",
+      }),
+    ).toBeInTheDocument();
 
+    // The season rule brings Percentiles vs into the toolbar.
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Percentiles vs" }),
+      await screen.findByRole("combobox", { name: "Percentiles vs" }),
       "Wing-backs",
     );
     await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        comparison: "wing_back",
+      });
       expect(getLastSearchPlayersArgs()).toMatchObject({
         comparison: "wing_back",
         filters: [{ field: roleField, op: "gte", value: 70 }],
@@ -1245,88 +1197,23 @@ describe("search route", () => {
     });
   });
 
-  it("uses the saved default only when Search has no explicit view", async () => {
+  it("drops an old view parameter and offers one Search destination", async () => {
     await resolveLoadDataIpcMock();
-    useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
-    setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
-
-    renderSearchRoute();
+    setSearchPlayersOverride([playerNamed("Scout", 160)]);
+    renderSearchRoute("/search?view=moneyball");
 
     expect(
-      await screen.findByRole("link", {
-        name: "Moneyball",
-        current: "page",
-      }),
+      await screen.findByRole("heading", { level: 1, name: "Player Search" }),
     ).toBeInTheDocument();
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "moneyball",
-        sortBy: "moneyball.average_rating",
-        comparison: "own",
-      });
-    });
-  });
-
-  it("keeps an explicit General Search view above the saved default", async () => {
-    await resolveLoadDataIpcMock();
-    useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
-
-    renderSearchRoute("/search?view=general");
-
     expect(
-      await screen.findByRole("link", {
-        name: "Search",
-        current: "page",
-      }),
+      screen.getByRole("link", { name: "Search", current: "page" }),
     ).toBeInTheDocument();
-  });
-
-  it("makes General explicit when selected from an implicit Moneyball default", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
-    const { router } = renderSearchRoute();
-
-    await user.click(await screen.findByRole("link", { name: "Search" }));
-
-    await waitFor(() => {
-      expect(router.state.location.search.view).toBe("general");
-      expect(
-        screen.getByRole("link", { name: "Search", current: "page" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("renders Search views without a local view tablist", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([playerNamed("General Scout", 160)]);
-    const { router } = renderSearchRoute("/search?view=general");
-
-    expect(
-      await screen.findByRole("link", {
-        name: "Search",
-        current: "page",
-      }),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Moneyball" })).toBeNull();
     expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
-
-    await user.click(screen.getByRole("link", { name: "Moneyball" }));
-
     await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        view: "moneyball",
-      });
+      expect(getLastSearchPlayersArgs()).toMatchObject({ sortBy: "ca" });
     });
-    expect(
-      screen.getByRole("link", { name: "Moneyball", current: "page" }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByRole("button", {
-        name: "Refresh stats",
-      }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
+    expect(getLastSearchPlayersArgs()).not.toHaveProperty("searchView");
   });
 
   it("renders a virtualized page of basic columns via search_players", async () => {
@@ -1464,12 +1351,12 @@ describe("search route", () => {
     ] as const) {
       expect(
         within(table).getByRole("img", {
-          name: `Role · Goalkeeper (IP): ${score}, ${tier}`,
+          name: `Role Score · Goalkeeper (IP): ${score}, ${tier}`,
         }),
       ).toHaveClass(scoreClass);
       expect(
         within(table).getByRole("img", {
-          name: `Potential role · Goalkeeper (IP): ${score}, ${tier}`,
+          name: `Potential Role Score · Goalkeeper (IP): ${score}, ${tier}`,
         }),
       ).toHaveClass(scoreClass);
       expect(
@@ -1580,6 +1467,8 @@ describe("search route", () => {
     await user.keyboard("{Escape}");
   });
 
+  // The dialog lists every Search field (about 480), and jsdom's role-name
+  // queries over it take a few seconds under a full parallel run.
   it("manages Search columns from the grouped Columns control without touching identity", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -1634,7 +1523,7 @@ describe("search route", () => {
       await screen.findByRole("columnheader", { name: "Reputation" }),
     ).toBeInTheDocument();
     await user.keyboard("{Escape}");
-  });
+  }, 15_000);
 
   it("never offers identity in the Search Add-column picker results", async () => {
     const user = userEvent.setup();
@@ -1897,11 +1786,11 @@ describe("search route", () => {
   });
 
   it.each([
-    { view: "general" as const, entry: "/search?view=general" },
-    { view: "moneyball" as const, entry: "/search?view=moneyball" },
+    { columns: "player", season: false },
+    { columns: "season", season: true },
   ])(
-    "stacks fixed-height player identity without duplicate columns in $view Search",
-    async ({ view, entry }) => {
+    "stacks fixed-height player identity without duplicate columns beside $columns columns",
+    async ({ season }) => {
       const user = userEvent.setup();
       await resolveLoadDataIpcMock();
       setSearchPlayersOverride([
@@ -1931,7 +1820,12 @@ describe("search route", () => {
         },
         ...manyPlayers(99),
       ]);
-      const { router } = renderSearchRoute(entry);
+      if (season) {
+        usePlayerTableStore
+          .getState()
+          .addColumns("search", ["moneyball.average_rating"]);
+      }
+      const { router } = renderSearchRoute();
 
       const table = await screen.findByRole("table", {
         name: "Player search results",
@@ -1996,7 +1890,7 @@ describe("search route", () => {
 
       await waitFor(() => {
         expect(router.state.location.pathname).toBe("/players/250");
-        expect(router.state.location.search).toEqual({ view });
+        expect(router.state.location.search).toEqual({});
       });
     },
   );
@@ -2014,7 +1908,7 @@ describe("search route", () => {
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/players/160");
-      expect(router.state.location.search).toEqual({ view: "general" });
+      expect(router.state.location.search).toEqual({});
     });
   });
 
@@ -2945,7 +2839,7 @@ describe("search route", () => {
     const dialog = screen.getByRole("form", { name: "Add filter" });
     await user.type(
       within(dialog).getByRole("combobox", { name: "Search fields" }),
-      "potential role",
+      "potential role score",
     );
 
     expect(
@@ -2955,7 +2849,7 @@ describe("search route", () => {
     ).toBeInTheDocument();
     await user.click(
       within(dialog).getByRole("option", {
-        name: "Potential role · Goalkeeper (IP)",
+        name: "Potential Role Score · Goalkeeper (IP)",
       }),
     );
     fireEvent.change(within(dialog).getByLabelText("Value"), {
@@ -2973,13 +2867,13 @@ describe("search route", () => {
     });
     expect(
       await screen.findByRole("columnheader", {
-        name: "Potential role · Goalkeeper (IP)",
+        name: "Potential Role Score · Goalkeeper (IP)",
       }),
     ).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", {
-        name: /Remove filter Potential role · Goalkeeper \(IP\) ≥ 50/i,
+        name: /Remove filter Potential Role Score · Goalkeeper \(IP\) ≥ 50/i,
       }),
     );
     // The retained table remounts once the unfiltered page commits.
@@ -2987,7 +2881,7 @@ describe("search route", () => {
 
     expect(
       await screen.findByRole("columnheader", {
-        name: "Potential role · Goalkeeper (IP)",
+        name: "Potential Role Score · Goalkeeper (IP)",
       }),
     ).toBeInTheDocument();
     await waitFor(() => {
@@ -3055,7 +2949,7 @@ describe("search route", () => {
     expect(await screen.findByText("High CA")).toBeInTheDocument();
   });
 
-  it("shows the filtered empty state for Moneyball when filters exclude every player", async () => {
+  it("shows the filtered empty state when a season-stat filter excludes every player", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([]);
     const encoded = encodeURIComponent(
@@ -3063,7 +2957,7 @@ describe("search route", () => {
         { field: "moneyball.average_rating", op: "gte", value: 7 },
       ]),
     );
-    renderSearchRoute(`/search?view=moneyball&filters=${encoded}`);
+    renderSearchRoute(`/search?filters=${encoded}`);
 
     expect(
       await screen.findByText("No players match these filters"),
@@ -3072,7 +2966,9 @@ describe("search route", () => {
       screen.queryByText("No Moneyball stats for this snapshot"),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText(/Adjust or clear filters in the toolbar above/),
+      screen.getByText(
+        /Adjust or clear filters in the toolbar above.*Players without 450 minutes of season stats drop out/,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -3089,7 +2985,7 @@ describe("search route", () => {
         },
       ]),
     );
-    renderSearchRoute(`/search?view=moneyball&filters=${encoded}`);
+    renderSearchRoute(`/search?filters=${encoded}`);
 
     expect(
       await screen.findByRole("button", {
@@ -3100,21 +2996,6 @@ describe("search route", () => {
       { field: "moneyball.pass_completion_ratio", op: "gte", value: 0.8 },
       { field: "moneyball.pass_completion_ratio", op: "pct_gte", value: 90 },
     ]);
-  });
-
-  it("points an empty Moneyball cohort at the linked save and Refresh stats", async () => {
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([]);
-    renderSearchRoute("/search?view=moneyball");
-
-    expect(
-      await screen.findByText("No Moneyball stats for this snapshot"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Moneyball stats come from the FM save file linked to this save. Use Refresh stats to read it, or link a save file in Settings.",
-      ),
-    ).toBeInTheDocument();
   });
 
   it("keeps focus in the filter value field while editing", async () => {
@@ -3366,7 +3247,7 @@ describe("search route", () => {
     expect(within(firstRow).getByText("Low")).toBeInTheDocument();
   });
 
-  it("returns each view to its own filters and sort when navigation switches views", async () => {
+  it("returns to its last filters, sort, and comparison through the Search link", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([
@@ -3377,81 +3258,37 @@ describe("search route", () => {
       JSON.stringify([{ field: "ca", op: "gte", value: 150 }]),
     );
     const { router } = renderSearchRoute(
-      `/search?view=general&sort=pa&dir=asc&combine=or&filters=${encodedFilters}`,
+      `/search?sort=pa&dir=asc&combine=or&comparison=striker&filters=${encodedFilters}`,
     );
     await screen.findByText("High CA");
-    const generalState = {
-      view: "general",
+    const state = {
       sort: "pa",
       dir: "asc",
       combine: "or",
+      comparison: "striker",
       filters: [expect.objectContaining({ field: "ca" })],
     };
-    expect(router.state.location.search).toMatchObject(generalState);
+    expect(router.state.location.search).toMatchObject(state);
 
-    // A first visit starts from the view's defaults; nothing carries across.
-    await user.click(screen.getByRole("link", { name: "Moneyball" }));
-    await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        view: "moneyball",
-        sort: "moneyball.average_rating",
-        dir: "desc",
-        combine: "and",
-        filters: [],
-        comparison: "own",
-      });
-    });
-
-    await user.click(screen.getByRole("button", { name: "Add filter" }));
-    const moneyballDialog = screen.getByRole("form", { name: "Add filter" });
-    await user.type(
-      within(moneyballDialog).getByRole("combobox", { name: "Search fields" }),
-      "average rating",
-    );
-    await user.click(
-      within(moneyballDialog).getByRole("option", { name: "Average Rating" }),
-    );
-    fireEvent.change(within(moneyballDialog).getByLabelText("Value"), {
-      target: { value: "7" },
-    });
-    await user.click(
-      within(moneyballDialog).getByRole("button", { name: "Add" }),
-    );
+    await user.click(screen.getByRole("link", { name: "Settings" }));
     await waitFor(() =>
-      expect(router.state.location.search.filters).toHaveLength(1),
+      expect(router.state.location.pathname).toBe("/settings"),
     );
-
     await user.click(screen.getByRole("link", { name: "Search" }));
     await waitFor(() => {
-      expect(router.state.location.search).toMatchObject(generalState);
+      expect(router.state.location.pathname).toBe("/search");
+      expect(router.state.location.search).toMatchObject(state);
     });
-
-    await user.click(screen.getByRole("link", { name: "Moneyball" }));
-    await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({
-        view: "moneyball",
-        filters: [
-          expect.objectContaining({
-            field: "moneyball.average_rating",
-            op: "gte",
-            value: 7,
-          }),
-        ],
-      });
-    });
-    expect(screen.queryByRole("tablist", { name: "Search view" })).toBeNull();
+    expect(router.state.location.search).not.toHaveProperty("view");
   });
 
-  it("keeps Moneyball Name sort from direct URL rather than normalizing to Average Rating", async () => {
+  it("keeps a Name sort from a direct URL", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("Name Sorted", 160)]);
-    const { router } = renderSearchRoute(
-      "/search?view=moneyball&sort=name&dir=asc",
-    );
+    const { router } = renderSearchRoute("/search?sort=name&dir=asc");
 
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        view: "moneyball",
         sort: "name",
         dir: "asc",
       });
@@ -3497,7 +3334,7 @@ describe("search route", () => {
     });
     expect(
       within(table).queryByRole("columnheader", {
-        name: /Role · Deep-Lying Playmaker \(IP\)/i,
+        name: /Role Score · Deep-Lying Playmaker \(IP\)/i,
       }),
     ).toBeNull();
     expect(
@@ -3528,7 +3365,7 @@ describe("search route", () => {
     expect(
       screen.getByRole("link", { name: "Search", current: "page" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Moneyball" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Moneyball" })).toBeNull();
     expect(screen.queryByText("No shortlist yet")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Go to Moneyball" }),
@@ -3556,10 +3393,7 @@ describe("search route", () => {
     ).toEqual(["No shortlist", "Loans", "Targets", "(Default)"]);
     expect(select).toHaveValue("");
     await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "general",
-        shortlistId: null,
-      });
+      expect(getLastSearchPlayersArgs()).toMatchObject({ shortlistId: null });
     });
   });
 
@@ -3572,11 +3406,14 @@ describe("search route", () => {
     expect(screen.queryByRole("combobox", { name: "Shortlist" })).toBeNull();
   });
 
-  it("restricts both views to the selected shortlist and starts each save context with none", async () => {
+  it("restricts Search to the selected shortlist and starts each save context with none", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSavePlayerShortlistsIpcMock(1, [LOANS, TARGETS]);
     setSearchPlayersOverride([playerNamed("General Scout", 160)]);
+    usePlayerTableStore
+      .getState()
+      .addColumns("search", ["moneyball.average_rating"]);
     const { router, queryClient } = renderSearchRoute("/search");
 
     await user.selectOptions(
@@ -3584,23 +3421,13 @@ describe("search route", () => {
       "Targets",
     );
     await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "general",
-        shortlistId: 1,
-      });
+      expect(getLastSearchPlayersArgs()).toMatchObject({ shortlistId: 1 });
     });
     expect(router.state.location.search).not.toHaveProperty("shortlistOnly");
 
-    // Moneyball keeps the selection, with the dropdown beside Percentiles vs.
-    await user.click(screen.getByRole("link", { name: "Moneyball" }));
-    const toolbar = await screen.findByRole("toolbar", {
+    // The dropdown sits with Percentiles vs in the toolbar.
+    const toolbar = screen.getByRole("toolbar", {
       name: "Player results toolbar",
-    });
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "moneyball",
-        shortlistId: 1,
-      });
     });
     expect(
       within(toolbar).getByRole("combobox", { name: "Shortlist" }),
@@ -3613,13 +3440,9 @@ describe("search route", () => {
       within(toolbar).getByRole("combobox", { name: "Shortlist" }),
       "No shortlist",
     );
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "moneyball",
-        shortlistId: null,
-      });
-    });
-    expect(storedShortlistSelection()).toBeUndefined();
+    // The unrestricted first page is already cached, so no request follows.
+    await waitFor(() => expect(storedShortlistSelection()).toBeUndefined());
+    expect(screen.getByRole("combobox", { name: "Shortlist" })).toHaveValue("");
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Shortlist" }),
       "Loans",
@@ -3700,7 +3523,7 @@ describe("search route", () => {
     ["a legacy shortlistOnly URL", "/search?shortlistOnly=true"],
     ["a legacy shortlist view", "/search?view=shortlist"],
   ])(
-    "opens %s as General with no shortlist selected and a clean URL",
+    "opens %s with no shortlist selected and a clean URL",
     async (_case, url) => {
       await resolveLoadDataIpcMock();
       setSavePlayerShortlistsIpcMock(1, [TARGETS]);
@@ -3720,15 +3543,13 @@ describe("search route", () => {
         await screen.findByRole("combobox", { name: "Shortlist" }),
       ).toHaveValue("");
       await waitFor(() => {
-        expect(getLastSearchPlayersArgs()).toMatchObject({
-          searchView: "general",
-          shortlistId: null,
-        });
+        expect(getLastSearchPlayersArgs()).toMatchObject({ shortlistId: null });
       });
+      expect(router.state.location.search).not.toHaveProperty("view");
     },
   );
 
-  it("composes the selected shortlist with a General filter in one fetch", async () => {
+  it("composes the selected shortlist with a filter in one fetch", async () => {
     await resolveLoadDataIpcMock();
     setSavePlayerShortlistsIpcMock(1, [TARGETS]);
     selectStoredShortlist(TARGETS.id);
@@ -3741,7 +3562,6 @@ describe("search route", () => {
     await screen.findByText("General Scout");
     await waitFor(() => {
       expect(getLastSearchPlayersArgs()).toMatchObject({
-        searchView: "general",
         shortlistId: 1,
         filters: [expect.objectContaining({ field: "ca" })],
       });
@@ -3750,23 +3570,16 @@ describe("search route", () => {
 
   it.each([
     {
-      state: "no shortlisted player in the General snapshot",
-      route: "/search?view=general",
+      state: "no shortlisted player in the snapshot",
+      route: "/search",
       filters: "",
       title: "No shortlisted player in this snapshot",
       body: "None of the shortlist's players are in this snapshot. Select No shortlist to browse every snapshot player.",
     },
     {
-      state: "no shortlisted player with season stats",
-      route: "/search?view=moneyball",
-      filters: "",
-      title: "No shortlisted player has season stats",
-      body: "None of the shortlist's players have season stats in this snapshot. Select No shortlist to compare every player with season stats.",
-    },
-    {
       state: "no shortlisted player matching the filters",
-      route: "/search?view=moneyball",
-      filters: `&filters=${encodeURIComponent(
+      route: "/search",
+      filters: `?filters=${encodeURIComponent(
         JSON.stringify([{ field: "ca", op: "gte", value: 150 }]),
       )}`,
       title: "No shortlisted players match these filters",
@@ -3789,7 +3602,7 @@ describe("search route", () => {
     },
   );
 
-  it("refreshes Moneyball stats for the save context and reloads their as-of date", async () => {
+  it("refreshes season stats for the save context and reloads their as-of date", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
@@ -3802,7 +3615,11 @@ describe("search route", () => {
       staffShortlist: { status: "notRead" },
       elapsedMs: 40,
     });
-    const { queryClient } = renderSearchRoute("/search?view=moneyball");
+    // The as-of date shows beside Percentiles vs while a season column is in use.
+    usePlayerTableStore
+      .getState()
+      .addColumns("search", ["moneyball.average_rating"]);
+    const { queryClient } = renderSearchRoute();
     await screen.findByText("Moneyball Scout");
     const toolbar = screen.getByRole("toolbar", {
       name: "Player results toolbar",
@@ -3860,7 +3677,7 @@ describe("search route", () => {
       staffShortlist: { status: "read", count: 13, unread: 0 },
       elapsedMs: 40,
     });
-    const { queryClient } = renderSearchRoute("/search?view=moneyball");
+    const { queryClient } = renderSearchRoute();
     await screen.findByText("Moneyball Scout");
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
@@ -3877,7 +3694,7 @@ describe("search route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
-    renderSearchRoute("/search?view=moneyball");
+    renderSearchRoute();
     await screen.findByText("Moneyball Scout");
     const refresh = screen.getByRole("button", { name: "Refresh stats" });
 
@@ -3918,6 +3735,201 @@ describe("search route", () => {
     ).toBeInTheDocument();
   });
 
+  describe("saved filters", () => {
+    async function openSavedFilters(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(screen.getByRole("button", { name: "Saved filters" }));
+      return screen.getByRole("dialog", { name: "Saved filters" });
+    }
+
+    it("saves the applied filters under a name and applies them again", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      setSearchPlayersOverride([
+        {
+          ...playerNamed("High CA", 180),
+          dynamicValues: { "moneyball.average_rating": 7.4 },
+        },
+        playerNamed("Low CA", 100),
+      ]);
+      const rules = [
+        { field: "ca", op: "gte", value: 150 },
+        { field: "moneyball.average_rating", op: "gte", value: 7 },
+      ];
+      const { router } = renderSearchRoute(
+        `/search?combine=or&comparison=striker&filters=${encodeURIComponent(
+          JSON.stringify(rules),
+        )}`,
+      );
+      await screen.findByText("High CA");
+
+      let dialog = await openSavedFilters(user);
+      expect(
+        within(dialog).getByText(/No saved filters yet/),
+      ).toBeInTheDocument();
+      const name = within(dialog).getByLabelText("Save current filters as");
+      expect(
+        within(dialog).getByRole("button", { name: "Save" }),
+      ).toBeDisabled();
+      await user.type(name, "Scouting");
+      await user.click(within(dialog).getByRole("button", { name: "Save" }));
+      expect(useSavedFiltersStore.getState().savedFilters).toEqual([
+        expect.objectContaining({
+          name: "Scouting",
+          combine: "or",
+          comparison: "striker",
+          filters: rules.map((rule) => expect.objectContaining(rule)),
+        }),
+      ]);
+      // Saving under the same name offers to replace it.
+      await user.type(name, "scouting");
+      expect(
+        within(dialog).getByRole("button", { name: "Replace" }),
+      ).toBeEnabled();
+      await user.keyboard("{Escape}");
+
+      // A clean Search, with no season column in the layout.
+      await act(async () => {
+        await router.navigate({
+          to: "/search",
+          search: { sort: "ca", dir: "desc", filters: [], combine: "and" },
+        });
+      });
+      await waitFor(() => {
+        expect(router.state.location.search).toMatchObject({
+          filters: [],
+          combine: "and",
+        });
+      });
+      expect(
+        usePlayerTableStore.getState().layouts.search.columnIds,
+      ).not.toContain("moneyball.average_rating");
+
+      dialog = await openSavedFilters(user);
+      await user.click(
+        within(dialog).getByRole("button", { name: "Scouting" }),
+      );
+
+      await waitFor(() => {
+        expect(router.state.location.search).toMatchObject({
+          combine: "or",
+          comparison: "striker",
+          filters: rules.map((rule) => expect.objectContaining(rule)),
+        });
+        expect(getLastSearchPlayersArgs()).toMatchObject({
+          comparison: "striker",
+          filterCombine: "or",
+          filters: rules,
+        });
+      });
+      expect(
+        screen.queryByRole("dialog", { name: "Saved filters" }),
+      ).toBeNull();
+      // Applying adds the rules' columns, as applying one filter does.
+      await waitFor(() =>
+        expect(
+          usePlayerTableStore.getState().layouts.search.columnIds,
+        ).toContain("moneyball.average_rating"),
+      );
+      expect(
+        await screen.findByRole("combobox", { name: "Percentiles vs" }),
+      ).toHaveValue("striker");
+    });
+
+    it("renames and deletes a saved filter", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      useSavedFiltersStore.getState().save({
+        name: "Wonderkids",
+        filters: [{ field: "age", op: "lte", value: 19 }],
+        combine: "and",
+        comparison: "own",
+      });
+      renderSearchRoute();
+      await screen.findByRole("table", { name: "Player search results" });
+
+      const dialog = await openSavedFilters(user);
+      await user.click(
+        within(dialog).getByRole("button", { name: "Rename Wonderkids" }),
+      );
+      const rename = within(dialog).getByRole("textbox", {
+        name: "Rename Wonderkids",
+      });
+      await user.clear(rename);
+      await user.type(rename, "Teen prospects");
+      const renameForm = rename.closest("form");
+      if (!renameForm) throw new Error("Expected the rename form");
+      await user.click(
+        within(renameForm).getByRole("button", { name: "Save" }),
+      );
+      expect(
+        within(dialog).getByRole("button", { name: "Teen prospects" }),
+      ).toBeInTheDocument();
+
+      await user.click(
+        within(dialog).getByRole("button", { name: "Delete Teen prospects" }),
+      );
+      expect(useSavedFiltersStore.getState().savedFilters).toEqual([]);
+      expect(
+        within(dialog).getByText(/No saved filters yet/),
+      ).toBeInTheDocument();
+    });
+
+    it("applies a tactic slot's recruitment filters, ranked among the slot's two families", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      const tactic = resolvePlannerTacticIpcMock();
+      const winger = tactic.lanes.find((lane) => lane.laneId === "left_winger");
+      if (!winger) throw new Error("Expected the left winger slot");
+      winger.recruitmentFilters = [
+        { field: "height", op: "gte", value: 180 },
+        { field: "moneyball.progressive_passes", op: "pct_gte", value: 25 },
+      ];
+      setPlannerTacticForContext(
+        { saveId: 1, contextToken: "save-token-1" },
+        tactic,
+      );
+      setSearchPlayersOverride([playerNamed("Wide Scout", 160)]);
+      const { router } = renderSearchRoute();
+      await screen.findByText("Wide Scout");
+
+      const dialog = await openSavedFilters(user);
+      const slots = await within(dialog).findByRole("region", {
+        name: "Tactic slot filters",
+      });
+      // Only slots with recruitment filters are offered.
+      expect(within(slots).getAllByRole("button")).toHaveLength(1);
+      await user.click(
+        within(slots).getByRole("button", { name: /^AML\/ML slot: / }),
+      );
+
+      const expected = [
+        { field: "height", op: "gte", value: 180 },
+        { field: "moneyball.progressive_passes", op: "pct_gte", value: 25 },
+      ];
+      await waitFor(() => {
+        expect(router.state.location.search).toMatchObject({
+          combine: "and",
+          comparison: "winger+wide_midfielder",
+          filters: expected.map((rule) => expect.objectContaining(rule)),
+        });
+        expect(getLastSearchPlayersArgs()).toMatchObject({
+          comparison: "winger+wide_midfielder",
+          filters: expected,
+        });
+      });
+      const comparison = await screen.findByRole("combobox", {
+        name: "Percentiles vs",
+      });
+      expect(comparison).toHaveValue("winger+wide_midfielder");
+      expect(
+        within(comparison).getByRole("option", {
+          name: "Wingers + Wide midfielders",
+          selected: true,
+        }),
+      ).toBeInTheDocument();
+    });
+  });
+
   describe("search table toolbar", () => {
     it("associates summary, chips, edit, columns, and dataset toggles in one table toolbar", async () => {
       await resolveLoadDataIpcMock();
@@ -3953,7 +3965,7 @@ describe("search route", () => {
     it("keeps Add Tactic outside the generic toolbar", async () => {
       await resolveLoadDataIpcMock();
       setSearchPlayersOverride([playerNamed("High CA", 180)]);
-      renderSearchRoute("/search?view=general");
+      renderSearchRoute();
 
       await screen.findByText("High CA");
       const toolbar = screen.getByRole("toolbar", {
@@ -3969,7 +3981,12 @@ describe("search route", () => {
       expect(
         within(header).getByTestId("search-page-actions"),
       ).toBeInTheDocument();
-      for (const name of ["Add Tactic (Current)", "Add Tactic (Potential)"]) {
+      for (const name of [
+        "Add Tactic (Role Score)",
+        "Add Tactic (Potential)",
+        "Add Tactic (Moneyball Score)",
+        "Refresh stats",
+      ]) {
         expect(screen.getByRole("button", { name })).toBeInTheDocument();
         expect(
           within(header).getByRole("button", { name }),
@@ -4043,7 +4060,10 @@ describe("search route", () => {
       const user = userEvent.setup();
       await resolveLoadDataIpcMock();
       setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
-      renderSearchRoute("/search?view=moneyball");
+      usePlayerTableStore
+        .getState()
+        .addColumns("search", ["moneyball.average_rating"]);
+      const { router } = renderSearchRoute();
 
       await screen.findByText("Moneyball Scout");
       const toolbar = screen.getByRole("toolbar", {
@@ -4077,14 +4097,10 @@ describe("search route", () => {
       expect(
         within(header).getByRole("heading", {
           level: 1,
-          name: "Moneyball",
+          name: "Player Search",
         }),
       ).toBeInTheDocument();
-      for (const name of [
-        "Add Tactic (Roles)",
-        "Add Tactic (Custom)",
-        "Refresh stats",
-      ]) {
+      for (const name of ["Add Tactic (Moneyball Score)", "Refresh stats"]) {
         expect(
           within(header).getByRole("button", { name }),
         ).toBeInTheDocument();
@@ -4096,6 +4112,19 @@ describe("search route", () => {
         expect(getLastSearchPlayersArgs()).toMatchObject({
           comparison: "central_defender",
         });
+        expect(router.state.location.search).toMatchObject({
+          comparison: "central_defender",
+        });
+      });
+      // Own position is the default and stays out of the URL.
+      await user.selectOptions(
+        within(
+          screen.getByRole("toolbar", { name: "Player results toolbar" }),
+        ).getByRole("combobox", { name: "Percentiles vs" }),
+        "Own position",
+      );
+      await waitFor(() => {
+        expect(router.state.location.search).not.toHaveProperty("comparison");
       });
     });
 
@@ -4103,7 +4132,10 @@ describe("search route", () => {
       const user = userEvent.setup();
       await resolveLoadDataIpcMock();
       setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
-      renderSearchRoute("/search?view=moneyball");
+      usePlayerTableStore
+        .getState()
+        .addColumns("search", ["moneyball_role.wbl_wbr_wing_back_ip"]);
+      renderSearchRoute();
 
       await screen.findByText("Moneyball Scout");
       const scores = screen.getByRole("group", { name: "Scores" });
@@ -4128,10 +4160,10 @@ describe("search route", () => {
       expect(await screen.findByText("Moneyball Scout")).toBeInTheDocument();
     });
 
-    it("offers the league choice only in Moneyball and only once leagues are measured", async () => {
+    it("offers the league choice only with season fields in use and only once leagues are measured", async () => {
       await resolveLoadDataIpcMock();
       setSearchPlayersOverride([playerNamed("Scout", 160)]);
-      const { unmount } = renderSearchRoute("/search?view=general");
+      const { unmount } = renderSearchRoute();
       await screen.findByText("Scout");
       expect(screen.queryByRole("group", { name: "Scores" })).toBeNull();
       unmount();
@@ -4140,7 +4172,7 @@ describe("search route", () => {
         enabled: true,
         referenceDivision: null,
       });
-      renderSearchRoute("/search?view=moneyball");
+      renderSearchRoute("/search?sort=moneyball.average_rating");
       const scores = await screen.findByRole("group", { name: "Scores" });
       expect(scores).toBeDisabled();
       expect(scores).toHaveAccessibleDescription(

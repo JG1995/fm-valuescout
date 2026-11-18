@@ -1,22 +1,21 @@
 import {
   isPercentileOperator,
   MONEYBALL_SEARCH_METRICS,
-  type MoneyballSearchMetric,
 } from "@/utils/moneyball-search-metrics";
 import {
-  getPlayerMetric,
   PLAYER_METRICS,
   type PlayerMetric,
   type PlayerMetricKind,
   type PlayerMetricOperator,
 } from "@/utils/player-metrics";
+import { SEARCH_METRICS, type SearchMetric } from "@/utils/search-metrics";
 import type {
   FilterRule,
   FilterRuleIpc,
   FilterValue,
 } from "../types/filter-rule";
 import { createFilterRuleId, filterRuleToIpc } from "../types/filter-rule";
-import type { FilterView, SearchView } from "../types/search-view";
+import type { FilterView } from "../types/search-view";
 
 export type FilterFieldKind = PlayerMetricKind | "number";
 export type FilterOperator = PlayerMetricOperator;
@@ -28,40 +27,30 @@ type FilterOnlyField = Pick<
   PlayerMetric,
   "id" | "label" | "kind" | "operators" | "enumOptions"
 > & { category: string; sortable: false };
-export type FilterFieldDef =
-  | PlayerMetric
-  | MoneyballSearchMetric
-  | FilterOnlyField;
+export type FilterFieldDef = SearchMetric | FilterOnlyField;
 
 /** The rule the "Only realistic signings" toggle adds and removes. */
 export const REALISTIC_SIGNING_FIELD_ID = "realistic_signing";
 
-/** The picker category the field joins in each view. */
-const realisticSigningField = (category: string): FilterOnlyField => ({
+const REALISTIC_SIGNING_FIELD: FilterOnlyField = {
   id: REALISTIC_SIGNING_FIELD_ID,
   label: "Realistic signing",
-  category,
+  category: "club-contract",
   kind: "boolean",
   sortable: false,
   operators: [
     { id: "is", label: "is" },
     { id: "is_not", label: "is not" },
   ],
-});
-
-const REALISTIC_SIGNING_FIELDS: Record<SearchView, FilterOnlyField> = {
-  general: realisticSigningField("club-contract"),
-  moneyball: realisticSigningField("Club and value"),
 };
 
-const GENERAL_FILTER_FIELDS: readonly FilterFieldDef[] = [
-  ...PLAYER_METRICS,
-  REALISTIC_SIGNING_FIELDS.general,
+const SEARCH_FILTER_FIELDS: readonly FilterFieldDef[] = [
+  ...SEARCH_METRICS,
+  REALISTIC_SIGNING_FIELD,
 ];
-const MONEYBALL_FILTER_FIELDS: readonly FilterFieldDef[] = [
-  ...MONEYBALL_SEARCH_METRICS,
-  REALISTIC_SIGNING_FIELDS.moneyball,
-];
+const SEARCH_FILTER_FIELD_BY_ID = new Map(
+  SEARCH_FILTER_FIELDS.map((field) => [field.id, field]),
+);
 /**
  * A tactic slot's recruitment filters: General fields except Club DNA and
  * potential role scores, which need a query identity or projection the
@@ -84,31 +73,18 @@ const SLOT_FILTER_FIELD_BY_ID = new Map(
 );
 
 export function filterFieldsForView(
-  view: FilterView,
+  view: FilterView = "search",
 ): readonly FilterFieldDef[] {
-  switch (view) {
-    case "general":
-      return GENERAL_FILTER_FIELDS;
-    case "moneyball":
-      return MONEYBALL_FILTER_FIELDS;
-    case "slot":
-      return SLOT_FILTER_FIELDS;
-  }
+  return view === "slot" ? SLOT_FILTER_FIELDS : SEARCH_FILTER_FIELDS;
 }
 
 export function getFilterField(
   fieldId: string,
-  view: FilterView = "general",
+  view: FilterView = "search",
 ): FilterFieldDef | undefined {
-  if (view === "slot") {
-    return SLOT_FILTER_FIELD_BY_ID.get(fieldId);
-  }
-  if (fieldId === REALISTIC_SIGNING_FIELD_ID) {
-    return REALISTIC_SIGNING_FIELDS[view];
-  }
-  return view === "moneyball"
-    ? MONEYBALL_SEARCH_METRICS.find((field) => field.id === fieldId)
-    : getPlayerMetric(fieldId);
+  return (
+    view === "slot" ? SLOT_FILTER_FIELD_BY_ID : SEARCH_FILTER_FIELD_BY_ID
+  ).get(fieldId);
 }
 
 /** The value shape an operator takes: one value, a `[min, max]` range, or a list of choices. */
@@ -123,7 +99,7 @@ export function valueShapeForOperator(op: string): "single" | "range" | "list" {
 export function defaultValueForRule(
   fieldId: string,
   op: string,
-  view: FilterView = "general",
+  view: FilterView = "search",
 ): FilterValue {
   const shape = valueShapeForOperator(op);
   if (shape === "list") {
@@ -143,7 +119,7 @@ export function defaultValueForRule(
 
 function defaultValueForField(
   fieldId: string,
-  view: FilterView = "general",
+  view: FilterView = "search",
 ): FilterValue {
   const field = getFilterField(fieldId, view);
   if (!field) {
@@ -166,7 +142,7 @@ function defaultValueForField(
 
 export function defaultOperatorForField(
   fieldId: string,
-  view: FilterView = "general",
+  view: FilterView = "search",
 ): string {
   const field = getFilterField(fieldId, view);
   return field?.operators[0]?.id ?? "contains";
@@ -184,7 +160,7 @@ export function createBlankFilterRule(): FilterRule {
 
 export function isFilterRuleComplete(
   rule: FilterRule,
-  view: FilterView = "general",
+  view: FilterView = "search",
 ): boolean {
   const field = getFilterField(rule.field, view);
   if (!field) {
@@ -242,7 +218,7 @@ export function isFilterRuleComplete(
 /** True for a Moneyball statistic shown as a percentage, compared on its raw value. */
 export function isRawPercentageRule(
   rule: FilterRule,
-  view: FilterView = "general",
+  view: FilterView = "search",
 ): boolean {
   const field = getFilterField(rule.field, view);
   return (
@@ -260,7 +236,7 @@ export function isRawPercentageRule(
  */
 export function filterRuleToSearchIpc(
   rule: FilterRule,
-  view: FilterView = "general",
+  view: FilterView = "search",
 ): FilterRuleIpc {
   const ipc = filterRuleToIpc(rule);
   const field = getFilterField(rule.field, view);
@@ -282,7 +258,7 @@ export function filterRuleToSearchIpc(
 
 export function completeFilterRules(
   rules: FilterRule[],
-  view: FilterView = "general",
+  view: FilterView = "search",
 ): FilterRule[] {
   return rules.filter((rule) => isFilterRuleComplete(rule, view));
 }

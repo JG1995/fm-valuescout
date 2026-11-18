@@ -3,27 +3,12 @@ import { tableColumnForMetric as searchTableColumnForMetric } from "@/features/s
 import { tableColumnForMetric as squadTableColumnForMetric } from "@/features/squad/components/squad-overview-panel";
 import { staffTableColumnForMetric } from "@/features/staff/components/staff-search-results-panel";
 import { getStaffMetric } from "@/features/staff/utils/staff-metrics";
-import { getMoneyballSearchMetric } from "@/utils/moneyball-search-metrics";
 import { getPlayerMetric } from "@/utils/player-metrics";
 
 const CASES = [
   {
     layout: "Search",
-    column: searchTableColumnForMetric(
-      "nationality",
-      undefined,
-      "general",
-      new Map(),
-    ),
-  },
-  {
-    layout: "Moneyball Search",
-    column: searchTableColumnForMetric(
-      "nationality",
-      undefined,
-      "moneyball",
-      new Map(),
-    ),
+    column: searchTableColumnForMetric("nationality", undefined, new Map()),
   },
   {
     layout: "Squad",
@@ -55,7 +40,6 @@ describe("nationality leaf headers", () => {
 
   it("keeps domain catalog labels untouched for filters and pickers", () => {
     expect(getPlayerMetric("nationality")?.label).toBe("Nationality");
-    expect(getMoneyballSearchMetric("nationality")?.label).toBe("Nationality");
     expect(getStaffMetric("nationality")?.label).toBe("Nation");
   });
 });

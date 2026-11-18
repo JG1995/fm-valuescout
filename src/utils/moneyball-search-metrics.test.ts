@@ -1,91 +1,45 @@
 import { describe, expect, it } from "vitest";
 import { MONEYBALL_ROLE_CATALOG } from "./moneyball-role-catalog";
 import {
-  DEFAULT_MONEYBALL_TABLE_COLUMN_IDS,
   getMoneyballSearchMetric,
   MONEYBALL_SEARCH_METRICS,
 } from "./moneyball-search-metrics";
-import { getPlayerMetric } from "./player-metrics";
+import { getPlayerMetric, PLAYER_METRICS } from "./player-metrics";
+import {
+  getSearchMetric,
+  isSeasonFieldId,
+  SEARCH_METRICS,
+} from "./search-metrics";
 
 describe("Moneyball Search metrics", () => {
-  it("includes every required recruitment field and the exact default columns", () => {
+  it("holds only season fields, which Search offers beside every player field", () => {
     expect(
-      MONEYBALL_SEARCH_METRICS.filter(
+      MONEYBALL_SEARCH_METRICS.every(
         (metric) =>
-          !metric.id.startsWith("moneyball.") &&
-          !metric.id.startsWith("moneyball_role."),
-      ).map((metric) => metric.id),
-    ).toEqual([
-      "name",
-      "age",
-      "nationality",
-      "height",
-      "club",
-      "division",
-      "parent_club",
-      "preferred_foot",
-      "value",
-      "position",
-      "ca",
-      "pa",
-      "reputation",
-      "world_reputation",
-      "wage",
-      "contract_year",
-      "transfer_listed",
-      "loan_listed",
-      "not_for_sale",
-      "set_for_release",
-      "on_loan",
-      "team_level",
-    ]);
-    expect(getMoneyballSearchMetric("height")?.defaultWidth).toBe(88);
-    expect(DEFAULT_MONEYBALL_TABLE_COLUMN_IDS).toEqual([
-      "name",
-      "age",
-      "nationality",
-      "club",
-      "division",
-      "moneyball.minutes",
-      "moneyball.average_rating",
-      "moneyball.goals_per_90",
-      "moneyball.assists_per_90",
-      "moneyball.xg_per_90",
-      "moneyball.xa_per_90",
-    ]);
-  });
-
-  it("shares General's ability and contract fields but not FM attributes or role scores", () => {
-    for (const id of ["ca", "wage", "transfer_listed", "team_level"]) {
-      const general = getPlayerMetric(id);
-      expect(getMoneyballSearchMetric(id)).toMatchObject({
-        label: general?.label,
-        kind: general?.kind,
-        operators: general?.operators,
-      });
-    }
-    expect(getMoneyballSearchMetric("ca")?.category).toBe(
-      "Ability and reputation",
+          metric.id.startsWith("moneyball.") ||
+          metric.id.startsWith("moneyball_role."),
+      ),
+    ).toBe(true);
+    expect(SEARCH_METRICS).toHaveLength(
+      PLAYER_METRICS.length + MONEYBALL_SEARCH_METRICS.length,
     );
-    expect(getMoneyballSearchMetric("wage")?.category).toBe("Club and value");
-    for (const id of [
-      "attr.Pace",
-      "hidden.Consistency",
-      "role.goalkeeper_ip",
-      "club_dna",
-    ]) {
-      expect(getMoneyballSearchMetric(id)).toBeUndefined();
+    expect(new Set(SEARCH_METRICS.map((metric) => metric.id)).size).toBe(
+      SEARCH_METRICS.length,
+    );
+    for (const id of ["attr.Pace", "role.goalkeeper_ip", "club_dna", "ca"]) {
+      expect(getSearchMetric(id)).toBe(getPlayerMetric(id));
+      expect(isSeasonFieldId(id)).toBe(false);
     }
-  });
-
-  it("filters Position with the same position choices as General Search", () => {
-    const general = getPlayerMetric("position");
-
-    expect(getMoneyballSearchMetric("position")).toMatchObject({
-      kind: "enum",
-      operators: general?.operators,
-      enumOptions: general?.enumOptions,
-    });
+    for (const id of [
+      "moneyball.minutes",
+      "moneyball.goals",
+      "moneyball_role.wbl_wbr_wing_back_ip",
+    ]) {
+      expect(getSearchMetric(id)).toBe(getMoneyballSearchMetric(id));
+      expect(isSeasonFieldId(id)).toBe(true);
+    }
+    expect(isSeasonFieldId("tactic_moneyball.goalkeeper")).toBe(true);
+    expect(isSeasonFieldId("tactic_current.goalkeeper")).toBe(false);
   });
 
   it("offers no column, filter, or sort for metrics the save cannot provide", () => {
@@ -106,10 +60,6 @@ describe("Moneyball Search metrics", () => {
     expect(getMoneyballSearchMetric("moneyball.xgp")?.metric?.label).toBe(
       "xGP",
     );
-  });
-
-  it("labels the Age metric as age-only", () => {
-    expect(getMoneyballSearchMetric("age")?.label).toBe("Age");
   });
 
   it("registers every backend role as a grouped numeric field", () => {
@@ -138,8 +88,8 @@ describe("Moneyball Search metrics", () => {
         (metric) => metric.id === "moneyball_role.wbl_wbr_wing_back_ip",
       ),
     ).toMatchObject({
-      label: "Wing-Back (IP · WBR/WBL)",
-      category: "Moneyball roles · Wing-back",
+      label: "Moneyball Score · Wing-Back (IP · WBR/WBL)",
+      category: "Moneyball Scores · Wing-back",
       role: true,
       roleId: "wbl_wbr_wing_back_ip",
     });
@@ -147,6 +97,6 @@ describe("Moneyball Search metrics", () => {
       roleMetrics.find(
         (metric) => metric.id === "moneyball_role.dl_dr_wing_back_ip",
       )?.label,
-    ).toBe("Wing-Back (IP · DR/DL)");
+    ).toBe("Moneyball Score · Wing-Back (IP · DR/DL)");
   });
 });

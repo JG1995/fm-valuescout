@@ -163,7 +163,7 @@ function parseOneFilterRule(
 
 export function parseSearchFilters(
   value: unknown,
-  view: FilterView = "general",
+  view: FilterView = "search",
 ): FilterRule[] {
   if (!Array.isArray(value)) {
     return [];

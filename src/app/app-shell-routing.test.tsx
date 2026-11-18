@@ -52,7 +52,7 @@ describe("app shell routing", () => {
     ).toBeNull();
   });
 
-  it("lists all ten grouped destinations with working targets", async () => {
+  it("lists all nine grouped destinations with working targets", async () => {
     renderWithProviders();
 
     const nav = await screen.findByRole("navigation", { name: "Primary" });
@@ -62,8 +62,7 @@ describe("app shell routing", () => {
       links.map((link) => [link.textContent, link.getAttribute("href")]),
     ).toEqual([
       ["Dashboard", "/"],
-      ["Search", "/search?view=general"],
-      ["Moneyball", "/search?view=moneyball"],
+      ["Search", "/search"],
       ["Staff Search", "/staff?view=search"],
       ["My Staff", "/staff?view=my-staff"],
       ["Squad", "/my-club?view=squad"],
@@ -77,9 +76,8 @@ describe("app shell routing", () => {
 
   it.each([
     ["/", "Dashboard"],
-    ["/search?view=general", "Search"],
-    ["/search?view=moneyball", "Moneyball"],
     ["/search", "Search"],
+    ["/search?view=moneyball", "Search"],
     ["/staff?view=search", "Staff Search"],
     ["/staff", "Staff Search"],
     ["/my-club?view=squad", "Squad"],
@@ -99,7 +97,7 @@ describe("app shell routing", () => {
     expect(current[0]).toHaveAccessibleName(name);
   });
 
-  it("marks Moneyball current when the saved default selects it", async () => {
+  it("marks Search current whatever the saved default analysis view", async () => {
     useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
     renderWithProviders({ initialEntries: ["/search"] });
 
@@ -107,7 +105,7 @@ describe("app shell routing", () => {
     const current = within(nav).getAllByRole("link", { current: "page" });
 
     expect(current).toHaveLength(1);
-    expect(current[0]).toHaveAccessibleName("Moneyball");
+    expect(current[0]).toHaveAccessibleName("Search");
   });
 
   it("marks no direct destination current on a player profile", async () => {
@@ -243,14 +241,13 @@ describe("app shell routing", () => {
           dir: "desc",
           filters: [],
           combine: "and",
-          view: "moneyball",
-          comparison: "own",
+          comparison: "striker",
         },
         hash: "filters",
       });
     });
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Moneyball" }),
+      await screen.findByRole("heading", { level: 1, name: "Player Search" }),
     ).toBeInTheDocument();
     const searchHref = router.history.location.href;
 
@@ -264,9 +261,9 @@ describe("app shell routing", () => {
 
     await user.click(screen.getByRole("button", { name: "Back" }));
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Moneyball" }),
+      await screen.findByRole("heading", { level: 1, name: "Player Search" }),
     ).toBeInTheDocument();
-    expect(searchHref).toContain("view=moneyball");
+    expect(searchHref).toContain("comparison=striker");
     expect(searchHref).toMatch(/#filters$/);
     expect(router.history.location.href).toBe(searchHref);
 

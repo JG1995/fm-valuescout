@@ -1,5 +1,4 @@
 import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
-import type { SearchView } from "../types/search-view";
 import { completeFilterRules } from "../utils/filter-registry";
 import { FilterTag } from "./filter-tag";
 
@@ -9,7 +8,6 @@ type SearchFilterStripProps = {
   onRulesChange: (rules: FilterRule[]) => void;
   onCombineChange?: (combine: FilterCombineMode) => void;
   onEditRule?: (ruleId: string, anchor: HTMLElement) => void;
-  view?: SearchView;
 };
 
 /**
@@ -23,9 +21,8 @@ export function SearchFilterStrip({
   onRulesChange,
   onCombineChange,
   onEditRule,
-  view = "general",
 }: SearchFilterStripProps) {
-  const appliedRules = completeFilterRules(rules, view);
+  const appliedRules = completeFilterRules(rules);
 
   const removeRule = (ruleId: string) => {
     onRulesChange(rules.filter((rule) => rule.id !== ruleId));
@@ -76,7 +73,6 @@ export function SearchFilterStrip({
           <FilterTag
             key={rule.id}
             rule={rule}
-            view={view}
             onEdit={
               onEditRule ? (anchor) => onEditRule(rule.id, anchor) : undefined
             }

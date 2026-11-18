@@ -3,9 +3,12 @@ import { Button } from "@/components/ui/button/button";
 import { PlayerMetricPicker } from "@/components/ui/player-metric-picker";
 import { useAnchoredPopover } from "@/components/ui/use-anchored-popover";
 import { isPercentileOperator } from "@/utils/moneyball-search-metrics";
-import { positionFamilyLabel } from "@/utils/position-families";
 import type { FilterRule } from "../types/filter-rule";
-import type { FilterView, MoneyballComparison } from "../types/search-view";
+import {
+  type FilterView,
+  type MoneyballComparison,
+  moneyballComparisonLabel,
+} from "../types/search-view";
 import {
   defaultOperatorForField,
   defaultValueForRule,
@@ -14,7 +17,7 @@ import {
   isFilterRuleComplete,
 } from "../utils/filter-registry";
 import { formatFilterTagLabel } from "../utils/format-filter-label";
-import { searchTableGroups } from "../utils/search-table-groups";
+import { SEARCH_TABLE_GROUPS } from "../utils/search-table-groups";
 import {
   FilterConditionFields,
   filterValueError,
@@ -74,14 +77,11 @@ export function FilterRulePopover({
   useEffect(() => setShown(true), []);
   const field = getFilterField(draft.field, view);
   const scaleSwitch =
-    view !== "general" && field !== undefined && "metric" in field;
+    field !== undefined && "metric" in field && field.metric !== undefined;
   const percentile = isPercentileOperator(draft.op);
-  const roleScore =
-    view === "moneyball" &&
-    field !== undefined &&
-    "role" in field &&
-    field.role;
-  const statisticPercentile = view === "moneyball" && percentile;
+  const moneyballScore =
+    view === "search" && field !== undefined && "role" in field && field.role;
+  const statisticPercentile = view === "search" && percentile;
 
   useEffect(() => {
     if (!shown || focusRequest === null) {
@@ -167,7 +167,7 @@ export function FilterRulePopover({
           <PlayerMetricPicker
             label="Field"
             metrics={filterFieldsForView(view)}
-            groups={searchTableGroups(view)}
+            groups={SEARCH_TABLE_GROUPS}
             value={draft.field}
             placeholder="Choose a field"
             defaultOpen={draft.field === ""}
@@ -235,7 +235,7 @@ export function FilterRulePopover({
                   the position families of this slot's positions.
                 </p>
               ) : null}
-              {roleScore ? (
+              {moneyballScore ? (
                 <p className="text-body-sm text-on-surface-variant">
                   Scored among the role's position family: players with 450+
                   minutes rated 16 or higher there.
@@ -244,7 +244,7 @@ export function FilterRulePopover({
                 <p className="text-body-sm text-on-surface-variant">
                   {comparison === undefined || comparison === "own"
                     ? "Ranked among the peers of each player's own position."
-                    : `Ranked among ${positionFamilyLabel(comparison).toLowerCase()}.`}{" "}
+                    : `Ranked among ${moneyballComparisonLabel(comparison).toLowerCase()}.`}{" "}
                   Peers have 450+ minutes and a rating of 16 or higher there.
                   Change this with Percentiles vs in the toolbar.
                 </p>

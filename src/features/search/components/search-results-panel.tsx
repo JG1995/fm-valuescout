@@ -31,18 +31,16 @@ import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { PlayerMetricPicker } from "@/components/ui/player-metric-picker";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
-import { scoreBadgeAccessibleName } from "@/components/ui/score-badge/score-tier";
 import {
   isIdentityColumnId,
   usePlayerTableStore,
 } from "@/stores/use-player-table-store";
-import { formatCount } from "@/utils/format";
+import { formatCount, formatLongGameDate } from "@/utils/format";
 import {
   formatMoneyballMetric,
   getMoneyballSearchMetric,
-  MONEYBALL_SEARCH_METRICS,
 } from "@/utils/moneyball-search-metrics";
-import { getPlayerMetric, PLAYER_METRICS } from "@/utils/player-metrics";
+import { getSearchMetric, SEARCH_METRICS } from "@/utils/search-metrics";
 import {
   isFullTacticGroup,
   isTacticColumnId,
@@ -65,21 +63,23 @@ import type { PlayerSummary } from "../types/player-summary";
 import type { SearchSortDir, SearchSortField } from "../types/search-sort";
 import {
   type BASIC_SEARCH_SORT_FIELDS,
+  DEFAULT_SEARCH_SORT_FIELD,
   defaultDirForSortField,
   isBasicSearchSortField,
 } from "../types/search-sort";
-import type { MoneyballComparison, SearchView } from "../types/search-view";
-import { defaultSearchSort } from "../types/search-view";
+import type { MoneyballComparison } from "../types/search-view";
 import {
   completeFilterRules,
   filterFieldsForView,
   getFilterField,
 } from "../utils/filter-registry";
-import { searchTableGroups } from "../utils/search-table-groups";
+import { SEARCH_TABLE_GROUPS } from "../utils/search-table-groups";
 import { buildTacticColumnOrder } from "../utils/tactic-columns";
 import { type FilterFieldRequest, SearchFilterBar } from "./search-filter-bar";
 
 type TableColumn = PlayerTableColumn;
+
+const TABLE_ID = "search";
 
 /**
  * Route-owned tactic lane label model. The compact placement identifier is
@@ -91,8 +91,8 @@ export type TacticLaneLabel = {
   compact: string;
   context: string;
   full: string;
-  /** Context and full definition for the lane's Moneyball Custom column. */
-  custom?: { context: string; full: string };
+  /** Context and full definition for the lane's Moneyball Score column. */
+  moneyball?: { context: string; full: string };
 };
 
 type SearchResultsPanelProps = {
@@ -103,8 +103,9 @@ type SearchResultsPanelProps = {
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
   onRulesChange: (rules: FilterRule[]) => void;
   onApplyFilters: (rules: FilterRule[], combine: FilterCombineMode) => void;
+  /** Controls beside Add filter, such as Saved filters. */
+  filterActions?: ReactNode;
   datasetToggles?: ReactNode;
-  view: SearchView;
   comparison: MoneyballComparison;
   /** The selected shortlist, or null for no shortlist restriction. */
   shortlistId: number | null;
@@ -132,14 +133,15 @@ function nextSort(
 export function tableColumnForMetric(
   metricId: string,
   width: number | undefined,
-  view: SearchView,
   laneLabels: ReadonlyMap<string, TacticLaneLabel>,
 ): TableColumn | undefined {
   if (isValidTacticColumnId(metricId)) {
     const laneId = tacticLaneIdForId(metricId);
     const laneLabel = laneLabels.get(laneId ?? "");
     const groupLabel =
-      tacticGroupForId(metricId) === "custom" ? laneLabel?.custom : laneLabel;
+      tacticGroupForId(metricId) === "moneyball"
+        ? laneLabel?.moneyball
+        : laneLabel;
     return {
       id: metricId,
       label: laneLabel?.compact ?? laneId ?? metricId,
@@ -152,20 +154,7 @@ export function tableColumnForMetric(
   // Compact leaf header: visible `Nat.` keeps the full `Nationality` as
   // the accessible name (sort, menu, disclosure). Catalog labels stay
   // untouched so filters and pickers keep their full names.
-  if (view === "moneyball") {
-    const metric = getMoneyballSearchMetric(metricId);
-    if (metric) {
-      return {
-        id: metric.id,
-        label: metric.id === "nationality" ? "Nat." : metric.label,
-        accessibleLabel:
-          metric.id === "nationality" ? "Nationality" : undefined,
-        align: metric.align,
-        width: width ?? metric.defaultWidth,
-      };
-    }
-  }
-  const metric = getPlayerMetric(metricId);
+  const metric = getSearchMetric(metricId);
   if (!metric) {
     return undefined;
   }
@@ -178,13 +167,22 @@ export function tableColumnForMetric(
   };
 }
 
-const SEARCH_HEADER_METRICS = PLAYER_METRICS.filter(
+const SEARCH_HEADER_METRICS = SEARCH_METRICS.filter(
   (metric) => !isIdentityColumnId(metric.id),
 );
 
-const MONEYBALL_HEADER_METRICS = MONEYBALL_SEARCH_METRICS.filter(
-  (metric) => !isIdentityColumnId(metric.id),
-);
+/** A season value's hover text: when it comes from a kept snapshot, its date. */
+function seasonValueTitle(
+  text: string,
+  statsDate: string | undefined,
+): string | undefined {
+  if (text === "—" || text === "…") {
+    return undefined;
+  }
+  return statsDate === undefined
+    ? text
+    : `${text}, as of ${formatLongGameDate(statsDate)}: under 450 minutes this season`;
+}
 
 function PlayerIdentityCell({
   name,
@@ -245,7 +243,6 @@ function SearchResultsVirtualTable({
   onMoveColumn,
   onResizeColumn,
   onFilterColumn,
-  view,
   comparison,
   shortlistId,
   pageContext,
@@ -267,7 +264,6 @@ function SearchResultsVirtualTable({
   onMoveColumn: (metricId: string, targetIndex: number) => void;
   onResizeColumn: (metricId: string, width: number) => void;
   onFilterColumn: (metricId: string) => void;
-  view: SearchView;
   comparison: MoneyballComparison;
   shortlistId: number | null;
   pageContext: SearchPlayerPageContext;
@@ -291,8 +287,8 @@ function SearchResultsVirtualTable({
     [onSortChange],
   );
   const canFilterColumn = useCallback(
-    (metricId: string) => getFilterField(metricId, view) !== undefined,
-    [view],
+    (metricId: string) => getFilterField(metricId) !== undefined,
+    [],
   );
   const renderHeader = useCallback<
     ConfigurableTableRenderHeader<PlayerSummary>
@@ -301,7 +297,7 @@ function SearchResultsVirtualTable({
       <PlayerTableHeader
         columns={tableColumns}
         fixedColumns={fixedColumns}
-        groups={searchTableGroups(view)}
+        groups={SEARCH_TABLE_GROUPS}
         identity={identity}
         sortBy={sortBy}
         sortDir={sortDir}
@@ -313,11 +309,7 @@ function SearchResultsVirtualTable({
         onSortDirection={handleSortDirection}
         onFilterColumn={onFilterColumn}
         canFilterColumn={canFilterColumn}
-        metrics={
-          view === "moneyball"
-            ? MONEYBALL_HEADER_METRICS
-            : SEARCH_HEADER_METRICS
-        }
+        metrics={SEARCH_HEADER_METRICS}
       />
     ),
     [
@@ -331,7 +323,6 @@ function SearchResultsVirtualTable({
       onResizeColumn,
       sortBy,
       sortDir,
-      view,
     ],
   );
   const pageQueryOptions = useCallback(
@@ -344,7 +335,6 @@ function SearchResultsVirtualTable({
         filters,
         filterCombine,
         requestedFields,
-        view,
         comparison,
         shortlistId,
         pageContext,
@@ -358,7 +348,6 @@ function SearchResultsVirtualTable({
       shortlistId,
       sortBy,
       sortDir,
-      view,
     ],
   );
   const handlePlayerActivate = useCallback(
@@ -366,10 +355,9 @@ function SearchResultsVirtualTable({
       void navigate({
         to: "/players/$uid",
         params: { uid: String(player.uid) },
-        search: { view },
       });
     },
-    [navigate, view],
+    [navigate],
   );
   const renderCells = useCallback(
     (row: PlayerSummary | undefined) =>
@@ -390,10 +378,7 @@ function SearchResultsVirtualTable({
             </td>
           );
         }
-        const moneyballMetric =
-          view === "moneyball"
-            ? getMoneyballSearchMetric(column.id)
-            : undefined;
+        const moneyballMetric = getMoneyballSearchMetric(column.id);
         if (moneyballMetric?.metric || moneyballMetric?.context) {
           const raw = player?.dynamicValues?.[column.id];
           const value = typeof raw === "number" ? raw : null;
@@ -406,36 +391,26 @@ function SearchResultsVirtualTable({
                   ? "—"
                   : formatCount(value);
           const score = player?.moneyballPercentiles?.[column.id];
+          // Kept-snapshot values read muted, with their date on hover.
+          const borrowed = player?.moneyballStatsDate;
           return (
             <td
               key={column.id}
               className={NUM_CELL}
-              title={text !== "—" && text !== "…" ? text : undefined}
+              title={seasonValueTitle(text, borrowed)}
             >
               <span className="inline-flex items-center justify-end gap-2">
                 <span
                   className={
-                    value === null ? "text-on-surface-variant" : undefined
+                    value === null || borrowed !== undefined
+                      ? "text-on-surface-variant"
+                      : undefined
                   }
                 >
                   {text}
                 </span>
                 {moneyballMetric.metric && typeof score === "number" ? (
-                  player?.moneyballShortSample ? (
-                    <span
-                      role="img"
-                      className="font-mono text-mono-sm text-on-surface-variant tabular-nums"
-                      title="Short sample: under 450 minutes, ranked against peers with 450+"
-                      aria-label={scoreBadgeAccessibleName(
-                        `${column.label}, short sample`,
-                        score,
-                      )}
-                    >
-                      {score}
-                    </span>
-                  ) : (
-                    <ScoreBadge score={score} roleName={column.label} />
-                  )
+                  <ScoreBadge score={score} roleName={column.label} />
                 ) : null}
               </span>
             </td>
@@ -447,7 +422,7 @@ function SearchResultsVirtualTable({
             <td key={column.id} className={NUM_CELL}>
               <TableScoreContent
                 score={score}
-                roleName={`Moneyball role · ${column.label}`}
+                roleName={column.label}
                 isLoading={player === undefined}
               />
             </td>
@@ -513,7 +488,7 @@ function SearchResultsVirtualTable({
           </td>
         );
       }),
-    [columns, unresolvedFieldIds, view],
+    [columns, unresolvedFieldIds],
   );
 
   return (
@@ -544,8 +519,8 @@ export function SearchResultsPanel({
   onSortChange,
   onRulesChange,
   onApplyFilters,
+  filterActions,
   datasetToggles,
-  view,
   comparison,
   shortlistId,
   onShortlistMissing,
@@ -559,15 +534,14 @@ export function SearchResultsPanel({
     crest?: ReactNode;
   };
 }) {
-  const tableId = view === "moneyball" ? "moneyball-search" : "search";
-  const layout = usePlayerTableStore((state) => state.layouts[tableId]);
+  const layout = usePlayerTableStore((state) => state.layouts[TABLE_ID]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const removeStoredColumn = usePlayerTableStore((state) => state.removeColumn);
   const replaceLayout = usePlayerTableStore((state) => state.replaceLayout);
   const moveStoredColumn = usePlayerTableStore((state) => state.moveColumn);
   const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
   const identityWidth = usePlayerTableStore(
-    (state) => state.layouts[tableId].identityWidth,
+    (state) => state.layouts[TABLE_ID].identityWidth,
   );
   const setIdentityWidth = usePlayerTableStore(
     (state) => state.setIdentityWidth,
@@ -577,7 +551,7 @@ export function SearchResultsPanel({
       id: "identity",
       label: "Player",
       width: identityWidth,
-      onResize: (width) => setIdentityWidth(tableId, width),
+      onResize: (width) => setIdentityWidth(TABLE_ID, width),
       renderCell: (player) => (
         <PlayerIdentityCell
           name={player?.name}
@@ -588,7 +562,7 @@ export function SearchResultsPanel({
         />
       ),
     }),
-    [identityGraphics, identityWidth, setIdentityWidth, tableId],
+    [identityGraphics, identityWidth, setIdentityWidth],
   );
   const columns = useMemo<TableColumn[]>(
     () =>
@@ -596,12 +570,11 @@ export function SearchResultsPanel({
         const column = tableColumnForMetric(
           metricId,
           layout.widths[metricId],
-          view,
           laneLabels,
         );
         return column ? [column] : [];
       }),
-    [laneLabels, layout, view],
+    [laneLabels, layout],
   );
   const requestedFields = useMemo(
     () =>
@@ -619,7 +592,6 @@ export function SearchResultsPanel({
       filters,
       filterCombine,
       requestedFields,
-      view,
       comparison,
       shortlistId,
       pageContext,
@@ -633,7 +605,6 @@ export function SearchResultsPanel({
       shortlistId,
       sortBy,
       sortDir,
-      view,
     ],
   );
   const [committed, setCommitted] = useState(requested);
@@ -648,7 +619,6 @@ export function SearchResultsPanel({
     committed.filters,
     committed.filterCombine,
     committed.requestedFields,
-    committed.view,
     committed.comparison,
     committed.shortlistId,
     committed.pageContext,
@@ -661,11 +631,10 @@ export function SearchResultsPanel({
     requested.filters,
     requested.filterCombine,
     requested.requestedFields,
-    requested.view,
     requested.comparison,
     requested.shortlistId,
     requested.pageContext,
-    tableId,
+    TABLE_ID,
   );
   const requestMatchesCommitted =
     JSON.stringify(committedOptions.queryKey) ===
@@ -693,10 +662,9 @@ export function SearchResultsPanel({
     };
   }
   // The committed rows stay rendered, inactive, for every change inside the
-  // same view and page context; a view or context change clears them.
+  // same page context; a context change clears them.
   const isRetainedReplacement =
     !requestMatchesCommitted &&
-    committed.view === requested.view &&
     JSON.stringify(committed.pageContext) ===
       JSON.stringify(requested.pageContext);
   const replacementKind = !isRetainedReplacement
@@ -822,7 +790,6 @@ export function SearchResultsPanel({
   const listKey = useMemo(
     () =>
       [
-        committed.view,
         committed.comparison,
         String(committed.shortlistId),
         committed.filterCombine,
@@ -834,9 +801,8 @@ export function SearchResultsPanel({
     [committed],
   );
   const addColumn = useCallback(
-    (metricId: string) =>
-      addColumns(tableId, [metricId], searchTableGroups(view)),
-    [addColumns, tableId, view],
+    (metricId: string) => addColumns(TABLE_ID, [metricId], SEARCH_TABLE_GROUPS),
+    [addColumns],
   );
   const removeColumn = useCallback(
     (metricId: string) => {
@@ -845,7 +811,7 @@ export function SearchResultsPanel({
         return;
       }
       if (isTacticColumnId(metricId)) {
-        const survivingGroups = tacticColumnGroupsForTable(tableId).filter(
+        const survivingGroups = tacticColumnGroupsForTable(TABLE_ID).filter(
           (group) => isFullTacticGroup(nextColumnIds, group),
         );
         const persistedLaneIds = nextColumnIds.flatMap((id) => {
@@ -868,21 +834,21 @@ export function SearchResultsPanel({
           // treats an empty list as malformed and restores defaults, so remove
           // through the existing per-column store path instead.
           for (const id of layout.columnIds) {
-            removeStoredColumn(tableId, id);
+            removeStoredColumn(TABLE_ID, id);
           }
         } else {
-          replaceLayout(tableId, nextColumnIds);
+          replaceLayout(TABLE_ID, nextColumnIds);
         }
       } else {
-        removeStoredColumn(tableId, metricId);
+        removeStoredColumn(TABLE_ID, metricId);
       }
       const persistedColumnIds =
-        usePlayerTableStore.getState().layouts[tableId].columnIds;
+        usePlayerTableStore.getState().layouts[TABLE_ID].columnIds;
       if (persistedColumnIds.includes(requested.sortBy)) {
         return;
       }
-      const nextSort = persistedColumnIds.includes(defaultSearchSort(view))
-        ? defaultSearchSort(view)
+      const nextSort = persistedColumnIds.includes(DEFAULT_SEARCH_SORT_FIELD)
+        ? DEFAULT_SEARCH_SORT_FIELD
         : persistedColumnIds[0];
       if (!nextSort) {
         return;
@@ -896,19 +862,17 @@ export function SearchResultsPanel({
       removeStoredColumn,
       replaceLayout,
       requested.sortBy,
-      tableId,
-      view,
     ],
   );
   const moveColumn = useCallback(
     (metricId: string, targetIndex: number) =>
-      moveStoredColumn(tableId, metricId, targetIndex),
-    [moveStoredColumn, tableId],
+      moveStoredColumn(TABLE_ID, metricId, targetIndex),
+    [moveStoredColumn],
   );
   const resizeColumn = useCallback(
     (metricId: string, width: number) =>
-      setColumnWidth(tableId, metricId, width),
-    [setColumnWidth, tableId],
+      setColumnWidth(TABLE_ID, metricId, width),
+    [setColumnWidth],
   );
   const filterColumn = useCallback(
     (field: string) => setFieldRequest({ field, key: Date.now() }),
@@ -920,10 +884,8 @@ export function SearchResultsPanel({
       : undefined;
   const columnsControl = (
     <ConfigurableColumnsControl
-      groups={searchTableGroups(view)}
-      metrics={
-        view === "moneyball" ? MONEYBALL_HEADER_METRICS : SEARCH_HEADER_METRICS
-      }
+      groups={SEARCH_TABLE_GROUPS}
+      metrics={SEARCH_HEADER_METRICS}
       visibleColumnIds={layout.columnIds}
       onAddColumn={addColumn}
       onRemoveColumn={removeColumn}
@@ -935,9 +897,9 @@ export function SearchResultsPanel({
       combine={filterCombine}
       onRulesChange={onRulesChange}
       onApply={onApplyFilters}
-      view={view}
       comparison={comparison}
       fieldRequest={fieldRequest}
+      filterActions={filterActions}
       summary={summary}
       columnsControl={columnsControl}
       datasetToggles={datasetToggles}
@@ -967,10 +929,7 @@ export function SearchResultsPanel({
     );
   }
   const dirLabel = committed.sortDir === "asc" ? "ascending" : "descending";
-  const sortMetric =
-    committed.view === "moneyball"
-      ? getMoneyballSearchMetric(committed.sortBy)
-      : getPlayerMetric(committed.sortBy);
+  const sortMetric = getSearchMetric(committed.sortBy);
   const sortColumn = columns.find((column) => column.id === committed.sortBy);
   const sortLabel = sortMetric
     ? sortMetric.label
@@ -988,14 +947,14 @@ export function SearchResultsPanel({
         label="Sort by"
         searchLabel="Search fields"
         variant="inline"
-        metrics={filterFieldsForView(view).filter(
+        metrics={filterFieldsForView().filter(
           (metric) => metric.sortable !== false,
         )}
-        groups={searchTableGroups(view)}
+        groups={SEARCH_TABLE_GROUPS}
         value={committed.sortBy}
         placeholder={sortLabel}
         onChange={(field) => {
-          addColumns(tableId, [field], searchTableGroups(view));
+          addColumns(TABLE_ID, [field], SEARCH_TABLE_GROUPS);
           onSortChange(field, defaultDirForSortField(field));
         }}
       />{" "}
@@ -1019,33 +978,22 @@ export function SearchResultsPanel({
   );
   if (page.total === 0) {
     // The copy describes the committed rows, not a request still loading.
-    const appliedFilters = completeFilterRules(
-      committed.filters,
-      committed.view,
-    );
+    const appliedFilters = completeFilterRules(committed.filters);
     const shortlistEmpty = committed.shortlistId !== null;
     const emptyTitle = shortlistEmpty
       ? appliedFilters.length > 0
         ? "No shortlisted players match these filters"
-        : committed.view === "moneyball"
-          ? "No shortlisted player has season stats"
-          : "No shortlisted player in this snapshot"
+        : "No shortlisted player in this snapshot"
       : appliedFilters.length > 0
         ? "No players match these filters"
-        : committed.view === "moneyball"
-          ? "No Moneyball stats for this snapshot"
-          : "No players in snapshot";
+        : "No players in snapshot";
     const emptyBody = shortlistEmpty
       ? appliedFilters.length > 0
         ? "Adjust or clear filters in the toolbar above, or select No shortlist to widen the result set."
-        : committed.view === "moneyball"
-          ? "None of the shortlist's players have season stats in this snapshot. Select No shortlist to compare every player with season stats."
-          : "None of the shortlist's players are in this snapshot. Select No shortlist to browse every snapshot player."
+        : "None of the shortlist's players are in this snapshot. Select No shortlist to browse every snapshot player."
       : appliedFilters.length > 0
-        ? "Adjust or clear filters in the toolbar above to widen the result set."
-        : committed.view === "moneyball"
-          ? "Moneyball stats come from the FM save file linked to this save. Use Refresh stats to read it, or link a save file in Settings."
-          : "The snapshot exists but holds no player rows. Run Load Data again with Football Manager in an active save.";
+        ? "Adjust or clear filters in the toolbar above to widen the result set. Players without 450 minutes of season stats drop out of every season stats and Moneyball Score filter."
+        : "The snapshot exists but holds no player rows. Run Load Data again with Football Manager in an active save.";
 
     return (
       <Panel
@@ -1080,7 +1028,6 @@ export function SearchResultsPanel({
         columns={columns}
         identity={identity}
         requestedFields={committed.requestedFields}
-        view={committed.view}
         comparison={committed.comparison}
         shortlistId={committed.shortlistId}
         pageContext={committed.pageContext}

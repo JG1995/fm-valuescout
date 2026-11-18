@@ -9,7 +9,7 @@ import {
 import { TableToolbar } from "@/components/player-table/table-toolbar";
 import { Button } from "@/components/ui/button/button";
 import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
-import type { MoneyballComparison, SearchView } from "../types/search-view";
+import type { MoneyballComparison } from "../types/search-view";
 import {
   completeFilterRules,
   createBlankFilterRule,
@@ -28,9 +28,10 @@ type SearchFilterBarProps = {
   combine: FilterCombineMode;
   onRulesChange: (rules: FilterRule[]) => void;
   onApply: (rules: FilterRule[], combine: FilterCombineMode) => void;
-  view?: SearchView;
   comparison?: MoneyballComparison;
   fieldRequest?: FilterFieldRequest | null;
+  /** Controls beside Add filter, such as Saved filters. */
+  filterActions?: ReactNode;
   summary?: ReactNode;
   columnsControl?: ReactNode;
   datasetToggles?: ReactNode;
@@ -52,36 +53,29 @@ export function SearchFilterBar({
   combine,
   onRulesChange,
   onApply,
-  view = "general",
   comparison,
   fieldRequest,
+  filterActions,
   summary,
   columnsControl,
   datasetToggles,
 }: SearchFilterBarProps) {
   const [editing, setEditing] = useState<Editing | null>(null);
   const addRef = useRef<HTMLSpanElement>(null);
-  const appliedRules = completeFilterRules(rules, view);
+  const appliedRules = completeFilterRules(rules);
   const atCap = rules.length >= MAX_FILTER_RULES;
 
-  const startNewRule = useCallback(
-    (field?: string) => {
-      const rule = field
-        ? {
-            ...createBlankFilterRule(),
-            field,
-            op: defaultOperatorForField(field, view),
-            value: defaultValueForRule(
-              field,
-              defaultOperatorForField(field, view),
-              view,
-            ),
-          }
-        : createBlankFilterRule();
-      setEditing({ kind: "new", rule, anchor: addRef.current });
-    },
-    [view],
-  );
+  const startNewRule = useCallback((field?: string) => {
+    const rule = field
+      ? {
+          ...createBlankFilterRule(),
+          field,
+          op: defaultOperatorForField(field),
+          value: defaultValueForRule(field, defaultOperatorForField(field)),
+        }
+      : createBlankFilterRule();
+    setEditing({ kind: "new", rule, anchor: addRef.current });
+  }, []);
 
   const handledRequest = useRef<number | null>(null);
   useEffect(() => {
@@ -122,18 +116,21 @@ export function SearchFilterBar({
         toolbarLabel="Player results toolbar"
         summary={summary}
         filterSummary={
-          <span ref={addRef} className="inline-flex">
-            <Button
-              variant="secondary"
-              icon={Plus}
-              disabled={atCap}
-              aria-expanded={editing?.kind === "new"}
-              onClick={() =>
-                editing?.kind === "new" ? close() : startNewRule()
-              }
-            >
-              Add filter
-            </Button>
+          <span className="inline-flex items-center gap-2">
+            <span ref={addRef} className="inline-flex">
+              <Button
+                variant="secondary"
+                icon={Plus}
+                disabled={atCap}
+                aria-expanded={editing?.kind === "new"}
+                onClick={() =>
+                  editing?.kind === "new" ? close() : startNewRule()
+                }
+              >
+                Add filter
+              </Button>
+            </span>
+            {filterActions}
           </span>
         }
         filterChips={
@@ -149,7 +146,6 @@ export function SearchFilterBar({
                   setEditing({ kind: "edit", rule, anchor });
                 }
               }}
-              view={view}
             />
           ) : undefined
         }
@@ -165,7 +161,7 @@ export function SearchFilterBar({
           anchor={editing.anchor}
           rule={editing.rule}
           isNew={editing.kind === "new"}
-          view={view}
+          view="search"
           comparison={comparison}
           onApply={apply}
           onRemove={

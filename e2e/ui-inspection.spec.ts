@@ -23,20 +23,31 @@ type InspectionPage = {
   name: string;
   route: string;
   readyText?: string;
+  /** Stub options that differ from the populated defaults. */
+  options?: SmokeStubOptions;
 };
+
+/** Search without Moneyball data serves the squad and shortlist players. */
+const playerSearchOptions: SmokeStubOptions = { moneyballSearch: false };
 
 const canonicalPages: readonly InspectionPage[] = [
   { name: "dashboard", route: "/", readyText: "Viktor Gyökeres" },
-  { name: "search", route: "/search", readyText: "Player 001" },
   {
-    name: "moneyball-search",
-    route: "/search?view=moneyball",
+    name: "search",
+    route: "/search",
+    readyText: "Player 001",
+    options: playerSearchOptions,
+  },
+  {
+    name: "search-season-stats",
+    route: "/search?sort=moneyball.average_rating",
     readyText: "Moneyball player 001",
   },
   {
     name: "player-shortlist",
     route: "/search#inspection-shortlist-selected",
     readyText: "Player 001",
+    options: playerSearchOptions,
   },
   { name: "staff-search", route: "/staff", readyText: "Staff member 001" },
   {
@@ -133,7 +144,7 @@ for (const inspectedPage of pages) {
             staffWorkspace: true,
             snapshotHistory: false,
           }
-        : populatedOptions,
+        : { ...populatedOptions, ...inspectedPage.options },
     );
     await page.goto(inspectedPage.route);
 

@@ -30,16 +30,14 @@ function operatorSymbol(op: string): string {
 /** Short label for compact filter tags, e.g. `Age 18–23` or `Position: DR, DL`. */
 export function formatFilterTagLabel(
   rule: FilterRule,
-  view: FilterView = "general",
+  view: FilterView = "search",
 ): string {
   const field = getFilterField(rule.field, view);
   if (!field) {
     return "Unknown filter";
   }
 
-  // Moneyball role labels omit General's "Role ·" prefix, which a chip needs for context.
-  const label =
-    "role" in field && field.role ? `Role · ${field.label}` : field.label;
+  const label = field.label;
   const unit = isRawPercentageRule(rule, view) ? "%" : "";
   const value = rule.value;
 

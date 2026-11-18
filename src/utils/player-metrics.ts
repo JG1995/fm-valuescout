@@ -258,7 +258,7 @@ const POSITION_SUITABILITY_METRICS: PlayerMetric[] = POSITION_ORDER.map((key) =>
 const CURRENT_ROLE_SCORE_METRICS: PlayerMetric[] = ROLE_CATALOG.map((role) =>
   playerMetric({
     id: `role.${role.id}`,
-    label: `Role · ${role.label}`,
+    label: `Role Score · ${role.label}`,
     category: "current-role-scores",
     kind: "integer",
     operators: INTEGER_OPERATORS,
@@ -269,7 +269,7 @@ const CURRENT_ROLE_SCORE_METRICS: PlayerMetric[] = ROLE_CATALOG.map((role) =>
 const POTENTIAL_ROLE_SCORE_METRICS: PlayerMetric[] = ROLE_CATALOG.map((role) =>
   playerMetric({
     id: `potential_role.${role.id}`,
-    label: `Potential role · ${role.label}`,
+    label: `Potential Role Score · ${role.label}`,
     category: "potential-role-scores",
     kind: "integer",
     operators: INTEGER_OPERATORS,

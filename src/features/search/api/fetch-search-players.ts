@@ -6,7 +6,7 @@ import {
   DEFAULT_SEARCH_SORT_DIR,
   DEFAULT_SEARCH_SORT_FIELD,
 } from "../types/search-sort";
-import type { MoneyballComparison, SearchView } from "../types/search-view";
+import type { MoneyballComparison } from "../types/search-view";
 import {
   completeFilterRules,
   filterRuleToSearchIpc,
@@ -19,7 +19,7 @@ export const SEARCH_PAGE_SIZE = 50;
  * Names the table whose newest request may stop an older one in Rust. Only a
  * panel's requested first page passes it.
  */
-export type SearchTableId = "search" | "moneyball-search";
+export type SearchTableId = "search";
 
 /** Rust's error for a table request that a newer one superseded. */
 const SUPERSEDED_MESSAGE = "Superseded by a newer request";
@@ -37,27 +37,23 @@ export function fetchSearchPlayers(
   filters: FilterRule[] = [],
   filterCombine: FilterCombineMode = "and",
   requestedFields: string[] = [],
-  searchView: SearchView = "general",
   comparison: MoneyballComparison = "own",
   shortlistId: number | null = null,
   tableId?: SearchTableId,
 ) {
-  const applied = completeFilterRules(filters, searchView);
+  const applied = completeFilterRules(filters);
   return invokeCommand<SearchPlayersPage>("search_players", {
     offset,
     limit,
     sortBy,
     sortDir,
     requestedFields,
-    searchView,
     comparison,
     shortlistId,
     ...(tableId ? { tableId } : {}),
     ...(applied.length > 0
       ? {
-          filters: applied.map((rule) =>
-            filterRuleToSearchIpc(rule, searchView),
-          ),
+          filters: applied.map((rule) => filterRuleToSearchIpc(rule)),
           filterCombine,
         }
       : {}),

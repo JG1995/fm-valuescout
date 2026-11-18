@@ -206,7 +206,7 @@ export function MoneyballProfilePanel({
         >
           This player has no Moneyball stats in the current snapshot. Moneyball
           stats come from the FM save file linked in Settings. Use Refresh stats
-          in Moneyball Search to read the latest save.
+          in Player Search to read the latest save.
         </EmptyState>
       </Panel>
     );
@@ -217,8 +217,7 @@ export function MoneyballProfilePanel({
       <Panel title="Moneyball">
         <EmptyState icon={DatabaseZap} title="Refresh Moneyball stats">
           These stats were saved before percentile scores were available. Use
-          Refresh stats in Moneyball Search to read the linked FM save file
-          again.
+          Refresh stats in Player Search to read the linked FM save file again.
         </EmptyState>
       </Panel>
     );

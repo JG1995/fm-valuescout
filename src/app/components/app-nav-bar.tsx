@@ -7,19 +7,16 @@ import {
   LayoutDashboard,
   Search,
   Settings as SettingsIcon,
-  Target,
   UserRoundCog,
   UserRoundSearch,
   UsersRound,
 } from "lucide-react";
-import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { useSearchViewMemory } from "@/stores/use-search-view-memory";
 import { cn } from "@/utils/cn";
 
 type DestinationId =
   | "dashboard"
   | "search"
-  | "moneyball"
   | "staff-search"
   | "my-staff"
   | "squad"
@@ -62,14 +59,6 @@ const destinations: Destination[] = [
     label: "Search",
     icon: Search,
     to: "/search",
-    search: { view: "general" },
-  },
-  {
-    id: "moneyball",
-    label: "Moneyball",
-    icon: Target,
-    to: "/search",
-    search: { view: "moneyball" },
   },
   {
     id: "staff-search",
@@ -115,7 +104,7 @@ const destinations: Destination[] = [
 
 const groups: DestinationId[][] = [
   ["dashboard"],
-  ["search", "moneyball"],
+  ["search"],
   ["staff-search", "my-staff"],
   ["squad", "planner", "tactic", "youth"],
   ["settings"],
@@ -124,15 +113,10 @@ const groups: DestinationId[][] = [
 function currentDestinationId(
   pathname: string,
   search: Record<string, unknown>,
-  defaultAnalysisView: "general" | "moneyball",
 ): DestinationId | null {
   if (pathname === "/") return "dashboard";
   if (pathname === "/settings") return "settings";
-  if (pathname === "/search") {
-    const view =
-      typeof search.view === "string" ? search.view : defaultAnalysisView;
-    return view === "moneyball" ? "moneyball" : "search";
-  }
+  if (pathname === "/search") return "search";
   if (pathname === "/staff") {
     return search.view === "my-staff" ? "my-staff" : "staff-search";
   }
@@ -148,24 +132,14 @@ function currentDestinationId(
 
 export function AppNavBar() {
   const { pathname, search } = useLocation();
-  const defaultAnalysisView = useMoneyballPreferences(
-    (state) => state.defaultAnalysisView,
-  );
   const current = currentDestinationId(
     pathname,
     search as Record<string, unknown>,
-    defaultAnalysisView,
   );
-  const searchMemory = useSearchViewMemory((state) => state.views);
+  const searchMemory: Record<string, unknown> = {
+    ...useSearchViewMemory((state) => state.memory),
+  };
   const byId = new Map(destinations.map((item) => [item.id, item]));
-  // Search and Moneyball restore each view's last filters, sort, and
-  // comparison pool from session memory.
-  const searchViewLink = (
-    view: "general" | "moneyball",
-  ): Record<string, unknown> => ({
-    ...searchMemory[view],
-    view,
-  });
   // Same-route view transitions keep the old tab contract: inside /my-club
   // squadSort/squadDir survive, and every other key falls back to the
   // destination view defaults in validateSearch. Links from other routes use the plain
@@ -203,10 +177,10 @@ export function AppNavBar() {
                       key={id}
                       to={item.to}
                       search={
-                        id === "search" || id === "moneyball"
-                          ? searchViewLink(
-                              id === "moneyball" ? "moneyball" : "general",
-                            )
+                        // Search restores its last filters, sort, and
+                        // comparison from session memory.
+                        id === "search"
+                          ? searchMemory
                           : item.searchTransition && pathname === item.to
                             ? item.searchTransition
                             : item.search

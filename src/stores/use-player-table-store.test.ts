@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  getMoneyballSearchMetric,
-  MONEYBALL_SEARCH_METRICS,
-} from "@/utils/moneyball-search-metrics";
 import { getPlayerMetric, PLAYER_METRICS } from "@/utils/player-metrics";
+import { getSearchMetric, SEARCH_METRICS } from "@/utils/search-metrics";
 import { DEFAULT_STAFF_TABLE_COLUMN_IDS } from "@/utils/staff-table-layout";
 import { TACTIC_LANE_IDS } from "@/utils/tactic-ids";
 import {
@@ -38,17 +35,7 @@ describe("usePlayerTableStore", () => {
       "pa",
       "value",
     ]);
-    expect(layouts["moneyball-search"].columnIds).toEqual([
-      "age",
-      "nationality",
-      "height",
-      "moneyball.minutes",
-      "moneyball.average_rating",
-      "moneyball.goals_per_90",
-      "moneyball.assists_per_90",
-      "moneyball.xg_per_90",
-      "moneyball.xa_per_90",
-    ]);
+    expect(layouts).not.toHaveProperty("moneyball-search");
     expect(layouts.squad.columnIds).toEqual([
       "age",
       "nationality",
@@ -60,7 +47,7 @@ describe("usePlayerTableStore", () => {
     ]);
   });
 
-  it("keeps persisted v8 layouts without Height exactly as stored", async () => {
+  it("hydrates v8 layouts to v9, dropping the Moneyball Search layout and keeping Search as stored", async () => {
     localStorage.setItem(
       PLAYER_TABLE_LAYOUT_STORAGE_KEY,
       JSON.stringify({
@@ -102,11 +89,7 @@ describe("usePlayerTableStore", () => {
       widths: { ca: 104 },
       identityWidth: 320,
     });
-    expect(layouts["moneyball-search"]).toEqual({
-      columnIds: ["age", "nationality", "moneyball.minutes"],
-      widths: {},
-      identityWidth: 280,
-    });
+    expect(layouts).not.toHaveProperty("moneyball-search");
     expect(layouts.squad).toEqual({
       columnIds: [
         "age",
@@ -121,13 +104,13 @@ describe("usePlayerTableStore", () => {
     });
   });
 
-  it("drops Moneyball columns the save cannot provide from a persisted layout", async () => {
+  it("drops Moneyball columns the save cannot provide from a persisted Search layout", async () => {
     localStorage.setItem(
       PLAYER_TABLE_LAYOUT_STORAGE_KEY,
       JSON.stringify({
         state: {
           layouts: {
-            "moneyball-search": {
+            search: {
               columnIds: [
                 "age",
                 "moneyball.goals_from_outside_the_box_per_90",
@@ -148,11 +131,89 @@ describe("usePlayerTableStore", () => {
 
     await usePlayerTableStore.persist.rehydrate();
 
-    expect(usePlayerTableStore.getState().layouts["moneyball-search"]).toEqual({
+    expect(usePlayerTableStore.getState().layouts.search).toEqual({
       columnIds: ["age", "moneyball.xgp"],
       widths: { "moneyball.xgp": 120 },
       identityWidth: 300,
     });
+  });
+
+  it("keeps season fields and Moneyball Score tactic columns in Search but drops old Custom ones", async () => {
+    localStorage.setItem(
+      PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          layouts: {
+            search: {
+              columnIds: [
+                "ca",
+                "moneyball.minutes",
+                "moneyball_role.wbl_wbr_wing_back_ip",
+                "tactic_moneyball.goalkeeper",
+                "tactic_custom.goalkeeper",
+              ],
+              widths: {
+                "moneyball.minutes": 128,
+                "tactic_moneyball.goalkeeper": 120,
+                "tactic_custom.goalkeeper": 140,
+              },
+              identityWidth: 280,
+            },
+          },
+        },
+        version: 8,
+      }),
+    );
+
+    await usePlayerTableStore.persist.rehydrate();
+
+    expect(usePlayerTableStore.getState().layouts.search).toEqual({
+      columnIds: [
+        "ca",
+        "moneyball.minutes",
+        "moneyball_role.wbl_wbr_wing_back_ip",
+        "tactic_moneyball.goalkeeper",
+      ],
+      widths: {
+        "moneyball.minutes": 128,
+        "tactic_moneyball.goalkeeper": 120,
+      },
+      identityWidth: 280,
+    });
+  });
+
+  it("keeps season fields out of the Squad layout", async () => {
+    localStorage.setItem(
+      PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          layouts: {
+            squad: {
+              columnIds: [
+                "ca",
+                "moneyball.minutes",
+                "moneyball_role.wbl_wbr_wing_back_ip",
+              ],
+              widths: { "moneyball.minutes": 128 },
+              identityWidth: 280,
+            },
+          },
+        },
+        version: 8,
+      }),
+    );
+
+    await usePlayerTableStore.persist.rehydrate();
+
+    expect(usePlayerTableStore.getState().layouts.squad).toEqual({
+      columnIds: ["ca"],
+      widths: {},
+      identityWidth: 280,
+    });
+    usePlayerTableStore.getState().addColumns("squad", ["moneyball.goals"]);
+    expect(
+      usePlayerTableStore.getState().layouts.squad.columnIds,
+    ).not.toContain("moneyball.goals");
   });
 
   it("migrates v4 default-like player layouts without changing unrelated preferences", async () => {
@@ -173,22 +234,6 @@ describe("usePlayerTableStore", () => {
                 "value",
               ],
               widths: { name: 240, club: 192, division: 168, ca: 104 },
-            },
-            "moneyball-search": {
-              columnIds: [
-                "name",
-                "age",
-                "nationality",
-                "club",
-                "division",
-                "moneyball.minutes",
-              ],
-              widths: {
-                name: 240,
-                club: 192,
-                division: 168,
-                "moneyball.minutes": 128,
-              },
             },
             squad: {
               columnIds: [
@@ -215,15 +260,13 @@ describe("usePlayerTableStore", () => {
 
     await usePlayerTableStore.persist.rehydrate();
 
+    expect(usePlayerTableStore.getState().layouts).not.toHaveProperty(
+      "moneyball-search",
+    );
     expect(usePlayerTableStore.getState().layouts).toMatchObject({
       search: {
         columnIds: ["age", "nationality", "ca", "pa", "value"],
         widths: { ca: 104 },
-        identityWidth: 240,
-      },
-      "moneyball-search": {
-        columnIds: ["age", "nationality", "moneyball.minutes"],
-        widths: { "moneyball.minutes": 128 },
         identityWidth: 240,
       },
       squad: {
@@ -249,10 +292,6 @@ describe("usePlayerTableStore", () => {
               columnIds: ["club"],
               widths: { club: 192, ca: 104, name: 240 },
             },
-            "moneyball-search": {
-              columnIds: ["division"],
-              widths: { division: 168, "moneyball.minutes": 128 },
-            },
             squad: {
               columnIds: ["club", "division"],
               widths: { club: 192, division: 168, ca: 104 },
@@ -270,11 +309,6 @@ describe("usePlayerTableStore", () => {
       columnIds: [],
       widths: {},
       identityWidth: 240,
-    });
-    expect(layouts["moneyball-search"]).toEqual({
-      columnIds: [],
-      widths: {},
-      identityWidth: 280,
     });
     expect(layouts.squad).toEqual({
       columnIds: [],
@@ -295,15 +329,6 @@ describe("usePlayerTableStore", () => {
                 columnIds: ["club", "name", "division", "ca"],
                 widths: { club: 192, name: 240, division: 168, ca: 104 },
               },
-              "moneyball-search": {
-                columnIds: ["division", "moneyball.minutes", "club", "name"],
-                widths: {
-                  division: 168,
-                  "moneyball.minutes": 128,
-                  club: 192,
-                  name: 240,
-                },
-              },
               squad: {
                 columnIds: ["ca", "club", "division", "name"],
                 widths: { ca: 104, club: 192, division: 168, name: 240 },
@@ -320,11 +345,6 @@ describe("usePlayerTableStore", () => {
       expect(layouts.search).toEqual({
         columnIds: ["ca"],
         widths: { ca: 104 },
-        identityWidth: 240,
-      });
-      expect(layouts["moneyball-search"]).toEqual({
-        columnIds: ["moneyball.minutes"],
-        widths: { "moneyball.minutes": 128 },
         identityWidth: 240,
       });
       expect(layouts.squad).toEqual({
@@ -357,22 +377,6 @@ describe("usePlayerTableStore", () => {
                 name: 240,
               },
             },
-            "moneyball-search": {
-              columnIds: [
-                "moneyball.minutes",
-                "club",
-                "moneyball.goals_per_90",
-                "division",
-                "name",
-              ],
-              widths: {
-                "moneyball.minutes": 128,
-                club: 192,
-                "moneyball.goals_per_90": 112,
-                division: 168,
-                name: 240,
-              },
-            },
             squad: {
               columnIds: ["ca", "club", "name", "division", "attr.Agility"],
               widths: {
@@ -397,14 +401,6 @@ describe("usePlayerTableStore", () => {
         widths: { value: 112, "attr.Acceleration": 216 },
         identityWidth: 240,
       },
-      "moneyball-search": {
-        columnIds: ["moneyball.minutes", "moneyball.goals_per_90"],
-        widths: {
-          "moneyball.minutes": 128,
-          "moneyball.goals_per_90": 112,
-        },
-        identityWidth: 240,
-      },
       squad: {
         columnIds: ["ca", "attr.Agility"],
         widths: { ca: 104, "attr.Agility": 216 },
@@ -414,11 +410,11 @@ describe("usePlayerTableStore", () => {
     expect(PLAYER_METRICS.map((metric) => metric.id)).toEqual(
       expect.arrayContaining(["club", "division"]),
     );
-    expect(MONEYBALL_SEARCH_METRICS.map((metric) => metric.id)).toEqual(
+    expect(SEARCH_METRICS.map((metric) => metric.id)).toEqual(
       expect.arrayContaining(["club", "division"]),
     );
     expect(getPlayerMetric("club")?.sortable).toBe(true);
-    expect(getMoneyballSearchMetric("division")?.sortable).toBe(true);
+    expect(getSearchMetric("division")?.sortable).toBe(true);
   });
 
   it("hydrates safe independent layouts from malformed saved preferences", async () => {
@@ -685,17 +681,12 @@ describe("usePlayerTableStore", () => {
       columnIds: ["name", "age", "ca", "attr.Acceleration"],
       widths: { name: 240, ca: 104, "attr.Acceleration": 216 },
     };
-    const customMoneyball = {
-      columnIds: ["name", "moneyball.average_rating", "moneyball.goals_per_90"],
-      widths: { name: 240, "moneyball.average_rating": 128 },
-    };
     localStorage.setItem(
       PLAYER_TABLE_LAYOUT_STORAGE_KEY,
       JSON.stringify({
         state: {
           layouts: {
             search: customSearch,
-            "moneyball-search": customMoneyball,
             squad: {
               columnIds: [...DEFAULT_VISIBLE_PLAYER_TABLE_COLUMN_IDS],
               widths: {},
@@ -718,11 +709,6 @@ describe("usePlayerTableStore", () => {
       widths: { ca: 104, "attr.Acceleration": 216 },
       identityWidth: 240,
     });
-    expect(layouts["moneyball-search"]).toEqual({
-      columnIds: ["moneyball.average_rating", "moneyball.goals_per_90"],
-      widths: { "moneyball.average_rating": 128 },
-      identityWidth: 240,
-    });
     expect(layouts).not.toHaveProperty("shortlist");
   });
 
@@ -733,10 +719,6 @@ describe("usePlayerTableStore", () => {
         state: {
           layouts: {
             search: { columnIds: ["club"], widths: { club: 192 } },
-            "moneyball-search": {
-              columnIds: ["division"],
-              widths: { division: 168 },
-            },
           },
         },
         version: 5,
@@ -747,11 +729,6 @@ describe("usePlayerTableStore", () => {
 
     const layouts = usePlayerTableStore.getState().layouts;
     expect(layouts.search).toEqual({
-      columnIds: [],
-      widths: {},
-      identityWidth: 280,
-    });
-    expect(layouts["moneyball-search"]).toEqual({
       columnIds: [],
       widths: {},
       identityWidth: 280,
@@ -778,34 +755,30 @@ describe("usePlayerTableStore", () => {
     const potentialGroup = TACTIC_LANE_IDS.map(
       (laneId) => `tactic_potential.${laneId}`,
     );
+    const moneyballGroup = TACTIC_LANE_IDS.map(
+      (laneId) => `tactic_moneyball.${laneId}`,
+    );
     const customGroup = TACTIC_LANE_IDS.map(
       (laneId) => `tactic_custom.${laneId}`,
     );
 
-    it("drops Potential from a stored Moneyball layout and Custom from a General layout", async () => {
-      const interleaved = (secondGroup: string[]) =>
-        currentGroup.flatMap((id, index) => [id, secondGroup[index]]);
+    it("keeps Role Score, Potential, and Moneyball Score groups in Search and drops old Custom ones", async () => {
+      const interleaved = currentGroup.flatMap((id, index) => [
+        id,
+        potentialGroup[index],
+        moneyballGroup[index],
+      ]);
       localStorage.setItem(
         PLAYER_TABLE_LAYOUT_STORAGE_KEY,
         JSON.stringify({
           state: {
             layouts: {
               search: {
-                columnIds: [
-                  "ca",
-                  ...interleaved(potentialGroup),
-                  ...customGroup,
-                ],
+                columnIds: ["ca", ...interleaved, ...customGroup],
                 widths: {
                   "tactic_potential.goalkeeper": 150,
+                  "tactic_moneyball.goalkeeper": 140,
                   "tactic_custom.goalkeeper": 150,
-                },
-              },
-              "moneyball-search": {
-                columnIds: ["age", ...interleaved(potentialGroup)],
-                widths: {
-                  "tactic_current.goalkeeper": 140,
-                  "tactic_potential.goalkeeper": 150,
                 },
               },
             },
@@ -815,31 +788,23 @@ describe("usePlayerTableStore", () => {
       );
       await usePlayerTableStore.persist.rehydrate();
       const layouts = usePlayerTableStore.getState().layouts;
-      expect(layouts["moneyball-search"].columnIds).toEqual([
-        "age",
-        ...currentGroup,
-      ]);
-      expect(layouts["moneyball-search"].widths).toEqual({
-        "tactic_current.goalkeeper": 140,
-      });
-      expect(layouts.search.columnIds).toEqual([
-        "ca",
-        ...interleaved(potentialGroup),
-      ]);
+      expect(layouts.search.columnIds).toEqual(["ca", ...interleaved]);
       expect(layouts.search.widths).toEqual({
         "tactic_potential.goalkeeper": 150,
+        "tactic_moneyball.goalkeeper": 140,
       });
 
       usePlayerTableStore
         .getState()
-        .replaceLayout("moneyball-search", [
+        .replaceLayout("search", [
           "age",
-          "tactic_potential.goalkeeper",
+          "tactic_moneyball.goalkeeper",
           "tactic_custom.goalkeeper",
         ]);
-      expect(
-        usePlayerTableStore.getState().layouts["moneyball-search"].columnIds,
-      ).toEqual(["age", "tactic_custom.goalkeeper"]);
+      expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
+        "age",
+        "tactic_moneyball.goalkeeper",
+      ]);
     });
 
     it("hydrates a valid synthetic group round-trip and clamps tactic widths", async () => {
@@ -857,10 +822,6 @@ describe("usePlayerTableStore", () => {
                   ca: 104,
                 },
               },
-              "moneyball-search": {
-                columnIds: ["name", ...customGroup],
-                widths: { "tactic_custom.goalkeeper": 10_000 },
-              },
               shortlist: {
                 columnIds: [...currentGroup, ...potentialGroup],
                 widths: {},
@@ -876,10 +837,6 @@ describe("usePlayerTableStore", () => {
       expect(layouts.search.widths["tactic_current.goalkeeper"]).toBe(360);
       expect(layouts.search.widths["tactic_current.left_back"]).toBe(72);
       expect(layouts.search.identityWidth).toBe(240);
-      expect(layouts["moneyball-search"].columnIds).toEqual([...customGroup]);
-      expect(
-        layouts["moneyball-search"].widths["tactic_custom.goalkeeper"],
-      ).toBe(360);
       expect(layouts).not.toHaveProperty("shortlist");
     });
 
@@ -1144,7 +1101,6 @@ describe("usePlayerTableStore", () => {
 
       for (const table of [
         "search",
-        "moneyball-search",
         "staff-search",
         "my-staff",
         "staff-shortlist",
@@ -1297,17 +1253,6 @@ describe("v8 identity migration (Commit 4)", () => {
   ];
   const V7_DEFAULTS: Record<string, string[]> = {
     search: ["name", "age", "nationality", "ca", "pa", "value"],
-    "moneyball-search": [
-      "name",
-      "age",
-      "nationality",
-      "moneyball.minutes",
-      "moneyball.average_rating",
-      "moneyball.goals_per_90",
-      "moneyball.assists_per_90",
-      "moneyball.xg_per_90",
-      "moneyball.xa_per_90",
-    ],
     squad: [
       "name",
       "age",
@@ -1324,17 +1269,6 @@ describe("v8 identity migration (Commit 4)", () => {
 
   const V8_DEFAULTS: Record<string, string[]> = {
     search: ["age", "nationality", "height", "ca", "pa", "value"],
-    "moneyball-search": [
-      "age",
-      "nationality",
-      "height",
-      "moneyball.minutes",
-      "moneyball.average_rating",
-      "moneyball.goals_per_90",
-      "moneyball.assists_per_90",
-      "moneyball.xg_per_90",
-      "moneyball.xa_per_90",
-    ],
     squad: [
       "age",
       "nationality",
@@ -1356,16 +1290,6 @@ describe("v8 identity migration (Commit 4)", () => {
   // arrays; fresh defaults use V8_DEFAULTS above.
   const V8_HISTORIC_DEFAULTS: Record<string, string[]> = {
     search: ["age", "nationality", "ca", "pa", "value"],
-    "moneyball-search": [
-      "age",
-      "nationality",
-      "moneyball.minutes",
-      "moneyball.average_rating",
-      "moneyball.goals_per_90",
-      "moneyball.assists_per_90",
-      "moneyball.xg_per_90",
-      "moneyball.xa_per_90",
-    ],
     squad: ["age", "nationality", "ca", "pa", "value", "suggested_training"],
   };
 
@@ -1475,7 +1399,6 @@ describe("v8 identity migration (Commit 4)", () => {
     const layouts = await rehydrateVersion(
       {
         search: { widths: { ca: 200 } },
-        "moneyball-search": { widths: { "moneyball.minutes": 200 } },
         squad: { columnIds: [], widths: {} },
       },
       7,
@@ -1483,15 +1406,10 @@ describe("v8 identity migration (Commit 4)", () => {
     expect(layouts.search.columnIds).toEqual(V8_HISTORIC_DEFAULTS.search);
     expect(layouts.search.widths).toEqual({});
     expect(layouts.search.identityWidth).toBe(280);
-    expect(layouts["moneyball-search"]).toEqual({
-      columnIds: V8_HISTORIC_DEFAULTS["moneyball-search"],
-      widths: {},
-      identityWidth: 280,
-    });
     expect(layouts.squad.columnIds).toEqual(V8_HISTORIC_DEFAULTS.squad);
   });
 
-  it("drops tactic IDs outside Search/Moneyball and Suggested Training outside Squad", async () => {
+  it("drops tactic IDs outside Search and Suggested Training outside Squad", async () => {
     const layouts = await rehydrateVersion(
       {
         search: {
