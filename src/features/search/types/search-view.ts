@@ -1,31 +1,42 @@
 import {
   isPositionFamilyId,
   type PositionFamilyId,
+  positionFamilyLabel,
 } from "@/utils/position-families";
 
-export type SearchView = "general" | "moneyball";
+/**
+ * The field set a filter rule draws on: Player Search's, or a tactic slot's
+ * recruitment filters, which leave out the fields the Dashboard cannot read.
+ */
+export type FilterView = "search" | "slot";
 
 /**
- * The field set a filter rule draws on: one of Search's views, or a tactic
- * slot's recruitment filters, which mix General fields with Moneyball
- * playing time and statistics.
+ * Whom a statistic's percentile ranks each player against: the peers of his
+ * own best position's family, one family's peers for everyone, or a tactic
+ * slot's two families together (`winger+wide_midfielder`).
  */
-export type FilterView = SearchView | "slot";
-
-/**
- * Whom Moneyball Search ranks each player's statistics against: the peers of
- * his own best position's family, or one family's peers for every player.
- */
-export type MoneyballComparison = "own" | PositionFamilyId;
-
-export function parseSearchView(value: unknown): SearchView {
-  return value === "moneyball" ? "moneyball" : "general";
-}
+export type MoneyballComparison =
+  | "own"
+  | PositionFamilyId
+  | `${PositionFamilyId}+${PositionFamilyId}`;
 
 export function parseMoneyballComparison(value: unknown): MoneyballComparison {
-  return isPositionFamilyId(value) ? value : "own";
+  if (typeof value !== "string") {
+    return "own";
+  }
+  const families = value.split("+");
+  return families.length <= 2 &&
+    families.every(isPositionFamilyId) &&
+    new Set(families).size === families.length
+    ? (value as MoneyballComparison)
+    : "own";
 }
 
-export function defaultSearchSort(view: SearchView): string {
-  return view === "moneyball" ? "moneyball.average_rating" : "ca";
+/** The comparison as a select label, such as "Wingers + Wide midfielders". */
+export function moneyballComparisonLabel(
+  comparison: MoneyballComparison,
+): string {
+  return comparison === "own"
+    ? "Own position"
+    : comparison.split("+").map(positionFamilyLabel).join(" + ");
 }

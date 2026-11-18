@@ -4,7 +4,7 @@ import {
   DEFAULT_SEARCH_SORT_DIR,
   DEFAULT_SEARCH_SORT_FIELD,
 } from "../types/search-sort";
-import type { MoneyballComparison, SearchView } from "../types/search-view";
+import type { MoneyballComparison } from "../types/search-view";
 import { completeFilterRules } from "../utils/filter-registry";
 
 export type SearchPlayerPageContext = {
@@ -23,7 +23,6 @@ export const searchKeys = {
     filters: FilterRule[] = [],
     filterCombine: FilterCombineMode = "and",
     requestedFields: string[] = [],
-    searchView: SearchView = "general",
     comparison: MoneyballComparison = "own",
     shortlistId: number | null = null,
     context: SearchPlayerPageContext = {
@@ -38,10 +37,9 @@ export const searchKeys = {
         limit,
         sortBy,
         sortDir,
-        filters: completeFilterRules(filters, searchView),
+        filters: completeFilterRules(filters),
         filterCombine,
         requestedFields,
-        searchView,
         comparison,
         shortlistId,
         context,

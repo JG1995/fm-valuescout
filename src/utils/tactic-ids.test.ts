@@ -9,8 +9,8 @@ import {
   sanitizeTacticIds,
   TACTIC_COLUMN_DEFAULT_WIDTH,
   TACTIC_CURRENT_PREFIX,
-  TACTIC_CUSTOM_PREFIX,
   TACTIC_LANE_IDS,
+  TACTIC_MONEYBALL_PREFIX,
   TACTIC_POTENTIAL_PREFIX,
   tacticColumnGroupsForTable,
   tacticColumnId,
@@ -40,34 +40,30 @@ describe("tactic column IDs", () => {
     expect(isTacticColumnId("role.goalkeeper_ip")).toBe(false);
     expect(isValidTacticColumnId("tactic_current.goalkeeper")).toBe(true);
     expect(isValidTacticColumnId("tactic_potential.right_winger")).toBe(true);
-    expect(isValidTacticColumnId("tactic_custom.right_winger")).toBe(true);
+    expect(isValidTacticColumnId("tactic_moneyball.right_winger")).toBe(true);
+    expect(isValidTacticColumnId("tactic_custom.right_winger")).toBe(false);
     expect(isValidTacticColumnId("tactic_current.not_a_lane")).toBe(false);
-    expect(isValidTacticColumnId("tactic_custom.not_a_lane")).toBe(false);
+    expect(isValidTacticColumnId("tactic_moneyball.not_a_lane")).toBe(false);
     expect(isValidTacticColumnId("tactic_current.")).toBe(false);
   });
 
-  it("offers Current and Potential in General and Current and Custom in Moneyball", () => {
+  it("offers Role Score, Potential, and Moneyball Score groups in Search only", () => {
     expect(tacticColumnGroupsForTable("search")).toEqual([
       "current",
       "potential",
-    ]);
-    expect(tacticColumnGroupsForTable("moneyball-search")).toEqual([
-      "current",
-      "custom",
+      "moneyball",
     ]);
     expect(tacticColumnGroupsForTable("squad")).toEqual([]);
 
-    for (const [id, search, moneyball] of [
-      ["tactic_current.goalkeeper", true, true],
-      ["tactic_potential.goalkeeper", true, false],
-      ["tactic_custom.goalkeeper", false, true],
-      ["tactic_custom.not_a_lane", false, false],
-      ["age", false, false],
+    for (const [id, search] of [
+      ["tactic_current.goalkeeper", true],
+      ["tactic_potential.goalkeeper", true],
+      ["tactic_moneyball.goalkeeper", true],
+      ["tactic_custom.goalkeeper", false],
+      ["tactic_moneyball.not_a_lane", false],
+      ["age", false],
     ] as const) {
       expect(isValidTacticColumnIdForTable(id, "search")).toBe(search);
-      expect(isValidTacticColumnIdForTable(id, "moneyball-search")).toBe(
-        moneyball,
-      );
       expect(isValidTacticColumnIdForTable(id, "squad")).toBe(false);
     }
   });
@@ -75,10 +71,11 @@ describe("tactic column IDs", () => {
   it("extracts groups and lane IDs without accepting other column families", () => {
     expect(tacticGroupForId("tactic_current.left_back")).toBe("current");
     expect(tacticGroupForId("tactic_potential.left_back")).toBe("potential");
-    expect(tacticGroupForId("tactic_custom.left_back")).toBe("custom");
+    expect(tacticGroupForId("tactic_moneyball.left_back")).toBe("moneyball");
+    expect(tacticGroupForId("tactic_custom.left_back")).toBeNull();
     expect(tacticGroupForId("role.left_back")).toBeNull();
     expect(tacticLaneIdForId("tactic_current.left_back")).toBe("left_back");
-    expect(tacticLaneIdForId("tactic_custom.left_back")).toBe("left_back");
+    expect(tacticLaneIdForId("tactic_moneyball.left_back")).toBe("left_back");
     expect(tacticLaneIdForId("role.left_back")).toBeNull();
   });
 
@@ -116,7 +113,7 @@ describe("tactic column IDs", () => {
     const tacticPrefixes = [
       TACTIC_CURRENT_PREFIX,
       TACTIC_POTENTIAL_PREFIX,
-      TACTIC_CUSTOM_PREFIX,
+      TACTIC_MONEYBALL_PREFIX,
     ];
     expect(new Set(tacticPrefixes).size).toBe(3);
     for (const catalogPrefix of catalogPrefixes) {
@@ -127,8 +124,8 @@ describe("tactic column IDs", () => {
     expect(tacticColumnId("current", "goalkeeper")).toBe(
       "tactic_current.goalkeeper",
     );
-    expect(tacticColumnId("custom", "goalkeeper")).toBe(
-      "tactic_custom.goalkeeper",
+    expect(tacticColumnId("moneyball", "goalkeeper")).toBe(
+      "tactic_moneyball.goalkeeper",
     );
     expect(TACTIC_COLUMN_DEFAULT_WIDTH).toBe(112);
   });
@@ -137,6 +134,6 @@ describe("tactic column IDs", () => {
     expect(tacticColumnId("current", "not_a_lane")).toBeNull();
     expect(tacticColumnId("potential", "")).toBeNull();
     expect(tacticColumnId("current", "goalkeeper ")).toBeNull();
-    expect(tacticColumnId("custom", "not_a_lane")).toBeNull();
+    expect(tacticColumnId("moneyball", "not_a_lane")).toBeNull();
   });
 });

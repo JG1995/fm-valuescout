@@ -49,7 +49,7 @@ describe("dynamicColumnFields", () => {
     ]);
 
     expect(fields).toEqual(["club_dna"]);
-    expect(isVisibleSortField("club_dna", [])).toBe(true);
+    expect(isVisibleSortField("club_dna")).toBe(true);
   });
 
   it("keeps a filter-only field out of the columns and the sorts", () => {
@@ -61,28 +61,14 @@ describe("dynamicColumnFields", () => {
         value: { type: "bool" as const, value: true },
       },
     ];
-    for (const view of ["general", "moneyball"] as const) {
-      expect(dynamicColumnFields(filters, view)).toEqual([]);
-      expect(isVisibleSortField("realistic_signing", filters, view)).toBe(
-        false,
-      );
-    }
+    expect(dynamicColumnFields(filters)).toEqual([]);
+    expect(isVisibleSortField("realistic_signing")).toBe(false);
   });
 
   it("allows sorting by known metrics whether or not they are requested", () => {
-    const filters = [
-      {
-        id: createFilterRuleId(),
-        field: "role.deep_lying_playmaker_ip",
-        op: "gte",
-        value: { type: "integer" as const, value: 70 },
-      },
-    ];
-    expect(isVisibleSortField("role.deep_lying_playmaker_ip", filters)).toBe(
-      true,
-    );
-    expect(isVisibleSortField("attr.Acceleration", filters)).toBe(true);
-    expect(isVisibleSortField("ca", filters)).toBe(true);
+    expect(isVisibleSortField("role.deep_lying_playmaker_ip")).toBe(true);
+    expect(isVisibleSortField("attr.Acceleration")).toBe(true);
+    expect(isVisibleSortField("ca")).toBe(true);
   });
 
   it("includes Position and position-suitability display fields", () => {
@@ -117,33 +103,39 @@ describe("dynamicColumnFields", () => {
     expect(dynamicColumnFields(filters)).toEqual([
       "potential_role.goalkeeper_ip",
     ]);
-    expect(isVisibleSortField("potential_role.goalkeeper_ip", filters)).toBe(
-      true,
-    );
+    expect(isVisibleSortField("potential_role.goalkeeper_ip")).toBe(true);
   });
 
   it("allows a known metric to sort even while its column is not requested", () => {
-    expect(isVisibleSortField("position", [])).toBe(true);
-    expect(isVisibleSortField("attr.Acceleration", [])).toBe(true);
-    expect(isVisibleSortField("unknown.metric", [])).toBe(false);
+    expect(isVisibleSortField("position")).toBe(true);
+    expect(isVisibleSortField("attr.Acceleration")).toBe(true);
+    expect(isVisibleSortField("unknown.metric")).toBe(false);
   });
 
   it("allows only canonical tactic sorts present in the current table layout", () => {
     const tacticSort = "tactic_current.goalkeeper";
 
-    expect(isVisibleSortField(tacticSort, [], "general", [tacticSort])).toBe(
-      true,
-    );
-    expect(isVisibleSortField(tacticSort, [], "general", [])).toBe(false);
+    expect(isVisibleSortField(tacticSort, [tacticSort])).toBe(true);
+    expect(isVisibleSortField(tacticSort, [])).toBe(false);
     expect(
-      isVisibleSortField("tactic_current.unknown", [], "general", [
-        "tactic_current.unknown",
-      ]),
+      isVisibleSortField("tactic_current.unknown", ["tactic_current.unknown"]),
     ).toBe(false);
   });
 
-  it("requests and sorts Moneyball role fields in the Moneyball view only", () => {
+  it("requests and sorts player and season fields together", () => {
     const filters = [
+      {
+        id: createFilterRuleId(),
+        field: "attr.Pace",
+        op: "gte",
+        value: { type: "integer" as const, value: 14 },
+      },
+      {
+        id: createFilterRuleId(),
+        field: "moneyball.goals",
+        op: "gte",
+        value: { type: "integer" as const, value: 5 },
+      },
       {
         id: createFilterRuleId(),
         field: "moneyball_role.wbl_wbr_wing_back_ip",
@@ -152,60 +144,22 @@ describe("dynamicColumnFields", () => {
       },
     ];
 
-    expect(dynamicColumnFields(filters, "moneyball")).toEqual([
+    expect(dynamicColumnFields(filters)).toEqual([
+      "attr.Pace",
+      "moneyball.goals",
       "moneyball_role.wbl_wbr_wing_back_ip",
     ]);
-    expect(
-      isVisibleSortField(
-        "moneyball_role.wbl_wbr_wing_back_ip",
-        [],
-        "moneyball",
-      ),
-    ).toBe(true);
-    expect(
-      isVisibleSortField("moneyball_role.wbl_wbr_wing_back_ip", [], "general"),
-    ).toBe(false);
-  });
-
-  it("keeps General sorts and fields independent of Moneyball", () => {
-    expect(isVisibleSortField("pa", [], "general")).toBe(true);
-    expect(isVisibleSortField("moneyball.goals", [], "general")).toBe(false);
-    expect(isVisibleSortField("ca", [], "moneyball")).toBe(true);
-    expect(isVisibleSortField("wage", [], "moneyball")).toBe(true);
-    expect(isVisibleSortField("attr.Pace", [], "moneyball")).toBe(false);
-    expect(
-      dynamicColumnFields(
-        [
-          {
-            id: createFilterRuleId(),
-            field: "moneyball.goals",
-            op: "gte",
-            value: { type: "integer" as const, value: 5 },
-          },
-          {
-            id: createFilterRuleId(),
-            field: "moneyball_role.wbl_wbr_wing_back_ip",
-            op: "gte",
-            value: { type: "integer" as const, value: 70 },
-          },
-        ],
-        "general",
-      ),
-    ).toEqual([]);
-  });
-
-  it("keeps Moneyball basic identity, ability, and value sorts", () => {
-    expect(isVisibleSortField("name", [], "moneyball")).toBe(true);
-    expect(isVisibleSortField("age", [], "moneyball")).toBe(true);
-    expect(isVisibleSortField("nationality", [], "moneyball")).toBe(true);
-    expect(isVisibleSortField("club", [], "moneyball")).toBe(true);
-    expect(isVisibleSortField("division", [], "moneyball")).toBe(true);
-    expect(isVisibleSortField("value", [], "moneyball")).toBe(true);
-    expect(isVisibleSortField("ca", [], "moneyball")).toBe(true);
-    expect(isVisibleSortField("pa", [], "moneyball")).toBe(true);
-    expect(
-      isVisibleSortField("moneyball.average_rating", [], "moneyball"),
-    ).toBe(true);
+    for (const field of [
+      "name",
+      "pa",
+      "wage",
+      "attr.Pace",
+      "moneyball.goals",
+      "moneyball.average_rating",
+      "moneyball_role.wbl_wbr_wing_back_ip",
+    ]) {
+      expect(isVisibleSortField(field)).toBe(true);
+    }
   });
 });
 

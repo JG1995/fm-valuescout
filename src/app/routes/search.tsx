@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { DatabaseZap, RefreshCw } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo } from "react";
 import { clearPlayerResultContext } from "@/app/player-result-context";
@@ -31,19 +31,25 @@ import type {
   TacticOptions,
 } from "@/features/planner/types/tactic";
 import {
+  basePosition,
   orderedTacticLanes,
   validateTacticDraft,
 } from "@/features/planner/utils/tactic-editor";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { RealisticSigningsToggle } from "@/features/search/components/realistic-signings-toggle";
+import {
+  SavedFiltersControl,
+  type SlotFilterPreset,
+} from "@/features/search/components/saved-filters-control";
 import { SearchFilterBar } from "@/features/search/components/search-filter-bar";
 import type { TacticLaneLabel } from "@/features/search/components/search-results-panel";
 import { SearchResultsPanel } from "@/features/search/components/search-results-panel";
 import { TacticColumnToggles } from "@/features/search/components/tactic-column-toggles";
-import type {
-  FilterCombineMode,
-  FilterRule,
+import {
+  createFilterRuleId,
+  type FilterCombineMode,
+  type FilterRule,
 } from "@/features/search/types/filter-rule";
 import type { PlayerSummary } from "@/features/search/types/player-summary";
 import type {
@@ -52,18 +58,18 @@ import type {
 } from "@/features/search/types/search-sort";
 import {
   DEFAULT_SEARCH_SORT_DIR,
+  DEFAULT_SEARCH_SORT_FIELD,
   defaultDirForSortField,
   isSearchSortDir,
 } from "@/features/search/types/search-sort";
 import {
-  defaultSearchSort,
   type MoneyballComparison,
+  moneyballComparisonLabel,
   parseMoneyballComparison,
-  parseSearchView,
-  type SearchView,
 } from "@/features/search/types/search-view";
 import { isVisibleSortField } from "@/features/search/utils/dynamic-columns";
-import { searchTableGroups } from "@/features/search/utils/search-table-groups";
+import { recruitmentFilterToRule } from "@/features/search/utils/recruitment-filters";
+import { SEARCH_TABLE_GROUPS } from "@/features/search/utils/search-table-groups";
 import type { FilterRuleUrl } from "@/features/search/utils/search-url-search";
 import {
   parseSearchCombine,
@@ -76,7 +82,6 @@ import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-sna
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { staffKeys } from "@/features/staff/api/staff-keys";
-import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
   playerShortlistSelectionKey,
   usePlayerShortlistSelectionStore,
@@ -85,7 +90,8 @@ import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { useSearchViewMemory } from "@/stores/use-search-view-memory";
 import { cn } from "@/utils/cn";
 import { moneyballMetric } from "@/utils/moneyball-metrics";
-import { POSITION_FAMILIES } from "@/utils/position-families";
+import { POSITION_FAMILIES, positionFamilyOf } from "@/utils/position-families";
+import { isSeasonFieldId } from "@/utils/search-metrics";
 import {
   isFullTacticGroup,
   isTacticColumnId,
@@ -93,13 +99,13 @@ import {
   tacticColumnGroupsForTable,
 } from "@/utils/tactic-ids";
 
-const TACTIC_GROUP_LABELS: Record<
-  SearchView,
-  Record<TacticColumnGroup, string>
-> = {
-  general: { current: "Current", potential: "Potential", custom: "Custom" },
-  moneyball: { current: "Roles", potential: "Potential", custom: "Custom" },
+const TACTIC_GROUP_LABELS: Record<TacticColumnGroup, string> = {
+  current: "Role Score",
+  potential: "Potential",
+  moneyball: "Moneyball Score",
 };
+
+const TABLE_ID = "search";
 
 function SearchIdentityGraphics({
   player,
@@ -130,88 +136,64 @@ export type SearchRouteSearch = {
   /** Flat URL shape — validateSearch always normalizes to this. */
   filters: FilterRuleUrl[];
   combine: FilterCombineMode;
-  view?: SearchView;
+  /** Whom statistic percentiles rank against; `own` is left out of the URL. */
   comparison?: MoneyballComparison;
   shortlistOnly?: boolean;
 };
 
 export const Route = createFileRoute("/search")({
   validateSearch: (search: Record<string, unknown>): SearchRouteSearch => {
-    // Legacy Player Shortlist links resolve to General and keep
-    // `shortlistOnly` as a marker; the page then clears the shortlist
-    // selection and removes the marker.
+    // Legacy Player Shortlist links keep `shortlistOnly` as a marker; the page
+    // then clears the shortlist selection and removes the marker. The old
+    // General and Moneyball `view` is dropped.
     const legacyShortlist = search.view === "shortlist";
-    const parsedView = parseSearchView(search.view);
-    const explicitView = legacyShortlist
-      ? ("general" as const)
-      : search.view === "general" || search.view === "moneyball"
-        ? parsedView
-        : undefined;
-    const view =
-      explicitView ?? useMoneyballPreferences.getState().defaultAnalysisView;
-    const filters = searchFiltersForUrl(
-      parseSearchFilters(search.filters, view),
-    );
-    const filterRules = parseSearchFilters(filters, view);
-    const tableId = view === "moneyball" ? "moneyball-search" : "search";
+    const filters = searchFiltersForUrl(parseSearchFilters(search.filters));
     const visibleColumnIds =
-      usePlayerTableStore.getState().layouts[tableId].columnIds;
-    const visibleSort = isVisibleSortField(
-      search.sort,
-      filterRules,
-      view,
-      visibleColumnIds,
-    )
+      usePlayerTableStore.getState().layouts[TABLE_ID].columnIds;
+    const visibleSort = isVisibleSortField(search.sort, visibleColumnIds)
       ? search.sort
       : null;
-    const sort = visibleSort ?? defaultSearchSort(view);
+    const sort = visibleSort ?? DEFAULT_SEARCH_SORT_FIELD;
     const dir = isSearchSortDir(search.dir)
       ? search.dir
       : visibleSort !== null
         ? defaultDirForSortField(sort)
         : DEFAULT_SEARCH_SORT_DIR;
+    const comparison = parseMoneyballComparison(search.comparison);
     return {
       sort,
       dir,
       filters,
       combine: parseSearchCombine(search.combine),
-      view: explicitView,
-      comparison:
-        view === "moneyball"
-          ? parseMoneyballComparison(search.comparison)
-          : undefined,
+      comparison: comparison === "own" ? undefined : comparison,
       shortlistOnly: legacyShortlist
         ? true
         : parseShortlistOnly(search.shortlistOnly),
     };
   },
   beforeLoad: ({ location, search }) => {
-    // Legacy Player Shortlist links replace the history entry with the
-    // General + shortlistOnly marker URL instead of only normalizing parsed
-    // state. location.search is the raw query; search is validated.
-    if (
-      (location.search as Record<string, unknown> | undefined)?.view ===
-      "shortlist"
-    ) {
+    // An old `view` link replaces its history entry with a clean URL; a legacy
+    // Player Shortlist link keeps the shortlistOnly marker. location.search is
+    // the raw query and search the validated one; the router keeps raw keys
+    // the redirect does not name, so it clears `view` explicitly.
+    const view = (location.search as Record<string, unknown> | undefined)?.view;
+    if (view !== undefined) {
       throw Route.redirect({
         to: "/search",
         search: {
           ...search,
-          view: "general",
-          shortlistOnly: true,
-        },
+          view: undefined,
+          ...(view === "shortlist" ? { shortlistOnly: true } : {}),
+        } as SearchRouteSearch,
         replace: true,
       });
     }
   },
-  loaderDeps: ({
-    search: { sort, dir, filters, combine, view, comparison },
-  }) => ({
+  loaderDeps: ({ search: { sort, dir, filters, combine, comparison } }) => ({
     sort,
     dir,
     filters,
     combine,
-    view: view ?? useMoneyballPreferences.getState().defaultAnalysisView,
     comparison: comparison ?? "own",
   }),
   loader: ({ context: { queryClient } }) =>
@@ -253,22 +235,80 @@ function tacticLaneLabels(
       const metricLabels = lane.customMetricKeys.map(
         (key) => moneyballMetric(key).label,
       );
+      const roles = ipRole === oopRole ? ipRole : `${ipRole} / ${oopRole}`;
       const label: TacticLaneLabel = {
         compact,
         // Restrained role context: full role names in smaller inline text.
-        context: ipRole === oopRole ? ipRole : `${ipRole} / ${oopRole}`,
+        context: roles,
         full: `${lane.ipPosition} (${ipRole}) / ${lane.oopPosition} (${oopRole})`,
-        custom: {
-          context: "Custom",
+        // The slot's Moneyball Score: its chosen metrics, or its roles.
+        moneyball: {
+          context: "Moneyball Score",
           full:
             metricLabels.length > 0
-              ? `${compact} custom: ${metricLabels.join(", ")}`
-              : `${compact} custom: no metrics chosen`,
+              ? `${compact} Moneyball Score: ${metricLabels.join(", ")}`
+              : `${compact} Moneyball Score: ${roles}`,
         },
       };
       return [lane.laneId, label];
     }),
   );
+}
+
+/**
+ * The lowest rating at a slot's position that lets the slot score a player.
+ * Mirrors `suitable_familiarity` in `src-tauri/src/features/planner/fit.rs`.
+ */
+const SLOT_POSITION_FAMILIARITY = 12;
+
+/**
+ * Each tactic slot's recruitment filters as a ready-made filter set, keeping
+ * the players its positions let it score and ranking percentiles among its two
+ * position families, as the Dashboard does.
+ */
+function slotFilterPresets(
+  tactic: PlannerTactic,
+  laneLabels: ReadonlyMap<string, TacticLaneLabel>,
+): SlotFilterPreset[] {
+  return orderedTacticLanes(tactic.lanes).flatMap((lane) => {
+    const recruitmentRules = lane.recruitmentFilters.flatMap(
+      (filter) => recruitmentFilterToRule(filter, createFilterRuleId()) ?? [],
+    );
+    if (recruitmentRules.length === 0) {
+      return [];
+    }
+    const positions = [
+      ...new Set([
+        basePosition(lane.ipPosition),
+        basePosition(lane.oopPosition),
+      ]),
+    ];
+    const rules: FilterRule[] = [
+      ...positions.map(
+        (position): FilterRule => ({
+          id: createFilterRuleId(),
+          field: `pos.${position}`,
+          op: "gte",
+          value: { type: "integer", value: SLOT_POSITION_FAMILIARITY },
+        }),
+      ),
+      ...recruitmentRules,
+    ];
+    const families = positions.map(positionFamilyOf);
+    const comparison = families.includes(null)
+      ? "own"
+      : parseMoneyballComparison([...new Set(families)].join("+"));
+    const label = laneLabels.get(lane.laneId);
+    return [
+      {
+        laneId: lane.laneId,
+        label: label?.compact ?? lane.ipPosition,
+        description: label?.context ?? "",
+        rules,
+        comparison,
+      },
+    ];
+  });
 }
 
 type SeasonStatsRefreshContext = { saveId: number; contextToken: string };
@@ -308,25 +348,20 @@ function SearchPageContent() {
     dir,
     filters: filterUrls,
     combine,
-    view: routeView,
     comparison: routeMoneyballComparison,
     shortlistOnly: routeShortlistOnly,
   } = Route.useSearch();
-  const defaultAnalysisView = useMoneyballPreferences(
-    (state) => state.defaultAnalysisView,
-  );
-  const view = routeView ?? defaultAnalysisView;
   const comparison = routeMoneyballComparison ?? "own";
-  // Remember this view's state so the top navigation can return to it.
+  // Remember the state so the top navigation can return to it.
   useEffect(() => {
-    useSearchViewMemory.getState().remember(view, {
+    useSearchViewMemory.getState().remember({
       sort,
       dir,
       filters: filterUrls,
       combine,
       comparison: routeMoneyballComparison,
     });
-  }, [combine, dir, filterUrls, routeMoneyballComparison, sort, view]);
+  }, [combine, dir, filterUrls, routeMoneyballComparison, sort]);
   // Only a matching active-save + current-snapshot pair shows results, and
   // its save context scopes the shortlist selection.
   const resultContext =
@@ -353,8 +388,7 @@ function SearchPageContent() {
     shortlists.some((shortlist) => shortlist.id === storedShortlistId)
       ? storedShortlistId
       : null;
-  const tableId = view === "moneyball" ? "moneyball-search" : "search";
-  const layout = usePlayerTableStore((state) => state.layouts[tableId]);
+  const layout = usePlayerTableStore((state) => state.layouts[TABLE_ID]);
   const navigate = Route.useNavigate();
   // A legacy shortlist URL opens Search with no shortlist selected; the URL
   // never carries the selection.
@@ -390,10 +424,13 @@ function SearchPageContent() {
     },
     [activeSaveId, activeSaveContextToken, queryClient],
   );
-  const filters = useMemo(
-    () => parseSearchFilters(filterUrls, view),
-    [filterUrls, view],
-  );
+  const filters = useMemo(() => parseSearchFilters(filterUrls), [filterUrls]);
+  // Percentiles vs, the score adjustment, and the stats date matter only
+  // while a season column, rule, or sort is in use.
+  const usesSeasonStats =
+    isSeasonFieldId(sort) ||
+    layout.columnIds.some(isSeasonFieldId) ||
+    filters.some((rule) => isSeasonFieldId(rule.field));
   const isLoadDataRunning =
     useIsMutating({ mutationKey: loadDataMutationKey }) > 0;
   const refreshStats = useMutation({
@@ -439,24 +476,24 @@ function SearchPageContent() {
       dir: SearchSortDir;
       filters: FilterRule[];
       combine: FilterCombineMode;
-      view: SearchView | undefined;
-      comparison: MoneyballComparison | undefined;
+      comparison: MoneyballComparison;
       replace: boolean;
     }>,
   ) =>
     navigate({
-      search: (previous) => ({
-        sort: patch.sort ?? previous.sort,
-        dir: patch.dir ?? previous.dir,
-        filters:
-          patch.filters !== undefined
-            ? searchFiltersForUrl(patch.filters)
-            : previous.filters,
-        combine: patch.combine ?? previous.combine,
-        view: "view" in patch ? patch.view : previous.view,
-        comparison:
-          "comparison" in patch ? patch.comparison : previous.comparison,
-      }),
+      search: (previous) => {
+        const nextComparison = patch.comparison ?? previous.comparison;
+        return {
+          sort: patch.sort ?? previous.sort,
+          dir: patch.dir ?? previous.dir,
+          filters:
+            patch.filters !== undefined
+              ? searchFiltersForUrl(patch.filters)
+              : previous.filters,
+          combine: patch.combine ?? previous.combine,
+          comparison: nextComparison === "own" ? undefined : nextComparison,
+        };
+      },
       replace: patch.replace ?? true,
     });
 
@@ -479,12 +516,17 @@ function SearchPageContent() {
   const handleApplyFilters = (
     rules: FilterRule[],
     nextCombine: FilterCombineMode,
+    nextComparison?: MoneyballComparison,
   ) => {
-    void updateSearch({ filters: rules, combine: nextCombine }).then(() => {
+    void updateSearch({
+      filters: rules,
+      combine: nextCombine,
+      ...(nextComparison === undefined ? {} : { comparison: nextComparison }),
+    }).then(() => {
       addColumns(
-        tableId,
+        TABLE_ID,
         rules.map((rule) => rule.field),
-        searchTableGroups(view),
+        SEARCH_TABLE_GROUPS,
       );
     });
   };
@@ -534,6 +576,11 @@ function SearchPageContent() {
               {family.label}
             </option>
           ))}
+          {comparison.includes("+") ? (
+            <option value={comparison}>
+              {moneyballComparisonLabel(comparison)}
+            </option>
+          ) : null}
         </select>
       </label>
       <MoneyballLeagueToggle
@@ -558,7 +605,7 @@ function SearchPageContent() {
             : null
         }
       />
-      {view === "moneyball" ? comparisonControl : null}
+      {usesSeasonStats ? comparisonControl : null}
     </>
   );
 
@@ -572,21 +619,25 @@ function SearchPageContent() {
       tactic && options ? tacticLaneLabels(tactic, options) : new Map();
     const validationError =
       tactic && options ? validateTacticDraft(tactic, options) : null;
-    const viewGroups = tacticColumnGroupsForTable(tableId);
-    const hasCustomMetrics =
-      tactic?.lanes.some((lane) => lane.customMetricKeys.length > 0) ?? false;
-    const customActive = isFullTacticGroup(layout.columnIds, "custom");
+    const viewGroups = tacticColumnGroupsForTable(TABLE_ID);
     const tacticToggles = viewGroups.map((group) => ({
       group,
-      label: TACTIC_GROUP_LABELS[view][group],
+      label: TACTIC_GROUP_LABELS[group],
       active: isFullTacticGroup(layout.columnIds, group),
-      canAdd: group !== "custom" || hasCustomMetrics,
     }));
-    const showCustomUnavailable =
-      viewGroups.includes("custom") &&
-      tactic !== undefined &&
-      !hasCustomMetrics &&
-      !customActive;
+    const slotPresets =
+      tactic && validationError === null
+        ? slotFilterPresets(tactic, laneLabels)
+        : [];
+    const savedFilters = (
+      <SavedFiltersControl
+        rules={filters}
+        combine={combine}
+        comparison={comparison}
+        slotPresets={slotPresets}
+        onApply={handleApplyFilters}
+      />
+    );
     const toggleDisabled =
       isResultContextChanging ||
       tacticState === null ||
@@ -630,11 +681,8 @@ function SearchPageContent() {
         return;
       }
       const columnIds =
-        usePlayerTableStore.getState().layouts[tableId].columnIds;
+        usePlayerTableStore.getState().layouts[TABLE_ID].columnIds;
       const groupActive = isFullTacticGroup(columnIds, group);
-      if (group === "custom" && !groupActive && !hasCustomMetrics) {
-        return;
-      }
       const nextActiveGroups = viewGroups.filter((viewGroup) =>
         viewGroup === group
           ? !groupActive
@@ -649,31 +697,28 @@ function SearchPageContent() {
       // which restores defaults and must keep that semantic.
       if (nextColumnIds.length === 0) {
         for (const id of columnIds.filter((id) => isTacticColumnId(id))) {
-          removeColumn(tableId, id);
+          removeColumn(TABLE_ID, id);
         }
       } else {
-        replaceLayout(tableId, nextColumnIds);
+        replaceLayout(TABLE_ID, nextColumnIds);
       }
       if (isTacticColumnId(sort) && !nextColumnIds.includes(sort)) {
-        const nextSort = defaultSearchSort(view);
         updateSearch({
-          sort: nextSort,
-          dir: defaultDirForSortField(nextSort),
+          sort: DEFAULT_SEARCH_SORT_FIELD,
+          dir: defaultDirForSortField(DEFAULT_SEARCH_SORT_FIELD),
         });
       }
     };
 
     // Page-header owns the title and every page action (Add Tactic groups,
-    // Moneyball Refresh stats): the generic table toolbar below owns only
-    // dataset slots and never hosts these controls.
+    // Refresh stats): the generic table toolbar below owns only dataset slots
+    // and never hosts these controls.
     const pageHeader = (
       <header
         data-testid="search-page-header"
         className="flex w-full flex-wrap items-start justify-between gap-2"
       >
-        <h1 className="text-headline-md text-on-surface">
-          {view === "moneyball" ? "Moneyball" : "Player Search"}
-        </h1>
+        <h1 className="text-headline-md text-on-surface">Player Search</h1>
         <div
           className="flex flex-wrap items-center justify-end gap-2"
           data-testid="search-page-actions"
@@ -683,51 +728,34 @@ function SearchPageContent() {
             disabled={toggleDisabled}
             onToggleGroup={toggleGroup}
           />
-          {showCustomUnavailable ? (
-            <p className="text-body-sm text-on-surface-variant">
-              Choose custom metrics per slot in the{" "}
-              <Link
-                to="/my-club"
-                search={{ view: "tactic" }}
-                className="rounded-sm text-on-surface underline decoration-dotted underline-offset-4 hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                Tactic editor
-              </Link>
-              .
+          <Button
+            variant="secondary"
+            icon={RefreshCw}
+            disabled={
+              !resultContext || refreshStats.isPending || isLoadDataRunning
+            }
+            onClick={() => {
+              if (!resultContext) return;
+              refreshStats.mutate({
+                saveId: resultContext.activeSave.id,
+                contextToken: resultContext.activeSave.contextToken,
+              });
+            }}
+          >
+            Refresh stats
+          </Button>
+          {refreshOutcome ? (
+            <p
+              role="status"
+              className={cn(
+                "text-body-sm",
+                refreshOutcome.isProblem
+                  ? "text-error"
+                  : "text-on-surface-variant",
+              )}
+            >
+              {refreshOutcome.text}
             </p>
-          ) : null}
-          {view === "moneyball" ? (
-            <>
-              <Button
-                variant="secondary"
-                icon={RefreshCw}
-                disabled={
-                  !resultContext || refreshStats.isPending || isLoadDataRunning
-                }
-                onClick={() => {
-                  if (!resultContext) return;
-                  refreshStats.mutate({
-                    saveId: resultContext.activeSave.id,
-                    contextToken: resultContext.activeSave.contextToken,
-                  });
-                }}
-              >
-                Refresh stats
-              </Button>
-              {refreshOutcome ? (
-                <p
-                  role="status"
-                  className={cn(
-                    "text-body-sm",
-                    refreshOutcome.isProblem
-                      ? "text-error"
-                      : "text-on-surface-variant",
-                  )}
-                >
-                  {refreshOutcome.text}
-                </p>
-              ) : null}
-            </>
           ) : null}
         </div>
       </header>
@@ -742,11 +770,8 @@ function SearchPageContent() {
             combine={combine}
             onRulesChange={handleRulesChange}
             onApply={handleApplyFilters}
-            view={view}
             comparison={comparison}
-            datasetToggles={
-              view === "moneyball" ? comparisonControl : undefined
-            }
+            datasetToggles={usesSeasonStats ? comparisonControl : undefined}
           />
         )}
         {tacticMessage ? (
@@ -771,12 +796,11 @@ function SearchPageContent() {
             </Panel>
           ) : resultContext ? (
             <SearchResultsPanel
-              key={`${resultContext.activeSave.id}:${resultContext.activeSave.contextToken}:${resultContext.snapshot.id}:${resultContext.snapshot.saveId}:${view}`}
+              key={`${resultContext.activeSave.id}:${resultContext.activeSave.contextToken}:${resultContext.snapshot.id}:${resultContext.snapshot.saveId}`}
               sortBy={sort}
               sortDir={dir}
               filters={filters}
               filterCombine={combine}
-              view={view}
               comparison={comparison}
               shortlistId={shortlistId}
               onShortlistMissing={clearMissingShortlist}
@@ -803,6 +827,7 @@ function SearchPageContent() {
               }}
               onRulesChange={handleRulesChange}
               onApplyFilters={handleApplyFilters}
+              filterActions={savedFilters}
               datasetToggles={datasetToggles}
             />
           ) : (

@@ -15,13 +15,13 @@ export type PlayerSummary = {
   marketValueGbp: number | null;
   /** Values for requested non-basic and derived role fields (field id → nullable cell). */
   dynamicValues?: Record<string, DynamicCellValue | null>;
-  /** Percentile scores for requested Moneyball performance metrics only. */
+  /** Percentile scores for requested statistics, for a player with a qualified sample. */
   moneyballPercentiles?: Record<string, number | null>;
   /**
-   * Moneyball only: under 450 minutes, so the percentiles rank the player
-   * against peers he is not one of. Absent otherwise.
+   * The in-game date of the kept snapshot whose statistics stand in for a
+   * season under 450 minutes. Absent for this season's statistics.
    */
-  moneyballShortSample?: boolean;
+  moneyballStatsDate?: string;
 };
 
 export type SearchPlayersPageState =

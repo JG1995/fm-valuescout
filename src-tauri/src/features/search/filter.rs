@@ -7,9 +7,9 @@ use crate::features::player_metrics::compact::{
     player_current_column, player_potential_column, PLAYER_METRICS_ALIAS,
 };
 use crate::features::player_metrics::resolver::{
-    attribute_key, catalog_role_id, hidden_attribute_key, is_moneyball_search_field,
-    moneyball_context_column, parse_moneyball_role_id, personality_key, ClubDnaSqlBindings,
-    POSITION_KEYS,
+    attribute_key, catalog_role_id, hidden_attribute_key, moneyball_context_column,
+    moneyball_context_sql, moneyball_statistic_sql, parse_moneyball_role_id, personality_key,
+    ClubDnaSqlBindings, POSITION_KEYS,
 };
 
 use super::realistic_signing;
@@ -166,7 +166,7 @@ fn moneyball_percentile_key(rule: &FilterRule) -> Option<String> {
     if !matches!(rule.op.as_str(), "pct_gte" | "pct_lte" | "pct_between") {
         return None;
     }
-    match resolve_field(&rule.field, true) {
+    match resolve_field(&rule.field) {
         Ok(FieldKind::MoneyballReal { key }) => Some(key),
         _ => None,
     }
@@ -298,10 +298,17 @@ fn resolve_position_suitability(field: &str) -> Result<Option<FieldKind>, String
     }))
 }
 
-fn resolve_field(field: &str, moneyball: bool) -> Result<FieldKind, String> {
-    if moneyball && !is_moneyball_search_field(field) {
-        return Err(format!("unknown Moneyball search field: {field}"));
-    }
+/// Whether a rule reads the season statistics row aliased `moneyball`.
+fn reads_season_stats(rule: &FilterRule) -> bool {
+    rule.field.starts_with("moneyball.")
+}
+
+/// Whether any of the AST's SQL rules reads the season statistics row aliased `moneyball`.
+pub fn ast_reads_season_stats(ast: &FilterAst) -> bool {
+    ast.rules.iter().any(reads_season_stats)
+}
+
+fn resolve_field(field: &str) -> Result<FieldKind, String> {
     match field {
         "name" => Ok(FieldKind::String {
             column: "name",
@@ -414,18 +421,13 @@ fn resolve_field(field: &str, moneyball: bool) -> Result<FieldKind, String> {
             if let Some(kind) = resolve_role_score(field)? {
                 return Ok(kind);
             }
-            if parse_moneyball_role_id(field, moneyball)?.is_some() {
+            if parse_moneyball_role_id(field, true)?.is_some() {
                 return Ok(FieldKind::MoneyballRoleScore);
             }
-            if moneyball {
-                if let Some(column) = moneyball_context_column(field) {
-                    return Ok(FieldKind::MoneyballInteger { column });
-                }
+            if let Some(column) = moneyball_context_column(field) {
+                return Ok(FieldKind::MoneyballInteger { column });
             }
             if let Some(key) = field.strip_prefix("moneyball.") {
-                if !moneyball {
-                    return Err(format!("unknown filter field: {field}"));
-                }
                 if !is_moneyball_statistic_key(key) {
                     return Err(format!("unknown Moneyball metric: {key}"));
                 }
@@ -510,7 +512,7 @@ fn resolve_slot_field(field: &str) -> Result<FieldKind, String> {
             key: key.to_string(),
         });
     }
-    match resolve_field(field, false)? {
+    match resolve_field(field)? {
         FieldKind::ClubDnaScore
         | FieldKind::RealisticSigning
         | FieldKind::PotentialRoleScore { .. }
@@ -631,8 +633,10 @@ pub fn parse_filter_ast(
     Ok(FilterAst { combine, rules })
 }
 
+/// Compiles the AST's rules to SQL over `players`, the compact role metrics row
+/// (`PLAYER_METRICS_ALIAS`), and the season statistics row (`moneyball`).
 pub fn compile_filters(ast: &FilterAst, start_index: usize) -> Result<CompiledFilter, String> {
-    compile_filters_internal(ast, start_index, false, None)
+    compile_filters_internal(ast, start_index, None)
 }
 
 pub fn compile_filters_with_club_dna(
@@ -640,21 +644,12 @@ pub fn compile_filters_with_club_dna(
     start_index: usize,
     club_dna_bindings: ClubDnaSqlBindings,
 ) -> Result<CompiledFilter, String> {
-    compile_filters_internal(ast, start_index, false, Some(club_dna_bindings))
-}
-
-pub fn compile_filters_for_moneyball(
-    ast: &FilterAst,
-    start_index: usize,
-    moneyball: bool,
-) -> Result<CompiledFilter, String> {
-    compile_filters_internal(ast, start_index, moneyball, None)
+    compile_filters_internal(ast, start_index, Some(club_dna_bindings))
 }
 
 fn compile_filters_internal(
     ast: &FilterAst,
     start_index: usize,
-    moneyball: bool,
     club_dna_bindings: Option<ClubDnaSqlBindings>,
 ) -> Result<CompiledFilter, String> {
     if ast.rules.is_empty() {
@@ -669,7 +664,7 @@ fn compile_filters_internal(
     let mut next_index = start_index;
 
     for rule in &ast.rules {
-        let field_kind = resolve_field(&rule.field, moneyball)?;
+        let field_kind = resolve_field(&rule.field)?;
         let (clause, rule_params) = compile_rule(
             field_kind,
             &rule.op,
@@ -732,9 +727,13 @@ fn compile_rule(
             "Moneyball role filters must be evaluated after the comparison cohort is scored"
                 .to_string(),
         ),
-        FieldKind::MoneyballInteger { column } => {
-            compile_integer_rule(&format!("moneyball.{column}"), true, op, value, next_index)
-        }
+        FieldKind::MoneyballInteger { column } => compare_number(
+            &moneyball_context_sql(column),
+            op,
+            value,
+            next_index,
+            integer_param,
+        ),
         FieldKind::RealisticSigning => compile_realistic_signing_rule(op, value),
     }
 }
@@ -838,7 +837,7 @@ fn compile_moneyball_real_rule(
     value: &FilterValue,
     next_index: &mut usize,
 ) -> Result<(String, Vec<Value>), String> {
-    let extract = format!("json_extract(moneyball.statistics_json, '$.\"{key}\"')");
+    let extract = moneyball_statistic_sql(key);
     let (compare, params) = compare_number(&extract, op, value, next_index, real_param)?;
     Ok((format!("({compare} AND {extract} IS NOT NULL)"), params))
 }
@@ -1178,12 +1177,12 @@ mod tests {
 
     #[test]
     fn compiles_inclusive_and_range_numeric_operators() {
-        let compile = |field: &str, op: &str, value: FilterValue, moneyball: bool| {
+        let compile = |field: &str, op: &str, value: FilterValue| {
             let ast = parse_filter_ast(vec![rule(field, op, value)], None).expect("parse");
-            compile_filters_for_moneyball(&ast, 1, moneyball).expect("compile")
+            compile_filters(&ast, 1).expect("compile")
         };
 
-        let ca = compile("ca", "gte", FilterValue::Integer(140), false);
+        let ca = compile("ca", "gte", FilterValue::Integer(140));
         assert_eq!(ca.sql, "(ca >= ?1)");
         assert_eq!(ca.params, vec![Value::Integer(140)]);
 
@@ -1191,12 +1190,11 @@ mod tests {
             "age",
             "between",
             FilterValue::List(vec![FilterValue::Integer(18), FilterValue::Integer(23)]),
-            false,
         );
         assert_eq!(age.sql, "((age BETWEEN ?1 AND ?2 AND age IS NOT NULL))");
         assert_eq!(age.params, vec![Value::Integer(18), Value::Integer(23)]);
 
-        let pace = compile("attr.Pace", "lte", FilterValue::Integer(12), false);
+        let pace = compile("attr.Pace", "lte", FilterValue::Integer(12));
         assert!(pace
             .sql
             .contains("json_extract(attributes_json, '$.Pace') <= ?1"));
@@ -1205,7 +1203,6 @@ mod tests {
             "moneyball.xa_per_90",
             "between",
             FilterValue::List(vec![FilterValue::Real(0.2), FilterValue::Real(0.4)]),
-            true,
         );
         assert!(xa.sql.contains("BETWEEN ?1 AND ?2"));
         assert_eq!(xa.params, vec![Value::Real(0.2), Value::Real(0.4)]);
@@ -1289,59 +1286,61 @@ mod tests {
     }
 
     #[test]
-    fn compiles_bound_moneyball_real_filters_only_in_moneyball_mode() {
+    fn compiles_statistic_filters_that_only_a_qualified_sample_passes() {
         let ast = parse_filter_ast(
-            vec![rule("moneyball.np-xg", "gt", FilterValue::Real(0.75))],
+            vec![rule("moneyball.np-xg", "lte", FilterValue::Real(0.75))],
             None,
         )
         .expect("parse filter");
 
-        assert!(compile_filters(&ast, 2).is_err());
-        let compiled = compile_filters_for_moneyball(&ast, 2, true).expect("compile filter");
-        assert!(compiled.sql.contains("moneyball.statistics_json"));
+        let compiled = compile_filters(&ast, 2).expect("compile filter");
+        assert_eq!(
+            compiled.sql,
+            format!(
+                "(({0} <= ?2 AND {0} IS NOT NULL))",
+                moneyball_statistic_sql("np-xg")
+            )
+        );
+        assert!(compiled.sql.contains("moneyball.minutes >= 450"));
         assert_eq!(compiled.params, vec![Value::Real(0.75)]);
+        assert!(ast_reads_season_stats(&ast));
     }
 
     #[test]
-    fn compiles_moneyball_context_filters_only_in_moneyball_mode() {
+    fn compiles_playing_time_filters_with_a_missing_row_as_zero() {
         let ast = parse_filter_ast(
-            vec![rule("moneyball.minutes", "gt", FilterValue::Integer(900))],
+            vec![rule("moneyball.minutes", "lte", FilterValue::Integer(900))],
             None,
         )
         .expect("parse filter");
 
-        assert!(compile_filters(&ast, 2).is_err());
-        let compiled = compile_filters_for_moneyball(&ast, 2, true).expect("compile filter");
-        assert!(compiled.sql.contains("moneyball.minutes > ?2"));
+        let compiled = compile_filters(&ast, 2).expect("compile filter");
+        assert_eq!(compiled.sql, "(COALESCE(moneyball.minutes, 0) <= ?2)");
         assert_eq!(compiled.params, vec![Value::Integer(900)]);
     }
 
     #[test]
-    fn limits_moneyball_filters_to_its_catalog() {
+    fn compiles_player_and_season_fields_in_one_filter() {
         let ast = parse_filter_ast(
-            vec![rule("attr.Acceleration", "gt", FilterValue::Integer(12))],
-            None,
-        )
-        .expect("parse filter");
-
-        assert!(compile_filters_for_moneyball(&ast, 2, true).is_err());
-
-        // Ability, reputation, and contract fields are shared with General.
-        let shared = parse_filter_ast(
             vec![
+                rule("attr.Acceleration", "gte", FilterValue::Integer(14)),
+                rule("role.target_forward_ip", "gte", FilterValue::Integer(70)),
+                rule("moneyball.xg_per_90", "gte", FilterValue::Real(0.3)),
                 rule("ca", "gte", FilterValue::Integer(120)),
-                rule("wage", "lte", FilterValue::Integer(50_000)),
-                rule("transfer_listed", "is", FilterValue::Bool(true)),
-                rule(
-                    "team_level",
-                    "in",
-                    FilterValue::List(vec![FilterValue::Text("senior".to_string())]),
-                ),
             ],
             None,
         )
         .expect("parse filter");
-        assert!(compile_filters_for_moneyball(&shared, 2, true).is_ok());
+
+        let compiled = compile_filters(&ast, 2).expect("compile filter");
+        assert!(compiled.sql.contains("attributes_json"));
+        assert!(compiled.sql.contains(PLAYER_METRICS_ALIAS));
+        assert!(compiled.sql.contains("moneyball.statistics_json"));
+        assert!(ast_reads_season_stats(&ast));
+        let players_only =
+            parse_filter_ast(vec![rule("ca", "gte", FilterValue::Integer(120))], None)
+                .expect("parse filter");
+        assert!(!ast_reads_season_stats(&players_only));
     }
 
     #[test]
@@ -1837,7 +1836,7 @@ mod tests {
             .expect("SQL rule");
         assert_eq!(sql_rules.rules.len(), 1);
         assert_eq!(sql_rules.rules[0].field, "moneyball.minutes");
-        assert!(compile_filters_for_moneyball(&sql_rules, 2, true).is_ok());
+        assert!(compile_filters(&sql_rules, 2).is_ok());
     }
 
     #[test]
@@ -1848,7 +1847,7 @@ mod tests {
                 parse_filter_ast(vec![rule(field, "pct_gte", FilterValue::Integer(90))], None)
                     .expect("parse ast");
             assert!(
-                compile_filters_for_moneyball(&ast, 2, true).is_err(),
+                compile_filters(&ast, 2).is_err(),
                 "expected {field} percentile rule to be rejected in SQL"
             );
         }
@@ -1881,21 +1880,17 @@ mod tests {
     }
 
     #[test]
-    fn rejects_tactic_fields_as_filters_in_both_modes() {
-        for field in ["tactic_current.goalkeeper", "tactic_current.not_a_lane"] {
+    fn rejects_tactic_fields_as_filters() {
+        for field in [
+            "tactic_current.goalkeeper",
+            "tactic_moneyball.goalkeeper",
+            "tactic_current.not_a_lane",
+        ] {
             let ast = parse_filter_ast(vec![rule(field, "gt", FilterValue::Integer(70))], None)
                 .expect("parse ast");
             assert!(
                 compile_filters(&ast, 2).is_err(),
-                "expected {field} to be rejected in General mode"
-            );
-            assert!(
-                compile_filters_for_moneyball(&ast, 2, true).is_err(),
-                "expected {field} to be rejected in Moneyball mode"
-            );
-            assert!(
-                compile_filters_for_moneyball(&ast, 2, false).is_err(),
-                "expected {field} to be rejected in non-Moneyball filter path"
+                "expected {field} to be rejected"
             );
         }
     }
@@ -1930,7 +1925,11 @@ mod tests {
         let sql = plan.sql.expect("SQL rules");
         assert!(sql.sql.contains("preferred_foot IN (?3)"), "{}", sql.sql);
         assert!(sql.sql.contains("height_cm >= ?4"), "{}", sql.sql);
-        assert!(sql.sql.contains("moneyball.minutes >= ?6"), "{}", sql.sql);
+        assert!(
+            sql.sql.contains("COALESCE(moneyball.minutes, 0) >= ?6"),
+            "{}",
+            sql.sql
+        );
         assert_eq!(sql.params.len(), 4);
         assert!(plan.uses_role_scores);
         assert!(plan.uses_season_stats);

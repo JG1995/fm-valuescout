@@ -5,8 +5,6 @@ export type TacticColumnToggle = {
   group: TacticColumnGroup;
   label: string;
   active: boolean;
-  /** False when the group has nothing to add; active columns stay removable. */
-  canAdd?: boolean;
 };
 
 type TacticColumnTogglesProps = {
@@ -22,12 +20,12 @@ export function TacticColumnToggles({
 }: TacticColumnTogglesProps) {
   return (
     <>
-      {groups.map(({ group, label, active, canAdd = true }) => (
+      {groups.map(({ group, label, active }) => (
         <Button
           key={group}
           variant={active ? "primary" : "secondary"}
           aria-pressed={active}
-          disabled={disabled || (!active && !canAdd)}
+          disabled={disabled}
           onClick={() => onToggleGroup(group)}
         >
           Add Tactic ({label})

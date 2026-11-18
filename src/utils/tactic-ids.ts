@@ -11,7 +11,7 @@
  */
 export const TACTIC_CURRENT_PREFIX = "tactic_current.";
 export const TACTIC_POTENTIAL_PREFIX = "tactic_potential.";
-export const TACTIC_CUSTOM_PREFIX = "tactic_custom.";
+export const TACTIC_MONEYBALL_PREFIX = "tactic_moneyball.";
 export const TACTIC_COLUMN_DEFAULT_WIDTH = 112;
 
 export const TACTIC_LANE_IDS = [
@@ -28,7 +28,12 @@ export const TACTIC_LANE_IDS = [
   "centre_forward",
 ] as const;
 
-export type TacticColumnGroup = "current" | "potential" | "custom";
+/**
+ * A tactic slot's Role Score (`current`), Potential Role Score (`potential`),
+ * or Moneyball Score (`moneyball`): the slot's chosen metrics, or its roles'
+ * Moneyball definitions when it has none, as the Dashboard compares them.
+ */
+export type TacticColumnGroup = "current" | "potential" | "moneyball";
 
 export type TacticLaneId = (typeof TACTIC_LANE_IDS)[number];
 
@@ -37,28 +42,18 @@ const tacticLaneIds = new Set<string>(TACTIC_LANE_IDS);
 const TACTIC_GROUP_PREFIXES: Record<TacticColumnGroup, string> = {
   current: TACTIC_CURRENT_PREFIX,
   potential: TACTIC_POTENTIAL_PREFIX,
-  custom: TACTIC_CUSTOM_PREFIX,
+  moneyball: TACTIC_MONEYBALL_PREFIX,
 };
 
 const TACTIC_GROUPS = Object.keys(
   TACTIC_GROUP_PREFIXES,
 ) as readonly TacticColumnGroup[];
 
-/**
- * Tactic groups each table offers, in view order. Moneyball has no potential
- * statistics, so it offers Custom in place of Potential; Rust rejects each
- * group in the other view.
- */
+/** Tactic groups each table offers, in the order they interleave per slot. */
 export function tacticColumnGroupsForTable(
   table: string,
 ): readonly TacticColumnGroup[] {
-  if (table === "search") {
-    return ["current", "potential"];
-  }
-  if (table === "moneyball-search") {
-    return ["current", "custom"];
-  }
-  return [];
+  return table === "search" ? ["current", "potential", "moneyball"] : [];
 }
 
 export function isValidTacticLaneId(laneId: string): laneId is TacticLaneId {

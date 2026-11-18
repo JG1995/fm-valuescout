@@ -125,6 +125,17 @@ impl ComparisonGroup {
         Some(Self(Self::family(ip).0 | Self::family(oop).0))
     }
 
+    /// A group from one family ID or two joined by `+`, such as `winger+wide_midfielder`.
+    pub(crate) fn parse(id: &str) -> Option<Self> {
+        let mut bits = 0_u16;
+        let mut count = 0;
+        for part in id.split('+') {
+            bits |= Self::family(PositionFamily::from_id(part)?).0;
+            count += 1;
+        }
+        (count <= 2 && bits.count_ones() == count).then_some(Self(bits))
+    }
+
     /// The group's families, in `PositionFamily::ALL` order.
     pub(crate) fn families(self) -> impl Iterator<Item = PositionFamily> {
         PositionFamily::ALL
@@ -570,7 +581,7 @@ pub(crate) fn scan_statistics(json: &str) -> Result<Box<[f64]>, String> {
 
 /// Reads `rows` on this thread and runs `scan` on each one on worker threads, so the JSON
 /// scanning overlaps SQLite's reads. The results are in no particular order.
-fn scan_in_parallel<I: Send, T: Send>(
+pub(crate) fn scan_in_parallel<I: Send, T: Send>(
     rows: &mut Rows<'_>,
     read: impl Fn(&Row<'_>) -> rusqlite::Result<I>,
     scan: impl Fn(I) -> Result<T, String> + Sync,

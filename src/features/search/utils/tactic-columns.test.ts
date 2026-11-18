@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   TACTIC_CURRENT_PREFIX,
-  TACTIC_CUSTOM_PREFIX,
+  TACTIC_MONEYBALL_PREFIX,
   TACTIC_POTENTIAL_PREFIX,
 } from "@/utils/tactic-ids";
 import {
@@ -45,8 +45,8 @@ describe("tactic column ordering", () => {
     expect(buildTacticColumnOrder(orderedLaneIds, ["potential"])).toEqual(
       orderedLaneIds.map((laneId) => `${TACTIC_POTENTIAL_PREFIX}${laneId}`),
     );
-    expect(buildTacticColumnOrder(orderedLaneIds, ["custom"])).toEqual(
-      orderedLaneIds.map((laneId) => `${TACTIC_CUSTOM_PREFIX}${laneId}`),
+    expect(buildTacticColumnOrder(orderedLaneIds, ["moneyball"])).toEqual(
+      orderedLaneIds.map((laneId) => `${TACTIC_MONEYBALL_PREFIX}${laneId}`),
     );
     expect(buildTacticColumnOrder(orderedLaneIds, [])).toEqual([]);
   });
@@ -61,11 +61,11 @@ describe("tactic column ordering", () => {
       ]),
     );
     expect(
-      buildTacticColumnOrder(orderedLaneIds, ["current", "custom"]),
+      buildTacticColumnOrder(orderedLaneIds, ["current", "moneyball"]),
     ).toEqual(
       orderedLaneIds.flatMap((laneId) => [
         `${TACTIC_CURRENT_PREFIX}${laneId}`,
-        `${TACTIC_CUSTOM_PREFIX}${laneId}`,
+        `${TACTIC_MONEYBALL_PREFIX}${laneId}`,
       ]),
     );
   });
@@ -73,7 +73,7 @@ describe("tactic column ordering", () => {
   it("does not emit synthetic IDs for unknown lanes", () => {
     expect(buildTacticColumnOrder(["not_a_lane"], ["current"])).toEqual([]);
     expect(
-      buildTacticColumnOrder(["not_a_lane"], ["current", "custom"]),
+      buildTacticColumnOrder(["not_a_lane"], ["current", "moneyball"]),
     ).toEqual([]);
     expect(
       buildTacticColumnOrder(

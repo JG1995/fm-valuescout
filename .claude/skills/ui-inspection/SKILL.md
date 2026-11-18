@@ -44,7 +44,7 @@ Examples:
 
 ```bash
 ./scripts/dev inspect-ui /search
-./scripts/dev inspect-ui '/search?view=moneyball'
+./scripts/dev inspect-ui '/search?sort=moneyball.average_rating'
 ./scripts/dev inspect-ui '/players/42?section=role-fit' 1920 1080
 ./scripts/dev inspect-ui '/academy?view=class&classId=7' 1280 800
 ```
@@ -63,7 +63,7 @@ This captures:
 
 1. Dashboard
 2. Search
-3. Moneyball Search
+3. Search with season stats
 4. Player Shortlist
 5. Staff Search
 6. My Staff
@@ -137,7 +137,7 @@ The inspection spec combines existing browser fixtures and generated rows. It pr
 - active save and current snapshot metadata;
 - the Dashboard's starting XI, recommended signings, expiring contracts, and prospects;
 - snapshot history;
-- player Search, Moneyball, Shortlist, and Squad tables;
+- player Search (with and without season stats), Shortlist, and Squad tables;
 - Player Profile attributes, role fit, and Moneyball data;
 - Planner depth and Tactic configuration;
 - Staff Search, My Staff, Staff Shortlist, profile, and assignment data;

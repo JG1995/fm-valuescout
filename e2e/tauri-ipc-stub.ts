@@ -1242,7 +1242,9 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             ) {
               return { players: [], total: 0, state: "no_shortlist" };
             }
-            if (shortlistId !== null && args?.searchView === "general") {
+            // With Moneyball data on, Search serves the Moneyball players;
+            // otherwise a selected shortlist serves the shortlist players.
+            if (!moneyballSearch && shortlistId !== null) {
               // Loans holds the first three shortlist players; every other
               // shortlist holds all of them.
               const generalShortlistPlayers = shortlistId === 2
@@ -1316,7 +1318,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 total: sorted.length,
               };
             }
-            if (args?.searchView === "moneyball") {
+            if (moneyballSearch) {
               const filterRules = Array.isArray(args?.filters)
                 ? args.filters
                 : [];

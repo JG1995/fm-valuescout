@@ -39,24 +39,24 @@ describe("search URL search params", () => {
     expect(decoded).toEqual(rules);
   });
 
-  it("keeps the realistic-signing rule in both views without offering it as a column", () => {
+  it("keeps the realistic-signing rule without offering it as a column", () => {
     const encoded = [
       { id: "realistic", field: "realistic_signing", op: "is", value: true },
     ];
-    for (const view of ["general", "moneyball"] as const) {
-      const [rule] = parseSearchFilters(encoded, view);
-      expect(rule).toEqual({
-        id: "realistic",
-        field: "realistic_signing",
-        op: "is",
-        value: { type: "bool", value: true },
-      });
-      expect(isFilterRuleComplete(rule, view)).toBe(true);
-      expect(formatFilterTagLabel(rule, view)).toBe("Realistic signing is Yes");
-      expect(filterFieldsForView(view).map((field) => field.id)).toContain(
-        "realistic_signing",
-      );
-    }
+    const [rule] = parseSearchFilters(encoded);
+    expect(rule).toEqual({
+      id: "realistic",
+      field: "realistic_signing",
+      op: "is",
+      value: { type: "bool", value: true },
+    });
+    expect(isFilterRuleComplete(rule as FilterRule)).toBe(true);
+    expect(formatFilterTagLabel(rule as FilterRule)).toBe(
+      "Realistic signing is Yes",
+    );
+    expect(filterFieldsForView().map((field) => field.id)).toContain(
+      "realistic_signing",
+    );
     expect(getPlayerMetric("realistic_signing")).toBeUndefined();
     expect(getMoneyballSearchMetric("realistic_signing")).toBeUndefined();
   });
@@ -108,13 +108,10 @@ describe("search URL search params", () => {
   });
 
   it("keeps percentile rules only on Moneyball statistics", () => {
-    const parsed = parseSearchFilters(
-      [
-        { id: "xa", field: "moneyball.xa_per_90", op: "pct_gte", value: 90 },
-        { id: "minutes", field: "moneyball.minutes", op: "pct_gte", value: 90 },
-      ],
-      "moneyball",
-    );
+    const parsed = parseSearchFilters([
+      { id: "xa", field: "moneyball.xa_per_90", op: "pct_gte", value: 90 },
+      { id: "minutes", field: "moneyball.minutes", op: "pct_gte", value: 90 },
+    ]);
 
     expect(parsed).toEqual([
       {
@@ -124,23 +121,43 @@ describe("search URL search params", () => {
         value: { type: "number", value: 90 },
       },
     ]);
-    expect(formatFilterTagLabel(parsed[0] as FilterRule, "moneyball")).toBe(
+    expect(formatFilterTagLabel(parsed[0] as FilterRule)).toBe(
       "xA / 90 percentile ≥ 90",
     );
   });
 
-  it("labels Moneyball role chips as roles, like General role chips", () => {
+  it("names Role Score and Moneyball Score chips apart", () => {
+    const chip = (field: string) =>
+      formatFilterTagLabel({
+        id: field,
+        field,
+        op: "gte",
+        value: { type: "integer", value: 70 },
+      });
+
+    expect(chip("role.wing_back_ip")).toBe("Role Score · Wing-Back (IP) ≥ 70");
+    expect(chip("potential_role.wing_back_ip")).toBe(
+      "Potential Role Score · Wing-Back (IP) ≥ 70",
+    );
+    expect(chip("moneyball_role.wbl_wbr_wing_back_ip")).toBe(
+      "Moneyball Score · Wing-Back (IP · WBR/WBL) ≥ 70",
+    );
+  });
+
+  it("parses player and season rules together from one URL", () => {
     expect(
-      formatFilterTagLabel(
-        {
-          id: "role",
-          field: "moneyball_role.wbl_wbr_wing_back_ip",
-          op: "gt",
-          value: { type: "integer", value: 70 },
-        },
-        "moneyball",
-      ),
-    ).toBe("Role · Wing-Back (IP · WBR/WBL) > 70");
+      parseSearchFilters([
+        { field: "attr.Pace", op: "gte", value: 14 },
+        { field: "role.wing_back_ip", op: "gte", value: 60 },
+        { field: "moneyball.xa_per_90", op: "pct_gte", value: 80 },
+        { field: "moneyball_role.wbl_wbr_wing_back_ip", op: "gte", value: 70 },
+      ]).map((rule) => rule.field),
+    ).toEqual([
+      "attr.Pace",
+      "role.wing_back_ip",
+      "moneyball.xa_per_90",
+      "moneyball_role.wbl_wbr_wing_back_ip",
+    ]);
   });
 
   it("migrates old comparison links to inclusive operators and choice lists", () => {
@@ -173,10 +190,9 @@ describe("search URL search params", () => {
     ]);
     expect(
       strip(
-        parseSearchFilters(
-          [{ field: "moneyball.xa_per_90", op: "gt", value: 0.3 }],
-          "moneyball",
-        ),
+        parseSearchFilters([
+          { field: "moneyball.xa_per_90", op: "gt", value: 0.3 },
+        ]),
       ),
     ).toEqual([
       {
@@ -208,27 +224,23 @@ describe("search URL search params", () => {
       140,
     ]);
 
-    const moneyball = parseSearchFilters(
-      [
-        { field: "moneyball.xa_per_90", op: "pct_between", value: [80, 100] },
-        {
-          field: "moneyball.pass_completion_ratio",
-          op: "between",
-          value: [70, 90],
-        },
-      ],
-      "moneyball",
-    );
-    expect(
-      moneyball.map((rule) => formatFilterTagLabel(rule, "moneyball")),
-    ).toEqual(["xA / 90 percentile 80–100", "Pass Completion % 70–90%"]);
+    const moneyball = parseSearchFilters([
+      { field: "moneyball.xa_per_90", op: "pct_between", value: [80, 100] },
+      {
+        field: "moneyball.pass_completion_ratio",
+        op: "between",
+        value: [70, 90],
+      },
+    ]);
+    expect(moneyball.map((rule) => formatFilterTagLabel(rule))).toEqual([
+      "xA / 90 percentile 80–100",
+      "Pass Completion % 70–90%",
+    ]);
   });
 
   it("treats only ordered, in-scale ranges and non-empty valid choices as complete", () => {
-    const complete = (
-      rule: Omit<FilterRule, "id">,
-      view: "general" | "moneyball" = "general",
-    ) => isFilterRuleComplete({ id: "rule", ...rule }, view);
+    const complete = (rule: Omit<FilterRule, "id">) =>
+      isFilterRuleComplete({ id: "rule", ...rule });
 
     expect(
       complete({
@@ -252,14 +264,11 @@ describe("search URL search params", () => {
       }),
     ).toBe(false);
     expect(
-      complete(
-        {
-          field: "moneyball.xa_per_90",
-          op: "pct_between",
-          value: { type: "range", value: [80, 120] },
-        },
-        "moneyball",
-      ),
+      complete({
+        field: "moneyball.xa_per_90",
+        op: "pct_between",
+        value: { type: "range", value: [80, 120] },
+      }),
     ).toBe(false);
     expect(
       complete({

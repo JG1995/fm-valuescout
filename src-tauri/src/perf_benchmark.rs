@@ -21,7 +21,9 @@ use serde_json::{json, Map, Value};
 use crate::db::result_cache::TableRegistry;
 use crate::db::{self, Db};
 use crate::features::memory_read::service::DumpRequestResult;
-use crate::features::moneyball::comparison::{ComparisonGroupsCache, GroupsSource, PositionFamily};
+use crate::features::moneyball::comparison::{
+    ComparisonGroup, ComparisonGroupsCache, GroupsSource, PositionFamily,
+};
 use crate::features::moneyball::persistence::{
     prepare_snapshot_cohort, replace_snapshot_cohort, CohortRow,
 };
@@ -35,8 +37,7 @@ use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
 use crate::features::search::commands::SearchCaches;
 use crate::features::search::filter::{parse_filter_ast, FilterAst, FilterRule, FilterValue};
 use crate::features::search::query::{
-    search_general_players, search_moneyball_players, Comparison, SearchPlayersRequest, SearchView,
-    SortDir, SortField, DEFAULT_PAGE_LIMIT,
+    search_players, Comparison, SearchPlayersRequest, SortDir, SortField, DEFAULT_PAGE_LIMIT,
 };
 use crate::features::search::suggest::{suggest_players, SuggestionCache, DEFAULT_SUGGEST_LIMIT};
 use crate::features::snapshot::{load_data, service};
@@ -609,7 +610,6 @@ fn later_window_offset(total: usize, deep: bool) -> usize {
 #[derive(Clone)]
 struct PlayerShape {
     name: &'static str,
-    view: SearchView,
     comparison: Comparison,
     sort: SortField,
     fields: Vec<String>,
@@ -623,7 +623,6 @@ impl PlayerShape {
     fn general(name: &'static str, sort: &str, fields: Vec<String>) -> Self {
         Self {
             name,
-            view: SearchView::General,
             comparison: Comparison::Own,
             sort: SortField::parse(sort).expect("general sort"),
             fields,
@@ -633,13 +632,16 @@ impl PlayerShape {
         }
     }
 
-    fn moneyball(name: &'static str, comparison: Comparison, fields: Vec<String>) -> Self {
+    fn moneyball(
+        name: &'static str,
+        comparison: Comparison,
+        sort: &str,
+        fields: Vec<String>,
+    ) -> Self {
         Self {
             name,
-            view: SearchView::Moneyball,
             comparison,
-            sort: SortField::parse_for_moneyball("moneyball.average_rating", true)
-                .expect("moneyball sort"),
+            sort: SortField::parse(sort).expect("moneyball sort"),
             fields,
             filters: None,
             deep_window: false,
@@ -738,11 +740,19 @@ fn player_shapes() -> Vec<PlayerShape> {
         PlayerShape::moneyball(
             "moneyball_role_own_family",
             Comparison::Own,
+            "moneyball.average_rating",
             moneyball_role_fields.clone(),
         ),
         PlayerShape::moneyball(
             "moneyball_role_one_family",
-            Comparison::Family(PositionFamily::CentralDefender),
+            Comparison::Group(ComparisonGroup::family(PositionFamily::CentralDefender)),
+            "moneyball.average_rating",
+            moneyball_role_fields.clone(),
+        ),
+        PlayerShape::moneyball(
+            "moneyball_role_sort",
+            Comparison::Own,
+            "moneyball_role.amc_attacking_midfielder_ip",
             moneyball_role_fields,
         ),
     ]
@@ -764,27 +774,17 @@ fn search_player_page(
         sort_dir: SortDir::Desc,
         filter_ast: shape.filters.as_ref(),
         requested_fields: &shape.fields,
-        view: shape.view,
         comparison: shape.comparison,
         shortlist_id: None,
     };
-    match shape.view {
-        SearchView::General => search_general_players(
-            db,
-            &caches.general_orders,
-            &TableRegistry::default(),
-            None,
-            request,
-        ),
-        SearchView::Moneyball => search_moneyball_players(
-            db,
-            &caches.moneyball_cohorts,
-            groups,
-            &TableRegistry::default(),
-            None,
-            request,
-        ),
-    }
+    search_players(
+        db,
+        &caches.orders,
+        groups,
+        &TableRegistry::default(),
+        None,
+        request,
+    )
     .unwrap_or_else(|error| panic!("{} request failed: {error}", shape.name))
     .total as usize
 }

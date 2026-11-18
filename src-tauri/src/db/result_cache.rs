@@ -171,7 +171,7 @@ impl<V> Drop for Computing<'_, V> {
 }
 
 /// Table IDs a request may name. Only a panel's requested first page names its table.
-const TABLE_IDS: [&str; 3] = ["search", "moneyball-search", "staff-search"];
+const TABLE_IDS: [&str; 2] = ["search", "staff-search"];
 
 /// Validates a table ID from the WebView against the closed set of tables.
 pub fn parse_table_id(value: &str) -> Result<&'static str, String> {
@@ -215,6 +215,7 @@ pub struct Cancellation(Arc<AtomicBool>);
 
 impl Cancellation {
     /// A computation that no newer request can supersede.
+    #[cfg(test)]
     pub fn never() -> Self {
         Self(Arc::default())
     }
@@ -566,7 +567,7 @@ mod tests {
     #[test]
     fn only_the_closed_set_of_tables_is_accepted() {
         assert_eq!(parse_table_id("search"), Ok("search"));
-        assert_eq!(parse_table_id("moneyball-search"), Ok("moneyball-search"));
+        assert!(parse_table_id("moneyball-search").is_err());
         assert_eq!(parse_table_id("staff-search"), Ok("staff-search"));
         assert_eq!(
             parse_table_id("squad"),

@@ -8,7 +8,9 @@ use rusqlite::{params_from_iter, types::Value, Connection};
 
 pub(crate) use crate::features::moneyball::comparison::MIN_SEASON_MINUTES;
 use crate::features::moneyball::comparison::{scan_statistics, GroupsSource, ResolvedGroups};
-use crate::features::moneyball::kept_stats::{kept_stats_snapshots, stats_join_sql};
+use crate::features::moneyball::kept_stats::{
+    kept_stats_snapshots, stats_join_sql, STATS_DIVISION_SQL,
+};
 use crate::features::moneyball::league_strength::LeagueAdjustment;
 use crate::features::moneyball::role_catalog::definition_for_attribute_role;
 use crate::features::planner::fit::{
@@ -457,14 +459,6 @@ fn outside_managed_club_sql() -> String {
 
 /// Only a player with season statistics has a Moneyball score to compare.
 const HAS_PERCENTILES_SQL: &str = "moneyball.percentiles_json IS NOT NULL";
-
-/// The league a player played his season statistics in: his division in the snapshot they
-/// come from.
-const STATS_DIVISION_SQL: &str = "CASE WHEN moneyball.snapshot_id = players.snapshot_id
-         THEN players.division
-         ELSE (SELECT source.division FROM players source
-               WHERE source.snapshot_id = moneyball.snapshot_id AND source.uid = players.uid)
-     END";
 
 /// The kept snapshots of `sources`, latest first.
 fn kept_snapshot_ids(sources: &[StatsSource]) -> Vec<i64> {

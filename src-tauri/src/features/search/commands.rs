@@ -7,11 +7,10 @@ use crate::db::Db;
 use crate::features::moneyball::comparison::ComparisonGroupsCache;
 
 use super::filter::{self, FilterAst, FilterRule};
-use super::moneyball_cohort::MoneyballCohortCache;
 use super::query::{
-    self, Comparison, DynamicValue, GeneralOrderCache, PlayerSummary, SearchPlayersPage,
-    SearchPlayersPageState, SearchPlayersRequest, SearchView, SortDir, SortField,
-    DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
+    self, Comparison, DynamicValue, PlayerOrderCache, PlayerSummary, SearchPlayersPage,
+    SearchPlayersPageState, SearchPlayersRequest, SortDir, SortField, DEFAULT_PAGE_LIMIT,
+    MAX_PAGE_LIMIT,
 };
 use super::suggest::{
     self, PlayerSuggestHit, SuggestionCache, DEFAULT_SUGGEST_LIMIT, MAX_SUGGEST_LIMIT,
@@ -21,18 +20,15 @@ use super::suggest::{
 #[derive(Clone)]
 pub struct SearchCaches {
     pub suggestions: SuggestionCache,
-    /// General table orders: at most four queries, about 8 MB each at 1,000,000 players.
-    pub general_orders: GeneralOrderCache,
-    /// Moneyball cohorts: at most two queries, each at most about 42 MB at 1,000,000 players.
-    pub moneyball_cohorts: MoneyballCohortCache,
+    /// Table orders: at most four queries, about 8 MB each at 1,000,000 players.
+    pub orders: PlayerOrderCache,
 }
 
 impl Default for SearchCaches {
     fn default() -> Self {
         Self {
             suggestions: SuggestionCache::new(1),
-            general_orders: GeneralOrderCache::new(4),
-            moneyball_cohorts: MoneyballCohortCache::new(2),
+            orders: PlayerOrderCache::new(4),
         }
     }
 }
@@ -73,9 +69,9 @@ pub struct PlayerSummaryDto {
     pub market_value_gbp: Option<i64>,
     pub dynamic_values: std::collections::BTreeMap<String, Option<DynamicValueDto>>,
     pub moneyball_percentiles: std::collections::BTreeMap<String, Option<u8>>,
-    /// Moneyball only: too few minutes to count among the player's peers.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub moneyball_short_sample: bool,
+    /// The in-game date of the kept statistics the player's season values come from.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub moneyball_stats_date: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -117,7 +113,7 @@ impl From<PlayerSummary> for PlayerSummaryDto {
                 .map(|(key, value)| (key, value.map(DynamicValueDto::from)))
                 .collect(),
             moneyball_percentiles: row.moneyball_percentiles,
-            moneyball_short_sample: row.moneyball_short_sample,
+            moneyball_stats_date: row.moneyball_stats_date,
         }
     }
 }
@@ -158,7 +154,6 @@ pub async fn search_players(
     filters: Option<Vec<FilterRuleInput>>,
     filter_combine: Option<String>,
     requested_fields: Option<Vec<String>>,
-    search_view: Option<String>,
     comparison: Option<String>,
     shortlist_id: Option<i64>,
     table_id: Option<String>,
@@ -175,7 +170,6 @@ pub async fn search_players(
         filters,
         filter_combine,
         requested_fields,
-        search_view,
         comparison,
         shortlist_id,
     )?;
@@ -200,7 +194,6 @@ struct PlayerSearch {
     sort_dir: SortDir,
     filter_ast: Option<FilterAst>,
     requested_fields: Vec<String>,
-    view: SearchView,
     comparison: Comparison,
     shortlist_id: Option<i64>,
 }
@@ -215,15 +208,15 @@ impl PlayerSearch {
         filters: Option<Vec<FilterRuleInput>>,
         filter_combine: Option<String>,
         requested_fields: Option<Vec<String>>,
-        search_view: Option<String>,
         comparison: Option<String>,
         shortlist_id: Option<i64>,
     ) -> Result<Self, String> {
-        let view = parse_search_view(search_view.as_deref())?;
         let comparison = comparison
             .as_deref()
             .map_or(Ok(Comparison::Own), Comparison::parse)?;
-        let sort_by = parse_search_sort_for_view(sort_by.as_deref(), view)?;
+        let sort_by = sort_by
+            .as_deref()
+            .map_or(Ok(SortField::DEFAULT), SortField::parse)?;
         let sort_dir = match sort_dir.as_deref() {
             None => SortDir::DEFAULT,
             Some(value) => SortDir::parse(value)?,
@@ -251,7 +244,6 @@ impl PlayerSearch {
             sort_dir,
             filter_ast,
             requested_fields: requested_fields.unwrap_or_default(),
-            view,
             comparison,
             shortlist_id,
         })
@@ -265,7 +257,6 @@ impl PlayerSearch {
             sort_dir: self.sort_dir,
             filter_ast: self.filter_ast.as_ref(),
             requested_fields: &self.requested_fields,
-            view: self.view,
             comparison: self.comparison,
             shortlist_id: self.shortlist_id,
         }
@@ -280,46 +271,15 @@ fn read_players_page(
     ticket: Option<&TableTicket>,
     search: &PlayerSearch,
 ) -> Result<SearchPlayersPageDto, String> {
-    let page = match search.view {
-        SearchView::General => query::search_general_players(
-            db,
-            &caches.general_orders,
-            registry,
-            ticket,
-            search.request(),
-        )?,
-        SearchView::Moneyball => query::search_moneyball_players(
-            db,
-            &caches.moneyball_cohorts,
-            groups,
-            registry,
-            ticket,
-            search.request(),
-        )?,
-    };
+    let page = query::search_players(
+        db,
+        &caches.orders,
+        groups,
+        registry,
+        ticket,
+        search.request(),
+    )?;
     Ok(SearchPlayersPageDto::from(page))
-}
-
-fn parse_search_view(value: Option<&str>) -> Result<SearchView, String> {
-    match value.unwrap_or("general") {
-        "general" => Ok(SearchView::General),
-        "moneyball" => Ok(SearchView::Moneyball),
-        other => Err(format!("unknown search view: {other}")),
-    }
-}
-
-fn parse_search_sort_for_view(
-    sort_by: Option<&str>,
-    view: SearchView,
-) -> Result<SortField, String> {
-    match (sort_by, view) {
-        (None, SearchView::General) => Ok(SortField::DEFAULT),
-        (None, SearchView::Moneyball) => {
-            SortField::parse_for_moneyball("moneyball.average_rating", true)
-        }
-        (Some(value), SearchView::General) => SortField::parse(value),
-        (Some(value), SearchView::Moneyball) => SortField::parse_for_moneyball(value, true),
-    }
 }
 
 #[derive(Serialize)]
@@ -371,65 +331,65 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
-    use crate::features::moneyball::comparison::PositionFamily;
+    use crate::features::moneyball::comparison::{ComparisonGroup, PositionFamily};
 
     #[test]
-    fn parses_closed_search_view_and_comparison_inputs() {
-        assert_eq!(parse_search_view(None), Ok(SearchView::General));
-        assert_eq!(
-            parse_search_view(Some("moneyball")),
-            Ok(SearchView::Moneyball)
-        );
-        assert!(parse_search_view(Some("shortlist")).is_err());
-        assert!(parse_search_view(Some("history")).is_err());
-
+    fn parses_closed_comparison_inputs() {
         assert_eq!(Comparison::parse("own"), Ok(Comparison::Own));
         assert_eq!(
             Comparison::parse("central_defender"),
-            Ok(Comparison::Family(PositionFamily::CentralDefender))
+            Ok(Comparison::Group(ComparisonGroup::family(
+                PositionFamily::CentralDefender
+            )))
         );
-        assert!(Comparison::parse("filtered").is_err());
-        assert!(Comparison::parse("DC").is_err());
+        assert_eq!(
+            Comparison::parse("winger+wide_midfielder"),
+            Ok(Comparison::Group(
+                ComparisonGroup::slot("AML", "ML").expect("slot group")
+            ))
+        );
+        for invalid in [
+            "filtered",
+            "DC",
+            "winger+winger",
+            "winger+",
+            "winger+wide_midfielder+striker",
+        ] {
+            assert!(Comparison::parse(invalid).is_err(), "{invalid}");
+        }
     }
 
     #[test]
-    fn general_sort_helper_defaults_and_validates_through_general_path() {
-        assert_eq!(
-            parse_search_sort_for_view(None, SearchView::General),
-            Ok(SortField::DEFAULT)
-        );
-        assert_eq!(SortField::DEFAULT, SortField::Ca);
-
-        assert_eq!(
-            parse_search_sort_for_view(Some("pa"), SearchView::General),
-            Ok(SortField::Pa)
-        );
-        assert_eq!(
-            parse_search_sort_for_view(Some("role.deep_lying_playmaker_ip"), SearchView::General),
-            SortField::parse("role.deep_lying_playmaker_ip")
-        );
-        assert!(parse_search_sort_for_view(Some("attr.Acceleration"), SearchView::General).is_ok());
-        assert!(parse_search_sort_for_view(
-            Some("potential_role.goalkeeper_ip"),
-            SearchView::General
-        )
-        .is_ok());
-        assert!(parse_search_sort_for_view(Some("club_dna"), SearchView::General).is_ok());
-
-        let moneyball_err = SortField::parse("moneyball.goals").unwrap_err();
-        assert_eq!(
-            parse_search_sort_for_view(Some("moneyball.goals"), SearchView::General).unwrap_err(),
-            moneyball_err
-        );
-        let role_err = SortField::parse("moneyball_role.wbl_wbr_wing_back_ip").unwrap_err();
-        assert_eq!(
-            parse_search_sort_for_view(
-                Some("moneyball_role.wbl_wbr_wing_back_ip"),
-                SearchView::General
+    fn sorts_default_to_ca_and_accept_every_search_field() {
+        let parse = |sort: Option<&str>| {
+            PlayerSearch::parse(
+                None,
+                None,
+                sort.map(str::to_string),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
             )
-            .unwrap_err(),
-            role_err
-        );
+            .map(|search| search.sort_by)
+        };
+        assert_eq!(parse(None), Ok(SortField::Ca));
+        for field in [
+            "pa",
+            "role.deep_lying_playmaker_ip",
+            "attr.Acceleration",
+            "potential_role.goalkeeper_ip",
+            "club_dna",
+            "moneyball.goals",
+            "moneyball.minutes",
+            "moneyball_role.wbl_wbr_wing_back_ip",
+            "tactic_moneyball.goalkeeper",
+        ] {
+            assert!(parse(Some(field)).is_ok(), "{field}");
+        }
+        assert!(parse(Some("tactic_custom.goalkeeper")).is_err());
     }
 
     #[test]
@@ -463,8 +423,8 @@ mod tests {
     fn player_search_and_suggestions_answer_on_a_reader() {
         let (_temp_dir, db) = crate::db::open_with_golden_snapshot();
 
-        let (general, moneyball, hits) = crate::db::read_while_writer_is_held(&db, |db| {
-            let page = |view: &str, field: &str| {
+        let (page, hits) = crate::db::read_while_writer_is_held(&db, |db| {
+            let page = |fields: &[&str]| {
                 let search = PlayerSearch::parse(
                     None,
                     None,
@@ -472,8 +432,7 @@ mod tests {
                     None,
                     None,
                     None,
-                    Some(vec![field.to_string()]),
-                    Some(view.to_string()),
+                    Some(fields.iter().map(|field| field.to_string()).collect()),
                     None,
                     None,
                 )?;
@@ -489,22 +448,20 @@ mod tests {
                 )
             };
             (
-                page("general", "tactic_current.goalkeeper"),
-                page("moneyball", "tactic_custom.goalkeeper"),
+                page(&["tactic_current.goalkeeper", "tactic_moneyball.goalkeeper"]),
                 read_suggestions(db, &SuggestionCache::new(1), "golden", None),
             )
         });
 
-        let general = general.expect("General page on a reader");
-        assert_eq!(general.state, "ready");
-        assert_eq!(general.players.len(), 1);
-        assert!(general.players[0]
-            .dynamic_values
-            .contains_key("tactic_current.goalkeeper"));
-        assert_eq!(
-            moneyball.expect("Moneyball page on a reader").state,
-            "ready"
-        );
+        let page = page.expect("page on a reader");
+        assert_eq!(page.state, "ready");
+        assert_eq!(page.players.len(), 1);
+        for field in ["tactic_current.goalkeeper", "tactic_moneyball.goalkeeper"] {
+            assert!(
+                page.players[0].dynamic_values.contains_key(field),
+                "{field}"
+            );
+        }
         let hits = hits.expect("suggestions on a reader");
         assert_eq!(hits.iter().map(|hit| hit.uid).collect::<Vec<_>>(), vec![77]);
     }
@@ -529,12 +486,12 @@ mod tests {
                 Some(DynamicValue::Real(0.75)),
             )]),
             moneyball_percentiles: BTreeMap::from([("moneyball.np-xg".to_string(), Some(83))]),
-            moneyball_short_sample: true,
+            moneyball_stats_date: Some("2031-05-20".to_string()),
         });
 
         let value = serde_json::to_value(dto).expect("serialize DTO");
         assert_eq!(value["dynamicValues"]["moneyball.np-xg"], 0.75);
         assert_eq!(value["moneyballPercentiles"]["moneyball.np-xg"], 83);
-        assert_eq!(value["moneyballShortSample"], true);
+        assert_eq!(value["moneyballStatsDate"], "2031-05-20");
     }
 }

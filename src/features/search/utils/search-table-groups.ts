@@ -2,32 +2,40 @@ import type { TableGroupInput } from "@/components/player-table/table-groups";
 import { getMoneyballSearchMetric } from "@/utils/moneyball-search-metrics";
 import { getPlayerMetric } from "@/utils/player-metrics";
 import { isValidTacticColumnId } from "@/utils/tactic-ids";
-import type { FilterView } from "../types/search-view";
 
 /**
- * Header groups for each Search view. The header, Columns, field pickers, and
- * column insertion all use these, so a field sits in the same place everywhere.
+ * Player Search's header groups. The header, Columns, the field pickers, and
+ * column insertion all use these, so a field sits in the same place
+ * everywhere. A tactic slot's recruitment filters use them too; groups with no
+ * offered field are left out.
  */
 export const SEARCH_TABLE_GROUPS: TableGroupInput = {
   groups: [
     { id: "profile", label: "Profile" },
     { id: "ability", label: "Ability" },
     { id: "market", label: "Market" },
-    { id: "tactic-fit", label: "Tactic Fit" },
+    { id: "role-fit", label: "Role Scores" },
+    { id: "playing-time", label: "Playing Time" },
+    { id: "performance", label: "Performance" },
+    { id: "moneyball-scores", label: "Moneyball Scores" },
+    { id: "tactic", label: "Tactic" },
   ],
   groupForColumn: (columnId) => {
-    if (
-      isValidTacticColumnId(columnId) ||
-      columnId.startsWith("role.") ||
-      columnId.startsWith("potential_role.") ||
-      columnId === "club_dna"
-    ) {
-      return "tactic-fit";
+    if (isValidTacticColumnId(columnId)) {
+      return "tactic";
+    }
+    const moneyball = getMoneyballSearchMetric(columnId);
+    if (moneyball) {
+      if (moneyball.context) {
+        return "playing-time";
+      }
+      return moneyball.role ? "moneyball-scores" : "performance";
     }
     switch (getPlayerMetric(columnId)?.category) {
       case "identity":
         return "profile";
       case "ability-reputation":
+        return columnId === "club_dna" ? "role-fit" : "ability";
       case "visible-attributes":
       case "hidden-attributes":
       case "personality":
@@ -37,80 +45,9 @@ export const SEARCH_TABLE_GROUPS: TableGroupInput = {
       case "position-suitability":
       case "current-role-scores":
       case "potential-role-scores":
-        return "tactic-fit";
+        return "role-fit";
       default:
         return "other";
     }
   },
 };
-
-export const MONEYBALL_TABLE_GROUPS: TableGroupInput = {
-  groups: [
-    { id: "profile", label: "Profile" },
-    { id: "ability", label: "Ability" },
-    { id: "market", label: "Market" },
-    { id: "playing-time", label: "Playing Time" },
-    { id: "performance", label: "Performance" },
-    { id: "role-fit", label: "Role Fit" },
-  ],
-  groupForColumn: (columnId) => {
-    if (columnId === "position") {
-      return "profile";
-    }
-    if (columnId.startsWith("moneyball_role.")) {
-      return "role-fit";
-    }
-    const metric = getMoneyballSearchMetric(columnId);
-    if (!metric) {
-      return "other";
-    }
-    if (metric.context) {
-      return "playing-time";
-    }
-    if (metric.metric) {
-      return "performance";
-    }
-    if (metric.role) {
-      return "role-fit";
-    }
-    switch (metric.category) {
-      case "Identity":
-        return "profile";
-      case "Ability and reputation":
-        return "ability";
-      case "Club and value":
-        return "market";
-      case "Playing time":
-        return "playing-time";
-      default:
-        return "other";
-    }
-  },
-};
-
-/**
- * A tactic slot's recruitment filter fields: General's groups, then
- * Moneyball's playing time and statistics.
- */
-export const SLOT_FILTER_GROUPS: TableGroupInput = {
-  groups: [
-    ...SEARCH_TABLE_GROUPS.groups,
-    { id: "playing-time", label: "Playing Time" },
-    { id: "performance", label: "Performance" },
-  ],
-  groupForColumn: (columnId) =>
-    columnId.startsWith("moneyball.")
-      ? MONEYBALL_TABLE_GROUPS.groupForColumn(columnId)
-      : SEARCH_TABLE_GROUPS.groupForColumn(columnId),
-};
-
-export function searchTableGroups(view: FilterView): TableGroupInput {
-  switch (view) {
-    case "general":
-      return SEARCH_TABLE_GROUPS;
-    case "moneyball":
-      return MONEYBALL_TABLE_GROUPS;
-    case "slot":
-      return SLOT_FILTER_GROUPS;
-  }
-}

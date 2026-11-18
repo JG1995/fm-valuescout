@@ -114,7 +114,7 @@ function SettingsPage() {
             className="text-body-sm text-on-surface-variant"
             id="default-analysis-view-description"
           >
-            Used by Player Search and Player Profile when their URL does not
+            Used by the Player Profile and the Dashboard when their URL does not
             specify a view.
           </span>
         </div>

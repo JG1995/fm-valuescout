@@ -4,8 +4,6 @@ import {
   MONEYBALL_ROLE_CATALOG,
   type MoneyballRolePositionFamily,
 } from "./moneyball-role-catalog";
-import { getPlayerMetric } from "./player-metrics";
-import { POSITION_ORDER } from "./position-order";
 
 export type MoneyballSearchMetric = {
   id: string;
@@ -50,17 +48,6 @@ export function isPercentileOperator(op: string) {
   return PERCENTILE_OPERATORS.some((operator) => operator.id === op);
 }
 
-const TEXT_OPERATORS = [
-  { id: "contains", label: "contains" },
-  { id: "not_contains", label: "does not contain" },
-  { id: "is", label: "is" },
-  { id: "is_not", label: "is not" },
-] as const;
-const ENUM_OPERATORS = [
-  { id: "in", label: "is any of" },
-  { id: "not_in", label: "is none of" },
-] as const;
-
 const MONEYBALL_ROLE_FAMILY_LABELS: Record<
   MoneyballRolePositionFamily,
   string
@@ -77,39 +64,6 @@ const MONEYBALL_ROLE_FAMILY_LABELS: Record<
   winger: "Winger",
 };
 
-const basic = (id: string, label: string, kind: "string" | "integer") => ({
-  id,
-  label,
-  category:
-    id === "name" || id === "age" || id === "nationality" || id === "height"
-      ? "Identity"
-      : "Club and value",
-  kind,
-  align: kind === "integer" ? ("right" as const) : ("left" as const),
-  defaultWidth: id === "height" ? 88 : kind === "integer" ? 96 : 144,
-  sortable: true as const,
-  operators: kind === "integer" ? NUMBER_OPERATORS : TEXT_OPERATORS,
-});
-
-/** A General Search field offered unchanged in Moneyball under a Moneyball category. */
-const shared = (id: string, category: string): MoneyballSearchMetric => {
-  const metric = getPlayerMetric(id);
-  if (!metric) {
-    throw new Error(`unknown General Search field: ${id}`);
-  }
-  return {
-    id,
-    label: metric.label,
-    category,
-    kind: metric.kind,
-    align: metric.align,
-    defaultWidth: metric.defaultWidth,
-    sortable: true,
-    operators: metric.operators,
-    enumOptions: metric.enumOptions,
-  };
-};
-
 const context = (id: string, label: string): MoneyballSearchMetric => ({
   id,
   label,
@@ -124,8 +78,8 @@ const context = (id: string, label: string): MoneyballSearchMetric => ({
 
 const roleMetric = (role: (typeof MONEYBALL_ROLE_CATALOG)[number]) => ({
   id: `moneyball_role.${role.id}`,
-  label: role.label,
-  category: `Moneyball roles · ${MONEYBALL_ROLE_FAMILY_LABELS[role.positionFamily]}`,
+  label: `Moneyball Score · ${role.label}`,
+  category: `Moneyball Scores · ${MONEYBALL_ROLE_FAMILY_LABELS[role.positionFamily]}`,
   kind: "integer" as const,
   align: "right" as const,
   defaultWidth: 128,
@@ -135,57 +89,12 @@ const roleMetric = (role: (typeof MONEYBALL_ROLE_CATALOG)[number]) => ({
   roleId: role.id,
 });
 
+/**
+ * Player Search's season fields: playing time, statistics, and each Moneyball
+ * role's Moneyball Score. They sit beside the player fields of
+ * `PLAYER_METRICS`.
+ */
 export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
-  basic("name", "Name", "string"),
-  basic("age", "Age", "integer"),
-  basic("nationality", "Nationality", "string"),
-  basic("height", "Height", "integer"),
-  basic("club", "Club", "string"),
-  basic("division", "Division", "string"),
-  basic("parent_club", "Parent club", "string"),
-  {
-    id: "preferred_foot",
-    label: "Preferred foot",
-    category: "Identity",
-    kind: "enum",
-    align: "left",
-    defaultWidth: 128,
-    sortable: true,
-    operators: ENUM_OPERATORS,
-    enumOptions: [
-      { value: "left", label: "Left" },
-      { value: "right", label: "Right" },
-      { value: "either", label: "Either" },
-    ],
-  },
-  basic("value", "Value", "integer"),
-  {
-    id: "position",
-    label: "Position",
-    category: "Identity",
-    kind: "enum",
-    align: "left",
-    defaultWidth: 144,
-    sortable: true,
-    operators: ENUM_OPERATORS,
-    enumOptions: POSITION_ORDER.map((key) => ({ value: key, label: key })),
-  },
-  // Ability and contract context for recruitment. FM attributes, hidden and
-  // personality values, position suitability, FM role scores, and Club DNA
-  // stay General-only, so Moneyball remains a performance view.
-  ...["ca", "pa", "reputation", "world_reputation"].map((id) =>
-    shared(id, "Ability and reputation"),
-  ),
-  ...[
-    "wage",
-    "contract_year",
-    "transfer_listed",
-    "loan_listed",
-    "not_for_sale",
-    "set_for_release",
-    "on_loan",
-    "team_level",
-  ].map((id) => shared(id, "Club and value")),
   context("moneyball.starts", "Starts"),
   context("moneyball.substitute_appearances", "Sub appearances"),
   context("moneyball.minutes", "Minutes"),
@@ -207,22 +116,12 @@ export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
   ...MONEYBALL_ROLE_CATALOG.map(roleMetric),
 ];
 
-export const DEFAULT_MONEYBALL_TABLE_COLUMN_IDS = [
-  "name",
-  "age",
-  "nationality",
-  "club",
-  "division",
-  "moneyball.minutes",
-  "moneyball.average_rating",
-  "moneyball.goals_per_90",
-  "moneyball.assists_per_90",
-  "moneyball.xg_per_90",
-  "moneyball.xa_per_90",
-] as const;
+const MONEYBALL_SEARCH_METRIC_BY_ID = new Map(
+  MONEYBALL_SEARCH_METRICS.map((metric) => [metric.id, metric]),
+);
 
 export function getMoneyballSearchMetric(id: string) {
-  return MONEYBALL_SEARCH_METRICS.find((metric) => metric.id === id);
+  return MONEYBALL_SEARCH_METRIC_BY_ID.get(id);
 }
 
 export function formatMoneyballMetric(

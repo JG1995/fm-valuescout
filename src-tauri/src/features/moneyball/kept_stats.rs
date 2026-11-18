@@ -76,6 +76,14 @@ pub(crate) fn stats_snapshot_sql(players: &str, kept_snapshot_ids: &[i64]) -> St
     )
 }
 
+/// The league a player aliased `players` played the statistics row aliased `moneyball` in: his
+/// division in the snapshot they come from.
+pub(crate) const STATS_DIVISION_SQL: &str = "CASE WHEN moneyball.snapshot_id = players.snapshot_id
+         THEN players.division
+         ELSE (SELECT source.division FROM players source
+               WHERE source.snapshot_id = moneyball.snapshot_id AND source.uid = players.uid)
+     END";
+
 /// A `LEFT JOIN` of the statistics row, aliased `moneyball`, that scores the `players` row.
 pub(crate) fn stats_join_sql(players: &str, kept_snapshot_ids: &[i64]) -> String {
     format!(

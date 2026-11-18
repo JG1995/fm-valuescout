@@ -2,7 +2,6 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
-import type { SearchView } from "../types/search-view";
 import { SearchFilterBar } from "./search-filter-bar";
 
 const ca: FilterRule = {
@@ -20,13 +19,7 @@ const age: FilterRule = {
 
 type Apply = (rules: FilterRule[], combine: FilterCombineMode) => void;
 
-function renderBar({
-  rules = [],
-  view = "general",
-}: {
-  rules?: FilterRule[];
-  view?: SearchView;
-} = {}) {
+function renderBar({ rules = [] }: { rules?: FilterRule[] } = {}) {
   const onApply = vi.fn<Apply>();
   const onRulesChange = vi.fn<(rules: FilterRule[]) => void>();
   render(
@@ -35,7 +28,6 @@ function renderBar({
       combine="and"
       onApply={onApply}
       onRulesChange={onRulesChange}
-      view={view}
       comparison="own"
     />,
   );
@@ -198,7 +190,7 @@ describe("SearchFilterBar", () => {
   });
 
   it("compares a Moneyball statistic by value or by percentile", async () => {
-    const { onApply, user } = renderBar({ view: "moneyball" });
+    const { onApply, user } = renderBar();
 
     await user.click(screen.getByRole("button", { name: "Add filter" }));
     await chooseField(user, "xa / 90", "xA / 90");
@@ -229,7 +221,7 @@ describe("SearchFilterBar", () => {
   });
 
   it("compares a counted Moneyball statistic by percentile", async () => {
-    const { onApply, user } = renderBar({ view: "moneyball" });
+    const { onApply, user } = renderBar();
 
     await user.click(screen.getByRole("button", { name: "Add filter" }));
     await chooseField(user, "progressive passes", "Progressive Passes");

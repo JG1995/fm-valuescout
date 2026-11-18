@@ -15,7 +15,7 @@ export function FilterTag({
   rule,
   onRemove,
   onEdit,
-  view = "general",
+  view = "search",
 }: FilterTagProps) {
   const label = formatFilterTagLabel(rule, view);
 
