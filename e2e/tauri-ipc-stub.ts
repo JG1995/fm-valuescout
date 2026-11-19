@@ -1536,6 +1536,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 { jobId: "scout", joinedCandidateCount: 1, eligibleScoreCount: 1, unavailableScoreCount: 0 },
               ],
               skipped: [],
+              surplus: [{ uid: 105, name: "Spare Scout", currentJob: "Scout" }],
             };
             const recommendations = result.slots.filter(
               (slot) => slot.kind === "recommendation",

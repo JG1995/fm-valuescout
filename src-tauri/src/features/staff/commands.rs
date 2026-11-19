@@ -13,7 +13,7 @@ use crate::features::player::boost_gate;
 
 use super::assignment_optimizer::{
     CoachRequirement, StaffAssignmentAction, StaffAssignmentEvidence, StaffAssignmentJobSource,
-    StaffAssignmentSlot,
+    StaffAssignmentSlot, StaffAssignmentSurplus,
 };
 use super::assignment_optimizer_query::{
     self, StaffAssignmentOptimization, StaffAssignmentOptimizationState, StaffAssignmentResultSlot,
@@ -458,6 +458,24 @@ impl From<StaffAssignmentSkip> for StaffAssignmentSkipDto {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentSurplusDto {
+    pub uid: i64,
+    pub name: Option<String>,
+    pub current_job: Option<&'static str>,
+}
+
+impl From<StaffAssignmentSurplus> for StaffAssignmentSurplusDto {
+    fn from(staff: StaffAssignmentSurplus) -> Self {
+        Self {
+            uid: staff.uid,
+            name: staff.name,
+            current_job: staff.current_job,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StaffAssignmentOptimizationDto {
     pub state: &'static str,
     pub save_id: i64,
@@ -470,6 +488,7 @@ pub struct StaffAssignmentOptimizationDto {
     pub slots: Vec<StaffAssignmentSlotDto>,
     pub evidence: Vec<StaffAssignmentEvidenceDto>,
     pub skipped: Vec<StaffAssignmentSkipDto>,
+    pub surplus: Vec<StaffAssignmentSurplusDto>,
 }
 
 impl From<StaffAssignmentOptimization> for StaffAssignmentOptimizationDto {
@@ -492,6 +511,7 @@ impl From<StaffAssignmentOptimization> for StaffAssignmentOptimizationDto {
             slots: result.slots.into_iter().map(Into::into).collect(),
             evidence: result.evidence.into_iter().map(Into::into).collect(),
             skipped: result.skipped.into_iter().map(Into::into).collect(),
+            surplus: result.surplus.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -1384,6 +1404,11 @@ mod tests {
                 uid: 9,
                 name: Some("Skipped".to_string()),
             }],
+            surplus: vec![StaffAssignmentSurplusDto {
+                uid: 10,
+                name: Some("Spare".to_string()),
+                current_job: Some("Scout"),
+            }],
         })
         .expect("serialize assignment optimizer");
 
@@ -1406,6 +1431,8 @@ mod tests {
         assert!(value["slots"][2]["action"]["club"].is_null());
         assert_eq!(value["skipped"][0]["uid"], 9);
         assert_eq!(value["skipped"][0]["name"], "Skipped");
+        assert_eq!(value["surplus"][0]["uid"], 10);
+        assert_eq!(value["surplus"][0]["currentJob"], "Scout");
         assert_eq!(value["slots"][1]["kind"], "vacancy");
         assert!(value["slots"][1]["coachRequirement"].is_null());
         assert_eq!(value["slots"][1]["evidence"]["unavailableScoreCount"], 2);

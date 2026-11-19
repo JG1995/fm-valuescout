@@ -314,6 +314,7 @@ export function fixtureStaffAssignmentOptimization(
     ],
     evidence: [],
     skipped: [],
+    surplus: [],
     ...overrides,
   };
 }

@@ -1198,7 +1198,7 @@ test.describe("application smoke", () => {
       "Assistant ManagerAlex Assistant82Keep",
     );
     await expect(assignmentRows.nth(2)).toContainText(
-      "CoachesAttacking TechnicalCoach Casey79Change jobNow Fitness Coach",
+      "CoachesAttacking TechnicalCoach Casey79Change jobCurrently Fitness Coach",
     );
     await expect(assignmentRows.nth(4)).toContainText(
       "ScoutRiley Scout74RecruitFrom Valencia",
@@ -1212,6 +1212,9 @@ test.describe("application smoke", () => {
       }),
     ).toBeVisible();
     await expect(results).not.toContainText(/eligible|evidence/i);
+    await expect(
+      results.getByRole("region", { name: "Staff to sack (1)" }),
+    ).toContainText("Spare ScoutScout");
 
     await assignments
       .getByRole("button", { name: "Skip Riley Scout for Club Scout" })
@@ -1227,45 +1230,58 @@ test.describe("application smoke", () => {
       assignments.getByRole("rowheader", { name: "Club: 1 of 1 filled" }),
     ).toBeVisible();
 
+    // The dialog body is the only scroller, so the wheel never hands off from the
+    // table to the dialog part-way through a scroll.
+    const scrollerCount = await results.evaluate((dialog) => {
+      const { getComputedStyle } = globalThis as unknown as {
+        getComputedStyle: (element: unknown) => { overflowY: string };
+      };
+      return Array.from(
+        (
+          dialog as unknown as {
+            querySelectorAll: (selector: string) => unknown[];
+          }
+        ).querySelectorAll("*"),
+      ).filter((element) =>
+        ["auto", "scroll"].includes(getComputedStyle(element).overflowY),
+      ).length;
+    });
+    expect(scrollerCount).toBe(1);
     const resultScroller = assignments.locator(
-      "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' overflow-auto ')][1]",
+      "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' overflow-y-auto ')][1]",
     );
     await expect(resultScroller).toHaveCount(1);
     const scrollState = await resultScroller.evaluate((element) => {
-      const scroller = element as unknown as {
-        scrollTop: number;
-        scrollHeight: number;
-        querySelector: (selector: string) => {
-          getBoundingClientRect: () => { top: number; bottom: number };
-        } | null;
+      type Box = {
         getBoundingClientRect: () => { top: number; bottom: number };
       };
+      const scroller = element as unknown as Box & {
+        scrollTop: number;
+        style: { maxHeight: string };
+        querySelector: (selector: string) => Box | null;
+      };
+      const table = scroller.querySelector("table");
       const header = scroller.querySelector("thead");
-      if (!header) {
-        throw new Error("Expected assignment table header.");
+      if (!table || !header) {
+        throw new Error("Expected the assignment table and its header.");
       }
-      // The stub's few rows fit, so a short scroller proves the header sticks.
-      (
-        scroller as unknown as { style: { maxHeight: string } }
-      ).style.maxHeight = "120px";
-      scroller.scrollTop = scroller.scrollHeight;
-      const scrollerBox = scroller.getBoundingClientRect();
-      const headerBox = header.getBoundingClientRect();
+      // The stub's rows fit, so a short scroller proves the header sticks
+      // once the table's top has scrolled past.
+      scroller.style.maxHeight = "120px";
+      scroller.scrollTop +=
+        table.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top +
+        60;
       return {
         scrollTop: scroller.scrollTop,
-        headerTop: headerBox.top,
-        headerBottom: headerBox.bottom,
-        scrollerTop: scrollerBox.top,
-        scrollerBottom: scrollerBox.bottom,
+        tableTop: table.getBoundingClientRect().top,
+        headerTop: header.getBoundingClientRect().top,
+        scrollerTop: scroller.getBoundingClientRect().top,
       };
     });
     expect(scrollState.scrollTop).toBeGreaterThan(0);
-    expect(scrollState.headerTop).toBeGreaterThanOrEqual(
-      scrollState.scrollerTop,
-    );
-    expect(scrollState.headerBottom).toBeLessThanOrEqual(
-      scrollState.scrollerBottom,
-    );
+    expect(scrollState.tableTop).toBeLessThan(scrollState.scrollerTop);
+    expect(scrollState.headerTop).toBeCloseTo(scrollState.scrollerTop, 0);
 
     for (const [width, height] of [
       [1280, 800],

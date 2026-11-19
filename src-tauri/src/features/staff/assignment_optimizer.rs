@@ -253,10 +253,20 @@ pub(super) enum StaffAssignmentSlot {
     Vacancy(StaffAssignmentVacancy),
 }
 
+/// Club staff the allocation scored for a configured slot but left without one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct StaffAssignmentSurplus {
+    pub(super) uid: i64,
+    pub(super) name: Option<String>,
+    /// The job they hold now, as FM names it, when their job type is mapped.
+    pub(super) current_job: Option<&'static str>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StaffAssignmentAllocation {
     pub(super) slots: Vec<StaffAssignmentSlot>,
     pub(super) evidence: Vec<StaffAssignmentEvidence>,
+    pub(super) surplus: Vec<StaffAssignmentSurplus>,
 }
 
 struct EligibleCandidate<'a> {
@@ -494,6 +504,105 @@ fn assignment_action(
     }
 }
 
+/// The target jobs a candidate group fills, besides Coaches, whose kinds split by requirement.
+fn group_job_ids(job: PreferredJob) -> &'static [&'static str] {
+    match job {
+        PreferredJob::Manager => &["manager"],
+        PreferredJob::AssistantManager => &["assistant_manager"],
+        PreferredJob::Coach | PreferredJob::FitnessCoach | PreferredJob::GoalkeepingCoach => &[],
+        PreferredJob::SetPieceCoach => &["set_piece_coach"],
+        PreferredJob::HeadPerformanceAnalyst => &["head_performance_analyst"],
+        PreferredJob::PerformanceAnalyst => &["head_performance_analyst", "performance_analyst"],
+        PreferredJob::HeadOfYouthDevelopment => &["head_of_youth_development"],
+        PreferredJob::DirectorOfFootball => &["director_of_football"],
+        PreferredJob::TechnicalDirector => &["technical_director"],
+        PreferredJob::LoanManager => &["loan_manager"],
+        PreferredJob::Scout => &["chief_scout", "scout"],
+        PreferredJob::RecruitmentAnalyst => &["recruitment_analyst"],
+        PreferredJob::Physio => &["head_physio", "physio"],
+        PreferredJob::SportsScientist => &["head_sports_science", "sports_scientist"],
+    }
+}
+
+/// Whether a candidate has a score for some configured slot their group fills.
+fn competes_for_a_configured_slot(
+    candidate: &StaffAssignmentCandidate,
+    configured_slots: &[ConfiguredSlot],
+) -> bool {
+    let Some(job) = candidate.job else {
+        return false;
+    };
+    configured_slots.iter().any(|configured_slot| {
+        let target = &configured_slot.target;
+        let role_score = if target.job_id == "coaches" {
+            let composition = coach_composition(usize::try_from(target.slot_count).unwrap_or(0));
+            match job {
+                PreferredJob::Coach if composition.general > 0 => GENERAL_REQUIREMENTS
+                    .iter()
+                    .filter_map(|requirement| {
+                        score_for_requirement(&candidate.scores, *requirement)
+                    })
+                    .max(),
+                PreferredJob::FitnessCoach if composition.fitness > 0 => {
+                    candidate.scores.coach_fitness
+                }
+                PreferredJob::GoalkeepingCoach if composition.goalkeeping > 0 => {
+                    candidate.scores.coach_goalkeeping
+                }
+                _ => None,
+            }
+        } else if group_job_ids(job).contains(&target.job_id.as_str()) {
+            score_for_job(&candidate.scores, &target.job_id)
+        } else {
+            None
+        };
+        role_score
+            .and_then(|score| assignment_score(candidate, score, &target.scope))
+            .is_some()
+    })
+}
+
+/// Club staff who competed for a configured slot and won none, by current job and then name.
+fn surplus_staff(
+    candidates: &[StaffAssignmentCandidate],
+    configured_slots: &[ConfiguredSlot],
+    assigned_uids: &HashSet<i64>,
+) -> Vec<StaffAssignmentSurplus> {
+    let mut listed = HashSet::new();
+    let mut surplus = candidates
+        .iter()
+        .filter(|candidate| {
+            candidate.classification == StaffAssignmentClassification::CurrentStaff
+                && !assigned_uids.contains(&candidate.uid)
+                && competes_for_a_configured_slot(candidate, configured_slots)
+                && listed.insert(candidate.uid)
+        })
+        .map(|candidate| {
+            let current = candidate.current_job_id.and_then(current_job);
+            (
+                current.map_or(usize::MAX, |&(_, _, _, job_id)| canonical_job_rank(job_id)),
+                StaffAssignmentSurplus {
+                    uid: candidate.uid,
+                    name: candidate.name.clone(),
+                    current_job: current.map(|&(_, label, _, _)| label),
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    surplus.sort_by(|(left_rank, left), (right_rank, right)| {
+        left_rank
+            .cmp(right_rank)
+            .then_with(|| {
+                left.name
+                    .as_deref()
+                    .map(str::to_lowercase)
+                    .cmp(&right.name.as_deref().map(str::to_lowercase))
+            })
+            .then_with(|| left.uid.cmp(&right.uid))
+    });
+    surplus.into_iter().map(|(_, staff)| staff).collect()
+}
+
 fn add_candidate_to_group<'a>(
     groups: &mut [CandidateGroup<'a>; 17],
     candidate: &'a StaffAssignmentCandidate,
@@ -516,10 +625,6 @@ pub(super) fn allocate_staff_assignments(
             continue;
         };
         match preferred_job {
-            PreferredJob::Manager => add_candidate_to_group(&mut groups, candidate, "manager"),
-            PreferredJob::AssistantManager => {
-                add_candidate_to_group(&mut groups, candidate, "assistant_manager")
-            }
             PreferredJob::Coach => general_coaches.push(candidate),
             PreferredJob::FitnessCoach => {
                 fitness_coaches.add_candidate(candidate, candidate.scores.coach_fitness)
@@ -527,42 +632,10 @@ pub(super) fn allocate_staff_assignments(
             PreferredJob::GoalkeepingCoach => {
                 goalkeeping_coaches.add_candidate(candidate, candidate.scores.coach_goalkeeping)
             }
-            PreferredJob::SetPieceCoach => {
-                add_candidate_to_group(&mut groups, candidate, "set_piece_coach")
-            }
-            PreferredJob::HeadPerformanceAnalyst => {
-                add_candidate_to_group(&mut groups, candidate, "head_performance_analyst")
-            }
-            PreferredJob::PerformanceAnalyst => {
-                add_candidate_to_group(&mut groups, candidate, "head_performance_analyst");
-                add_candidate_to_group(&mut groups, candidate, "performance_analyst");
-            }
-            PreferredJob::HeadOfYouthDevelopment => {
-                add_candidate_to_group(&mut groups, candidate, "head_of_youth_development")
-            }
-            PreferredJob::DirectorOfFootball => {
-                add_candidate_to_group(&mut groups, candidate, "director_of_football")
-            }
-            PreferredJob::TechnicalDirector => {
-                add_candidate_to_group(&mut groups, candidate, "technical_director")
-            }
-            PreferredJob::LoanManager => {
-                add_candidate_to_group(&mut groups, candidate, "loan_manager")
-            }
-            PreferredJob::Scout => {
-                add_candidate_to_group(&mut groups, candidate, "chief_scout");
-                add_candidate_to_group(&mut groups, candidate, "scout");
-            }
-            PreferredJob::RecruitmentAnalyst => {
-                add_candidate_to_group(&mut groups, candidate, "recruitment_analyst")
-            }
-            PreferredJob::Physio => {
-                add_candidate_to_group(&mut groups, candidate, "head_physio");
-                add_candidate_to_group(&mut groups, candidate, "physio");
-            }
-            PreferredJob::SportsScientist => {
-                add_candidate_to_group(&mut groups, candidate, "head_sports_science");
-                add_candidate_to_group(&mut groups, candidate, "sports_scientist");
+            _ => {
+                for job_id in group_job_ids(preferred_job) {
+                    add_candidate_to_group(&mut groups, candidate, job_id);
+                }
             }
         }
     }
@@ -661,6 +734,7 @@ pub(super) fn allocate_staff_assignments(
             .map(|slot| slot.expect("every configured slot is allocated"))
             .collect(),
         evidence,
+        surplus: surplus_staff(candidates, &configured_slots, &assigned_uids),
     }
 }
 

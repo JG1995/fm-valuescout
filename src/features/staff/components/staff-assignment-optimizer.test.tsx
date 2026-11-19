@@ -291,7 +291,7 @@ describe("StaffAssignmentOptimizer", () => {
       /^Coaches 2Riley Recruit79RecruitFrom Valencia/,
     );
     expect(row(/Taylor Coach/)).toHaveTextContent(
-      /^Assistant ManagerTaylor Coach75Change jobNow Coach/,
+      /^Assistant ManagerTaylor Coach75Change jobCurrently Coach/,
     );
     expect(row(/Jo Free/)).toHaveTextContent(/RecruitUnemployed/);
     expect(row(/Unfilled/)).toHaveTextContent(
@@ -852,6 +852,37 @@ describe("StaffAssignmentOptimizer", () => {
 
     expect(onOpenStaff).toHaveBeenCalledWith(102);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("lists the club staff to sack and opens their Staff Profiles", async () => {
+    const user = userEvent.setup();
+    const onOpenStaff = vi.fn();
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({
+        surplus: [
+          { uid: 201, name: "Spare Scout", currentJob: "Scout" },
+          { uid: 202, name: null, currentJob: null },
+        ],
+      }),
+    );
+    renderOptimizer(false, "assignment-context-a", false, vi.fn(), onOpenStaff);
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+    const surplus = await screen.findByRole("region", {
+      name: "Staff to sack (2)",
+    });
+    expect(
+      within(surplus)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Spare ScoutScout", "Staff 202"]);
+    await user.click(
+      within(surplus).getByRole("button", { name: "Spare Scout" }),
+    );
+
+    expect(onOpenStaff).toHaveBeenCalledWith(201);
   });
 
   it("optimizes again after staffing needs are adjusted from the results", async () => {

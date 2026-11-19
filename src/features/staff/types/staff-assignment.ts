@@ -96,6 +96,14 @@ export type StaffAssignmentSkip = {
   name: string | null;
 };
 
+/** Club staff who lost every configured slot they were scored for. */
+export type StaffAssignmentSurplus = {
+  uid: number;
+  name: string | null;
+  /** The job they hold now, when FM's job type is mapped. */
+  currentJob: string | null;
+};
+
 export type StaffAssignmentOptimizationState =
   | "stale_context"
   | "no_current_snapshot"
@@ -115,4 +123,5 @@ export type StaffAssignmentOptimization = {
   slots: StaffAssignmentSlot[];
   evidence: StaffAssignmentEvidence[];
   skipped: StaffAssignmentSkip[];
+  surplus: StaffAssignmentSurplus[];
 };

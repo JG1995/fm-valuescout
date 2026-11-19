@@ -12,7 +12,7 @@ use super::assignment_optimizer::{
     allocate_staff_assignments, current_job_classification, preferred_job_classification,
     StaffAssignmentAllocation, StaffAssignmentCandidate, StaffAssignmentClassification,
     StaffAssignmentEvidence, StaffAssignmentJobSource, StaffAssignmentScoreSet,
-    StaffAssignmentSlot,
+    StaffAssignmentSlot, StaffAssignmentSurplus,
 };
 use super::assignment_targets::{
     read_nonzero_targets_without_initializing_teams, target_job_display_rank,
@@ -78,6 +78,7 @@ pub(super) struct StaffAssignmentOptimization {
     pub(super) slots: Vec<StaffAssignmentResultSlot>,
     pub(super) evidence: Vec<StaffAssignmentEvidence>,
     pub(super) skipped: Vec<StaffAssignmentSkip>,
+    pub(super) surplus: Vec<StaffAssignmentSurplus>,
 }
 
 pub(super) fn optimize_staff_assignments(
@@ -178,8 +179,11 @@ pub(super) fn optimize_staff_assignments(
     .map_err(|_| "Staff shortlist candidate count is too large".to_string())?;
     let joined_candidate_count = i64::try_from(candidates.len())
         .map_err(|_| "Staff shortlist candidate count is too large".to_string())?;
-    let StaffAssignmentAllocation { slots, evidence } =
-        allocate_staff_assignments(&targets, &candidates);
+    let StaffAssignmentAllocation {
+        slots,
+        evidence,
+        surplus,
+    } = allocate_staff_assignments(&targets, &candidates);
     if slots.len() > MAX_STAFF_ASSIGNMENT_SLOTS {
         return Err("Staff assignment result exceeds the supported slot limit".to_string());
     }
@@ -241,6 +245,7 @@ pub(super) fn optimize_staff_assignments(
         slots,
         evidence,
         skipped: load_skips(conn, save_id, snapshot_id)?,
+        surplus,
     })
 }
 
@@ -311,6 +316,7 @@ fn result(
         slots: Vec::new(),
         evidence: Vec::new(),
         skipped: Vec::new(),
+        surplus: Vec::new(),
     }
 }
 

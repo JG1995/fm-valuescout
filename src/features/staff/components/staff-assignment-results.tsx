@@ -62,7 +62,7 @@ function plural(count: number, one: string, many: string) {
 function actionDetail(action: StaffAssignmentAction) {
   switch (action.kind) {
     case "change_job":
-      return `Now ${action.currentJob}`;
+      return `Currently ${action.currentJob}`;
     case "recruit":
       return action.club ? `From ${action.club}` : "Unemployed";
     case "keep":
@@ -115,6 +115,7 @@ export function StaffAssignmentResults({
   skipDisabled,
 }: StaffAssignmentResultsProps) {
   const skippedHeadingId = useId();
+  const surplusHeadingId = useId();
   const recommendations = result.slots.filter(
     (slot) => slot.kind === "recommendation",
   );
@@ -161,7 +162,8 @@ export function StaffAssignmentResults({
         </div>
       ) : null}
       {result.slots.length > 0 ? (
-        <div className="max-h-[min(28rem,50vh)] overflow-auto rounded-lg border border-outline-variant">
+        // The dialog body is the only scroller, so the table never scrolls inside it.
+        <div className="overflow-clip rounded-lg border border-outline-variant">
           <table className="w-full text-left text-body-sm text-on-surface">
             <caption className="sr-only">
               Staff assignment recommendations and vacancies
@@ -302,6 +304,42 @@ export function StaffAssignmentResults({
           No staffing needs are set.
         </p>
       )}
+      {result.surplus.length > 0 ? (
+        <section aria-labelledby={surplusHeadingId} className="space-y-2">
+          <h3
+            id={surplusHeadingId}
+            className="text-label-md text-on-surface-variant"
+          >
+            Staff to sack ({result.surplus.length})
+          </h3>
+          <p className="text-body-sm text-on-surface-variant">
+            Your staff who lost every slot they could fill to someone better.
+          </p>
+          <ul className="grid gap-x-6 gap-y-1 text-body-sm text-on-surface sm:grid-cols-2">
+            {result.surplus.map((staff) => (
+              <li key={staff.uid} className="flex min-w-0 items-baseline gap-2">
+                {staff.name ? (
+                  <button
+                    type="button"
+                    title="Open Staff Profile"
+                    className="min-w-0 cursor-pointer truncate text-left underline decoration-outline underline-offset-2 hover:decoration-on-surface"
+                    onClick={() => onOpenStaff(staff.uid)}
+                  >
+                    {staff.name}
+                  </button>
+                ) : (
+                  <span>Staff {staff.uid}</span>
+                )}
+                {staff.currentJob ? (
+                  <span className="shrink-0 text-on-surface-variant">
+                    {staff.currentJob}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       {result.skipped.length > 0 ? (
         <section aria-labelledby={skippedHeadingId} className="space-y-2">
           <h3
