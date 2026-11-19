@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-11-19
+
+### Added
+
+- **Staff to sack.** Assignment recommendations list your staff who lost every slot they could fill to someone better, with each person's current job, so the cuts are quick to make in FM.
+
+### Changed
+
+- **Optimize assignments** opens its recommendations in a dialog instead of a panel on Staff Search. Each recommendation says what to do: **Keep**, **Change job** (naming the person's current job), **Your staff**, or **Recruit** (naming their club, or Unemployed). Names open the Staff Profile, and the table scrolls with the dialog while its header stays in view.
+- Unfilled slots are summed up in one notice with **Adjust staffing needs** and **Review shortlist**, and each unfilled slot says in plain words why no one fits.
+- Staffing needs are set in two grids, **Team jobs** by team and **Club-wide jobs**, each with totals. Your own First Team Manager slot reads **You**. **Optimize assignments** with no staffing needs opens the grids, and saving them from there, or from **Adjust staffing needs** in the results, optimizes again.
+- The optimizer's hints and messages use plain language instead of its internal terms.
+
+### Fixed
+
+- **Clubs that share a name.** FM27 gives some clubs the same name, such as Manchester United and Manchester United Women. Staff and players of a namesake club no longer count as your club's own in My Staff, the My Staff CA boost, the assignment optimizer, Squad and its boosts, the Planner, Youth, and the Dashboard. The optimizer offers a shortlisted person from a namesake club as a recruit, and the Dashboard counts a player at, or on loan from, a namesake club as a signing. A club chosen in My Club before Load Data recorded club identities (0.19.0) still matches by name; choose it again to fix that.
+- Hovering a navigation link, or sorting and filtering Staff Search, no longer makes the app seem to refresh: the optimizer keeps its results, and My Club no longer blanks its squad overview.
+
 ## [0.30.0] - 2026-11-18
 
 ### Added
