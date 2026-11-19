@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::features::{
+    managed_club::service::managed_club_player_sql,
     player_metrics::compact::{
         assert_read_models_complete, player_current_column, player_metrics_join,
         player_potential_column, PLAYER_METRICS_ALIAS,
@@ -300,12 +301,10 @@ pub fn get_slot_candidates(
               AND assignment.player_uid = p.uid
              LEFT JOIN planner_strings assignment_string
                ON assignment_string.id = assignment.string_id
-             WHERE p.snapshot_id = ?1
-               AND p.current_club = (
-                   SELECT club_name FROM managed_club_settings WHERE save_id = ?2
-               )",
+             WHERE p.snapshot_id = ?1 AND {}",
             Development::columns("p"),
             player_metrics_join("p", true, true),
+            managed_club_player_sql("p", "?2"),
         ))
         .map_err(|error| error.to_string())?;
     let rows = statement
@@ -789,12 +788,7 @@ fn resolve_assignment(
             &format!(
                 "SELECT
                     p.name,
-                    COALESCE(
-                        p.current_club = (
-                            SELECT club_name FROM managed_club_settings WHERE save_id = ?1
-                        ),
-                        0
-                    ),
+                    COALESCE({}, 0),
                     {PLAYER_METRICS_ALIAS}.{ip_column},
                     {PLAYER_METRICS_ALIAS}.{oop_column},
                     {PLAYER_METRICS_ALIAS}.{potential_ip_column},
@@ -803,6 +797,7 @@ fn resolve_assignment(
                     {}
                  FROM players p{}
                  WHERE p.snapshot_id = ?2 AND p.uid = ?3",
+                managed_club_player_sql("p", "?1"),
                 Development::columns("p"),
                 player_metrics_join("p", true, true),
             ),
@@ -917,13 +912,10 @@ fn assignable_player_name(
     let snapshot_id = current_snapshot_id(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
     conn.query_row(
-        "SELECT p.name
-         FROM players p
-         WHERE p.snapshot_id = ?1
-           AND p.uid = ?2
-           AND p.current_club = (
-               SELECT club_name FROM managed_club_settings WHERE save_id = ?3
-           )",
+        &format!(
+            "SELECT p.name FROM players p WHERE p.snapshot_id = ?1 AND p.uid = ?2 AND {}",
+            managed_club_player_sql("p", "?3")
+        ),
         params![snapshot_id, player_uid, save_id],
         |row| row.get(0),
     )

@@ -64,6 +64,50 @@ fn lists_the_clubs_own_contracts_that_end_within_a_year_soonest_first() {
 }
 
 #[test]
+fn contracts_and_prospects_leave_out_a_namesake_clubs_players() {
+    let fixture = open_with_players(&[
+        player(1, "Home Keeper", HOME_CLUB, "GK"),
+        player(2, "Namesake Keeper", HOME_CLUB, "GK"),
+    ]);
+    fixture.set_player_column(2, "current_club_uid", 3000);
+    for uid in [1, 2] {
+        set_contract_end(&fixture, uid, 2026, 365);
+        fixture.set_player_column(uid, "age", 19);
+        fixture.set_slot_score(uid, "goalkeeper", 50);
+        fixture.set_potential_slot_score(uid, "goalkeeper", 80);
+    }
+    let listed = |fixture: &Fixture| {
+        let contracts = get_expiring_contracts(&fixture.conn, fixture.save_id)
+            .expect("read contracts")
+            .expect("contracts for a managed club");
+        let prospects = get_prospects(&fixture.conn, fixture.save_id)
+            .expect("read prospects")
+            .expect("prospects for a managed club");
+        (
+            contracts
+                .players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            prospects
+                .players
+                .iter()
+                .map(|prospect| prospect.uid)
+                .collect::<Vec<_>>(),
+        )
+    };
+
+    assert_eq!(listed(&fixture), (vec![1], vec![1]));
+
+    // A club chosen before UIDs were recorded matches by name.
+    fixture
+        .conn
+        .execute("UPDATE managed_club_settings SET club_uid = NULL", [])
+        .expect("forget club UID");
+    assert_eq!(listed(&fixture), (vec![1, 2], vec![1, 2]));
+}
+
+#[test]
 fn ranks_young_players_by_potential_in_their_best_tactic_slot() {
     let fixture = open_with_players(&[
         player(1, "Young Left Back", HOME_CLUB, "DL"),

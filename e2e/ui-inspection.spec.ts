@@ -187,21 +187,23 @@ for (const inspectedPage of pages) {
       });
       await expect(dialog).toBeVisible();
       await expect(
-        dialog.getByText("Zero excludes a role from recommendations."),
+        dialog.getByText(/Set how many people you want in each job\./),
       ).toBeVisible();
       const coachesInput = dialog
-        .getByRole("spinbutton", { name: "Coaches slots" })
+        .getByRole("spinbutton", { name: "First Team Coaches" })
         .first();
       const coachesBefore = Number(await coachesInput.inputValue());
       const assistantManagerInput = dialog
-        .getByRole("spinbutton", { name: "Assistant Manager slots" })
+        .getByRole("spinbutton", { name: "First Team Assistant Manager" })
         .first();
       const assistantManagerBefore = await assistantManagerInput.inputValue();
       await expect(
-        dialog.getByRole("button", { name: "Increase Coaches slots" }).first(),
+        dialog
+          .getByRole("button", { name: "Increase First Team Coaches" })
+          .first(),
       ).toBeVisible();
       await dialog
-        .getByRole("button", { name: "Increase Coaches slots" })
+        .getByRole("button", { name: "Increase First Team Coaches" })
         .first()
         .click();
       await expect(coachesInput).toHaveValue(String(coachesBefore + 1));
@@ -217,16 +219,18 @@ for (const inspectedPage of pages) {
       });
       await expect(dialog).toBeVisible();
       for (const label of [
-        "Assistant Manager slots",
-        "Coaches slots",
-        "Manager slots",
-        "Scout slots",
+        "First Team Assistant Manager",
+        "First Team Coaches",
+        "Reserves Manager",
+        "Scout",
       ]) {
         await dialog.getByRole("spinbutton", { name: label }).first().fill("1");
       }
-      await dialog.getByRole("button", { name: "Save slots" }).click();
+      await dialog.getByRole("button", { name: "Save" }).click();
       await expect(dialog).toBeHidden();
-      await expect(page.getByRole("status")).toHaveText("Slot counts saved.");
+      await expect(page.getByRole("status")).toHaveText(
+        "Staffing needs saved.",
+      );
       await page
         .getByRole("button", { name: "Configure staffing needs" })
         .click();
@@ -235,7 +239,7 @@ for (const inspectedPage of pages) {
       });
       await expect(
         reopenedDialog
-          .getByRole("spinbutton", { name: "Assistant Manager slots" })
+          .getByRole("spinbutton", { name: "First Team Assistant Manager" })
           .first(),
       ).toHaveValue("1");
       await reopenedDialog.getByRole("button", { name: "Cancel" }).click();

@@ -4,6 +4,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::features::managed_club::service::selected_club;
 use crate::features::snapshot::service::capture_active_save_context;
+use crate::features::staff::query::managed_club_staff_sql;
 use crate::features::staff::scoring::{
     assert_read_models_complete, staff_role_column, STAFF_METRICS_ALIAS,
 };
@@ -12,7 +13,7 @@ use super::assignment_optimizer::{
     allocate_staff_assignments, current_job_classification, preferred_job_classification,
     StaffAssignmentAllocation, StaffAssignmentCandidate, StaffAssignmentClassification,
     StaffAssignmentEvidence, StaffAssignmentJobSource, StaffAssignmentScoreSet,
-    StaffAssignmentSlot,
+    StaffAssignmentSlot, StaffAssignmentSurplus,
 };
 use super::assignment_targets::{
     read_nonzero_targets_without_initializing_teams, target_job_display_rank,
@@ -78,6 +79,7 @@ pub(super) struct StaffAssignmentOptimization {
     pub(super) slots: Vec<StaffAssignmentResultSlot>,
     pub(super) evidence: Vec<StaffAssignmentEvidence>,
     pub(super) skipped: Vec<StaffAssignmentSkip>,
+    pub(super) surplus: Vec<StaffAssignmentSurplus>,
 }
 
 pub(super) fn optimize_staff_assignments(
@@ -134,7 +136,7 @@ pub(super) fn optimize_staff_assignments(
         ));
     }
 
-    let Some(managed_club) = selected_club(conn, save_id)? else {
+    if selected_club(conn, save_id)?.is_none() {
         return Ok(result(
             StaffAssignmentOptimizationState::NoManagedClub,
             save_id,
@@ -142,7 +144,7 @@ pub(super) fn optimize_staff_assignments(
             Some(snapshot_id),
             Some(snapshot_context_token),
         ));
-    };
+    }
     let has_shortlist: bool = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM staff_shortlist_entries WHERE save_id = ?1)",
@@ -168,7 +170,7 @@ pub(super) fn optimize_staff_assignments(
     if configured_slot_count_usize > MAX_STAFF_ASSIGNMENT_SLOTS {
         return Err("Staff assignment targets exceed the supported slot limit".to_string());
     }
-    let candidates = load_candidates(conn, save_id, snapshot_id, &managed_club)?;
+    let candidates = load_candidates(conn, save_id, snapshot_id)?;
     let unsupported_preferred_job_count = i64::try_from(
         candidates
             .iter()
@@ -178,8 +180,11 @@ pub(super) fn optimize_staff_assignments(
     .map_err(|_| "Staff shortlist candidate count is too large".to_string())?;
     let joined_candidate_count = i64::try_from(candidates.len())
         .map_err(|_| "Staff shortlist candidate count is too large".to_string())?;
-    let StaffAssignmentAllocation { slots, evidence } =
-        allocate_staff_assignments(&targets, &candidates);
+    let StaffAssignmentAllocation {
+        slots,
+        evidence,
+        surplus,
+    } = allocate_staff_assignments(&targets, &candidates);
     if slots.len() > MAX_STAFF_ASSIGNMENT_SLOTS {
         return Err("Staff assignment result exceeds the supported slot limit".to_string());
     }
@@ -241,6 +246,7 @@ pub(super) fn optimize_staff_assignments(
         slots,
         evidence,
         skipped: load_skips(conn, save_id, snapshot_id)?,
+        surplus,
     })
 }
 
@@ -311,6 +317,7 @@ fn result(
         slots: Vec::new(),
         evidence: Vec::new(),
         skipped: Vec::new(),
+        surplus: Vec::new(),
     }
 }
 
@@ -330,7 +337,6 @@ pub(super) fn load_candidates(
     conn: &Connection,
     save_id: i64,
     snapshot_id: i64,
-    managed_club: &str,
 ) -> Result<Vec<StaffAssignmentCandidate>, String> {
     // Every candidate read requires the compact staff snapshot to be complete
     // with the checked-in model version; a missing or wrong-version row must
@@ -347,8 +353,10 @@ pub(super) fn load_candidates(
     // The pool is the save's shortlist plus the managed club's own staff, without the human
     // manager and anyone the save has skipped. Shortlisted people join by their Preferred Job;
     // club staff off the shortlist join by the job they hold now.
+    let at_managed_club = managed_club_staff_sql("?1");
     let sql = format!(
-        "SELECT staff.uid, staff.name, staff.club, shortlist.preferred_job, staff.job_id,
+        "SELECT staff.uid, staff.name, staff.club, {at_managed_club}, shortlist.preferred_job,
+                staff.job_id,
                 json_extract(staff.staff_attributes_json, '$.WorkingWithYoungsters'),
                 {metric_columns}
          FROM staff
@@ -359,7 +367,7 @@ pub(super) fn load_candidates(
             AND {STAFF_METRICS_ALIAS}.uid = staff.uid
             AND {STAFF_METRICS_ALIAS}.score_model_version = 1
          WHERE staff.snapshot_id = ?2
-           AND (shortlist.staff_uid IS NOT NULL OR staff.club = ?3)
+           AND (shortlist.staff_uid IS NOT NULL OR {at_managed_club})
            AND staff.uid IS NOT (SELECT manager_uid FROM snapshots WHERE id = ?2)
            AND NOT EXISTS (
                SELECT 1 FROM staff_assignment_skips skipped
@@ -369,20 +377,22 @@ pub(super) fn load_candidates(
     );
     let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map(params![save_id, snapshot_id, managed_club], |row| {
+        .query_map(params![save_id, snapshot_id], |row| {
             let uid: i64 = row.get(0)?;
             let name: Option<String> = row.get(1)?;
             let club: Option<String> = row.get(2)?;
-            let preferred_job: Option<String> = row.get(3)?;
-            let job_id: Option<i64> = row.get(4)?;
-            let working_with_youngsters: Option<i64> = row.get(5)?;
+            let at_managed_club: bool = row.get(3)?;
+            let preferred_job: Option<String> = row.get(4)?;
+            let job_id: Option<i64> = row.get(5)?;
+            let working_with_youngsters: Option<i64> = row.get(6)?;
             let scores: Vec<Option<i64>> = (0..SCORE_ROLE_IDS.len())
-                .map(|index| row.get::<_, Option<i64>>(6 + index))
+                .map(|index| row.get::<_, Option<i64>>(7 + index))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok((
                 uid,
                 name,
                 club,
+                at_managed_club,
                 preferred_job,
                 job_id,
                 working_with_youngsters,
@@ -392,8 +402,16 @@ pub(super) fn load_candidates(
         .map_err(|error| error.to_string())?;
     let mut candidates = Vec::new();
     for row in rows {
-        let (uid, name, club, preferred_job, job_id, working_with_youngsters, scores) =
-            row.map_err(|error| error.to_string())?;
+        let (
+            uid,
+            name,
+            club,
+            at_managed_club,
+            preferred_job,
+            job_id,
+            working_with_youngsters,
+            scores,
+        ) = row.map_err(|error| error.to_string())?;
         let (preferred_job, job_source, job) = match preferred_job {
             Some(preferred_job) => {
                 let job = preferred_job_classification(&preferred_job);
@@ -422,11 +440,13 @@ pub(super) fn load_candidates(
             preferred_job,
             job_source,
             job,
-            classification: if club.as_deref() == Some(managed_club) {
+            classification: if at_managed_club {
                 StaffAssignmentClassification::CurrentStaff
             } else {
                 StaffAssignmentClassification::Recruitment
             },
+            club,
+            current_job_id: job_id,
             working_with_youngsters: working_with_youngsters
                 .and_then(|value| u8::try_from(value).ok())
                 .filter(|value| (1..=20).contains(value)),

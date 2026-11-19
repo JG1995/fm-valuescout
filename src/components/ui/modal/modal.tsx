@@ -132,6 +132,15 @@ export function Modal({
       return;
     }
     shouldReturnFocusRef.current = false;
+    // A dialog that opened as this one closed keeps its focus. StrictMode
+    // detaches refs while it replays effects, so match this dialog by title.
+    const focusedDialog = document.activeElement?.closest('[role="dialog"]');
+    if (
+      focusedDialog &&
+      focusedDialog.getAttribute("aria-labelledby") !== titleId
+    ) {
+      return;
+    }
     if (
       triggerRef.current?.isConnected &&
       !triggerRef.current.matches(":disabled")
@@ -140,7 +149,7 @@ export function Modal({
       return;
     }
     fallbackFocusToRef.current?.()?.focus();
-  }, []);
+  }, [titleId]);
 
   useEffect(() => {
     if (!mounted) restoreFocus();

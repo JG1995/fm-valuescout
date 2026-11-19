@@ -159,6 +159,18 @@ pub struct StaffPage {
     pub preferred_job_options: Vec<String>,
 }
 
+/// SQL that is true for a `staff` row at the save bound to `save_param`'s managed club. Once the
+/// club's UID is recorded it decides, so a namesake club elsewhere never counts as the managed
+/// club; a club chosen before UIDs were recorded still matches by name.
+pub(super) fn managed_club_staff_sql(save_param: &str) -> String {
+    format!(
+        "EXISTS (SELECT 1 FROM managed_club_settings managed
+                 WHERE managed.save_id = {save_param}
+                   AND (staff.club_uid = managed.club_uid
+                        OR (managed.club_uid IS NULL AND staff.club = managed.club_name)))"
+    )
+}
+
 pub fn list_my_staff_uids(
     conn: &Connection,
     save_id: i64,
@@ -176,15 +188,14 @@ pub fn list_my_staff_uids(
     }
 
     let mut statement = conn
-        .prepare(
+        .prepare(&format!(
             "SELECT DISTINCT staff.uid
              FROM staff
              WHERE staff.snapshot_id = ?1
-               AND staff.club = (
-                   SELECT club_name FROM managed_club_settings WHERE save_id = ?2
-               )
+               AND {}
              ORDER BY staff.uid ASC",
-        )
+            managed_club_staff_sql("?2")
+        ))
         .map_err(|error| error.to_string())?;
     let staff_uids = statement
         .query_map(rusqlite::params![snapshot_id, save_id], |row| row.get(0))
@@ -553,9 +564,8 @@ fn plan_staff_query(
     }
     if scope == StaffScope::MyStaff {
         binds.push(Value::Integer(save_id));
-        where_sql.push_str(
-            " AND staff.club = (SELECT club_name FROM managed_club_settings WHERE save_id = ?2)",
-        );
+        where_sql.push_str(" AND ");
+        where_sql.push_str(&managed_club_staff_sql("?2"));
     }
     if shortlisted {
         let has_shortlist: bool = conn
@@ -977,6 +987,52 @@ mod tests {
         .unwrap();
         assert_eq!(second_page.total, 1);
         assert_eq!(second_page.staff[0].uid, 1);
+    }
+
+    #[test]
+    fn my_staff_matches_the_managed_club_uid_over_a_shared_name() {
+        let conn = open();
+        seed(&conn, false);
+        conn.execute_batch(
+            "UPDATE staff SET club_uid = 101 WHERE snapshot_id = 1 AND uid = 1;
+             INSERT INTO staff (snapshot_id,uid,name,age,nationalities_json,gender,ca,pa,staff_attributes_json,club,club_uid)
+                 VALUES (1,4,'Namesake',40,'[]','unknown',100,120,'{}','Club A',202);
+             INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version) VALUES (1, 4, 1);
+             INSERT INTO managed_club_settings (save_id,club_name,club_uid) VALUES (1,'Club A',101);",
+        )
+        .unwrap();
+        let my_staff = |conn: &Connection| {
+            list_staff(
+                conn,
+                StaffScope::MyStaff,
+                0,
+                50,
+                SortField::Name,
+                SortDir::Asc,
+                None,
+                false,
+                None,
+                false,
+                &[],
+            )
+            .unwrap()
+            .staff
+            .iter()
+            .map(|staff| staff.uid)
+            .collect::<Vec<_>>()
+        };
+
+        assert_eq!(my_staff(&conn), [1]);
+        assert_eq!(list_my_staff_uids(&conn, 1, 1).unwrap(), Some(vec![1]));
+
+        // A club chosen before UIDs were recorded still matches by name.
+        conn.execute(
+            "UPDATE managed_club_settings SET club_uid = NULL WHERE save_id = 1",
+            [],
+        )
+        .unwrap();
+        assert_eq!(my_staff(&conn), [1, 4]);
+        assert_eq!(list_my_staff_uids(&conn, 1, 1).unwrap(), Some(vec![1, 4]));
     }
 
     #[test]

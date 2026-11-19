@@ -46,8 +46,15 @@ function renderModal(context = contextA, contextKey = "context-a") {
   };
 }
 
+function needsTables(dialog: HTMLElement) {
+  return {
+    teamJobs: within(dialog).getByRole("table", { name: "Team jobs" }),
+    clubJobs: within(dialog).getByRole("table", { name: "Club-wide jobs" }),
+  };
+}
+
 describe("StaffAssignmentTargetModal", () => {
-  it("groups Rust targets inside Senior sections and preserves the complete semantic payload", async () => {
+  it("lays out team jobs by team, club-wide jobs once, and saves the complete payload", async () => {
     const user = userEvent.setup();
     const targets = fixtureStaffAssignmentTargets();
     targets.teams[1] = { ...targets.teams[1], displayName: "B Squad" };
@@ -61,94 +68,88 @@ describe("StaffAssignmentTargetModal", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Configure staffing needs",
     });
-    const senior = within(dialog).getByRole("group", { name: "Senior" });
-    const coaching = within(senior).getByRole("group", { name: "Coaching" });
-    const recruitment = within(senior).getByRole("group", {
-      name: "Recruitment",
-    });
-    const medical = within(senior).getByRole("group", { name: "Medical" });
+    const { teamJobs, clubJobs } = needsTables(dialog);
 
-    expect(within(dialog).getByText("B Squad")).toBeInTheDocument();
-    expect(within(dialog).queryByRole("group", { name: "Club" })).toBeNull();
     expect(
-      within(coaching).getByRole("spinbutton", {
-        name: "Head of Youth Development slots",
-      }),
-    ).toHaveAttribute("max", "1");
+      within(teamJobs)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["Job", "Senior", "B Squad", "Youth"]);
     expect(
-      within(coaching).getByRole("spinbutton", {
-        name: "Assistant Manager slots",
+      within(teamJobs)
+        .getAllByRole("rowheader")
+        .map((header) => header.textContent),
+    ).toEqual([
+      "Coaching",
+      "Manager",
+      "Assistant Manager",
+      "Coaches",
+      "Performance Analyst",
+      "Medical",
+      "Physio",
+      "Sports Scientist",
+      "Total",
+    ]);
+    expect(
+      within(teamJobs).getByRole("spinbutton", {
+        name: "Senior Assistant Manager",
       }),
     ).toHaveAttribute("max", "50");
     expect(
-      within(coaching).getByRole("spinbutton", { name: "Coaches slots" }),
+      within(teamJobs).getByRole("spinbutton", { name: "B Squad Coaches" }),
     ).toBeInTheDocument();
     expect(
-      within(coaching).getByRole("spinbutton", {
-        name: "Set Piece Coach slots",
+      within(teamJobs).queryByRole("spinbutton", { name: "Senior Manager" }),
+    ).toBeNull();
+    expect(
+      within(teamJobs).getByTitle("You manage the Senior."),
+    ).toHaveTextContent("You");
+    expect(
+      within(clubJobs)
+        .getAllByRole("rowheader")
+        .filter((header) =>
+          ["Coaching", "Recruitment", "Medical"].includes(
+            header.textContent ?? "",
+          ),
+        ),
+    ).toHaveLength(3);
+    expect(
+      within(clubJobs).getByRole("spinbutton", {
+        name: "Head of Youth Development",
       }),
     ).toHaveAttribute("max", "1");
-    for (const [headRole, ordinaryRole] of [
-      ["Head Performance Analyst slots", "Performance Analyst slots"],
-      ["Chief Scout slots", "Scout slots"],
-      ["Head Physio slots", "Physio slots"],
-      ["Head of Sports Science slots", "Sports Scientist slots"],
-    ]) {
-      const head = within(senior).getByRole("spinbutton", { name: headRole });
-      const ordinary = within(senior).getByRole("spinbutton", {
-        name: ordinaryRole,
-      });
-      expect(
-        head.compareDocumentPosition(ordinary) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).not.toBe(0);
-    }
     expect(
-      within(recruitment).getByRole("spinbutton", {
-        name: "Recruitment Analyst slots",
+      within(clubJobs).getByRole("spinbutton", { name: "Set Piece Coach" }),
+    ).toHaveAttribute("max", "1");
+    expect(
+      within(clubJobs).getByRole("spinbutton", {
+        name: "Recruitment Analyst",
       }),
     ).toHaveAttribute("max", "50");
+    const chiefScout = within(clubJobs).getByRole("spinbutton", {
+      name: "Chief Scout",
+    });
+    const scout = within(clubJobs).getByRole("spinbutton", { name: "Scout" });
     expect(
-      within(medical).getByRole("spinbutton", { name: "Head Physio slots" }),
-    ).toHaveAttribute("max", "1");
+      chiefScout.compareDocumentPosition(scout) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
     expect(
-      within(senior).queryByRole("spinbutton", { name: "Manager slots" }),
+      within(dialog).queryByRole("spinbutton", { name: /Doctor/ }),
     ).toBeNull();
-    const reserves = within(dialog).getByRole("group", { name: "B Squad" });
-    expect(reserves).toBeInTheDocument();
-    expect(
-      within(reserves).queryByRole("spinbutton", {
-        name: "Set Piece Coach slots",
-      }),
-    ).toBeNull();
-    expect(
-      within(dialog).queryByRole("spinbutton", { name: "Doctor slots" }),
-    ).toBeNull();
-    expect(
-      within(dialog).queryByRole("spinbutton", {
-        name: "Chief Doctor slots",
-      }),
-    ).toBeNull();
-    expect(
-      within(dialog).getAllByRole("spinbutton", {
-        name: "Head of Youth Development slots",
-      }),
-    ).toHaveLength(1);
     expect(within(dialog).getAllByRole("spinbutton")).toHaveLength(28);
 
-    const headOfYouthDevelopment = within(coaching).getByRole("spinbutton", {
-      name: "Head of Youth Development slots",
+    const headOfYouthDevelopment = within(clubJobs).getByRole("spinbutton", {
+      name: "Head of Youth Development",
     });
-    const coaches = within(coaching).getByRole("spinbutton", {
-      name: "Coaches slots",
+    const coaches = within(teamJobs).getByRole("spinbutton", {
+      name: "Senior Coaches",
     });
     await user.clear(headOfYouthDevelopment);
     await user.type(headOfYouthDevelopment, "1");
     await user.clear(coaches);
     await user.type(coaches, "50");
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save slots" }),
-    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
       const request = getLastStaffAssignmentTargetsIpcArgs() as {
@@ -173,12 +174,12 @@ describe("StaffAssignmentTargetModal", () => {
       ).toBe(28);
     });
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Slot counts saved.",
+      "Staffing needs saved.",
     );
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
-  it("renders Club sections once when Senior is disabled", async () => {
+  it("shows only the enabled teams when Senior is disabled", async () => {
     const user = userEvent.setup();
     const targets = fixtureStaffAssignmentTargets();
     targets.teams = targets.teams.filter(({ team }) => team !== "senior");
@@ -189,27 +190,23 @@ describe("StaffAssignmentTargetModal", () => {
     await user.click(
       await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
-    const dialog = await screen.findByRole("dialog");
-    const club = within(dialog).getByRole("group", { name: "Club" });
+    const { teamJobs, clubJobs } = needsTables(
+      await screen.findByRole("dialog"),
+    );
 
-    expect(within(dialog).queryByRole("group", { name: "Senior" })).toBeNull();
     expect(
-      within(club).getByRole("group", { name: "Coaching" }),
-    ).toBeInTheDocument();
+      within(teamJobs)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["Job", "Reserves", "Youth"]);
     expect(
-      within(club).getByRole("group", { name: "Recruitment" }),
-    ).toBeInTheDocument();
-    expect(
-      within(club).getByRole("group", { name: "Medical" }),
-    ).toBeInTheDocument();
-    expect(
-      within(club).getAllByRole("spinbutton", {
-        name: "Head of Youth Development slots",
+      within(clubJobs).getAllByRole("spinbutton", {
+        name: "Head of Youth Development",
       }),
     ).toHaveLength(1);
   });
 
-  it("provides bounded step controls and truthful valid-draft totals", async () => {
+  it("steps counts within each maximum and totals every team", async () => {
     const user = userEvent.setup();
     setStaffAssignmentTargetsIpcMock(
       fixtureStaffAssignmentTargets({
@@ -226,19 +223,18 @@ describe("StaffAssignmentTargetModal", () => {
       await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     const dialog = await screen.findByRole("dialog");
+    const { teamJobs, clubJobs } = needsTables(dialog);
     expect(
-      within(dialog).getByText("Zero excludes a role from recommendations."),
+      within(dialog).getByText(/Jobs left at 0 get no recommendation\./),
     ).toBeInTheDocument();
-    const boundedInput = within(dialog).getByLabelText(
-      "Head of Youth Development slots",
-    );
-    expect(boundedInput).toHaveAttribute("id");
-    expect(boundedInput).not.toHaveAttribute("aria-label");
-    const boundedDecrease = within(dialog).getByRole("button", {
-      name: "Decrease Head of Youth Development slots",
+    const boundedInput = within(clubJobs).getByRole("spinbutton", {
+      name: "Head of Youth Development",
     });
-    const boundedIncrease = within(dialog).getByRole("button", {
-      name: "Increase Head of Youth Development slots",
+    const boundedDecrease = within(clubJobs).getByRole("button", {
+      name: "Decrease Head of Youth Development",
+    });
+    const boundedIncrease = within(clubJobs).getByRole("button", {
+      name: "Increase Head of Youth Development",
     });
     expect(boundedIncrease).toBeDisabled();
     await user.click(boundedDecrease);
@@ -246,30 +242,33 @@ describe("StaffAssignmentTargetModal", () => {
     expect(boundedDecrease).toBeDisabled();
     await user.click(boundedIncrease);
     expect(boundedInput).toHaveValue(1);
-    const assistantManager = within(dialog).getAllByRole("spinbutton", {
-      name: "Assistant Manager slots",
-    })[0];
-    expect(
-      within(dialog).getAllByRole("button", {
-        name: "Decrease Assistant Manager slots",
-      })[0],
-    ).toBeInTheDocument();
-    const increase = within(dialog).getAllByRole("button", {
-      name: "Increase Assistant Manager slots",
-    })[0];
-    await user.click(increase);
+
+    const assistantManager = within(teamJobs).getByRole("spinbutton", {
+      name: "Senior Assistant Manager",
+    });
+    await user.click(
+      within(teamJobs).getByRole("button", {
+        name: "Increase Senior Assistant Manager",
+      }),
+    );
     expect(assistantManager).toHaveValue(3);
-    expect(within(dialog).getByText("Senior total: 18")).toBeInTheDocument();
-    expect(within(dialog).getByText("Coaching total: 8")).toBeInTheDocument();
+    const teamTotals = () =>
+      within(within(teamJobs).getByRole("row", { name: /^Total/ }))
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent);
+    expect(teamTotals()).toEqual(["7", "6", "6"]);
+    expect(
+      within(within(clubJobs).getByRole("row", { name: /^Total/ })).getByRole(
+        "cell",
+      ),
+    ).toHaveTextContent("11");
 
     await user.clear(assistantManager);
     await user.type(assistantManager, "not-a-number");
-    expect(
-      within(dialog).getByText("Senior total unavailable until corrected."),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByText("Coaching total unavailable until corrected."),
-    ).toBeInTheDocument();
+    expect(teamTotals()).toEqual(["—", "6", "6"]);
+    expect(assistantManager).toHaveAccessibleDescription(
+      "Senior Assistant Manager: Enter a whole number from 0 to 50.",
+    );
   });
 
   it("uses each Rust maximum for local validation and shows a Rust save error", async () => {
@@ -281,24 +280,23 @@ describe("StaffAssignmentTargetModal", () => {
     );
     const dialog = await screen.findByRole("dialog");
     const headOfYouthDevelopment = within(dialog).getByRole("spinbutton", {
-      name: "Head of Youth Development slots",
+      name: "Head of Youth Development",
     });
     await user.clear(headOfYouthDevelopment);
     await user.type(headOfYouthDevelopment, "2");
 
+    expect(headOfYouthDevelopment).toHaveAttribute("aria-invalid", "true");
     expect(
-      within(dialog).getByText("Enter a whole number from 0 to 1."),
+      within(dialog).getByText(
+        "Head of Youth Development: Enter a whole number from 0 to 1.",
+      ),
     ).toBeInTheDocument();
-    expect(
-      within(dialog).getByRole("button", { name: "Save slots" }),
-    ).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled();
 
     await user.clear(headOfYouthDevelopment);
     await user.type(headOfYouthDevelopment, "1");
     setStaffAssignmentTargetsIpcMockMode("error");
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save slots" }),
-    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "Could not save assignment targets",
     );
@@ -313,9 +311,7 @@ describe("StaffAssignmentTargetModal", () => {
       await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     const dialog = await screen.findByRole("dialog");
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save slots" }),
-    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
     expect(
       within(dialog).getByRole("button", { name: "Saving…" }),
@@ -325,7 +321,7 @@ describe("StaffAssignmentTargetModal", () => {
     ).toBeDisabled();
     expect(within(dialog).getAllByRole("spinbutton")[0]).toBeDisabled();
     for (const control of within(dialog).getAllByRole("button", {
-      name: /^(Decrease|Increase) .+ slots$/,
+      name: /^(Decrease|Increase) /,
     })) {
       expect(control).toBeDisabled();
     }
@@ -339,9 +335,9 @@ describe("StaffAssignmentTargetModal", () => {
       await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     const dialog = await screen.findByRole("dialog");
-    const assistantManager = within(dialog).getAllByRole("spinbutton", {
-      name: "Assistant Manager slots",
-    })[0];
+    const assistantManager = within(dialog).getByRole("spinbutton", {
+      name: "Senior Assistant Manager",
+    });
     await user.clear(assistantManager);
     await user.type(assistantManager, "12");
 
@@ -353,7 +349,7 @@ describe("StaffAssignmentTargetModal", () => {
       await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     expect(
-      screen.getAllByRole("spinbutton", { name: "Assistant Manager slots" })[0],
+      screen.getByRole("spinbutton", { name: "Senior Assistant Manager" }),
     ).toHaveValue(1);
   });
 });

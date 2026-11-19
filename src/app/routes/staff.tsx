@@ -1,5 +1,4 @@
 import {
-  useIsFetching,
   useIsMutating,
   useQuery,
   useQueryClient,
@@ -50,6 +49,7 @@ import {
   parseStaffView,
   staffFiltersForUrl,
 } from "@/features/staff/utils/staff-url-search";
+import { useIsRefetchingInvalidated } from "@/lib/use-is-refetching-invalidated";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import {
   shortlistFilterKey,
@@ -381,12 +381,12 @@ function StaffSearchContent() {
         }
       : null;
   const staffAssignmentContextKey = `${shortlistContextKey}:${managedClub?.clubName ?? "none"}:${(depth?.teams ?? []).map((team) => `${team.team}:${team.displayName}`).join("|")}`;
-  const isPlannerRefreshing = useIsFetching({ queryKey: plannerKeys.all }) > 0;
-  const isSnapshotRefreshing =
-    useIsFetching({ queryKey: snapshotKeys.all }) > 0;
-  const isSavesRefreshing = savesQuery.isFetching;
-  const isManagedClubRefreshing =
-    useIsFetching({ queryKey: managedClubKeys.all }) > 0;
+  const isPlannerRefreshing = useIsRefetchingInvalidated(plannerKeys.all);
+  const isSnapshotRefreshing = useIsRefetchingInvalidated(snapshotKeys.all);
+  const isSavesRefreshing = useIsRefetchingInvalidated(snapshotKeys.saves());
+  const isManagedClubRefreshing = useIsRefetchingInvalidated(
+    managedClubKeys.all,
+  );
   const isPlayerResultContextMutating =
     useIsMutating({ mutationKey: playerResultContextMutationKey }) > 0;
   const staffAssignmentContextUnavailable =
@@ -557,6 +557,7 @@ function StaffSearchContent() {
               }
               void updateSearch({ shortlistOnly: undefined });
             }}
+            onOpenStaff={(uid) => router.history.push(`/staff/${uid}`)}
           />
         ) : null}
       </div>

@@ -23,6 +23,35 @@ pub struct ManagedClubOption {
     pub club_uid: Option<i64>,
 }
 
+/// SQL that is true when the club in the `club_column` and `club_uid_column` expressions is the
+/// managed club of the save bound to `save_param`. Once the managed club's UID is recorded it
+/// must match too, so a namesake club elsewhere never counts as the managed club; a club chosen
+/// before UIDs were recorded matches by name. Comparing the name keeps a player read on the
+/// `(snapshot_id, current_club)` index. The result is null for a null club name or a save
+/// without a managed club, so negate it with `IS NOT 1`.
+pub(crate) fn managed_club_sql(
+    club_column: &str,
+    club_uid_column: &str,
+    save_param: &str,
+) -> String {
+    format!(
+        "({club_column} = (SELECT club_name FROM managed_club_settings WHERE save_id = {save_param})
+          AND ((SELECT club_uid FROM managed_club_settings WHERE save_id = {save_param}) IS NULL
+               OR {club_uid_column} IS (
+                   SELECT club_uid FROM managed_club_settings WHERE save_id = {save_param}
+               )))"
+    )
+}
+
+/// [`managed_club_sql`] for the current club of the `players` row aliased `alias`.
+pub(crate) fn managed_club_player_sql(alias: &str, save_param: &str) -> String {
+    managed_club_sql(
+        &format!("{alias}.current_club"),
+        &format!("{alias}.current_club_uid"),
+        save_param,
+    )
+}
+
 pub fn get_managed_club(conn: &Connection, save_id: i64) -> Result<ManagedClubStatus, String> {
     let selected = selected_club_identity(conn, save_id)?;
     let Some((club_name, club_uid)) = selected else {
@@ -34,27 +63,30 @@ pub fn get_managed_club(conn: &Connection, save_id: i64) -> Result<ManagedClubSt
         });
     };
 
+    let at_managed_club = managed_club_player_sql("p", "?1");
     let (available, unclassified_player_count): (bool, i64) = conn
         .query_row(
-            "SELECT
-                 EXISTS(
-                     SELECT 1
-                     FROM players p
-                     INNER JOIN snapshots s ON s.id = p.snapshot_id
-                     WHERE s.save_id = ?1
-                       AND s.is_current = 1
-                       AND p.current_club = ?2
-                 ),
-                 (
-                     SELECT COUNT(*)
-                     FROM players p
-                     INNER JOIN snapshots s ON s.id = p.snapshot_id
-                     WHERE s.save_id = ?1
-                       AND s.is_current = 1
-                       AND p.current_club = ?2
-                       AND (p.team_level IS NULL OR p.team_level NOT IN ('senior', 'reserve', 'youth'))
-                 )",
-            params![save_id, club_name],
+            &format!(
+                "SELECT
+                     EXISTS(
+                         SELECT 1
+                         FROM players p
+                         INNER JOIN snapshots s ON s.id = p.snapshot_id
+                         WHERE s.save_id = ?1
+                           AND s.is_current = 1
+                           AND {at_managed_club}
+                     ),
+                     (
+                         SELECT COUNT(*)
+                         FROM players p
+                         INNER JOIN snapshots s ON s.id = p.snapshot_id
+                         WHERE s.save_id = ?1
+                           AND s.is_current = 1
+                           AND {at_managed_club}
+                           AND (p.team_level IS NULL OR p.team_level NOT IN ('senior', 'reserve', 'youth'))
+                     )"
+            ),
+            [save_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(|error| error.to_string())?;
@@ -343,6 +375,41 @@ mod tests {
                 .club_uid,
             Some(101)
         );
+    }
+
+    #[test]
+    fn status_ignores_a_namesake_club_unless_the_uid_is_unknown() {
+        let conn = connection();
+        let save_id = insert_save(&conn, "Save");
+        let snapshot_id = insert_snapshot(&conn, save_id, true);
+        insert_player(&conn, snapshot_id, 1, "Same FC", Some("senior"));
+        insert_player(&conn, snapshot_id, 2, "Same FC", None);
+        conn.execute(
+            "UPDATE players SET current_club_uid = CASE uid WHEN 1 THEN 101 ELSE 202 END
+             WHERE snapshot_id = ?1",
+            [snapshot_id],
+        )
+        .expect("assign club UIDs");
+
+        let status = set_managed_club(&conn, save_id, "Same FC", Some(101)).expect("set club");
+        assert_eq!(status.availability, ManagedClubAvailability::Available);
+        assert_eq!(status.unclassified_player_count, 0);
+
+        conn.execute(
+            "UPDATE players SET current_club_uid = 202 WHERE snapshot_id = ?1",
+            [snapshot_id],
+        )
+        .expect("move the club's player to its namesake");
+        let status = get_managed_club(&conn, save_id).expect("read status");
+        assert_eq!(status.availability, ManagedClubAvailability::Missing);
+        assert_eq!(status.unclassified_player_count, 0);
+
+        // A club chosen before UIDs were recorded matches by name.
+        conn.execute("UPDATE managed_club_settings SET club_uid = NULL", [])
+            .expect("forget club UID");
+        let status = get_managed_club(&conn, save_id).expect("read legacy status");
+        assert_eq!(status.availability, ManagedClubAvailability::Available);
+        assert_eq!(status.unclassified_player_count, 1);
     }
 
     #[test]

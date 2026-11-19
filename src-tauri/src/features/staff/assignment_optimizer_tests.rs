@@ -1,8 +1,8 @@
 use super::assignment_optimizer::{
     allocate_staff_assignments, coach_composition, general_match_edge_bytes,
-    preferred_job_classification, CoachRequirement, PreferredJob, StaffAssignmentCandidate,
-    StaffAssignmentClassification, StaffAssignmentJobSource, StaffAssignmentScoreSet,
-    StaffAssignmentSlot,
+    preferred_job_classification, CoachRequirement, PreferredJob, StaffAssignmentAction,
+    StaffAssignmentCandidate, StaffAssignmentClassification, StaffAssignmentJobSource,
+    StaffAssignmentScoreSet, StaffAssignmentSlot, StaffAssignmentSurplus,
 };
 use super::assignment_targets::StaffAssignmentTarget;
 
@@ -29,6 +29,8 @@ fn candidate(
         job_source: StaffAssignmentJobSource::PreferredJob,
         job: preferred_job_classification(preferred_job),
         classification: StaffAssignmentClassification::Recruitment,
+        club: None,
+        current_job_id: None,
         working_with_youngsters: Some(10),
         scores,
     }
@@ -689,7 +691,7 @@ fn preserves_classification_enforces_one_duty_and_reports_unavailable_vacancies(
     assert!(matches!(
         &result.slots[0],
         StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.classification == StaffAssignmentClassification::Recruitment
+            if recommendation.action == (StaffAssignmentAction::Recruit { club: None })
                 && recommendation.score == 0
     ));
     assert!(matches!(
@@ -703,7 +705,7 @@ fn preserves_classification_enforces_one_duty_and_reports_unavailable_vacancies(
         &result.slots[2],
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.job_id == "chief_scout"
-                && recommendation.classification == StaffAssignmentClassification::CurrentStaff
+                && recommendation.action == StaffAssignmentAction::OnStaff
     ));
     assert!(matches!(
         &result.slots[3],
@@ -1027,4 +1029,111 @@ fn retains_slot_order_through_the_fifty_slot_boundary() {
         matches!(slot, StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.slot_number == i64::try_from(index + 1).expect("slot number"))
     }));
+}
+
+#[test]
+fn lists_club_staff_who_lost_every_slot_they_could_fill() {
+    let club_staff =
+        |uid: i64, preferred_job: &str, current_job_id, scores| StaffAssignmentCandidate {
+            classification: StaffAssignmentClassification::CurrentStaff,
+            current_job_id: Some(current_job_id),
+            ..candidate(uid, preferred_job, scores)
+        };
+    let candidates = [
+        club_staff(
+            1,
+            "Assistant Manager",
+            20,
+            StaffAssignmentScoreSet {
+                assistant_manager: Some(80),
+                ..Default::default()
+            },
+        ),
+        club_staff(
+            2,
+            "Assistant Manager",
+            20,
+            StaffAssignmentScoreSet {
+                assistant_manager: Some(60),
+                ..Default::default()
+            },
+        ),
+        // A recruit is never on the club's list.
+        candidate(
+            3,
+            "Assistant Manager",
+            StaffAssignmentScoreSet {
+                assistant_manager: Some(50),
+                ..Default::default()
+            },
+        ),
+        // No physio slot is set, so the physio stays.
+        club_staff(
+            4,
+            "Physio",
+            12,
+            StaffAssignmentScoreSet {
+                physio: Some(90),
+                ..Default::default()
+            },
+        ),
+        // An unrated assistant was never compared.
+        club_staff(
+            5,
+            "Assistant Manager",
+            20,
+            StaffAssignmentScoreSet::default(),
+        ),
+        // One coaching slot is a general one, so a goalkeeping coach has nothing to lose.
+        club_staff(
+            6,
+            "Goalkeeping Coach",
+            34,
+            StaffAssignmentScoreSet {
+                coach_goalkeeping: Some(70),
+                ..Default::default()
+            },
+        ),
+        club_staff(
+            7,
+            "Coach",
+            2,
+            StaffAssignmentScoreSet {
+                coach_attacking_technical: Some(75),
+                ..Default::default()
+            },
+        ),
+        club_staff(
+            8,
+            "Coach",
+            2,
+            StaffAssignmentScoreSet {
+                coach_attacking_technical: Some(65),
+                ..Default::default()
+            },
+        ),
+    ];
+    let targets = [
+        target("senior", "assistant_manager", "Assistant Manager", 1),
+        target("senior", "coaches", "Coaches", 1),
+    ];
+
+    let result = allocate_staff_assignments(&targets, &candidates);
+
+    assert_eq!(assigned_uids(&result), [1, 7]);
+    assert_eq!(
+        result.surplus,
+        [
+            StaffAssignmentSurplus {
+                uid: 2,
+                name: Some("Staff 2".to_string()),
+                current_job: Some("Assistant Manager"),
+            },
+            StaffAssignmentSurplus {
+                uid: 8,
+                name: Some("Staff 8".to_string()),
+                current_job: Some("Coach"),
+            },
+        ]
+    );
 }

@@ -292,7 +292,7 @@ export function fixtureStaffAssignmentOptimization(
         name: "Alex Coach",
         preferredJob: "Assistant Manager",
         jobSource: "preferred_job",
-        classification: "current_staff",
+        action: { kind: "keep" },
         score: 82,
         coachRequirement: null,
       },
@@ -314,6 +314,7 @@ export function fixtureStaffAssignmentOptimization(
     ],
     evidence: [],
     skipped: [],
+    surplus: [],
     ...overrides,
   };
 }

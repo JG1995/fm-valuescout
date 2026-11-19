@@ -126,7 +126,7 @@ pub fn get_role_reference(
 ) -> Result<RoleReference, String> {
     let snapshot_id = current_snapshot_id(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
-    let club_name = managed_club_service::selected_club(conn, save_id)?
+    managed_club_service::selected_club(conn, save_id)?
         .ok_or_else(|| "No managed club configured for this save".to_string())?;
     let tactic = tactic::load_tactic(conn, save_id)?;
     let lane_roles = tactic
@@ -150,7 +150,7 @@ pub fn get_role_reference(
         .iter()
         .map(|(_, role, _)| role.role_id)
         .collect::<BTreeSet<_>>();
-    let players = load_players(conn, snapshot_id, &club_name, &role_ids)?;
+    let players = load_players(conn, save_id, snapshot_id, &role_ids)?;
     let rankings = load_slot_rankings(conn, snapshot_id, &tactic)?;
     let mut assigned = (0..tactic.lanes.len())
         .map(|_| Vec::new())
@@ -239,8 +239,8 @@ pub fn get_role_reference(
 
 fn load_players(
     conn: &Connection,
+    save_id: i64,
     snapshot_id: i64,
-    club_name: &str,
     role_ids: &BTreeSet<&str>,
 ) -> Result<Vec<PlayerInput>, String> {
     let current_columns = role_ids
@@ -265,13 +265,14 @@ fn load_players(
              p.positions_json,
              {PLAYER_METRICS_ALIAS}.score_model_version IS NOT NULL{metric_select}
          FROM players p{}
-         WHERE p.snapshot_id = ?1 AND p.current_club = ?2
+         WHERE p.snapshot_id = ?1 AND {}
          ORDER BY p.uid",
-        player_metrics_join("p", true, true)
+        player_metrics_join("p", true, true),
+        managed_club_service::managed_club_player_sql("p", "?2")
     );
     let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map(params![snapshot_id, club_name], |row| {
+        .query_map(params![snapshot_id, save_id], |row| {
             let has_compact_row = row.get::<_, bool>(4)?;
             let current_scores = (0..role_ids.len())
                 .map(|index| row.get::<_, Option<u8>>(index + 5))

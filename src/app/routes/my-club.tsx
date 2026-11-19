@@ -1,5 +1,4 @@
 import {
-  useIsFetching,
   useIsMutating,
   useMutation,
   useQuery,
@@ -76,6 +75,7 @@ import {
   isStaffSortDir,
   isStaffSortField,
 } from "@/features/staff/types/staff-sort";
+import { useIsRefetchingInvalidated } from "@/lib/use-is-refetching-invalidated";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { isValidTacticLaneId } from "@/utils/tactic-ids";
 
@@ -289,8 +289,9 @@ function MyClubPageContent() {
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const savesQuery = useQuery(savesQueryOptions);
   const activeSave = savesQuery.data?.find((save) => save.isActive);
+  const isSavesRefreshing = useIsRefetchingInvalidated(snapshotKeys.saves());
   const activeClubDnaContext =
-    savesQuery.isSuccess && !savesQuery.isFetching && activeSave
+    savesQuery.isSuccess && !isSavesRefreshing && activeSave
       ? { saveId: activeSave.id, contextToken: activeSave.contextToken }
       : null;
   const activeClubDnaContextRef = useRef<ClubDnaContext | null>(
@@ -373,12 +374,11 @@ function MyClubPageContent() {
       boostSquadWonderkidMentality(onProgress),
     onSuccess: invalidateSquadBoostQueries,
   });
-  const isPlannerRefreshing = useIsFetching({ queryKey: plannerKeys.all }) > 0;
-  const isSnapshotRefreshing =
-    useIsFetching({ queryKey: snapshotKeys.all }) > 0;
-  const isSavesRefreshing = savesQuery.isFetching;
-  const isManagedClubRefreshing =
-    useIsFetching({ queryKey: managedClubKeys.all }) > 0;
+  const isPlannerRefreshing = useIsRefetchingInvalidated(plannerKeys.all);
+  const isSnapshotRefreshing = useIsRefetchingInvalidated(snapshotKeys.all);
+  const isManagedClubRefreshing = useIsRefetchingInvalidated(
+    managedClubKeys.all,
+  );
   const activeSaveRefreshError =
     savesQuery.isError ||
     snapshotRefreshError ||

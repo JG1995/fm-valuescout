@@ -440,6 +440,24 @@ pub(super) fn set_player_club(conn: &Connection, save_id: i64, player_uid: i64, 
     .expect("set player club");
 }
 
+/// Moves the player to a namesake of the managed club: another club with the same name.
+pub(super) fn move_to_namesake_club(conn: &Connection, save_id: i64, player_uid: i64) {
+    conn.execute(
+        "UPDATE players SET current_club_uid = 3000 WHERE snapshot_id = ?1 AND uid = ?2",
+        params![current_snapshot_id(conn, save_id), player_uid],
+    )
+    .expect("move player to namesake club");
+}
+
+/// Clears the managed club's UID, as for a club chosen before UIDs were recorded.
+pub(super) fn forget_managed_club_uid(conn: &Connection, save_id: i64) {
+    conn.execute(
+        "UPDATE managed_club_settings SET club_uid = NULL WHERE save_id = ?1",
+        [save_id],
+    )
+    .expect("forget managed club UID");
+}
+
 /// Gives the player one current and one potential score in both roles of a lane of the
 /// default tactic. His positions decide whether he can play it.
 pub(super) fn set_lane_scores(

@@ -5,10 +5,10 @@ use rusqlite::params;
 use super::role_reference::{get_role_reference, RoleReferenceBasis, RoleReferencePhase};
 use super::tactic;
 use super::test_support::{
-    add_picker_candidates, current_snapshot_id, deny_potential_writes, open_with_snapshot,
-    planner_potential_state, seed_players, set_player_attributes, set_player_club,
-    set_player_positions, set_player_preferred_foot, set_potential_role_score,
-    set_right_winger_scores, set_role_score,
+    add_picker_candidates, current_snapshot_id, deny_potential_writes, forget_managed_club_uid,
+    move_to_namesake_club, open_with_snapshot, planner_potential_state, seed_players,
+    set_player_attributes, set_player_club, set_player_positions, set_player_preferred_foot,
+    set_potential_role_score, set_right_winger_scores, set_role_score,
 };
 
 fn seeded_snapshot() -> (tempfile::TempDir, rusqlite::Connection, i64) {
@@ -491,6 +491,37 @@ fn existing_assignments_and_team_age_do_not_filter_reference_players() {
     .expect("role reference");
 
     assert_eq!(lane(&reference, "right_winger").players[0].player_uid, 77);
+}
+
+#[test]
+fn a_namesake_clubs_player_is_left_out_of_the_role_reference() {
+    let (temp_dir, mut conn, save_id) = seeded_snapshot();
+    seed_players(&temp_dir, &mut conn, save_id, &[77, 201]);
+    move_to_namesake_club(&conn, save_id, 201);
+    let listed_uids = |conn: &rusqlite::Connection| {
+        let reference = get_role_reference(
+            conn,
+            save_id,
+            RoleReferencePhase::InPossession,
+            RoleReferenceBasis::Current,
+        )
+        .expect("role reference");
+        let mut uids = reference
+            .lanes
+            .iter()
+            .flat_map(|lane| &lane.players)
+            .chain(&reference.no_eligible)
+            .map(|player| player.player_uid)
+            .collect::<Vec<_>>();
+        uids.sort_unstable();
+        uids
+    };
+
+    assert_eq!(listed_uids(&conn), [77]);
+
+    // A club chosen before UIDs were recorded matches by name.
+    forget_managed_club_uid(&conn, save_id);
+    assert_eq!(listed_uids(&conn), [77, 201]);
 }
 
 #[test]
