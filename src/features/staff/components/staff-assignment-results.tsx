@@ -1,14 +1,6 @@
-import {
-  Building2,
-  ChevronDown,
-  ChevronUp,
-  RotateCcw,
-  TriangleAlert,
-  UserX,
-} from "lucide-react";
-import { Fragment, useId, useState } from "react";
+import { Building2, RotateCcw, TriangleAlert, UserX } from "lucide-react";
+import { Fragment, useId } from "react";
 import { Button } from "@/components/ui/button/button";
-import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { StatusChip } from "@/components/ui/status-chip/status-chip";
 import type {
@@ -70,10 +62,7 @@ export function StaffAssignmentResults({
   onSetSkip,
   skipDisabled,
 }: StaffAssignmentResultsProps) {
-  const [expanded, setExpanded] = useState(true);
-  const bodyId = useId();
   const skippedHeadingId = useId();
-  const ToggleIcon = expanded ? ChevronUp : ChevronDown;
   const filledSlotCount = result.slots.filter(
     (slot) => slot.kind === "recommendation",
   ).length;
@@ -90,245 +79,224 @@ export function StaffAssignmentResults({
   ).length;
 
   return (
-    <Panel
-      title="Assignment recommendations"
-      actions={
-        <Button
-          variant="ghost"
-          icon={ToggleIcon}
-          aria-label={`${expanded ? "Collapse" : "Expand"} assignment recommendations`}
-          aria-controls={bodyId}
-          aria-expanded={expanded}
-          className="gap-1 px-2"
-          onClick={() => setExpanded((current) => !current)}
-        >
-          {expanded ? "Collapse" : "Expand"}
-        </Button>
-      }
-      className="w-full shrink-0 basis-full"
-    >
-      <div id={bodyId} hidden={!expanded} className="space-y-3">
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            ["Filled slots", filledSlotCount],
-            ["Vacancies", vacancyCount],
-            ["Current staff", currentStaffCount],
-            ["Recruits", recruitCount],
-          ].map(([label, count]) => (
-            <div key={label}>
-              <dt className="text-label-md text-on-surface-variant">{label}</dt>
-              <dd className="text-headline-sm text-on-surface">{count}</dd>
-            </div>
-          ))}
-        </dl>
-        <p className="text-body-sm text-on-surface-variant">
-          {result.joinedCandidateCount} candidate
-          {result.joinedCandidateCount === 1 ? "" : "s"} from the shortlist and
-          current staff; {result.configuredSlotCount} configured slot
-          {result.configuredSlotCount === 1 ? "" : "s"}.
-        </p>
-        {result.slots.length > 0 ? (
-          <div className="max-h-80 overflow-auto rounded-lg border border-outline-variant">
-            <table className="w-full text-left text-body-sm text-on-surface">
-              <caption className="sr-only">
-                Staff assignment recommendations and vacancies
-              </caption>
-              <thead className="sticky top-0 z-10 bg-surface-container-lowest text-label-md text-on-surface-variant">
-                <tr>
-                  <th scope="col" className="px-2 py-2">
-                    Target
-                  </th>
-                  <th scope="col" className="px-2 py-2">
-                    Person
-                  </th>
-                  <th scope="col" className="px-2 py-2 text-right">
-                    Score
-                  </th>
-                  <th scope="col" className="px-2 py-2">
-                    Evidence
-                  </th>
-                  <th scope="col" className="px-2 py-2">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {groupAdjacentSlots(result.slots).map((group) => (
-                  <Fragment
-                    key={`${group.displayName}:${group.slots[0].jobId}:${group.slots[0].slotNumber}`}
-                  >
-                    <tr>
-                      <th
-                        scope="rowgroup"
-                        colSpan={5}
-                        className="bg-surface-container-high px-2 py-2 text-label-md text-on-surface"
-                      >
-                        {group.displayName}:{" "}
-                        {
-                          group.slots.filter(
-                            (slot) => slot.kind === "recommendation",
-                          ).length
-                        }{" "}
-                        of {group.slots.length} filled
-                      </th>
-                    </tr>
-                    {group.slots.map((slot) => (
-                      <tr
-                        key={`${slot.scope}:${slot.jobId}:${slot.slotNumber}`}
-                        className="border-t border-outline-variant"
-                      >
-                        <td className="px-2 py-2">
-                          {slot.jobLabel} · Slot {slot.slotNumber}
-                        </td>
-                        {slot.kind === "recommendation" ? (
-                          <>
-                            <td
-                              className="max-w-48 px-2 py-2"
-                              title={slot.name ?? undefined}
-                            >
-                              <span className="flex min-w-0 items-center gap-1">
-                                {slot.classification === "current_staff" ? (
-                                  <Building2
-                                    aria-label="Current staff"
-                                    className="size-3.5 shrink-0 text-info"
-                                    role="img"
-                                  />
-                                ) : null}
-                                <span
-                                  className={`truncate ${slot.classification === "current_staff" ? "font-medium text-info" : ""}`}
-                                >
-                                  {slot.name ?? "—"}
-                                </span>
-                              </span>
-                            </td>
-                            <td className="px-2 py-2 text-right">
-                              <ScoreBadge
-                                score={slot.score}
-                                roleName={slot.jobLabel}
-                              />
-                            </td>
-                            <td className="px-2 py-2 text-on-surface-variant">
-                              {slot.jobSource === "current_job"
-                                ? "Current job"
-                                : "Preferred Job"}
-                              : {slot.preferredJob}. Eligible for this target.
-                              {slot.coachRequirement
-                                ? ` ${coachRequirementText(slot.coachRequirement)}`
-                                : null}
-                            </td>
-                            <td className="px-2 py-2 text-right">
-                              <Button
-                                variant="ghost"
-                                icon={UserX}
-                                aria-label={`Skip ${slot.name ?? `staff ${slot.uid}`} for ${slot.scopeDisplayName} ${slot.jobLabel} slot ${slot.slotNumber}`}
-                                disabled={skipDisabled}
-                                className="gap-1 px-2"
-                                onClick={() => onSetSkip(slot.uid, true)}
-                              >
-                                Skip
-                              </Button>
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td className="px-2 py-2">
-                              <StatusChip tone="warning" icon={TriangleAlert}>
-                                Vacancy
-                              </StatusChip>
-                            </td>
-                            <td className="px-2 py-2 text-right">—</td>
-                            <td className="space-y-2 px-2 py-2 text-on-surface-variant">
-                              <p>No eligible candidate filled this slot.</p>
-                              {slot.coachRequirement ? (
-                                <p>
-                                  {coachRequirementText(slot.coachRequirement)}
-                                </p>
-                              ) : null}
-                              <details>
-                                <summary className="cursor-pointer text-on-surface">
-                                  Show assignment evidence
-                                </summary>
-                                <p className="mt-2">
-                                  {evidenceCountsText(slot)}
-                                </p>
-                              </details>
-                              <div className="flex flex-wrap gap-2">
-                                <Button
-                                  variant="secondary"
-                                  onClick={onRequestConfiguration}
-                                >
-                                  Adjust staffing needs
-                                </Button>
-                                <Button
-                                  variant="secondary"
-                                  onClick={onReviewShortlist}
-                                >
-                                  Review shortlist
-                                </Button>
-                              </div>
-                            </td>
-                            <td />
-                          </>
-                        )}
-                      </tr>
-                    ))}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
+    <div className="space-y-3">
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          ["Filled slots", filledSlotCount],
+          ["Vacancies", vacancyCount],
+          ["Current staff", currentStaffCount],
+          ["Recruits", recruitCount],
+        ].map(([label, count]) => (
+          <div key={label}>
+            <dt className="text-label-md text-on-surface-variant">{label}</dt>
+            <dd className="text-headline-sm text-on-surface">{count}</dd>
           </div>
-        ) : (
-          <p role="status" className="text-body-md text-on-surface-variant">
-            No assignment slots are configured.
-          </p>
-        )}
-        {result.skipped.length > 0 ? (
-          <section aria-labelledby={skippedHeadingId} className="space-y-2">
-            <h3
-              id={skippedHeadingId}
-              className="text-label-md text-on-surface-variant"
-            >
-              Skipped staff
-            </h3>
-            <p className="text-body-sm text-on-surface-variant">
-              Skipped people stay out of every assignment until you restore
-              them.
-            </p>
-            <ul className="flex flex-wrap gap-2">
-              {result.skipped.map((skip) => {
-                const name = skip.name ?? `Staff ${skip.uid}`;
-                return (
-                  <li
-                    key={skip.uid}
-                    className="flex items-center gap-1 rounded-md border border-outline-variant py-0.5 pr-0.5 pl-2 text-body-sm text-on-surface"
-                  >
-                    <span className="max-w-48 truncate" title={name}>
-                      {name}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      icon={RotateCcw}
-                      aria-label={`Restore ${name}`}
-                      disabled={skipDisabled}
-                      className="gap-1 px-2"
-                      onClick={() => onSetSkip(skip.uid, false)}
+        ))}
+      </dl>
+      <p className="text-body-sm text-on-surface-variant">
+        {result.joinedCandidateCount} candidate
+        {result.joinedCandidateCount === 1 ? "" : "s"} from the shortlist and
+        current staff; {result.configuredSlotCount} configured slot
+        {result.configuredSlotCount === 1 ? "" : "s"}.
+      </p>
+      {result.slots.length > 0 ? (
+        <div className="max-h-[min(28rem,50vh)] overflow-auto rounded-lg border border-outline-variant">
+          <table className="w-full text-left text-body-sm text-on-surface">
+            <caption className="sr-only">
+              Staff assignment recommendations and vacancies
+            </caption>
+            <thead className="sticky top-0 z-10 bg-surface-container-lowest text-label-md text-on-surface-variant">
+              <tr>
+                <th scope="col" className="px-2 py-2">
+                  Target
+                </th>
+                <th scope="col" className="px-2 py-2">
+                  Person
+                </th>
+                <th scope="col" className="px-2 py-2 text-right">
+                  Score
+                </th>
+                <th scope="col" className="px-2 py-2">
+                  Evidence
+                </th>
+                <th scope="col" className="px-2 py-2">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {groupAdjacentSlots(result.slots).map((group) => (
+                <Fragment
+                  key={`${group.displayName}:${group.slots[0].jobId}:${group.slots[0].slotNumber}`}
+                >
+                  <tr>
+                    <th
+                      scope="rowgroup"
+                      colSpan={5}
+                      className="bg-surface-container-high px-2 py-2 text-label-md text-on-surface"
                     >
-                      Restore
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ) : null}
-        {result.unsupportedPreferredJobCount > 0 ? (
+                      {group.displayName}:{" "}
+                      {
+                        group.slots.filter(
+                          (slot) => slot.kind === "recommendation",
+                        ).length
+                      }{" "}
+                      of {group.slots.length} filled
+                    </th>
+                  </tr>
+                  {group.slots.map((slot) => (
+                    <tr
+                      key={`${slot.scope}:${slot.jobId}:${slot.slotNumber}`}
+                      className="border-t border-outline-variant"
+                    >
+                      <td className="px-2 py-2">
+                        {slot.jobLabel} · Slot {slot.slotNumber}
+                      </td>
+                      {slot.kind === "recommendation" ? (
+                        <>
+                          <td
+                            className="max-w-48 px-2 py-2"
+                            title={slot.name ?? undefined}
+                          >
+                            <span className="flex min-w-0 items-center gap-1">
+                              {slot.classification === "current_staff" ? (
+                                <Building2
+                                  aria-label="Current staff"
+                                  className="size-3.5 shrink-0 text-info"
+                                  role="img"
+                                />
+                              ) : null}
+                              <span
+                                className={`truncate ${slot.classification === "current_staff" ? "font-medium text-info" : ""}`}
+                              >
+                                {slot.name ?? "—"}
+                              </span>
+                            </span>
+                          </td>
+                          <td className="px-2 py-2 text-right">
+                            <ScoreBadge
+                              score={slot.score}
+                              roleName={slot.jobLabel}
+                            />
+                          </td>
+                          <td className="px-2 py-2 text-on-surface-variant">
+                            {slot.jobSource === "current_job"
+                              ? "Current job"
+                              : "Preferred Job"}
+                            : {slot.preferredJob}. Eligible for this target.
+                            {slot.coachRequirement
+                              ? ` ${coachRequirementText(slot.coachRequirement)}`
+                              : null}
+                          </td>
+                          <td className="px-2 py-2 text-right">
+                            <Button
+                              variant="ghost"
+                              icon={UserX}
+                              aria-label={`Skip ${slot.name ?? `staff ${slot.uid}`} for ${slot.scopeDisplayName} ${slot.jobLabel} slot ${slot.slotNumber}`}
+                              disabled={skipDisabled}
+                              className="gap-1 px-2"
+                              onClick={() => onSetSkip(slot.uid, true)}
+                            >
+                              Skip
+                            </Button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-2 py-2">
+                            <StatusChip tone="warning" icon={TriangleAlert}>
+                              Vacancy
+                            </StatusChip>
+                          </td>
+                          <td className="px-2 py-2 text-right">—</td>
+                          <td className="space-y-2 px-2 py-2 text-on-surface-variant">
+                            <p>No eligible candidate filled this slot.</p>
+                            {slot.coachRequirement ? (
+                              <p>
+                                {coachRequirementText(slot.coachRequirement)}
+                              </p>
+                            ) : null}
+                            <details>
+                              <summary className="cursor-pointer text-on-surface">
+                                Show assignment evidence
+                              </summary>
+                              <p className="mt-2">{evidenceCountsText(slot)}</p>
+                            </details>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                variant="secondary"
+                                onClick={onRequestConfiguration}
+                              >
+                                Adjust staffing needs
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                onClick={onReviewShortlist}
+                              >
+                                Review shortlist
+                              </Button>
+                            </div>
+                          </td>
+                          <td />
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p role="status" className="text-body-md text-on-surface-variant">
+          No assignment slots are configured.
+        </p>
+      )}
+      {result.skipped.length > 0 ? (
+        <section aria-labelledby={skippedHeadingId} className="space-y-2">
+          <h3
+            id={skippedHeadingId}
+            className="text-label-md text-on-surface-variant"
+          >
+            Skipped staff
+          </h3>
           <p className="text-body-sm text-on-surface-variant">
-            {result.unsupportedPreferredJobCount} shortlisted person
-            {result.unsupportedPreferredJobCount === 1 ? " has" : "s have"} an
-            unsupported Preferred Job and cannot fill an assignment target.
+            Skipped people stay out of every assignment until you restore them.
           </p>
-        ) : null}
-      </div>
-    </Panel>
+          <ul className="flex flex-wrap gap-2">
+            {result.skipped.map((skip) => {
+              const name = skip.name ?? `Staff ${skip.uid}`;
+              return (
+                <li
+                  key={skip.uid}
+                  className="flex items-center gap-1 rounded-md border border-outline-variant py-0.5 pr-0.5 pl-2 text-body-sm text-on-surface"
+                >
+                  <span className="max-w-48 truncate" title={name}>
+                    {name}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    icon={RotateCcw}
+                    aria-label={`Restore ${name}`}
+                    disabled={skipDisabled}
+                    className="gap-1 px-2"
+                    onClick={() => onSetSkip(skip.uid, false)}
+                  >
+                    Restore
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+      {result.unsupportedPreferredJobCount > 0 ? (
+        <p className="text-body-sm text-on-surface-variant">
+          {result.unsupportedPreferredJobCount} shortlisted person
+          {result.unsupportedPreferredJobCount === 1 ? " has" : "s have"} an
+          unsupported Preferred Job and cannot fill an assignment target.
+        </p>
+      ) : null}
+    </div>
   );
 }

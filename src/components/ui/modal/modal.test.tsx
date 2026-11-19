@@ -52,3 +52,46 @@ describe("Modal focus lifecycle", () => {
     },
   );
 });
+
+function HandoffHarness() {
+  const [step, setStep] = useState<"closed" | "first" | "second">("closed");
+  return (
+    <>
+      <button type="button" onClick={() => setStep("first")}>
+        Open first
+      </button>
+      <Modal
+        open={step === "first"}
+        title="First"
+        onClose={() => setStep("closed")}
+      >
+        <button type="button" onClick={() => setStep("second")}>
+          Continue
+        </button>
+      </Modal>
+      <Modal
+        open={step === "second"}
+        title="Second"
+        onClose={() => setStep("closed")}
+      >
+        <input aria-label="Second field" />
+      </Modal>
+    </>
+  );
+}
+
+describe("Modal handoff", () => {
+  it("leaves focus in a dialog that opened as it closed", async () => {
+    const user = userEvent.setup();
+    render(<HandoffHarness />);
+
+    await user.click(screen.getByRole("button", { name: "Open first" }));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    const field = await screen.findByRole("textbox", { name: "Second field" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "First" })).toBeNull(),
+    );
+
+    expect(field).toHaveFocus();
+  });
+});

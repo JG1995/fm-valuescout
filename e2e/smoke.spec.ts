@@ -1043,7 +1043,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
-  test("Staff Shortlist configures assignment recommendations and clears them after snapshot replacement", async ({
+  test("Staff Shortlist configures staffing needs and reviews assignment recommendations in a dialog", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
@@ -1153,13 +1153,17 @@ test.describe("application smoke", () => {
     await expect(scout).toHaveValue("1");
     await dialog.getByRole("button", { name: "Cancel" }).click();
 
-    await main.getByRole("button", { name: "Optimize assignments" }).click();
-    const assignments = main.getByRole("table", {
+    const optimize = main.getByRole("button", { name: "Optimize assignments" });
+    await optimize.click();
+    const results = page.getByRole("dialog", {
+      name: "Assignment recommendations",
+    });
+    const assignments = results.getByRole("table", {
       name: "Staff assignment recommendations and vacancies",
     });
     await expect(assignments).toBeVisible();
     await expect(
-      main.getByText(
+      results.getByText(
         "5 candidates from the shortlist and current staff; 4 configured slots.",
       ),
     ).toBeVisible();
@@ -1230,7 +1234,7 @@ test.describe("application smoke", () => {
     await assignments
       .getByRole("button", { name: "Skip Riley Scout for Club Scout slot 1" })
       .click();
-    const skipped = main.getByRole("region", { name: "Skipped staff" });
+    const skipped = results.getByRole("region", { name: "Skipped staff" });
     await expect(skipped).toContainText("Riley Scout");
     await expect(
       assignments.getByRole("rowheader", { name: "Club: 0 of 1 filled" }),
@@ -1241,27 +1245,8 @@ test.describe("application smoke", () => {
       assignments.getByRole("rowheader", { name: "Club: 1 of 1 filled" }),
     ).toBeVisible();
 
-    const collapse = main.getByRole("button", {
-      name: "Collapse assignment recommendations",
-    });
-    const bodyId = await collapse.getAttribute("aria-controls");
-    await expect(collapse).toHaveAttribute("aria-expanded", "true");
-    await expect(collapse.getByText("Collapse")).toBeVisible();
-    await collapse.click();
-    const expand = main.getByRole("button", {
-      name: "Expand assignment recommendations",
-    });
-    await expect(expand).toHaveAttribute("aria-expanded", "false");
-    await expect(expand.getByText("Expand")).toBeVisible();
-    await expect(expand).toHaveAttribute("aria-controls", bodyId ?? "");
-    await expect(assignments).toBeHidden();
-    await expect(main.getByText("Alex Assistant")).toBeHidden();
-    await expand.click();
-    await expect(assignments).toBeVisible();
-    await expect(assignments).toContainText("Alex Assistant");
-
     const resultScroller = assignments.locator(
-      "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' max-h-80 ')]",
+      "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' overflow-auto ')][1]",
     );
     await expect(resultScroller).toHaveCount(1);
     const scrollState = await resultScroller.evaluate((element) => {
@@ -1296,24 +1281,26 @@ test.describe("application smoke", () => {
       scrollState.scrollerBottom,
     );
 
-    const assignmentPanel = assignments.locator("xpath=ancestor::section[1]");
     for (const [width, height] of [
       [1280, 800],
       [1600, 900],
     ] as const) {
       await page.setViewportSize({ width, height });
       await expect(assignments).toBeVisible();
-      const [assignmentPanelBox, mainBox] = await Promise.all([
-        assignmentPanel.boundingBox(),
-        main.boundingBox(),
-      ]);
-      expect(assignmentPanelBox).not.toBeNull();
-      expect(mainBox).not.toBeNull();
-      expect(assignmentPanelBox?.x).toBeCloseTo((mainBox?.x ?? 0) + 16, 0);
+      const resultsBox = await results.boundingBox();
+      expect(resultsBox).not.toBeNull();
+      expect(resultsBox?.x).toBeGreaterThanOrEqual(16);
       expect(
-        (assignmentPanelBox?.x ?? 0) + (assignmentPanelBox?.width ?? 0),
-      ).toBeCloseTo((mainBox?.x ?? 0) + (mainBox?.width ?? 0) - 16, 0);
+        (resultsBox?.x ?? 0) + (resultsBox?.width ?? 0),
+      ).toBeLessThanOrEqual(width - 16);
+      expect(
+        (resultsBox?.y ?? 0) + (resultsBox?.height ?? 0),
+      ).toBeLessThanOrEqual(height);
     }
+
+    await page.keyboard.press("Escape");
+    await expect(results).toHaveCount(0);
+    await expect(optimize).toBeFocused();
 
     await page
       .getByTestId("app-header")
@@ -1322,10 +1309,8 @@ test.describe("application smoke", () => {
     await expect(
       page.getByText("Loaded 4 players into the database."),
     ).toBeVisible();
-    await expect(assignments).toHaveCount(0);
-    await expect(
-      main.getByRole("button", { name: "Optimize assignments" }),
-    ).toBeEnabled();
+    await expect(results).toHaveCount(0);
+    await expect(optimize).toBeEnabled();
   });
 
   test("Staff Shortlist renders standalone Club sections without Senior", async ({

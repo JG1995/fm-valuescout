@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
+import { Modal } from "@/components/ui/modal/modal";
 import { optimizeStaffAssignments } from "../api/optimize-staff-assignments";
 import { setStaffAssignmentSkip } from "../api/set-staff-assignment-skip";
 import { staffAssignmentTargetsQueryOptions } from "../api/staff-assignment-targets-query-options";
@@ -97,6 +98,9 @@ export function StaffAssignmentOptimizer({
     staffAssignmentTargetsQueryOptions(context, contextKey),
   );
   const [modalOpen, setModalOpen] = useState(false);
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const [resultsReturnFocus, setResultsReturnFocus] =
+    useState<HTMLElement | null>(null);
   const currentContext = useRef(context);
   const currentContextKey = useRef(contextKey);
   const previousContextKey = useRef(contextKey);
@@ -177,6 +181,7 @@ export function StaffAssignmentOptimizer({
     setResult(null);
     setError(null);
     setModalStatus({ saved: false, error: null });
+    setResultsOpen(false);
     resetOptimize();
   }, [resetOptimize]);
 
@@ -220,7 +225,10 @@ export function StaffAssignmentOptimizer({
       ? result.value
       : null;
   const message = currentResult ? setupMessage(currentResult) : null;
-  const statusError = modalStatus.error ?? error;
+  const readyResult = currentResult?.state === "ready" ? currentResult : null;
+  const resultsVisible = resultsOpen && readyResult !== null;
+  // The results dialog reports its own skip errors.
+  const statusError = modalStatus.error ?? (resultsVisible ? null : error);
   const statusSuccess = modalStatus.saved;
 
   return (
@@ -255,8 +263,10 @@ export function StaffAssignmentOptimizer({
           disabled={Boolean(optimizeDisabledReason) || targetSavePending}
           loading={optimize.isPending}
           loadingLabel="Optimizing…"
-          onClick={() => {
+          onClick={(event) => {
+            setResultsReturnFocus(event.currentTarget);
             resetOutcome();
+            setResultsOpen(true);
             optimize.mutate({
               contextKey,
               generation: requestGeneration.current,
@@ -300,24 +310,44 @@ export function StaffAssignmentOptimizer({
           </p>
         ) : null}
       </div>
-      {currentResult?.state === "ready" ? (
-        <StaffAssignmentResults
-          result={currentResult}
-          onRequestConfiguration={() => setModalOpen(true)}
-          onReviewShortlist={onReviewShortlist}
-          onSetSkip={(uid, skipped) => {
-            setError(null);
-            skip.mutate({
-              contextKey,
-              generation: requestGeneration.current,
-              saveContextToken: context.saveContextToken,
-              uid,
-              skipped,
-            });
-          }}
-          skipDisabled={skip.isPending || optimize.isPending}
-        />
-      ) : null}
+      <Modal
+        open={resultsVisible}
+        onClose={() => setResultsOpen(false)}
+        title="Assignment recommendations"
+        variant="informational"
+        className="max-w-[64rem]!"
+        returnFocusTo={resultsReturnFocus}
+      >
+        {error ? (
+          <p role="alert" className="pb-3 text-body-sm text-error">
+            {error}
+          </p>
+        ) : null}
+        {readyResult ? (
+          <StaffAssignmentResults
+            result={readyResult}
+            onRequestConfiguration={() => {
+              setResultsOpen(false);
+              setModalOpen(true);
+            }}
+            onReviewShortlist={() => {
+              setResultsOpen(false);
+              onReviewShortlist();
+            }}
+            onSetSkip={(uid, skipped) => {
+              setError(null);
+              skip.mutate({
+                contextKey,
+                generation: requestGeneration.current,
+                saveContextToken: context.saveContextToken,
+                uid,
+                skipped,
+              });
+            }}
+            skipDisabled={skip.isPending || optimize.isPending}
+          />
+        ) : null}
+      </Modal>
     </div>
   );
 }

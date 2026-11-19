@@ -114,6 +114,7 @@ export function StaffAssignmentTargetModal({
   const [saved, setSaved] = useState(false);
   const previousOpen = useRef(resolvedOpen);
   const controlIdPrefix = useId();
+  const configureButtonId = useId();
   const currentContextKey = useRef(contextKey);
   const previousContextKey = useRef(contextKey);
   const requestGeneration = useRef(0);
@@ -289,6 +290,7 @@ export function StaffAssignmentTargetModal({
   return (
     <>
       <Button
+        id={configureButtonId}
         variant="secondary"
         disabled={resolvedPending || resolvedError !== null || pending}
         onClick={openModal}
@@ -309,6 +311,9 @@ export function StaffAssignmentTargetModal({
         open={resolvedOpen}
         title="Configure staffing needs"
         onClose={closeModal}
+        // Adjust staffing needs opens this dialog from the results dialog,
+        // which is gone by the time this one closes.
+        fallbackFocusTo={() => document.getElementById(configureButtonId)}
         footer={
           <>
             <Button variant="secondary" disabled={pending} onClick={closeModal}>

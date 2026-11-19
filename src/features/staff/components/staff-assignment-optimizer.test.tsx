@@ -284,60 +284,68 @@ describe("StaffAssignmentOptimizer", () => {
       screen.getAllByText(/Preferred Job: Coach\. Eligible for this target\./),
     ).toHaveLength(2);
 
-    const configure = screen.getByRole("button", {
-      name: "Adjust staffing needs",
+    await user.click(
+      screen.getByRole("button", { name: "Adjust staffing needs" }),
+    );
+    const staffingDialog = await screen.findByRole("dialog", {
+      name: "Configure staffing needs",
     });
-    await user.click(configure);
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Assignment recommendations" }),
+      ).toBeNull(),
+    );
+    expect(staffingDialog).toContainElement(
+      document.activeElement as HTMLElement,
+    );
     await user.click(screen.getByRole("button", { name: "Cancel" }));
-    await user.click(screen.getByRole("button", { name: "Review shortlist" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Configure staffing needs" }),
+      ).toHaveFocus(),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Review shortlist" }),
+    );
     expect(onReviewShortlist).toHaveBeenCalledOnce();
-    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Assignment recommendations" }),
+      ).toBeNull(),
+    );
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(2);
   });
 
-  it("collapses assignment recommendations accessibly without optimizing again", async () => {
+  it("opens recommendations in a dialog that returns focus to Optimize when closed", async () => {
     const user = userEvent.setup();
     renderOptimizer();
-
-    await user.click(
-      screen.getByRole("button", { name: "Optimize assignments" }),
-    );
-    const collapse = await screen.findByRole("button", {
-      name: "Collapse assignment recommendations",
+    const optimize = screen.getByRole("button", {
+      name: "Optimize assignments",
     });
-    const bodyId = collapse.getAttribute("aria-controls");
-    const body = bodyId ? document.getElementById(bodyId) : null;
 
-    expect(collapse).toHaveAttribute("aria-expanded", "true");
-    expect(within(collapse).getByText("Collapse")).toBeVisible();
-    expect(body).toBeVisible();
-    expect(body).toHaveTextContent("Alex Coach");
-    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
-
-    await user.click(collapse);
-
-    const expand = screen.getByRole("button", {
-      name: "Expand assignment recommendations",
+    await user.click(optimize);
+    const dialog = await screen.findByRole("dialog", {
+      name: "Assignment recommendations",
     });
-    expect(expand).toHaveAttribute("aria-expanded", "false");
-    expect(within(expand).getByText("Expand")).toBeVisible();
-    expect(expand).toHaveAttribute("aria-controls", bodyId);
-    expect(body).not.toBeVisible();
-    expect(body).toHaveTextContent("Alex Coach");
-    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
-
-    await user.click(expand);
-
+    expect(within(dialog).getByText("Alex Coach")).toBeVisible();
     expect(
-      screen.getByRole("button", {
-        name: "Collapse assignment recommendations",
+      within(dialog).getByRole("table", {
+        name: "Staff assignment recommendations and vacancies",
       }),
-    ).toHaveAttribute("aria-expanded", "true");
-    expect(body).toBeVisible();
+    ).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(optimize).toHaveFocus());
     expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
   });
 
-  it("reopens a newly accepted result after the prior result was collapsed", async () => {
+  it("opens a newly accepted result after the prior dialog closed", async () => {
     const user = userEvent.setup();
     renderOptimizer();
 
@@ -345,10 +353,13 @@ describe("StaffAssignmentOptimizer", () => {
       screen.getByRole("button", { name: "Optimize assignments" }),
     );
     await user.click(
-      await screen.findByRole("button", {
-        name: "Collapse assignment recommendations",
-      }),
+      within(
+        await screen.findByRole("dialog", {
+          name: "Assignment recommendations",
+        }),
+      ).getByRole("button", { name: "Close" }),
     );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     setStaffAssignmentOptimizationIpcMock(
       fixtureStaffAssignmentOptimization({
         slots: [
@@ -375,11 +386,10 @@ describe("StaffAssignmentOptimizer", () => {
       screen.getByRole("button", { name: "Optimize assignments" }),
     );
 
-    const collapse = await screen.findByRole("button", {
-      name: "Collapse assignment recommendations",
+    const dialog = await screen.findByRole("dialog", {
+      name: "Assignment recommendations",
     });
-    expect(collapse).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("Jordan Assistant")).toBeVisible();
+    expect(within(dialog).getByText("Jordan Assistant")).toBeVisible();
     expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(2);
   });
 
@@ -465,11 +475,6 @@ describe("StaffAssignmentOptimizer", () => {
       screen.getByRole("button", { name: "Optimize assignments" }),
     );
     expect(await screen.findByText("Alex Coach")).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", {
-        name: "Collapse assignment recommendations",
-      }),
-    );
 
     rerenderOptimizer(true);
 
@@ -901,9 +906,13 @@ describe("StaffAssignmentOptimizer", () => {
       }),
     );
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    const dialog = screen.getByRole("dialog", {
+      name: "Assignment recommendations",
+    });
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "Save changed or no longer exists",
     );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.getByText("Fatih Terim")).toBeInTheDocument();
     expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
   });
