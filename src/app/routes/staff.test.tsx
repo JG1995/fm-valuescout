@@ -127,6 +127,32 @@ function holdNamedStaffSearchRequests(): HeldStaffSearchRequest[] {
   return held;
 }
 
+/** Holds every `command` request until the test releases it. */
+function holdIpcCommand(command: string): (() => void)[] {
+  const internals = (
+    window as unknown as {
+      __TAURI_INTERNALS__: {
+        invoke: (
+          cmd: string,
+          args?: Record<string, unknown>,
+          options?: unknown,
+        ) => Promise<unknown>;
+      };
+    }
+  ).__TAURI_INTERNALS__;
+  const invoke = internals.invoke;
+  const held: (() => void)[] = [];
+  internals.invoke = (cmd, args, options) => {
+    if (cmd !== command) {
+      return invoke(cmd, args, options);
+    }
+    return new Promise((resolve) => {
+      held.push(() => resolve(invoke(cmd, args, options)));
+    });
+  };
+  return held;
+}
+
 describe("staff route", () => {
   beforeEach(() => {
     usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });
@@ -1412,6 +1438,84 @@ describe("staff route", () => {
       expect(
         screen.getByRole("button", { name: "Optimize assignments" }),
       ).not.toBeDisabled(),
+    );
+    expect(
+      screen.queryByRole("table", {
+        name: "Staff assignment recommendations and vacancies",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps recommendations while a background refetch rereads an unchanged save", async () => {
+    setStaffShortlistOverride([fixtureStaff()]);
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const { queryClient } = renderStaffRoute("/staff?shortlistOnly=true");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Optimize assignments" }),
+    );
+    expect(
+      await screen.findByRole("table", {
+        name: "Staff assignment recommendations and vacancies",
+      }),
+    ).toBeInTheDocument();
+
+    // A route preload refetches stale context data without invalidating it.
+    const heldSaves = holdIpcCommand("list_saves");
+    void queryClient.refetchQueries({ queryKey: snapshotKeys.saves() });
+    await waitFor(() => expect(heldSaves).toHaveLength(1));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    ).toBeEnabled();
+
+    heldSaves[0]?.();
+    await waitFor(() =>
+      expect(queryClient.isFetching({ queryKey: snapshotKeys.saves() })).toBe(
+        0,
+      ),
+    );
+    expect(
+      screen.getByRole("table", {
+        name: "Staff assignment recommendations and vacancies",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("drops recommendations while an invalidated save refetches", async () => {
+    setStaffShortlistOverride([fixtureStaff()]);
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const { queryClient } = renderStaffRoute("/staff?shortlistOnly=true");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Optimize assignments" }),
+    );
+    expect(
+      await screen.findByRole("table", {
+        name: "Staff assignment recommendations and vacancies",
+      }),
+    ).toBeInTheDocument();
+
+    const heldSaves = holdIpcCommand("list_saves");
+    void queryClient.invalidateQueries({ queryKey: snapshotKeys.saves() });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Optimize assignments" }),
+      ).toBeDisabled(),
+    );
+    expect(
+      screen.queryByRole("table", {
+        name: "Staff assignment recommendations and vacancies",
+      }),
+    ).not.toBeInTheDocument();
+
+    heldSaves[0]?.();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Optimize assignments" }),
+      ).toBeEnabled(),
     );
     expect(
       screen.queryByRole("table", {

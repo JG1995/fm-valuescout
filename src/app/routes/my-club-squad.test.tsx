@@ -951,6 +951,10 @@ describe("My Club route", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "Save Club DNA" }),
     );
+    await queryClient.invalidateQueries({
+      queryKey: savesQueryOptions.queryKey,
+      refetchType: "none",
+    });
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
 
     let resolveSaves!: (saves: SaveSummary[]) => void;
@@ -1351,6 +1355,10 @@ describe("My Club route", () => {
     const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
+    await queryClient.invalidateQueries({
+      queryKey: savesQueryOptions.queryKey,
+      refetchType: "none",
+    });
     let resolveSaves!: (value: SaveSummary[]) => void;
     const refreshedSaves = queryClient.fetchQuery({
       ...savesQueryOptions,
@@ -1367,6 +1375,34 @@ describe("My Club route", () => {
     expect(
       await screen.findByRole("table", { name: "Squad overview" }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the Squad controller through a refetch of unchanged owner data", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const table = await screen.findByRole("table", { name: "Squad overview" });
+    // A route preload refetches stale owner data without invalidating it.
+    let resolveSaves!: (value: SaveSummary[]) => void;
+    const refreshedSaves = queryClient.fetchQuery({
+      ...savesQueryOptions,
+      staleTime: 0,
+      queryFn: () =>
+        new Promise<SaveSummary[]>((resolve) => {
+          resolveSaves = resolve;
+        }),
+    });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+    expect(screen.queryByText("Loading squad overview…")).toBeNull();
+    resolveSaves(savesFor(1));
+    await refreshedSaves;
+    expect(screen.getByRole("table", { name: "Squad overview" })).toBe(table);
   });
 
   it("describes an empty configured Squad as one managed club", async () => {
@@ -4156,6 +4192,10 @@ describe("My Club route", () => {
     let resolveRefresh!: (tactic: PlannerTactic) => void;
     const refresh = new Promise<PlannerTactic>((resolve) => {
       resolveRefresh = resolve;
+    });
+    await queryClient.invalidateQueries({
+      queryKey: plannerKeys.tactic({ saveId: 1, contextToken: "save-token-1" }),
+      refetchType: "none",
     });
     const refreshRequest = queryClient.fetchQuery({
       queryKey: plannerKeys.tactic({ saveId: 1, contextToken: "save-token-1" }),
