@@ -203,7 +203,7 @@ fn loads_fm27_candidate_scores_from_the_current_pool_only() {
     )
     .expect("insert score fixtures");
 
-    let candidates = load_candidates(&conn, 1, 1, "Club A").expect("load candidates");
+    let candidates = load_candidates(&conn, 1, 1).expect("load candidates");
 
     assert_eq!(candidates.len(), 4);
     assert_eq!(candidates[0].uid, 1);
@@ -923,4 +923,54 @@ fn names_the_action_each_recommendation_needs() {
         }
     );
     assert_eq!(actions[&7], StaffAssignmentAction::Keep);
+}
+
+#[test]
+fn pools_only_staff_at_the_managed_club_uid_when_another_club_shares_its_name() {
+    let (_temp_dir, conn, save_token) = open();
+    let snapshot_token = insert_current_snapshot(&conn, 1);
+    conn.execute(
+        "INSERT INTO managed_club_settings (save_id, club_name, club_uid) VALUES (1, 'Club A', 101)",
+        [],
+    )
+    .expect("configure managed club with its UID");
+    conn.execute_batch(
+        "INSERT INTO planner_teams (save_id, team, display_name) VALUES (1, 'senior', 'First Team');
+         INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count) VALUES
+             (1, 'senior', 'assistant_manager', 1),
+             (1, 'senior', 'physio', 1);",
+    )
+    .expect("configure targets");
+    insert_staff(&conn, 1, "Our assistant", Some("Club A"));
+    set_job(&conn, 1, 20);
+    insert_staff(&conn, 2, "Namesake assistant", Some("Club A"));
+    set_job(&conn, 2, 20);
+    insert_staff(&conn, 3, "Namesake physio", Some("Club A"));
+    set_job(&conn, 3, 12);
+    shortlist(&conn, 3, "Physio");
+    conn.execute_batch(
+        "UPDATE staff SET club_uid = 101 WHERE snapshot_id = 1 AND uid = 1;
+         UPDATE staff SET club_uid = 202 WHERE snapshot_id = 1 AND uid IN (2, 3);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, assistant_manager, physio) VALUES
+             (1, 1, 1, 70, NULL),
+             (1, 2, 1, 90, NULL),
+             (1, 3, 1, NULL, 75);",
+    )
+    .expect("insert clubs and scores");
+
+    let result = optimize_staff_assignments(&conn, &save_token, &snapshot_token)
+        .expect("optimize the managed club");
+
+    assert_eq!(result.joined_candidate_count, 2);
+    assert_eq!(recommended_uid(&result, "assistant_manager"), Some(1));
+    assert!(result.slots.iter().any(|slot| matches!(
+        &slot.slot,
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 3
+                && recommendation.action
+                    == (StaffAssignmentAction::Recruit {
+                        club: Some("Club A".to_string())
+                    })
+    )));
+    assert!(result.surplus.is_empty());
 }
