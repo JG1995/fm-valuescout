@@ -4,6 +4,7 @@ use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExten
 
 use super::{fit::tactic_adjusted_score, suggested_training, tactic};
 
+use crate::features::managed_club::service::managed_club_player_sql;
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
     compact::{
@@ -146,15 +147,13 @@ pub fn list_squad_player_uids(
     snapshot_id: i64,
 ) -> Result<Vec<i64>, String> {
     let mut statement = conn
-        .prepare(
+        .prepare(&format!(
             "SELECT DISTINCT p.uid
              FROM players p
-             WHERE p.snapshot_id = ?1
-               AND p.current_club = (
-                   SELECT club_name FROM managed_club_settings WHERE save_id = ?2
-               )
+             WHERE p.snapshot_id = ?1 AND {}
              ORDER BY p.uid ASC",
-        )
+            managed_club_player_sql("p", "?2")
+        ))
         .map_err(|error| error.to_string())?;
     let player_uids = statement
         .query_map(params![snapshot_id, save_id], |row| row.get(0))
@@ -260,10 +259,10 @@ pub fn list_squad_players(
         query_bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
     }
 
-    let membership_sql = "p.snapshot_id = ?1
-        AND p.current_club = (
-            SELECT club_name FROM managed_club_settings WHERE save_id = ?2
-        )";
+    let membership_sql = format!(
+        "p.snapshot_id = ?1 AND {}",
+        managed_club_player_sql("p", "?2")
+    );
 
     let count_sql = format!("SELECT COUNT(*) FROM players p WHERE {membership_sql}");
     let total = conn

@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
+use crate::features::managed_club::service::managed_club_player_sql;
+
 const BASELINE_CLASS_YEAR: i64 = 2025;
 const MAX_ACADEMY_CANDIDATES: usize = 100;
 const MAX_CANDIDATE_SEARCH_LEN: usize = 120;
@@ -114,6 +116,7 @@ struct CurrentAcademyPlayer {
     determination: Option<i64>,
     height_cm: Option<i64>,
     preferred_foot: String,
+    in_managed_club: bool,
 }
 
 struct AcademyCareerStats {
@@ -314,22 +317,22 @@ pub fn get_class(
         .map(
             |(player_uid, last_known_name, status, buying_club, sale_fee_eur, career_stats)| {
                 let player = match snapshot_id {
-                    Some(snapshot_id) => load_current_player(conn, snapshot_id, player_uid)?,
+                    Some(snapshot_id) => {
+                        load_current_player(conn, save_id, snapshot_id, player_uid)?
+                    }
                     None => None,
                 };
                 let outcome = stored_member_outcome(status, buying_club, sale_fee_eur)?;
-                academy_member(
-                    conn,
-                    save_id,
+                Ok(academy_member(
                     player_uid,
                     last_known_name,
                     player,
                     career_stats,
                     outcome,
-                )
+                ))
             },
         )
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, String>>()?;
 
     Ok(AcademyClassDetail {
         id: class_id,
@@ -349,14 +352,12 @@ pub fn list_candidates(
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
     let pattern = format!("%{}%", escape_like(&search));
     let mut statement = conn
-        .prepare(
+        .prepare(&format!(
             "SELECT p.uid, p.name, p.age, p.positions_json, p.current_club
              FROM players p
              WHERE p.snapshot_id = ?1
                AND p.name LIKE ?2 ESCAPE '\\' COLLATE NOCASE
-               AND p.current_club = (
-                   SELECT club_name FROM managed_club_settings WHERE save_id = ?3
-               )
+               AND {}
                AND NOT EXISTS(
                    SELECT 1
                    FROM academy_memberships membership
@@ -365,7 +366,8 @@ pub fn list_candidates(
                )
              ORDER BY p.name COLLATE NOCASE, p.uid
              LIMIT ?4",
-        )
+            managed_club_player_sql("p", "?3")
+        ))
         .map_err(|error| error.to_string())?;
     let candidates = statement
         .query_map(
@@ -413,13 +415,12 @@ pub fn assign_member(
 
     let last_known_name: Option<String> = tx
         .query_row(
-            "SELECT p.name
-             FROM players p
-             WHERE p.snapshot_id = ?1
-               AND p.uid = ?2
-               AND p.current_club = (
-                   SELECT club_name FROM managed_club_settings WHERE save_id = ?3
-               )",
+            &format!(
+                "SELECT p.name
+                 FROM players p
+                 WHERE p.snapshot_id = ?1 AND p.uid = ?2 AND {}",
+                managed_club_player_sql("p", "?3")
+            ),
             params![snapshot_id, player_uid, save_id],
             |row| row.get(0),
         )
@@ -606,16 +607,14 @@ fn current_snapshot_id(conn: &Connection, save_id: i64) -> Result<Option<i64>, S
 }
 
 fn academy_member(
-    conn: &Connection,
-    save_id: i64,
     player_uid: i64,
     last_known_name: String,
     player: Option<CurrentAcademyPlayer>,
     career_stats: AcademyCareerStats,
     outcome: Option<AcademyMemberOutcome>,
-) -> Result<AcademyMember, String> {
+) -> AcademyMember {
     let Some(player) = player else {
-        return Ok(AcademyMember {
+        return AcademyMember {
             player_uid,
             last_known_name,
             current_name: None,
@@ -638,15 +637,15 @@ fn academy_member(
             is_graduate: career_stats
                 .reported_career_appearances
                 .map(|appearances| appearances >= 1),
-        });
+        };
     };
-    let state = if player_is_in_managed_club(conn, save_id, player.current_club.as_deref())? {
+    let state = if player.in_managed_club {
         AcademyMemberState::Resolved
     } else {
         AcademyMemberState::Departed
     };
 
-    Ok(AcademyMember {
+    AcademyMember {
         player_uid,
         last_known_name,
         current_name: Some(player.name),
@@ -669,7 +668,7 @@ fn academy_member(
         is_graduate: career_stats
             .reported_career_appearances
             .map(|appearances| appearances >= 1),
-    })
+    }
 }
 
 fn validate_member_outcome(
@@ -724,26 +723,31 @@ fn stored_member_outcome(
 
 fn load_current_player(
     conn: &Connection,
+    save_id: i64,
     snapshot_id: i64,
     player_uid: i64,
 ) -> Result<Option<CurrentAcademyPlayer>, String> {
     let player = conn
         .query_row(
-            "SELECT
-                name,
-                age,
-                nationalities_json,
-                positions_json,
-                current_club,
-                parent_club,
-                team_level,
-                pa,
-                attributes_json,
-                height_cm,
-                preferred_foot
-             FROM players
-             WHERE snapshot_id = ?1 AND uid = ?2",
-            params![snapshot_id, player_uid],
+            &format!(
+                "SELECT
+                    name,
+                    age,
+                    nationalities_json,
+                    positions_json,
+                    current_club,
+                    parent_club,
+                    team_level,
+                    pa,
+                    attributes_json,
+                    height_cm,
+                    preferred_foot,
+                    COALESCE({}, 0)
+                 FROM players
+                 WHERE snapshot_id = ?1 AND uid = ?2",
+                managed_club_player_sql("players", "?3")
+            ),
+            params![snapshot_id, player_uid, save_id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -757,6 +761,7 @@ fn load_current_player(
                     row.get::<_, String>(8)?,
                     row.get::<_, Option<i64>>(9)?,
                     row.get::<_, String>(10)?,
+                    row.get::<_, bool>(11)?,
                 ))
             },
         )
@@ -777,6 +782,7 @@ fn load_current_player(
                 attributes_json,
                 height_cm,
                 preferred_foot,
+                in_managed_club,
             )| {
                 Ok(CurrentAcademyPlayer {
                     name,
@@ -790,30 +796,11 @@ fn load_current_player(
                     determination: parse_determination(&attributes_json)?,
                     height_cm,
                     preferred_foot,
+                    in_managed_club,
                 })
             },
         )
         .transpose()
-}
-
-fn player_is_in_managed_club(
-    conn: &Connection,
-    save_id: i64,
-    current_club: Option<&str>,
-) -> Result<bool, String> {
-    let Some(current_club) = current_club else {
-        return Ok(false);
-    };
-    conn.query_row(
-        "SELECT EXISTS(
-             SELECT 1
-             FROM managed_club_settings
-             WHERE save_id = ?1 AND club_name = ?2
-         )",
-        params![save_id, current_club],
-        |row| row.get(0),
-    )
-    .map_err(|error| error.to_string())
 }
 
 fn normalize_candidate_search(search: &str) -> Result<String, String> {
@@ -1364,6 +1351,71 @@ mod tests {
         assert!(super::list_candidates(&conn, save_id, "")
             .expect("list unassigned candidates")
             .is_empty());
+    }
+
+    #[test]
+    fn a_namesake_clubs_player_is_neither_a_candidate_nor_a_current_member() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("academy-namesake.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        let at_namesake = |uid, name| {
+            let mut player = fixture_player(uid, name, "Loan FC", "youth");
+            player["currentClubUid"] = json!(3000);
+            player
+        };
+        ingest_players(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "academy-namesake-first.json",
+            vec![
+                fixture_player(77, "Golden Fixture Player", "Loan FC", "youth"),
+                at_namesake(78, "Namesake Player"),
+            ],
+        );
+        configure_managed_club(&conn, save_id);
+        let academy_class =
+            super::create_class(&conn, save_id, 2030).expect("create academy class");
+        let candidate_uids = |conn: &Connection| {
+            super::list_candidates(conn, save_id, "")
+                .expect("list candidates")
+                .iter()
+                .map(|candidate| candidate.player_uid)
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(candidate_uids(&conn), [77]);
+        assert_eq!(
+            super::assign_member(&conn, save_id, academy_class.id, 78)
+                .expect_err("reject namesake club player"),
+            "Player 78 is not an eligible academy candidate"
+        );
+        super::assign_member(&conn, save_id, academy_class.id, 77).expect("assign club player");
+
+        ingest_players(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "academy-namesake-moved.json",
+            vec![
+                at_namesake(77, "Golden Fixture Player"),
+                at_namesake(78, "Namesake Player"),
+            ],
+        );
+        let member_state = |conn: &Connection| {
+            super::get_class(conn, save_id, academy_class.id)
+                .expect("load academy class")
+                .members[0]
+                .state
+                .clone()
+        };
+        assert_eq!(member_state(&conn), super::AcademyMemberState::Departed);
+
+        // A club chosen before UIDs were recorded matches by name.
+        conn.execute("UPDATE managed_club_settings SET club_uid = NULL", [])
+            .expect("forget club UID");
+        assert_eq!(member_state(&conn), super::AcademyMemberState::Resolved);
+        assert_eq!(candidate_uids(&conn), [78]);
     }
 
     #[test]

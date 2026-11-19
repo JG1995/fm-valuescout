@@ -14,7 +14,8 @@ use super::fit::{FootFit, PositionFit};
 use super::teams::{save_team_settings, PlannerTeamInput};
 use super::test_support::{
     add_picker_candidates, assignment_provenance, current_snapshot_id, deny_potential_writes,
-    open_with_snapshot, planner_potential_state, set_player_age, team_strings,
+    forget_managed_club_uid, move_to_namesake_club, open_with_snapshot, planner_potential_state,
+    set_player_age, team_strings,
 };
 
 #[test]
@@ -126,6 +127,49 @@ fn slot_candidates_use_the_selected_lane_weight() {
         .expect("load candidates");
 
     assert_eq!(candidates[0].combined_score, Some(80));
+}
+
+#[test]
+fn a_namesake_clubs_player_is_outside_the_pool_and_cannot_be_picked() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign club player");
+    move_to_namesake_club(&conn, save_id, 77);
+    move_to_namesake_club(&conn, save_id, 78);
+    let candidate_uids = |conn: &Connection| {
+        let mut uids = get_slot_candidates(conn, save_id, PlannerTeam::Senior, "goalkeeper", "")
+            .expect("load candidates")
+            .iter()
+            .map(|candidate| candidate.player_uid)
+            .collect::<Vec<_>>();
+        uids.sort_unstable();
+        uids
+    };
+    let assignment_state = |conn: &Connection| {
+        team_strings(
+            &get_depth(conn, save_id).expect("load depth"),
+            PlannerTeam::Senior,
+        )[0]
+        .assignments[0]
+            .state
+            .clone()
+    };
+
+    assert_eq!(candidate_uids(&conn), [79, 80]);
+    assert_eq!(assignment_state(&conn), AssignmentState::OutsidePool);
+    assert_eq!(
+        assign_player(&conn, save_id, string_id, "left_back", 78)
+            .expect_err("reject namesake club player"),
+        "Player 78 is not available to the senior team"
+    );
+
+    // A club chosen before UIDs were recorded matches by name.
+    forget_managed_club_uid(&conn, save_id);
+    assert_eq!(candidate_uids(&conn), [77, 78, 79, 80]);
+    assert_eq!(assignment_state(&conn), AssignmentState::Resolved);
+    assign_player(&conn, save_id, string_id, "left_back", 78).expect("assign by club name");
 }
 
 #[test]

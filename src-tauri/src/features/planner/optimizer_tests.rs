@@ -10,10 +10,11 @@ use super::tactic;
 use super::teams::{save_team_settings, PlannerTeamInput};
 use super::test_support::{
     add_picker_candidates, assigned_player_uid, assignment_provenance, clear_current_scores_except,
-    current_snapshot_id, deny_potential_writes, lane_players, open_with_snapshot,
-    planner_potential_state, seed_players, set_development, set_lane_scores, set_player_age,
-    set_player_club, set_player_positions, set_player_preferred_foot, set_right_winger,
-    set_right_winger_scores, set_role_score, team_strings,
+    current_snapshot_id, deny_potential_writes, forget_managed_club_uid, lane_players,
+    move_to_namesake_club, open_with_snapshot, planner_potential_state, seed_players,
+    set_development, set_lane_scores, set_player_age, set_player_club, set_player_positions,
+    set_player_preferred_foot, set_right_winger, set_right_winger_scores, set_role_score,
+    team_strings,
 };
 
 /// Keeps only the named teams, each with its usual age limit unless `max_age` sets one.
@@ -772,6 +773,36 @@ fn optimizer_allocates_the_shared_managed_club_pool_in_team_order() {
     assert_eq!(
         assigned_player_uid(&optimized, PlannerTeam::Youth, "right_winger"),
         None
+    );
+}
+
+#[test]
+fn the_optimizer_leaves_out_a_namesake_clubs_player() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    clear_current_scores_except(
+        &conn,
+        save_id,
+        &[77, 78],
+        &["winger_ip", "tracking_wide_midfielder_oop"],
+    );
+    set_right_winger_scores(&conn, save_id, 77, Some(70));
+    set_right_winger_scores(&conn, save_id, 78, Some(90));
+    move_to_namesake_club(&conn, save_id, 78);
+    keep_teams(&conn, save_id, &[("senior", None)]);
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize the managed club");
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
+        Some(77)
+    );
+
+    // A club chosen before UIDs were recorded matches by name.
+    forget_managed_club_uid(&conn, save_id);
+    let optimized = optimize_depth(&conn, save_id).expect("optimize by club name");
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
+        Some(78)
     );
 }
 

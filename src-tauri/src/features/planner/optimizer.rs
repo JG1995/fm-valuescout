@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use rusqlite::{params, Connection};
 
 use crate::features::{
+    managed_club::service::managed_club_player_sql,
     player_metrics::compact::{
         player_current_column, player_metrics_join, player_potential_column, PLAYER_METRICS_ALIAS,
     },
@@ -641,13 +642,11 @@ pub(super) fn load_club_players(
     let sql = format!(
         "SELECT p.uid, p.name, p.preferred_foot, p.positions_json, {}{metric_select}
          FROM players p{}
-         WHERE p.snapshot_id = ?1
-           AND p.current_club = (
-               SELECT club_name FROM managed_club_settings WHERE save_id = ?2
-           )
+         WHERE p.snapshot_id = ?1 AND {}
          ORDER BY p.uid",
         Development::columns("p"),
-        player_metrics_join("p", true, true)
+        player_metrics_join("p", true, true),
+        managed_club_player_sql("p", "?2")
     );
     let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let players = statement

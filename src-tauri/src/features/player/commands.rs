@@ -972,6 +972,30 @@ mod tests {
     }
 
     #[test]
+    fn squad_boost_never_sends_a_namesake_clubs_player_to_the_bridge() {
+        let _test_guard = PLAYER_BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let (_temp_dir, db) = seeded_squad_db();
+        db.0.lock()
+            .expect("lock db")
+            .execute(
+                "UPDATE players SET current_club_uid = 3000 WHERE uid = 78",
+                [],
+            )
+            .expect("move player to namesake club");
+        let bridge_calls = RefCell::new(Vec::new());
+
+        execute_squad_current_ability_boost_with(&db, |prepared| {
+            bridge_calls.borrow_mut().push(prepared.player_uid);
+            Ok(verified_ca_result_for(prepared))
+        })
+        .expect("boost the squad");
+
+        assert_eq!(bridge_calls.into_inner(), [77, 79]);
+    }
+
+    #[test]
     fn squad_current_ability_boost_uses_the_distinct_frozen_club_family_cohort() {
         let _test_guard = PLAYER_BOOST_TEST_GATE
             .lock()

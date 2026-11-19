@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use rusqlite::{params_from_iter, types::Value, Connection};
 
+use crate::features::managed_club::service::{managed_club_player_sql, managed_club_sql};
 pub(crate) use crate::features::moneyball::comparison::MIN_SEASON_MINUTES;
 use crate::features::moneyball::comparison::{scan_statistics, GroupsSource, ResolvedGroups};
 use crate::features::moneyball::kept_stats::{
@@ -26,8 +27,8 @@ use crate::features::player_metrics::compact::{
 };
 use crate::features::search::realistic_signing;
 
+use super::club_snapshot_id;
 use super::recruitment_filters::SlotFilters;
-use super::{club_snapshot_id, MANAGED_CLUB_NAME_SQL};
 
 /// The most ranked recommendations one read returns: as many as the dashboard shows at once.
 pub(crate) const MAX_RECOMMENDATIONS: usize = 12;
@@ -452,8 +453,9 @@ fn first_string_assignments(conn: &Connection, save_id: i64) -> Result<Vec<(Stri
 /// SQL that is true for a `players` row neither at the managed club nor on loan from it.
 fn outside_managed_club_sql() -> String {
     format!(
-        "players.current_club IS NOT {MANAGED_CLUB_NAME_SQL}
-         AND NOT (players.on_loan IS 1 AND players.parent_club IS {MANAGED_CLUB_NAME_SQL})"
+        "{} IS NOT 1 AND NOT (players.on_loan IS 1 AND {} IS 1)",
+        managed_club_player_sql("players", "?2"),
+        managed_club_sql("players.parent_club", "players.parent_club_uid", "?2")
     )
 }
 
@@ -569,7 +571,7 @@ fn load_players(
     };
     let mut bind_values = vec![Value::Integer(snapshot_id), Value::Integer(save_id)];
     let scope_sql = match scope {
-        PlayerScope::Club => format!("players.current_club = {MANAGED_CLUB_NAME_SQL}"),
+        PlayerScope::Club => managed_club_player_sql("players", "?2"),
         PlayerScope::Shortlist(shortlist_id) => {
             bind_values.push(Value::Integer(shortlist_id));
             format!(

@@ -593,6 +593,48 @@ fn a_club_without_a_recorded_uid_has_no_realistic_signings() {
 }
 
 #[test]
+fn a_namesake_clubs_player_is_a_signing_rather_than_the_clubs_own() {
+    let fixture = open_with_players(&[
+        player(1, "Home Keeper", HOME_CLUB, "GK"),
+        player(2, "Namesake Keeper", HOME_CLUB, "GK"),
+        player(3, "Namesake Loanee", OTHER_CLUB, "GK"),
+    ]);
+    fixture.set_player_column(2, "current_club_uid", 3000);
+    fixture.set_player_column(3, "on_loan", 1);
+    fixture.set_player_column(3, "parent_club", HOME_CLUB);
+    fixture.set_player_column(3, "parent_club_uid", 3000);
+    fixture.set_slot_score(1, "goalkeeper", 50);
+    fixture.set_slot_score(2, "goalkeeper", 70);
+    fixture.set_slot_score(3, "goalkeeper", 60);
+    let shortlist = fixture.add_shortlist("Targets", &[2, 3]);
+    let request = SigningsRequest {
+        shortlist_id: Some(shortlist),
+        ..GENERAL
+    };
+
+    let signings_by_uid = signings(&fixture, request);
+    assert_eq!(
+        incumbent(&signings_by_uid, "goalkeeper"),
+        Some((1, 50, IncumbentSource::BestFit))
+    );
+    assert_eq!(signings_by_uid.candidates, Some(2));
+    assert_eq!(uids(&signings_by_uid.recommendations), [2, 3]);
+
+    // A club chosen before UIDs were recorded matches by name.
+    fixture
+        .conn
+        .execute("UPDATE managed_club_settings SET club_uid = NULL", [])
+        .expect("forget club UID");
+    let signings_by_name = signings(&fixture, request);
+    assert_eq!(
+        incumbent(&signings_by_name, "goalkeeper"),
+        Some((2, 70, IncumbentSource::BestFit))
+    );
+    assert_eq!(signings_by_name.candidates, Some(0));
+    assert!(signings_by_name.recommendations.is_empty());
+}
+
+#[test]
 fn compares_one_of_the_saves_shortlists_and_never_another_saves() {
     let fixture = open_with_players(&[
         player(1, "Home Keeper", HOME_CLUB, "GK"),

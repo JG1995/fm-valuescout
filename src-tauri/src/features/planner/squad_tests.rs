@@ -1,10 +1,14 @@
 use rusqlite::{params, Connection};
 use serde_json::json;
 
-use super::squad::{list_squad_players, SquadSortDir, SquadSortField, DEFAULT_SQUAD_PAGE_LIMIT};
+use super::squad::{
+    list_squad_player_uids, list_squad_players, SquadSortDir, SquadSortField,
+    DEFAULT_SQUAD_PAGE_LIMIT,
+};
 use super::test_support::{
-    add_picker_candidates, clear_current_scores_except, current_snapshot_id, open_with_snapshot,
-    set_player_age, set_player_attributes, set_player_positions, set_role_score,
+    add_picker_candidates, clear_current_scores_except, current_snapshot_id,
+    forget_managed_club_uid, move_to_namesake_club, open_with_snapshot, set_player_age,
+    set_player_attributes, set_player_positions, set_role_score,
 };
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION, potential_scores::PROJECTION_MODEL_VERSION,
@@ -605,6 +609,47 @@ fn current_role_sort_reads_complete_requested_potential_fields_without_writes() 
 }
 
 #[test]
+fn the_squad_and_its_boost_cohort_leave_out_a_namesake_clubs_player() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    move_to_namesake_club(&conn, save_id, 78);
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    let squad = |conn: &Connection| {
+        let page = list_squad_players(
+            conn,
+            save_id,
+            0,
+            DEFAULT_SQUAD_PAGE_LIMIT,
+            SquadSortField::DEFAULT,
+            SquadSortDir::DEFAULT,
+            &[],
+        )
+        .expect("list squad");
+        let mut uids = page
+            .players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>();
+        uids.sort_unstable();
+        (page.total, uids)
+    };
+
+    assert_eq!(squad(&conn), (3, vec![77, 79, 80]));
+    assert_eq!(
+        list_squad_player_uids(&conn, save_id, snapshot_id).expect("list boost cohort"),
+        [77, 79, 80]
+    );
+
+    // A club chosen before UIDs were recorded matches by name.
+    forget_managed_club_uid(&conn, save_id);
+    assert_eq!(squad(&conn), (4, vec![77, 78, 79, 80]));
+    assert_eq!(
+        list_squad_player_uids(&conn, save_id, snapshot_id).expect("list legacy boost cohort"),
+        [77, 78, 79, 80]
+    );
+}
+
+#[test]
 fn returns_no_players_without_a_configuration_or_matching_current_players() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     conn.execute(
@@ -820,9 +865,14 @@ fn seed_club_dna_squad() -> (tempfile::TempDir, rusqlite::Connection, i64) {
             "INSERT INTO players (
                 snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year,
                 nationalities_json, preferred_foot, positions_json, attributes_json,
-                hidden_attributes_json, personality_json, current_club
-             ) VALUES (?1, ?2, 100, 120, 'Extra', 2000, 1, '[]', 'right', '{}', '{}', '{}', '{}', ?3)",
-            params![snapshot_id, uid, if uid == 99 { "Elsewhere FC" } else { "Loan FC" }],
+                hidden_attributes_json, personality_json, current_club, current_club_uid
+             ) VALUES (?1, ?2, 100, 120, 'Extra', 2000, 1, '[]', 'right', '{}', '{}', '{}', '{}', ?3, ?4)",
+            params![
+                snapshot_id,
+                uid,
+                if uid == 99 { "Elsewhere FC" } else { "Loan FC" },
+                if uid == 99 { 2000 } else { 1000 }
+            ],
         )
         .expect("insert Club DNA test player");
     }

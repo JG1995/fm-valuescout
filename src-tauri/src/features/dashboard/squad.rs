@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use rusqlite::{params, Connection};
 
+use crate::features::managed_club::service::managed_club_player_sql;
 use crate::features::planner::fit::tactic_adjusted_score;
 use crate::features::planner::optimizer::{allocate_lanes, OptimizerCandidate};
 use crate::features::planner::tactic::{read_tactic, TacticLane};
@@ -14,7 +15,7 @@ use crate::features::player_metrics::compact::{
     player_potential_column, PLAYER_METRICS_ALIAS,
 };
 
-use super::{club_snapshot_id, MANAGED_CLUB_NAME_SQL};
+use super::club_snapshot_id;
 
 pub(crate) const CONTRACT_WINDOW_MONTHS: u32 = 12;
 pub(crate) const MAX_EXPIRING_CONTRACTS: usize = 25;
@@ -62,6 +63,7 @@ pub(crate) fn get_expiring_contracts(
             |row| row.get(0),
         )
         .map_err(|error| error.to_string())?;
+    let at_managed_club = managed_club_player_sql("p", "?2");
     let mut players = conn
         .prepare(&format!(
             "WITH contracts AS (
@@ -72,7 +74,7 @@ pub(crate) fn get_expiring_contracts(
                         ) AS expiry_date
                  FROM players p
                  WHERE p.snapshot_id = ?1
-                   AND p.current_club = {MANAGED_CLUB_NAME_SQL}
+                   AND {at_managed_club}
                    AND p.on_loan IS NOT 1
                    AND p.contract_expiry_year IS NOT NULL
                    AND p.contract_expiry_day_of_year IS NOT NULL
@@ -175,10 +177,11 @@ pub(crate) fn get_prospects(conn: &Connection, save_id: i64) -> Result<Option<Pr
         "SELECT p.uid, p.name, p.age, p.preferred_foot, p.positions_json{score_columns}
          FROM players p{}
          WHERE p.snapshot_id = ?1
-           AND p.current_club = {MANAGED_CLUB_NAME_SQL}
+           AND {}
            AND p.age <= ?3
          ORDER BY p.uid",
-        player_metrics_join("p", true, true)
+        player_metrics_join("p", true, true),
+        managed_club_player_sql("p", "?2")
     );
     let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let mut rows = statement
