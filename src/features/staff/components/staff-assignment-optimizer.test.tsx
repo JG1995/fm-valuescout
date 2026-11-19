@@ -15,6 +15,7 @@ import {
   setStaffAssignmentOptimizerIpcMockMode,
   setStaffAssignmentSkipIpcError,
   setStaffAssignmentSkipIpcPending,
+  setStaffAssignmentTargetsIpcMock,
   setStaffAssignmentTargetsIpcMockMode,
 } from "@/testing/staff-ipc-mock";
 import type { StaffAssignmentRecommendation } from "../types/staff-assignment";
@@ -32,6 +33,7 @@ function renderOptimizer(
   contextKey = "assignment-context-a",
   zeroSlots = false,
   onReviewShortlist = vi.fn(),
+  onOpenStaff = vi.fn(),
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -45,6 +47,7 @@ function renderOptimizer(
     ["staff", "assignment-targets", contextKey],
     targets,
   );
+  setStaffAssignmentTargetsIpcMock(targets);
   const result = render(
     <QueryClientProvider client={queryClient}>
       <StaffAssignmentOptimizer
@@ -53,6 +56,7 @@ function renderOptimizer(
         contextUnavailable={contextUnavailable}
         shortlistReady={true}
         onReviewShortlist={onReviewShortlist}
+        onOpenStaff={onOpenStaff}
       />
     </QueryClientProvider>,
   );
@@ -72,6 +76,7 @@ function renderOptimizer(
             contextUnavailable={nextUnavailable}
             shortlistReady={true}
             onReviewShortlist={onReviewShortlist}
+            onOpenStaff={onOpenStaff}
           />
         </QueryClientProvider>,
       );
@@ -89,39 +94,85 @@ describe("StaffAssignmentOptimizer", () => {
     );
     await user.click(
       within(await screen.findByRole("dialog")).getByRole("button", {
-        name: "Save slots",
+        name: "Save",
       }),
     );
 
     const actionRow = screen.getByTestId("assignment-action-row");
-    expect(within(actionRow).queryByText("Slot counts saved.")).toBeNull();
-    expect(await screen.findByText("Slot counts saved.")).toBeInTheDocument();
+    expect(within(actionRow).queryByText("Staffing needs saved.")).toBeNull();
+    expect(
+      await screen.findByText("Staffing needs saved."),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("assignment-status-region")).toHaveTextContent(
-      "Slot counts saved.",
+      "Staffing needs saved.",
     );
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(0);
   });
-  it("disables Optimize assignments and explains how to configure zero slots", async () => {
+
+  it("describes the saved staffing needs beside Optimize", async () => {
+    renderOptimizer();
+
+    const optimize = await screen.findByRole("button", {
+      name: "Optimize assignments",
+    });
+    expect(optimize).toBeEnabled();
+    expect(optimize).toHaveAccessibleDescription("Staffing needs: 28 slots.");
+  });
+
+  it("opens staffing needs from Optimize when none are set, then optimizes after saving", async () => {
+    const user = userEvent.setup();
     renderOptimizer(false, "assignment-context-a", true);
 
     const optimize = await screen.findByRole("button", {
       name: "Optimize assignments",
     });
-    expect(optimize).toBeDisabled();
-    const readiness = screen.getByText(
-      "Configure staffing needs before optimizing assignments.",
-    );
-    expect(readiness).toBeInTheDocument();
-    expect(optimize).toHaveAttribute(
-      "aria-describedby",
-      readiness.getAttribute("id"),
-    );
+    expect(optimize).toBeEnabled();
+    expect(optimize).toHaveAccessibleDescription("No staffing needs set yet.");
+    await user.click(optimize);
+    const staffing = await screen.findByRole("dialog", {
+      name: "Configure staffing needs",
+    });
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(0);
+    const assistantManager = within(staffing).getByRole("spinbutton", {
+      name: "Senior Assistant Manager",
+    });
+    await user.clear(assistantManager);
+    await user.type(assistantManager, "1");
+    await user.click(within(staffing).getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByRole("dialog", { name: "Assignment recommendations" }),
+    ).toBeInTheDocument();
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
   });
 
-  it("sends only immutable tokens and renders Rust-provided recommendations and vacancies", async () => {
+  it("does not optimize when staffing needs opened from Optimize are saved as zero", async () => {
+    const user = userEvent.setup();
+    renderOptimizer(false, "assignment-context-a", true);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Optimize assignments" }),
+    );
+    const staffing = await screen.findByRole("dialog", {
+      name: "Configure staffing needs",
+    });
+    await user.click(within(staffing).getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText("Staffing needs saved."),
+    ).toBeInTheDocument();
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(0);
+    expect(
+      screen.queryByRole("dialog", { name: "Assignment recommendations" }),
+    ).toBeNull();
+  });
+
+  it("sends only immutable tokens and says what each recommendation needs", async () => {
     const user = userEvent.setup();
     const onReviewShortlist = vi.fn();
     setStaffAssignmentOptimizationIpcMock(
       fixtureStaffAssignmentOptimization({
+        joinedCandidateCount: 6,
         slots: [
           {
             kind: "recommendation",
@@ -134,7 +185,7 @@ describe("StaffAssignmentOptimizer", () => {
             name: "Alex Coach",
             preferredJob: "Coach",
             jobSource: "preferred_job",
-            classification: "current_staff",
+            action: { kind: "keep" },
             score: 82,
             coachRequirement: "attacking_technical",
           },
@@ -149,7 +200,7 @@ describe("StaffAssignmentOptimizer", () => {
             name: "Riley Recruit",
             preferredJob: "Coach",
             jobSource: "preferred_job",
-            classification: "recruitment",
+            action: { kind: "recruit", club: "Valencia" },
             score: 79,
             coachRequirement: null,
           },
@@ -179,8 +230,23 @@ describe("StaffAssignmentOptimizer", () => {
             name: "Taylor Coach",
             preferredJob: "Assistant Manager",
             jobSource: "preferred_job",
-            classification: "recruitment",
+            action: { kind: "change_job", currentJob: "Coach" },
             score: 75,
+            coachRequirement: null,
+          },
+          {
+            kind: "recommendation",
+            scope: "senior",
+            scopeDisplayName: "Alpha Unit",
+            jobId: "physio",
+            jobLabel: "Physio",
+            slotNumber: 1,
+            uid: 104,
+            name: "Jo Free",
+            preferredJob: "Physio",
+            jobSource: "preferred_job",
+            action: { kind: "recruit", club: null },
+            score: 70,
             coachRequirement: null,
           },
         ],
@@ -198,91 +264,70 @@ describe("StaffAssignmentOptimizer", () => {
         expectedSnapshotContextToken: "snapshot-token-1",
       }),
     );
+    const table = await screen.findByRole("table", {
+      name: "Staff assignment recommendations and vacancies",
+    });
     expect(
-      await screen.findByRole("table", {
-        name: "Staff assignment recommendations and vacancies",
-      }),
-    ).toBeInTheDocument();
-    const currentStaffName = screen.getByText("Alex Coach");
-    expect(currentStaffName).toHaveClass("font-medium", "text-info");
-    expect(screen.getByRole("img", { name: "Current staff" })).toBeVisible();
-    expect(screen.getByText("Riley Recruit")).not.toHaveClass("text-info");
-    expect(
-      screen.queryByRole("columnheader", { name: "Classification" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Recruitment")).not.toBeInTheDocument();
-    expect(
-      screen.getAllByRole("rowheader", { name: /Alpha Unit/ }),
-    ).toHaveLength(2);
-    expect(screen.getByText("Alpha Unit: 2 of 2 filled")).toBeInTheDocument();
-    expect(
-      screen.getByText("Club Services: 0 of 1 filled"),
-    ).toBeInTheDocument();
-    const resultRows = screen.getByRole("table").querySelectorAll("tbody tr");
+      within(table)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["Slot", "Person", "Score", "Action", "Skip"]);
+    const resultRows = table.querySelectorAll("tbody tr");
     expect(Array.from(resultRows).map((row) => row.textContent)).toEqual([
       "Alpha Unit: 2 of 2 filled",
       expect.stringContaining("Alex Coach"),
       expect.stringContaining("Riley Recruit"),
       "Club Services: 0 of 1 filled",
-      expect.stringContaining("Vacancy"),
-      "Alpha Unit: 1 of 1 filled",
+      expect.stringContaining("Unfilled"),
+      "Alpha Unit: 2 of 2 filled",
       expect.stringContaining("Taylor Coach"),
+      expect.stringContaining("Jo Free"),
     ]);
-    expect(screen.queryByText("senior")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("columnheader", { name: "Scope" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/Coach requirement: Attacking Technical\./),
-    ).toBeInTheDocument();
+    const row = (name: RegExp) => within(table).getByRole("row", { name });
+    expect(row(/Alex Coach/)).toHaveTextContent(
+      /^Coaches 1Attacking TechnicalAlex Coach82Keep/,
+    );
+    expect(row(/Riley Recruit/)).toHaveTextContent(
+      /^Coaches 2Riley Recruit79RecruitFrom Valencia/,
+    );
+    expect(row(/Taylor Coach/)).toHaveTextContent(
+      /^Assistant ManagerTaylor Coach75Change jobNow Coach/,
+    );
+    expect(row(/Jo Free/)).toHaveTextContent(/RecruitUnemployed/);
+    expect(row(/Unfilled/)).toHaveTextContent(
+      "CoachesGoalkeepingUnfilled2 people fit this job, but their ratings are missing.",
+    );
     expect(
       screen.getByRole("img", { name: /Coaches: 82, Excellent/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Vacancy")).toBeInTheDocument();
-    expect(screen.getByText("Filled slots").parentElement).toHaveTextContent(
-      "3",
-    );
-    expect(screen.getByText("Vacancies").parentElement).toHaveTextContent("1");
-    expect(screen.getByText("Current staff").parentElement).toHaveTextContent(
-      "1",
-    );
-    expect(screen.getByText("Recruits").parentElement).toHaveTextContent("2");
+    expect(screen.queryByText(/Eligible|eligible score|evidence/i)).toBeNull();
+    expect(
+      screen
+        .getAllByRole("term")
+        .map((term) => [
+          term.textContent,
+          term.nextElementSibling?.textContent,
+        ]),
+    ).toEqual([
+      ["Filled", "4 of 5"],
+      ["Your staff", "2"],
+      ["Recruit", "2"],
+      ["Unfilled", "1"],
+    ]);
+    expect(
+      screen.getByText("Picked from 6 people on your shortlist and staff."),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "5 candidates from the shortlist and current staff; 4 configured slots.",
+        "1 slot has no suitable person. Lower your staffing needs, or shortlist more staff in FM.",
       ),
     ).toBeInTheDocument();
-    const vacancyRow = screen.getByRole("row", { name: /Vacancy/ });
     expect(
-      within(vacancyRow).getByText("No eligible candidate filled this slot."),
+      screen.getByText(
+        "1 person on your shortlist wants a job that no slot here covers, so they were left out.",
+      ),
     ).toBeInTheDocument();
-    expect(
-      within(vacancyRow).getByText(/eligible scores;.*unavailable scores/i),
-    ).not.toBeVisible();
-    const evidence = within(vacancyRow).getByRole("group");
-    expect(
-      within(evidence).getByText("Show assignment evidence"),
-    ).toBeInTheDocument();
-    expect(evidence).not.toHaveAttribute("open");
-    await user.click(within(evidence).getByText("Show assignment evidence"));
-    expect(evidence).toHaveAttribute("open");
-    expect(evidence).toHaveTextContent(
-      "0 eligible scores; 2 unavailable scores; 2 candidates for this job.",
-    );
-    expect(
-      within(vacancyRow).getByText("Coach requirement: Goalkeeping."),
-    ).toBeInTheDocument();
-    await user.click(within(evidence).getByText("Show assignment evidence"));
-    expect(evidence).not.toHaveAttribute("open");
-    expect(
-      within(vacancyRow).getByText(/eligible scores;.*unavailable scores/i),
-    ).not.toBeVisible();
     expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
-    expect(screen.getByText("Taylor Coach")).toBeInTheDocument();
-    expect(screen.getByText(/unsupported Preferred Job/i)).toBeInTheDocument();
-    expect(
-      screen.getAllByText(/Preferred Job: Coach\. Eligible for this target\./),
-    ).toHaveLength(2);
 
     await user.click(
       screen.getByRole("button", { name: "Adjust staffing needs" }),
@@ -374,7 +419,7 @@ describe("StaffAssignmentOptimizer", () => {
             name: "Jordan Assistant",
             preferredJob: "Assistant Manager",
             jobSource: "preferred_job",
-            classification: "current_staff",
+            action: { kind: "keep" },
             score: 81,
             coachRequirement: null,
           },
@@ -393,7 +438,7 @@ describe("StaffAssignmentOptimizer", () => {
     expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(2);
   });
 
-  it("renders canonical Fitness requirements without calculating eligibility", async () => {
+  it("names a coach slot's canonical requirement under the job", async () => {
     const user = userEvent.setup();
     setStaffAssignmentOptimizationIpcMock(
       fixtureStaffAssignmentOptimization({
@@ -409,7 +454,7 @@ describe("StaffAssignmentOptimizer", () => {
             name: "Fit Coach",
             preferredJob: "Fitness Coach",
             jobSource: "preferred_job",
-            classification: "current_staff",
+            action: { kind: "keep" },
             score: 82,
             coachRequirement: "fitness",
           },
@@ -422,9 +467,10 @@ describe("StaffAssignmentOptimizer", () => {
       screen.getByRole("button", { name: "Optimize assignments" }),
     );
 
-    expect(
-      await screen.findByText(/Coach requirement: Fitness\./),
-    ).toBeInTheDocument();
+    const row = await screen.findByRole("row", { name: /Fit Coach/ });
+    expect(within(row).getAllByRole("cell")[0]).toHaveTextContent(
+      "CoachesFitness",
+    );
   });
 
   it("renders an em dash instead of a blank person when a recommendation name is missing", async () => {
@@ -443,7 +489,7 @@ describe("StaffAssignmentOptimizer", () => {
             name: null,
             preferredJob: "Assistant Manager",
             jobSource: "preferred_job",
-            classification: "current_staff",
+            action: { kind: "keep" },
             score: 82,
             coachRequirement: null,
           },
@@ -457,14 +503,11 @@ describe("StaffAssignmentOptimizer", () => {
     );
 
     const row = await screen.findByRole("row", {
-      name: /Assistant Manager.*Slot 1/i,
+      name: /^Assistant Manager/,
     });
-    const person = within(row).getByText("—");
-    expect(person).not.toHaveAttribute("title");
+    expect(within(row).getByText("—")).not.toHaveAttribute("title");
+    expect(within(row).queryByRole("button", { name: "—" })).toBeNull();
     expect(within(row).queryByText("0")).not.toBeInTheDocument();
-    expect(
-      within(row).queryByText(/Coach requirement:/),
-    ).not.toBeInTheDocument();
   });
 
   it("suppresses a visible recommendation immediately while context is unavailable", async () => {
@@ -508,9 +551,7 @@ describe("StaffAssignmentOptimizer", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Configure staffing needs",
     });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save slots" }),
-    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
     resolvePendingStaffAssignmentOptimizationIpcMock();
 
     await waitFor(() =>
@@ -531,7 +572,7 @@ describe("StaffAssignmentOptimizer", () => {
     await user.click(
       await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
-    await user.click(screen.getByRole("button", { name: "Save slots" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(
       screen.getByRole("button", { name: "Optimize assignments" }),
     ).toBeDisabled();
@@ -546,9 +587,7 @@ describe("StaffAssignmentOptimizer", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Configure staffing needs",
     });
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save slots" }),
-    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
     resolvePendingStaffAssignmentTargetsIpcMock();
 
@@ -632,7 +671,7 @@ describe("StaffAssignmentOptimizer", () => {
     );
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Assignment context changed",
+      "Your save changed while optimizing. Optimize again.",
     );
     expect(
       screen.queryByRole("table", {
@@ -656,7 +695,7 @@ describe("StaffAssignmentOptimizer", () => {
       screen.getByRole("button", { name: "Optimize assignments" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "No current snapshot is available",
+      "This save has no data yet. Use Load Data first.",
     );
     expect(
       screen.queryByRole("table", {
@@ -752,7 +791,7 @@ describe("StaffAssignmentOptimizer", () => {
       screen.getByRole("button", { name: "Optimize assignments" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Shortlist staff in FM, save the game, then use Load Data before optimizing assignments.",
+      "Shortlist staff in FM, save the game, then use Load Data.",
     );
 
     rerenderOptimizer(false, "assignment-context-c");
@@ -781,38 +820,59 @@ describe("StaffAssignmentOptimizer", () => {
       name,
       preferredJob: "Manager",
       jobSource: "preferred_job",
-      classification: "recruitment",
+      action: { kind: "recruit", club: null },
       score: 90,
       coachRequirement: null,
       ...overrides,
     };
   }
 
-  it("names a current staff member's current job instead of a Preferred Job", async () => {
+  it("opens a recommended person's Staff Profile and closes the results", async () => {
     const user = userEvent.setup();
+    const onOpenStaff = vi.fn();
     setStaffAssignmentOptimizationIpcMock(
       fixtureStaffAssignmentOptimization({
         slots: [
           reservesManager(102, "Darren Fletcher", {
-            preferredJob: "Head Physio",
-            jobSource: "current_job",
-            classification: "current_staff",
+            action: { kind: "on_staff" },
           }),
         ],
       }),
     );
+    renderOptimizer(false, "assignment-context-a", false, vi.fn(), onOpenStaff);
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+    const row = await screen.findByRole("row", { name: /Darren Fletcher/ });
+    expect(row).toHaveTextContent("Your staff");
+    await user.click(
+      within(row).getByRole("button", { name: "Darren Fletcher" }),
+    );
+
+    expect(onOpenStaff).toHaveBeenCalledWith(102);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("optimizes again after staffing needs are adjusted from the results", async () => {
+    const user = userEvent.setup();
     renderOptimizer();
 
     await user.click(
       screen.getByRole("button", { name: "Optimize assignments" }),
     );
+    await user.click(
+      await screen.findByRole("button", { name: "Adjust staffing needs" }),
+    );
+    const staffing = await screen.findByRole("dialog", {
+      name: "Configure staffing needs",
+    });
+    await user.click(within(staffing).getByRole("button", { name: "Save" }));
 
     expect(
-      await screen.findByText(
-        "Current job: Head Physio. Eligible for this target.",
-      ),
+      await screen.findByRole("dialog", { name: "Assignment recommendations" }),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/Preferred Job: Head Physio/)).toBeNull();
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(2);
   });
 
   it("skips a recommendation, shows the next best, and restores the skipped person", async () => {
@@ -837,7 +897,7 @@ describe("StaffAssignmentOptimizer", () => {
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Skip Fatih Terim for Reserves Manager slot 1",
+        name: "Skip Fatih Terim for Reserves Manager",
       }),
     );
 
@@ -850,7 +910,7 @@ describe("StaffAssignmentOptimizer", () => {
     expect(screen.getByText("Fatih Terim")).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: "Skip Fatih Terim for Reserves Manager slot 1",
+        name: "Skip Fatih Terim for Reserves Manager",
       }),
     ).toBeDisabled();
 
@@ -902,7 +962,7 @@ describe("StaffAssignmentOptimizer", () => {
     setStaffAssignmentSkipIpcError("Save changed or no longer exists");
     await user.click(
       screen.getByRole("button", {
-        name: "Skip Fatih Terim for Reserves Manager slot 1",
+        name: "Skip Fatih Terim for Reserves Manager",
       }),
     );
 
@@ -933,7 +993,7 @@ describe("StaffAssignmentOptimizer", () => {
     setStaffAssignmentSkipIpcPending(true);
     await user.click(
       screen.getByRole("button", {
-        name: "Skip Fatih Terim for Reserves Manager slot 1",
+        name: "Skip Fatih Terim for Reserves Manager",
       }),
     );
     rerenderOptimizer(true);

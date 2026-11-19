@@ -1,7 +1,8 @@
 use rusqlite::{params, Connection};
 
 use super::assignment_optimizer::{
-    CoachRequirement, StaffAssignmentClassification, StaffAssignmentJobSource, StaffAssignmentSlot,
+    CoachRequirement, StaffAssignmentAction, StaffAssignmentClassification,
+    StaffAssignmentJobSource, StaffAssignmentSlot,
 };
 use super::assignment_optimizer_query::{
     load_candidates, optimize_staff_assignments, set_staff_assignment_skip,
@@ -281,14 +282,14 @@ fn joins_only_current_pool_staff_and_preserves_scores_and_classification() {
         &slot.slot,
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 1
-                && recommendation.classification == StaffAssignmentClassification::CurrentStaff
+                && recommendation.action == StaffAssignmentAction::OnStaff
                 && recommendation.score == 72
     )));
     assert!(result.slots.iter().any(|slot| matches!(
         &slot.slot,
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 4
-                && recommendation.classification == StaffAssignmentClassification::CurrentStaff
+                && recommendation.action == StaffAssignmentAction::OnStaff
                 && recommendation.score == 90
                 && recommendation.coach_requirement == Some(CoachRequirement::PossessionTactical)
     )));
@@ -612,7 +613,7 @@ fn pools_unshortlisted_club_staff_by_current_job_without_the_human_manager() {
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.job_id == "assistant_manager"
                 && recommendation.uid == 2
-                && recommendation.classification == StaffAssignmentClassification::CurrentStaff
+                && recommendation.action == StaffAssignmentAction::Keep
                 && recommendation.job_source == StaffAssignmentJobSource::CurrentJob
                 && recommendation.preferred_job == "Assistant Manager"
     )));
@@ -834,4 +835,92 @@ fn caps_the_ready_result_at_the_supported_slot_limit() {
     assert_eq!(result.state, StaffAssignmentOptimizationState::Ready);
     assert_eq!(result.configured_slot_count, 959);
     assert_eq!(result.slots.len(), 959);
+}
+
+#[test]
+fn names_the_action_each_recommendation_needs() {
+    let (_temp_dir, conn, save_token) = open();
+    let snapshot_token = insert_current_snapshot(&conn, 1);
+    configure_managed_club(&conn);
+    conn.execute_batch(
+        "INSERT INTO planner_teams (save_id, team, display_name) VALUES
+             (1, 'senior', 'First Team'),
+             (1, 'reserves', 'Reserves');
+         INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count) VALUES
+             (1, 'senior', 'assistant_manager', 1),
+             (1, 'senior', 'coaches', 2),
+             (1, 'senior', 'physio', 1),
+             (1, 'senior', 'sports_scientist', 1),
+             (1, 'reserves', 'manager', 1),
+             (1, 'club', 'scout', 1);",
+    )
+    .expect("configure targets");
+    insert_staff(&conn, 1, "Assistant who stays", Some("Club A"));
+    set_job(&conn, 1, 20);
+    insert_staff(&conn, 2, "Physio who wants to scout", Some("Club A"));
+    set_job(&conn, 2, 12);
+    shortlist(&conn, 2, "Scout");
+    insert_staff(&conn, 3, "Director who wants to manage", Some("Club A"));
+    set_job(&conn, 3, 6);
+    shortlist(&conn, 3, "Manager");
+    insert_staff(&conn, 4, "Physio elsewhere", Some("Other FC"));
+    shortlist(&conn, 4, "Physio");
+    insert_staff(&conn, 5, "Unemployed scientist", None);
+    shortlist(&conn, 5, "Sports Scientist");
+    insert_staff(&conn, 6, "Coach who wants goalkeepers", Some("Club A"));
+    set_job(&conn, 6, 2);
+    shortlist(&conn, 6, "Goalkeeping Coach");
+    insert_staff(&conn, 7, "Coach who stays", Some("Club A"));
+    set_job(&conn, 7, 2);
+    conn.execute_batch(
+        "INSERT INTO staff_role_metrics (
+             snapshot_id, uid, score_model_version, assistant_manager, scout, manager, physio,
+             sports_scientist, coach_goalkeeping, coach_attacking_technical
+         ) VALUES
+             (1, 1, 1, 70, NULL, NULL, NULL, NULL, NULL, NULL),
+             (1, 2, 1, NULL, 71, NULL, NULL, NULL, NULL, NULL),
+             (1, 3, 1, NULL, NULL, 72, NULL, NULL, NULL, NULL),
+             (1, 4, 1, NULL, NULL, NULL, 73, NULL, NULL, NULL),
+             (1, 5, 1, NULL, NULL, NULL, NULL, 74, NULL, NULL),
+             (1, 6, 1, NULL, NULL, NULL, NULL, NULL, 75, NULL),
+             (1, 7, 1, NULL, NULL, NULL, NULL, NULL, NULL, 76);",
+    )
+    .expect("insert persisted scores");
+
+    let result =
+        optimize_staff_assignments(&conn, &save_token, &snapshot_token).expect("optimize the pool");
+
+    let actions: std::collections::HashMap<i64, StaffAssignmentAction> = result
+        .slots
+        .iter()
+        .filter_map(|result_slot| match &result_slot.slot {
+            StaffAssignmentSlot::Recommendation(recommendation) => {
+                Some((recommendation.uid, recommendation.action.clone()))
+            }
+            StaffAssignmentSlot::Vacancy(_) => None,
+        })
+        .collect();
+    assert_eq!(actions.len(), 7);
+    assert_eq!(actions[&1], StaffAssignmentAction::Keep);
+    assert_eq!(
+        actions[&2],
+        StaffAssignmentAction::ChangeJob {
+            current_job: "Physio"
+        }
+    );
+    assert_eq!(actions[&3], StaffAssignmentAction::OnStaff);
+    assert_eq!(
+        actions[&4],
+        StaffAssignmentAction::Recruit {
+            club: Some("Other FC".to_string())
+        }
+    );
+    assert_eq!(actions[&5], StaffAssignmentAction::Recruit { club: None });
+    assert_eq!(
+        actions[&6],
+        StaffAssignmentAction::ChangeJob {
+            current_job: "Coach"
+        }
+    );
+    assert_eq!(actions[&7], StaffAssignmentAction::Keep);
 }

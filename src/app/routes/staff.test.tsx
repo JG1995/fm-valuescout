@@ -1134,7 +1134,7 @@ describe("staff route", () => {
     );
     expect(
       await screen.findByText(
-        "Shortlist staff in FM, save the game, then use Load Data before optimizing assignments.",
+        "Shortlist staff in FM, save the game, then use Load Data.",
       ),
     ).toBeInTheDocument();
   });
@@ -1302,9 +1302,7 @@ describe("staff route", () => {
       name: "Configure staffing needs",
     });
     expect(within(dialog).getByText("B Squad")).toBeInTheDocument();
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save slots" }),
-    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(getLastStaffAssignmentTargetsIpcArgs()).toEqual(
         expect.objectContaining({ expectedSaveContextToken: "save-token-1" }),
@@ -1322,9 +1320,9 @@ describe("staff route", () => {
       await screen.findByRole("button", { name: "Configure staffing needs" }),
     );
     const reopened = await screen.findByRole("dialog");
-    const assistantManager = within(reopened).getAllByRole("spinbutton", {
-      name: "Assistant Manager slots",
-    })[0];
+    const assistantManager = within(reopened).getByRole("spinbutton", {
+      name: "Senior Assistant Manager",
+    });
     await user.clear(assistantManager);
     await user.type(assistantManager, "12");
     const snapshot = queryClient.getQueryData<SnapshotSummary>(
@@ -1347,11 +1345,11 @@ describe("staff route", () => {
     expect(configureClubStaff).toHaveFocus();
     await user.click(configureClubStaff);
     expect(
-      screen.getAllByRole("spinbutton", { name: "Assistant Manager slots" })[0],
+      screen.getByRole("spinbutton", { name: "Senior Assistant Manager" }),
     ).toHaveValue(1);
   });
 
-  it("renders standalone Club sections through Configure staffing needs without Senior", async () => {
+  it("shows club-wide jobs and only the enabled teams through Configure staffing needs without Senior", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     const targets = fixtureStaffAssignmentTargets();
@@ -1366,11 +1364,16 @@ describe("staff route", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Configure staffing needs",
     });
-    const club = within(dialog).getByRole("group", { name: "Club" });
+    const teamJobs = within(dialog).getByRole("table", { name: "Team jobs" });
+    const clubJobs = within(dialog).getByRole("table", {
+      name: "Club-wide jobs",
+    });
 
-    expect(within(dialog).queryByRole("group", { name: "Senior" })).toBeNull();
     expect(
-      within(club).getByRole("group", { name: "Recruitment" }),
+      within(teamJobs).queryByRole("columnheader", { name: "Senior" }),
+    ).toBeNull();
+    expect(
+      within(clubJobs).getByRole("rowheader", { name: "Recruitment" }),
     ).toBeInTheDocument();
   });
 

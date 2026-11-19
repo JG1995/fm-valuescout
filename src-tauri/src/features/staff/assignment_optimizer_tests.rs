@@ -1,8 +1,8 @@
 use super::assignment_optimizer::{
     allocate_staff_assignments, coach_composition, general_match_edge_bytes,
-    preferred_job_classification, CoachRequirement, PreferredJob, StaffAssignmentCandidate,
-    StaffAssignmentClassification, StaffAssignmentJobSource, StaffAssignmentScoreSet,
-    StaffAssignmentSlot,
+    preferred_job_classification, CoachRequirement, PreferredJob, StaffAssignmentAction,
+    StaffAssignmentCandidate, StaffAssignmentClassification, StaffAssignmentJobSource,
+    StaffAssignmentScoreSet, StaffAssignmentSlot,
 };
 use super::assignment_targets::StaffAssignmentTarget;
 
@@ -29,6 +29,8 @@ fn candidate(
         job_source: StaffAssignmentJobSource::PreferredJob,
         job: preferred_job_classification(preferred_job),
         classification: StaffAssignmentClassification::Recruitment,
+        club: None,
+        current_job_id: None,
         working_with_youngsters: Some(10),
         scores,
     }
@@ -689,7 +691,7 @@ fn preserves_classification_enforces_one_duty_and_reports_unavailable_vacancies(
     assert!(matches!(
         &result.slots[0],
         StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.classification == StaffAssignmentClassification::Recruitment
+            if recommendation.action == (StaffAssignmentAction::Recruit { club: None })
                 && recommendation.score == 0
     ));
     assert!(matches!(
@@ -703,7 +705,7 @@ fn preserves_classification_enforces_one_duty_and_reports_unavailable_vacancies(
         &result.slots[2],
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.job_id == "chief_scout"
-                && recommendation.classification == StaffAssignmentClassification::CurrentStaff
+                && recommendation.action == StaffAssignmentAction::OnStaff
     ));
     assert!(matches!(
         &result.slots[3],

@@ -557,6 +557,7 @@ function StaffSearchContent() {
               }
               void updateSearch({ shortlistOnly: undefined });
             }}
+            onOpenStaff={(uid) => router.history.push(`/staff/${uid}`)}
           />
         ) : null}
       </div>

@@ -427,6 +427,8 @@ pub(super) fn load_candidates(
             } else {
                 StaffAssignmentClassification::Recruitment
             },
+            club,
+            current_job_id: job_id,
             working_with_youngsters: working_with_youngsters
                 .and_then(|value| u8::try_from(value).ok())
                 .filter(|value| (1..=20).contains(value)),

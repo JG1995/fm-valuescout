@@ -12,8 +12,8 @@ use crate::features::memory_read::service::{
 use crate::features::player::boost_gate;
 
 use super::assignment_optimizer::{
-    CoachRequirement, StaffAssignmentClassification, StaffAssignmentEvidence,
-    StaffAssignmentJobSource, StaffAssignmentSlot,
+    CoachRequirement, StaffAssignmentAction, StaffAssignmentEvidence, StaffAssignmentJobSource,
+    StaffAssignmentSlot,
 };
 use super::assignment_optimizer_query::{
     self, StaffAssignmentOptimization, StaffAssignmentOptimizationState, StaffAssignmentResultSlot,
@@ -351,6 +351,30 @@ impl From<StaffAssignmentEvidence> for StaffAssignmentEvidenceDto {
 #[derive(Serialize)]
 #[serde(
     tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum StaffAssignmentActionDto {
+    Keep,
+    ChangeJob { current_job: &'static str },
+    OnStaff,
+    Recruit { club: Option<String> },
+}
+
+impl From<StaffAssignmentAction> for StaffAssignmentActionDto {
+    fn from(action: StaffAssignmentAction) -> Self {
+        match action {
+            StaffAssignmentAction::Keep => Self::Keep,
+            StaffAssignmentAction::ChangeJob { current_job } => Self::ChangeJob { current_job },
+            StaffAssignmentAction::OnStaff => Self::OnStaff,
+            StaffAssignmentAction::Recruit { club } => Self::Recruit { club },
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(
+    tag = "kind",
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
@@ -365,7 +389,7 @@ pub enum StaffAssignmentSlotDto {
         name: Option<String>,
         preferred_job: String,
         job_source: &'static str,
-        classification: &'static str,
+        action: StaffAssignmentActionDto,
         score: u8,
         coach_requirement: Option<&'static str>,
     },
@@ -400,7 +424,7 @@ impl From<StaffAssignmentResultSlot> for StaffAssignmentSlotDto {
                     StaffAssignmentJobSource::PreferredJob => "preferred_job",
                     StaffAssignmentJobSource::CurrentJob => "current_job",
                 },
-                classification: classification_name(recommendation.classification),
+                action: recommendation.action.into(),
                 score: recommendation.score,
                 coach_requirement: recommendation.coach_requirement.map(CoachRequirement::name),
             },
@@ -513,13 +537,6 @@ pub async fn set_staff_assignment_skip(
         )
     })
     .await
-}
-
-fn classification_name(classification: StaffAssignmentClassification) -> &'static str {
-    match classification {
-        StaffAssignmentClassification::CurrentStaff => "current_staff",
-        StaffAssignmentClassification::Recruitment => "recruitment",
-    }
 }
 
 fn parse_filters(
@@ -1308,7 +1325,9 @@ mod tests {
                     name: None,
                     preferred_job: "Assistant Manager".to_string(),
                     job_source: "current_job",
-                    classification: "current_staff",
+                    action: StaffAssignmentActionDto::ChangeJob {
+                        current_job: "Physio",
+                    },
                     score: 82,
                     coach_requirement: None,
                 },
@@ -1336,7 +1355,7 @@ mod tests {
                     name: Some("Coach".to_string()),
                     preferred_job: "Fitness Coach".to_string(),
                     job_source: "preferred_job",
-                    classification: "recruitment",
+                    action: StaffAssignmentActionDto::Recruit { club: None },
                     score: 83,
                     coach_requirement: Some("fitness"),
                 },
@@ -1381,6 +1400,10 @@ mod tests {
         assert_eq!(value["slots"][0]["slotNumber"], 1);
         assert_eq!(value["slots"][0]["jobSource"], "current_job");
         assert_eq!(value["slots"][2]["jobSource"], "preferred_job");
+        assert_eq!(value["slots"][0]["action"]["kind"], "change_job");
+        assert_eq!(value["slots"][0]["action"]["currentJob"], "Physio");
+        assert_eq!(value["slots"][2]["action"]["kind"], "recruit");
+        assert!(value["slots"][2]["action"]["club"].is_null());
         assert_eq!(value["skipped"][0]["uid"], 9);
         assert_eq!(value["skipped"][0]["name"], "Skipped");
         assert_eq!(value["slots"][1]["kind"], "vacancy");

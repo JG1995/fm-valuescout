@@ -193,8 +193,25 @@ pub(super) struct StaffAssignmentCandidate {
     /// The candidate group the job joins, or none when no target takes it.
     pub(super) job: Option<PreferredJob>,
     pub(super) classification: StaffAssignmentClassification,
+    /// The club the candidate works for now, or none when unemployed.
+    pub(super) club: Option<String>,
+    /// FM's type for the job the candidate holds now (`staff.job_id`).
+    pub(super) current_job_id: Option<i64>,
     pub(super) working_with_youngsters: Option<u8>,
     pub(super) scores: StaffAssignmentScoreSet,
+}
+
+/// What the club has to do to fill a slot with its recommended person.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum StaffAssignmentAction {
+    /// Club staff who already hold the slot's job.
+    Keep,
+    /// Club staff who hold another job now, named as FM shows it.
+    ChangeJob { current_job: &'static str },
+    /// Club staff whose current FM job type is not mapped.
+    OnStaff,
+    /// Someone from another club, or unemployed when `club` is none.
+    Recruit { club: Option<String> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -215,7 +232,7 @@ pub(super) struct StaffAssignmentRecommendation {
     pub(super) name: Option<String>,
     pub(super) preferred_job: String,
     pub(super) job_source: StaffAssignmentJobSource,
-    pub(super) classification: StaffAssignmentClassification,
+    pub(super) action: StaffAssignmentAction,
     pub(super) score: u8,
     pub(super) coach_requirement: Option<CoachRequirement>,
 }
@@ -356,36 +373,124 @@ pub(super) fn preferred_job_classification(preferred_job: &str) -> Option<Prefer
     })
 }
 
-/// The name and candidate group of the job a person holds now, from FM's job type
-/// (`staff.job_id`). Only the types cross-checked against a real save are mapped. Board,
-/// medical, and ownership jobs fill no target, and FM27's types 22 and 80 are still unidentified.
+/// One FM job type (`staff.job_id`): its name as FM shows it, the candidate group it joins, and
+/// the target job it fills.
+type CurrentJob = (i64, &'static str, PreferredJob, &'static str);
+
+/// Only the types cross-checked against a real save are mapped. Board, medical, and ownership
+/// jobs fill no target, and FM27's types 22 and 80 are still unidentified.
+const CURRENT_JOBS: [CurrentJob; 18] = [
+    (2, "Coach", PreferredJob::Coach, "coaches"),
+    (
+        10,
+        "Director of Football",
+        PreferredJob::DirectorOfFootball,
+        "director_of_football",
+    ),
+    (12, "Physio", PreferredJob::Physio, "physio"),
+    (14, "Scout", PreferredJob::Scout, "scout"),
+    (16, "Manager", PreferredJob::Manager, "manager"),
+    (
+        20,
+        "Assistant Manager",
+        PreferredJob::AssistantManager,
+        "assistant_manager",
+    ),
+    (26, "Fitness Coach", PreferredJob::FitnessCoach, "coaches"),
+    (
+        34,
+        "Goalkeeping Coach",
+        PreferredJob::GoalkeepingCoach,
+        "coaches",
+    ),
+    (
+        40,
+        "Head of Sports Science",
+        PreferredJob::SportsScientist,
+        "head_sports_science",
+    ),
+    (44, "Chief Scout", PreferredJob::Scout, "chief_scout"),
+    (
+        48,
+        "Sports Scientist",
+        PreferredJob::SportsScientist,
+        "sports_scientist",
+    ),
+    (50, "Head Physio", PreferredJob::Physio, "head_physio"),
+    (
+        58,
+        "Recruitment Analyst",
+        PreferredJob::RecruitmentAnalyst,
+        "recruitment_analyst",
+    ),
+    (
+        60,
+        "Performance Analyst",
+        PreferredJob::PerformanceAnalyst,
+        "performance_analyst",
+    ),
+    (
+        62,
+        "Head Performance Analyst",
+        PreferredJob::HeadPerformanceAnalyst,
+        "head_performance_analyst",
+    ),
+    (
+        64,
+        "Head of Youth Development",
+        PreferredJob::HeadOfYouthDevelopment,
+        "head_of_youth_development",
+    ),
+    (
+        86,
+        "Loan Manager",
+        PreferredJob::LoanManager,
+        "loan_manager",
+    ),
+    (
+        88,
+        "Technical Director",
+        PreferredJob::TechnicalDirector,
+        "technical_director",
+    ),
+];
+
+fn current_job(job_id: i64) -> Option<&'static CurrentJob> {
+    CURRENT_JOBS.iter().find(|(id, ..)| *id == job_id)
+}
+
+/// The name and candidate group of the job a person holds now, from FM's job type.
 pub(super) fn current_job_classification(job_id: i64) -> Option<(&'static str, PreferredJob)> {
-    match job_id {
-        2 => Some(("Coach", PreferredJob::Coach)),
-        10 => Some(("Director of Football", PreferredJob::DirectorOfFootball)),
-        12 => Some(("Physio", PreferredJob::Physio)),
-        14 => Some(("Scout", PreferredJob::Scout)),
-        16 => Some(("Manager", PreferredJob::Manager)),
-        20 => Some(("Assistant Manager", PreferredJob::AssistantManager)),
-        26 => Some(("Fitness Coach", PreferredJob::FitnessCoach)),
-        34 => Some(("Goalkeeping Coach", PreferredJob::GoalkeepingCoach)),
-        40 => Some(("Head of Sports Science", PreferredJob::SportsScientist)),
-        44 => Some(("Chief Scout", PreferredJob::Scout)),
-        48 => Some(("Sports Scientist", PreferredJob::SportsScientist)),
-        50 => Some(("Head Physio", PreferredJob::Physio)),
-        58 => Some(("Recruitment Analyst", PreferredJob::RecruitmentAnalyst)),
-        60 => Some(("Performance Analyst", PreferredJob::PerformanceAnalyst)),
-        62 => Some((
-            "Head Performance Analyst",
-            PreferredJob::HeadPerformanceAnalyst,
-        )),
-        64 => Some((
-            "Head of Youth Development",
-            PreferredJob::HeadOfYouthDevelopment,
-        )),
-        86 => Some(("Loan Manager", PreferredJob::LoanManager)),
-        88 => Some(("Technical Director", PreferredJob::TechnicalDirector)),
-        _ => None,
+    current_job(job_id).map(|&(_, label, group, _)| (label, group))
+}
+
+/// Club staff keep a slot whose job they hold now. Coaches also keep their kind: a Coach moved
+/// to a goalkeeping or fitness requirement changes job.
+fn assignment_action(
+    candidate: &StaffAssignmentCandidate,
+    target_job_id: &str,
+    coach_requirement: Option<CoachRequirement>,
+) -> StaffAssignmentAction {
+    if candidate.classification == StaffAssignmentClassification::Recruitment {
+        return StaffAssignmentAction::Recruit {
+            club: candidate.club.clone(),
+        };
+    }
+    let Some(&(_, label, _, job_target)) = candidate.current_job_id.and_then(current_job) else {
+        return StaffAssignmentAction::OnStaff;
+    };
+    let same_job = job_target == target_job_id
+        && (target_job_id != "coaches"
+            || label
+                == match coach_requirement {
+                    Some(CoachRequirement::Fitness) => "Fitness Coach",
+                    Some(CoachRequirement::Goalkeeping) => "Goalkeeping Coach",
+                    _ => "Coach",
+                });
+    if same_job {
+        StaffAssignmentAction::Keep
+    } else {
+        StaffAssignmentAction::ChangeJob { current_job: label }
     }
 }
 
@@ -787,7 +892,7 @@ fn recommendation(
         name: candidate.name.clone(),
         preferred_job: candidate.preferred_job.clone(),
         job_source: candidate.job_source,
-        classification: candidate.classification,
+        action: assignment_action(candidate, &configured_slot.target.job_id, coach_requirement),
         score,
         coach_requirement,
     })
