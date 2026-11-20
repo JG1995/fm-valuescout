@@ -244,6 +244,7 @@ pub struct ExpiringContractDto {
     pub weekly_wage_gbp: Option<i64>,
     pub expiry_date: String,
     pub days_remaining: Option<i64>,
+    pub loaned_out: bool,
 }
 
 impl From<ExpiringContract> for ExpiringContractDto {
@@ -257,6 +258,7 @@ impl From<ExpiringContract> for ExpiringContractDto {
             weekly_wage_gbp: value.weekly_wage_gbp,
             expiry_date: value.expiry_date,
             days_remaining: value.days_remaining,
+            loaned_out: value.loaned_out,
         }
     }
 }

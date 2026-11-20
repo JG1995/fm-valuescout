@@ -437,7 +437,7 @@ mod tests {
             .expect("enable foreign keys");
         migrations::apply(&conn).expect("apply migrations");
         let mut dump: serde_json::Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v9.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v10.json"))
                 .expect("parse golden dump");
         let template = dump["players"][0].clone();
         let players = (1..=11)

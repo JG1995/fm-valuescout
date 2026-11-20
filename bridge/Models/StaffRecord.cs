@@ -42,4 +42,10 @@ public sealed record StaffRecord
     public uint? ClubUid { get; init; }
 
     public string? Division { get; init; }
+
+    /// <summary>Raw FM team type of the team the contract names; null when unread.</summary>
+    public int? TeamType { get; init; }
+
+    /// <summary>senior, reserve, or youth from <see cref="TeamType"/>; null when unread.</summary>
+    public string? TeamLevel { get; init; }
 }

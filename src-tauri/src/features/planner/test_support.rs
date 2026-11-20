@@ -21,7 +21,7 @@ pub(super) fn open_with_snapshot() -> (tempfile::TempDir, Connection, i64) {
     let dump_path = temp_dir.path().join("dump.json");
     std::fs::write(
         &dump_path,
-        include_str!("../memory_read/fixtures/golden_dump_v9.json"),
+        include_str!("../memory_read/fixtures/golden_dump_v10.json"),
     )
     .expect("write dump");
     snapshot::ingest::ingest_dump_file(&mut conn, &dump_path).expect("ingest dump");
@@ -369,14 +369,19 @@ pub(super) fn add_picker_candidates(
 ) {
     let dump_path = temp_dir.path().join("picker-candidates.json");
     let mut dump: serde_json::Value =
-        serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v9.json"))
+        serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v10.json"))
             .expect("parse golden dump");
     let original = dump["players"][0].clone();
-    let mut reserve = original.clone();
+    // The golden player is on loan at the managed club; the copies are the club's own.
+    let mut own = original.clone();
+    own["onLoan"] = serde_json::Value::Bool(false);
+    own["parentClub"] = own["currentClub"].clone();
+    own["parentClubUid"] = own["currentClubUid"].clone();
+    let mut reserve = own.clone();
     reserve["uid"] = serde_json::Value::Number(78.into());
     reserve["name"] = serde_json::Value::String("Reserve Player".to_string());
     reserve["teamLevel"] = serde_json::Value::String("senior".to_string());
-    let mut b_team = original.clone();
+    let mut b_team = own.clone();
     b_team["uid"] = serde_json::Value::Number(79.into());
     b_team["name"] = serde_json::Value::String("Second Reserve Player".to_string());
     b_team["teamLevel"] = serde_json::Value::String("reserve".to_string());
@@ -407,7 +412,7 @@ pub(super) fn seed_players(
 ) {
     let dump_path = temp_dir.path().join("seeded-players.json");
     let mut dump: serde_json::Value =
-        serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v9.json"))
+        serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v10.json"))
             .expect("parse golden dump");
     let players = uids
         .iter()
@@ -438,6 +443,30 @@ pub(super) fn set_player_club(conn: &Connection, save_id: i64, player_uid: i64, 
         params![club, current_snapshot_id(conn, save_id), player_uid],
     )
     .expect("set player club");
+}
+
+/// Loans the player out from the managed club to another club.
+pub(super) fn loan_out(conn: &Connection, save_id: i64, player_uid: i64) {
+    conn.execute(
+        "UPDATE players
+         SET current_club = 'Borrower FC', current_club_uid = 4000,
+             parent_club = 'Loan FC', parent_club_uid = 1000, on_loan = 1
+         WHERE snapshot_id = ?1 AND uid = ?2",
+        params![current_snapshot_id(conn, save_id), player_uid],
+    )
+    .expect("loan player out");
+}
+
+/// Puts the player at the managed club on loan from another club.
+pub(super) fn loan_in(conn: &Connection, save_id: i64, player_uid: i64) {
+    conn.execute(
+        "UPDATE players
+         SET current_club = 'Loan FC', current_club_uid = 1000,
+             parent_club = 'Lender FC', parent_club_uid = 5000, on_loan = 1
+         WHERE snapshot_id = ?1 AND uid = ?2",
+        params![current_snapshot_id(conn, save_id), player_uid],
+    )
+    .expect("loan player in");
 }
 
 /// Moves the player to a namesake of the managed club: another club with the same name.

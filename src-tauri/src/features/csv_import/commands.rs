@@ -48,7 +48,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db = db::open(&temp_dir.path().join("import-command.db")).expect("open database");
         let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/features/memory_read/fixtures/golden_dump_v9.json");
+            .join("src/features/memory_read/fixtures/golden_dump_v10.json");
         {
             let mut conn = db.0.lock().expect("lock database");
             ingest_dump_file(&mut conn, &dump_path).expect("ingest fixture snapshot");

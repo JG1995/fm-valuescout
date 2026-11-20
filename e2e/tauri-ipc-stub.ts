@@ -443,6 +443,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           ca: 160,
           pa: 170,
           marketValueGbp: 16000000,
+          loanedOut: false,
         },
         {
           uid: 77,
@@ -451,12 +452,13 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           birthYear: 2004,
           birthDayOfYear: 124,
           nationalities: ["ESP"],
-          club: "Barcelona",
-          currentClubUid: 9001,
+          club: "Girona",
+          currentClubUid: 9050,
           division: "La Liga",
           ca: 150,
           pa: 165,
           marketValueGbp: 12000000,
+          loanedOut: true,
         },
       ] : [];
       const moneyballPlayers = moneyballSearch ? Array.from(
@@ -639,12 +641,14 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           birthYear: 2001,
           birthDayOfYear: 80,
           nationalities: ["ENG"],
-          club: "Barcelona",
-          currentClubUid: 9001,
+          // The third player is out on loan.
+          club: index === 2 ? "Girona" : "Barcelona",
+          currentClubUid: index === 2 ? 9050 : 9001,
           division: "La Liga",
           ca: 200 - index,
           pa: 210 - index,
           marketValueGbp: 16000000,
+          loanedOut: index === 2,
         }));
       }
       const sendSquadBoostProgress = (args, progress) => {
@@ -1470,6 +1474,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   action: { kind: "keep" },
                   score: 82,
                   coachRequirement: null,
+                  replaces: null,
                 },
                 {
                   kind: "recommendation",
@@ -1482,9 +1487,14 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   name: "Coach Casey",
                   preferredJob: "Coach",
                   jobSource: "preferred_job",
-                  action: { kind: "change_job", currentJob: "Fitness Coach" },
+                  action: {
+                    kind: "change_job",
+                    currentJob: "Fitness Coach",
+                    currentTeam: "reserves",
+                  },
                   score: 79,
                   coachRequirement: "attacking_technical",
+                  replaces: { uid: 106, name: "Old Coach", movesTo: null },
                 },
                 {
                   kind: "recommendation",
@@ -1500,6 +1510,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   action: { kind: "recruit", club: "Valencia" },
                   score: 74,
                   coachRequirement: null,
+                  replaces: { uid: 105, name: "Spare Scout", movesTo: null },
                 },
                 {
                   kind: "vacancy",
@@ -1536,7 +1547,23 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 { jobId: "scout", joinedCandidateCount: 1, eligibleScoreCount: 1, unavailableScoreCount: 0 },
               ],
               skipped: [],
-              surplus: [{ uid: 105, name: "Spare Scout", currentJob: "Scout" }],
+              surplus: [
+                {
+                  uid: 106,
+                  name: "Old Coach",
+                  currentJob: "Coach",
+                  currentTeam: "senior",
+                  replacedBy: { uid: 102, name: "Coach Casey" },
+                },
+                {
+                  uid: 105,
+                  name: "Spare Scout",
+                  currentJob: "Scout",
+                  currentTeam: null,
+                  replacedBy: { uid: 103, name: "Riley Scout" },
+                },
+              ],
+              teamNames: { senior: "First Team", reserves: "Reserves" },
             };
             const recommendations = result.slots.filter(
               (slot) => slot.kind === "recommendation",

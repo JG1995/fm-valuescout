@@ -291,7 +291,7 @@ mod tests {
         assert_eq!(uids(&suggest(&db, &cache, "golden", 10)), vec![77]);
 
         let mut dump: serde_json::Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v9.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v10.json"))
                 .expect("parse golden dump");
         dump["gameDate"] = "2027-08-14".into();
         dump["players"][0]["name"] = "Renamed Fixture Player".into();

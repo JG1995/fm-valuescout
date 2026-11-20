@@ -27,6 +27,7 @@ function squadPlayerNamed(name: string, uid: number, ca = 160): SquadPlayer {
     pa: ca + 5,
     marketValueGbp: ca * 100_000,
     suggestedTraining: null,
+    loanedOut: false,
   };
 }
 

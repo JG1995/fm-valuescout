@@ -3,7 +3,9 @@ use std::collections::BTreeMap;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
-use crate::features::managed_club::service::managed_club_player_sql;
+use crate::features::managed_club::service::{
+    managed_club_loaned_out_player_sql, managed_club_owned_player_sql,
+};
 
 const BASELINE_CLASS_YEAR: i64 = 2025;
 const MAX_ACADEMY_CANDIDATES: usize = 100;
@@ -102,6 +104,8 @@ pub struct AcademyMember {
     pub international_caps: Option<i64>,
     pub outcome: Option<AcademyMemberOutcome>,
     pub is_graduate: Option<bool>,
+    /// The managed club has loaned the member out; the current club is the borrower.
+    pub loaned_out: bool,
 }
 
 struct CurrentAcademyPlayer {
@@ -117,6 +121,7 @@ struct CurrentAcademyPlayer {
     height_cm: Option<i64>,
     preferred_foot: String,
     in_managed_club: bool,
+    loaned_out: bool,
 }
 
 struct AcademyCareerStats {
@@ -366,7 +371,7 @@ pub fn list_candidates(
                )
              ORDER BY p.name COLLATE NOCASE, p.uid
              LIMIT ?4",
-            managed_club_player_sql("p", "?3")
+            managed_club_owned_player_sql("p", "?3")
         ))
         .map_err(|error| error.to_string())?;
     let candidates = statement
@@ -419,7 +424,7 @@ pub fn assign_member(
                 "SELECT p.name
                  FROM players p
                  WHERE p.snapshot_id = ?1 AND p.uid = ?2 AND {}",
-                managed_club_player_sql("p", "?3")
+                managed_club_owned_player_sql("p", "?3")
             ),
             params![snapshot_id, player_uid, save_id],
             |row| row.get(0),
@@ -637,6 +642,7 @@ fn academy_member(
             is_graduate: career_stats
                 .reported_career_appearances
                 .map(|appearances| appearances >= 1),
+            loaned_out: false,
         };
     };
     let state = if player.in_managed_club {
@@ -668,6 +674,7 @@ fn academy_member(
         is_graduate: career_stats
             .reported_career_appearances
             .map(|appearances| appearances >= 1),
+        loaned_out: player.loaned_out,
     }
 }
 
@@ -742,10 +749,12 @@ fn load_current_player(
                     attributes_json,
                     height_cm,
                     preferred_foot,
+                    COALESCE({}, 0),
                     COALESCE({}, 0)
                  FROM players
                  WHERE snapshot_id = ?1 AND uid = ?2",
-                managed_club_player_sql("players", "?3")
+                managed_club_owned_player_sql("players", "?3"),
+                managed_club_loaned_out_player_sql("players", "?3")
             ),
             params![snapshot_id, player_uid, save_id],
             |row| {
@@ -762,6 +771,7 @@ fn load_current_player(
                     row.get::<_, Option<i64>>(9)?,
                     row.get::<_, String>(10)?,
                     row.get::<_, bool>(11)?,
+                    row.get::<_, bool>(12)?,
                 ))
             },
         )
@@ -783,6 +793,7 @@ fn load_current_player(
                 height_cm,
                 preferred_foot,
                 in_managed_club,
+                loaned_out,
             )| {
                 Ok(CurrentAcademyPlayer {
                     name,
@@ -797,6 +808,7 @@ fn load_current_player(
                     height_cm,
                     preferred_foot,
                     in_managed_club,
+                    loaned_out,
                 })
             },
         )
@@ -912,7 +924,7 @@ mod tests {
 
     fn fixture_player(uid: i64, name: &str, current_club: &str, team_level: &str) -> Value {
         let mut player: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v9.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v10.json"))
                 .expect("parse fixture");
         let player = player["players"].get_mut(0).expect("fixture player");
         player["uid"] = json!(uid);
@@ -930,7 +942,7 @@ mod tests {
         players: Vec<Value>,
     ) {
         let mut dump: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v9.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v10.json"))
                 .expect("parse fixture");
         dump["players"] = Value::Array(players);
         dump["playerCount"] = json!(dump["players"].as_array().expect("players").len());
@@ -952,7 +964,7 @@ mod tests {
         game_date_source: &str,
     ) -> Result<(), String> {
         let mut dump: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v9.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v10.json"))
                 .expect("parse fixture");
         dump["gameDate"] = game_date;
         dump["gameDateSource"] = json!(game_date_source);
@@ -1230,8 +1242,8 @@ mod tests {
             "memory",
         )
         .expect("ingest early date");
-        let failed_json = include_str!("../memory_read/fixtures/golden_dump_v9.json")
-            .replace("\"schemaVersion\": 9", "\"schemaVersion\": 4")
+        let failed_json = include_str!("../memory_read/fixtures/golden_dump_v10.json")
+            .replace("\"schemaVersion\": 10", "\"schemaVersion\": 4")
             .replace(
                 "\"gameDate\": \"2026-08-14\"",
                 "\"gameDate\": \"2027-01-01\"",
@@ -1288,6 +1300,45 @@ mod tests {
             })
             .expect("count academy memberships");
         assert_eq!(membership_count, 0);
+    }
+
+    #[test]
+    fn a_member_the_club_has_loaned_out_stays_a_member_and_is_marked() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("academy-loans.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        ingest_players(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "academy-loans.json",
+            vec![
+                fixture_player(77, "Club Player", "Loan FC", "senior"),
+                fixture_player(78, "Loaned Prospect", "Borrower FC", "senior"),
+            ],
+        );
+        conn.execute(
+            "UPDATE players SET current_club_uid = 4000, parent_club = 'Loan FC',
+                 parent_club_uid = 1000, on_loan = 1
+             WHERE uid = 78",
+            [],
+        )
+        .expect("loan the prospect out");
+        configure_managed_club(&conn, save_id);
+        let academy_class =
+            super::create_class(&conn, save_id, 2030).expect("create academy class");
+
+        super::assign_member(&conn, save_id, academy_class.id, 78)
+            .expect("assign the loaned-out prospect");
+        let detail =
+            super::get_class(&conn, save_id, academy_class.id).expect("load academy class");
+
+        assert_eq!(detail.members[0].state, super::AcademyMemberState::Resolved);
+        assert!(detail.members[0].loaned_out);
+        assert_eq!(
+            detail.members[0].current_club.as_deref(),
+            Some("Borrower FC")
+        );
     }
 
     #[test]

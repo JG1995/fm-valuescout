@@ -532,6 +532,7 @@ describe("Dashboard", () => {
           weeklyWageGbp: null,
           expiryDate: "2027-06-30",
           daysRemaining: 320,
+          loanedOut: true,
         },
       ],
     });
@@ -566,7 +567,8 @@ describe("Dashboard", () => {
     ).getByRole("row", { name: /Home Left Back/ });
     expect(contracts).toHaveTextContent("30 Jun 2027");
     expect(contracts).toHaveTextContent("in 10 months");
-    expect(contracts).toHaveTextContent("€900k");
+    expect(contracts).toHaveTextContent("€900k · On loan");
+    expect(contracts).toHaveClass("bg-info/10");
     expect(screen.getByText("2 more end later in this period.")).toBeVisible();
     const prospect = within(
       screen.getByRole("list", {

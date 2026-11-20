@@ -44,6 +44,7 @@ pub struct SquadPlayerDto {
     pub market_value_gbp: Option<i64>,
     pub suggested_training: Option<String>,
     pub dynamic_values: std::collections::BTreeMap<String, Option<DynamicValueDto>>,
+    pub loaned_out: bool,
 }
 
 #[derive(Serialize)]
@@ -84,6 +85,7 @@ impl From<SquadPlayer> for SquadPlayerDto {
             pa: player.pa,
             market_value_gbp: player.market_value_gbp,
             suggested_training: player.suggested_training,
+            loaned_out: player.loaned_out,
             dynamic_values: player
                 .dynamic_values
                 .into_iter()

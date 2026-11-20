@@ -13,7 +13,7 @@ use crate::features::player::boost_gate;
 
 use super::assignment_optimizer::{
     CoachRequirement, StaffAssignmentAction, StaffAssignmentEvidence, StaffAssignmentJobSource,
-    StaffAssignmentSlot, StaffAssignmentSurplus,
+    StaffAssignmentReplacement, StaffAssignmentSlot, StaffAssignmentSurplus,
 };
 use super::assignment_optimizer_query::{
     self, StaffAssignmentOptimization, StaffAssignmentOptimizationState, StaffAssignmentResultSlot,
@@ -356,16 +356,31 @@ impl From<StaffAssignmentEvidence> for StaffAssignmentEvidenceDto {
 )]
 pub enum StaffAssignmentActionDto {
     Keep,
-    ChangeJob { current_job: &'static str },
+    MoveTeam {
+        current_team: &'static str,
+    },
+    ChangeJob {
+        current_job: &'static str,
+        current_team: Option<&'static str>,
+    },
     OnStaff,
-    Recruit { club: Option<String> },
+    Recruit {
+        club: Option<String>,
+    },
 }
 
 impl From<StaffAssignmentAction> for StaffAssignmentActionDto {
     fn from(action: StaffAssignmentAction) -> Self {
         match action {
             StaffAssignmentAction::Keep => Self::Keep,
-            StaffAssignmentAction::ChangeJob { current_job } => Self::ChangeJob { current_job },
+            StaffAssignmentAction::MoveTeam { current_team } => Self::MoveTeam { current_team },
+            StaffAssignmentAction::ChangeJob {
+                current_job,
+                current_team,
+            } => Self::ChangeJob {
+                current_job,
+                current_team,
+            },
             StaffAssignmentAction::OnStaff => Self::OnStaff,
             StaffAssignmentAction::Recruit { club } => Self::Recruit { club },
         }
@@ -392,6 +407,7 @@ pub enum StaffAssignmentSlotDto {
         action: StaffAssignmentActionDto,
         score: u8,
         coach_requirement: Option<&'static str>,
+        replaces: Option<StaffAssignmentReplacementDto>,
     },
     Vacancy {
         scope: String,
@@ -427,6 +443,7 @@ impl From<StaffAssignmentResultSlot> for StaffAssignmentSlotDto {
                 action: recommendation.action.into(),
                 score: recommendation.score,
                 coach_requirement: recommendation.coach_requirement.map(CoachRequirement::name),
+                replaces: recommendation.replaces.map(Into::into),
             },
             StaffAssignmentSlot::Vacancy(vacancy) => Self::Vacancy {
                 scope: vacancy.scope,
@@ -437,6 +454,35 @@ impl From<StaffAssignmentResultSlot> for StaffAssignmentSlotDto {
                 coach_requirement: vacancy.coach_requirement.map(CoachRequirement::name),
                 evidence: vacancy.evidence.into(),
             },
+        }
+    }
+}
+
+/// Someone a recommendation replaces; `movesTo` names the slot they move to, or is null when
+/// they are sacked.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentReplacementDto {
+    pub uid: i64,
+    pub name: Option<String>,
+    pub moves_to: Option<StaffAssignmentMoveDto>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentMoveDto {
+    pub scope: String,
+    pub job: String,
+}
+
+impl From<StaffAssignmentReplacement> for StaffAssignmentReplacementDto {
+    fn from(replacement: StaffAssignmentReplacement) -> Self {
+        Self {
+            uid: replacement.uid,
+            name: replacement.name,
+            moves_to: replacement
+                .moves_to
+                .map(|(scope, job)| StaffAssignmentMoveDto { scope, job }),
         }
     }
 }
@@ -462,6 +508,8 @@ pub struct StaffAssignmentSurplusDto {
     pub uid: i64,
     pub name: Option<String>,
     pub current_job: Option<&'static str>,
+    pub current_team: Option<&'static str>,
+    pub replaced_by: Option<StaffAssignmentSkipDto>,
 }
 
 impl From<StaffAssignmentSurplus> for StaffAssignmentSurplusDto {
@@ -470,6 +518,10 @@ impl From<StaffAssignmentSurplus> for StaffAssignmentSurplusDto {
             uid: staff.uid,
             name: staff.name,
             current_job: staff.current_job,
+            current_team: staff.current_team,
+            replaced_by: staff
+                .replaced_by
+                .map(|(uid, name)| StaffAssignmentSkipDto { uid, name }),
         }
     }
 }
@@ -489,6 +541,7 @@ pub struct StaffAssignmentOptimizationDto {
     pub evidence: Vec<StaffAssignmentEvidenceDto>,
     pub skipped: Vec<StaffAssignmentSkipDto>,
     pub surplus: Vec<StaffAssignmentSurplusDto>,
+    pub team_names: std::collections::BTreeMap<String, String>,
 }
 
 impl From<StaffAssignmentOptimization> for StaffAssignmentOptimizationDto {
@@ -512,6 +565,7 @@ impl From<StaffAssignmentOptimization> for StaffAssignmentOptimizationDto {
             evidence: result.evidence.into_iter().map(Into::into).collect(),
             skipped: result.skipped.into_iter().map(Into::into).collect(),
             surplus: result.surplus.into_iter().map(Into::into).collect(),
+            team_names: result.team_names,
         }
     }
 }
@@ -1086,7 +1140,7 @@ mod tests {
     use crate::features::player::service::prepare_current_ability_boost_for_test;
     use crate::features::snapshot::ingest::ingest_dump_file;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v9.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v10.json");
 
     fn seeded_db(ca: i64, pa: i64) -> (tempfile::TempDir, Db) {
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -1347,9 +1401,18 @@ mod tests {
                     job_source: "current_job",
                     action: StaffAssignmentActionDto::ChangeJob {
                         current_job: "Physio",
+                        current_team: Some("reserves"),
                     },
                     score: 82,
                     coach_requirement: None,
+                    replaces: Some(StaffAssignmentReplacementDto {
+                        uid: 11,
+                        name: Some("Leaver".to_string()),
+                        moves_to: Some(StaffAssignmentMoveDto {
+                            scope: "youth".to_string(),
+                            job: "Coach".to_string(),
+                        }),
+                    }),
                 },
                 StaffAssignmentSlotDto::Vacancy {
                     scope: "senior".to_string(),
@@ -1378,6 +1441,7 @@ mod tests {
                     action: StaffAssignmentActionDto::Recruit { club: None },
                     score: 83,
                     coach_requirement: Some("fitness"),
+                    replaces: None,
                 },
                 StaffAssignmentSlotDto::Vacancy {
                     scope: "senior".to_string(),
@@ -1408,7 +1472,13 @@ mod tests {
                 uid: 10,
                 name: Some("Spare".to_string()),
                 current_job: Some("Scout"),
+                current_team: None,
+                replaced_by: Some(StaffAssignmentSkipDto {
+                    uid: 8,
+                    name: Some("Coach".to_string()),
+                }),
             }],
+            team_names: [("reserves".to_string(), "U21".to_string())].into(),
         })
         .expect("serialize assignment optimizer");
 
@@ -1427,6 +1497,13 @@ mod tests {
         assert_eq!(value["slots"][2]["jobSource"], "preferred_job");
         assert_eq!(value["slots"][0]["action"]["kind"], "change_job");
         assert_eq!(value["slots"][0]["action"]["currentJob"], "Physio");
+        assert_eq!(value["slots"][0]["action"]["currentTeam"], "reserves");
+        assert_eq!(value["slots"][0]["replaces"]["uid"], 11);
+        assert_eq!(value["slots"][0]["replaces"]["movesTo"]["scope"], "youth");
+        assert_eq!(value["slots"][0]["replaces"]["movesTo"]["job"], "Coach");
+        assert!(value["slots"][2]["replaces"].is_null());
+        assert_eq!(value["surplus"][0]["replacedBy"]["uid"], 8);
+        assert_eq!(value["teamNames"]["reserves"], "U21");
         assert_eq!(value["slots"][2]["action"]["kind"], "recruit");
         assert!(value["slots"][2]["action"]["club"].is_null());
         assert_eq!(value["skipped"][0]["uid"], 9);

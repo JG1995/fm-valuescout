@@ -7,6 +7,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { cn } from "@/utils/cn";
 import {
   type ConfigurableTableColumn,
   type ConfigurableTableFixedColumn,
@@ -68,6 +69,8 @@ export type ConfigurableVirtualizedTableProps<
   testId: string;
   total: number;
   getRowKey?: (row: TRow, index: number) => string | number;
+  /** Extra classes for a loaded row, such as a status tint. */
+  getRowClassName?: (row: TRow) => string | undefined;
   renderFixedCells?: (row: TRow | undefined) => ReactNode;
   onRowActivate?: (row: TRow) => void;
 };
@@ -125,6 +128,7 @@ const NO_FIXED_COLUMNS: readonly ConfigurableTableFixedColumn[] = [];
 
 type TableRowProps<TRow> = {
   row: TRow | undefined;
+  rowClassName: string | undefined;
   index: number;
   height: number;
   isInteractive: boolean;
@@ -140,6 +144,7 @@ type TableRowProps<TRow> = {
 
 function TableRowView<TRow>({
   row,
+  rowClassName,
   index,
   height,
   isInteractive,
@@ -160,11 +165,12 @@ function TableRowView<TRow>({
     <tr
       data-index={index}
       tabIndex={isInteractive ? (isTabStop ? 0 : -1) : undefined}
-      className={
+      className={cn(
         isInteractive
           ? "cursor-pointer border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-          : "border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high"
-      }
+          : "border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high",
+        rowClassName,
+      )}
       style={{ height: `${height}px` }}
       onFocus={isInteractive ? () => onRowFocus(index) : undefined}
       onBlur={isInteractive ? onRowBlur : undefined}
@@ -240,6 +246,7 @@ export function ConfigurableVirtualizedTable<
   testId,
   total,
   getRowKey,
+  getRowClassName,
   renderFixedCells,
 }: ConfigurableVirtualizedTableProps<TPage, TRow, TQueryKey>) {
   const parentRef = useRef<HTMLDivElement>(null);
@@ -478,6 +485,7 @@ export function ConfigurableVirtualizedTable<
                       : virtualRow.key
                   }
                   row={row}
+                  rowClassName={row ? getRowClassName?.(row) : undefined}
                   index={virtualRow.index}
                   height={virtualRow.size}
                   isInteractive={

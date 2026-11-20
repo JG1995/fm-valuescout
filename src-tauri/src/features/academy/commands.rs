@@ -77,6 +77,7 @@ pub struct AcademyMemberDto {
     pub international_caps: Option<i64>,
     pub outcome: Option<AcademyMemberOutcomeDto>,
     pub is_graduate: Option<bool>,
+    pub loaned_out: bool,
 }
 
 #[derive(Serialize)]
@@ -138,6 +139,7 @@ impl From<AcademyMember> for AcademyMemberDto {
             international_caps: member.international_caps,
             outcome: member.outcome.map(AcademyMemberOutcomeDto::from),
             is_graduate: member.is_graduate,
+            loaned_out: member.loaned_out,
         }
     }
 }

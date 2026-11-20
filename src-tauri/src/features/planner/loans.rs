@@ -102,6 +102,10 @@ pub(super) fn loan_candidates(
     let mut candidates = players
         .iter()
         .filter_map(|player| {
+            // A player on loan here cannot be loaned out again.
+            if player.loaned_in {
+                return None;
+            }
             let age = player
                 .development
                 .age

@@ -32,6 +32,7 @@ function academyMember(
     internationalCaps: career.internationalCaps ?? null,
     outcome,
     isGraduate: null,
+    loanedOut: false,
   };
 }
 

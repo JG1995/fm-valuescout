@@ -80,6 +80,8 @@ pub(super) struct StaffAssignmentOptimization {
     pub(super) evidence: Vec<StaffAssignmentEvidence>,
     pub(super) skipped: Vec<StaffAssignmentSkip>,
     pub(super) surplus: Vec<StaffAssignmentSurplus>,
+    /// Each enabled Planner team's display name by scope, for naming a person's current team.
+    pub(super) team_names: std::collections::BTreeMap<String, String>,
 }
 
 pub(super) fn optimize_staff_assignments(
@@ -247,6 +249,7 @@ pub(super) fn optimize_staff_assignments(
         evidence,
         skipped: load_skips(conn, save_id, snapshot_id)?,
         surplus,
+        team_names: scope_display_names.into_iter().collect(),
     })
 }
 
@@ -318,6 +321,7 @@ fn result(
         evidence: Vec::new(),
         skipped: Vec::new(),
         surplus: Vec::new(),
+        team_names: std::collections::BTreeMap::new(),
     }
 }
 
@@ -358,6 +362,7 @@ pub(super) fn load_candidates(
         "SELECT staff.uid, staff.name, staff.club, {at_managed_club}, shortlist.preferred_job,
                 staff.job_id,
                 json_extract(staff.staff_attributes_json, '$.WorkingWithYoungsters'),
+                staff.team_level,
                 {metric_columns}
          FROM staff
          LEFT JOIN staff_shortlist_entries shortlist
@@ -385,8 +390,9 @@ pub(super) fn load_candidates(
             let preferred_job: Option<String> = row.get(4)?;
             let job_id: Option<i64> = row.get(5)?;
             let working_with_youngsters: Option<i64> = row.get(6)?;
+            let team_level: Option<String> = row.get(7)?;
             let scores: Vec<Option<i64>> = (0..SCORE_ROLE_IDS.len())
-                .map(|index| row.get::<_, Option<i64>>(7 + index))
+                .map(|index| row.get::<_, Option<i64>>(8 + index))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok((
                 uid,
@@ -396,6 +402,7 @@ pub(super) fn load_candidates(
                 preferred_job,
                 job_id,
                 working_with_youngsters,
+                team_level,
                 scores,
             ))
         })
@@ -410,6 +417,7 @@ pub(super) fn load_candidates(
             preferred_job,
             job_id,
             working_with_youngsters,
+            team_level,
             scores,
         ) = row.map_err(|error| error.to_string())?;
         let (preferred_job, job_source, job) = match preferred_job {
@@ -447,6 +455,13 @@ pub(super) fn load_candidates(
             },
             club,
             current_job_id: job_id,
+            // FM's team levels are the Planner's teams.
+            current_team: match team_level.as_deref() {
+                Some("senior") => Some("senior"),
+                Some("reserve") => Some("reserves"),
+                Some("youth") => Some("youth"),
+                _ => None,
+            },
             working_with_youngsters: working_with_youngsters
                 .and_then(|value| u8::try_from(value).ok())
                 .filter(|value| (1..=20).contains(value)),

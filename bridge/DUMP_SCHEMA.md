@@ -1,8 +1,8 @@
-# Dump schema v9 (frozen)
+# Dump schema v10 (frozen)
 
 Contract between the FM27 BepInEx bridge (`dump.json`) and Rust snapshot ingest. File protocol details: [README.md](./README.md). Architecture: [ADR-0016](../.wiki/adr/0016-csharp-bepinex-fm26-bridge.md).
 
-**Schema version:** `9` (`BridgeProtocol.DumpSchemaVersion` / Rust `DUMP_SCHEMA_VERSION`). Schema v8 and older dumps are rejected with an instruction to update the bridge plugin and rescan.
+**Schema version:** `10` (`BridgeProtocol.DumpSchemaVersion` / Rust `DUMP_SCHEMA_VERSION`). Schema v9 and older dumps are rejected with an instruction to update the bridge plugin and rescan.
 
 ## Document shape
 
@@ -10,7 +10,7 @@ The bridge streams one compact, camelCase JSON object. Whitespace is not signifi
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `schemaVersion` | number | yes | Must be `9` |
+| `schemaVersion` | number | yes | Must be `10` |
 | `generatedAtUtc` | string | yes | ISO-8601 UTC timestamp |
 | `gameVersion`, `supportedGameVersion`, `bridgeVersion` | string | yes | Running build, layout key, and plugin version |
 | `protocolVersion` | number | yes | File-protocol version `1` |
@@ -29,13 +29,13 @@ New scans always write `scanTruncated: false` and `maxAccepted: null`. Historica
 
 ## Ingestibility rules
 
-Rust accepts only a schema-v9, protocol-v1 object with valid count, enum, and field types. Player UIDs and staff UIDs must each be unique and cannot overlap. A non-null manager must identify one emitted staff record. An empty result requires `emptySave: true`, zero players, zero staff, and `manager: null`.
+Rust accepts only a schema-v10, protocol-v1 object with valid count, enum, and field types. Player UIDs and staff UIDs must each be unique and cannot overlap. A non-null manager must identify one emitted staff record. An empty result requires `emptySave: true`, zero players, zero staff, and `manager: null`.
 
 The bridge never replaces a prior good dump with an empty player result. `emptySave` supports explicit tests and future handling only.
 
 ## File-protocol boosts
 
-Dump schema v9 remains unchanged by the shared protocol-v1 request file, which also permits three optional closed operations after a successful live full dump:
+Dump schema v10 remains unchanged by the shared protocol-v1 request file, which also permits three optional closed operations after a successful live full dump:
 
 | Operation | Required action fields | Bridge rule |
 | --- | --- | --- |
@@ -51,7 +51,7 @@ For Wonderkid Mentality, a `null` expected field means the source snapshot did n
 
 ## Player object
 
-All v5 player fields remain unchanged. Schema v9 carries the schema-v7 player fields and the complete raw position-familiarity map:
+All v5 player fields remain unchanged. Schema v10 carries the schema-v7 player fields and the complete raw position-familiarity map:
 
 | Field | Type | Null when |
 | --- | --- | --- |
@@ -64,16 +64,20 @@ All v5 player fields remain unchanged. Schema v9 carries the schema-v7 player fi
 
 ### Position familiarity
 
-Every schema-v9 player contains exactly these keys, in layout order:
+Every schema-v10 player contains exactly these keys, in layout order:
 
 `GK`, `SW`, `DL`, `DC`, `DR`, `DM`, `ML`, `MC`, `MR`, `AML`, `AMC`, `AMR`, `ST`, `WBL`, `WBR`.
 
 Each value is an integer from `0` through `20`, or JSON `null`:
 
 - An integer is the byte read successfully from FM memory, including a successful zero.
-- `null` means the byte was unreadable or outside the trusted FM range. The bridge never omits a key in schema v9.
+- `null` means the byte was unreadable or outside the trusted FM range. The bridge never omits a key in schema v10.
 
 Rust rejects missing or extra keys, booleans, strings, fractional values, and integers outside `0..=20` before snapshot mutation. Consumers apply their own explicit recorded (`>0`) or playable (`>=15`) rules; the dump itself does not filter positions. Live FM27 scans rate every position at least `1`, so `>0` marks all 15 positions; the Search Position filter uses `>=16`.
+
+### Clubs, teams, and loans
+
+A player's `currentClub`, `division`, `teamType`, `teamLevel`, and `clubReputation` come from the squad list that holds him; FM27 squad lists point at the player's object block. `teamLevel` maps FM's team type (`TeamLevelMap`): `0` is `senior`; reserves (`1`), B teams (`3`, `15`), under-23s (`9`), and under-21s (`10`) are `reserve`; every other type, such as under-20s (`18`), under-19s (`11`), and under-18s (`12`), is `youth`. A separate B club that its parent lists as a reserve club, such as Real Madrid Castilla, counts as the parent's reserve team: its players report the parent as `currentClub` with `teamLevel: "reserve"`, the B team's division, and `onLoan: false`. A player in two squads counts where he ranks highest within one club, and at the borrowing club across clubs. `onLoan` compares the current and parent club UIDs when both are known, and their names otherwise.
 
 Existing nullable fields preserve JSON `null` for unread or out-of-range values, never a sentinel zero. Attribute maps remain PascalCase keys with number or null values. `loanListed` uses SuperScout status bit1, pending live confirmation.
 
@@ -95,6 +99,8 @@ Each staff record is snapshot-owned and has this shape:
 | `contractExpiryYear`, `contractExpiryDayOfYear` | number \| null | Unread or absent |
 | `club`, `division` | string \| null | Unresolved or unread |
 | `clubUid` | positive number \| null | Contract club object unread |
+| `teamType` | number \| null | Contract team unread; FM's raw team type of the team the contract names |
+| `teamLevel` | string \| null | `senior` \| `reserve` \| `youth` from `teamType`; null when it is unread |
 
 The fixed keys are `Attacking`, `Defending`, `Fitness`, `Possession`, `Technical`, `Tactical`, `SetPieces`, `Determination`, `ManManagement`, `Motivating`, `JudgingPlayerAbility`, `JudgingPlayerPotential`, `JudgingStaffAbility`, `Negotiating`, `TacticalKnowledge`, `Physiotherapy`, `SportsScience`, `Authority`, `Adaptability`, `DataAnalysis`, `WorkingWithYoungsters`, `GoalkeepingDistribution`, `GoalkeepingHandling`, and `GoalkeepingReflexes`.
 
@@ -115,4 +121,4 @@ When present, `manager` contains `uid`, non-empty `name`, nullable `club`, nulla
 | `dump.json` | Bridge | This schema |
 | `diagnostics.txt` | Bridge | Scan diagnostics, never ingested |
 
-Golden v9 fixture: `src-tauri/src/features/memory_read/fixtures/golden_dump_v9.json`. The v8 fixture remains only to prove stale-dump rejection. Existing snapshots remain readable, but a new schema-v9 scan is required for complete staff scoring attributes.
+Golden v10 fixture: `src-tauri/src/features/memory_read/fixtures/golden_dump_v10.json`. The v9 and older fixtures remain only to prove stale-dump rejection. Existing snapshots remain readable, but a new schema-v10 scan is required for staff teams.

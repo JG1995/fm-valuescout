@@ -2,7 +2,8 @@ use super::assignment_optimizer::{
     allocate_staff_assignments, coach_composition, general_match_edge_bytes,
     preferred_job_classification, CoachRequirement, PreferredJob, StaffAssignmentAction,
     StaffAssignmentCandidate, StaffAssignmentClassification, StaffAssignmentJobSource,
-    StaffAssignmentScoreSet, StaffAssignmentSlot, StaffAssignmentSurplus,
+    StaffAssignmentReplacement, StaffAssignmentScoreSet, StaffAssignmentSlot,
+    StaffAssignmentSurplus,
 };
 use super::assignment_targets::StaffAssignmentTarget;
 
@@ -31,6 +32,7 @@ fn candidate(
         classification: StaffAssignmentClassification::Recruitment,
         club: None,
         current_job_id: None,
+        current_team: None,
         working_with_youngsters: Some(10),
         scores,
     }
@@ -1128,12 +1130,137 @@ fn lists_club_staff_who_lost_every_slot_they_could_fill() {
                 uid: 2,
                 name: Some("Staff 2".to_string()),
                 current_job: Some("Assistant Manager"),
+                current_team: None,
+                replaced_by: None,
             },
             StaffAssignmentSurplus {
                 uid: 8,
                 name: Some("Staff 8".to_string()),
                 current_job: Some("Coach"),
+                current_team: None,
+                replaced_by: None,
             },
         ]
+    );
+}
+
+fn club_assistant(uid: i64, team: Option<&'static str>, score: u8) -> StaffAssignmentCandidate {
+    StaffAssignmentCandidate {
+        classification: StaffAssignmentClassification::CurrentStaff,
+        current_job_id: Some(20),
+        current_team: team,
+        ..candidate(
+            uid,
+            "Assistant Manager",
+            StaffAssignmentScoreSet {
+                assistant_manager: Some(score),
+                ..Default::default()
+            },
+        )
+    }
+}
+
+fn recommendations(
+    result: &super::assignment_optimizer::StaffAssignmentAllocation,
+) -> Vec<(
+    i64,
+    String,
+    StaffAssignmentAction,
+    Option<StaffAssignmentReplacement>,
+)> {
+    result
+        .slots
+        .iter()
+        .filter_map(|slot| match slot {
+            StaffAssignmentSlot::Recommendation(recommendation) => Some((
+                recommendation.uid,
+                recommendation.scope.clone(),
+                recommendation.action.clone(),
+                recommendation.replaces.clone(),
+            )),
+            StaffAssignmentSlot::Vacancy(_) => None,
+        })
+        .collect()
+}
+
+#[test]
+fn keeps_staff_on_their_own_team_and_names_whom_each_newcomer_replaces() {
+    let candidates = [
+        club_assistant(1, Some("reserves"), 90),
+        club_assistant(2, Some("senior"), 50),
+        candidate(
+            3,
+            "Assistant Manager",
+            StaffAssignmentScoreSet {
+                assistant_manager: Some(70),
+                ..Default::default()
+            },
+        ),
+        club_assistant(4, Some("youth"), 60),
+    ];
+    let targets = [
+        target("senior", "assistant_manager", "Assistant Manager", 1),
+        target("reserves", "assistant_manager", "Assistant Manager", 1),
+        target("youth", "assistant_manager", "Assistant Manager", 1),
+    ];
+
+    let result = allocate_staff_assignments(&targets, &candidates);
+
+    let replacement = |uid: i64, moves_to: Option<(&str, &str)>| {
+        Some(StaffAssignmentReplacement {
+            uid,
+            name: Some(format!("Staff {uid}")),
+            moves_to: moves_to.map(|(scope, job)| (scope.to_string(), job.to_string())),
+        })
+    };
+    assert_eq!(
+        recommendations(&result),
+        [
+            // The reserve team's assistant moves up and takes the sacked senior assistant's job.
+            (
+                1,
+                "senior".to_string(),
+                StaffAssignmentAction::MoveTeam {
+                    current_team: "reserves"
+                },
+                replacement(2, None),
+            ),
+            // The recruit takes the job the reserve team's assistant leaves.
+            (
+                3,
+                "reserves".to_string(),
+                StaffAssignmentAction::Recruit { club: None },
+                replacement(1, Some(("senior", "Assistant Manager"))),
+            ),
+            (4, "youth".to_string(), StaffAssignmentAction::Keep, None),
+        ]
+    );
+    assert_eq!(
+        result.surplus,
+        [StaffAssignmentSurplus {
+            uid: 2,
+            name: Some("Staff 2".to_string()),
+            current_job: Some("Assistant Manager"),
+            current_team: Some("senior"),
+            replaced_by: Some((1, Some("Staff 1".to_string()))),
+        }]
+    );
+}
+
+#[test]
+fn staff_whose_team_is_unknown_keep_their_job_on_any_team() {
+    let result = allocate_staff_assignments(
+        &[target(
+            "reserves",
+            "assistant_manager",
+            "Assistant Manager",
+            1,
+        )],
+        &[club_assistant(1, None, 80)],
+    );
+
+    assert_eq!(
+        recommendations(&result),
+        [(1, "reserves".to_string(), StaffAssignmentAction::Keep, None)]
     );
 }

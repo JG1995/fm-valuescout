@@ -58,12 +58,106 @@ public sealed class ClubExtractionTests
 
     [Theory]
     [InlineData(0, "senior")]
+    [InlineData(1, "reserve")]
     [InlineData(3, "reserve")]
+    [InlineData(9, "reserve")]
+    [InlineData(10, "reserve")]
+    [InlineData(15, "reserve")]
     [InlineData(11, "youth")]
+    [InlineData(12, "youth")]
+    [InlineData(18, "youth")]
     [InlineData(-1, null)]
     public void Team_level_maps_fm_team_type(int teamType, string? expected)
     {
         Assert.Equal(expected, TeamLevelMap.FromTeamType(teamType));
+    }
+
+    [Fact]
+    public void A_b_club_first_team_is_a_reserve_team()
+    {
+        Assert.Equal("reserve", TeamLevelMap.FromTeamType(0, reserveClub: true));
+    }
+
+    [Fact]
+    public void Pipeline_links_fm27_squads_that_list_player_blocks()
+    {
+        var bridgeDir = Path.Combine(Path.GetTempPath(), "fm-valuescout-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(bridgeDir);
+        try
+        {
+            var layout = Fm27Layout.Instance;
+            var reader = new FakeMemoryReader();
+            PlaceLoanScenario(reader, layout, squadsListBlocks: true);
+
+            var result = new CapADumpPipeline().Run(
+                reader,
+                bridgeDir,
+                gameVersion: "27.1",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.True(result.Success);
+            using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
+            var loaned = FindPlayer(doc.RootElement.GetProperty("players"), 77);
+            Assert.Equal("Loan FC", loaned.GetProperty("currentClub").GetString());
+            Assert.True(loaned.GetProperty("onLoan").GetBoolean());
+            Assert.Equal("senior", loaned.GetProperty("teamLevel").GetString());
+            Assert.Equal("Championship", loaned.GetProperty("division").GetString());
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_b_club_squad_counts_for_its_parent_club_as_a_reserve_team(bool walkBClub)
+    {
+        const ulong parentClub = 0x500000UL;
+        const ulong parentTeam = 0x501000UL;
+        const ulong parentTeams = 0x503000UL;
+        const ulong parentReserveTeams = 0x504000UL;
+        const ulong bClub = 0x510000UL;
+        const ulong bTeam = 0x511000UL;
+        const ulong bTeams = 0x513000UL;
+        const ulong bSquad = 0x514000UL;
+        const ulong playerBlock = 0x520000UL;
+        var layout = Fm27Layout.Instance;
+        var reader = new FakeMemoryReader();
+        PlaceClubObject(reader, layout, parentClub, "Parent FC");
+        PlaceClubObject(reader, layout, bClub, "Parent FC B");
+        PlaceTeamObject(reader, layout, parentTeam, parentClub, 0x502000UL, "First League", teamType: 0, schedule: 0x505000UL, scheduleYear: 2026, scheduleDoy: 226);
+        PlaceTeamObject(reader, layout, bTeam, bClub, 0x512000UL, "Third League", teamType: 0, schedule: 0x515000UL, scheduleYear: 2026, scheduleDoy: 226);
+        PlaceVector(reader, parentClub + (ulong)layout.ClubTeamsBeginOffset, parentTeams, parentTeam);
+        PlaceVector(reader, parentClub + (ulong)layout.ClubReserveTeamsBeginOffset, parentReserveTeams, bTeam);
+        PlaceVector(reader, bClub + (ulong)layout.ClubTeamsBeginOffset, bTeams, bTeam);
+        PlaceVector(reader, bTeam + (ulong)layout.TeamSquadBeginOffset, bSquad, playerBlock);
+        var clubs = walkBClub
+            ? new[] { new ClubCandidate(parentClub, "Parent FC"), new ClubCandidate(bClub, "Parent FC B") }
+            : new[] { new ClubCandidate(parentClub, "Parent FC") };
+
+        var index = SquadClubIndex.Build(
+            reader,
+            layout,
+            new Dictionary<ulong, uint> { [playerBlock] = 5 },
+            new Dictionary<uint, string?> { [5] = "Parent FC" },
+            clubs,
+            Array.Empty<ulong>());
+
+        Assert.True(index.TryGet(5, out var assignment));
+        Assert.Equal("Parent FC", assignment.ClubName);
+        Assert.True(assignment.ReserveClub);
+        Assert.Equal("Third League", assignment.Division);
+        Assert.Equal("reserve", TeamLevelMap.FromTeamType(assignment.TeamType, assignment.ReserveClub));
+    }
+
+    private static void PlaceVector(FakeMemoryReader reader, ulong beginField, ulong array, ulong entry)
+    {
+        reader.AddBytes(beginField, BitConverter.GetBytes(array));
+        reader.AddBytes(beginField + 8, BitConverter.GetBytes(array + 8));
+        reader.AddBytes(array, BitConverter.GetBytes(entry));
     }
 
     [Fact]
@@ -325,8 +419,11 @@ public sealed class ClubExtractionTests
         IFmMemoryLayout layout,
         bool includeGlobalClub = false,
         int loanTeamType = 0,
-        ushort loanTeamReputation = 5000)
+        ushort loanTeamReputation = 5000,
+        bool squadsListBlocks = false)
     {
+        var loanSquadEntry = squadsListBlocks ? LoanPlayerBase : LoanPerson;
+        var seedSquadEntry = squadsListBlocks ? SeedPlayerBase : SeedPerson;
         var regionEnd = includeGlobalClub
             ? GlobalPlayerBase + 0x12000
             : SeedContract + 0x200;
@@ -371,7 +468,7 @@ public sealed class ClubExtractionTests
         reader.AddBytes(ParentTeamArray, BitConverter.GetBytes(ParentTeam));
         reader.AddBytes(ParentTeam + (ulong)layout.TeamSquadBeginOffset, BitConverter.GetBytes(ParentSquadArray));
         reader.AddBytes(ParentTeam + (ulong)layout.TeamSquadEndOffset, BitConverter.GetBytes(ParentSquadArray + 8));
-        reader.AddBytes(ParentSquadArray, BitConverter.GetBytes(LoanPerson));
+        reader.AddBytes(ParentSquadArray, BitConverter.GetBytes(loanSquadEntry));
 
         // Loan club → [LoanTeam]; squad lists loan person + seed person.
         reader.AddBytes(LoanClub + (ulong)layout.ClubTeamsBeginOffset, BitConverter.GetBytes(LoanTeamArray));
@@ -381,8 +478,8 @@ public sealed class ClubExtractionTests
         reader.AddBytes(
             LoanTeam + (ulong)layout.TeamSquadEndOffset,
             BitConverter.GetBytes(LoanSquadArray + (includeGlobalClub ? 24UL : 16UL)));
-        reader.AddBytes(LoanSquadArray, BitConverter.GetBytes(LoanPerson));
-        reader.AddBytes(LoanSquadArray + 8, BitConverter.GetBytes(SeedPerson));
+        reader.AddBytes(LoanSquadArray, BitConverter.GetBytes(loanSquadEntry));
+        reader.AddBytes(LoanSquadArray + 8, BitConverter.GetBytes(seedSquadEntry));
         if (includeGlobalClub)
         {
             reader.AddBytes(LoanSquadArray + 16, BitConverter.GetBytes(GlobalPerson));

@@ -127,7 +127,7 @@ public interface IFmMemoryLayout
     /// <summary>Pointer to the human manager person object relative to team.</summary>
     int TeamManagerPtrOffset { get; }
 
-    /// <summary>Team type byte (0 = first team, ~3 = reserves, ≥10 = youth).</summary>
+    /// <summary>Team type byte (0 = first team; see <c>TeamLevelMap</c> for the others).</summary>
     int TeamTypeOffset { get; }
 
     /// <summary>Team reputation (u16) relative to team.</summary>
@@ -147,6 +147,15 @@ public interface IFmMemoryLayout
 
     /// <summary>End pointer of team list relative to club.</summary>
     int ClubTeamsEndOffset { get; }
+
+    /// <summary>
+    /// Begin pointer of the club's reserve-club team list: the first teams of separate B clubs,
+    /// such as Real Madrid Castilla, whose players hold contracts with this club.
+    /// </summary>
+    int ClubReserveTeamsBeginOffset { get; }
+
+    /// <summary>End pointer of the club's reserve-club team list.</summary>
+    int ClubReserveTeamsEndOffset { get; }
 
     /// <summary>Begin pointer of squad list relative to team.</summary>
     int TeamSquadBeginOffset { get; }

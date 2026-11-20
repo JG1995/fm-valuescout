@@ -242,6 +242,12 @@ public sealed class Fm27Layout : IFmMemoryLayout
 
     public int ClubTeamsEndOffset => 0x20;
 
+    // Verified on FM 27.1: Real Madrid lists Castilla and Real Madrid C; Benfica, Porto, and
+    // Sporting list their B clubs.
+    public int ClubReserveTeamsBeginOffset => 0x30;
+
+    public int ClubReserveTeamsEndOffset => 0x38;
+
     public int TeamSquadBeginOffset => 0x38;
 
     public int TeamSquadEndOffset => 0x40;

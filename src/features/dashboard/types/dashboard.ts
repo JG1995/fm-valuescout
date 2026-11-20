@@ -134,6 +134,8 @@ export type DashboardExpiringContract = {
   /** The contract's last day as `YYYY-MM-DD`. */
   expiryDate: string;
   daysRemaining: number | null;
+  /** The club has loaned the player out. */
+  loanedOut: boolean;
 };
 
 export type DashboardExpiringContracts = {
