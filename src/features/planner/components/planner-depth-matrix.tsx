@@ -11,6 +11,7 @@ import type { PlannerDepth } from "../types/depth";
 import type { TacticOptions } from "../types/tactic";
 import type { PlannerTeam } from "../types/team";
 import { PlannerClearAllControl } from "./planner-clear-all-control";
+import { PlannerFmMoves } from "./planner-fm-moves";
 import { PlannerLoanCandidates } from "./planner-loan-candidates";
 import { PlannerRoleReferenceModal } from "./planner-role-reference-modal";
 import {
@@ -227,6 +228,14 @@ export function PlannerDepthMatrix({
             >
               Optimize squads
             </Button>
+            <PlannerFmMoves
+              activeSaveId={activeSaveId}
+              disabled={
+                clearAll.isPending ||
+                optimize.isPending ||
+                teamManagementPending
+              }
+            />
             <ControlDivider />
             <Button
               variant="secondary"

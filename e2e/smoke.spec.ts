@@ -4897,6 +4897,33 @@ test.describe("application smoke", () => {
     await expect(trigger).toBeFocused();
   });
 
+  test("planner applies the ticked squad moves in FM", async ({ page }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/my-club?view=planner");
+
+    const main = page.getByRole("main");
+    const trigger = main.getByRole("button", { name: "Apply in FM" });
+    await trigger.click();
+
+    const dialog = page.getByRole("dialog", { name: "Apply squads in FM" });
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByRole("row", { name: /Veteran Full-Back/ }),
+    ).toContainText("Over age");
+    await expect(dialog).toContainText(
+      "FM team unknown, so not moved: Unread Youngster.",
+    );
+    await dialog
+      .getByRole("checkbox", { name: "Move Veteran Full-Back" })
+      .uncheck();
+    await dialog.getByRole("button", { name: "Move 1 player" }).click();
+
+    await expect(dialog.getByRole("status")).toHaveText("FM moved 1 player.");
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
   test("planner team management renames, removes, and restores a populated team", async ({
     page,
   }) => {
