@@ -91,30 +91,25 @@ fn plan_moves_each_placed_player_whose_fm_team_differs_from_his_squad() {
 
     let plan = plan_fm_squad_moves(&conn, save_id).expect("plan moves");
 
-    // Senior squad first. 78 is already in the reserves; 81 is in no squad; 82 is on loan.
+    // Senior squad first. 78 is already in the reserves; 81 is in no squad; 82 is on loan. The
+    // snapshot does not know 80's team, so the bridge settles it from FM.
     assert_eq!(
-        plan.moves
-            .iter()
+        plan.iter()
             .map(|planned| (
                 planned.player_uid,
-                planned.from_level.as_str(),
+                planned.from_level.as_deref(),
                 planned.to_team,
                 planned.over_age
             ))
             .collect::<Vec<_>>(),
         vec![
-            (79, "youth", PlannerTeam::Senior, false),
-            (77, "senior", PlannerTeam::Reserves, true),
+            (79, Some("youth"), PlannerTeam::Senior, false),
+            (77, Some("senior"), PlannerTeam::Reserves, true),
+            // 80 keeps the golden player's age, over the youth squad's limit.
+            (80, None, PlannerTeam::Youth, true),
         ]
     );
-    assert_eq!(plan.moves[1].to_team_name, "Reserves");
-    assert_eq!(
-        plan.unknown_team
-            .iter()
-            .map(|(uid, _)| *uid)
-            .collect::<Vec<_>>(),
-        vec![80]
-    );
+    assert_eq!(plan[1].to_team_name, "Reserves");
 }
 
 #[test]
@@ -127,7 +122,7 @@ fn apply_sends_only_chosen_moves_and_records_the_teams_fm_confirms() {
     let db = Db::new(conn);
     let sent = RefCell::new(Vec::new());
 
-    let report = apply_fm_squad_moves(&db, &[77, 79, 78, 999], |source, club, items| {
+    let report = apply_fm_squad_moves(&db, &[77, 79, 80, 78, 999], |source, club, items| {
         sent.borrow_mut().push((
             source.to_string(),
             club,
@@ -140,6 +135,7 @@ fn apply_sends_only_chosen_moves_and_records_the_teams_fm_confirms() {
             moves: vec![
                 outcome("moved", Some(0), Some("senior")),
                 outcome("not-confirmed", Some(0), Some("senior")),
+                outcome("already-there", Some(12), Some("youth")),
             ],
             error: None,
         })
@@ -151,10 +147,11 @@ fn apply_sends_only_chosen_moves_and_records_the_teams_fm_confirms() {
         vec![(
             "scan-1".to_string(),
             1000,
-            vec![(79, "senior"), (77, "reserve")]
+            vec![(79, "senior"), (77, "reserve"), (80, "youth")]
         )]
     );
     assert_eq!(report.moved, vec![79]);
+    assert_eq!(report.unchanged, vec![80]);
     assert_eq!(
         report.failed,
         vec![FmSquadMoveFailure {
@@ -171,6 +168,11 @@ fn apply_sends_only_chosen_moves_and_records_the_teams_fm_confirms() {
     assert_eq!(
         team_level(&conn, save_id, 77),
         (Some("senior".to_string()), Some(0))
+    );
+    // FM already had 80 in the youth team; the snapshot now knows it.
+    assert_eq!(
+        team_level(&conn, save_id, 80),
+        (Some("youth".to_string()), Some(12))
     );
 }
 
@@ -208,7 +210,7 @@ fn preview_says_why_moves_cannot_be_applied_before_asking_the_bridge() {
         without_scan.unavailable_reason.as_deref(),
         Some(LOAD_DATA_FIRST)
     );
-    assert_eq!(without_scan.moves.len(), 2);
+    assert_eq!(without_scan.moves.len(), 3);
 
     record_live_scan(&db.0.lock().expect("lock db"), save_id);
     let bridge_closed = read_planner_fm_moves(&db, || Some("bridge closed".to_string()))
@@ -221,5 +223,5 @@ fn preview_says_why_moves_cannot_be_applied_before_asking_the_bridge() {
     let ready = read_planner_fm_moves(&db, || None).expect("preview ready to apply");
     assert_eq!(ready.unavailable_reason, None);
     assert_eq!(ready.moves[0].to_team, "senior");
-    assert_eq!(ready.unknown_team_players[0].player_uid, 80);
+    assert_eq!(ready.moves[2].from_level, None);
 }

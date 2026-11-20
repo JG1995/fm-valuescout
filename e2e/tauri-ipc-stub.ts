@@ -2395,6 +2395,15 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   overAge: false,
                 },
                 {
+                  playerUid: 9103,
+                  name: "Unread Youngster",
+                  age: 16,
+                  fromLevel: null,
+                  toTeam: "youth",
+                  toTeamName: "Youth",
+                  overAge: false,
+                },
+                {
                   playerUid: 9102,
                   name: "Veteran Full-Back",
                   age: 26,
@@ -2404,7 +2413,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   overAge: true,
                 },
               ],
-              unknownTeamPlayers: [{ playerUid: 9103, name: "Unread Youngster" }],
               unavailableReason: null,
             };
           }

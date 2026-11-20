@@ -9,12 +9,16 @@ export const FM_TEAM_LEVEL_NAMES: Record<FmTeamLevel, string> = {
   youth: "Youth",
 };
 
-/** A Planner-placed player whose FM team is at another level than his squad. */
+/**
+ * A Planner-placed player whose FM team is at another level than his squad, or
+ * whose FM team the snapshot does not know.
+ */
 export type PlannerFmMove = {
   playerUid: number;
   name: string;
   age: number | null;
-  fromLevel: FmTeamLevel;
+  /** Null when unknown; the bridge then reads his team from FM. */
+  fromLevel: FmTeamLevel | null;
   toTeam: PlannerTeam;
   toTeamName: string;
   /** Older than the squad's age limit. FM does not check age, so he moves anyway. */
@@ -23,8 +27,6 @@ export type PlannerFmMove = {
 
 export type PlannerFmMoves = {
   moves: PlannerFmMove[];
-  /** Placed players whose FM team is unknown, so no move is planned for them. */
-  unknownTeamPlayers: { playerUid: number; name: string }[];
   /** Why the moves cannot be applied now; null when they can. */
   unavailableReason: string | null;
 };

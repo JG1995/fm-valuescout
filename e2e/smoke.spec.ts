@@ -4910,15 +4910,15 @@ test.describe("application smoke", () => {
     await expect(
       dialog.getByRole("row", { name: /Veteran Full-Back/ }),
     ).toContainText("Over age");
-    await expect(dialog).toContainText(
-      "FM team unknown, so not moved: Unread Youngster.",
-    );
+    await expect(
+      dialog.getByRole("row", { name: /Unread Youngster/ }),
+    ).toContainText("Unknown");
     await dialog
       .getByRole("checkbox", { name: "Move Veteran Full-Back" })
       .uncheck();
-    await dialog.getByRole("button", { name: "Move 1 player" }).click();
+    await dialog.getByRole("button", { name: "Move 2 players" }).click();
 
-    await expect(dialog.getByRole("status")).toHaveText("FM moved 1 player.");
+    await expect(dialog.getByRole("status")).toHaveText("FM moved 2 players.");
     await dialog.getByRole("button", { name: "Close" }).click();
     await expect(dialog).toBeHidden();
     await expect(trigger).toBeFocused();

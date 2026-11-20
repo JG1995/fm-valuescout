@@ -1030,8 +1030,9 @@ pub struct PlannerFmMoveDto {
     pub player_uid: i64,
     pub name: String,
     pub age: Option<i64>,
-    /// The level of his FM team now: `senior`, `reserve`, or `youth`.
-    pub from_level: String,
+    /// The level of his FM team in the snapshot: `senior`, `reserve`, or `youth`; null when
+    /// unknown, which the bridge settles from FM itself.
+    pub from_level: Option<String>,
     pub to_team: &'static str,
     pub to_team_name: String,
     /// Older than the target squad's age limit; FM moves him anyway.
@@ -1054,17 +1055,8 @@ impl From<FmSquadMove> for PlannerFmMoveDto {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PlannerFmPlayerDto {
-    pub player_uid: i64,
-    pub name: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct PlannerFmMovesDto {
     pub moves: Vec<PlannerFmMoveDto>,
-    /// Planner-placed players whose FM team is unknown, so no move is planned for them.
-    pub unknown_team_players: Vec<PlannerFmPlayerDto>,
     /// Why the moves cannot be applied now; absent when they can.
     pub unavailable_reason: Option<String>,
 }
@@ -1127,12 +1119,7 @@ pub(super) fn read_planner_fm_moves(
         )
     };
     Ok(PlannerFmMovesDto {
-        moves: plan.moves.into_iter().map(Into::into).collect(),
-        unknown_team_players: plan
-            .unknown_team
-            .into_iter()
-            .map(|(player_uid, name)| PlannerFmPlayerDto { player_uid, name })
-            .collect(),
+        moves: plan.into_iter().map(Into::into).collect(),
         unavailable_reason: match context {
             Err(reason) => Some(reason),
             Ok(_) => bridge_unavailable(),

@@ -35,8 +35,16 @@ const plan: PlannerFmMoves = {
       toTeamName: "U21",
       overAge: false,
     },
+    {
+      playerUid: 80,
+      name: "Unread Youngster",
+      age: 16,
+      fromLevel: null,
+      toTeam: "youth",
+      toTeamName: "U18",
+      overAge: false,
+    },
   ],
-  unknownTeamPlayers: [{ playerUid: 80, name: "Unread Youngster" }],
   unavailableReason: null,
 };
 
@@ -90,20 +98,19 @@ describe("Apply squads in FM", () => {
       .closest("tr") as HTMLElement;
     expect(within(keeperRow).getByText("Over age")).toBeInTheDocument();
     expect(within(keeperRow).getByText("First team")).toBeInTheDocument();
-    expect(
-      within(dialog).getByText(
-        /FM team unknown, so not moved: Unread Youngster/,
-      ),
-    ).toBeInTheDocument();
+    const unknownRow = within(dialog)
+      .getByRole("rowheader", { name: "Unread Youngster" })
+      .closest("tr") as HTMLElement;
+    expect(within(unknownRow).getByText("Unknown")).toBeInTheDocument();
 
     await user.click(
       within(dialog).getByRole("checkbox", { name: "Move Squad Winger" }),
     );
     await user.click(
-      within(dialog).getByRole("button", { name: "Move 2 players" }),
+      within(dialog).getByRole("button", { name: "Move 3 players" }),
     );
 
-    expect(applied).toEqual([{ playerUids: [79, 77] }]);
+    expect(applied).toEqual([{ playerUids: [79, 77, 80] }]);
     expect(await within(dialog).findByRole("status")).toHaveTextContent(
       "FM moved 1 player.",
     );
@@ -127,14 +134,14 @@ describe("Apply squads in FM", () => {
       "Load Data with FM open on this save before moving squads",
     );
     expect(
-      within(dialog).getByRole("button", { name: "Move 3 players" }),
+      within(dialog).getByRole("button", { name: "Move 4 players" }),
     ).toBeDisabled();
     expect(applied).toEqual([]);
   });
 
   it("says so when every placed player is already in his FM team", async () => {
     const user = userEvent.setup();
-    renderMoves({ moves: [], unknownTeamPlayers: [], unavailableReason: null });
+    renderMoves({ moves: [], unavailableReason: null });
 
     await user.click(screen.getByRole("button", { name: "Apply in FM" }));
     const dialog = await screen.findByRole("dialog");

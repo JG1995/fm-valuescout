@@ -2,7 +2,9 @@
 //!
 //! Senior stands for the first team, Reserves for the club's reserve team, and Youth for its
 //! youth team. The bridge picks the actual FM team at each level and makes each move through
-//! FM's own squad action; this module plans the moves and records the ones FM confirms.
+//! FM's own squad action; this module plans the moves and records the ones FM confirms. The
+//! bridge reads each player's live team, so a move the snapshot no longer needs comes back as
+//! already made.
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -22,25 +24,20 @@ pub(super) fn level_for(team: PlannerTeam) -> &'static str {
     }
 }
 
-/// A Planner-placed player whose FM team is at another level than his Planner squad.
+/// A Planner-placed player whose FM team is at another level than his Planner squad, or whose
+/// FM team the snapshot does not know.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct FmSquadMove {
     pub(super) player_uid: i64,
     pub(super) name: String,
     pub(super) age: Option<i64>,
-    /// The level of his FM team now: `senior`, `reserve`, or `youth`.
-    pub(super) from_level: String,
+    /// The level of his FM team in the snapshot: `senior`, `reserve`, or `youth`; `None` when
+    /// unknown.
+    pub(super) from_level: Option<String>,
     pub(super) to_team: PlannerTeam,
     pub(super) to_team_name: String,
     /// Older than the target squad's age limit. FM does not check age, so he moves anyway.
     pub(super) over_age: bool,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(super) struct FmSquadMovePlan {
-    pub(super) moves: Vec<FmSquadMove>,
-    /// Planner-placed players whose FM team the snapshot does not know, so no move is planned.
-    pub(super) unknown_team: Vec<(i64, String)>,
 }
 
 /// The moves that would put every Planner-placed player at the managed club in the FM team
@@ -49,9 +46,9 @@ pub(super) struct FmSquadMovePlan {
 pub(super) fn plan_fm_squad_moves(
     conn: &Connection,
     save_id: i64,
-) -> Result<FmSquadMovePlan, String> {
+) -> Result<Vec<FmSquadMove>, String> {
     let Some(snapshot_id) = current_snapshot_id(conn, save_id)? else {
-        return Ok(FmSquadMovePlan::default());
+        return Ok(Vec::new());
     };
     let sql = format!(
         "SELECT assignment.player_uid, p.name, p.age, p.team_level, planner_string.team,
@@ -81,32 +78,29 @@ pub(super) fn plan_fm_squad_moves(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
 
-    let mut plan = FmSquadMovePlan::default();
+    let mut moves = Vec::new();
     for (player_uid, name, age, from_level, team, to_team_name, max_age) in rows {
         let to_team = PlannerTeam::parse(&team)?;
-        match from_level {
-            None => plan.unknown_team.push((player_uid, name)),
-            Some(level) if level == level_for(to_team) => {}
-            Some(from_level) => plan.moves.push(FmSquadMove {
-                player_uid,
-                name,
-                age,
-                from_level,
-                to_team,
-                to_team_name,
-                over_age: matches!((age, max_age), (Some(age), Some(max)) if age > max),
-            }),
+        if from_level.as_deref() == Some(level_for(to_team)) {
+            continue;
         }
+        moves.push(FmSquadMove {
+            player_uid,
+            name,
+            age,
+            from_level,
+            to_team,
+            to_team_name,
+            over_age: matches!((age, max_age), (Some(age), Some(max)) if age > max),
+        });
     }
-    plan.moves.sort_by(|left, right| {
+    moves.sort_by(|left, right| {
         team_order(left.to_team)
             .cmp(&team_order(right.to_team))
             .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
             .then_with(|| left.player_uid.cmp(&right.player_uid))
     });
-    plan.unknown_team
-        .sort_by_key(|(_, name)| name.to_lowercase());
-    Ok(plan)
+    Ok(moves)
 }
 
 fn team_order(team: PlannerTeam) -> u8 {
@@ -200,7 +194,6 @@ where
                 .map_err(|_| "database lock poisoned".to_string())?;
         let context = capture_move_context(&conn)?;
         let moves = plan_fm_squad_moves(&conn, context.save_id)?
-            .moves
             .into_iter()
             .filter(|planned| player_uids.contains(&planned.player_uid))
             .collect::<Vec<_>>();

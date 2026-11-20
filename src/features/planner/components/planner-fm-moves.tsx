@@ -53,7 +53,6 @@ export function PlannerFmMoves({
   const moves = plan.data?.moves ?? [];
   const chosen = moves.filter((move) => !unticked.has(move.playerUid));
   const unavailableReason = plan.data?.unavailableReason ?? null;
-  const unknownTeamPlayers = plan.data?.unknownTeamPlayers ?? [];
   const result = apply.data;
   const allTicked = moves.length > 0 && chosen.length === moves.length;
 
@@ -197,7 +196,9 @@ export function PlannerFmMoves({
                       {move.age ?? "–"}
                     </td>
                     <td className="px-3 py-2 text-on-surface-variant">
-                      {FM_TEAM_LEVEL_NAMES[move.fromLevel]}
+                      {move.fromLevel
+                        ? FM_TEAM_LEVEL_NAMES[move.fromLevel]
+                        : "Unknown"}
                     </td>
                     <td className="px-3 py-2">
                       <span className="flex flex-wrap items-center gap-2">
@@ -215,12 +216,6 @@ export function PlannerFmMoves({
             </table>
           </div>
         )}
-        {!result && unknownTeamPlayers.length > 0 ? (
-          <p className="pt-3 text-body-sm text-on-surface-variant">
-            FM team unknown, so not moved:{" "}
-            {unknownTeamPlayers.map((player) => player.name).join(", ")}.
-          </p>
-        ) : null}
         {!result && unavailableReason ? (
           <p className="pt-3 text-body-sm text-error" role="alert">
             {unavailableReason}
