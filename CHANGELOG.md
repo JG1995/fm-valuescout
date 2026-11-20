@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-11-20
+
+### Fixed
+
+- **Teams and loans on FM27.** Load Data places players in their FM teams again. Team level, loans, and club reputation, blank on FM27 until now, are filled in, and a player's league is his own team's rather than his parent club's. A B club such as Real Madrid Castilla counts as its parent club's reserve team. Moneyball adjusts B-team and loaned players for the league they play in now. Use **Install / Update plugin** in Settings and restart FM to get the new plugin; Load Data needs it.
+- **Staff teams in assignment recommendations.** **Keep** now means the same job for the same team, read from each staff member's FM contract. Someone in the job for another team gets **Move team**, and **Change job** names the current team too, using your Planner team names.
+
+### Changed
+
+- U21 and U23 teams count as reserve teams, and U20 and younger teams as youth teams.
+- Players you have loaned out stay listed in Squad, Youth classes, and expiring contracts, tinted steel and marked as on loan; Squad and Youth classes name the borrowing club. They get no Suggested Training, and the Planner, its Optimize, loan candidates, and the Dashboard's starting XI and prospects leave them out. Players on loan at your club count, but are never loan candidates.
+- Assignment recommendations name whom each newcomer replaces, or that the job gains a place, and **Staff to sack** names each person's team and replacement.
+
 ## [0.31.0] - 2026-11-19
 
 ### Added
