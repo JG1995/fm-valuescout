@@ -59,10 +59,13 @@ internal static class ClubTeams
         return teams;
     }
 
-    /// <summary>The club's team at a level; with two, the one with more players, then the lower type.</summary>
+    /// <summary>
+    /// The club's verified squad team at a level; with two, the one with more players, then the
+    /// lower type. Unverified types such as Youth Candidates never receive anyone.
+    /// </summary>
     public static ClubTeam? AtLevel(IReadOnlyList<ClubTeam> teams, string level) =>
         teams
-            .Where(team => TeamLevelMap.FromTeamType(team.Type) == level)
+            .Where(team => TeamLevelMap.IsSquadTeam(team.Type) && TeamLevelMap.FromTeamType(team.Type) == level)
             .OrderByDescending(team => team.Squad.Count)
             .ThenBy(team => team.Type)
             .FirstOrDefault();
