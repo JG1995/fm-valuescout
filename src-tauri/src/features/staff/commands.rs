@@ -250,11 +250,22 @@ impl From<StaffAssignmentTargetTeam> for StaffAssignmentTargetTeamDto {
     }
 }
 
+/// The board's limit FM last reported for a need.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentFmLimitDto {
+    pub scope: String,
+    pub job_id: String,
+    pub limit: i64,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StaffAssignmentTargetsDto {
     pub teams: Vec<StaffAssignmentTargetTeamDto>,
     pub targets: Vec<StaffAssignmentTargetDto>,
+    /// FM's limits for the targets Load Data has read them for.
+    pub fm_limits: Vec<StaffAssignmentFmLimitDto>,
 }
 
 impl From<StaffAssignmentTargets> for StaffAssignmentTargetsDto {
@@ -262,6 +273,15 @@ impl From<StaffAssignmentTargets> for StaffAssignmentTargetsDto {
         Self {
             teams: targets.teams.into_iter().map(Into::into).collect(),
             targets: targets.targets.into_iter().map(Into::into).collect(),
+            fm_limits: targets
+                .fm_limits
+                .into_iter()
+                .map(|limit| StaffAssignmentFmLimitDto {
+                    scope: limit.scope,
+                    job_id: limit.job_id,
+                    limit: limit.slot_limit,
+                })
+                .collect(),
         }
     }
 }
@@ -1367,6 +1387,11 @@ mod tests {
                 max_slot_count: 50,
                 slot_count: 2,
             }],
+            fm_limits: vec![StaffAssignmentFmLimitDto {
+                scope: "reserves".to_string(),
+                job_id: "manager".to_string(),
+                limit: 1,
+            }],
         })
         .expect("serialize staff assignment targets");
         assert_eq!(value["teams"][0]["team"], "reserves");
@@ -1377,6 +1402,10 @@ mod tests {
         assert_eq!(value["targets"][0]["section"], "coaching");
         assert_eq!(value["targets"][0]["maxSlotCount"], 50);
         assert_eq!(value["targets"][0]["slotCount"], 2);
+        assert_eq!(
+            value["fmLimits"],
+            serde_json::json!([{ "scope": "reserves", "jobId": "manager", "limit": 1 }])
+        );
     }
 
     #[test]

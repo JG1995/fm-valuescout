@@ -263,7 +263,7 @@ export function fixtureStaffAssignmentTargets(
       ASSIGNMENT_JOB_DISPLAY_ORDER.indexOf(left.jobId) -
         ASSIGNMENT_JOB_DISPLAY_ORDER.indexOf(right.jobId),
   );
-  return { teams, targets, ...overrides };
+  return { teams, targets, fmLimits: [], ...overrides };
 }
 
 staffAssignmentTargets = fixtureStaffAssignmentTargets();

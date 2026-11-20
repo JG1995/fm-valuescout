@@ -28,6 +28,7 @@ const targetResponse = {
       slotCount: 0,
     },
   ],
+  fmLimits: [],
 } satisfies StaffAssignmentTargets;
 
 describe("staff assignment targets API", () => {

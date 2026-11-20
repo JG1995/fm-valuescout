@@ -9,6 +9,7 @@ import type {
   SaveShortlistsOutcome,
   SeasonStatsErrorKind,
   SeasonStatsOutcome,
+  StaffLimitsOutcome,
 } from "../types/load-data";
 import { loadDataErrorCopy } from "./load-data-error";
 
@@ -19,6 +20,7 @@ export const loadDataPhaseLabels: Record<LoadDataProgress["phase"], string> = {
   saving: "Saving…",
   finalizing: "Finalizing…",
   seasonStats: "Reading stats…",
+  staffLimits: "Reading staff limits…",
 };
 
 const seasonStatsReadFailureReasons: Record<
@@ -157,6 +159,46 @@ function statsStepCopy(stats: SeasonStatsOutcome): {
   }
 }
 
+function formatTeamList(teams: string[]): string {
+  return teams.length < 2
+    ? (teams[0] ?? "")
+    : `${teams.slice(0, -1).join(", ")} and ${teams.at(-1)}`;
+}
+
+/**
+ * What following FM's staff limits did to the staffing needs, or null when there was no
+ * managed club to read them for.
+ */
+export function staffLimitsCopy(
+  outcome: StaffLimitsOutcome,
+): { text: string; isProblem: boolean } | null {
+  switch (outcome.status) {
+    case "followed": {
+      const changed =
+        outcome.changed === 0
+          ? "Staffing needs match FM's staff limits."
+          : `FM's staff limits changed ${outcome.changed} staffing ${outcome.changed === 1 ? "need" : "needs"}.`;
+      const unread =
+        outcome.unreadTeams.length === 0
+          ? ""
+          : ` FM sent no staff limits for ${formatTeamList(outcome.unreadTeams)}, so ${outcome.unreadTeams.length === 1 ? "its" : "their"} needs are unchanged.`;
+      return { text: `${changed}${unread}`, isProblem: false };
+    }
+    case "notRead":
+      return {
+        text: `Staff limits were not read: ${outcome.reason}. Staffing needs are unchanged.`,
+        isProblem: true,
+      };
+    case "staleContext":
+      return {
+        text: "The save changed while staff limits were read, so staffing needs are unchanged.",
+        isProblem: true,
+      };
+    case "noManagedClub":
+      return null;
+  }
+}
+
 function formatDurationMs(ms: number): string {
   if (ms < 1000) {
     return `${ms}ms`;
@@ -218,10 +260,14 @@ function resolveBanner({ error, result }: LoadDataOutcomeProps): Banner | null {
     ? " This snapshot is now the latest."
     : ` The kept snapshot from ${formatSnapshotDate(latestSnapshot.gameDate)} is later and stays current.`;
   const stats = seasonStatsCopy(result.stats);
+  const staffLimits = staffLimitsCopy(result.staffLimits);
+  const isProblem = stats.isProblem || (staffLimits?.isProblem ?? false);
   return {
-    icon: stats.isProblem ? CircleAlert : CircleCheck,
-    tone: stats.isProblem ? toneClasses.warning : toneClasses.success,
-    body: `${loaded}${latestMessage} ${stats.text}`,
+    icon: isProblem ? CircleAlert : CircleCheck,
+    tone: isProblem ? toneClasses.warning : toneClasses.success,
+    body: [`${loaded}${latestMessage}`, stats.text, staffLimits?.text]
+      .filter(Boolean)
+      .join(" "),
   };
 }
 

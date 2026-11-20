@@ -277,6 +277,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const staffAssignmentTargetResponse = () => ({
         teams: staffAssignmentTeams.map((team) => ({ ...team })),
         targets: staffAssignmentTargets.map((target) => ({ ...target })),
+        fmLimits: [],
       });
       const activeSave = () => saves.find((save) => save.isActive) || saves[0];
       const snapshotOrder = (left, right) => {
@@ -2732,6 +2733,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               storedSnapshot: loadedSnapshot,
               effectiveSnapshot: loadedSnapshot,
               stats: { status: "notLinked", shortlists: { status: "notRead" }, staffShortlist: { status: "notRead" }, elapsedMs: 0 },
+              staffLimits: { status: "noManagedClub" },
             };
           }
 

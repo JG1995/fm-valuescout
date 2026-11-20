@@ -20,6 +20,7 @@ pub const OPERATION_BOOST_STAFF_CURRENT_ABILITY: &str = "boost-staff-current-abi
 pub const OPERATION_WONDERKID_MENTALITY: &str = "wonderkid-mentality";
 pub const OPERATION_MOVE_SQUAD_PLAYERS: &str = "move-squad-players";
 pub const OPERATION_APPLY_STAFF_CHANGES: &str = "apply-staff-changes";
+pub const OPERATION_READ_STAFF_LIMITS: &str = "read-staff-limits";
 pub const PLAYER_DATABASE_SCOPE_MEN: &str = "men";
 
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -78,6 +79,10 @@ pub struct BridgeStatus {
     pub staff_changes_supported: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staff_changes: Option<StaffChangeResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staff_limits_supported: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staff_limits: Option<StaffLimitsResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1425,6 +1430,160 @@ pub fn wait_for_staff_changes_terminal(
     }
 }
 
+/// The board's staff limits for the managed club's first, reserve, and youth teams, as the
+/// bridge read them from FM's Staff overview channels.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffLimitsResult {
+    #[serde(default)]
+    pub teams: Vec<StaffLimitsTeam>,
+}
+
+/// One team's staff groups; a team FM sent nothing for has none.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffLimitsTeam {
+    /// `senior`, `reserve`, or `youth`.
+    pub level: String,
+    pub team_type: i32,
+    #[serde(default)]
+    pub groups: Vec<StaffLimitsGroup>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffLimitsGroup {
+    /// `coaching`, `recruitment`, or `medical`.
+    pub group: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub count: Option<i32>,
+    pub max: i32,
+    #[serde(default)]
+    pub jobs: Vec<StaffLimitsJob>,
+}
+
+/// The board's limit for one job; `job_type` is FM's job type, as `staff.job_id` holds it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffLimitsJob {
+    pub job_type: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub count: Option<i32>,
+    pub max: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StaffLimitsRequest<'a> {
+    protocol_version: u32,
+    request_id: String,
+    created_at_utc: String,
+    operation: &'static str,
+    player_database_scope: &'static str,
+    source_request_id: &'a str,
+    club_uid: u32,
+}
+
+/// Why staff limits cannot be read when the bridge does not offer them.
+pub const STAFF_LIMITS_UNAVAILABLE: &str =
+    "the bridge plugin cannot read FM's staff limits; update it from Settings";
+
+/// How long Load Data waits for the bridge to read the staff limits. The read itself ends
+/// within about six seconds once FM's main thread runs it.
+pub const STAFF_LIMITS_WAIT: DumpWaitConfig = DumpWaitConfig {
+    timeout: Duration::from_secs(30),
+    poll_interval: Duration::from_millis(100),
+};
+
+pub fn request_staff_limits_from_local_app_data(
+    source_request_id: &str,
+    club_uid: u32,
+    wait: DumpWaitConfig,
+) -> Result<StaffLimitsResult, PlayerBoostRequestError> {
+    let bridge_directory = resolve_bridge_directory().map_err(PlayerBoostRequestError::from)?;
+    request_staff_limits(&bridge_directory, source_request_id, club_uid, wait)
+}
+
+/// Asks the bridge to read the board's staff limits for the managed club's teams and waits
+/// for them. Nothing in FM changes.
+pub fn request_staff_limits(
+    bridge_directory: &Path,
+    source_request_id: &str,
+    club_uid: u32,
+    wait: DumpWaitConfig,
+) -> Result<StaffLimitsResult, PlayerBoostRequestError> {
+    if source_request_id.trim().is_empty() || club_uid == 0 {
+        return Err(PlayerBoostRequestError::WriteFailed(
+            "staff limits need the live scan and the managed club".to_string(),
+        ));
+    }
+    let _bridge_request_guard = acquire_bridge_request_guard(bridge_directory)
+        .map_err(PlayerBoostRequestError::Unavailable)?;
+    let status = read_bridge_status(bridge_directory).map_err(PlayerBoostRequestError::from)?;
+    if status.staff_limits_supported != Some(true) {
+        return Err(PlayerBoostRequestError::Unavailable(
+            STAFF_LIMITS_UNAVAILABLE.to_string(),
+        ));
+    }
+
+    let request_id = new_request_id();
+    let request = StaffLimitsRequest {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        created_at_utc: utc_now_rfc3339(),
+        operation: OPERATION_READ_STAFF_LIMITS,
+        player_database_scope: PLAYER_DATABASE_SCOPE_MEN,
+        source_request_id,
+        club_uid,
+    };
+    write_bridge_request(bridge_directory, &request)?;
+    wait_for_staff_limits_terminal(bridge_directory, &request_id, wait)
+}
+
+pub fn wait_for_staff_limits_terminal(
+    bridge_directory: &Path,
+    request_id: &str,
+    wait: DumpWaitConfig,
+) -> Result<StaffLimitsResult, PlayerBoostRequestError> {
+    let deadline = Instant::now() + wait.timeout;
+    loop {
+        match read_bridge_status(bridge_directory) {
+            Ok(status)
+                if status.request_id.as_deref() == Some(request_id)
+                    && is_terminal_state(&status.state) =>
+            {
+                if status.state == "failed" {
+                    return Err(PlayerBoostRequestError::Failed(
+                        status.error.unwrap_or_else(|| {
+                            "the staff limit read failed without a bridge error".to_string()
+                        }),
+                    ));
+                }
+                return status.staff_limits.ok_or_else(|| {
+                    PlayerBoostRequestError::Corrupt(
+                        "the bridge finished the staff limit read without the limits".to_string(),
+                    )
+                });
+            }
+            Ok(_) => {}
+            Err(BridgeStatusError::Missing(_)) => {}
+            Err(error) => return Err(error.into()),
+        }
+
+        if Instant::now() >= deadline {
+            return Err(PlayerBoostRequestError::Timeout(
+                "timed out waiting for FM to read the staff limits".to_string(),
+            ));
+        }
+
+        thread::sleep(wait.poll_interval);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1912,6 +2071,8 @@ mod tests {
             squad_moves,
             staff_changes_supported: None,
             staff_changes: None,
+            staff_limits_supported: None,
+            staff_limits: None,
         };
         write_status(bridge_dir, &status);
     }
@@ -2050,8 +2211,88 @@ mod tests {
             squad_moves: None,
             staff_changes_supported: Some(supported),
             staff_changes,
+            staff_limits_supported: None,
+            staff_limits: None,
         };
         write_status(bridge_dir, &status);
+    }
+
+    fn write_staff_limits_status_fixture(
+        bridge_dir: &Path,
+        state: &str,
+        request_id: &str,
+        supported: bool,
+        staff_limits: Option<StaffLimitsResult>,
+        error: Option<&str>,
+    ) {
+        let mut status = parse_bridge_status(HAPPY_STATUS_JSON).expect("parse status");
+        status.state = state.to_string();
+        status.request_id = Some(request_id.to_string());
+        status.error = error.map(str::to_string);
+        status.staff_limits_supported = Some(supported);
+        status.staff_limits = staff_limits;
+        write_status(bridge_dir, &status);
+    }
+
+    #[test]
+    fn staff_limits_require_advertised_support_before_writing_a_request() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        write_staff_limits_status_fixture(temp_dir.path(), "ready", "scan-1", false, None, None);
+
+        let error = request_staff_limits(temp_dir.path(), "scan-1", 680, QUICK_WAIT)
+            .expect_err("a bridge without staff limits must be rejected");
+
+        assert_eq!(
+            error,
+            PlayerBoostRequestError::Unavailable(STAFF_LIMITS_UNAVAILABLE.to_string())
+        );
+        assert!(!request_path(temp_dir.path()).exists());
+    }
+
+    #[test]
+    fn staff_limit_wait_returns_the_limits_or_the_bridge_error() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let limits: StaffLimitsResult = serde_json::from_value(serde_json::json!({
+            "teams": [{
+                "level": "senior",
+                "teamType": 0,
+                "groups": [{
+                    "group": "coaching",
+                    "name": "Coaching Team",
+                    "count": 28,
+                    "max": 28,
+                    "jobs": [{ "jobType": 2, "name": "Coaches", "count": 13, "max": 13 }]
+                }]
+            }]
+        }))
+        .expect("parse limits");
+        write_staff_limits_status_fixture(
+            temp_dir.path(),
+            "ready",
+            "limits-1",
+            true,
+            Some(limits.clone()),
+            None,
+        );
+        assert_eq!(
+            wait_for_staff_limits_terminal(temp_dir.path(), "limits-1", QUICK_WAIT),
+            Ok(limits)
+        );
+
+        write_staff_limits_status_fixture(
+            temp_dir.path(),
+            "failed",
+            "limits-2",
+            true,
+            None,
+            Some("FM sent no staff limits for the first team"),
+        );
+        assert_eq!(
+            wait_for_staff_limits_terminal(temp_dir.path(), "limits-2", QUICK_WAIT),
+            Err(PlayerBoostRequestError::Failed(
+                "FM sent no staff limits for the first team".to_string()
+            ))
+        );
     }
 
     #[test]
@@ -2585,6 +2826,8 @@ mod tests {
             squad_moves: None,
             staff_changes_supported: None,
             staff_changes: None,
+            staff_limits_supported: None,
+            staff_limits: None,
         }
     }
 
@@ -2614,6 +2857,8 @@ mod tests {
             squad_moves: None,
             staff_changes_supported: None,
             staff_changes: None,
+            staff_limits_supported: None,
+            staff_limits: None,
         };
         write_status(bridge_dir, &status);
     }
@@ -2644,6 +2889,8 @@ mod tests {
             squad_moves: None,
             staff_changes_supported: None,
             staff_changes: None,
+            staff_limits_supported: None,
+            staff_limits: None,
         };
         write_status(bridge_dir, &status);
     }

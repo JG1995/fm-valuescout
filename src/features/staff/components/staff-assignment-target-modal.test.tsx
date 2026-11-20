@@ -271,6 +271,44 @@ describe("StaffAssignmentTargetModal", () => {
     );
   });
 
+  it("shows FM's staff limit beside each need that differs from it", async () => {
+    const user = userEvent.setup();
+    setStaffAssignmentTargetsIpcMock(
+      fixtureStaffAssignmentTargets({
+        fmLimits: [
+          { scope: "senior", jobId: "coaches", limit: 1 },
+          { scope: "senior", jobId: "physio", limit: 4 },
+        ],
+      }),
+    );
+    renderModal();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Configure staffing needs" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    const { teamJobs } = needsTables(dialog);
+    expect(
+      within(dialog).getByText(
+        /Load Data sets each job to FM's staff limit whenever that limit changes\./,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(teamJobs).getByRole("spinbutton", { name: "Senior Physio" }),
+    ).toHaveAccessibleDescription("FM's staff limit is 4.");
+    const coaches = within(teamJobs).getByRole("spinbutton", {
+      name: "Senior Coaches",
+    });
+    expect(coaches).not.toHaveAccessibleDescription();
+    expect(within(teamJobs).getAllByText(/^FM \d+$/)).toHaveLength(1);
+
+    await user.click(
+      within(teamJobs).getByRole("button", { name: "Increase Senior Coaches" }),
+    );
+    expect(coaches).toHaveAccessibleDescription("FM's staff limit is 1.");
+    expect(within(teamJobs).getAllByText(/^FM \d+$/)).toHaveLength(2);
+  });
+
   it("uses each Rust maximum for local validation and shows a Rust save error", async () => {
     const user = userEvent.setup();
     renderModal();

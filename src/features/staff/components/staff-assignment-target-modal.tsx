@@ -306,17 +306,34 @@ export function StaffAssignmentTargetModal({
     (target) => errors.get(draftKey(target)) !== undefined,
   );
 
+  const fmLimits = resolvedTargets?.fmLimits ?? [];
+  const fmLimit = (target: StaffAssignmentTarget) =>
+    fmLimits.find(
+      (limit) => limit.scope === target.scope && limit.jobId === target.jobId,
+    )?.limit;
+
   const cellName = (target: StaffAssignmentTarget) =>
     target.scope === "club"
       ? target.jobLabel
       : `${teamColumns.find((column) => column.scope === target.scope)?.label ?? ""} ${target.jobLabel}`;
   const errorId = (target: StaffAssignmentTarget) =>
     `${controlIdPrefix}-${target.scope}-${target.jobId}-error`;
+  const limitId = (target: StaffAssignmentTarget) =>
+    `${controlIdPrefix}-${target.scope}-${target.jobId}-limit`;
 
   const countCell = (target: StaffAssignmentTarget, labelledBy: string) => {
     const key = draftKey(target);
     const value = validDraftValue(target, draft);
     const error = errors.get(key);
+    // FM's limit shows only where the need differs from it.
+    const limit = fmLimit(target);
+    const showLimit = limit !== undefined && value !== limit;
+    const describedBy = [
+      error ? errorId(target) : null,
+      showLimit ? limitId(target) : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
     return (
       <div className="inline-flex items-center gap-0.5">
         {/* Arrow keys step the number input, so the buttons stay out of the tab order. */}
@@ -341,7 +358,7 @@ export function StaffAssignmentTargetModal({
           }
           disabled={pending}
           aria-labelledby={labelledBy}
-          aria-describedby={error ? errorId(target) : undefined}
+          aria-describedby={describedBy || undefined}
           aria-invalid={error ? true : undefined}
           className="h-7 w-12 rounded-md border border-outline bg-surface px-1 text-center tabular-nums text-on-surface aria-[invalid=true]:border-error"
           onChange={(event) => updateTarget(key, event.target.value)}
@@ -358,6 +375,20 @@ export function StaffAssignmentTargetModal({
           className="size-6"
           onClick={() => updateTarget(key, String((value ?? 0) + 1))}
         />
+        {showLimit ? (
+          <>
+            <span id={limitId(target)} className="sr-only">
+              FM's staff limit is {limit}.
+            </span>
+            <span
+              aria-hidden="true"
+              title={`FM's staff limit is ${limit}`}
+              className="text-label-sm text-on-surface-variant tabular-nums"
+            >
+              FM {limit}
+            </span>
+          </>
+        ) : null}
       </div>
     );
   };
@@ -539,6 +570,9 @@ export function StaffAssignmentTargetModal({
           <p className="text-body-md text-on-surface-variant">
             Set how many people you want in each job. Jobs left at 0 get no
             recommendation.
+            {fmLimits.length > 0
+              ? " Load Data sets each job to FM's staff limit whenever that limit changes. A number you change here stays until then, with FM's limit shown beside it."
+              : null}
           </p>
           {formError ? (
             <p role="alert" className="text-body-sm text-error">

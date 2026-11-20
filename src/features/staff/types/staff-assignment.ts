@@ -23,9 +23,17 @@ export type StaffAssignmentTargetTeam = {
   displayName: string;
 };
 
+/** The board's limit FM last reported for a need; Load Data sets the need to it when it changes. */
+export type StaffAssignmentFmLimit = {
+  scope: StaffAssignmentScope;
+  jobId: string;
+  limit: number;
+};
+
 export type StaffAssignmentTargets = {
   teams: StaffAssignmentTargetTeam[];
   targets: StaffAssignmentTarget[];
+  fmLimits: StaffAssignmentFmLimit[];
 };
 
 export type StaffAssignmentContext = {

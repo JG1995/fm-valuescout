@@ -101,10 +101,20 @@ pub(crate) struct StaffAssignmentTargetTeam {
     pub(crate) display_name: String,
 }
 
+/// The board's limit FM last reported for a need; see `fm_limits`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StaffAssignmentFmLimit {
+    pub(crate) scope: String,
+    pub(crate) job_id: String,
+    pub(crate) slot_limit: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StaffAssignmentTargets {
     pub(crate) teams: Vec<StaffAssignmentTargetTeam>,
     pub(crate) targets: Vec<StaffAssignmentTarget>,
+    /// FM's limits for the allowed targets, when Load Data has read them.
+    pub(crate) fm_limits: Vec<StaffAssignmentFmLimit>,
 }
 
 pub(crate) fn get_targets(
@@ -159,6 +169,7 @@ pub(crate) fn save_targets(
     Ok(StaffAssignmentTargets {
         teams,
         targets: expand_targets(conn, context.id, &allowed)?,
+        fm_limits: read_fm_limits(conn, context.id, &allowed)?,
     })
 }
 
@@ -168,7 +179,39 @@ fn read_targets(conn: &Connection, save_id: i64) -> Result<StaffAssignmentTarget
     Ok(StaffAssignmentTargets {
         teams,
         targets: expand_targets(conn, save_id, &allowed)?,
+        fm_limits: read_fm_limits(conn, save_id, &allowed)?,
     })
+}
+
+fn read_fm_limits(
+    conn: &Connection,
+    save_id: i64,
+    allowed: &[StaffAssignmentTarget],
+) -> Result<Vec<StaffAssignmentFmLimit>, String> {
+    let limits = conn
+        .prepare(
+            "SELECT scope, job_id, slot_limit FROM staff_assignment_fm_limits WHERE save_id = ?1",
+        )
+        .map_err(|error| error.to_string())?
+        .query_map([save_id], |row| {
+            Ok(StaffAssignmentFmLimit {
+                scope: row.get(0)?,
+                job_id: row.get(1)?,
+                slot_limit: row.get(2)?,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(allowed
+        .iter()
+        .filter_map(|target| {
+            limits
+                .iter()
+                .find(|limit| limit.scope == target.scope && limit.job_id == target.job_id)
+                .cloned()
+        })
+        .collect())
 }
 
 pub(crate) fn read_nonzero_targets_without_initializing_teams(
@@ -238,16 +281,20 @@ pub(crate) fn nonzero_targets_for_scope_tx(
         .collect()
 }
 
+/// Deletes a removed Planner team's needs and the FM limits read for it, so the team follows
+/// FM's limits again if it returns.
 pub(crate) fn delete_scope_targets(
     tx: &Transaction<'_>,
     save_id: i64,
     scope: &str,
 ) -> Result<(), String> {
-    tx.execute(
-        "DELETE FROM staff_assignment_targets WHERE save_id = ?1 AND scope = ?2",
-        params![save_id, scope],
-    )
-    .map_err(|error| error.to_string())?;
+    for table in ["staff_assignment_targets", "staff_assignment_fm_limits"] {
+        tx.execute(
+            &format!("DELETE FROM {table} WHERE save_id = ?1 AND scope = ?2"),
+            params![save_id, scope],
+        )
+        .map_err(|error| error.to_string())?;
+    }
     Ok(())
 }
 
@@ -255,7 +302,7 @@ fn allowed_pairs(conn: &Connection, save_id: i64) -> Result<Vec<StaffAssignmentT
     Ok(allowed_pairs_for_teams(&enabled_teams(conn, save_id)?))
 }
 
-fn enabled_teams(
+pub(crate) fn enabled_teams(
     conn: &Connection,
     save_id: i64,
 ) -> Result<Vec<StaffAssignmentTargetTeam>, String> {
@@ -394,6 +441,11 @@ fn expand_targets(
         }
     }
     Ok(result)
+}
+
+/// The most slots a need may hold, or none when the scope has no such need.
+pub(crate) fn target_max_slot_count(scope: &str, job_id: &str) -> Option<i64> {
+    target_metadata(scope, job_id).map(|(_, _, max_slot_count)| max_slot_count)
 }
 
 fn target_metadata(scope: &str, job_id: &str) -> Option<(&'static str, &'static str, i64)> {
