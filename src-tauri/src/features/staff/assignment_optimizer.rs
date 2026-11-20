@@ -499,6 +499,11 @@ fn current_job(job_id: i64) -> Option<&'static CurrentJob> {
     CURRENT_JOBS.iter().find(|(id, ..)| *id == job_id)
 }
 
+/// The target job an FM job type fills, such as `coaches` for a Fitness Coach.
+pub(super) fn target_job_for_fm_job(job_id: i64) -> Option<&'static str> {
+    current_job(job_id).map(|&(.., job)| job)
+}
+
 /// The name and candidate group of the job a person holds now, from FM's job type.
 pub(super) fn current_job_classification(job_id: i64) -> Option<(&'static str, PreferredJob)> {
     current_job(job_id).map(|&(_, label, group, _)| (label, group))

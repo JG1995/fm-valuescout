@@ -11,6 +11,9 @@ pub mod filter;
 mod fm_changes;
 #[cfg(test)]
 mod fm_changes_tests;
+pub(crate) mod fm_limits;
+#[cfg(test)]
+mod fm_limits_tests;
 mod metrics;
 pub mod query;
 pub mod scoring;

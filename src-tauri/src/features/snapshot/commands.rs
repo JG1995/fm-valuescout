@@ -7,10 +7,14 @@ use tempfile::TempPath;
 
 use crate::blocking;
 use crate::db::Db;
-use crate::features::memory_read::service::{DumpRequestResult, DumpWaitConfig};
+use crate::features::memory_read::service::{
+    request_staff_limits_from_local_app_data, DumpRequestResult, DumpWaitConfig, StaffLimitsResult,
+    STAFF_LIMITS_WAIT,
+};
 use crate::features::moneyball::save_stats_import::{self, SeasonStatsOutcome};
 use crate::features::player::boost_gate;
 use crate::features::save_stats::SaveStatsError;
+use crate::features::staff::fm_limits::{self, StaffLimitsOutcome};
 
 use super::ingest::{self, SnapshotSummary};
 use super::load_data::{self, LoadDataError, LoadDataResult};
@@ -453,7 +457,8 @@ impl From<SnapshotSummary> for SnapshotSummaryDto {
 /// (projection + compact scores, determinate) -> saving (raw DB inserts,
 /// determinate) -> finalizing (selection, derived persistence,
 /// Club DNA, academy, determinate) -> seasonStats (linked save file read
-/// after publication, indeterminate). No overall percent is reported.
+/// after publication, indeterminate) -> staffLimits (FM's board staff limits read
+/// through the bridge, indeterminate). No overall percent is reported.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LoadDataPhase {
@@ -463,6 +468,7 @@ pub enum LoadDataPhase {
     Saving,
     Finalizing,
     SeasonStats,
+    StaffLimits,
 }
 
 /// Progress event for command-scoped best-effort delivery. Carries the
@@ -535,6 +541,8 @@ pub struct LoadDataResultDto {
     pub timings: LoadDataTimingsDto,
     /// The season stats step, which never fails Load Data.
     pub stats: SeasonStatsOutcome,
+    /// The staff limits step, which never fails Load Data.
+    pub staff_limits: StaffLimitsOutcome,
 }
 
 impl From<load_data::LoadDataTimings> for LoadDataTimingsDto {
@@ -553,7 +561,11 @@ impl From<load_data::LoadDataTimings> for LoadDataTimingsDto {
 }
 
 impl LoadDataResultDto {
-    fn new(result: LoadDataResult, stats: SeasonStatsOutcome) -> Self {
+    fn new(
+        result: LoadDataResult,
+        stats: SeasonStatsOutcome,
+        staff_limits: StaffLimitsOutcome,
+    ) -> Self {
         Self {
             request_id: result.request_id,
             players_found: result.players_found,
@@ -561,6 +573,7 @@ impl LoadDataResultDto {
             effective_snapshot: SnapshotSummaryDto::from(result.effective_snapshot),
             timings: LoadDataTimingsDto::from(result.timings),
             stats,
+            staff_limits,
         }
     }
 }
@@ -585,9 +598,10 @@ fn ch_send_best_effort(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn execute_load_data_with<S, R, Sc, P, Pr>(
+pub(crate) fn execute_load_data_with<L, S, R, Sc, P, Pr>(
     db: &Db,
     requested: service::SaveContext,
+    read_staff_limits: L,
     scan: S,
     prepare_raw: R,
     score: Sc,
@@ -596,6 +610,7 @@ pub(crate) fn execute_load_data_with<S, R, Sc, P, Pr>(
     mut on_progress: Pr,
 ) -> Result<LoadDataResultDto, LoadDataError>
 where
+    L: FnOnce(&str, u32) -> Result<StaffLimitsResult, String>,
     S: FnOnce() -> Result<(TempPath, DumpRequestResult), LoadDataError>,
     R: FnOnce(&Path) -> Result<ingest::RawPreparedSnapshot, LoadDataError>,
     Sc: FnOnce(ingest::RawPreparedSnapshot) -> Result<ingest::PreparedSnapshot, LoadDataError>,
@@ -774,6 +789,16 @@ where
         &save_context.context_token,
         now_ms,
     );
+    // The staff limits step asks the bridge without a database lock and stores the limits
+    // under a brief one. The load gate keeps any Apply in FM from running alongside it, and
+    // its outcome never turns a published load into an error.
+    let _ = on_progress(LoadDataProgressDto::indeterminate(
+        save_context.id,
+        save_context.context_token.clone(),
+        LoadDataPhase::StaffLimits,
+    ));
+    let staff_limits =
+        fm_limits::follow_fm_staff_limits(db, &save_context, &result.request_id, read_staff_limits);
     let total_ms = now_ms().saturating_sub(total_started);
     let ingest_ms = save_ms.saturating_add(finalize_ms);
     result.timings = load_data::LoadDataTimings {
@@ -786,7 +811,7 @@ where
         total_ms,
         ingest_ms,
     };
-    Ok(LoadDataResultDto::new(result, stats))
+    Ok(LoadDataResultDto::new(result, stats, staff_limits))
 }
 
 #[tauri::command]
@@ -810,6 +835,14 @@ pub async fn load_data(
         execute_load_data_with(
             &db,
             requested,
+            |source_request_id, club_uid| {
+                request_staff_limits_from_local_app_data(
+                    source_request_id,
+                    club_uid,
+                    STAFF_LIMITS_WAIT,
+                )
+                .map_err(|error| error.to_string())
+            },
             || load_data::scan_dump_from_local_app_data(DumpWaitConfig::default()),
             load_data::prepare_raw_for_publish,
             load_data::score_raw_for_publish,
@@ -846,6 +879,11 @@ mod tests {
 
     const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v10.json");
 
+    /// Tests run without a bridge; a save without a managed club never calls this.
+    fn no_staff_limits(_: &str, _: u32) -> Result<StaffLimitsResult, String> {
+        Err("no bridge in tests".to_string())
+    }
+
     fn migrated_db(path: &std::path::Path) -> Db {
         let conn = Connection::open(path).expect("open db");
         conn.pragma_update(None, "foreign_keys", true)
@@ -874,6 +912,7 @@ mod tests {
         let error = execute_load_data_with(
             db,
             requested,
+            no_staff_limits,
             || -> Result<(TempPath, DumpRequestResult), LoadDataError> {
                 scan_called.set(true);
                 unreachable!("stale context must fail before scan")
@@ -1047,6 +1086,7 @@ mod tests {
         let result = execute_load_data_with(
             &db,
             requested,
+            no_staff_limits,
             scan,
             prepare_raw,
             score,
@@ -1092,8 +1132,8 @@ mod tests {
                     + result.timings.finalize_ms
                     + result.timings.stats_ms
         );
-        // Bounded max 10 events, ordered, truthful counts
-        assert!(events.len() <= 10, "max 10 events, got {}", events.len());
+        // Bounded max 11 events, ordered, truthful counts
+        assert!(events.len() <= 11, "max 11 events, got {}", events.len());
         let phases: Vec<_> = events.iter().map(|e| format!("{:?}", e.phase)).collect();
         assert_eq!(
             phases,
@@ -1107,7 +1147,8 @@ mod tests {
                 "Saving",
                 "Finalizing",
                 "Finalizing",
-                "SeasonStats"
+                "SeasonStats",
+                "StaffLimits"
             ]
         );
         // Scan and Preparing start indeterminate
@@ -1214,6 +1255,7 @@ mod tests {
         let result = execute_load_data_with(
             &db,
             requested,
+            no_staff_limits,
             scan,
             prepare_raw,
             score,
@@ -1272,6 +1314,7 @@ mod tests {
         let result = execute_load_data_with(
             &db,
             requested,
+            no_staff_limits,
             scan,
             prepare_raw,
             score,
@@ -1283,7 +1326,7 @@ mod tests {
         assert_eq!(result.request_id, "req-fail-sender");
         assert_eq!(
             attempts.get(),
-            10,
+            11,
             "always-failing sender must be attempted for every bounded event but success unchanged"
         );
     }
@@ -1333,6 +1376,7 @@ mod tests {
         let result = execute_load_data_with(
             &db,
             requested.clone(),
+            no_staff_limits,
             scan,
             |p: &Path| load_data::prepare_raw_for_publish(p),
             load_data::score_raw_for_publish,
@@ -1393,6 +1437,7 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
+            no_staff_limits,
             scan,
             prepare_raw,
             score,
@@ -1449,6 +1494,7 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
+            no_staff_limits,
             scan,
             prepare_raw,
             score,
@@ -1513,6 +1559,7 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
+            no_staff_limits,
             scan,
             prepare_raw,
             score,
@@ -1575,6 +1622,7 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
+            no_staff_limits,
             scan,
             prepare_raw,
             score,
@@ -1656,6 +1704,7 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
+            no_staff_limits,
             scan,
             prepare_raw,
             score,
@@ -1737,6 +1786,7 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
+            no_staff_limits,
             scan,
             prepare_raw,
             score,
@@ -1851,6 +1901,10 @@ mod tests {
                 staff_shortlist: save_stats_import::SaveShortlistsOutcome::NotRead,
                 elapsed_ms: 1,
             },
+            staff_limits: StaffLimitsOutcome::Followed {
+                changed: 3,
+                unread_teams: vec!["U18".to_string()],
+            },
         })
         .expect("serialize Load Data result");
         assert_eq!(load_data["storedSnapshot"]["contextToken"], "stored-token");
@@ -1869,6 +1923,10 @@ mod tests {
         assert_eq!(load_data["stats"]["status"], "notLinked");
         assert_eq!(load_data["stats"]["elapsedMs"], 1);
         assert_eq!(load_data["timings"]["ingestMs"], 2);
+        assert_eq!(
+            load_data["staffLimits"],
+            serde_json::json!({ "status": "followed", "changed": 3, "unreadTeams": ["U18"] })
+        );
     }
 
     #[test]
@@ -1942,6 +2000,7 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             stale_requested,
+            no_staff_limits,
             scan,
             prepare_raw,
             score,
@@ -2080,6 +2139,7 @@ mod tests {
         let err = execute_load_data_with(
             &db,
             requested,
+            no_staff_limits,
             scan,
             prepare_raw,
             score,
@@ -2411,6 +2471,7 @@ mod tests {
             let result = execute_load_data_with(
                 &db,
                 requested,
+                no_staff_limits,
                 || {
                     let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
                     tmp.write_all(GOLDEN_FIXTURE.as_bytes()).expect("write");

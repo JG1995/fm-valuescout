@@ -46,4 +46,10 @@ public sealed class BridgeStatus
 
     /// <summary>Per-change outcomes of the last staff-change request, when applicable.</summary>
     public StaffChangeResult? StaffChanges { get; init; }
+
+    /// <summary>Whether the live player index and FM's staff limit channels are both available.</summary>
+    public bool? StaffLimitsSupported { get; init; }
+
+    /// <summary>The board's staff limits for each of the club's teams, from the last staff-limit read.</summary>
+    public StaffLimitsResult? StaffLimits { get; init; }
 }

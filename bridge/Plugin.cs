@@ -8,6 +8,7 @@ using FmDataBridge.Mutations;
 using FmDataBridge.Output;
 using FmDataBridge.Protocol;
 using FmDataBridge.Scanning;
+using FmDataBridge.StaffLimits;
 
 namespace FmDataBridge;
 
@@ -52,6 +53,8 @@ public class Plugin : BasePlugin
 
     private static readonly StaffChangeOperationService StaffChanges =
         new(Layouts, PlayerMutationIndex, StaffMutationIndex, GameActions);
+
+    private static readonly StaffLimitsOperationService StaffLimits = new(Layouts, PlayerMutationIndex, GameActions);
 
     public override void Load()
     {
@@ -232,6 +235,10 @@ public class Plugin : BasePlugin
                 else if (acceptedRequest.Operation == BridgeProtocol.OperationApplyStaffChanges)
                 {
                     RunStaffChanges(bridgeDirectory, acceptedRequest, cancelToken);
+                }
+                else if (acceptedRequest.Operation == BridgeProtocol.OperationReadStaffLimits)
+                {
+                    RunStaffLimits(bridgeDirectory, acceptedRequest, cancelToken);
                 }
                 else
                 {
@@ -823,6 +830,105 @@ public class Plugin : BasePlugin
             _ => "staff changes failed; Load Data again",
         };
 
+    private static void RunStaffLimits(
+        string bridgeDirectory,
+        BridgeRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reader = new WindowsMemoryReader();
+            var modules = ModulePresence.FromBounds(reader.LocateKnownModules());
+            WriteStatus(
+                bridgeDirectory,
+                BridgeProtocol.StateScanning,
+                modules,
+                requestId: request.RequestId,
+                playersFound: null,
+                error: null,
+                playerBoostsSupported: false);
+
+            if (cancellationToken.IsCancellationRequested
+                || !GameVersionDetector.TryDetectFromCurrentProcess(out var gameVersion)
+                || string.IsNullOrWhiteSpace(gameVersion))
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    modules,
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: "the staff limit read could not start; retry",
+                    playerBoostsSupported: false);
+                return;
+            }
+
+            var result = StaffLimits.Execute(request, gameVersion, reader);
+            if (result.Succeeded)
+            {
+                foreach (var team in result.Result!.Teams)
+                {
+                    Log.LogInfo(
+                        $"Staff limits for the {team.Level} team (type {team.TeamType}): "
+                        + (team.Groups.Count == 0
+                            ? "none"
+                            : string.Join("; ", team.Groups.Select(group =>
+                                $"{group.Group} {group.Count}/{group.Max}: "
+                                + string.Join(", ", group.Jobs.Select(job => $"{job.JobType} {job.Name} {job.Count}/{job.Max}"))))));
+                }
+            }
+            else
+            {
+                Log.LogWarning($"Staff limit read failed: {result.Failure} {result.Detail}");
+            }
+
+            WriteStatus(
+                bridgeDirectory,
+                result.Succeeded ? BridgeProtocol.StateReady : BridgeProtocol.StateFailed,
+                modules,
+                requestId: request.RequestId,
+                playersFound: null,
+                error: result.Succeeded ? null : StaffLimitsFailureMessage(result.Failure, result.Detail),
+                playerBoostsSupported: PlayerBoosts.HasSupportedLiveIndex(gameVersion),
+                staffBoostsSupported: StaffBoosts.HasSupportedLiveIndex(gameVersion),
+                staffLimits: result.Result);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError($"Staff limit read crashed: {ex}");
+            try
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    DetectModulesBestEffort(),
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: "the staff limit read failed unexpectedly; Load Data again");
+            }
+            catch
+            {
+                // ignored — status best-effort
+            }
+        }
+    }
+
+    private static string StaffLimitsFailureMessage(StaffLimitsFailure failure, string? detail) =>
+        failure switch
+        {
+            StaffLimitsFailure.InvalidRequest => "invalid staff limit request; update the app and retry",
+            StaffLimitsFailure.UnsupportedGameBuild =>
+                "this FM build is not supported for staff limits; update the bridge plugin and Load Data",
+            StaffLimitsFailure.NoLiveScan => "Load Data again to read FM's staff limits",
+            StaffLimitsFailure.SourceRequestMismatch => "Load Data again to read FM's staff limits",
+            StaffLimitsFailure.ClubNotFound => "the managed club was not found in FM; Load Data again",
+            StaffLimitsFailure.ReadUnavailable =>
+                "FM's staff limits are unavailable in this game build; update the bridge plugin",
+            StaffLimitsFailure.ReadFailed => detail ?? "FM did not answer the staff limit read; retry",
+            StaffLimitsFailure.NoLimits => "FM sent no staff limits for the first team",
+            _ => "the staff limit read failed; Load Data again",
+        };
+
     /// <summary>
     /// game_plugin.dll may appear after plugin Load; rewrite status module flags without changing state.
     /// </summary>
@@ -862,7 +968,8 @@ public class Plugin : BasePlugin
             playerBoost: current.PlayerBoost,
             staffBoost: current.StaffBoost,
             squadMoves: current.SquadMoves,
-            staffChanges: current.StaffChanges);
+            staffChanges: current.StaffChanges,
+            staffLimits: current.StaffLimits);
     }
 
     private static void TryDeleteForceScanFlag(string bridgeDirectory)
@@ -904,7 +1011,8 @@ public class Plugin : BasePlugin
         PlayerBoostResult? playerBoost = null,
         StaffBoostResult? staffBoost = null,
         SquadMoveResult? squadMoves = null,
-        StaffChangeResult? staffChanges = null)
+        StaffChangeResult? staffChanges = null,
+        StaffLimitsResult? staffLimits = null)
     {
         var status = new BridgeStatus
         {
@@ -931,6 +1039,11 @@ public class Plugin : BasePlugin
                 ? players && staff && GameActions.StaffActionsAvailable
                 : null,
             StaffChanges = staffChanges,
+            // Staff limits find the club in the live player index and read FM's own channels.
+            StaffLimitsSupported = playerBoostsSupported is { } scanned
+                ? scanned && GameActions.StaffLimitsAvailable
+                : null,
+            StaffLimits = staffLimits,
         };
         StatusWriter.Write(bridgeDirectory, status);
     }

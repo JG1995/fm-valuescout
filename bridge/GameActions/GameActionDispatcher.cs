@@ -11,10 +11,12 @@ namespace FmDataBridge.GameActions;
 /// <summary>
 /// Sends FM27's own actions on the game's main thread: the squad change its "Move to" menu sends,
 /// the contract termination its staff menu sends, and the in-game editor's "Move to my club" with a
-/// chosen job. FM's types are found at run time so the bridge builds without the game's
-/// assemblies; see the FM27 squad move action and FM27 staff actions notes in the wiki.
+/// chosen job. It also reads the board's staff limits from the channels FM's Staff overview opens
+/// (in the StaffLimits part). FM's types are found at run time so the bridge builds without the
+/// game's assemblies; see the FM27 squad move action, FM27 staff actions, and FM27 board staff
+/// limits notes in the wiki.
 /// </summary>
-internal sealed class GameActionDispatcher : ISquadMoveDispatcher, IStaffChangeDispatcher
+internal sealed partial class GameActionDispatcher : ISquadMoveDispatcher, IStaffChangeDispatcher
 {
     // Four-character keys FM uses in references and action records.
     private const uint ReferenceTypeKey = 825307168; // "110 "
@@ -81,10 +83,10 @@ internal sealed class GameActionDispatcher : ISquadMoveDispatcher, IStaffChangeD
     /// <summary>Finds FM's interop types and hooks its interop subsystem. Leaves the dispatcher unavailable on failure.</summary>
     public void Install(ManualLogSource log)
     {
+        var harmony = new Harmony("com.fmvaluescout.databridge.gameactions");
         try
         {
             var types = FmTypes.Resolve();
-            var harmony = new Harmony("com.fmvaluescout.databridge.gameactions");
             var capture = new HarmonyMethod(typeof(GameActionDispatcher).GetMethod(
                 nameof(CaptureSubsystem),
                 BindingFlags.Static | BindingFlags.NonPublic));
@@ -113,7 +115,10 @@ internal sealed class GameActionDispatcher : ISquadMoveDispatcher, IStaffChangeD
         catch (Exception ex)
         {
             log.LogWarning($"FM staff actions are unavailable: {ex.Message}");
+            return;
         }
+
+        InstallStaffLimits(harmony, log);
     }
 
     public bool TryDispatch(IReadOnlyList<SquadMoveAction> actions, out string? error)
@@ -340,7 +345,7 @@ internal sealed class GameActionDispatcher : ISquadMoveDispatcher, IStaffChangeD
     /// <summary>Steps that run in order on the main thread, each once its gap since the last has passed.</summary>
     private sealed class Work
     {
-        private readonly Queue<(TimeSpan Gap, Action<object> Run)> _steps = new();
+        private readonly Queue<(TimeSpan Gap, Action<object> Run, Func<bool>? Ready)> _steps = new();
         private readonly List<Action<object>> _onFailure = new();
         private readonly Stopwatch _sinceLastStep = new();
         private int _state; // 0 queued, 1 started, 2 cancelled
@@ -349,7 +354,10 @@ internal sealed class GameActionDispatcher : ISquadMoveDispatcher, IStaffChangeD
 
         public string? Error { get; private set; }
 
-        public void Then(TimeSpan gap, Action<object> run) => _steps.Enqueue((gap, run));
+        public void Then(TimeSpan gap, Action<object> run) => _steps.Enqueue((gap, run, null));
+
+        /// <summary>Holds the later steps until <paramref name="ready"/> returns true, checked once a tick.</summary>
+        public void Until(Func<bool> ready) => _steps.Enqueue((TimeSpan.Zero, _ => { }, ready));
 
         /// <summary>Runs if a later step fails, so channels and slots are not left behind.</summary>
         public void OnFailure(Action<object> cleanup) => _onFailure.Add(cleanup);
@@ -372,7 +380,9 @@ internal sealed class GameActionDispatcher : ISquadMoveDispatcher, IStaffChangeD
         {
             try
             {
-                while (_steps.TryPeek(out var step) && _sinceLastStep.Elapsed >= step.Gap)
+                while (_steps.TryPeek(out var step)
+                       && _sinceLastStep.Elapsed >= step.Gap
+                       && (step.Ready?.Invoke() ?? true))
                 {
                     _steps.Dequeue();
                     step.Run(subsystem);

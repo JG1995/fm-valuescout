@@ -4,7 +4,8 @@ export type LoadDataPhase =
   | "scoring"
   | "saving"
   | "finalizing"
-  | "seasonStats";
+  | "seasonStats"
+  | "staffLimits";
 
 export type LoadDataProgress = {
   saveId: number;
@@ -87,6 +88,17 @@ export type SeasonStatsOutcome = {
   | { status: "failed"; kind: SeasonStatsErrorKind; fileName: string | null }
 );
 
+/**
+ * What following FM's board staff limits did. Only `followed` changes staffing needs:
+ * `changed` needs took a new limit, and `unreadTeams` names the Planner teams FM sent no
+ * limits for.
+ */
+export type StaffLimitsOutcome =
+  | { status: "followed"; changed: number; unreadTeams: string[] }
+  | { status: "notRead"; reason: string }
+  | { status: "noManagedClub" }
+  | { status: "staleContext" };
+
 export type LoadDataResult = {
   requestId: string;
   playersFound: number | null;
@@ -94,4 +106,5 @@ export type LoadDataResult = {
   effectiveSnapshot: LoadDataSnapshotSummary;
   timings: LoadDataTimings;
   stats: SeasonStatsOutcome;
+  staffLimits: StaffLimitsOutcome;
 };

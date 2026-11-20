@@ -4,6 +4,7 @@ import type {
   LoadDataProgress,
   LoadDataResult,
   SeasonStatsOutcome,
+  StaffLimitsOutcome,
 } from "../types/load-data";
 import { LoadDataOutcome, loadDataPhaseLabels } from "./load-data-outcome";
 
@@ -61,6 +62,7 @@ function resultWithHistoricalStoredSnapshot(): LoadDataResult {
       staffShortlist: { status: "notRead" },
       elapsedMs: 100,
     },
+    staffLimits: { status: "noManagedClub" },
   };
 }
 
@@ -118,6 +120,7 @@ function successResult(): LoadDataResult {
       staffShortlist: { status: "notRead" },
       elapsedMs: 100,
     },
+    staffLimits: { status: "noManagedClub" },
   };
 }
 
@@ -466,7 +469,59 @@ describe("LoadDataOutcome", () => {
     expect(loadDataPhaseLabels.saving).toBe("Saving…");
     expect(loadDataPhaseLabels.finalizing).toBe("Finalizing…");
     expect(loadDataPhaseLabels.seasonStats).toBe("Reading stats…");
+    expect(loadDataPhaseLabels.staffLimits).toBe("Reading staff limits…");
   });
+
+  it.each<[string, StaffLimitsOutcome, string | null, boolean]>([
+    [
+      "needs FM's limits changed",
+      { status: "followed", changed: 3, unreadTeams: [] },
+      "FM's staff limits changed 3 staffing needs.",
+      false,
+    ],
+    [
+      "needs that already match and teams FM sent no limits for",
+      { status: "followed", changed: 0, unreadTeams: ["U21", "U18"] },
+      "Staffing needs match FM's staff limits. FM sent no staff limits for U21 and U18, so their needs are unchanged.",
+      false,
+    ],
+    [
+      "limits the bridge could not read",
+      {
+        status: "notRead",
+        reason: "FM sent no staff limits for the first team",
+      },
+      "Staff limits were not read: FM sent no staff limits for the first team. Staffing needs are unchanged.",
+      true,
+    ],
+    [
+      "nothing without a managed club",
+      { status: "noManagedClub" },
+      null,
+      false,
+    ],
+  ])(
+    "reports %s after the season stats",
+    (_case, staffLimits, expected, isProblem) => {
+      render(
+        <LoadDataOutcome
+          error={null}
+          result={{ ...successResult(), staffLimits }}
+          onDismiss={() => undefined}
+        />,
+      );
+
+      const outcome = screen.getByText(/Loaded 3 players into the database/i);
+      if (expected === null) {
+        expect(outcome).not.toHaveTextContent(/staff limits/i);
+      } else {
+        expect(outcome).toHaveTextContent(expected);
+      }
+      expect(outcome.parentElement?.parentElement).toHaveClass(
+        isProblem ? "bg-warning-container" : "bg-success-container",
+      );
+    },
+  );
 
   it.each<[string, SeasonStatsOutcome, string]>([
     [

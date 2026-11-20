@@ -81,6 +81,7 @@ function historicalResultWithAttachedStats(saveId: number): BusyLoadDataResult {
       staffShortlist: { status: "notRead" },
       elapsedMs: 900,
     },
+    staffLimits: { status: "noManagedClub" },
   };
 }
 

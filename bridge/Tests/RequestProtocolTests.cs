@@ -860,6 +860,74 @@ public sealed class RequestProtocolTests
         }
     }
 
+    [Fact]
+    public void Accept_preserves_a_staff_limit_request()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-11-20T12:00:00Z");
+            WriteBoostRequest(path, StaffLimitRequest(now));
+
+            Assert.True(RequestAcceptance.TryAccept(path, now, Ttl, out var request, out _, out _));
+            Assert.Equal(
+                (BridgeProtocol.OperationReadStaffLimits, "scan-1", (uint?)439u),
+                (request.Operation, request.SourceRequestId, request.ClubUid));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("no-source", "sourceRequestId is required for staff limits")]
+    [InlineData("no-club", "clubUid is required for staff limits")]
+    [InlineData("staff-changes", "staff limits take only the club")]
+    [InlineData("boost", "staff limits take only the club")]
+    public void Accept_rejects_an_invalid_staff_limit_request(string defect, string expected)
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-11-20T12:00:00Z");
+            var valid = StaffLimitRequest(now);
+            WriteBoostRequest(
+                path,
+                new BridgeRequest
+                {
+                    ProtocolVersion = valid.ProtocolVersion,
+                    RequestId = valid.RequestId,
+                    CreatedAtUtc = now,
+                    Operation = valid.Operation,
+                    SourceRequestId = defect == "no-source" ? null : valid.SourceRequestId,
+                    ClubUid = defect == "no-club" ? null : valid.ClubUid,
+                    StaffChanges = defect == "staff-changes" ? new[] { Sack(41) } : null,
+                    StaffUid = defect == "boost" ? 41u : null,
+                });
+
+            Assert.False(RequestAcceptance.TryAccept(path, now, Ttl, out _, out var reason, out _));
+            Assert.Contains(expected, reason, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private static BridgeRequest StaffLimitRequest(DateTimeOffset now) =>
+        new()
+        {
+            ProtocolVersion = BridgeProtocol.ProtocolVersion,
+            RequestId = "staff-limits-1",
+            CreatedAtUtc = now,
+            Operation = BridgeProtocol.OperationReadStaffLimits,
+            SourceRequestId = "scan-1",
+            ClubUid = 439,
+        };
+
     private static StaffChangeItem Sack(uint uid) => new() { StaffUid = uid, Kind = StaffChangeItem.Sack };
 
     private static StaffChangeItem Hire(uint uid, int job, string level) =>
