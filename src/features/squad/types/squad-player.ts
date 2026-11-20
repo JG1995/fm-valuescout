@@ -13,6 +13,8 @@ export type SquadPlayer = {
   marketValueGbp: number | null;
   suggestedTraining: string | null;
   dynamicValues?: Record<string, number | string | null>;
+  /** The club has loaned the player out; `club` and `division` are the borrower's. */
+  loanedOut: boolean;
 };
 
 export type SquadPlayersPage = {

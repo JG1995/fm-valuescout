@@ -295,6 +295,7 @@ export function fixtureStaffAssignmentOptimization(
         action: { kind: "keep" },
         score: 82,
         coachRequirement: null,
+        replaces: null,
       },
       {
         kind: "vacancy",
@@ -315,6 +316,7 @@ export function fixtureStaffAssignmentOptimization(
     evidence: [],
     skipped: [],
     surplus: [],
+    teamNames: { senior: "Senior" },
     ...overrides,
   };
 }

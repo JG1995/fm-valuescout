@@ -93,6 +93,7 @@ describe("academy route", () => {
       internationalCaps: valueOrDefault(overrides.internationalCaps, null),
       outcome: valueOrDefault(overrides.outcome, null),
       isGraduate: valueOrDefault(overrides.isGraduate, null),
+      loanedOut: overrides.loanedOut ?? false,
     };
   }
 
@@ -857,6 +858,27 @@ describe("academy route", () => {
     expect(
       screen.getByRole("row", { name: /^Missing prospect/ }),
     ).toHaveTextContent("—");
+  });
+
+  it("marks a member the club has loaned out without a warning", async () => {
+    await loadConfiguredSave();
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 1 }]);
+    setAcademyClassMembers(7, [
+      academyMember({
+        playerUid: 77,
+        lastKnownName: "Loaned prospect",
+        currentClub: "Borrower FC",
+        loanedOut: true,
+      }),
+    ]);
+    renderAcademyRoute("/academy?view=class&classId=7");
+
+    const row = (
+      await screen.findByRole("cell", { name: /^Loaned prospect/ })
+    ).closest("tr");
+    expect(row).toHaveTextContent("On loan at Borrower FC");
+    expect(row).toHaveClass("bg-info/10");
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("records manual outcomes in labelled roster groups", async () => {

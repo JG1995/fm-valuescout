@@ -31,6 +31,7 @@ function playerDetail(player: DashboardExpiringContract) {
   return [
     player.age === null ? null : `${player.age} years`,
     player.marketValueGbp === null ? null : formatMoney(player.marketValueGbp),
+    player.loanedOut ? "On loan" : null,
   ]
     .filter((part) => part !== null)
     .join(" · ");
@@ -44,7 +45,7 @@ function ContractRow({
   graphics: DashboardGraphics;
 }) {
   return (
-    <tr className={rowClass}>
+    <tr className={cn(rowClass, player.loanedOut && "bg-info/10")}>
       <th scope="row" className="min-w-0 px-2 text-left font-normal">
         <PlayerIdentity
           uid={player.uid}

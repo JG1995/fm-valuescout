@@ -384,7 +384,13 @@ function AcademyRosterRow({
       ? "bg-success-container/20"
       : member.outcome?.status === "released"
         ? "bg-surface-container-low text-on-surface-variant"
-        : "";
+        : member.loanedOut
+          ? "bg-info/10"
+          : "";
+  const club =
+    member.loanedOut && member.currentClub
+      ? `On loan at ${member.currentClub}`
+      : member.currentClub;
 
   return (
     <tr
@@ -423,10 +429,10 @@ function AcademyRosterRow({
         {positions || "—"}
       </td>
       <td
-        className="max-w-44 truncate px-2 text-body-sm"
-        title={member.currentClub ?? undefined}
+        className={`max-w-44 truncate px-2 text-body-sm ${member.loanedOut ? "text-info" : ""}`}
+        title={club ?? undefined}
       >
-        {formatMissable(member.currentClub)}
+        {formatMissable(club)}
       </td>
       <td className="px-2 text-right text-body-sm tabular-nums">
         {formatMissable(member.pa)}

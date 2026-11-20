@@ -1198,10 +1198,10 @@ test.describe("application smoke", () => {
       "Assistant ManagerAlex Assistant82Keep",
     );
     await expect(assignmentRows.nth(2)).toContainText(
-      "CoachesAttacking TechnicalCoach Casey79Change jobCurrently Fitness Coach",
+      "CoachesAttacking TechnicalCoach Casey79Change jobCurrently Reserves Fitness CoachReplaces Old Coach",
     );
     await expect(assignmentRows.nth(4)).toContainText(
-      "ScoutRiley Scout74RecruitFrom Valencia",
+      "ScoutRiley Scout74RecruitFrom ValenciaReplaces Spare Scout",
     );
     await expect(assignmentRows.nth(6)).toContainText(
       "CoachesGoalkeepingUnfilled1 person fits this job, but their ratings are missing.",
@@ -1212,9 +1212,13 @@ test.describe("application smoke", () => {
       }),
     ).toBeVisible();
     await expect(results).not.toContainText(/eligible|evidence/i);
-    await expect(
-      results.getByRole("region", { name: "Staff to sack (1)" }),
-    ).toContainText("Spare ScoutScout");
+    const toSack = results.getByRole("region", { name: "Staff to sack (2)" });
+    await expect(toSack).toContainText(
+      "Old CoachFirst Team CoachReplaced by Coach Casey",
+    );
+    await expect(toSack).toContainText(
+      "Spare ScoutScoutReplaced by Riley Scout",
+    );
 
     await assignments
       .getByRole("button", { name: "Skip Riley Scout for Club Scout" })
@@ -1768,6 +1772,7 @@ test.describe("application smoke", () => {
     await expect(main.getByTestId("squad-overview-scroller")).toBeVisible();
     // Identity renders as sticky text with no link; activation is whole-row.
     await expect(table.getByText("Alex Scout")).toBeVisible();
+    await expect(table.getByText("On loan at Girona · La Liga")).toBeVisible();
     await expect(table.getByRole("link", { name: "Alex Scout" })).toHaveCount(
       0,
     );

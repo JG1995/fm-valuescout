@@ -416,5 +416,6 @@ function academyMemberFromCandidate(
     internationalCaps: null,
     outcome: null,
     isGraduate: null,
+    loanedOut: false,
   };
 }

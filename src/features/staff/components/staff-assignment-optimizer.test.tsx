@@ -188,6 +188,7 @@ describe("StaffAssignmentOptimizer", () => {
             action: { kind: "keep" },
             score: 82,
             coachRequirement: "attacking_technical",
+            replaces: null,
           },
           {
             kind: "recommendation",
@@ -203,6 +204,7 @@ describe("StaffAssignmentOptimizer", () => {
             action: { kind: "recruit", club: "Valencia" },
             score: 79,
             coachRequirement: null,
+            replaces: null,
           },
           {
             kind: "vacancy",
@@ -230,9 +232,14 @@ describe("StaffAssignmentOptimizer", () => {
             name: "Taylor Coach",
             preferredJob: "Assistant Manager",
             jobSource: "preferred_job",
-            action: { kind: "change_job", currentJob: "Coach" },
+            action: {
+              kind: "change_job",
+              currentJob: "Coach",
+              currentTeam: null,
+            },
             score: 75,
             coachRequirement: null,
+            replaces: null,
           },
           {
             kind: "recommendation",
@@ -248,6 +255,7 @@ describe("StaffAssignmentOptimizer", () => {
             action: { kind: "recruit", club: null },
             score: 70,
             coachRequirement: null,
+            replaces: null,
           },
         ],
       }),
@@ -422,6 +430,7 @@ describe("StaffAssignmentOptimizer", () => {
             action: { kind: "keep" },
             score: 81,
             coachRequirement: null,
+            replaces: null,
           },
         ],
       }),
@@ -457,6 +466,7 @@ describe("StaffAssignmentOptimizer", () => {
             action: { kind: "keep" },
             score: 82,
             coachRequirement: "fitness",
+            replaces: null,
           },
         ],
       }),
@@ -492,6 +502,7 @@ describe("StaffAssignmentOptimizer", () => {
             action: { kind: "keep" },
             score: 82,
             coachRequirement: null,
+            replaces: null,
           },
         ],
       }),
@@ -823,6 +834,7 @@ describe("StaffAssignmentOptimizer", () => {
       action: { kind: "recruit", club: null },
       score: 90,
       coachRequirement: null,
+      replaces: null,
       ...overrides,
     };
   }
@@ -854,14 +866,93 @@ describe("StaffAssignmentOptimizer", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
+  it("names each newcomer's team move and whom they replace", async () => {
+    const user = userEvent.setup();
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({
+        teamNames: { senior: "First Team", reserves: "U21", youth: "U18" },
+        slots: [
+          reservesManager(301, "Mover Manager", {
+            action: { kind: "move_team", currentTeam: "youth" },
+            replaces: {
+              uid: 303,
+              name: "Sacked Manager",
+              movesTo: null,
+            },
+          }),
+          reservesManager(302, "Recruited Manager", {
+            scope: "youth",
+            scopeDisplayName: "U18",
+            replaces: {
+              uid: 301,
+              name: "Mover Manager",
+              movesTo: { scope: "reserves", job: "Manager" },
+            },
+          }),
+          reservesManager(304, "Scout Turned Manager", {
+            scope: "senior",
+            scopeDisplayName: "First Team",
+            action: {
+              kind: "change_job",
+              currentJob: "Coach",
+              currentTeam: "reserves",
+            },
+          }),
+        ],
+        surplus: [
+          {
+            uid: 303,
+            name: "Sacked Manager",
+            currentJob: "Manager",
+            currentTeam: "reserves",
+            replacedBy: { uid: 301, name: "Mover Manager" },
+          },
+        ],
+      }),
+    );
+    renderOptimizer();
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+    const rowOf = (name: string) =>
+      screen.getByRole("button", { name }).closest("tr");
+
+    await screen.findByRole("button", { name: "Mover Manager" });
+    expect(rowOf("Mover Manager")).toHaveTextContent(
+      "Move teamCurrently U18Replaces Sacked Manager",
+    );
+    expect(rowOf("Recruited Manager")).toHaveTextContent(
+      "UnemployedReplaces Mover Manager, who moves to U21 Manager",
+    );
+    expect(rowOf("Scout Turned Manager")).toHaveTextContent(
+      "Change jobCurrently U21 CoachAdds a place",
+    );
+    expect(
+      screen.getByRole("region", { name: "Staff to sack (1)" }),
+    ).toHaveTextContent("Sacked ManagerU21 ManagerReplaced by Mover Manager");
+  });
+
   it("lists the club staff to sack and opens their Staff Profiles", async () => {
     const user = userEvent.setup();
     const onOpenStaff = vi.fn();
     setStaffAssignmentOptimizationIpcMock(
       fixtureStaffAssignmentOptimization({
         surplus: [
-          { uid: 201, name: "Spare Scout", currentJob: "Scout" },
-          { uid: 202, name: null, currentJob: null },
+          {
+            uid: 201,
+            name: "Spare Scout",
+            currentJob: "Scout",
+            currentTeam: null,
+            replacedBy: null,
+          },
+          {
+            uid: 202,
+            name: null,
+            currentJob: null,
+            currentTeam: null,
+            replacedBy: null,
+          },
         ],
       }),
     );

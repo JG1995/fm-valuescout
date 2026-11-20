@@ -36,6 +36,7 @@ import {
   isIdentityColumnId,
   usePlayerTableStore,
 } from "@/stores/use-player-table-store";
+import { cn } from "@/utils/cn";
 import { formatCount } from "@/utils/format";
 import { getPlayerMetric } from "@/utils/player-metrics";
 import { SUGGESTED_TRAINING_COLUMN_ID } from "@/utils/suggested-training";
@@ -133,21 +134,25 @@ function SquadIdentityCell({
   name,
   club,
   division,
+  loanedOut,
   portrait,
   crest,
 }: {
   name: string | undefined;
   club: string | null | undefined;
   division: string | null | undefined;
+  loanedOut: boolean | undefined;
   portrait?: ReactNode;
   crest?: ReactNode;
 }) {
-  const context =
+  const clubContext =
     name === undefined
       ? null
       : [club, division]
           .filter((value): value is string => value !== null && value !== "")
           .join(" · ");
+  const context =
+    loanedOut && clubContext ? `On loan at ${clubContext}` : clubContext;
   return (
     <div className="flex h-table-row-height-two-line items-center gap-2 px-2">
       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-surface-container-high">
@@ -165,12 +170,29 @@ function SquadIdentityCell({
             <span className="flex h-3 w-3 shrink-0 items-center justify-center rounded-[2px] bg-surface-container-high">
               {crest}
             </span>
-            {context ? <span className="block truncate">{context}</span> : null}
+            {context ? (
+              <span
+                className={cn("block truncate", loanedOut && "text-info")}
+                title={context}
+              >
+                {context}
+              </span>
+            ) : null}
           </span>
         ) : null}
       </span>
     </div>
   );
+}
+
+/**
+ * Players the club has loaned out stay listed with a steel tint, as FM's own Squad lists them.
+ * The sticky player cell is opaque, so it mixes the same tint into its own surface.
+ */
+function loanedOutRowClassName(player: SquadPlayer) {
+  return player.loanedOut
+    ? "bg-info/10 [&>td:first-child]:bg-[color-mix(in_oklab,var(--color-info)_10%,var(--color-surface-container))]"
+    : undefined;
 }
 
 export const SQUAD_TABLE_GROUPS: TableGroupInput = {
@@ -406,6 +428,7 @@ function SquadOverviewTable({
       pageQueryOptions={pageQueryOptions}
       pageSize={SQUAD_PAGE_SIZE}
       renderCells={renderCells}
+      getRowClassName={loanedOutRowClassName}
       testId="squad-overview-scroller"
       total={total}
       onPlayerActivate={handlePlayerActivate}
@@ -445,6 +468,7 @@ export function SquadOverviewPanel({
           name={player?.name}
           club={player?.club}
           division={player?.division}
+          loanedOut={player?.loanedOut}
           portrait={identityGraphics?.(player)?.portrait}
           crest={identityGraphics?.(player)?.crest}
         />

@@ -44,6 +44,8 @@ export type AcademyMember = {
   internationalCaps: number | null;
   outcome: AcademyMemberOutcome | null;
   isGraduate: boolean | null;
+  /** The club has loaned the member out; `currentClub` is the borrower. */
+  loanedOut: boolean;
 };
 
 export type AcademyClassDetail = AcademyClass & {

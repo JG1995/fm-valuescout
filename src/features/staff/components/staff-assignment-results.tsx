@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowRightLeft,
+  ArrowUpDown,
   Building2,
   Check,
   RotateCcw,
@@ -16,6 +17,8 @@ import type {
   CoachRequirement,
   StaffAssignmentAction,
   StaffAssignmentOptimization,
+  StaffAssignmentReplacement,
+  StaffAssignmentScope,
   StaffAssignmentSlot,
 } from "../types/staff-assignment";
 
@@ -50,6 +53,7 @@ const actionPresentation: Record<
   }
 > = {
   keep: { label: "Keep", tone: "success", icon: Check },
+  move_team: { label: "Move team", tone: "neutral", icon: ArrowUpDown },
   change_job: { label: "Change job", tone: "neutral", icon: ArrowRightLeft },
   on_staff: { label: "Your staff", tone: "neutral", icon: Building2 },
   recruit: { label: "Recruit", tone: "info", icon: UserPlus },
@@ -59,16 +63,44 @@ function plural(count: number, one: string, many: string) {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-function actionDetail(action: StaffAssignmentAction) {
+const defaultTeamNames = {
+  senior: "First team",
+  reserves: "Reserves",
+  youth: "Youth",
+} as const;
+
+type TeamName = (scope: StaffAssignmentScope) => string | null;
+
+function actionDetail(action: StaffAssignmentAction, teamName: TeamName) {
   switch (action.kind) {
+    case "move_team":
+      return `Currently ${teamName(action.currentTeam)}`;
     case "change_job":
-      return `Currently ${action.currentJob}`;
+      return action.currentTeam
+        ? `Currently ${teamName(action.currentTeam)} ${action.currentJob}`
+        : `Currently ${action.currentJob}`;
     case "recruit":
       return action.club ? `From ${action.club}` : "Unemployed";
     case "keep":
     case "on_staff":
       return null;
   }
+}
+
+/** Whom a newcomer to a job replaces, or that the job gains a place when nobody leaves it. */
+function replacementDetail(
+  replaces: StaffAssignmentReplacement | null,
+  teamName: TeamName,
+) {
+  if (!replaces) {
+    return "Adds a place";
+  }
+  const name = replaces.name ?? `Staff ${replaces.uid}`;
+  if (!replaces.movesTo) {
+    return `Replaces ${name}`;
+  }
+  const team = teamName(replaces.movesTo.scope);
+  return `Replaces ${name}, who moves to ${team ? `${team} ` : ""}${replaces.movesTo.job}`;
 }
 
 /** Why nobody filled a slot, from the optimizer's counts for its job. */
@@ -116,6 +148,10 @@ export function StaffAssignmentResults({
 }: StaffAssignmentResultsProps) {
   const skippedHeadingId = useId();
   const surplusHeadingId = useId();
+  const teamName: TeamName = (scope) =>
+    scope === "club"
+      ? null
+      : (result.teamNames[scope] ?? defaultTeamNames[scope]);
   const recommendations = result.slots.filter(
     (slot) => slot.kind === "recommendation",
   );
@@ -256,12 +292,17 @@ export function StaffAssignmentResults({
                                 >
                                   {actionPresentation[slot.action.kind].label}
                                 </StatusChip>
-                                {actionDetail(slot.action) ? (
+                                {actionDetail(slot.action, teamName) ? (
                                   <span className="text-on-surface-variant">
-                                    {actionDetail(slot.action)}
+                                    {actionDetail(slot.action, teamName)}
                                   </span>
                                 ) : null}
                               </span>
+                              {slot.action.kind === "keep" ? null : (
+                                <span className="mt-1 block text-on-surface-variant">
+                                  {replacementDetail(slot.replaces, teamName)}
+                                </span>
+                              )}
                             </td>
                             <td className="px-2 py-2 text-right">
                               <Button
@@ -317,22 +358,32 @@ export function StaffAssignmentResults({
           </p>
           <ul className="grid gap-x-6 gap-y-1 text-body-sm text-on-surface sm:grid-cols-2">
             {result.surplus.map((staff) => (
-              <li key={staff.uid} className="flex min-w-0 items-baseline gap-2">
-                {staff.name ? (
-                  <button
-                    type="button"
-                    title="Open Staff Profile"
-                    className="min-w-0 cursor-pointer truncate text-left underline decoration-outline underline-offset-2 hover:decoration-on-surface"
-                    onClick={() => onOpenStaff(staff.uid)}
-                  >
-                    {staff.name}
-                  </button>
-                ) : (
-                  <span>Staff {staff.uid}</span>
-                )}
-                {staff.currentJob ? (
-                  <span className="shrink-0 text-on-surface-variant">
-                    {staff.currentJob}
+              <li key={staff.uid} className="min-w-0">
+                <span className="flex min-w-0 items-baseline gap-2">
+                  {staff.name ? (
+                    <button
+                      type="button"
+                      title="Open Staff Profile"
+                      className="min-w-0 cursor-pointer truncate text-left underline decoration-outline underline-offset-2 hover:decoration-on-surface"
+                      onClick={() => onOpenStaff(staff.uid)}
+                    >
+                      {staff.name}
+                    </button>
+                  ) : (
+                    <span>Staff {staff.uid}</span>
+                  )}
+                  {staff.currentJob ? (
+                    <span className="shrink-0 text-on-surface-variant">
+                      {staff.currentTeam
+                        ? `${teamName(staff.currentTeam)} ${staff.currentJob}`
+                        : staff.currentJob}
+                    </span>
+                  ) : null}
+                </span>
+                {staff.replacedBy ? (
+                  <span className="block text-on-surface-variant">
+                    Replaced by{" "}
+                    {staff.replacedBy.name ?? `Staff ${staff.replacedBy.uid}`}
                   </span>
                 ) : null}
               </li>

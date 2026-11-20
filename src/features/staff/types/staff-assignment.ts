@@ -55,7 +55,14 @@ export type CoachRequirement =
 /** What the club has to do to fill a slot with its recommended person. */
 export type StaffAssignmentAction =
   | { kind: "keep" }
-  | { kind: "change_job"; currentJob: string }
+  /** Same job, another team. */
+  | { kind: "move_team"; currentTeam: StaffAssignmentTeam }
+  /** `currentTeam` is null for a club-wide job or when the team is unknown. */
+  | {
+      kind: "change_job";
+      currentJob: string;
+      currentTeam: StaffAssignmentTeam | null;
+    }
   | { kind: "on_staff" }
   /** `club` is null when the person is unemployed. */
   | { kind: "recruit"; club: string | null };
@@ -74,6 +81,15 @@ export type StaffAssignmentRecommendation = {
   action: StaffAssignmentAction;
   score: number;
   coachRequirement: CoachRequirement | null;
+  /** The club staff member leaving the job and team this person takes, when one does. */
+  replaces: StaffAssignmentReplacement | null;
+};
+
+/** `movesTo` is the slot they move to, or null when they are sacked. */
+export type StaffAssignmentReplacement = {
+  uid: number;
+  name: string | null;
+  movesTo: { scope: StaffAssignmentScope; job: string } | null;
 };
 
 export type StaffAssignmentVacancy = {
@@ -102,6 +118,10 @@ export type StaffAssignmentSurplus = {
   name: string | null;
   /** The job they hold now, when FM's job type is mapped. */
   currentJob: string | null;
+  /** Their team, when the job has one and the team is known. */
+  currentTeam: StaffAssignmentTeam | null;
+  /** The recommendation that takes their job and team, when one does. */
+  replacedBy: StaffAssignmentSkip | null;
 };
 
 export type StaffAssignmentOptimizationState =
@@ -124,4 +144,6 @@ export type StaffAssignmentOptimization = {
   evidence: StaffAssignmentEvidence[];
   skipped: StaffAssignmentSkip[];
   surplus: StaffAssignmentSurplus[];
+  /** Each enabled Planner team's display name. */
+  teamNames: Partial<Record<StaffAssignmentTeam, string>>;
 };

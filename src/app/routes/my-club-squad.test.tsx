@@ -191,6 +191,7 @@ function squadPlayerNamed(name: string, uid: number, ca = 160): SquadPlayer {
     pa: ca + 5,
     marketValueGbp: ca * 100_000,
     suggestedTraining: null,
+    loanedOut: false,
   };
 }
 
@@ -374,6 +375,35 @@ describe("My Club route", () => {
     expect(legacy.querySelector('img[src$="/personPortrait/43"]')).toBeTruthy();
     expect(row).toHaveStyle({ height: "40px" });
     expect(row).toHaveAttribute("data-index");
+  });
+
+  it("lists players the club has loaned out with their borrowing club", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: { clubName: "Metro FC", clubUid: 1 },
+      sources: [],
+    });
+    setSquadPlayersOverride([
+      squadPlayerNamed("At Home", 42),
+      {
+        ...squadPlayerNamed("Out On Loan", 43),
+        club: "Borrower FC",
+        division: "Second Division",
+        loanedOut: true,
+      },
+    ]);
+    renderMyClubRoute({ initialEntry: "/my-club" });
+    const table = await screen.findByRole("table", { name: "Squad overview" });
+
+    const loaned = within(table).getByText("Out On Loan").closest("tr");
+    const home = within(table).getByText("At Home").closest("tr");
+    if (!loaned || !home) throw new Error("Expected both Squad rows");
+    expect(loaned).toHaveTextContent(
+      "On loan at Borrower FC · Second Division",
+    );
+    expect(loaned).toHaveClass("bg-info/10");
+    expect(home).toHaveTextContent("Metro FC · Premier Division");
+    expect(home).not.toHaveClass("bg-info/10");
   });
 
   it("keeps Squad identity and navigation geometry after native image errors", async () => {
