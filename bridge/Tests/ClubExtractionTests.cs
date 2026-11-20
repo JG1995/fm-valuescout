@@ -153,6 +153,39 @@ public sealed class ClubExtractionTests
         Assert.Equal("reserve", TeamLevelMap.FromTeamType(assignment.TeamType, assignment.ReserveClub));
     }
 
+    [Fact]
+    public void A_squad_of_ninety_seven_players_links_every_player()
+    {
+        // A user can move the whole club into the first team; FM keeps every player on one list.
+        const ulong club = 0x600000UL;
+        const ulong team = 0x601000UL;
+        const ulong teams = 0x603000UL;
+        const ulong squad = 0x604000UL;
+        const ulong firstPlayerBlock = 0x700000UL;
+        const int playerCount = 97;
+        var layout = Fm27Layout.Instance;
+        var reader = new FakeMemoryReader();
+        PlaceClubObject(reader, layout, club, "Big Squad FC");
+        PlaceTeamObject(reader, layout, team, club, 0x602000UL, "First League", teamType: 0, schedule: 0x605000UL, scheduleYear: 2026, scheduleDoy: 226);
+        PlaceVector(reader, club + (ulong)layout.ClubTeamsBeginOffset, teams, team);
+        var blocks = Enumerable.Range(0, playerCount).Select(i => firstPlayerBlock + (ulong)i * 0x1000).ToArray();
+        reader.AddBytes(team + (ulong)layout.TeamSquadBeginOffset, BitConverter.GetBytes(squad));
+        reader.AddBytes(team + (ulong)layout.TeamSquadEndOffset, BitConverter.GetBytes(squad + playerCount * 8UL));
+        reader.AddBytes(squad, blocks.SelectMany(BitConverter.GetBytes).ToArray());
+
+        var index = SquadClubIndex.Build(
+            reader,
+            layout,
+            blocks.Select((block, i) => (block, uid: (uint)(i + 1))).ToDictionary(pair => pair.block, pair => pair.uid),
+            Enumerable.Range(1, playerCount).ToDictionary(uid => (uint)uid, _ => (string?)"Big Squad FC"),
+            new[] { new ClubCandidate(club, "Big Squad FC") },
+            Array.Empty<ulong>());
+
+        Assert.Equal(playerCount, index.PlayersLinked);
+        Assert.True(index.TryGet(playerCount, out var last));
+        Assert.Equal(0, last.TeamType);
+    }
+
     private static void PlaceVector(FakeMemoryReader reader, ulong beginField, ulong array, ulong entry)
     {
         reader.AddBytes(beginField, BitConverter.GetBytes(array));

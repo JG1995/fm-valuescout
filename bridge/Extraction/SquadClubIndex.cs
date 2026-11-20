@@ -40,7 +40,11 @@ public sealed class SquadClubIndex
 {
     public const int MaxMultiClubSamples = 25;
     public const int MaxTeamsPerClub = 24;
-    public const int MaxPlayersPerSquad = 60;
+    /// <summary>
+    /// A bound that rejects a garbage squad vector, far above any real list. FM puts no limit on a
+    /// squad list: moving a club's 97 players into its first team leaves 97 there.
+    /// </summary>
+    public const int MaxPlayersPerSquad = 200;
     public const int MaxReserveClubsPerClub = 8;
 
     private readonly Dictionary<uint, SquadAssignment> _assignments = new();

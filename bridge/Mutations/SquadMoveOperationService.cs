@@ -59,9 +59,6 @@ internal sealed class SquadMoveOperationService
     /// <summary>FM's database index fills 24 bits; an action's top byte carries the table.</summary>
     private const int MaxDatabaseIndex = (1 << 24) - 1;
 
-    /// <summary>A bound on one team's squad list, far above any real squad.</summary>
-    private const int MaxSquadSize = 200;
-
     private static readonly TimeSpan DefaultConfirmTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DefaultPollInterval = TimeSpan.FromMilliseconds(100);
 
@@ -282,7 +279,7 @@ internal sealed class SquadMoveOperationService
                 team,
                 layout.TeamSquadBeginOffset,
                 layout.TeamSquadEndOffset,
-                MaxSquadSize) ?? new List<ulong>();
+                SquadClubIndex.MaxPlayersPerSquad) ?? new List<ulong>();
             teams.Add(new ClubTeam(team, type, squad.ToHashSet()));
         }
 
