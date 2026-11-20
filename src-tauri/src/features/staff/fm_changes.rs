@@ -88,8 +88,6 @@ pub(super) fn fm_job(
         "sports_scientist" => (48, "Sports Scientist"),
         "head_of_youth_development" => (64, "Head of Youth Development"),
         "head_performance_analyst" => (62, "Head Performance Analyst"),
-        // Manchester United's set piece specialist holds job type 22; FM's title for it is not
-        // yet confirmed on screen.
         "set_piece_coach" => (22, "Set Piece Coach"),
         "director_of_football" => (10, "Director of Football"),
         "chief_scout" => (44, "Chief Scout"),
@@ -114,9 +112,6 @@ fn level_for_scope(scope: &str) -> &'static str {
 
 /// FM's name for a job type, when FM ValueScout knows it.
 pub(super) fn fm_job_label(job_type: i32) -> Option<&'static str> {
-    if job_type == 22 {
-        return Some("Set Piece Coach");
-    }
     current_job_classification(i64::from(job_type)).map(|(label, _)| label)
 }
 

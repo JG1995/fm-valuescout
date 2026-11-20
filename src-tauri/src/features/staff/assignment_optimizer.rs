@@ -413,7 +413,7 @@ type CurrentJob = (i64, &'static str, PreferredJob, &'static str);
 
 /// Only the types cross-checked against a real save are mapped. Board, medical, and ownership
 /// jobs fill no target, and FM27's types 22 and 80 are still unidentified.
-const CURRENT_JOBS: [CurrentJob; 18] = [
+const CURRENT_JOBS: [CurrentJob; 19] = [
     (2, "Coach", PreferredJob::Coach, "coaches"),
     (
         10,
@@ -429,6 +429,12 @@ const CURRENT_JOBS: [CurrentJob; 18] = [
         "Assistant Manager",
         PreferredJob::AssistantManager,
         "assistant_manager",
+    ),
+    (
+        22,
+        "Set Piece Coach",
+        PreferredJob::SetPieceCoach,
+        "set_piece_coach",
     ),
     (26, "Fitness Coach", PreferredJob::FitnessCoach, "coaches"),
     (
