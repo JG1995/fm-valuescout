@@ -1,6 +1,6 @@
 use std::collections::{HashSet, VecDeque};
 
-use super::assignment_targets::StaffAssignmentTarget;
+use super::assignment_targets::{is_team_job, StaffAssignmentTarget, CLUB_SCOPE};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum PreferredJob {
@@ -197,6 +197,9 @@ pub(super) struct StaffAssignmentCandidate {
     pub(super) club: Option<String>,
     /// FM's type for the job the candidate holds now (`staff.job_id`).
     pub(super) current_job_id: Option<i64>,
+    /// The Planner team (`senior`, `reserves`, or `youth`) the candidate's contract names, when
+    /// known.
+    pub(super) current_team: Option<&'static str>,
     pub(super) working_with_youngsters: Option<u8>,
     pub(super) scores: StaffAssignmentScoreSet,
 }
@@ -204,10 +207,16 @@ pub(super) struct StaffAssignmentCandidate {
 /// What the club has to do to fill a slot with its recommended person.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum StaffAssignmentAction {
-    /// Club staff who already hold the slot's job.
+    /// Club staff who already hold the slot's job for the slot's team.
     Keep,
-    /// Club staff who hold another job now, named as FM shows it.
-    ChangeJob { current_job: &'static str },
+    /// Club staff who hold the slot's job for another team now.
+    MoveTeam { current_team: &'static str },
+    /// Club staff who hold another job now, named as FM shows it, with its team when the job
+    /// has one and the team is known.
+    ChangeJob {
+        current_job: &'static str,
+        current_team: Option<&'static str>,
+    },
     /// Club staff whose current FM job type is not mapped.
     OnStaff,
     /// Someone from another club, or unemployed when `club` is none.
@@ -235,6 +244,17 @@ pub(super) struct StaffAssignmentRecommendation {
     pub(super) action: StaffAssignmentAction,
     pub(super) score: u8,
     pub(super) coach_requirement: Option<CoachRequirement>,
+    /// The club staff member who leaves the job and team this person takes, when one does.
+    pub(super) replaces: Option<StaffAssignmentReplacement>,
+}
+
+/// Someone a recommendation replaces: a sacked staff member, or one moving to another slot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct StaffAssignmentReplacement {
+    pub(super) uid: i64,
+    pub(super) name: Option<String>,
+    /// The slot they move to as its team and job, or none when they are sacked.
+    pub(super) moves_to: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -260,6 +280,10 @@ pub(super) struct StaffAssignmentSurplus {
     pub(super) name: Option<String>,
     /// The job they hold now, as FM names it, when their job type is mapped.
     pub(super) current_job: Option<&'static str>,
+    /// Their team, when the job has one and the team is known.
+    pub(super) current_team: Option<&'static str>,
+    /// The recommendation that takes their job and team, when one does.
+    pub(super) replaced_by: Option<(i64, Option<String>)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -474,10 +498,12 @@ pub(super) fn current_job_classification(job_id: i64) -> Option<(&'static str, P
     current_job(job_id).map(|&(_, label, group, _)| (label, group))
 }
 
-/// Club staff keep a slot whose job they hold now. Coaches also keep their kind: a Coach moved
-/// to a goalkeeping or fitness requirement changes job.
+/// Club staff keep a slot whose job they hold now for the slot's team. Coaches also keep their
+/// kind: a Coach moved to a goalkeeping or fitness requirement changes job. A team the data
+/// does not name matches any team.
 fn assignment_action(
     candidate: &StaffAssignmentCandidate,
+    slot_scope: &str,
     target_job_id: &str,
     coach_requirement: Option<CoachRequirement>,
 ) -> StaffAssignmentAction {
@@ -486,21 +512,172 @@ fn assignment_action(
             club: candidate.club.clone(),
         };
     }
-    let Some(&(_, label, _, job_target)) = candidate.current_job_id.and_then(current_job) else {
+    let Some(post) = current_post(candidate) else {
         return StaffAssignmentAction::OnStaff;
     };
-    let same_job = job_target == target_job_id
-        && (target_job_id != "coaches"
-            || label
-                == match coach_requirement {
-                    Some(CoachRequirement::Fitness) => "Fitness Coach",
-                    Some(CoachRequirement::Goalkeeping) => "Goalkeeping Coach",
-                    _ => "Coach",
-                });
-    if same_job {
-        StaffAssignmentAction::Keep
-    } else {
-        StaffAssignmentAction::ChangeJob { current_job: label }
+    let slot = slot_post(slot_scope, target_job_id, coach_requirement);
+    if post.job != slot.job || post.kind != slot.kind {
+        let &(_, label, ..) = candidate
+            .current_job_id
+            .and_then(current_job)
+            .expect("a current post has a mapped job");
+        return StaffAssignmentAction::ChangeJob {
+            current_job: label,
+            current_team: post.team.filter(|team| *team != CLUB_SCOPE),
+        };
+    }
+    match post.team {
+        Some(team) if Some(team) != slot.team => {
+            StaffAssignmentAction::MoveTeam { current_team: team }
+        }
+        _ => StaffAssignmentAction::Keep,
+    }
+}
+
+/// A job at the club as a slot keys it: its team (`club` for club-wide jobs), the target job,
+/// and for Coaches the coach kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Post<'a> {
+    team: Option<&'a str>,
+    job: &'a str,
+    kind: &'a str,
+}
+
+/// The post a club staff member holds now; the team is none when the data does not name it.
+fn current_post(candidate: &StaffAssignmentCandidate) -> Option<Post<'static>> {
+    let &(_, label, _, job) = candidate.current_job_id.and_then(current_job)?;
+    Some(Post {
+        team: if is_team_job(job) {
+            candidate.current_team
+        } else {
+            Some(CLUB_SCOPE)
+        },
+        job,
+        kind: if job == "coaches" { label } else { job },
+    })
+}
+
+fn slot_post<'a>(
+    scope: &'a str,
+    job_id: &'a str,
+    coach_requirement: Option<CoachRequirement>,
+) -> Post<'a> {
+    Post {
+        team: Some(scope),
+        job: job_id,
+        kind: if job_id == "coaches" {
+            coach_kind(coach_requirement)
+        } else {
+            job_id
+        },
+    }
+}
+
+/// The FM job a Coaches slot asks for.
+fn coach_kind(coach_requirement: Option<CoachRequirement>) -> &'static str {
+    match coach_requirement {
+        Some(CoachRequirement::Fitness) => "Fitness Coach",
+        Some(CoachRequirement::Goalkeeping) => "Goalkeeping Coach",
+        _ => "Coach",
+    }
+}
+
+/// Whether someone who holds `held` now leaves the post `slot` asks for when they go.
+fn holds(held: Post<'_>, slot: Post<'_>) -> bool {
+    held.job == slot.job
+        && held.kind == slot.kind
+        && held.team.map_or(true, |team| Some(team) == slot.team)
+}
+
+/// Pairs each recommendation that brings someone into a post with a club staff member leaving
+/// that post: first the staff to sack, then those moving to another slot.
+fn pair_replacements(
+    candidates: &[StaffAssignmentCandidate],
+    slots: &mut [StaffAssignmentSlot],
+    surplus: &mut [StaffAssignmentSurplus],
+) {
+    struct Leaver {
+        uid: i64,
+        name: Option<String>,
+        post: Post<'static>,
+        moves_to: Option<(String, String)>,
+        surplus_index: Option<usize>,
+    }
+    let by_uid = candidates
+        .iter()
+        .map(|candidate| (candidate.uid, candidate))
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut leavers = Vec::new();
+    for (index, staff) in surplus.iter().enumerate() {
+        if let Some(post) = by_uid.get(&staff.uid).copied().and_then(current_post) {
+            leavers.push(Leaver {
+                uid: staff.uid,
+                name: staff.name.clone(),
+                post,
+                moves_to: None,
+                surplus_index: Some(index),
+            });
+        }
+    }
+    for slot in slots.iter() {
+        let StaffAssignmentSlot::Recommendation(recommendation) = slot else {
+            continue;
+        };
+        if !matches!(
+            recommendation.action,
+            StaffAssignmentAction::MoveTeam { .. } | StaffAssignmentAction::ChangeJob { .. }
+        ) {
+            continue;
+        }
+        if let Some(post) = by_uid
+            .get(&recommendation.uid)
+            .copied()
+            .and_then(current_post)
+        {
+            let to_job = if recommendation.job_id == "coaches" {
+                coach_kind(recommendation.coach_requirement).to_string()
+            } else {
+                recommendation.job_label.clone()
+            };
+            leavers.push(Leaver {
+                uid: recommendation.uid,
+                name: recommendation.name.clone(),
+                post,
+                moves_to: Some((recommendation.scope.clone(), to_job)),
+                surplus_index: None,
+            });
+        }
+    }
+
+    let mut taken = vec![false; leavers.len()];
+    for slot in slots.iter_mut() {
+        let StaffAssignmentSlot::Recommendation(recommendation) = slot else {
+            continue;
+        };
+        if recommendation.action == StaffAssignmentAction::Keep {
+            continue;
+        }
+        let post = slot_post(
+            &recommendation.scope,
+            &recommendation.job_id,
+            recommendation.coach_requirement,
+        );
+        let Some(index) = leavers.iter().enumerate().position(|(index, leaver)| {
+            !taken[index] && leaver.uid != recommendation.uid && holds(leaver.post, post)
+        }) else {
+            continue;
+        };
+        taken[index] = true;
+        let leaver = &leavers[index];
+        recommendation.replaces = Some(StaffAssignmentReplacement {
+            uid: leaver.uid,
+            name: leaver.name.clone(),
+            moves_to: leaver.moves_to.clone(),
+        });
+        if let Some(surplus_index) = leaver.surplus_index {
+            surplus[surplus_index].replaced_by =
+                Some((recommendation.uid, recommendation.name.clone()));
+        }
     }
 }
 
@@ -585,6 +762,10 @@ fn surplus_staff(
                     uid: candidate.uid,
                     name: candidate.name.clone(),
                     current_job: current.map(|&(_, label, _, _)| label),
+                    current_team: current_post(candidate)
+                        .and_then(|post| post.team)
+                        .filter(|team| *team != CLUB_SCOPE),
+                    replaced_by: None,
                 },
             )
         })
@@ -728,13 +909,17 @@ pub(super) fn allocate_staff_assignments(
         &mut assigned_uids,
     );
 
+    let mut slots = slots
+        .into_iter()
+        .map(|slot| slot.expect("every configured slot is allocated"))
+        .collect::<Vec<_>>();
+    let mut surplus = surplus_staff(candidates, &configured_slots, &assigned_uids);
+    pair_replacements(candidates, &mut slots, &mut surplus);
+
     StaffAssignmentAllocation {
-        slots: slots
-            .into_iter()
-            .map(|slot| slot.expect("every configured slot is allocated"))
-            .collect(),
+        slots,
         evidence,
-        surplus: surplus_staff(candidates, &configured_slots, &assigned_uids),
+        surplus,
     }
 }
 
@@ -966,9 +1151,15 @@ fn recommendation(
         name: candidate.name.clone(),
         preferred_job: candidate.preferred_job.clone(),
         job_source: candidate.job_source,
-        action: assignment_action(candidate, &configured_slot.target.job_id, coach_requirement),
+        action: assignment_action(
+            candidate,
+            &configured_slot.target.scope,
+            &configured_slot.target.job_id,
+            coach_requirement,
+        ),
         score,
         coach_requirement,
+        replaces: None,
     })
 }
 

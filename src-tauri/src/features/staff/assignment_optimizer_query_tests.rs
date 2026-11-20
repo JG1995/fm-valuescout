@@ -905,7 +905,8 @@ fn names_the_action_each_recommendation_needs() {
     assert_eq!(
         actions[&2],
         StaffAssignmentAction::ChangeJob {
-            current_job: "Physio"
+            current_job: "Physio",
+            current_team: None,
         }
     );
     assert_eq!(actions[&3], StaffAssignmentAction::OnStaff);
@@ -919,7 +920,8 @@ fn names_the_action_each_recommendation_needs() {
     assert_eq!(
         actions[&6],
         StaffAssignmentAction::ChangeJob {
-            current_job: "Coach"
+            current_job: "Coach",
+            current_team: None,
         }
     );
     assert_eq!(actions[&7], StaffAssignmentAction::Keep);
@@ -973,4 +975,49 @@ fn pools_only_staff_at_the_managed_club_uid_when_another_club_shares_its_name() 
                     })
     )));
     assert!(result.surplus.is_empty());
+}
+
+#[test]
+fn reads_each_club_staff_members_team_and_the_planner_team_names() {
+    let (_temp_dir, conn, save_token) = open();
+    let snapshot_token = insert_current_snapshot(&conn, 1);
+    configure_managed_club(&conn);
+    conn.execute_batch(
+        "INSERT INTO planner_teams (save_id, team, display_name) VALUES
+             (1, 'senior', 'First Team'),
+             (1, 'reserves', 'U21');
+         INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count) VALUES
+             (1, 'senior', 'assistant_manager', 1);",
+    )
+    .expect("configure targets");
+    insert_staff(&conn, 1, "U21 assistant", Some("Club A"));
+    set_job(&conn, 1, 20);
+    conn.execute(
+        "UPDATE staff SET team_type = 10, team_level = 'reserve' WHERE uid = 1",
+        [],
+    )
+    .expect("place the assistant in the U21s");
+    // The optimizer runs once the save has a shortlist.
+    insert_staff(&conn, 2, "Shortlisted scout", Some("Other FC"));
+    shortlist(&conn, 2, "Scout");
+    conn.execute(
+        "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, assistant_manager)
+         VALUES (1, 1, 1, 70), (1, 2, 1, NULL)",
+        [],
+    )
+    .expect("insert persisted score");
+
+    let result =
+        optimize_staff_assignments(&conn, &save_token, &snapshot_token).expect("optimize the pool");
+
+    let StaffAssignmentSlot::Recommendation(recommendation) = &result.slots[0].slot else {
+        panic!("the assistant fills the slot");
+    };
+    assert_eq!(
+        recommendation.action,
+        StaffAssignmentAction::MoveTeam {
+            current_team: "reserves"
+        }
+    );
+    assert_eq!(result.team_names["reserves"], "U21");
 }

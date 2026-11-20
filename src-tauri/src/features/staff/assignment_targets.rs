@@ -15,6 +15,11 @@ const TEAM_JOBS: [(&str, &str, &str, i64); 6] = [
     ("physio", "Physio", "medical", 50),
     ("sports_scientist", "Sports Scientist", "medical", 50),
 ];
+/// Whether each Planner team has its own slots for the job, rather than one club-wide set.
+pub(crate) fn is_team_job(job_id: &str) -> bool {
+    TEAM_JOBS.iter().any(|(id, ..)| *id == job_id)
+}
+
 const CLUB_JOBS: [(&str, &str, &str, i64); 11] = [
     (
         "head_of_youth_development",
