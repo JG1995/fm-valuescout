@@ -10,11 +10,12 @@ namespace FmDataBridge.GameActions;
 
 /// <summary>
 /// Sends FM27's own actions on the game's main thread: the squad change its "Move to" menu sends,
-/// the contract termination its staff menu sends, and the in-game editor's "Move to my club" with a
-/// chosen job. It also reads the board's staff limits from the channels FM's Staff overview opens
-/// (in the StaffLimits part). FM's types are found at run time so the bridge builds without the
-/// game's assemblies; see the FM27 squad move action, FM27 staff actions, and FM27 board staff
-/// limits notes in the wiki.
+/// the contract termination its staff menu sends, the in-game editor's "Move to my club" with a
+/// chosen job, and the Individual Training screen's training changes (in the Training part). It
+/// also reads the board's staff limits from the channels FM's Staff overview opens (in the
+/// StaffLimits part). FM's types are found at run time so the bridge builds without the game's
+/// assemblies; see the FM27 squad move action, FM27 staff actions, FM27 board staff limits, and
+/// FM27 training actions notes in the wiki.
 /// </summary>
 internal sealed partial class GameActionDispatcher : ISquadMoveDispatcher, IStaffChangeDispatcher
 {
@@ -119,6 +120,7 @@ internal sealed partial class GameActionDispatcher : ISquadMoveDispatcher, IStaf
         }
 
         InstallStaffLimits(harmony, log);
+        InstallTraining(log);
     }
 
     public bool TryDispatch(IReadOnlyList<SquadMoveAction> actions, out string? error)

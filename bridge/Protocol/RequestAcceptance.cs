@@ -178,12 +178,20 @@ public static class RequestAcceptance
             BridgeProtocol.OperationMoveSquadPlayers => TryValidateSquadMoves(request, out rejectReason),
             BridgeProtocol.OperationApplyStaffChanges => TryValidateStaffChanges(request, out rejectReason),
             BridgeProtocol.OperationReadStaffLimits => TryValidateStaffLimits(request, out rejectReason),
+            BridgeProtocol.OperationApplyTraining => TryValidateTraining(request, out rejectReason),
             _ => RejectUnsupportedOperation(request.Operation, out rejectReason),
         };
     }
 
     private static bool HasClubActionFields(BridgeRequest request) =>
-        request.ClubUid is not null || request.SquadMoves is not null || request.StaffChanges is not null;
+        request.ClubUid is not null
+        || request.SquadMoves is not null
+        || request.StaffChanges is not null
+        || request.TrainingChanges is not null;
+
+    /// <summary>FM's position masks for in-possession training: GK, DR, DL, DC, WBR, WBL, DM, MR, ML, MC, AMR, AML, AMC, ST.</summary>
+    private static readonly HashSet<int> TrainingPositions =
+        new() { 1, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384 };
 
     private static bool TryValidateSquadMoves(BridgeRequest request, out string? rejectReason)
     {
@@ -225,6 +233,12 @@ public static class RequestAcceptance
         if (request.StaffChanges is not null)
         {
             rejectReason = "squad moves do not accept staff changes";
+            return false;
+        }
+
+        if (request.TrainingChanges is not null)
+        {
+            rejectReason = "squad moves do not accept training changes";
             return false;
         }
 
@@ -286,7 +300,8 @@ public static class RequestAcceptance
             || request.ExpectedProfessionalism is not null
             || request.ExpectedDetermination is not null
             || request.SquadMoves is not null
-            || request.StaffChanges is not null)
+            || request.StaffChanges is not null
+            || request.TrainingChanges is not null)
         {
             rejectReason = "staff limits take only the club";
             return false;
@@ -333,6 +348,12 @@ public static class RequestAcceptance
             return false;
         }
 
+        if (request.TrainingChanges is not null)
+        {
+            rejectReason = "staff changes do not accept training changes";
+            return false;
+        }
+
         if (request.StaffChanges is not { Count: > 0 and <= BridgeProtocol.MaxStaffChanges } changes)
         {
             rejectReason = $"staffChanges must list 1 through {BridgeProtocol.MaxStaffChanges} staff";
@@ -376,6 +397,90 @@ public static class RequestAcceptance
                 default:
                     rejectReason = "staff change kind must be sack, hire, or change";
                     return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryValidateTraining(BridgeRequest request, out string? rejectReason)
+    {
+        rejectReason = null;
+        if (!string.Equals(
+                request.PlayerDatabaseScope,
+                PlayerDatabaseScopes.Men,
+                StringComparison.Ordinal))
+        {
+            rejectReason = "playerDatabaseScope is supported only by full-dump";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(request.SourceRequestId))
+        {
+            rejectReason = "sourceRequestId is required for training changes";
+            return false;
+        }
+
+        if (request.ClubUid is not { } clubUid || clubUid == 0)
+        {
+            rejectReason = "clubUid is required for training changes";
+            return false;
+        }
+
+        if (request.PlayerUid is not null
+            || request.StaffUid is not null
+            || request.ExpectedCurrentAbility is not null
+            || request.ExpectedPotentialAbility is not null
+            || request.CurrentAbilityIncrement is not null
+            || request.ExpectedAmbition is not null
+            || request.ExpectedProfessionalism is not null
+            || request.ExpectedDetermination is not null
+            || request.SquadMoves is not null
+            || request.StaffChanges is not null)
+        {
+            rejectReason = "training changes take only the club and the players' training";
+            return false;
+        }
+
+        if (request.TrainingChanges is not { Count: > 0 and <= BridgeProtocol.MaxTrainingChanges } changes)
+        {
+            rejectReason = $"trainingChanges must list 1 through {BridgeProtocol.MaxTrainingChanges} players";
+            return false;
+        }
+
+        var players = new HashSet<uint>();
+        foreach (var change in changes)
+        {
+            if (change is null || change.PlayerUid == 0 || !players.Add(change.PlayerUid))
+            {
+                rejectReason = "each training change needs a distinct playerUid";
+                return false;
+            }
+
+            if (change.IpPosition is null && change.IpRole is null && change.OopRole is null && change.Focus is null)
+            {
+                rejectReason = "a training change must set a role or a focus";
+                return false;
+            }
+
+            if ((change.IpPosition is null) != (change.IpRole is null)
+                || (change.IpPosition is { } position && !TrainingPositions.Contains(position))
+                || (change.IpRole is { } role && (role == 0 || (role & (role - 1)) != 0)))
+            {
+                rejectReason = "an in-possession role needs one of FM's positions and a single role bit";
+                return false;
+            }
+
+            if (change.OopRole is < -31 or > 7)
+            {
+                rejectReason = "oopRole must be -31 through 7";
+                return false;
+            }
+
+            if (change.Focus is not null and not (-1 or (>= 5 and <= 32)))
+            {
+                rejectReason = "focus must be -1 or 5 through 32";
+                return false;
             }
         }
 
@@ -599,6 +704,16 @@ public static class RequestAcceptance
                     Kind = change.Kind,
                     JobType = change.JobType,
                     TargetLevel = change.TargetLevel,
+                })
+                .ToArray(),
+            TrainingChanges = request.TrainingChanges?
+                .Select(change => new TrainingChangeItem
+                {
+                    PlayerUid = change.PlayerUid,
+                    IpPosition = change.IpPosition,
+                    IpRole = change.IpRole,
+                    OopRole = change.OopRole,
+                    Focus = change.Focus,
                 })
                 .ToArray(),
         };

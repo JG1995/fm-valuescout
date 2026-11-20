@@ -52,6 +52,9 @@ public sealed class BridgeRequest
 
     /// <summary>The staff a staff change sacks, hires, or re-hires in another job, at <see cref="ClubUid"/>.</summary>
     public IReadOnlyList<StaffChangeItem>? StaffChanges { get; init; }
+
+    /// <summary>The players of <see cref="ClubUid"/> whose individual training a training request sets.</summary>
+    public IReadOnlyList<TrainingChangeItem>? TrainingChanges { get; init; }
 }
 
 /// <summary>One player to move to the club's team at a level: senior, reserve, or youth.</summary>
@@ -83,4 +86,26 @@ public sealed class StaffChangeItem
 
     /// <summary>The team level a hire or change joins: senior, reserve, or youth.</summary>
     public string? TargetLevel { get; init; }
+}
+
+/// <summary>
+/// One player's individual training, in FM27's own IDs. Each part is optional: the in-possession
+/// role as a position mask and a role value, the out-of-possession role, and the additional focus,
+/// where -1 clears it. See the FM27 training actions note in the wiki.
+/// </summary>
+public sealed class TrainingChangeItem
+{
+    public uint PlayerUid { get; init; }
+
+    /// <summary>FM's position mask for the in-possession role, such as 16 for D (C).</summary>
+    public int? IpPosition { get; init; }
+
+    /// <summary>FM's in-possession role value: one bit, such as 2 for Centre-Back.</summary>
+    public ulong? IpRole { get; init; }
+
+    /// <summary>FM's out-of-possession role, -31 through 7.</summary>
+    public int? OopRole { get; init; }
+
+    /// <summary>FM's additional focus, 5 through 32, or -1 for none.</summary>
+    public int? Focus { get; init; }
 }

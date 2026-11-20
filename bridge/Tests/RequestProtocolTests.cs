@@ -928,6 +928,132 @@ public sealed class RequestProtocolTests
             ClubUid = 439,
         };
 
+    [Fact]
+    public void Accept_preserves_a_training_request()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-11-20T12:00:00Z");
+            WriteBoostRequest(path, TrainingRequest(now, Training(77, ipPosition: 1024, ipRole: 144115188075855872, oopRole: -14, focus: 19), Training(78, focus: -1)));
+
+            Assert.True(RequestAcceptance.TryAccept(path, now, Ttl, out var request, out _, out _));
+            Assert.Equal(
+                (BridgeProtocol.OperationApplyTraining, "scan-1", (uint?)439u),
+                (request.Operation, request.SourceRequestId, request.ClubUid));
+            Assert.Equal(
+                new (uint, int?, ulong?, int?, int?)[] { (77, 1024, 144115188075855872, -14, 19), (78, null, null, null, -1) },
+                request.TrainingChanges!.Select(change => (change.PlayerUid, change.IpPosition, change.IpRole, change.OopRole, change.Focus)));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("no-club", "clubUid is required for training changes")]
+    [InlineData("duplicate", "each training change needs a distinct playerUid")]
+    [InlineData("nothing", "a training change must set a role or a focus")]
+    [InlineData("role-without-position", "an in-possession role needs one of FM's positions and a single role bit")]
+    [InlineData("unknown-position", "an in-possession role needs one of FM's positions and a single role bit")]
+    [InlineData("two-role-bits", "an in-possession role needs one of FM's positions and a single role bit")]
+    [InlineData("oop-out-of-range", "oopRole must be -31 through 7")]
+    [InlineData("rehab-focus", "focus must be -1 or 5 through 32")]
+    [InlineData("squad-moves", "training changes take only the club and the players' training")]
+    public void Accept_rejects_an_invalid_training_request(string defect, string expected)
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-11-20T12:00:00Z");
+            var change = defect switch
+            {
+                "nothing" => Training(77),
+                "role-without-position" => Training(77, ipRole: 2),
+                "unknown-position" => Training(77, ipPosition: 2, ipRole: 2),
+                "two-role-bits" => Training(77, ipPosition: 16, ipRole: 3),
+                "oop-out-of-range" => Training(77, oopRole: 8),
+                "rehab-focus" => Training(77, focus: 4),
+                _ => Training(77, ipPosition: 16, ipRole: 2),
+            };
+            var valid = TrainingRequest(now, defect == "duplicate" ? new[] { change, change } : new[] { change });
+            WriteBoostRequest(
+                path,
+                new BridgeRequest
+                {
+                    ProtocolVersion = valid.ProtocolVersion,
+                    RequestId = valid.RequestId,
+                    CreatedAtUtc = now,
+                    Operation = valid.Operation,
+                    SourceRequestId = valid.SourceRequestId,
+                    ClubUid = defect == "no-club" ? null : valid.ClubUid,
+                    SquadMoves = defect == "squad-moves" ? Moves((77, "youth")) : null,
+                    TrainingChanges = valid.TrainingChanges,
+                });
+
+            Assert.False(RequestAcceptance.TryAccept(path, now, Ttl, out _, out var reason, out _));
+            Assert.Contains(expected, reason, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Accept_rejects_training_changes_on_a_squad_move()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-11-20T12:00:00Z");
+            WriteBoostRequest(
+                path,
+                new BridgeRequest
+                {
+                    ProtocolVersion = BridgeProtocol.ProtocolVersion,
+                    RequestId = "move-1",
+                    CreatedAtUtc = now,
+                    Operation = BridgeProtocol.OperationMoveSquadPlayers,
+                    SourceRequestId = "scan-1",
+                    ClubUid = 439,
+                    SquadMoves = Moves((77, "youth")),
+                    TrainingChanges = new[] { Training(77, focus: 19) },
+                });
+
+            Assert.False(RequestAcceptance.TryAccept(path, now, Ttl, out _, out var reason, out _));
+            Assert.Contains("squad moves do not accept training changes", reason, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private static BridgeRequest TrainingRequest(DateTimeOffset now, params TrainingChangeItem[] changes) =>
+        new()
+        {
+            ProtocolVersion = BridgeProtocol.ProtocolVersion,
+            RequestId = "training-1",
+            CreatedAtUtc = now,
+            Operation = BridgeProtocol.OperationApplyTraining,
+            SourceRequestId = "scan-1",
+            ClubUid = 439,
+            TrainingChanges = changes,
+        };
+
+    private static TrainingChangeItem Training(
+        uint uid,
+        int? ipPosition = null,
+        ulong? ipRole = null,
+        int? oopRole = null,
+        int? focus = null) =>
+        new() { PlayerUid = uid, IpPosition = ipPosition, IpRole = ipRole, OopRole = oopRole, Focus = focus };
+
     private static StaffChangeItem Sack(uint uid) => new() { StaffUid = uid, Kind = StaffChangeItem.Sack };
 
     private static StaffChangeItem Hire(uint uid, int job, string level) =>
