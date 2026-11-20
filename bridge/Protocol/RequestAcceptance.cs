@@ -176,12 +176,13 @@ public static class RequestAcceptance
             BridgeProtocol.OperationBoostStaffCurrentAbility => TryValidateBoostStaffCurrentAbility(request, out rejectReason),
             BridgeProtocol.OperationWonderkidMentality => TryValidateWonderkidMentality(request, out rejectReason),
             BridgeProtocol.OperationMoveSquadPlayers => TryValidateSquadMoves(request, out rejectReason),
+            BridgeProtocol.OperationApplyStaffChanges => TryValidateStaffChanges(request, out rejectReason),
             _ => RejectUnsupportedOperation(request.Operation, out rejectReason),
         };
     }
 
-    private static bool HasSquadMoveFields(BridgeRequest request) =>
-        request.ClubUid is not null || request.SquadMoves is not null;
+    private static bool HasClubActionFields(BridgeRequest request) =>
+        request.ClubUid is not null || request.SquadMoves is not null || request.StaffChanges is not null;
 
     private static bool TryValidateSquadMoves(BridgeRequest request, out string? rejectReason)
     {
@@ -220,6 +221,12 @@ public static class RequestAcceptance
             return false;
         }
 
+        if (request.StaffChanges is not null)
+        {
+            rejectReason = "squad moves do not accept staff changes";
+            return false;
+        }
+
         if (request.SquadMoves is not { Count: > 0 and <= BridgeProtocol.MaxSquadMoves } moves)
         {
             rejectReason = $"squadMoves must list 1 through {BridgeProtocol.MaxSquadMoves} players";
@@ -245,6 +252,93 @@ public static class RequestAcceptance
         return true;
     }
 
+    private static bool TryValidateStaffChanges(BridgeRequest request, out string? rejectReason)
+    {
+        rejectReason = null;
+        if (!string.Equals(
+                request.PlayerDatabaseScope,
+                PlayerDatabaseScopes.Men,
+                StringComparison.Ordinal))
+        {
+            rejectReason = "playerDatabaseScope is supported only by full-dump";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(request.SourceRequestId))
+        {
+            rejectReason = "sourceRequestId is required for staff changes";
+            return false;
+        }
+
+        if (request.ClubUid is not { } clubUid || clubUid == 0)
+        {
+            rejectReason = "clubUid is required for staff changes";
+            return false;
+        }
+
+        if (request.PlayerUid is not null
+            || request.StaffUid is not null
+            || request.ExpectedCurrentAbility is not null
+            || request.ExpectedPotentialAbility is not null
+            || request.CurrentAbilityIncrement is not null
+            || request.ExpectedAmbition is not null
+            || request.ExpectedProfessionalism is not null
+            || request.ExpectedDetermination is not null
+            || request.SquadMoves is not null)
+        {
+            rejectReason = "staff changes do not accept boost or squad move fields";
+            return false;
+        }
+
+        if (request.StaffChanges is not { Count: > 0 and <= BridgeProtocol.MaxStaffChanges } changes)
+        {
+            rejectReason = $"staffChanges must list 1 through {BridgeProtocol.MaxStaffChanges} staff";
+            return false;
+        }
+
+        var staff = new HashSet<uint>();
+        foreach (var change in changes)
+        {
+            if (change is null || change.StaffUid == 0 || !staff.Add(change.StaffUid))
+            {
+                rejectReason = "each staff change needs a distinct staffUid";
+                return false;
+            }
+
+            switch (change.Kind)
+            {
+                case StaffChangeItem.Sack:
+                    if (change.JobType is not null || change.TargetLevel is not null)
+                    {
+                        rejectReason = "a staff sack takes no job or team";
+                        return false;
+                    }
+
+                    break;
+                case StaffChangeItem.Hire:
+                case StaffChangeItem.Change:
+                    if (change.JobType is not (> 0 and <= 255))
+                    {
+                        rejectReason = "a staff hire needs a jobType from 1 through 255";
+                        return false;
+                    }
+
+                    if (change.TargetLevel is not ("senior" or "reserve" or "youth"))
+                    {
+                        rejectReason = "staff change targetLevel must be senior, reserve, or youth";
+                        return false;
+                    }
+
+                    break;
+                default:
+                    rejectReason = "staff change kind must be sack, hire, or change";
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
     private static bool TryValidateFullDump(BridgeRequest request, out string? rejectReason)
     {
         rejectReason = null;
@@ -263,7 +357,7 @@ public static class RequestAcceptance
             || request.ExpectedAmbition is not null
             || request.ExpectedProfessionalism is not null
             || request.ExpectedDetermination is not null
-            || HasSquadMoveFields(request))
+            || HasClubActionFields(request))
         {
             rejectReason = "full-dump does not accept player boost fields";
             return false;
@@ -303,7 +397,7 @@ public static class RequestAcceptance
             || request.ExpectedAmbition is not null
             || request.ExpectedProfessionalism is not null
             || request.ExpectedDetermination is not null
-            || HasSquadMoveFields(request))
+            || HasClubActionFields(request))
         {
             rejectReason = "staff CA boost does not accept player boost fields";
             return false;
@@ -385,9 +479,9 @@ public static class RequestAcceptance
             return false;
         }
 
-        if (HasSquadMoveFields(request))
+        if (HasClubActionFields(request))
         {
-            rejectReason = "player boosts do not accept squad move fields";
+            rejectReason = "player boosts do not accept squad move or staff change fields";
             return false;
         }
 
@@ -454,6 +548,15 @@ public static class RequestAcceptance
             ClubUid = request.ClubUid,
             SquadMoves = request.SquadMoves?
                 .Select(move => new SquadMoveItem { PlayerUid = move.PlayerUid, TargetLevel = move.TargetLevel })
+                .ToArray(),
+            StaffChanges = request.StaffChanges?
+                .Select(change => new StaffChangeItem
+                {
+                    StaffUid = change.StaffUid,
+                    Kind = change.Kind,
+                    JobType = change.JobType,
+                    TargetLevel = change.TargetLevel,
+                })
                 .ToArray(),
         };
 

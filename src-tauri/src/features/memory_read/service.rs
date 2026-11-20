@@ -19,6 +19,7 @@ pub const OPERATION_BOOST_CURRENT_ABILITY: &str = "boost-current-ability";
 pub const OPERATION_BOOST_STAFF_CURRENT_ABILITY: &str = "boost-staff-current-ability";
 pub const OPERATION_WONDERKID_MENTALITY: &str = "wonderkid-mentality";
 pub const OPERATION_MOVE_SQUAD_PLAYERS: &str = "move-squad-players";
+pub const OPERATION_APPLY_STAFF_CHANGES: &str = "apply-staff-changes";
 pub const PLAYER_DATABASE_SCOPE_MEN: &str = "men";
 
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -73,6 +74,10 @@ pub struct BridgeStatus {
     pub squad_moves_supported: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub squad_moves: Option<SquadMoveResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staff_changes_supported: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staff_changes: Option<StaffChangeResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1230,6 +1235,196 @@ pub fn request_player_dump_from_local_app_data(
     request_player_dump(&bridge_directory, wait)
 }
 
+/// Each requested staff change's outcome, in request order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffChangeResult {
+    #[serde(default)]
+    pub changes: Vec<StaffChangeOutcome>,
+}
+
+/// What FM did with one staff change, and the person's contract afterwards as the bridge read it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffChangeOutcome {
+    /// `sacked`, `hired`, `changed`, `left-unemployed`, `not-found`, `not-at-club`,
+    /// `no-target-team`, or `not-confirmed`.
+    pub outcome: String,
+    /// The contract's club; absent when the person has no contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub club_uid: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub club: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub division: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weekly_wage_gbp: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contract_expiry_year: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contract_expiry_day_of_year: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_type: Option<i32>,
+    /// The level of `team_type`: `senior`, `reserve`, or `youth`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_level: Option<String>,
+}
+
+/// One staff change at the managed club: `sack` ends the contract, `hire` brings the person in
+/// with FM's job type at a team level, and `change` does both.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffChangeItem {
+    pub staff_uid: u32,
+    pub kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub job_type: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_level: Option<&'static str>,
+}
+
+/// The bridge's answer to a staff-change request: each change's outcome, and the error that
+/// stopped the request early when one did. FM may have made some changes before such an error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaffChangeResponse {
+    pub changes: Vec<StaffChangeOutcome>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StaffChangeRequest<'a> {
+    protocol_version: u32,
+    request_id: String,
+    created_at_utc: String,
+    operation: &'static str,
+    player_database_scope: &'static str,
+    source_request_id: &'a str,
+    club_uid: u32,
+    staff_changes: &'a [StaffChangeItem],
+}
+
+/// The most staff one staff-change request may change; the bridge enforces the same bound.
+pub const MAX_STAFF_CHANGES: usize = 100;
+
+/// Why staff changes are unavailable when the bridge does not offer them.
+pub const STAFF_CHANGES_UNAVAILABLE: &str =
+    "Load Data with FM open on this save before changing staff in FM";
+
+pub fn request_staff_changes_from_local_app_data(
+    source_request_id: &str,
+    club_uid: u32,
+    changes: &[StaffChangeItem],
+    wait: DumpWaitConfig,
+) -> Result<StaffChangeResponse, PlayerBoostRequestError> {
+    let bridge_directory = resolve_bridge_directory().map_err(PlayerBoostRequestError::from)?;
+    request_staff_changes(
+        &bridge_directory,
+        source_request_id,
+        club_uid,
+        changes,
+        wait,
+    )
+}
+
+/// Asks the bridge to sack, hire, and re-hire the managed club's staff and waits for each
+/// change's outcome.
+pub fn request_staff_changes(
+    bridge_directory: &Path,
+    source_request_id: &str,
+    club_uid: u32,
+    changes: &[StaffChangeItem],
+    wait: DumpWaitConfig,
+) -> Result<StaffChangeResponse, PlayerBoostRequestError> {
+    if source_request_id.trim().is_empty() || club_uid == 0 {
+        return Err(PlayerBoostRequestError::WriteFailed(
+            "staff changes need the live scan and the managed club".to_string(),
+        ));
+    }
+    if changes.is_empty() || changes.len() > MAX_STAFF_CHANGES {
+        return Err(PlayerBoostRequestError::WriteFailed(format!(
+            "staff changes must list 1 through {MAX_STAFF_CHANGES} staff"
+        )));
+    }
+    let _bridge_request_guard = acquire_bridge_request_guard(bridge_directory)
+        .map_err(PlayerBoostRequestError::Unavailable)?;
+    let status = read_bridge_status(bridge_directory).map_err(PlayerBoostRequestError::from)?;
+    if status.staff_changes_supported != Some(true) {
+        return Err(PlayerBoostRequestError::Unavailable(
+            STAFF_CHANGES_UNAVAILABLE.to_string(),
+        ));
+    }
+
+    let request_id = new_request_id();
+    let request = StaffChangeRequest {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        created_at_utc: utc_now_rfc3339(),
+        operation: OPERATION_APPLY_STAFF_CHANGES,
+        player_database_scope: PLAYER_DATABASE_SCOPE_MEN,
+        source_request_id,
+        club_uid,
+        staff_changes: changes,
+    };
+    write_bridge_request(bridge_directory, &request)?;
+    wait_for_staff_changes_terminal(bridge_directory, &request_id, changes.len(), wait)
+}
+
+pub fn wait_for_staff_changes_terminal(
+    bridge_directory: &Path,
+    request_id: &str,
+    change_count: usize,
+    wait: DumpWaitConfig,
+) -> Result<StaffChangeResponse, PlayerBoostRequestError> {
+    let deadline = Instant::now() + wait.timeout;
+    loop {
+        match read_bridge_status(bridge_directory) {
+            Ok(status)
+                if status.request_id.as_deref() == Some(request_id)
+                    && is_terminal_state(&status.state) =>
+            {
+                let error = (status.state == "failed").then(|| {
+                    status.error.clone().unwrap_or_else(|| {
+                        "staff changes failed without a bridge error".to_string()
+                    })
+                });
+                return match status.staff_changes {
+                    Some(result) if result.changes.len() == change_count => {
+                        Ok(StaffChangeResponse {
+                            changes: result.changes,
+                            error,
+                        })
+                    }
+                    Some(_) => Err(PlayerBoostRequestError::Corrupt(
+                        "the bridge reported a different number of staff changes than were sent"
+                            .to_string(),
+                    )),
+                    None => Err(PlayerBoostRequestError::Failed(error.unwrap_or_else(
+                        || {
+                            "the bridge finished the staff changes without their outcomes"
+                                .to_string()
+                        },
+                    ))),
+                };
+            }
+            Ok(_) => {}
+            Err(BridgeStatusError::Missing(_)) => {}
+            Err(error) => return Err(error.into()),
+        }
+
+        if Instant::now() >= deadline {
+            return Err(PlayerBoostRequestError::Timeout(
+                "timed out waiting for FM to finish the staff changes; Load Data to see FM's staff"
+                    .to_string(),
+            ));
+        }
+
+        thread::sleep(wait.poll_interval);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1715,6 +1910,8 @@ mod tests {
             staff_boost: None,
             squad_moves_supported: Some(supported),
             squad_moves,
+            staff_changes_supported: None,
+            staff_changes: None,
         };
         write_status(bridge_dir, &status);
     }
@@ -1825,6 +2022,145 @@ mod tests {
             response.error.as_deref(),
             Some("FM rejected a squad move: boom")
         );
+    }
+
+    fn write_staff_change_status_fixture(
+        bridge_dir: &Path,
+        state: &str,
+        request_id: &str,
+        supported: bool,
+        staff_changes: Option<StaffChangeResult>,
+        error: Option<&str>,
+    ) {
+        let status = BridgeStatus {
+            protocol_version: PROTOCOL_VERSION,
+            plugin_version: "0.31.1".to_string(),
+            state: state.to_string(),
+            updated_at_utc: "2026-11-20T12:00:00.000Z".to_string(),
+            game_plugin_module_present: true,
+            game_assembly_module_present: true,
+            request_id: Some(request_id.to_string()),
+            players_found: None,
+            error: error.map(str::to_string),
+            player_boosts_supported: Some(supported),
+            player_boost: None,
+            staff_boosts_supported: Some(supported),
+            staff_boost: None,
+            squad_moves_supported: Some(supported),
+            squad_moves: None,
+            staff_changes_supported: Some(supported),
+            staff_changes,
+        };
+        write_status(bridge_dir, &status);
+    }
+
+    #[test]
+    fn staff_changes_require_advertised_support_before_writing_a_request() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        write_staff_change_status_fixture(temp_dir.path(), "ready", "scan-1", false, None, None);
+
+        let error = request_staff_changes(
+            temp_dir.path(),
+            "scan-1",
+            680,
+            &[StaffChangeItem {
+                staff_uid: 41,
+                kind: "sack",
+                job_type: None,
+                target_level: None,
+            }],
+            QUICK_WAIT,
+        )
+        .expect_err("a bridge without staff changes must be rejected");
+
+        assert_eq!(
+            error,
+            PlayerBoostRequestError::Unavailable(STAFF_CHANGES_UNAVAILABLE.to_string())
+        );
+        assert!(!request_path(temp_dir.path()).exists());
+    }
+
+    #[test]
+    fn staff_change_request_names_the_club_and_each_change() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let changes = [
+            StaffChangeItem {
+                staff_uid: 41,
+                kind: "sack",
+                job_type: None,
+                target_level: None,
+            },
+            StaffChangeItem {
+                staff_uid: 42,
+                kind: "change",
+                job_type: Some(2),
+                target_level: Some("youth"),
+            },
+        ];
+        write_bridge_request(
+            temp_dir.path(),
+            &StaffChangeRequest {
+                protocol_version: PROTOCOL_VERSION,
+                request_id: "staff-1".to_string(),
+                created_at_utc: "2026-11-20T12:00:00.000Z".to_string(),
+                operation: OPERATION_APPLY_STAFF_CHANGES,
+                player_database_scope: PLAYER_DATABASE_SCOPE_MEN,
+                source_request_id: "scan-1",
+                club_uid: 680,
+                staff_changes: &changes,
+            },
+        )
+        .expect("write staff change request");
+
+        let value: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(request_path(temp_dir.path())).expect("read request"),
+        )
+        .expect("parse request");
+        assert_eq!(value["operation"], OPERATION_APPLY_STAFF_CHANGES);
+        assert_eq!(value["clubUid"], 680);
+        assert_eq!(
+            value["staffChanges"],
+            serde_json::json!([
+                { "staffUid": 41, "kind": "sack" },
+                { "staffUid": 42, "kind": "change", "jobType": 2, "targetLevel": "youth" }
+            ])
+        );
+    }
+
+    #[test]
+    fn staff_change_wait_keeps_outcomes_and_rejects_a_mismatched_count() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let hired = StaffChangeOutcome {
+            outcome: "hired".to_string(),
+            club_uid: Some(680),
+            job_id: Some(2),
+            weekly_wage_gbp: Some(6388),
+            team_type: Some(10),
+            team_level: Some("reserve".to_string()),
+            ..StaffChangeOutcome::default()
+        };
+        write_staff_change_status_fixture(
+            temp_dir.path(),
+            "failed",
+            "staff-1",
+            true,
+            Some(StaffChangeResult {
+                changes: vec![hired.clone()],
+            }),
+            Some("FM rejected an action: boom"),
+        );
+
+        let response = wait_for_staff_changes_terminal(temp_dir.path(), "staff-1", 1, QUICK_WAIT)
+            .expect("outcomes of a partial request");
+        assert_eq!(response.changes, vec![hired]);
+        assert_eq!(
+            response.error.as_deref(),
+            Some("FM rejected an action: boom")
+        );
+        assert!(matches!(
+            wait_for_staff_changes_terminal(temp_dir.path(), "staff-1", 2, QUICK_WAIT),
+            Err(PlayerBoostRequestError::Corrupt(_))
+        ));
     }
 
     #[test]
@@ -2247,6 +2583,8 @@ mod tests {
             staff_boost: None,
             squad_moves_supported: None,
             squad_moves: None,
+            staff_changes_supported: None,
+            staff_changes: None,
         }
     }
 
@@ -2274,6 +2612,8 @@ mod tests {
             staff_boost: None,
             squad_moves_supported: None,
             squad_moves: None,
+            staff_changes_supported: None,
+            staff_changes: None,
         };
         write_status(bridge_dir, &status);
     }
@@ -2302,6 +2642,8 @@ mod tests {
             staff_boost,
             squad_moves_supported: None,
             squad_moves: None,
+            staff_changes_supported: None,
+            staff_changes: None,
         };
         write_status(bridge_dir, &status);
     }

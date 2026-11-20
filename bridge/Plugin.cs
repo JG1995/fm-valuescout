@@ -50,6 +50,9 @@ public class Plugin : BasePlugin
 
     private static readonly SquadMoveOperationService SquadMoves = new(Layouts, PlayerMutationIndex, GameActions);
 
+    private static readonly StaffChangeOperationService StaffChanges =
+        new(Layouts, PlayerMutationIndex, StaffMutationIndex, GameActions);
+
     public override void Load()
     {
         Log = base.Log;
@@ -225,6 +228,10 @@ public class Plugin : BasePlugin
                 else if (acceptedRequest.Operation == BridgeProtocol.OperationMoveSquadPlayers)
                 {
                     RunSquadMoves(bridgeDirectory, acceptedRequest, cancelToken);
+                }
+                else if (acceptedRequest.Operation == BridgeProtocol.OperationApplyStaffChanges)
+                {
+                    RunStaffChanges(bridgeDirectory, acceptedRequest, cancelToken);
                 }
                 else
                 {
@@ -730,6 +737,92 @@ public class Plugin : BasePlugin
             _ => "squad moves failed; Load Data again",
         };
 
+    private static void RunStaffChanges(
+        string bridgeDirectory,
+        BridgeRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reader = new WindowsMemoryReader();
+            var modules = ModulePresence.FromBounds(reader.LocateKnownModules());
+            WriteStatus(
+                bridgeDirectory,
+                BridgeProtocol.StateScanning,
+                modules,
+                requestId: request.RequestId,
+                playersFound: null,
+                error: null,
+                playerBoostsSupported: false);
+
+            if (cancellationToken.IsCancellationRequested
+                || !GameVersionDetector.TryDetectFromCurrentProcess(out var gameVersion)
+                || string.IsNullOrWhiteSpace(gameVersion))
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    modules,
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: "staff changes could not start; retry",
+                    playerBoostsSupported: false);
+                return;
+            }
+
+            var result = StaffChanges.Execute(request, gameVersion, reader);
+            if (!result.Succeeded)
+            {
+                Log.LogWarning($"Staff changes failed: {result.Failure} {result.Detail}");
+            }
+
+            WriteStatus(
+                bridgeDirectory,
+                result.Succeeded ? BridgeProtocol.StateReady : BridgeProtocol.StateFailed,
+                modules,
+                requestId: request.RequestId,
+                playersFound: null,
+                error: result.Succeeded ? null : StaffChangeFailureMessage(result.Failure, result.Detail),
+                playerBoostsSupported: PlayerBoosts.HasSupportedLiveIndex(gameVersion),
+                staffBoostsSupported: StaffBoosts.HasSupportedLiveIndex(gameVersion),
+                staffChanges: result.Result);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError($"Staff changes crashed: {ex}");
+            try
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    DetectModulesBestEffort(),
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: "staff changes failed unexpectedly; Load Data to see FM's staff");
+            }
+            catch
+            {
+                // ignored — status best-effort
+            }
+        }
+    }
+
+    private static string StaffChangeFailureMessage(StaffChangeFailure failure, string? detail) =>
+        failure switch
+        {
+            StaffChangeFailure.InvalidRequest => "invalid staff change request; update the app and retry",
+            StaffChangeFailure.UnsupportedGameBuild =>
+                "this FM build is not supported for staff changes; update the bridge plugin and Load Data",
+            StaffChangeFailure.NoLiveScan => "Load Data again before changing staff",
+            StaffChangeFailure.SourceRequestMismatch => "Load Data again before changing staff",
+            StaffChangeFailure.ClubNotFound => "the managed club was not found in FM; Load Data again",
+            StaffChangeFailure.ManagerNotFound => "your manager was not found in FM; update the bridge plugin",
+            StaffChangeFailure.GameActionsUnavailable =>
+                "FM's staff actions are unavailable in this game build; update the bridge plugin",
+            StaffChangeFailure.DispatchFailed => detail ?? "FM did not run the staff changes; retry",
+            _ => "staff changes failed; Load Data again",
+        };
+
     /// <summary>
     /// game_plugin.dll may appear after plugin Load; rewrite status module flags without changing state.
     /// </summary>
@@ -768,7 +861,8 @@ public class Plugin : BasePlugin
             staffBoostsSupported: current.StaffBoostsSupported,
             playerBoost: current.PlayerBoost,
             staffBoost: current.StaffBoost,
-            squadMoves: current.SquadMoves);
+            squadMoves: current.SquadMoves,
+            staffChanges: current.StaffChanges);
     }
 
     private static void TryDeleteForceScanFlag(string bridgeDirectory)
@@ -809,7 +903,8 @@ public class Plugin : BasePlugin
         bool? staffBoostsSupported = null,
         PlayerBoostResult? playerBoost = null,
         StaffBoostResult? staffBoost = null,
-        SquadMoveResult? squadMoves = null)
+        SquadMoveResult? squadMoves = null,
+        StaffChangeResult? staffChanges = null)
     {
         var status = new BridgeStatus
         {
@@ -831,6 +926,11 @@ public class Plugin : BasePlugin
                 ? supported && GameActions.IsAvailable
                 : null,
             SquadMoves = squadMoves,
+            // Staff changes find the club in the live player index and staff in the staff index.
+            StaffChangesSupported = playerBoostsSupported is { } players && staffBoostsSupported is { } staff
+                ? players && staff && GameActions.StaffActionsAvailable
+                : null,
+            StaffChanges = staffChanges,
         };
         StatusWriter.Write(bridgeDirectory, status);
     }

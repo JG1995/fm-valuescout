@@ -734,6 +734,152 @@ public sealed class RequestProtocolTests
         }
     }
 
+    [Fact]
+    public void Accept_preserves_a_staff_change_request()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-11-20T12:00:00Z");
+            WriteBoostRequest(
+                path,
+                StaffChangeRequest(now, Sack(41), Hire(42, 20, "senior"), Change(43, 2, "youth")));
+
+            Assert.True(RequestAcceptance.TryAccept(path, now, Ttl, out var request, out _, out _));
+            Assert.Equal(BridgeProtocol.OperationApplyStaffChanges, request.Operation);
+            Assert.Equal(439u, request.ClubUid);
+            Assert.Equal(
+                new[]
+                {
+                    (41u, "sack", (int?)null, (string?)null),
+                    (42u, "hire", 20, "senior"),
+                    (43u, "change", 2, "youth"),
+                },
+                request.StaffChanges!.Select(change => (change.StaffUid, change.Kind, change.JobType, change.TargetLevel)));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("no-club", "clubUid is required")]
+    [InlineData("no-changes", "staffChanges must list")]
+    [InlineData("duplicate", "distinct staffUid")]
+    [InlineData("bad-kind", "kind must be sack, hire, or change")]
+    [InlineData("sack-with-job", "takes no job or team")]
+    [InlineData("hire-without-job", "needs a jobType")]
+    [InlineData("bad-level", "targetLevel must be")]
+    [InlineData("squad-moves", "do not accept boost or squad move fields")]
+    [InlineData("too-many", "staffChanges must list")]
+    public void Accept_rejects_an_invalid_staff_change_request(string defect, string expected)
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-11-20T12:00:00Z");
+            var changes = defect switch
+            {
+                "no-changes" => Array.Empty<StaffChangeItem>(),
+                "duplicate" => new[] { Sack(41), Hire(41, 2, "senior") },
+                "bad-kind" => new[] { new StaffChangeItem { StaffUid = 41, Kind = "move" } },
+                "sack-with-job" => new[] { new StaffChangeItem { StaffUid = 41, Kind = "sack", JobType = 2 } },
+                "hire-without-job" => new[] { new StaffChangeItem { StaffUid = 41, Kind = "hire", TargetLevel = "senior" } },
+                "bad-level" => new[] { Hire(41, 2, "reserves") },
+                "too-many" => Enumerable.Range(1, BridgeProtocol.MaxStaffChanges + 1).Select(uid => Sack((uint)uid)).ToArray(),
+                _ => new[] { Sack(41) },
+            };
+            var valid = StaffChangeRequest(now, changes);
+            var request = defect switch
+            {
+                "no-club" => new BridgeRequest
+                {
+                    ProtocolVersion = valid.ProtocolVersion,
+                    RequestId = valid.RequestId,
+                    CreatedAtUtc = now,
+                    Operation = valid.Operation,
+                    SourceRequestId = valid.SourceRequestId,
+                    StaffChanges = valid.StaffChanges,
+                },
+                "squad-moves" => new BridgeRequest
+                {
+                    ProtocolVersion = valid.ProtocolVersion,
+                    RequestId = valid.RequestId,
+                    CreatedAtUtc = now,
+                    Operation = valid.Operation,
+                    SourceRequestId = valid.SourceRequestId,
+                    ClubUid = valid.ClubUid,
+                    StaffChanges = valid.StaffChanges,
+                    SquadMoves = Moves((77, "reserve")),
+                },
+                _ => valid,
+            };
+            WriteBoostRequest(path, request);
+
+            Assert.False(RequestAcceptance.TryAccept(path, now, Ttl, out _, out var reason, out _));
+            Assert.Contains(expected, reason, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Accept_rejects_staff_changes_on_a_squad_move_request()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-11-20T12:00:00Z");
+            var squad = SquadMoveRequest(now, Moves((77, "reserve")));
+            WriteBoostRequest(
+                path,
+                new BridgeRequest
+                {
+                    ProtocolVersion = squad.ProtocolVersion,
+                    RequestId = squad.RequestId,
+                    CreatedAtUtc = now,
+                    Operation = squad.Operation,
+                    SourceRequestId = squad.SourceRequestId,
+                    ClubUid = squad.ClubUid,
+                    SquadMoves = squad.SquadMoves,
+                    StaffChanges = new[] { Sack(41) },
+                });
+
+            Assert.False(RequestAcceptance.TryAccept(path, now, Ttl, out _, out var reason, out _));
+            Assert.Contains("do not accept staff changes", reason, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private static StaffChangeItem Sack(uint uid) => new() { StaffUid = uid, Kind = StaffChangeItem.Sack };
+
+    private static StaffChangeItem Hire(uint uid, int job, string level) =>
+        new() { StaffUid = uid, Kind = StaffChangeItem.Hire, JobType = job, TargetLevel = level };
+
+    private static StaffChangeItem Change(uint uid, int job, string level) =>
+        new() { StaffUid = uid, Kind = StaffChangeItem.Change, JobType = job, TargetLevel = level };
+
+    private static BridgeRequest StaffChangeRequest(DateTimeOffset now, params StaffChangeItem[] changes) =>
+        new()
+        {
+            ProtocolVersion = BridgeProtocol.ProtocolVersion,
+            RequestId = "staff-change-1",
+            CreatedAtUtc = now,
+            Operation = BridgeProtocol.OperationApplyStaffChanges,
+            SourceRequestId = "scan-1",
+            ClubUid = 439,
+            StaffChanges = changes,
+        };
+
     private static SquadMoveItem[] Moves(params (uint Uid, string Level)[] moves) =>
         moves.Select(move => new SquadMoveItem { PlayerUid = move.Uid, TargetLevel = move.Level }).ToArray();
 

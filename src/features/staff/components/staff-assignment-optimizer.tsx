@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { ArrowLeftRight } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
@@ -14,6 +15,7 @@ import {
   type StaffAssignmentModalStatus,
   StaffAssignmentTargetModal,
 } from "./staff-assignment-target-modal";
+import { StaffFmChanges } from "./staff-fm-changes";
 
 type StaffAssignmentOptimizerProps = {
   context: StaffAssignmentContext;
@@ -101,6 +103,7 @@ export function StaffAssignmentOptimizer({
   );
   const [modalOpen, setModalOpen] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [fmChangesOpen, setFmChangesOpen] = useState(false);
   const [resultsReturnFocus, setResultsReturnFocus] =
     useState<HTMLElement | null>(null);
   // Saving staffing needs opened from Optimize or from the results optimizes again.
@@ -340,6 +343,18 @@ export function StaffAssignmentOptimizer({
         variant="informational"
         className="max-w-[64rem]!"
         returnFocusTo={resultsReturnFocus}
+        footer={
+          <Button
+            variant="secondary"
+            icon={ArrowLeftRight}
+            onClick={() => {
+              setResultsOpen(false);
+              setFmChangesOpen(true);
+            }}
+          >
+            Apply in FM
+          </Button>
+        }
       >
         {error ? (
           <p role="alert" className="pb-3 text-body-sm text-error">
@@ -376,6 +391,13 @@ export function StaffAssignmentOptimizer({
           />
         ) : null}
       </Modal>
+      <StaffFmChanges
+        context={context}
+        contextKey={contextKey}
+        open={fmChangesOpen}
+        onClose={() => setFmChangesOpen(false)}
+        onApplied={resetOutcome}
+      />
     </div>
   );
 }

@@ -1021,3 +1021,55 @@ fn reads_each_club_staff_members_team_and_the_planner_team_names() {
     );
     assert_eq!(result.team_names["reserves"], "U21");
 }
+
+#[test]
+fn pools_a_club_set_piece_coach_by_fm_job_type_22() {
+    let (_temp_dir, conn, save_token) = open();
+    let snapshot_token = insert_current_snapshot(&conn, 1);
+    configure_managed_club(&conn);
+    conn.execute_batch(
+        "INSERT INTO planner_teams (save_id, team, display_name) VALUES (1, 'senior', 'First Team');
+         INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count) VALUES
+             (1, 'club', 'set_piece_coach', 1);",
+    )
+    .expect("configure targets");
+    insert_staff(&conn, 1, "Current Set Piece Coach", Some("Club A"));
+    set_job(&conn, 1, 22);
+    insert_staff(&conn, 2, "Better Set Piece Coach", Some("Other FC"));
+    shortlist(&conn, 2, "Set Piece Coach");
+    conn.execute(
+        "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, set_piece_coach)
+         VALUES (1, 1, 1, 60), (1, 2, 1, 80)",
+        [],
+    )
+    .expect("insert persisted scores");
+
+    let result =
+        optimize_staff_assignments(&conn, &save_token, &snapshot_token).expect("optimize the pool");
+
+    let StaffAssignmentSlot::Recommendation(recommendation) = &result.slots[0].slot else {
+        panic!("the better coach fills the slot");
+    };
+    assert_eq!(recommendation.uid, 2);
+    assert_eq!(
+        recommendation
+            .replaces
+            .as_ref()
+            .map(|replaced| replaced.uid),
+        Some(1)
+    );
+    assert_eq!(result.surplus.len(), 1);
+    assert_eq!(result.surplus[0].uid, 1);
+    assert_eq!(result.surplus[0].current_job, Some("Set Piece Coach"));
+
+    set_staff_assignment_skip(&conn, &save_token, 2, true).expect("skip the recruit");
+    let kept =
+        optimize_staff_assignments(&conn, &save_token, &snapshot_token).expect("optimize again");
+    let StaffAssignmentSlot::Recommendation(recommendation) = &kept.slots[0].slot else {
+        panic!("the current coach keeps the slot");
+    };
+    assert_eq!(
+        (recommendation.uid, &recommendation.action),
+        (1, &StaffAssignmentAction::Keep)
+    );
+}

@@ -17,9 +17,13 @@ public static class BridgeProtocol
     public const string OperationBoostStaffCurrentAbility = "boost-staff-current-ability";
     public const string OperationWonderkidMentality = "wonderkid-mentality";
     public const string OperationMoveSquadPlayers = "move-squad-players";
+    public const string OperationApplyStaffChanges = "apply-staff-changes";
 
     /// <summary>Most players one squad-move request may move.</summary>
     public const int MaxSquadMoves = 100;
+
+    /// <summary>Most staff one staff-change request may sack, hire, or re-hire.</summary>
+    public const int MaxStaffChanges = 100;
     public const string AppFolderName = "fm-valuescout";
     public const string BridgeFolderName = "fm-bridge";
     public const string StatusFileName = "status.json";

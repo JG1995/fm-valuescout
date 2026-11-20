@@ -249,6 +249,55 @@ pub(crate) fn selected_club_identity(
     .map_err(|error| error.to_string())
 }
 
+/// What an action in FM needs from the app: the live scan behind the current snapshot and the
+/// managed club's FM identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FmActionContext {
+    pub(crate) save_id: i64,
+    pub(crate) snapshot_id: i64,
+    pub(crate) source_request_id: String,
+    pub(crate) club_uid: u32,
+}
+
+/// The context for an action in FM, or why there is none; `load_data_first` names the action.
+pub(crate) fn capture_fm_action_context(
+    conn: &Connection,
+    load_data_first: &str,
+) -> Result<FmActionContext, String> {
+    let save_id = crate::features::snapshot::service::active_save_id(conn)?;
+    let snapshot: Option<(i64, Option<String>)> = conn
+        .query_row(
+            "SELECT id, bridge_source_request_id FROM snapshots
+             WHERE save_id = ?1 AND is_current = 1",
+            params![save_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some((snapshot_id, Some(source_request_id))) = snapshot else {
+        return Err(load_data_first.to_string());
+    };
+    if source_request_id.trim().is_empty() {
+        return Err(load_data_first.to_string());
+    }
+    let club_uid =
+        match selected_club_identity(conn, save_id)? {
+            Some((_, Some(uid))) => u32::try_from(uid)
+                .map_err(|_| "The managed club's FM identity is invalid".to_string())?,
+            Some((_, None)) => return Err(
+                "Choose the managed club again in My Club so FM ValueScout records its FM identity"
+                    .to_string(),
+            ),
+            None => return Err("Choose your managed club in My Club first".to_string()),
+        };
+    Ok(FmActionContext {
+        save_id,
+        snapshot_id,
+        source_request_id,
+        club_uid,
+    })
+}
+
 fn validate_club_name(club_name: &str) -> Result<String, String> {
     let club_name = club_name.trim();
     if club_name.is_empty() {
