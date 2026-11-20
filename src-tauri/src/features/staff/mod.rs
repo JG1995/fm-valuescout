@@ -8,6 +8,9 @@ mod assignment_optimizer_tests;
 pub(crate) mod assignment_targets;
 pub mod commands;
 pub mod filter;
+mod fm_changes;
+#[cfg(test)]
+mod fm_changes_tests;
 mod metrics;
 pub mod query;
 pub mod scoring;

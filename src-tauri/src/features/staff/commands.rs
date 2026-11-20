@@ -6,8 +6,9 @@ use tauri::State;
 use crate::blocking;
 use crate::db::result_cache::{TableRegistry, TableTicket};
 use crate::db::Db;
+use crate::features::managed_club::service::capture_fm_action_context;
 use crate::features::memory_read::service::{
-    request_staff_boost_from_local_app_data, DumpWaitConfig, StaffBoostResult,
+    self as bridge, request_staff_boost_from_local_app_data, DumpWaitConfig, StaffBoostResult,
 };
 use crate::features::player::boost_gate;
 
@@ -24,6 +25,7 @@ use super::assignment_targets::{
     StaffAssignmentTargets,
 };
 use super::filter::{self, FilterAst, FilterRule};
+use super::fm_changes;
 use super::query::{
     self, SortDir, SortField, StaffDetail, StaffOrderCache, StaffPage, StaffPageState,
     StaffRoleScore, StaffScope, StaffSearchRequest, StaffShortlistMetadata, StaffSummary,
@@ -1704,4 +1706,213 @@ mod tests {
                 .expect("read recovery state");
         assert_eq!(recovery, 0);
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffFmTargetDto {
+    pub scope: String,
+    pub scope_display_name: String,
+    pub job_label: &'static str,
+    /// `senior`, `reserve`, or `youth`: the FM team level the job joins.
+    pub level: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffFmChangeDto {
+    pub uid: i64,
+    pub name: Option<String>,
+    /// `sack`, `change`, or `hire`.
+    pub kind: &'static str,
+    pub current_job: Option<String>,
+    pub current_team_name: Option<String>,
+    /// Their club now, for a hire; null when they are unemployed.
+    pub current_club: Option<String>,
+    pub weekly_wage_gbp: Option<i64>,
+    pub target: Option<StaffFmTargetDto>,
+}
+
+impl From<fm_changes::FmStaffChange> for StaffFmChangeDto {
+    fn from(change: fm_changes::FmStaffChange) -> Self {
+        Self {
+            uid: change.uid,
+            name: change.name,
+            kind: change.kind.as_str(),
+            current_job: change.current_job,
+            current_team_name: change.current_team_name,
+            current_club: change.current_club,
+            weekly_wage_gbp: change.weekly_wage_gbp,
+            target: change.target.map(|target| StaffFmTargetDto {
+                scope: target.scope,
+                scope_display_name: target.scope_display_name,
+                job_label: target.job_label,
+                level: target.level,
+            }),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffFmChangesDto {
+    pub changes: Vec<StaffFmChangeDto>,
+    /// Why the changes cannot be applied now; absent when they can.
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffFmChangeDoneDto {
+    pub uid: i64,
+    pub name: Option<String>,
+    pub kind: &'static str,
+    pub job_label: Option<&'static str>,
+    pub team_level: Option<String>,
+    pub weekly_wage_gbp: Option<i64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffFmChangeFailureDto {
+    pub uid: i64,
+    pub name: Option<String>,
+    pub kind: &'static str,
+    pub reason: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffFmChangeResultDto {
+    pub done: Vec<StaffFmChangeDoneDto>,
+    pub failed: Vec<StaffFmChangeFailureDto>,
+    /// The error that stopped the changes early; FM may have made some of them first.
+    pub error: Option<String>,
+}
+
+impl From<fm_changes::FmStaffChangeReport> for StaffFmChangeResultDto {
+    fn from(report: fm_changes::FmStaffChangeReport) -> Self {
+        Self {
+            done: report
+                .done
+                .into_iter()
+                .map(|done| StaffFmChangeDoneDto {
+                    uid: done.uid,
+                    name: done.name,
+                    kind: done.kind.as_str(),
+                    job_label: done.job_label,
+                    team_level: done.team_level,
+                    weekly_wage_gbp: done.weekly_wage_gbp,
+                })
+                .collect(),
+            failed: report
+                .failed
+                .into_iter()
+                .map(|failure| StaffFmChangeFailureDto {
+                    uid: failure.uid,
+                    name: failure.name,
+                    kind: failure.kind.as_str(),
+                    reason: failure.reason,
+                })
+                .collect(),
+            error: report.error,
+        }
+    }
+}
+
+/// The sacks, job changes, and hires that put the optimizer's result into FM, and whether FM can
+/// make them now.
+#[tauri::command]
+pub async fn get_staff_fm_changes(
+    expected_save_context_token: String,
+    expected_snapshot_context_token: String,
+    db: State<'_, Db>,
+) -> Result<StaffFmChangesDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        read_staff_fm_changes(
+            &db,
+            &expected_save_context_token,
+            &expected_snapshot_context_token,
+            bridge_staff_changes_unavailable,
+        )
+    })
+    .await
+}
+
+pub(super) fn read_staff_fm_changes(
+    db: &Db,
+    expected_save_context_token: &str,
+    expected_snapshot_context_token: &str,
+    bridge_unavailable: impl FnOnce() -> Option<String>,
+) -> Result<StaffFmChangesDto, String> {
+    let (plan, context) = {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        (
+            fm_changes::plan_fm_staff_changes(
+                &conn,
+                expected_save_context_token,
+                expected_snapshot_context_token,
+            )?,
+            capture_fm_action_context(&conn, fm_changes::LOAD_DATA_FIRST),
+        )
+    };
+    Ok(StaffFmChangesDto {
+        changes: plan.into_iter().map(Into::into).collect(),
+        unavailable_reason: match context {
+            Err(reason) => Some(reason),
+            Ok(_) => bridge_unavailable(),
+        },
+    })
+}
+
+/// None when the bridge offers staff changes for its live scan; otherwise why not.
+fn bridge_staff_changes_unavailable() -> Option<String> {
+    let status = bridge::resolve_bridge_directory()
+        .and_then(|directory| bridge::read_bridge_status(&directory));
+    match status {
+        Ok(status) if status.staff_changes_supported == Some(true) => None,
+        _ => Some(bridge::STAFF_CHANGES_UNAVAILABLE.to_string()),
+    }
+}
+
+/// How long to wait for the bridge: each hire takes FM's editor about a second and a half.
+fn staff_change_wait(change_count: usize) -> DumpWaitConfig {
+    DumpWaitConfig {
+        timeout: std::time::Duration::from_secs(45 + 3 * change_count as u64),
+        poll_interval: std::time::Duration::from_millis(200),
+    }
+}
+
+/// Makes the chosen changes of the current plan in FM and records each person's contract as FM
+/// reports it.
+#[tauri::command]
+pub async fn apply_staff_fm_changes(
+    expected_save_context_token: String,
+    expected_snapshot_context_token: String,
+    staff_uids: Vec<i64>,
+    db: State<'_, Db>,
+) -> Result<StaffFmChangeResultDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        fm_changes::apply_fm_staff_changes(
+            &db,
+            &expected_save_context_token,
+            &expected_snapshot_context_token,
+            &staff_uids,
+            |source, club, items| {
+                bridge::request_staff_changes_from_local_app_data(
+                    source,
+                    club,
+                    items,
+                    staff_change_wait(items.len()),
+                )
+                .map_err(|error| error.to_string())
+            },
+        )
+        .map(Into::into)
+    })
+    .await
 }

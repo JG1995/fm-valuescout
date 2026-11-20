@@ -6,14 +6,15 @@
 //! bridge reads each player's live team, so a move the snapshot no longer needs comes back as
 //! already made.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 
 use super::depth::{current_snapshot_id, PlannerTeam};
 use crate::db::Db;
-use crate::features::managed_club::service::{managed_club_player_sql, selected_club_identity};
+use crate::features::managed_club::service::{
+    capture_fm_action_context, managed_club_player_sql, FmActionContext,
+};
 use crate::features::memory_read::service::{SquadMoveItem, SquadMoveResponse, MAX_SQUAD_MOVES};
 use crate::features::player::boost_gate;
-use crate::features::snapshot::service;
 
 /// The FM team level a Planner squad stands for.
 pub(super) fn level_for(team: PlannerTeam) -> &'static str {
@@ -111,51 +112,10 @@ fn team_order(team: PlannerTeam) -> u8 {
     }
 }
 
-/// What a squad move needs from the app: the live scan behind the current snapshot and the
-/// managed club's FM identity.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct FmSquadMoveContext {
-    pub(super) save_id: i64,
-    pub(super) snapshot_id: i64,
-    pub(super) source_request_id: String,
-    pub(super) club_uid: u32,
-}
-
 pub(super) const LOAD_DATA_FIRST: &str = "Load Data with FM open on this save before moving squads";
 
-pub(super) fn capture_move_context(conn: &Connection) -> Result<FmSquadMoveContext, String> {
-    let save_id = service::active_save_id(conn)?;
-    let snapshot: Option<(i64, Option<String>)> = conn
-        .query_row(
-            "SELECT id, bridge_source_request_id FROM snapshots
-             WHERE save_id = ?1 AND is_current = 1",
-            params![save_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    let Some((snapshot_id, Some(source_request_id))) = snapshot else {
-        return Err(LOAD_DATA_FIRST.to_string());
-    };
-    if source_request_id.trim().is_empty() {
-        return Err(LOAD_DATA_FIRST.to_string());
-    }
-    let club_uid =
-        match selected_club_identity(conn, save_id)? {
-            Some((_, Some(uid))) => u32::try_from(uid)
-                .map_err(|_| "The managed club's FM identity is invalid".to_string())?,
-            Some((_, None)) => return Err(
-                "Choose the managed club again in My Club so FM ValueScout records its FM identity"
-                    .to_string(),
-            ),
-            None => return Err("Choose your managed club in My Club first".to_string()),
-        };
-    Ok(FmSquadMoveContext {
-        save_id,
-        snapshot_id,
-        source_request_id,
-        club_uid,
-    })
+pub(super) fn capture_move_context(conn: &Connection) -> Result<FmActionContext, String> {
+    capture_fm_action_context(conn, LOAD_DATA_FIRST)
 }
 
 /// A move FM did not make, and why.
