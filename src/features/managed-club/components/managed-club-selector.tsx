@@ -324,6 +324,12 @@ export function ManagedClubSelector({
         {action}
       </fieldset>
 
+      {editing ? (
+        <p className="text-body-sm text-on-surface-variant">
+          Load Data sets this to the club you manage in FM whenever the plugin
+          can read it.
+        </p>
+      ) : null}
       {editing && (selectionChanged || searchPending) ? (
         <p className="text-body-sm text-on-surface-variant" role="status">
           {managedClub.clubName
