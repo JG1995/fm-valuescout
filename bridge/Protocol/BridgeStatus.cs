@@ -34,4 +34,10 @@ public sealed class BridgeStatus
 
     /// <summary>Sanitized verified result for the last staff CA boost, when applicable.</summary>
     public StaffBoostResult? StaffBoost { get; init; }
+
+    /// <summary>Whether the live player index and FM's own squad action are both available.</summary>
+    public bool? SquadMovesSupported { get; init; }
+
+    /// <summary>Per-move outcomes of the last squad-move request, when applicable.</summary>
+    public SquadMoveResult? SquadMoves { get; init; }
 }

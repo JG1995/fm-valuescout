@@ -1,6 +1,7 @@
 using BepInEx;
 using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
+using FmDataBridge.GameActions;
 using FmDataBridge.Layouts;
 using FmDataBridge.Memory;
 using FmDataBridge.Mutations;
@@ -45,6 +46,10 @@ public class Plugin : BasePlugin
 
     private static readonly StaffBoostOperationService StaffBoosts = new(Layouts, StaffMutationIndex);
 
+    private static readonly GameActionDispatcher GameActions = new();
+
+    private static readonly SquadMoveOperationService SquadMoves = new(Layouts, PlayerMutationIndex, GameActions);
+
     public override void Load()
     {
         Log = base.Log;
@@ -54,6 +59,7 @@ public class Plugin : BasePlugin
             var bridgeDirectory = BridgePaths.EnsureBridgeDirectory();
             PlayerMutationIndex.Clear();
             StaffMutationIndex.Clear();
+            GameActions.Install(Log);
             WriteIdleStatus(bridgeDirectory, DetectModulesBestEffort());
             Log.LogInfo(
                 $"FM Data Bridge {MyPluginInfo.PLUGIN_VERSION} loaded; wrote {BridgePaths.GetStatusPath(bridgeDirectory)}");
@@ -216,6 +222,10 @@ public class Plugin : BasePlugin
                 {
                     RunStaffBoost(bridgeDirectory, acceptedRequest, cancelToken);
                 }
+                else if (acceptedRequest.Operation == BridgeProtocol.OperationMoveSquadPlayers)
+                {
+                    RunSquadMoves(bridgeDirectory, acceptedRequest, cancelToken);
+                }
                 else
                 {
                     RunPlayerBoost(bridgeDirectory, acceptedRequest, cancelToken);
@@ -304,7 +314,11 @@ public class Plugin : BasePlugin
             {
                 if (result.LivePlayerCandidates.Count > 0)
                 {
-                    PlayerMutationIndex.Replace(requestId, gameVersion, result.LivePlayerCandidates);
+                    PlayerMutationIndex.Replace(
+                        requestId,
+                        gameVersion,
+                        result.LivePlayerCandidates,
+                        result.LiveClubAddresses);
                 }
                 else
                 {
@@ -629,6 +643,93 @@ public class Plugin : BasePlugin
         };
 
 
+
+    private static void RunSquadMoves(
+        string bridgeDirectory,
+        BridgeRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reader = new WindowsMemoryReader();
+            var modules = ModulePresence.FromBounds(reader.LocateKnownModules());
+            WriteStatus(
+                bridgeDirectory,
+                BridgeProtocol.StateScanning,
+                modules,
+                requestId: request.RequestId,
+                playersFound: null,
+                error: null,
+                playerBoostsSupported: false);
+
+            if (cancellationToken.IsCancellationRequested
+                || !GameVersionDetector.TryDetectFromCurrentProcess(out var gameVersion)
+                || string.IsNullOrWhiteSpace(gameVersion))
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    modules,
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: "squad moves could not start; retry",
+                    playerBoostsSupported: false);
+                return;
+            }
+
+            var result = SquadMoves.Execute(request, gameVersion, reader);
+            if (!result.Succeeded)
+            {
+                Log.LogWarning($"Squad moves failed: {result.Failure} {result.Detail}");
+            }
+
+            WriteStatus(
+                bridgeDirectory,
+                result.Succeeded ? BridgeProtocol.StateReady : BridgeProtocol.StateFailed,
+                modules,
+                requestId: request.RequestId,
+                playersFound: null,
+                error: result.Succeeded ? null : SquadMoveFailureMessage(result.Failure, result.Detail),
+                playerBoostsSupported: PlayerBoosts.HasSupportedLiveIndex(gameVersion),
+                staffBoostsSupported: StaffBoosts.HasSupportedLiveIndex(gameVersion),
+                squadMoves: result.Result);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError($"Squad moves crashed: {ex}");
+            try
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    DetectModulesBestEffort(),
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: "squad moves failed unexpectedly; Load Data to see FM's squads");
+            }
+            catch
+            {
+                // ignored — status best-effort
+            }
+        }
+    }
+
+    private static string SquadMoveFailureMessage(SquadMoveFailure failure, string? detail) =>
+        failure switch
+        {
+            SquadMoveFailure.InvalidRequest => "invalid squad move request; update the app and retry",
+            SquadMoveFailure.UnsupportedGameBuild =>
+                "this FM build is not supported for squad moves; update the bridge plugin and Load Data",
+            SquadMoveFailure.NoLiveScan => "Load Data again before moving squads",
+            SquadMoveFailure.SourceRequestMismatch => "Load Data again before moving squads",
+            SquadMoveFailure.ClubNotFound => "the managed club was not found in FM; Load Data again",
+            SquadMoveFailure.ManagerNotFound => "your manager was not found in FM; update the bridge plugin",
+            SquadMoveFailure.GameActionsUnavailable =>
+                "FM's squad action is unavailable in this game build; update the bridge plugin",
+            SquadMoveFailure.DispatchFailed => detail ?? "FM did not run the squad moves; retry",
+            _ => "squad moves failed; Load Data again",
+        };
+
     /// <summary>
     /// game_plugin.dll may appear after plugin Load; rewrite status module flags without changing state.
     /// </summary>
@@ -666,7 +767,8 @@ public class Plugin : BasePlugin
             playerBoostsSupported: current.PlayerBoostsSupported,
             staffBoostsSupported: current.StaffBoostsSupported,
             playerBoost: current.PlayerBoost,
-            staffBoost: current.StaffBoost);
+            staffBoost: current.StaffBoost,
+            squadMoves: current.SquadMoves);
     }
 
     private static void TryDeleteForceScanFlag(string bridgeDirectory)
@@ -706,7 +808,8 @@ public class Plugin : BasePlugin
         bool? playerBoostsSupported = null,
         bool? staffBoostsSupported = null,
         PlayerBoostResult? playerBoost = null,
-        StaffBoostResult? staffBoost = null)
+        StaffBoostResult? staffBoost = null,
+        SquadMoveResult? squadMoves = null)
     {
         var status = new BridgeStatus
         {
@@ -723,6 +826,11 @@ public class Plugin : BasePlugin
             StaffBoostsSupported = staffBoostsSupported,
             PlayerBoost = playerBoost,
             StaffBoost = staffBoost,
+            // Squad moves use the same live player index as player boosts, plus FM's own action.
+            SquadMovesSupported = playerBoostsSupported is { } supported
+                ? supported && GameActions.IsAvailable
+                : null,
+            SquadMoves = squadMoves,
         };
         StatusWriter.Write(bridgeDirectory, status);
     }

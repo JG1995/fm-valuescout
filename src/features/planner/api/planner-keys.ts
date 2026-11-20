@@ -31,6 +31,8 @@ export const plannerKeys = {
   // Loan candidates depend on who sits where, as the unassigned players do.
   loanCandidates: (activeSaveId: number) =>
     [...plannerKeys.slotCandidates(), "loans", activeSaveId] as const,
+  fmMoves: (activeSaveId: number) =>
+    [...plannerKeys.all, "fm-moves", activeSaveId] as const,
   roleReferences: () => [...plannerKeys.all, "role-reference"] as const,
   roleReference: (activeSaveId: number, phase: string, scoreBasis: string) =>
     [...plannerKeys.roleReferences(), activeSaveId, phase, scoreBasis] as const,

@@ -4,12 +4,14 @@ use tauri::State;
 
 use crate::blocking;
 use crate::db::Db;
+use crate::features::memory_read::service::{self as bridge, DumpWaitConfig};
 use crate::features::snapshot::service;
 
 use super::depth::{
     self as depth_service, PlannerAssignment, PlannerAssignmentLocation, PlannerDepth,
     PlannerDepthTeam, PlannerSlotCandidate, PlannerString, PlannerTeam,
 };
+use super::fm_moves::{self, FmSquadMove, FmSquadMoveReport};
 use super::loans::{self, LoanCandidate};
 use super::optimizer;
 use super::role_reference::{
@@ -1020,6 +1022,142 @@ fn read_planner_loan_candidates(db: &Db) -> Result<Vec<PlannerLoanCandidateDto>,
         |conn| loans::loan_candidates(conn, service::active_save_id(conn)?),
     )
     .map(|candidates| candidates.into_iter().map(Into::into).collect())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerFmMoveDto {
+    pub player_uid: i64,
+    pub name: String,
+    pub age: Option<i64>,
+    /// The level of his FM team in the snapshot: `senior`, `reserve`, or `youth`; null when
+    /// unknown, which the bridge settles from FM itself.
+    pub from_level: Option<String>,
+    pub to_team: &'static str,
+    pub to_team_name: String,
+    /// Older than the target squad's age limit; FM moves him anyway.
+    pub over_age: bool,
+}
+
+impl From<FmSquadMove> for PlannerFmMoveDto {
+    fn from(planned: FmSquadMove) -> Self {
+        Self {
+            player_uid: planned.player_uid,
+            name: planned.name,
+            age: planned.age,
+            from_level: planned.from_level,
+            to_team: planned.to_team.as_str(),
+            to_team_name: planned.to_team_name,
+            over_age: planned.over_age,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerFmMovesDto {
+    pub moves: Vec<PlannerFmMoveDto>,
+    /// Why the moves cannot be applied now; absent when they can.
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerFmMoveFailureDto {
+    pub player_uid: i64,
+    pub name: String,
+    pub reason: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerFmMoveResultDto {
+    pub moved: Vec<i64>,
+    pub unchanged: Vec<i64>,
+    pub failed: Vec<PlannerFmMoveFailureDto>,
+    /// The error that stopped the moves early; FM may have made some of them first.
+    pub error: Option<String>,
+}
+
+impl From<FmSquadMoveReport> for PlannerFmMoveResultDto {
+    fn from(report: FmSquadMoveReport) -> Self {
+        Self {
+            moved: report.moved,
+            unchanged: report.unchanged,
+            failed: report
+                .failed
+                .into_iter()
+                .map(|failure| PlannerFmMoveFailureDto {
+                    player_uid: failure.player_uid,
+                    name: failure.name,
+                    reason: failure.reason,
+                })
+                .collect(),
+            error: report.error,
+        }
+    }
+}
+
+/// The moves that would put each Planner-placed player at the managed club into the FM team
+/// his squad stands for, and whether FM can make them now.
+#[tauri::command]
+pub async fn get_planner_fm_moves(db: State<'_, Db>) -> Result<PlannerFmMovesDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || read_planner_fm_moves(&db, bridge_squad_moves_unavailable)).await
+}
+
+pub(super) fn read_planner_fm_moves(
+    db: &Db,
+    bridge_unavailable: impl FnOnce() -> Option<String>,
+) -> Result<PlannerFmMovesDto, String> {
+    let (plan, context) = {
+        let conn = db.read()?;
+        let save_id = service::active_save_id(&conn)?;
+        (
+            fm_moves::plan_fm_squad_moves(&conn, save_id)?,
+            fm_moves::capture_move_context(&conn),
+        )
+    };
+    Ok(PlannerFmMovesDto {
+        moves: plan.into_iter().map(Into::into).collect(),
+        unavailable_reason: match context {
+            Err(reason) => Some(reason),
+            Ok(_) => bridge_unavailable(),
+        },
+    })
+}
+
+/// None when the bridge offers squad moves for its live scan; otherwise why not.
+fn bridge_squad_moves_unavailable() -> Option<String> {
+    let status = bridge::resolve_bridge_directory()
+        .and_then(|directory| bridge::read_bridge_status(&directory));
+    match status {
+        Ok(status) if status.squad_moves_supported == Some(true) => None,
+        _ => Some(bridge::SQUAD_MOVES_UNAVAILABLE.to_string()),
+    }
+}
+
+/// Moves are quick; a bridge that has not answered in this time is not running.
+const SQUAD_MOVE_WAIT: DumpWaitConfig = DumpWaitConfig {
+    timeout: std::time::Duration::from_secs(45),
+    poll_interval: std::time::Duration::from_millis(200),
+};
+
+/// Moves the chosen players of the current plan in FM and records the moves FM confirms.
+#[tauri::command]
+pub async fn apply_planner_fm_moves(
+    player_uids: Vec<i64>,
+    db: State<'_, Db>,
+) -> Result<PlannerFmMoveResultDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        fm_moves::apply_fm_squad_moves(&db, &player_uids, |source, club, items| {
+            bridge::request_squad_moves_from_local_app_data(source, club, items, SQUAD_MOVE_WAIT)
+                .map_err(|error| error.to_string())
+        })
+        .map(Into::into)
+    })
+    .await
 }
 
 #[tauri::command]

@@ -342,6 +342,8 @@ mod tests {
             player_boost: None,
             staff_boosts_supported: None,
             staff_boost: None,
+            squad_moves_supported: None,
+            squad_moves: None,
         };
         let json = serde_json::to_string_pretty(&status).expect("serialize");
         let path = status_path(bridge_dir);

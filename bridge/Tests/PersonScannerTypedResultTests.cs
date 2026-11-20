@@ -16,7 +16,7 @@ public sealed class PersonScannerTypedResultTests
     private const int PurePlayerClassOffset = 0x288;
     private const int PlayerStaffClassOffset = 0x380;
     private const int PureStaffClassOffset = 0x100;
-    private const int HumanManagerClassOffset = 0x450;
+    private const int HumanManagerClassOffset = 0x440;
 
     [Fact]
     public void Person_scanner_returns_deterministic_typed_people_and_keeps_player_facets()

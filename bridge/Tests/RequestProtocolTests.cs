@@ -634,6 +634,138 @@ public sealed class RequestProtocolTests
         Assert.Equal(PlayerDatabaseScopes.Men, first.PlayerDatabaseScope);
     }
 
+    [Fact]
+    public void Accept_preserves_a_squad_move_request()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-11-20T12:00:00Z");
+            WriteBoostRequest(path, SquadMoveRequest(now, Moves((77, "reserve"), (78, "youth"))));
+
+            Assert.True(RequestAcceptance.TryAccept(path, now, Ttl, out var request, out _, out _));
+            Assert.Equal(BridgeProtocol.OperationMoveSquadPlayers, request.Operation);
+            Assert.Equal("scan-1", request.SourceRequestId);
+            Assert.Equal(439u, request.ClubUid);
+            Assert.Equal(
+                new[] { (77u, "reserve"), (78u, "youth") },
+                request.SquadMoves!.Select(move => (move.PlayerUid, move.TargetLevel)));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("no-club", "clubUid is required")]
+    [InlineData("no-moves", "squadMoves must list")]
+    [InlineData("duplicate", "distinct playerUid")]
+    [InlineData("bad-level", "targetLevel must be")]
+    [InlineData("boost-field", "do not accept boost fields")]
+    [InlineData("too-many", "squadMoves must list")]
+    public void Accept_rejects_an_invalid_squad_move_request(string defect, string expected)
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-11-20T12:00:00Z");
+            var valid = SquadMoveRequest(now, Moves((77, "reserve")));
+            var request = defect switch
+            {
+                "no-club" => Copy(valid, clubUid: null),
+                "no-moves" => Copy(valid, moves: Moves()),
+                "duplicate" => Copy(valid, moves: Moves((77, "reserve"), (77, "youth"))),
+                "bad-level" => Copy(valid, moves: Moves((77, "reserves"))),
+                "boost-field" => Copy(valid, playerUid: 77),
+                "too-many" => Copy(
+                    valid,
+                    moves: Enumerable.Range(1, BridgeProtocol.MaxSquadMoves + 1)
+                        .Select(uid => new SquadMoveItem { PlayerUid = (uint)uid, TargetLevel = "youth" })
+                        .ToArray()),
+                _ => throw new ArgumentOutOfRangeException(nameof(defect)),
+            };
+            WriteBoostRequest(path, request);
+
+            Assert.False(RequestAcceptance.TryAccept(path, now, Ttl, out _, out var reason, out _));
+            Assert.Contains(expected, reason, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(BridgeProtocol.OperationFullDump)]
+    [InlineData(BridgeProtocol.OperationBoostCurrentAbility)]
+    [InlineData(BridgeProtocol.OperationBoostStaffCurrentAbility)]
+    public void Accept_rejects_squad_move_fields_on_other_operations(string operation)
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-11-20T12:00:00Z");
+            WriteBoostRequest(
+                path,
+                new BridgeRequest
+                {
+                    ProtocolVersion = BridgeProtocol.ProtocolVersion,
+                    RequestId = "mixed",
+                    CreatedAtUtc = now,
+                    Operation = operation,
+                    SourceRequestId = operation == BridgeProtocol.OperationFullDump ? null : "scan-1",
+                    PlayerUid = operation == BridgeProtocol.OperationBoostCurrentAbility ? 77u : null,
+                    StaffUid = operation == BridgeProtocol.OperationBoostStaffCurrentAbility ? 42u : null,
+                    ExpectedCurrentAbility = operation == BridgeProtocol.OperationFullDump ? null : 120,
+                    ExpectedPotentialAbility = operation == BridgeProtocol.OperationFullDump ? null : 150,
+                    CurrentAbilityIncrement = operation == BridgeProtocol.OperationBoostCurrentAbility ? 5 : null,
+                    SquadMoves = Moves((77, "reserve")),
+                });
+
+            Assert.False(RequestAcceptance.TryAccept(path, now, Ttl, out _, out _, out _));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private static SquadMoveItem[] Moves(params (uint Uid, string Level)[] moves) =>
+        moves.Select(move => new SquadMoveItem { PlayerUid = move.Uid, TargetLevel = move.Level }).ToArray();
+
+    private static BridgeRequest SquadMoveRequest(DateTimeOffset now, SquadMoveItem[] moves) =>
+        new()
+        {
+            ProtocolVersion = BridgeProtocol.ProtocolVersion,
+            RequestId = "squad-move-1",
+            CreatedAtUtc = now,
+            Operation = BridgeProtocol.OperationMoveSquadPlayers,
+            SourceRequestId = "scan-1",
+            ClubUid = 439,
+            SquadMoves = moves,
+        };
+
+    private static BridgeRequest Copy(
+        BridgeRequest request,
+        uint? clubUid = 439,
+        SquadMoveItem[]? moves = null,
+        uint? playerUid = null) =>
+        new()
+        {
+            ProtocolVersion = request.ProtocolVersion,
+            RequestId = request.RequestId,
+            CreatedAtUtc = request.CreatedAtUtc,
+            Operation = request.Operation,
+            SourceRequestId = request.SourceRequestId,
+            ClubUid = clubUid,
+            SquadMoves = moves ?? request.SquadMoves,
+            PlayerUid = playerUid,
+        };
+
     private static void WriteRequest(
         string path,
         int protocolVersion,

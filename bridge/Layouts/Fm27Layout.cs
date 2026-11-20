@@ -24,6 +24,10 @@ public sealed class Fm27Layout : IFmMemoryLayout
 
     public int ObjectUidOffset => 0x0C;
 
+    // Verified on FM 27.1 (2026-11-20): unique across every player; two players, three staff, and
+    // a club matched the indexes FM's own move action sent.
+    public int ObjectDatabaseIndexOffset => 0x08;
+
     public IReadOnlyList<int> PlayerClassOffsets { get; } = new[]
     {
         0x288, // pure player
@@ -35,9 +39,11 @@ public sealed class Fm27Layout : IFmMemoryLayout
         0x100, // pure staff
     };
 
+    // FM26.3 used 0x450. A live FM 27.1 scan (2026-11-20) saw no 0x450 sub-object at all, but four
+    // objects with the person pair 0x440/0x468, like staff 0x100/0x128 and players 0x288/0x2B0.
     public IReadOnlyList<int> HumanManagerClassOffsets { get; } = new[]
     {
-        0x450,
+        0x440,
     };
 
     public int CurrentAbilityOffset => 0x264;

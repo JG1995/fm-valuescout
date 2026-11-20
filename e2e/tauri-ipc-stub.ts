@@ -2382,6 +2382,50 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               : [];
           }
 
+          if (cmd === "get_planner_fm_moves") {
+            return {
+              moves: [
+                {
+                  playerUid: 9101,
+                  name: "Potential Keeper",
+                  age: 19,
+                  fromLevel: "youth",
+                  toTeam: "senior",
+                  toTeamName: "Senior",
+                  overAge: false,
+                },
+                {
+                  playerUid: 9103,
+                  name: "Unread Youngster",
+                  age: 16,
+                  fromLevel: null,
+                  toTeam: "youth",
+                  toTeamName: "Youth",
+                  overAge: false,
+                },
+                {
+                  playerUid: 9102,
+                  name: "Veteran Full-Back",
+                  age: 26,
+                  fromLevel: "senior",
+                  toTeam: "reserves",
+                  toTeamName: "Reserves",
+                  overAge: true,
+                },
+              ],
+              unavailableReason: null,
+            };
+          }
+
+          if (cmd === "apply_planner_fm_moves") {
+            return {
+              moved: args?.playerUids ?? [],
+              unchanged: [],
+              failed: [],
+              error: null,
+            };
+          }
+
           if (cmd === "get_planner_unassigned_players") {
             const placed = new Set(
               plannerDepth.teams.flatMap((team) =>

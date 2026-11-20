@@ -40,7 +40,11 @@ public sealed class SquadClubIndex
 {
     public const int MaxMultiClubSamples = 25;
     public const int MaxTeamsPerClub = 24;
-    public const int MaxPlayersPerSquad = 60;
+    /// <summary>
+    /// A bound that rejects a garbage squad vector, far above any real list. FM puts no limit on a
+    /// squad list: moving a club's 97 players into its first team leaves 97 there.
+    /// </summary>
+    public const int MaxPlayersPerSquad = 200;
     public const int MaxReserveClubsPerClub = 8;
 
     private readonly Dictionary<uint, SquadAssignment> _assignments = new();
@@ -56,6 +60,9 @@ public sealed class SquadClubIndex
     public List<string> MultiClubSamples { get; } = new();
 
     public HashSet<uint> MultiClubUids { get; } = new();
+
+    /// <summary>Each walked club's object address by its Unique ID; the first club wins a repeated ID.</summary>
+    public Dictionary<uint, ulong> ClubAddresses { get; } = new();
 
     public static SquadClubIndex Build(
         IMemoryReader reader,
@@ -210,6 +217,11 @@ public sealed class SquadClubIndex
 
         index.ClubsWalked++;
         var owner = new SquadOwner(clubName, TryReadPositiveUid(reader, club, layout.ObjectUidOffset), ReserveClub: false);
+        if (owner.ClubUid is { } clubUid)
+        {
+            index.ClubAddresses.TryAdd(clubUid, club);
+        }
+
         foreach (var team in teams)
         {
             if (walkedTeams.Add(team))
@@ -284,7 +296,7 @@ public sealed class SquadClubIndex
     }
 
     /// <summary>A begin/end pointer vector of non-null object pointers, or null when invalid.</summary>
-    private static List<ulong>? ReadPointerVector(
+    internal static List<ulong>? ReadPointerVector(
         IMemoryReader reader,
         ulong owner,
         int beginOffset,

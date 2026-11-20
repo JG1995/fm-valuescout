@@ -68,6 +68,8 @@ public static class StatusWriter
             StaffBoostsSupported = status.StaffBoostsSupported,
             PlayerBoost = status.PlayerBoost,
             StaffBoost = status.StaffBoost,
+            SquadMovesSupported = status.SquadMovesSupported,
+            SquadMoves = status.SquadMoves,
         };
     }
 

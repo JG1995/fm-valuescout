@@ -630,6 +630,7 @@ public sealed class CapADumpPipeline
             {
                 LivePlayerCandidates = drafts.Select(draft => draft.Candidate).ToArray(),
                 LiveStaffCandidates = staffDrafts.Select(draft => draft.Candidate).ToArray(),
+                LiveClubAddresses = squadIndex.ClubAddresses,
             }
             : result;
     }
@@ -757,6 +758,9 @@ public readonly record struct CapADumpResult(
 
     /// <summary>Staff candidate locations from a successful live read only.</summary>
     internal IReadOnlyList<PersonCandidate> LiveStaffCandidates { get; init; } = Array.Empty<PersonCandidate>();
+
+    /// <summary>Club object addresses by Unique ID from a successful live read only.</summary>
+    internal IReadOnlyDictionary<uint, ulong> LiveClubAddresses { get; init; } = new Dictionary<uint, ulong>();
 
     public static CapADumpResult Succeeded(
         int playerCount,

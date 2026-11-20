@@ -43,4 +43,18 @@ public sealed class BridgeRequest
 
     /// <summary>Known snapshot Determination for Wonderkid Mentality; null means do not modify it.</summary>
     public int? ExpectedDetermination { get; init; }
+
+    /// <summary>The managed club whose own teams a squad move uses.</summary>
+    public uint? ClubUid { get; init; }
+
+    /// <summary>The players a squad move moves, each to a team level of <see cref="ClubUid"/>.</summary>
+    public IReadOnlyList<SquadMoveItem>? SquadMoves { get; init; }
+}
+
+/// <summary>One player to move to the club's team at a level: senior, reserve, or youth.</summary>
+public sealed class SquadMoveItem
+{
+    public uint PlayerUid { get; init; }
+
+    public string TargetLevel { get; init; } = "";
 }

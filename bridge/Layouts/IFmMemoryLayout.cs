@@ -13,6 +13,12 @@ public interface IFmMemoryLayout
     /// <summary>Unique ID on the person/object header.</summary>
     int ObjectUidOffset { get; }
 
+    /// <summary>
+    /// FM's database table index on the person and club object header; FM's own actions refer to
+    /// a record by it.
+    /// </summary>
+    int ObjectDatabaseIndexOffset { get; }
+
     /// <summary>Known person→player class offsets (from Il2Cpp meta+4).</summary>
     IReadOnlyList<int> PlayerClassOffsets { get; }
 
