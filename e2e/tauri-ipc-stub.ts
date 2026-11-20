@@ -1443,6 +1443,70 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             return staffAssignmentTargetResponse();
           }
 
+          if (cmd === "get_staff_fm_changes") {
+            return {
+              changes: [
+                {
+                  uid: 106,
+                  name: "Old Coach",
+                  kind: "sack",
+                  currentJob: "Coach",
+                  currentTeamName: "First Team",
+                  currentClub: null,
+                  weeklyWageGbp: 2100,
+                  target: null,
+                },
+                {
+                  uid: 102,
+                  name: "Coach Casey",
+                  kind: "change",
+                  currentJob: "Fitness Coach",
+                  currentTeamName: "Reserves",
+                  currentClub: null,
+                  weeklyWageGbp: 1500,
+                  target: {
+                    scope: "senior",
+                    scopeDisplayName: "First Team",
+                    jobLabel: "Coach",
+                    level: "senior",
+                  },
+                },
+                {
+                  uid: 103,
+                  name: "Riley Scout",
+                  kind: "hire",
+                  currentJob: null,
+                  currentTeamName: null,
+                  currentClub: "Valencia",
+                  weeklyWageGbp: 3200,
+                  target: {
+                    scope: "club",
+                    scopeDisplayName: "Club",
+                    jobLabel: "Scout",
+                    level: "senior",
+                  },
+                },
+              ],
+              unavailableReason: null,
+            };
+          }
+
+          if (cmd === "apply_staff_fm_changes") {
+            const uids = args?.staffUids ?? [];
+            return {
+              done: uids.map((uid) => ({
+                uid,
+                name: uid === 106 ? "Old Coach" : uid === 102 ? "Coach Casey" : "Riley Scout",
+                kind: uid === 106 ? "sack" : uid === 102 ? "change" : "hire",
+                jobLabel: uid === 106 ? null : uid === 102 ? "Coach" : "Scout",
+                teamLevel: uid === 106 ? null : "senior",
+                weeklyWageGbp: uid === 106 ? null : uid === 102 ? 1900 : 3400,
+              })),
+              failed: [],
+              error: null,
+            };
+          }
+
           if (cmd === "optimize_staff_assignments") {
             if (
               args?.expectedSaveContextToken !== activeSave().contextToken ||

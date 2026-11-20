@@ -8,6 +8,8 @@ export const staffKeys = {
   detail: (uid: number) => [...staffKeys.all, "detail", uid] as const,
   assignmentTargets: (contextKey: string) =>
     [...staffKeys.all, "assignment-targets", contextKey] as const,
+  fmChanges: (contextKey: string) =>
+    [...staffKeys.all, "fm-changes", contextKey] as const,
   list: (
     scope: "search" | "my-staff",
     offset: number,

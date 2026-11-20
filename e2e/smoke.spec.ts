@@ -1043,6 +1043,60 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
+  test("Staff Shortlist applies the ticked assignment changes in FM", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      staffAssignment: true,
+      staffShortlist: true,
+      staffWorkspace: true,
+    });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/staff?shortlistOnly=true");
+
+    const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Optimize assignments" }).click();
+    const needs = page.getByRole("dialog", {
+      name: "Configure staffing needs",
+    });
+    await needs
+      .getByRole("spinbutton", {
+        name: "First Team Assistant Manager",
+        exact: true,
+      })
+      .fill("1");
+    await needs.getByRole("button", { name: "Save" }).click();
+    const results = page.getByRole("dialog", {
+      name: "Assignment recommendations",
+    });
+    await results.getByRole("button", { name: "Apply in FM" }).click();
+    await expect(results).toBeHidden();
+
+    const dialog = page.getByRole("dialog", {
+      name: "Apply staff changes in FM",
+    });
+    await expect(dialog.getByRole("row", { name: /Old Coach/ })).toContainText(
+      "SackFirst Team CoachLeaves the club",
+    );
+    await expect(
+      dialog.getByRole("row", { name: /Coach Casey/ }),
+    ).toContainText("New jobReserves Fitness CoachFirst Team Coach");
+    await expect(
+      dialog.getByRole("row", { name: /Riley Scout/ }),
+    ).toContainText("HireValenciaScout");
+    await dialog.getByRole("checkbox", { name: "Sack Old Coach" }).uncheck();
+    await dialog.getByRole("button", { name: "Apply 2 changes" }).click();
+
+    await expect(dialog.getByRole("status")).toContainText(
+      "FM made 2 changes.",
+    );
+    await expect(dialog.getByRole("status")).toContainText(
+      "Riley Scout: Scout, First team, €3k a week",
+    );
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toBeHidden();
+  });
+
   test("Staff Shortlist configures staffing needs and reviews assignment recommendations in a dialog", async ({
     page,
   }) => {
