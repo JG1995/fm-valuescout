@@ -37,6 +37,21 @@ public sealed class SquadMoveOperationServiceTests
             Assert.Single(club.Dispatcher.Sent));
     }
 
+    [Theory]
+    [InlineData(ManagerPointer.ObjectStart)]
+    [InlineData(ManagerPointer.PersonRecord)]
+    public void Finds_the_managers_person_record_wherever_the_team_points_into_his_object(ManagerPointer pointer)
+    {
+        var club = new FakeClub(pointer);
+        club.AddTeam(0, 77);
+        club.AddTeam(10);
+
+        var result = club.Service().Execute(club.Request((77, "reserve")), GameVersion, club.Reader);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(ManagerIndex, Assert.Single(club.Dispatcher.Sent).HumanManagerIndex);
+    }
+
     [Fact]
     public void Sends_nothing_for_a_player_already_at_the_target_level()
     {
@@ -131,13 +146,20 @@ public sealed class SquadMoveOperationServiceTests
     [InlineData("other-scan", nameof(SquadMoveFailure.SourceRequestMismatch))]
     [InlineData("other-club", nameof(SquadMoveFailure.ClubNotFound))]
     [InlineData("no-manager", nameof(SquadMoveFailure.ManagerNotFound))]
+    [InlineData("manager-not-a-person", nameof(SquadMoveFailure.ManagerNotFound))]
     [InlineData("no-game-actions", nameof(SquadMoveFailure.GameActionsUnavailable))]
     [InlineData("no-layout", nameof(SquadMoveFailure.UnsupportedGameBuild))]
     public void Refuses_before_sending_anything_when_it_cannot_act_for_the_club(
         string defect,
         string expected)
     {
-        var club = new FakeClub(withManager: defect != "no-manager");
+        var club = new FakeClub(
+            defect switch
+            {
+                "no-manager" => ManagerPointer.None,
+                "manager-not-a-person" => ManagerPointer.NotAPerson,
+                _ => ManagerPointer.ObjectStart,
+            });
         club.AddTeam(0, 77);
         club.AddTeam(10);
         club.Dispatcher.IsAvailable = defect != "no-game-actions";
@@ -178,6 +200,9 @@ public sealed class SquadMoveOperationServiceTests
         private const ulong FirstTeamAddress = 0x1200_0000;
         private const ulong FirstSquadAddress = 0x1300_0000;
         private const ulong ManagerAddress = 0x1400_0000;
+        private const ulong ManagerVtable = 0x1500_0008;
+        private const ulong ManagerTypeInfo = 0x1600_0000;
+        private const int HumanManagerRecordOffset = 0x440;
         private const ulong FirstPlayerBlock = 0x2000_0000;
         private const int PlayerClassOffset = 0x288;
         private const int SquadCapacity = 64;
@@ -185,11 +210,16 @@ public sealed class SquadMoveOperationServiceTests
         private readonly byte[] _teamVector = new byte[8 * 32];
         private readonly List<Team> _teams = new();
         private readonly Dictionary<uint, PersonCandidate> _players = new();
-        private readonly bool _withManager;
+        private readonly ulong _managerPointer;
 
-        public FakeClub(bool withManager = true)
+        public FakeClub(ManagerPointer manager = ManagerPointer.ObjectStart)
         {
-            _withManager = withManager;
+            _managerPointer = manager switch
+            {
+                ManagerPointer.None => 0,
+                ManagerPointer.PersonRecord => ManagerAddress + HumanManagerRecordOffset,
+                _ => ManagerAddress,
+            };
             var club = new byte[0x100];
             WriteInt32(club, Layout.ObjectDatabaseIndexOffset, ClubIndex);
             WriteUInt32(club, Layout.ObjectUidOffset, ClubUid);
@@ -199,10 +229,19 @@ public sealed class SquadMoveOperationServiceTests
             Reader.AddBytes(TeamVectorAddress, _teamVector);
             _clubBytes = club;
 
-            var manager = new byte[0x20];
-            WriteInt32(manager, Layout.ObjectDatabaseIndexOffset, ManagerIndex);
-            WriteUInt32(manager, Layout.ObjectUidOffset, 99);
-            Reader.AddBytes(ManagerAddress, manager);
+            // The manager's person record sits 0x440 into his object; its vtable's type information
+            // (MSVC: the word before the vtable points to a record whose +4 is the offset) says so.
+            var managerObject = new byte[HumanManagerRecordOffset + 0x20];
+            if (manager != ManagerPointer.NotAPerson)
+            {
+                WriteUInt64(managerObject, HumanManagerRecordOffset, ManagerVtable);
+            }
+
+            WriteInt32(managerObject, HumanManagerRecordOffset + Layout.ObjectDatabaseIndexOffset, ManagerIndex);
+            WriteUInt32(managerObject, HumanManagerRecordOffset + Layout.ObjectUidOffset, 99);
+            Reader.AddBytes(ManagerAddress, managerObject);
+            Reader.AddBytes(ManagerVtable - 8, BitConverter.GetBytes(ManagerTypeInfo));
+            Reader.AddBytes(ManagerTypeInfo, new byte[] { 0, 0, 0, 0 }.Concat(BitConverter.GetBytes(HumanManagerRecordOffset)).ToArray());
 
             Dispatcher = new FakeDispatcher(this);
         }
@@ -221,9 +260,9 @@ public sealed class SquadMoveOperationServiceTests
             var bytes = new byte[0x100];
             bytes[Layout.TeamTypeOffset] = (byte)type;
             WriteUInt64(bytes, Layout.TeamSquadBeginOffset, squadAddress);
-            if (type == 0 && _withManager)
+            if (type == 0 && _managerPointer != 0)
             {
-                WriteUInt64(bytes, Layout.TeamManagerPtrOffset, ManagerAddress);
+                WriteUInt64(bytes, Layout.TeamManagerPtrOffset, _managerPointer);
             }
 
             var team = new Team(type, address, bytes, squadAddress, new byte[8 * SquadCapacity]);
@@ -326,6 +365,14 @@ public sealed class SquadMoveOperationServiceTests
                 WriteUInt64(Bytes, Layout.TeamSquadEndOffset, SquadAddress + (ulong)(Squad.Count * 8));
             }
         }
+    }
+
+    public enum ManagerPointer
+    {
+        ObjectStart,
+        PersonRecord,
+        NotAPerson,
+        None,
     }
 
     private sealed class FakeDispatcher : ISquadMoveDispatcher

@@ -723,7 +723,7 @@ public class Plugin : BasePlugin
             SquadMoveFailure.NoLiveScan => "Load Data again before moving squads",
             SquadMoveFailure.SourceRequestMismatch => "Load Data again before moving squads",
             SquadMoveFailure.ClubNotFound => "the managed club was not found in FM; Load Data again",
-            SquadMoveFailure.ManagerNotFound => "the club's manager was not found in FM; Load Data again",
+            SquadMoveFailure.ManagerNotFound => "your manager was not found in FM; update the bridge plugin",
             SquadMoveFailure.GameActionsUnavailable =>
                 "FM's squad action is unavailable in this game build; update the bridge plugin",
             SquadMoveFailure.DispatchFailed => detail ?? "FM did not run the squad moves; retry",

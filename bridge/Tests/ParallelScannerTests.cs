@@ -14,7 +14,7 @@ public sealed class ParallelScannerTests
     private const ulong GameAssemblyEnd = 0x180100000UL;
     private const int PlayerClassOffset = 0x288;
     private const int StaffClassOffset = 0x100;
-    private const int HumanManagerClassOffset = 0x450;
+    private const int HumanManagerClassOffset = 0x440;
     private const ulong FirstRegionBase = 0x100000UL;
     private const ulong SecondRegionBase = 0x200000UL;
     private const ulong ThirdRegionBase = 0x300000UL;

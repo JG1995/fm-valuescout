@@ -47,7 +47,7 @@ public sealed class CapADumpTests
         Assert.Equal(0x0C, layout.ObjectUidOffset);
         Assert.Contains(0x288, layout.PlayerClassOffsets);
         Assert.Contains(0x100, layout.StaffClassOffsets);
-        Assert.Contains(0x450, layout.HumanManagerClassOffsets);
+        Assert.Contains(0x440, layout.HumanManagerClassOffsets);
         Assert.Equal(0x264, layout.CurrentAbilityOffset);
         Assert.Equal(0x266, layout.PotentialAbilityOffset);
         Assert.Equal(0xDA, layout.StaffCurrentAbilityOffset);

@@ -19,7 +19,7 @@ public sealed class StaffExtractionTests
     private const ulong ScanRegionSize = 0x20000UL;
     private const int PlayerClassOffset = 0x288;
     private const int StaffClassOffset = 0x100;
-    private const int HumanManagerClassOffset = 0x450;
+    private const int HumanManagerClassOffset = 0x440;
     private static readonly (string Key, int Offset, int? Value)[] ExpectedStaffAttributes =
     {
         ("Attacking", 0x22, 1),

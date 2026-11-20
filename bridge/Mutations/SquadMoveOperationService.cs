@@ -130,9 +130,9 @@ internal sealed class SquadMoveOperationService
             return Failed(SquadMoveFailure.ClubNotFound);
         }
 
-        if (!TryReadHumanManagerIndex(reader, layout, teams, out var managerIndex))
+        if (!TryReadHumanManagerIndex(reader, layout, teams, out var managerIndex, out var managerDetail))
         {
-            return Failed(SquadMoveFailure.ManagerNotFound);
+            return new SquadMoveExecutionResult(false, SquadMoveFailure.ManagerNotFound, null, managerDetail);
         }
 
         var outcomes = new SquadMoveOutcome[moves.Count];
@@ -229,21 +229,58 @@ internal sealed class SquadMoveOperationService
         }
     }
 
-    /// <summary>The human manager manages the club's first team; FM's action names him as the one acting.</summary>
+    /// <summary>
+    /// The human manager manages the club's first team, and FM's action names him as the one acting.
+    /// The team's manager pointer may name any part of his object: the vtable's type information
+    /// says how far that part sits from the object's start, and his person record sits at one of the
+    /// layout's person offsets, which its own type information confirms.
+    /// </summary>
     private static bool TryReadHumanManagerIndex(
         IMemoryReader reader,
         IFmMemoryLayout layout,
         IReadOnlyList<ClubTeam> teams,
-        out int managerIndex)
+        out int managerIndex,
+        out string detail)
     {
         managerIndex = 0;
         var firstTeam = teams.FirstOrDefault(team => team.Type == 0);
-        return firstTeam is not null
-            && reader.TryReadUInt64(firstTeam.Address + (ulong)layout.TeamManagerPtrOffset, out var manager)
-            && manager != 0
-            && reader.TryReadUInt32(manager + (ulong)layout.ObjectUidOffset, out var managerUid)
-            && managerUid != 0
-            && TryReadDatabaseIndex(reader, manager, layout, out managerIndex);
+        if (firstTeam is null
+            || !reader.TryReadUInt64(firstTeam.Address + (ulong)layout.TeamManagerPtrOffset, out var pointer)
+            || pointer == 0)
+        {
+            detail = "the first team has no manager pointer";
+            return false;
+        }
+
+        var start = pointer;
+        var pointerOffset = 0;
+        if (reader.TryReadUInt64(pointer, out var vtable)
+            && PersonScanner.TryResolveDynamicOffset(reader, vtable, out pointerOffset)
+            && pointerOffset > 0
+            && (ulong)pointerOffset <= pointer)
+        {
+            start = pointer - (ulong)pointerOffset;
+        }
+
+        foreach (var recordOffset in layout.HumanManagerClassOffsets
+                     .Concat(layout.StaffClassOffsets)
+                     .Concat(layout.PlayerClassOffsets))
+        {
+            var record = start + (ulong)recordOffset;
+            if (reader.TryReadUInt64(record, out var recordVtable)
+                && PersonScanner.TryResolveDynamicOffset(reader, recordVtable, out var recordClassOffset)
+                && recordClassOffset == recordOffset
+                && reader.TryReadUInt32(record + (ulong)layout.ObjectUidOffset, out var uid)
+                && PersonScanner.IsValidUid(uid)
+                && TryReadDatabaseIndex(reader, record, layout, out managerIndex))
+            {
+                detail = "";
+                return true;
+            }
+        }
+
+        detail = $"no person record behind the manager pointer (pointer sub-object offset 0x{pointerOffset:X})";
+        return false;
     }
 
     private static bool TryReadDatabaseIndex(IMemoryReader reader, ulong address, IFmMemoryLayout layout, out int index)
