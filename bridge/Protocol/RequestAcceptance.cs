@@ -177,6 +177,7 @@ public static class RequestAcceptance
             BridgeProtocol.OperationWonderkidMentality => TryValidateWonderkidMentality(request, out rejectReason),
             BridgeProtocol.OperationMoveSquadPlayers => TryValidateSquadMoves(request, out rejectReason),
             BridgeProtocol.OperationApplyStaffChanges => TryValidateStaffChanges(request, out rejectReason),
+            BridgeProtocol.OperationReadStaffLimits => TryValidateStaffLimits(request, out rejectReason),
             _ => RejectUnsupportedOperation(request.Operation, out rejectReason),
         };
     }
@@ -247,6 +248,48 @@ public static class RequestAcceptance
                 rejectReason = "squad move targetLevel must be senior, reserve, or youth";
                 return false;
             }
+        }
+
+        return true;
+    }
+
+    private static bool TryValidateStaffLimits(BridgeRequest request, out string? rejectReason)
+    {
+        rejectReason = null;
+        if (!string.Equals(
+                request.PlayerDatabaseScope,
+                PlayerDatabaseScopes.Men,
+                StringComparison.Ordinal))
+        {
+            rejectReason = "playerDatabaseScope is supported only by full-dump";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(request.SourceRequestId))
+        {
+            rejectReason = "sourceRequestId is required for staff limits";
+            return false;
+        }
+
+        if (request.ClubUid is not { } clubUid || clubUid == 0)
+        {
+            rejectReason = "clubUid is required for staff limits";
+            return false;
+        }
+
+        if (request.PlayerUid is not null
+            || request.StaffUid is not null
+            || request.ExpectedCurrentAbility is not null
+            || request.ExpectedPotentialAbility is not null
+            || request.CurrentAbilityIncrement is not null
+            || request.ExpectedAmbition is not null
+            || request.ExpectedProfessionalism is not null
+            || request.ExpectedDetermination is not null
+            || request.SquadMoves is not null
+            || request.StaffChanges is not null)
+        {
+            rejectReason = "staff limits take only the club";
+            return false;
         }
 
         return true;

@@ -18,6 +18,7 @@ public static class BridgeProtocol
     public const string OperationWonderkidMentality = "wonderkid-mentality";
     public const string OperationMoveSquadPlayers = "move-squad-players";
     public const string OperationApplyStaffChanges = "apply-staff-changes";
+    public const string OperationReadStaffLimits = "read-staff-limits";
 
     /// <summary>Most players one squad-move request may move.</summary>
     public const int MaxSquadMoves = 100;

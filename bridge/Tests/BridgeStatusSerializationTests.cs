@@ -184,6 +184,29 @@ public sealed class BridgeStatusSerializationTests
                             new StaffChangeOutcome { Outcome = StaffChangeOutcome.Hired, ClubUid = 680, JobId = 2, WeeklyWageGbp = 6388 },
                         },
                     },
+                    StaffLimitsSupported = true,
+                    StaffLimits = new StaffLimitsResult
+                    {
+                        Teams = new[]
+                        {
+                            new StaffLimitsTeam
+                            {
+                                Level = "senior",
+                                TeamType = 0,
+                                Groups = new[]
+                                {
+                                    new StaffLimitsGroup
+                                    {
+                                        Group = StaffLimitsGroup.Coaching,
+                                        Name = "Coaching Team",
+                                        Count = 28,
+                                        Max = 28,
+                                        Jobs = new[] { new StaffLimitsJob { JobType = 2, Name = "Coaches", Count = 13, Max = 13 } },
+                                    },
+                                },
+                            },
+                        },
+                    },
                     Error = "Could not create C:\\Users\\player\\AppData\\Local\\fm-valuescout\\fm-bridge\\dump.json",
                 });
 
@@ -201,6 +224,12 @@ public sealed class BridgeStatusSerializationTests
             Assert.Equal(
                 (StaffChangeOutcome.Hired, 680u, 2, 6388L),
                 (change.Outcome, change.ClubUid, change.JobId, change.WeeklyWageGbp));
+            Assert.True(status.StaffLimitsSupported);
+            var group = Assert.Single(Assert.Single(status.StaffLimits!.Teams).Groups);
+            var job = Assert.Single(group.Jobs);
+            Assert.Equal(
+                (StaffLimitsGroup.Coaching, 28, 2, "Coaches", 13),
+                (group.Group, group.Max, job.JobType, job.Name, job.Max));
         }
         finally
         {
