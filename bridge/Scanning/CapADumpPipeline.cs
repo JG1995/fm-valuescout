@@ -608,6 +608,41 @@ public sealed class CapADumpPipeline
         diagnostics.DumpWritingMs = phaseSw.ElapsedMilliseconds;
         WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
 
+        // TEMPORARY: FM27 team-layout diagnostic (BACKLOG: FM27 team detection).
+        TeamLayoutDiagnostic.TryWrite(
+            reader,
+            layout,
+            bridgeDirectory,
+            gameVersion,
+            scan.Clubs.Select(club => club.Address).Concat(clubAddresses),
+            drafts
+                .Select(draft => new TeamLayoutDiagnostic.Person(
+                    draft.Candidate.Uid,
+                    IsPlayer: true,
+                    draft.Identity.Name,
+                    draft.Identity.BirthYear,
+                    draft.Candidate.Ca,
+                    draft.Candidate.Pa,
+                    JobId: null,
+                    draft.Candidate.BlockAddress,
+                    draft.Candidate.ObjectAddress,
+                    draft.ParentLink?.TeamAddress ?? 0,
+                    draft.ParentLink?.ClubAddress ?? 0))
+                .Concat(staffDrafts.Select(draft => new TeamLayoutDiagnostic.Person(
+                    draft.Candidate.Uid,
+                    IsPlayer: false,
+                    draft.Record.Name,
+                    draft.Record.BirthYear,
+                    draft.Candidate.Ca,
+                    draft.Candidate.Pa,
+                    draft.Record.JobId,
+                    draft.Candidate.BlockAddress,
+                    draft.Candidate.ObjectAddress,
+                    draft.ClubLink?.TeamAddress ?? 0,
+                    draft.ClubLink?.ClubAddress ?? 0)))
+                .ToList(),
+            cancellationToken);
+
         if (!replaced)
         {
             return CapADumpResult.Failed("dump write did not replace file", dumpReplaced: false);
