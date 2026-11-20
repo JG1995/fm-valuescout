@@ -18,6 +18,7 @@ pub const OPERATION_FULL_DUMP: &str = "full-dump";
 pub const OPERATION_BOOST_CURRENT_ABILITY: &str = "boost-current-ability";
 pub const OPERATION_BOOST_STAFF_CURRENT_ABILITY: &str = "boost-staff-current-ability";
 pub const OPERATION_WONDERKID_MENTALITY: &str = "wonderkid-mentality";
+pub const OPERATION_MOVE_SQUAD_PLAYERS: &str = "move-squad-players";
 pub const PLAYER_DATABASE_SCOPE_MEN: &str = "men";
 
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -68,6 +69,10 @@ pub struct BridgeStatus {
     pub staff_boosts_supported: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staff_boost: Option<StaffBoostResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squad_moves_supported: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squad_moves: Option<SquadMoveResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,6 +135,60 @@ pub struct StaffBoostResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub potential_ability: Option<i32>,
 }
+
+/// Each requested squad move's outcome, in request order. It carries no player identity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadMoveResult {
+    #[serde(default)]
+    pub moves: Vec<SquadMoveOutcome>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadMoveOutcome {
+    /// `moved`, `already-there`, `not-found`, `not-in-club-teams`, `no-target-team`, or
+    /// `not-confirmed`.
+    pub outcome: String,
+    /// FM's team type the player is in afterwards, when the bridge read it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_type: Option<i32>,
+    /// The level of `team_type`: `senior`, `reserve`, or `youth`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_level: Option<String>,
+}
+
+/// One player to move to the managed club's team at a level: `senior`, `reserve`, or `youth`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadMoveItem {
+    pub player_uid: u32,
+    pub target_level: &'static str,
+}
+
+/// The bridge's answer to a squad-move request: each move's outcome, and the error that stopped
+/// the request early when one did. FM may have made some moves before such an error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SquadMoveResponse {
+    pub moves: Vec<SquadMoveOutcome>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SquadMoveRequest<'a> {
+    protocol_version: u32,
+    request_id: String,
+    created_at_utc: String,
+    operation: &'static str,
+    player_database_scope: &'static str,
+    source_request_id: &'a str,
+    club_uid: u32,
+    squad_moves: &'a [SquadMoveItem],
+}
+
+/// The most players one squad-move request may move; the bridge enforces the same bound.
+pub const MAX_SQUAD_MOVES: usize = 100;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlayerBoostOperation {
@@ -576,6 +635,134 @@ pub fn request_staff_boost(
         Err(error) => Err(PlayerBoostRequestError::Unconfirmed(format!(
             "could not confirm the staff boost result; Load Data again before retrying ({error})"
         ))),
+    }
+}
+
+pub fn request_squad_moves_from_local_app_data(
+    source_request_id: &str,
+    club_uid: u32,
+    moves: &[SquadMoveItem],
+    wait: DumpWaitConfig,
+) -> Result<SquadMoveResponse, PlayerBoostRequestError> {
+    let bridge_directory = resolve_bridge_directory().map_err(PlayerBoostRequestError::from)?;
+    request_squad_moves(&bridge_directory, source_request_id, club_uid, moves, wait)
+}
+
+/// Asks the bridge to move the managed club's players between its teams and waits for each
+/// move's outcome.
+pub fn request_squad_moves(
+    bridge_directory: &Path,
+    source_request_id: &str,
+    club_uid: u32,
+    moves: &[SquadMoveItem],
+    wait: DumpWaitConfig,
+) -> Result<SquadMoveResponse, PlayerBoostRequestError> {
+    if source_request_id.trim().is_empty() || club_uid == 0 {
+        return Err(PlayerBoostRequestError::WriteFailed(
+            "squad moves need the live scan and the managed club".to_string(),
+        ));
+    }
+    if moves.is_empty() || moves.len() > MAX_SQUAD_MOVES {
+        return Err(PlayerBoostRequestError::WriteFailed(format!(
+            "squad moves must list 1 through {MAX_SQUAD_MOVES} players"
+        )));
+    }
+    let _bridge_request_guard = acquire_bridge_request_guard(bridge_directory)
+        .map_err(PlayerBoostRequestError::Unavailable)?;
+    let status = read_bridge_status(bridge_directory).map_err(PlayerBoostRequestError::from)?;
+    if status.squad_moves_supported != Some(true) {
+        return Err(PlayerBoostRequestError::Unavailable(
+            SQUAD_MOVES_UNAVAILABLE.to_string(),
+        ));
+    }
+
+    let request_id = new_request_id();
+    let request = SquadMoveRequest {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        created_at_utc: utc_now_rfc3339(),
+        operation: OPERATION_MOVE_SQUAD_PLAYERS,
+        player_database_scope: PLAYER_DATABASE_SCOPE_MEN,
+        source_request_id,
+        club_uid,
+        squad_moves: moves,
+    };
+    write_bridge_request(bridge_directory, &request)?;
+    wait_for_squad_moves_terminal(bridge_directory, &request_id, moves.len(), wait)
+}
+
+/// Why squad moves are unavailable when the bridge does not offer them.
+pub const SQUAD_MOVES_UNAVAILABLE: &str =
+    "Load Data with FM open on this save before moving squads";
+
+fn write_bridge_request<T: Serialize>(
+    bridge_directory: &Path,
+    request: &T,
+) -> Result<(), PlayerBoostRequestError> {
+    fs::create_dir_all(bridge_directory).map_err(|error| {
+        PlayerBoostRequestError::WriteFailed(format!("could not create bridge directory: {error}"))
+    })?;
+    let path = request_path(bridge_directory);
+    let temp_path = path.with_extension("json.tmp");
+    let json = serde_json::to_string_pretty(request).map_err(|error| {
+        PlayerBoostRequestError::WriteFailed(format!("could not serialize bridge request: {error}"))
+    })?;
+    fs::write(&temp_path, json).map_err(|error| {
+        PlayerBoostRequestError::WriteFailed(format!(
+            "could not write bridge request temp file: {error}"
+        ))
+    })?;
+    fs::rename(&temp_path, &path).map_err(|error| {
+        PlayerBoostRequestError::WriteFailed(format!("could not replace bridge request: {error}"))
+    })
+}
+
+pub fn wait_for_squad_moves_terminal(
+    bridge_directory: &Path,
+    request_id: &str,
+    move_count: usize,
+    wait: DumpWaitConfig,
+) -> Result<SquadMoveResponse, PlayerBoostRequestError> {
+    let deadline = Instant::now() + wait.timeout;
+    loop {
+        match read_bridge_status(bridge_directory) {
+            Ok(status)
+                if status.request_id.as_deref() == Some(request_id)
+                    && is_terminal_state(&status.state) =>
+            {
+                let error = (status.state == "failed").then(|| {
+                    status
+                        .error
+                        .clone()
+                        .unwrap_or_else(|| "squad moves failed without a bridge error".to_string())
+                });
+                return match status.squad_moves {
+                    Some(result) if result.moves.len() == move_count => Ok(SquadMoveResponse {
+                        moves: result.moves,
+                        error,
+                    }),
+                    Some(_) => Err(PlayerBoostRequestError::Corrupt(
+                        "the bridge reported a different number of squad moves than were sent"
+                            .to_string(),
+                    )),
+                    None => Err(PlayerBoostRequestError::Failed(error.unwrap_or_else(
+                        || "the bridge finished the squad moves without their outcomes".to_string(),
+                    ))),
+                };
+            }
+            Ok(_) => {}
+            Err(BridgeStatusError::Missing(_)) => {}
+            Err(error) => return Err(error.into()),
+        }
+
+        if Instant::now() >= deadline {
+            return Err(PlayerBoostRequestError::Timeout(
+                "timed out waiting for FM to finish the squad moves; Load Data to see FM's squads"
+                    .to_string(),
+            ));
+        }
+
+        thread::sleep(wait.poll_interval);
     }
 }
 
@@ -1504,6 +1691,176 @@ mod tests {
         assert_eq!(result.current_ability, Some(125));
     }
 
+    fn write_squad_move_status_fixture(
+        bridge_dir: &Path,
+        state: &str,
+        request_id: &str,
+        supported: bool,
+        squad_moves: Option<SquadMoveResult>,
+        error: Option<&str>,
+    ) {
+        let status = BridgeStatus {
+            protocol_version: PROTOCOL_VERSION,
+            plugin_version: "0.31.1".to_string(),
+            state: state.to_string(),
+            updated_at_utc: "2026-11-20T12:00:00.000Z".to_string(),
+            game_plugin_module_present: true,
+            game_assembly_module_present: true,
+            request_id: Some(request_id.to_string()),
+            players_found: None,
+            error: error.map(str::to_string),
+            player_boosts_supported: Some(supported),
+            player_boost: None,
+            staff_boosts_supported: None,
+            staff_boost: None,
+            squad_moves_supported: Some(supported),
+            squad_moves,
+        };
+        write_status(bridge_dir, &status);
+    }
+
+    fn outcome(outcome: &str, team_type: Option<i32>) -> SquadMoveOutcome {
+        SquadMoveOutcome {
+            outcome: outcome.to_string(),
+            team_type,
+            team_level: team_type.map(|_| "reserve".to_string()),
+        }
+    }
+
+    const QUICK_WAIT: DumpWaitConfig = DumpWaitConfig {
+        timeout: Duration::from_millis(100),
+        poll_interval: Duration::from_millis(10),
+    };
+
+    #[test]
+    fn squad_moves_require_advertised_support_before_writing_a_request() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        write_squad_move_status_fixture(temp_dir.path(), "ready", "scan-1", false, None, None);
+
+        let error = request_squad_moves(
+            temp_dir.path(),
+            "scan-1",
+            439,
+            &[SquadMoveItem {
+                player_uid: 77,
+                target_level: "reserve",
+            }],
+            QUICK_WAIT,
+        )
+        .expect_err("a bridge without squad moves must be rejected");
+
+        assert_eq!(
+            error,
+            PlayerBoostRequestError::Unavailable(SQUAD_MOVES_UNAVAILABLE.to_string())
+        );
+        assert!(!request_path(temp_dir.path()).exists());
+    }
+
+    #[test]
+    fn squad_move_request_names_the_club_and_each_move() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let moves = [
+            SquadMoveItem {
+                player_uid: 77,
+                target_level: "reserve",
+            },
+            SquadMoveItem {
+                player_uid: 78,
+                target_level: "youth",
+            },
+        ];
+        write_bridge_request(
+            temp_dir.path(),
+            &SquadMoveRequest {
+                protocol_version: PROTOCOL_VERSION,
+                request_id: "move-1".to_string(),
+                created_at_utc: "2026-11-20T12:00:00.000Z".to_string(),
+                operation: OPERATION_MOVE_SQUAD_PLAYERS,
+                player_database_scope: PLAYER_DATABASE_SCOPE_MEN,
+                source_request_id: "scan-1",
+                club_uid: 439,
+                squad_moves: &moves,
+            },
+        )
+        .expect("write squad move request");
+
+        let value: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(request_path(temp_dir.path())).expect("read request"),
+        )
+        .expect("parse request");
+        assert_eq!(value["operation"], OPERATION_MOVE_SQUAD_PLAYERS);
+        assert_eq!(value["sourceRequestId"], "scan-1");
+        assert_eq!(value["clubUid"], 439);
+        assert_eq!(
+            value["squadMoves"],
+            serde_json::json!([
+                { "playerUid": 77, "targetLevel": "reserve" },
+                { "playerUid": 78, "targetLevel": "youth" }
+            ])
+        );
+    }
+
+    #[test]
+    fn squad_move_wait_keeps_the_outcomes_of_a_request_that_stopped_early() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        write_squad_move_status_fixture(
+            temp_dir.path(),
+            "failed",
+            "move-1",
+            true,
+            Some(SquadMoveResult {
+                moves: vec![
+                    outcome("moved", Some(10)),
+                    outcome("not-confirmed", Some(0)),
+                ],
+            }),
+            Some("FM rejected a squad move: boom"),
+        );
+
+        let response = wait_for_squad_moves_terminal(temp_dir.path(), "move-1", 2, QUICK_WAIT)
+            .expect("outcomes of a partial request");
+
+        assert_eq!(response.moves[0], outcome("moved", Some(10)));
+        assert_eq!(
+            response.error.as_deref(),
+            Some("FM rejected a squad move: boom")
+        );
+    }
+
+    #[test]
+    fn squad_move_wait_rejects_missing_or_mismatched_outcomes() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        write_squad_move_status_fixture(
+            temp_dir.path(),
+            "ready",
+            "move-1",
+            true,
+            Some(SquadMoveResult {
+                moves: vec![outcome("moved", Some(10))],
+            }),
+            None,
+        );
+        assert!(matches!(
+            wait_for_squad_moves_terminal(temp_dir.path(), "move-1", 2, QUICK_WAIT),
+            Err(PlayerBoostRequestError::Corrupt(_))
+        ));
+
+        write_squad_move_status_fixture(
+            temp_dir.path(),
+            "failed",
+            "move-2",
+            true,
+            None,
+            Some("the managed club was not found in FM; Load Data again"),
+        );
+        assert_eq!(
+            wait_for_squad_moves_terminal(temp_dir.path(), "move-2", 1, QUICK_WAIT),
+            Err(PlayerBoostRequestError::Failed(
+                "the managed club was not found in FM; Load Data again".to_string()
+            ))
+        );
+    }
+
     #[test]
     fn player_boost_requires_advertised_support_before_writing_a_request() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -1888,6 +2245,8 @@ mod tests {
             player_boost: None,
             staff_boosts_supported: None,
             staff_boost: None,
+            squad_moves_supported: None,
+            squad_moves: None,
         }
     }
 
@@ -1913,6 +2272,8 @@ mod tests {
             player_boost,
             staff_boosts_supported: None,
             staff_boost: None,
+            squad_moves_supported: None,
+            squad_moves: None,
         };
         write_status(bridge_dir, &status);
     }
@@ -1939,6 +2300,8 @@ mod tests {
             player_boost: None,
             staff_boosts_supported: Some(staff_boosts_supported),
             staff_boost,
+            squad_moves_supported: None,
+            squad_moves: None,
         };
         write_status(bridge_dir, &status);
     }
