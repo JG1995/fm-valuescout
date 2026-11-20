@@ -1354,7 +1354,10 @@ fn explicit_assignment_wins_over_a_better_fallback_lane() {
         .iter()
         .find(|player| player.uid == 77)
         .expect("assigned player");
-    assert_eq!(assigned.suggested_training.as_deref(), Some("GK Reactions"));
+    assert_eq!(
+        assigned.suggested_training.as_deref(),
+        Some("GK Shot Stopping")
+    );
     let fallback = page
         .players
         .iter()
@@ -1715,7 +1718,10 @@ fn fallback_tie_keeps_the_earlier_tactic_lane() {
         .iter()
         .find(|player| player.uid == 77)
         .expect("unassigned player");
-    assert_eq!(player.suggested_training.as_deref(), Some("GK Reactions"));
+    assert_eq!(
+        player.suggested_training.as_deref(),
+        Some("GK Shot Stopping")
+    );
 }
 
 #[test]

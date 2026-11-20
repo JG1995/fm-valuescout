@@ -348,6 +348,8 @@ mod tests {
             staff_changes: None,
             staff_limits_supported: None,
             staff_limits: None,
+            training_supported: None,
+            training: None,
         };
         let json = serde_json::to_string_pretty(&status).expect("serialize");
         let path = status_path(bridge_dir);

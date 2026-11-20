@@ -149,6 +149,8 @@ pub fn run() {
             features::planner::commands::get_planner_loan_candidates,
             features::planner::commands::get_planner_fm_moves,
             features::planner::commands::apply_planner_fm_moves,
+            features::planner::commands::get_squad_fm_training,
+            features::planner::commands::apply_squad_fm_training,
             features::staff::commands::get_staff_fm_changes,
             features::staff::commands::apply_staff_fm_changes,
             features::planner::commands::assign_planner_player,

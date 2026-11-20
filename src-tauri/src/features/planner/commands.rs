@@ -12,6 +12,7 @@ use super::depth::{
     PlannerDepthTeam, PlannerSlotCandidate, PlannerString, PlannerTeam,
 };
 use super::fm_moves::{self, FmSquadMove, FmSquadMoveReport};
+use super::fm_training::{self, FmTrainingChange, FmTrainingReport};
 use super::loans::{self, LoanCandidate};
 use super::optimizer;
 use super::role_reference::{
@@ -1153,6 +1154,137 @@ pub async fn apply_planner_fm_moves(
     blocking::run(move || {
         fm_moves::apply_fm_squad_moves(&db, &player_uids, |source, club, items| {
             bridge::request_squad_moves_from_local_app_data(source, club, items, SQUAD_MOVE_WAIT)
+                .map_err(|error| error.to_string())
+        })
+        .map(Into::into)
+    })
+    .await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadFmTrainingPlayerDto {
+    pub player_uid: i64,
+    pub name: String,
+    /// The Planner slot's in-possession position; absent for a player in no slot.
+    pub position: Option<String>,
+    pub in_possession_role: Option<String>,
+    pub out_of_possession_role: Option<String>,
+    /// His Suggested Training; absent means his focus is cleared.
+    pub focus: Option<String>,
+}
+
+impl From<FmTrainingChange> for SquadFmTrainingPlayerDto {
+    fn from(planned: FmTrainingChange) -> Self {
+        let (position, in_possession_role, out_of_possession_role) = match planned.roles {
+            Some(roles) => (
+                Some(roles.position),
+                Some(roles.in_possession),
+                Some(roles.out_of_possession),
+            ),
+            None => (None, None, None),
+        };
+        Self {
+            player_uid: planned.player_uid,
+            name: planned.name,
+            position,
+            in_possession_role,
+            out_of_possession_role,
+            focus: planned.focus,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadFmTrainingDto {
+    pub players: Vec<SquadFmTrainingPlayerDto>,
+    /// Why the training cannot be set now; absent when it can.
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadFmTrainingResultDto {
+    pub applied: Vec<i64>,
+    pub failed: Vec<PlannerFmMoveFailureDto>,
+    /// The error that stopped the request early; FM may have taken some changes first.
+    pub error: Option<String>,
+}
+
+impl From<FmTrainingReport> for SquadFmTrainingResultDto {
+    fn from(report: FmTrainingReport) -> Self {
+        Self {
+            applied: report.applied,
+            failed: report
+                .failed
+                .into_iter()
+                .map(|failure| PlannerFmMoveFailureDto {
+                    player_uid: failure.player_uid,
+                    name: failure.name,
+                    reason: failure.reason,
+                })
+                .collect(),
+            error: report.error,
+        }
+    }
+}
+
+/// The training Apply in FM would set for each of the managed club's players, and whether FM
+/// can take it now.
+#[tauri::command]
+pub async fn get_squad_fm_training(db: State<'_, Db>) -> Result<SquadFmTrainingDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || read_squad_fm_training(&db, bridge_training_unavailable)).await
+}
+
+pub(super) fn read_squad_fm_training(
+    db: &Db,
+    bridge_unavailable: impl FnOnce() -> Option<String>,
+) -> Result<SquadFmTrainingDto, String> {
+    let (plan, context) = {
+        let conn = db.read()?;
+        let save_id = service::active_save_id(&conn)?;
+        (
+            fm_training::plan_fm_training(&conn, save_id)?,
+            fm_training::capture_training_context(&conn),
+        )
+    };
+    Ok(SquadFmTrainingDto {
+        players: plan.into_iter().map(Into::into).collect(),
+        unavailable_reason: match context {
+            Err(reason) => Some(reason),
+            Ok(_) => bridge_unavailable(),
+        },
+    })
+}
+
+/// None when the bridge offers training changes for its live scan; otherwise why not.
+fn bridge_training_unavailable() -> Option<String> {
+    match bridge::resolve_bridge_directory()
+        .and_then(|directory| bridge::read_bridge_status(&directory))
+    {
+        Ok(status) => bridge::training_unavailable_reason(&status).map(str::to_string),
+        Err(_) => Some(bridge::TRAINING_NEEDS_LOAD_DATA.to_string()),
+    }
+}
+
+/// The bridge sends the events at once and reads them back within about seven seconds.
+const TRAINING_WAIT: DumpWaitConfig = DumpWaitConfig {
+    timeout: std::time::Duration::from_secs(45),
+    poll_interval: std::time::Duration::from_millis(200),
+};
+
+/// Sets the chosen players' training in FM and reports what FM took.
+#[tauri::command]
+pub async fn apply_squad_fm_training(
+    player_uids: Vec<i64>,
+    db: State<'_, Db>,
+) -> Result<SquadFmTrainingResultDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        fm_training::apply_fm_training(&db, &player_uids, |source, club, items| {
+            bridge::request_training_from_local_app_data(source, club, items, TRAINING_WAIT)
                 .map_err(|error| error.to_string())
         })
         .map(Into::into)

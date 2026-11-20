@@ -15,6 +15,8 @@ export const squadKeys = {
   // refreshes this presentation read after managed-club changes.
   all: ["planner", "squad"] as const,
   playerPages: () => [...squadKeys.all, "players"] as const,
+  fmTraining: (activeSaveId: number) =>
+    [...squadKeys.all, "fm-training", activeSaveId] as const,
   players: (
     offset: number,
     limit: number,

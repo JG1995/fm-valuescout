@@ -2,6 +2,7 @@ pub mod commands;
 pub mod depth;
 pub(crate) mod fit;
 mod fm_moves;
+mod fm_training;
 mod loans;
 pub(crate) mod optimizer;
 mod outlook;
@@ -18,6 +19,8 @@ mod depth_tests;
 mod fit_tests;
 #[cfg(test)]
 mod fm_moves_tests;
+#[cfg(test)]
+mod fm_training_tests;
 #[cfg(test)]
 mod loans_tests;
 #[cfg(test)]
