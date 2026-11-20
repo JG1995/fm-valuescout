@@ -266,6 +266,9 @@ public sealed class CapADumpPipeline
             }
 
             personToUid[candidate.ObjectAddress] = candidate.Uid;
+
+            // FM27 squad lists point at the player block, not the player object.
+            personToUid[candidate.BlockAddress] = candidate.Uid;
             parentClubByUid[candidate.Uid] = parentLink?.ClubName;
 
             drafts.Add(
@@ -439,7 +442,7 @@ public sealed class CapADumpPipeline
                 division = squad.Division ?? division;
                 teamType = squad.TeamType;
                 clubReputation = squad.TeamReputation;
-                teamLevel = TeamLevelMap.FromTeamType(squad.TeamType);
+                teamLevel = TeamLevelMap.FromTeamType(squad.TeamType, squad.ReserveClub);
             }
             else if (parentName is not null)
             {
@@ -450,7 +453,10 @@ public sealed class CapADumpPipeline
             bool? onLoan = null;
             if (currentName is not null && parentName is not null)
             {
-                onLoan = !string.Equals(currentName, parentName, StringComparison.Ordinal);
+                // Namesake clubs exist, so compare club UIDs when both are known.
+                onLoan = currentClubUid is { } currentUid && parentClubUid is { } parentUid
+                    ? currentUid != parentUid
+                    : !string.Equals(currentName, parentName, StringComparison.Ordinal);
             }
 
             if (currentName is null && parentName is null)
@@ -551,6 +557,8 @@ public sealed class CapADumpPipeline
             Club = record.Club,
             ClubUid = record.ClubUid,
             Division = record.Division,
+            TeamType = record.TeamType,
+            TeamLevel = record.TeamLevel,
         }).ToList();
 
         var dumpManager = manager is null

@@ -16,6 +16,9 @@ public sealed class ContractClubLink
     public string? Division { get; init; }
 
     public int? TeamReputation { get; init; }
+
+    /// <summary>Raw FM team type of the contract team; null when unread.</summary>
+    public int? TeamType { get; init; }
 }
 
 /// <summary>
@@ -50,6 +53,11 @@ public static class ContractClubReader
             rep = trep;
         }
 
+        int? teamType = TryAdd(team, layout.TeamTypeOffset, out var teamTypeAddress)
+            && reader.TryReadByte(teamTypeAddress, out var rawTeamType)
+            ? rawTeamType
+            : null;
+
         if (!TryReadPointerAt(reader, team, layout.TeamClubPtrOffset, out var club) || club == 0)
         {
             return new ContractClubLink
@@ -57,6 +65,7 @@ public static class ContractClubReader
                 TeamAddress = team,
                 Division = CompetitionNameReader.TryRead(reader, team, layout),
                 TeamReputation = rep,
+                TeamType = teamType,
             };
         }
 
@@ -68,6 +77,7 @@ public static class ContractClubReader
             ClubName = ClubNameReader.TryRead(reader, club, layout),
             Division = CompetitionNameReader.TryRead(reader, team, layout),
             TeamReputation = rep,
+            TeamType = teamType,
         };
     }
 

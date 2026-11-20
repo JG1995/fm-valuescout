@@ -16,6 +16,9 @@ public sealed class SquadAssignment
     public int? TeamReputation { get; init; }
 
     public string? Division { get; init; }
+
+    /// <summary>The squad belongs to a separate B club and counts as the parent's reserve team.</summary>
+    public bool ReserveClub { get; init; }
 }
 
 /// <summary>One discovered team assignment for a pinned human-manager person.</summary>
@@ -38,6 +41,7 @@ public sealed class SquadClubIndex
     public const int MaxMultiClubSamples = 25;
     public const int MaxTeamsPerClub = 24;
     public const int MaxPlayersPerSquad = 60;
+    public const int MaxReserveClubsPerClub = 8;
 
     private readonly Dictionary<uint, SquadAssignment> _assignments = new();
     private readonly Dictionary<ulong, HumanManagerHit> _humanManagerAssignments = new();
@@ -76,25 +80,15 @@ public sealed class SquadClubIndex
             ? new HashSet<ulong>()
             : humanManagerAddresses.Where(address => address != 0).ToHashSet();
 
+        var clubs = new List<(ulong Address, string Name)>();
         foreach (var discovered in discoveredClubs.OrderBy(candidate => candidate.Address))
         {
-            if (discovered.Address == 0
-                || !ClubNamePlausibility.IsPlausible(discovered.Name)
-                || !seenClubs.Add(discovered.Address))
+            if (discovered.Address != 0
+                && ClubNamePlausibility.IsPlausible(discovered.Name)
+                && seenClubs.Add(discovered.Address))
             {
-                continue;
+                clubs.Add((discovered.Address, discovered.Name));
             }
-
-            WalkClub(
-                reader,
-                layout,
-                discovered.Address,
-                discovered.Name,
-                personToUid,
-                parentClubByUid,
-                managers,
-                votes,
-                index);
         }
 
         foreach (var club in fallbackClubAddresses.OrderBy(address => address))
@@ -105,11 +99,31 @@ public sealed class SquadClubIndex
             }
 
             var clubName = ClubNameReader.TryRead(reader, club, layout);
-            if (clubName is null)
+            if (clubName is not null)
             {
-                continue;
+                clubs.Add((club, clubName));
             }
+        }
 
+        // A B club's first team counts as its parent club's reserve team.
+        var reserveParents = new Dictionary<ulong, SquadOwner>();
+        foreach (var (club, clubName) in clubs)
+        {
+            var owner = new SquadOwner(clubName, TryReadPositiveUid(reader, club, layout.ObjectUidOffset), ReserveClub: true);
+            foreach (var team in ReadPointerVector(
+                         reader,
+                         club,
+                         layout.ClubReserveTeamsBeginOffset,
+                         layout.ClubReserveTeamsEndOffset,
+                         MaxReserveClubsPerClub) ?? new List<ulong>())
+            {
+                reserveParents.TryAdd(team, owner);
+            }
+        }
+
+        var walkedTeams = new HashSet<ulong>();
+        foreach (var (club, clubName) in clubs)
+        {
             WalkClub(
                 reader,
                 layout,
@@ -118,8 +132,28 @@ public sealed class SquadClubIndex
                 personToUid,
                 parentClubByUid,
                 managers,
+                reserveParents,
+                walkedTeams,
                 votes,
                 index);
+        }
+
+        // B clubs that no contract or discovery reached are still walked through their parent.
+        foreach (var (team, owner) in reserveParents.OrderBy(entry => entry.Key))
+        {
+            if (walkedTeams.Add(team))
+            {
+                WalkTeam(
+                    reader,
+                    layout,
+                    team,
+                    owner,
+                    personToUid,
+                    parentClubByUid,
+                    new HashSet<ulong>(),
+                    votes,
+                    index);
+            }
         }
 
         index.DateVotes = votes;
@@ -158,88 +192,141 @@ public sealed class SquadClubIndex
         IReadOnlyDictionary<ulong, uint> personToUid,
         IReadOnlyDictionary<uint, string?> parentClubByUid,
         IReadOnlySet<ulong> humanManagerAddresses,
+        IReadOnlyDictionary<ulong, SquadOwner> reserveParents,
+        HashSet<ulong> walkedTeams,
         Dictionary<uint, int> votes,
         SquadClubIndex index)
     {
-        if (!TryReadPointerAt(reader, club, layout.ClubTeamsBeginOffset, out var teamsBegin)
-            || !TryReadPointerAt(reader, club, layout.ClubTeamsEndOffset, out var teamsEnd)
-            || teamsBegin == 0
-            || teamsEnd <= teamsBegin
-            || teamsBegin % sizeof(ulong) != 0
-            || teamsEnd % sizeof(ulong) != 0
-            || (teamsEnd - teamsBegin) % sizeof(ulong) != 0)
-        {
-            return;
-        }
-
-        var teamCount = (teamsEnd - teamsBegin) / sizeof(ulong);
-        if (teamCount is 0 or > MaxTeamsPerClub)
+        var teams = ReadPointerVector(
+            reader,
+            club,
+            layout.ClubTeamsBeginOffset,
+            layout.ClubTeamsEndOffset,
+            MaxTeamsPerClub);
+        if (teams is null)
         {
             return;
         }
 
         index.ClubsWalked++;
-        for (ulong ti = 0; ti < teamCount; ti++)
+        var owner = new SquadOwner(clubName, TryReadPositiveUid(reader, club, layout.ObjectUidOffset), ReserveClub: false);
+        foreach (var team in teams)
         {
-            if (!TryReadVectorEntry(reader, teamsBegin, ti, out var team) || team == 0)
+            if (walkedTeams.Add(team))
             {
-                continue;
+                WalkTeam(
+                    reader,
+                    layout,
+                    team,
+                    reserveParents.TryGetValue(team, out var parent) ? parent : owner,
+                    personToUid,
+                    parentClubByUid,
+                    humanManagerAddresses,
+                    votes,
+                    index);
             }
-
-            int? discoveredTeamType = null;
-            if (TryReadByteAt(reader, team, layout.TeamTypeOffset, out var tt))
-            {
-                discoveredTeamType = tt;
-            }
-
-            var teamType = discoveredTeamType ?? 0;
-
-            int? teamReputation = null;
-            if (TryReadUInt16At(reader, team, layout.TeamReputationOffset, out var reputation)
-                && reputation <= 12000)
-            {
-                teamReputation = reputation;
-            }
-
-            if (TryReadPointerAt(reader, team, layout.TeamManagerPtrOffset, out var managerAddress)
-                && humanManagerAddresses.Contains(managerAddress))
-            {
-                index.RecordHumanManager(
-                    managerAddress,
-                    new HumanManagerHit(
-                        clubName,
-                        TryReadPositiveUid(reader, club, layout.ObjectUidOffset),
-                        discoveredTeamType,
-                        teamReputation,
-                        team));
-            }
-
-            RecordDateVote(reader, layout, team, votes);
-            var division = CompetitionNameReader.TryRead(reader, team, layout);
-            WalkSquad(
-                reader,
-                layout,
-                team,
-                clubName,
-                teamType,
-                teamReputation,
-                division,
-                TryReadPositiveUid(reader, club, layout.ObjectUidOffset),
-                personToUid,
-                parentClubByUid,
-                index);
         }
+    }
+
+    private static void WalkTeam(
+        IMemoryReader reader,
+        IFmMemoryLayout layout,
+        ulong team,
+        SquadOwner owner,
+        IReadOnlyDictionary<ulong, uint> personToUid,
+        IReadOnlyDictionary<uint, string?> parentClubByUid,
+        IReadOnlySet<ulong> humanManagerAddresses,
+        Dictionary<uint, int> votes,
+        SquadClubIndex index)
+    {
+        int? discoveredTeamType = null;
+        if (TryReadByteAt(reader, team, layout.TeamTypeOffset, out var tt))
+        {
+            discoveredTeamType = tt;
+        }
+
+        var teamType = discoveredTeamType ?? 0;
+
+        int? teamReputation = null;
+        if (TryReadUInt16At(reader, team, layout.TeamReputationOffset, out var reputation)
+            && reputation <= 12000)
+        {
+            teamReputation = reputation;
+        }
+
+        if (!owner.ReserveClub
+            && TryReadPointerAt(reader, team, layout.TeamManagerPtrOffset, out var managerAddress)
+            && humanManagerAddresses.Contains(managerAddress))
+        {
+            index.RecordHumanManager(
+                managerAddress,
+                new HumanManagerHit(
+                    owner.ClubName,
+                    owner.ClubUid,
+                    discoveredTeamType,
+                    teamReputation,
+                    team));
+        }
+
+        RecordDateVote(reader, layout, team, votes);
+        var division = CompetitionNameReader.TryRead(reader, team, layout);
+        WalkSquad(
+            reader,
+            layout,
+            team,
+            owner,
+            teamType,
+            teamReputation,
+            division,
+            personToUid,
+            parentClubByUid,
+            index);
+    }
+
+    /// <summary>A begin/end pointer vector of non-null object pointers, or null when invalid.</summary>
+    private static List<ulong>? ReadPointerVector(
+        IMemoryReader reader,
+        ulong owner,
+        int beginOffset,
+        int endOffset,
+        int maxCount)
+    {
+        if (!TryReadPointerAt(reader, owner, beginOffset, out var begin)
+            || !TryReadPointerAt(reader, owner, endOffset, out var end)
+            || begin == 0
+            || end <= begin
+            || begin % sizeof(ulong) != 0
+            || end % sizeof(ulong) != 0)
+        {
+            return null;
+        }
+
+        var count = (end - begin) / sizeof(ulong);
+        if (count > (ulong)maxCount)
+        {
+            return null;
+        }
+
+        var entries = new List<ulong>((int)count);
+        for (ulong i = 0; i < count; i++)
+        {
+            if (TryReadVectorEntry(reader, begin, i, out var entry) && entry != 0)
+            {
+                entries.Add(entry);
+            }
+        }
+
+        return entries;
     }
 
     private static void WalkSquad(
         IMemoryReader reader,
         IFmMemoryLayout layout,
         ulong team,
-        string clubName,
+        SquadOwner owner,
         int teamType,
         int? teamReputation,
         string? division,
-        uint? clubUid,
         IReadOnlyDictionary<ulong, uint> personToUid,
         IReadOnlyDictionary<uint, string?> parentClubByUid,
         SquadClubIndex index)
@@ -274,7 +361,13 @@ public sealed class SquadClubIndex
             }
 
             parentClubByUid.TryGetValue(uid, out var parent);
-            var candidate = new SquadHit(clubName, teamType, division, teamReputation, clubUid);
+            var candidate = new SquadHit(
+                owner.ClubName,
+                teamType,
+                division,
+                teamReputation,
+                owner.ClubUid,
+                owner.ReserveClub);
             if (!index._assignments.TryGetValue(uid, out var cur))
             {
                 index._assignments[uid] = ToAssignment(candidate);
@@ -286,7 +379,8 @@ public sealed class SquadClubIndex
                 cur.TeamType,
                 cur.Division,
                 cur.TeamReputation,
-                cur.ClubUid);
+                cur.ClubUid,
+                cur.ReserveClub);
             var chosen = SquadPick.Choose(currentHit, candidate, parent);
             if (currentHit.ClubName != candidate.ClubName
                 && index.MultiClubUids.Add(uid)
@@ -310,6 +404,7 @@ public sealed class SquadClubIndex
             TeamType = hit.TeamType,
             TeamReputation = hit.TeamReputation,
             Division = hit.Division,
+            ReserveClub = hit.ReserveClub,
         };
 
     private void RecordHumanManager(ulong personAddress, HumanManagerHit candidate)
@@ -478,6 +573,9 @@ public sealed class SquadClubIndex
         result = value * multiplier;
         return true;
     }
+
+    /// <summary>The club a team's squad counts for; a B club's squad counts for its parent.</summary>
+    private readonly record struct SquadOwner(string ClubName, uint? ClubUid, bool ReserveClub);
 
     private readonly record struct HumanManagerHit(
         string ClubName,

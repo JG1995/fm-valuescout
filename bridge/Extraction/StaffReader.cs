@@ -42,6 +42,8 @@ public static class StaffReader
             Club = clubLink?.ClubName,
             ClubUid = clubLink?.ClubUid,
             Division = clubLink?.Division,
+            TeamType = clubLink?.TeamType,
+            TeamLevel = clubLink?.TeamType is { } teamType ? TeamLevelMap.FromTeamType(teamType) : null,
         };
     }
 

@@ -146,6 +146,12 @@ public sealed class DumpStaff
     public uint? ClubUid { get; init; }
 
     public string? Division { get; init; }
+
+    /// <summary>Raw FM team type of the team the contract names; null when unread.</summary>
+    public int? TeamType { get; init; }
+
+    /// <summary>senior, reserve, or youth; null when the team type is unread.</summary>
+    public string? TeamLevel { get; init; }
 }
 
 public sealed class DumpManager

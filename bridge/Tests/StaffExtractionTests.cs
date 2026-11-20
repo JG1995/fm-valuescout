@@ -269,6 +269,9 @@ public sealed class StaffExtractionTests
             Assert.Equal("First Manager", result.Staff.Single(record => record.Uid == 300).Name);
             Assert.Equal("First FC", result.Staff.Single(record => record.Uid == 300).Club);
             Assert.Equal(36, result.Staff.Single(record => record.Uid == 300).Age);
+            Assert.Equal("senior", result.Staff.Single(record => record.Uid == 300).TeamLevel);
+            Assert.Equal(3, result.Staff.Single(record => record.Uid == 201).TeamType);
+            Assert.Equal("reserve", result.Staff.Single(record => record.Uid == 201).TeamLevel);
             Assert.DoesNotContain(typeof(StaffRecord).GetProperties(), property => property.Name.Contains("Address", StringComparison.Ordinal));
             Assert.DoesNotContain(typeof(HumanManager).GetProperties(), property => property.Name.Contains("Address", StringComparison.Ordinal));
 
@@ -283,6 +286,9 @@ public sealed class StaffExtractionTests
             Assert.Equal(24, serializedAttributes.EnumerateObject().Count());
             Assert.Equal(19, serializedAttributes.GetProperty("Authority").GetInt32());
             Assert.Equal(20, serializedAttributes.GetProperty("Adaptability").GetInt32());
+            var reserveManager = dump.RootElement.GetProperty("staff")[1];
+            Assert.Equal(3, reserveManager.GetProperty("teamType").GetInt32());
+            Assert.Equal("reserve", reserveManager.GetProperty("teamLevel").GetString());
             Assert.Equal("First Manager", dump.RootElement.GetProperty("manager").GetProperty("name").GetString());
             Assert.Equal("First FC", dump.RootElement.GetProperty("manager").GetProperty("club").GetString());
             Assert.Equal(7100, dump.RootElement.GetProperty("manager").GetProperty("clubReputation").GetInt32());
