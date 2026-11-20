@@ -56,9 +56,6 @@ internal interface ISquadMoveDispatcher
 /// </summary>
 internal sealed class SquadMoveOperationService
 {
-    /// <summary>FM's database index fills 24 bits; an action's top byte carries the table.</summary>
-    private const int MaxDatabaseIndex = (1 << 24) - 1;
-
     private static readonly TimeSpan DefaultConfirmTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DefaultPollInterval = TimeSpan.FromMilliseconds(100);
 
@@ -119,18 +116,18 @@ internal sealed class SquadMoveOperationService
         if (!_index.TryGetClub(source, clubUid, out var club)
             || !reader.TryReadUInt32(club + (ulong)layout.ObjectUidOffset, out var liveClubUid)
             || liveClubUid != clubUid
-            || !TryReadDatabaseIndex(reader, club, layout, out var clubIndex))
+            || !ClubTeams.TryReadDatabaseIndex(reader, club, layout, out var clubIndex))
         {
             return Failed(SquadMoveFailure.ClubNotFound);
         }
 
-        var teams = ReadClubTeams(reader, layout, club);
+        var teams = ClubTeams.Read(reader, layout, club);
         if (teams.Count == 0)
         {
             return Failed(SquadMoveFailure.ClubNotFound);
         }
 
-        if (!TryReadHumanManagerIndex(reader, layout, teams, out var managerIndex, out var managerDetail))
+        if (!ClubTeams.TryReadHumanManagerIndex(reader, layout, teams, out var managerIndex, out var managerDetail))
         {
             return new SquadMoveExecutionResult(false, SquadMoveFailure.ManagerNotFound, null, managerDetail);
         }
@@ -146,7 +143,7 @@ internal sealed class SquadMoveOperationService
                     indexed.Candidate.ObjectAddress + (ulong)layout.ObjectUidOffset,
                     out var liveUid)
                 || liveUid != move.PlayerUid
-                || !TryReadDatabaseIndex(reader, indexed.Candidate.ObjectAddress, layout, out var personIndex))
+                || !ClubTeams.TryReadDatabaseIndex(reader, indexed.Candidate.ObjectAddress, layout, out var personIndex))
             {
                 outcomes[slot] = Outcome(SquadMoveOutcome.NotFound, null);
                 continue;
@@ -166,7 +163,7 @@ internal sealed class SquadMoveOperationService
                 continue;
             }
 
-            var target = TargetTeam(teams, move.TargetLevel);
+            var target = ClubTeams.AtLevel(teams, move.TargetLevel);
             if (target is null)
             {
                 outcomes[slot] = Outcome(SquadMoveOutcome.NoTargetTeam, current.Type);
@@ -202,7 +199,7 @@ internal sealed class SquadMoveOperationService
         var clock = Stopwatch.StartNew();
         while (true)
         {
-            var teams = ReadClubTeams(reader, layout, club);
+            var teams = ClubTeams.Read(reader, layout, club);
             waiting.RemoveAll(move =>
             {
                 // He counts where the dump would put him: his highest-ranked team.
@@ -229,113 +226,11 @@ internal sealed class SquadMoveOperationService
         }
     }
 
-    /// <summary>
-    /// The human manager manages the club's first team, and FM's action names him as the one acting.
-    /// The team's manager pointer may name any part of his object: the vtable's type information
-    /// says how far that part sits from the object's start, and his person record sits at one of the
-    /// layout's person offsets, which its own type information confirms.
-    /// </summary>
-    private static bool TryReadHumanManagerIndex(
-        IMemoryReader reader,
-        IFmMemoryLayout layout,
-        IReadOnlyList<ClubTeam> teams,
-        out int managerIndex,
-        out string detail)
-    {
-        managerIndex = 0;
-        var firstTeam = teams.FirstOrDefault(team => team.Type == 0);
-        if (firstTeam is null
-            || !reader.TryReadUInt64(firstTeam.Address + (ulong)layout.TeamManagerPtrOffset, out var pointer)
-            || pointer == 0)
-        {
-            detail = "the first team has no manager pointer";
-            return false;
-        }
-
-        var start = pointer;
-        var pointerOffset = 0;
-        if (reader.TryReadUInt64(pointer, out var vtable)
-            && PersonScanner.TryResolveDynamicOffset(reader, vtable, out pointerOffset)
-            && pointerOffset > 0
-            && (ulong)pointerOffset <= pointer)
-        {
-            start = pointer - (ulong)pointerOffset;
-        }
-
-        foreach (var recordOffset in layout.HumanManagerClassOffsets
-                     .Concat(layout.StaffClassOffsets)
-                     .Concat(layout.PlayerClassOffsets))
-        {
-            var record = start + (ulong)recordOffset;
-            if (reader.TryReadUInt64(record, out var recordVtable)
-                && PersonScanner.TryResolveDynamicOffset(reader, recordVtable, out var recordClassOffset)
-                && recordClassOffset == recordOffset
-                && reader.TryReadUInt32(record + (ulong)layout.ObjectUidOffset, out var uid)
-                && PersonScanner.IsValidUid(uid)
-                && TryReadDatabaseIndex(reader, record, layout, out managerIndex))
-            {
-                detail = "";
-                return true;
-            }
-        }
-
-        detail = $"no person record behind the manager pointer (pointer sub-object offset 0x{pointerOffset:X})";
-        return false;
-    }
-
-    private static bool TryReadDatabaseIndex(IMemoryReader reader, ulong address, IFmMemoryLayout layout, out int index)
-    {
-        index = 0;
-        if (!reader.TryReadUInt32(address + (ulong)layout.ObjectDatabaseIndexOffset, out var raw)
-            || raw > MaxDatabaseIndex)
-        {
-            return false;
-        }
-
-        index = (int)raw;
-        return true;
-    }
-
-    private static List<ClubTeam> ReadClubTeams(IMemoryReader reader, IFmMemoryLayout layout, ulong club)
-    {
-        var teams = new List<ClubTeam>();
-        foreach (var team in SquadClubIndex.ReadPointerVector(
-                     reader,
-                     club,
-                     layout.ClubTeamsBeginOffset,
-                     layout.ClubTeamsEndOffset,
-                     SquadClubIndex.MaxTeamsPerClub) ?? new List<ulong>())
-        {
-            if (!reader.TryReadByte(team + (ulong)layout.TeamTypeOffset, out var type))
-            {
-                continue;
-            }
-
-            var squad = SquadClubIndex.ReadPointerVector(
-                reader,
-                team,
-                layout.TeamSquadBeginOffset,
-                layout.TeamSquadEndOffset,
-                SquadClubIndex.MaxPlayersPerSquad) ?? new List<ulong>();
-            teams.Add(new ClubTeam(team, type, squad.ToHashSet()));
-        }
-
-        return teams;
-    }
-
     /// <summary>The team a player counts for: the highest-ranked of the club's teams that list him.</summary>
     private static ClubTeam? TeamOf(IReadOnlyList<ClubTeam> teams, PersonCandidate player) =>
         teams
             .Where(team => team.Contains(player))
             .OrderBy(team => TeamLevelMap.Rank(team.Type))
-            .ThenBy(team => team.Type)
-            .FirstOrDefault();
-
-    /// <summary>The club's team at a level; with two, the one with more players, then the lower type.</summary>
-    private static ClubTeam? TargetTeam(IReadOnlyList<ClubTeam> teams, string level) =>
-        teams
-            .Where(team => TeamLevelMap.FromTeamType(team.Type) == level)
-            .OrderByDescending(team => team.Squad.Count)
             .ThenBy(team => team.Type)
             .FirstOrDefault();
 
@@ -349,13 +244,6 @@ internal sealed class SquadMoveOperationService
 
     private static SquadMoveExecutionResult Failed(SquadMoveFailure failure) =>
         new(false, failure, null);
-
-    private sealed record ClubTeam(ulong Address, int Type, HashSet<ulong> Squad)
-    {
-        // FM27 squad lists hold the player block; accept the object address too.
-        public bool Contains(PersonCandidate player) =>
-            Squad.Contains(player.BlockAddress) || Squad.Contains(player.ObjectAddress);
-    }
 
     private sealed record PendingMove(int Slot, PersonCandidate Player, int TargetType);
 }

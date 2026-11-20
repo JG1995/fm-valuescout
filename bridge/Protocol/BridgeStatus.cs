@@ -40,4 +40,10 @@ public sealed class BridgeStatus
 
     /// <summary>Per-move outcomes of the last squad-move request, when applicable.</summary>
     public SquadMoveResult? SquadMoves { get; init; }
+
+    /// <summary>Whether the live indexes and FM's own staff actions are all available.</summary>
+    public bool? StaffChangesSupported { get; init; }
+
+    /// <summary>Per-change outcomes of the last staff-change request, when applicable.</summary>
+    public StaffChangeResult? StaffChanges { get; init; }
 }

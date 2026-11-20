@@ -176,6 +176,14 @@ public sealed class BridgeStatusSerializationTests
                             new SquadMoveOutcome { Outcome = SquadMoveOutcome.Moved, TeamType = 10, TeamLevel = "reserve" },
                         },
                     },
+                    StaffChangesSupported = true,
+                    StaffChanges = new StaffChangeResult
+                    {
+                        Changes = new[]
+                        {
+                            new StaffChangeOutcome { Outcome = StaffChangeOutcome.Hired, ClubUid = 680, JobId = 2, WeeklyWageGbp = 6388 },
+                        },
+                    },
                     Error = "Could not create C:\\Users\\player\\AppData\\Local\\fm-valuescout\\fm-bridge\\dump.json",
                 });
 
@@ -188,6 +196,11 @@ public sealed class BridgeStatusSerializationTests
             Assert.True(status.SquadMovesSupported);
             var move = Assert.Single(status.SquadMoves!.Moves);
             Assert.Equal((SquadMoveOutcome.Moved, 10, "reserve"), (move.Outcome, move.TeamType, move.TeamLevel));
+            Assert.True(status.StaffChangesSupported);
+            var change = Assert.Single(status.StaffChanges!.Changes);
+            Assert.Equal(
+                (StaffChangeOutcome.Hired, 680u, 2, 6388L),
+                (change.Outcome, change.ClubUid, change.JobId, change.WeeklyWageGbp));
         }
         finally
         {
