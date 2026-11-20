@@ -210,7 +210,7 @@ internal sealed class TrainingOperationService
 /// <summary>
 /// Reads a player's training as FM's Individual Training screen receives it. Each property is a
 /// record whose selection sits under one key: an option with FM's ID (<c>ptvl</c>) and name
-/// (<c>qvJ6</c>). The in-possession option's ID is itself a record of position and role.
+/// (<c>qvJ6</c>). The in-possession option also holds its position (<c>Posi</c>) beside the role.
 /// </summary>
 internal static class TrainingParser
 {
@@ -228,11 +228,10 @@ internal static class TrainingParser
     public static (int? Position, ulong? Role, string? Name) InPossession(FmValue? value)
     {
         var option = (value as FmRecord)?.Get<FmRecord>(InPossessionKey);
-        var selection = option?.Get<FmRecord>(OptionValueKey);
         return (
-            Int(selection?.Get<FmNumber>(PositionKey)),
-            selection?.Get<FmNumber>(OptionValueKey)?.Value is { } role and >= 0 ? (ulong)role : null,
-            option?.Get<FmText>(OptionNameKey)?.Value ?? selection?.Get<FmText>(OptionNameKey)?.Value);
+            Int(option?.Get<FmNumber>(PositionKey)),
+            option?.Get<FmNumber>(OptionValueKey)?.Value is { } role and >= 0 ? (ulong)role : null,
+            option?.Get<FmText>(OptionNameKey)?.Value);
     }
 
     public static (int? Id, string? Name) Choice(FmValue? value, uint key)

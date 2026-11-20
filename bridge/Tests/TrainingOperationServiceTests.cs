@@ -242,15 +242,15 @@ public sealed class TrainingOperationServiceTests
             foreach (var action in actions)
             {
                 var oop = IgnoresOutOfPossession ? -28 : action.OopRole ?? -28;
+                // FM sends the held in-possession option flat, with its position beside the role.
                 read[(action.PersonIndex, TrainingParser.InPossessionProperty)] = Property(
                     TrainingParser.InPossessionKey,
-                    Option(
-                        new FmRecord(new Dictionary<uint, FmValue>
-                        {
-                            [TrainingParser.PositionKey] = new FmNumber(action.IpPosition ?? 16),
-                            [TrainingParser.OptionValueKey] = new FmNumber((long)(action.IpRole ?? 2)),
-                        }),
-                        $"Role {action.IpRole ?? 2}"));
+                    new FmRecord(new Dictionary<uint, FmValue>
+                    {
+                        [TrainingParser.PositionKey] = new FmNumber(action.IpPosition ?? 16),
+                        [TrainingParser.OptionValueKey] = new FmNumber((long)(action.IpRole ?? 2)),
+                        [TrainingParser.OptionNameKey] = new FmText($"Role {action.IpRole ?? 2}"),
+                    }));
                 read[(action.PersonIndex, TrainingParser.OutOfPossessionProperty)] =
                     Property(TrainingParser.OutOfPossessionKey, Option(new FmNumber(oop), $"OOP {oop}"));
                 read[(action.PersonIndex, TrainingParser.FocusProperty)] =
