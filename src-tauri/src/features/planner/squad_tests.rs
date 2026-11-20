@@ -7,8 +7,8 @@ use super::squad::{
 };
 use super::test_support::{
     add_picker_candidates, clear_current_scores_except, current_snapshot_id,
-    forget_managed_club_uid, move_to_namesake_club, open_with_snapshot, set_player_age,
-    set_player_attributes, set_player_positions, set_role_score,
+    forget_managed_club_uid, loan_in, loan_out, move_to_namesake_club, open_with_snapshot,
+    set_player_age, set_player_attributes, set_player_positions, set_role_score,
 };
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION, potential_scores::PROJECTION_MODEL_VERSION,
@@ -1716,4 +1716,46 @@ fn fallback_tie_keeps_the_earlier_tactic_lane() {
         .find(|player| player.uid == 77)
         .expect("unassigned player");
     assert_eq!(player.suggested_training.as_deref(), Some("GK Reactions"));
+}
+
+#[test]
+fn the_squad_marks_loaned_out_players_and_its_boost_cohort_leaves_them_out() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    loan_out(&conn, save_id, 78);
+    loan_in(&conn, save_id, 79);
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+
+    let page = list_squad_players(
+        &conn,
+        save_id,
+        0,
+        DEFAULT_SQUAD_PAGE_LIMIT,
+        SquadSortField::DEFAULT,
+        SquadSortDir::DEFAULT,
+        &[],
+    )
+    .expect("list squad");
+    let mut rows = page
+        .players
+        .iter()
+        .map(|player| (player.uid, player.loaned_out, player.club.clone()))
+        .collect::<Vec<_>>();
+    rows.sort();
+
+    let club = |name: &str| Some(name.to_string());
+    assert_eq!(page.total, 4);
+    assert_eq!(
+        rows,
+        [
+            (77, false, club("Loan FC")),
+            (78, true, club("Borrower FC")),
+            (79, false, club("Loan FC")),
+            (80, false, club("Loan FC")),
+        ]
+    );
+    assert_eq!(
+        list_squad_player_uids(&conn, save_id, snapshot_id).expect("list boost cohort"),
+        [77, 79, 80]
+    );
 }

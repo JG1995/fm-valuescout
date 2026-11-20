@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 use std::collections::HashSet;
 use std::io::{BufReader, Read};
 
-pub const DUMP_SCHEMA_VERSION: i64 = 9;
+pub const DUMP_SCHEMA_VERSION: i64 = 10;
 pub const DUMP_PROTOCOL_VERSION: i64 = 1;
 
 const POSITION_KEYS: &[&str] = &[
@@ -89,6 +89,8 @@ const REQUIRED_STAFF_NULLABLE_KEYS: &[&str] = &[
     "club",
     "clubUid",
     "division",
+    "teamType",
+    "teamLevel",
 ];
 
 const STAFF_ATTRIBUTE_KEYS: &[&str] = &[
@@ -836,6 +838,8 @@ fn validate_staff_object(staff: &Value, index: usize) -> Result<u64, DumpValidat
     require_nullable_string_at(object, &format!("staff[{index}].club"), "club")?;
     require_nullable_positive_u64_at(object, &format!("staff[{index}].clubUid"), "clubUid")?;
     require_nullable_string_at(object, &format!("staff[{index}].division"), "division")?;
+    require_nullable_i64_at(object, &format!("staff[{index}].teamType"), "teamType")?;
+    require_nullable_string_at(object, &format!("staff[{index}].teamLevel"), "teamLevel")?;
 
     Ok(uid)
 }
@@ -1370,27 +1374,28 @@ fn require_object_at(
 mod tests {
     use super::*;
 
-    const GOLDEN_FIXTURE: &str = include_str!("fixtures/golden_dump_v9.json");
+    const GOLDEN_FIXTURE: &str = include_str!("fixtures/golden_dump_v10.json");
+    const STALE_V9_FIXTURE: &str = include_str!("fixtures/golden_dump_v9.json");
     const STALE_V8_FIXTURE: &str = include_str!("fixtures/golden_dump_v8.json");
     const STALE_V7_FIXTURE: &str = include_str!("fixtures/golden_dump_v7.json");
     const STALE_V6_FIXTURE: &str = include_str!("fixtures/golden_dump_v6.json");
     const STALE_V5_FIXTURE: &str = include_str!("fixtures/golden_dump_v5.json");
 
     fn fixture_with_positions(positions: Value) -> String {
-        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v10 fixture");
         root["players"][0]["positions"] = positions;
         root.to_string()
     }
 
     #[test]
     fn golden_fixture_passes_ingestibility_validation() {
-        validate_dump_json(GOLDEN_FIXTURE).expect("golden dump v9 should be ingestible");
+        validate_dump_json(GOLDEN_FIXTURE).expect("golden dump v10 should be ingestible");
     }
 
     #[test]
     fn rejects_malformed_documents_with_whole_document_messages() {
         let with_field = |field: &str, value: Value| {
-            let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
+            let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v10 fixture");
             root[field] = value;
             root.to_string()
         };
@@ -1419,7 +1424,7 @@ mod tests {
             ),
             (
                 &trailing,
-                "dump is not valid JSON: trailing characters at line 135 column 1",
+                "dump is not valid JSON: trailing characters at line 137 column 1",
             ),
         ];
         for (json, expected) in cases {
@@ -1447,7 +1452,7 @@ mod tests {
 
     #[test]
     fn accepts_nullable_club_uids_and_rejects_non_positive_values() {
-        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v10 fixture");
         root["players"][0]["currentClubUid"] = Value::Null;
         root["players"][0]["parentClubUid"] = Value::Null;
         root["staff"][0]["clubUid"] = Value::Null;
@@ -1469,6 +1474,25 @@ mod tests {
     }
 
     #[test]
+    fn rejects_stale_schema_v9_with_plugin_update_and_rescan_instruction() {
+        // The v9 staff records lack their team, so the version must be checked first.
+        let stale: Value = serde_json::from_str(STALE_V9_FIXTURE).expect("parse v9 fixture");
+        assert!(validate_staff_object(&stale["staff"][0], 0).is_err());
+
+        let error = validate_dump_json(STALE_V9_FIXTURE).expect_err("stale schema v9");
+        assert!(error
+            .to_string()
+            .contains("update the FM bridge plugin and rescan"));
+        assert!(matches!(
+            error,
+            DumpValidationError::UnsupportedSchemaVersion {
+                found: 9,
+                expected: 10
+            }
+        ));
+    }
+
+    #[test]
     fn rejects_stale_schema_v8_with_plugin_update_and_rescan_instruction() {
         // The v8 records fail today's record rules, so the version must be checked first.
         let stale: Value = serde_json::from_str(STALE_V8_FIXTURE).expect("parse v8 fixture");
@@ -1482,7 +1506,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 8,
-                expected: 9
+                expected: 10
             }
         ));
     }
@@ -1498,7 +1522,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 7,
-                expected: 9
+                expected: 10
             }
         ));
     }
@@ -1514,7 +1538,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 6,
-                expected: 9
+                expected: 10
             }
         ));
     }
@@ -1530,14 +1554,14 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 5,
-                expected: 9
+                expected: 10
             }
         ));
     }
 
     #[test]
     fn validates_a_dump_whose_header_follows_its_records() {
-        let golden: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
+        let golden: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v10 fixture");
         let header_last = |root: &Value| {
             let fields = root.as_object().expect("fixture object");
             let header = fields
@@ -1560,7 +1584,7 @@ mod tests {
             validate_dump_json(&header_last(&stale)).expect_err("stale schema after records"),
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 8,
-                expected: 9
+                expected: 10
             }
         ));
 
@@ -1577,7 +1601,7 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_schema_version() {
-        let json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 9", "\"schemaVersion\": 4");
+        let json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 10", "\"schemaVersion\": 4");
 
         let error = validate_dump_json(&json).expect_err("schema v4");
 
@@ -1585,7 +1609,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 4,
-                expected: 9
+                expected: 10
             }
         ));
     }
@@ -1673,7 +1697,7 @@ mod tests {
 
     #[test]
     fn rejects_missing_scan_truncated() {
-        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v10 fixture");
         root.as_object_mut()
             .expect("fixture object")
             .remove("scanTruncated");
@@ -1688,7 +1712,7 @@ mod tests {
     #[test]
     fn rejects_empty_players_without_empty_save_marker() {
         let json = r#"{
-  "schemaVersion": 9,
+  "schemaVersion": 10,
   "generatedAtUtc": "2026-07-29T10:00:00.000Z",
   "gameVersion": "26.3.2",
   "supportedGameVersion": "26.3",
@@ -1714,7 +1738,7 @@ mod tests {
     #[test]
     fn accepts_explicit_empty_save_marker() {
         let json = r#"{
-  "schemaVersion": 9,
+  "schemaVersion": 10,
   "generatedAtUtc": "2026-07-29T10:00:00.000Z",
   "gameVersion": "26.3.2",
   "supportedGameVersion": "26.3",
@@ -1765,7 +1789,7 @@ mod tests {
 
     #[test]
     fn rejects_player_missing_reputation_object() {
-        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v9 fixture");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v10 fixture");
         root["players"][0]
             .as_object_mut()
             .expect("player object")

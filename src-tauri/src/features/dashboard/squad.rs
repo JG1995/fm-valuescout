@@ -6,7 +6,9 @@ use std::collections::{BTreeMap, HashSet};
 
 use rusqlite::{params, Connection};
 
-use crate::features::managed_club::service::managed_club_player_sql;
+use crate::features::managed_club::service::{
+    managed_club_loaned_out_player_sql, managed_club_player_sql,
+};
 use crate::features::planner::fit::tactic_adjusted_score;
 use crate::features::planner::optimizer::{allocate_lanes, OptimizerCandidate};
 use crate::features::planner::tactic::{read_tactic, TacticLane};
@@ -34,6 +36,8 @@ pub(crate) struct ExpiringContract {
     pub(crate) expiry_date: String,
     /// Days from the snapshot's in-game date to the expiry, when that date is known.
     pub(crate) days_remaining: Option<i64>,
+    /// The managed club has loaned the player out.
+    pub(crate) loaned_out: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,8 +49,9 @@ pub(crate) struct ExpiringContracts {
     pub(crate) players: Vec<ExpiringContract>,
 }
 
-/// The managed club's own players by contract expiry, soonest first. Players on loan at the
-/// club are left out, because their contracts belong to their parent clubs.
+/// The managed club's own players by contract expiry, soonest first, including the players it
+/// has loaned out. Players on loan at the club are left out, because their contracts belong to
+/// their parent clubs.
 pub(crate) fn get_expiring_contracts(
     conn: &Connection,
     save_id: i64,
@@ -64,6 +69,7 @@ pub(crate) fn get_expiring_contracts(
         )
         .map_err(|error| error.to_string())?;
     let at_managed_club = managed_club_player_sql("p", "?2");
+    let loaned_out = managed_club_loaned_out_player_sql("p", "?2");
     let mut players = conn
         .prepare(&format!(
             "WITH contracts AS (
@@ -71,16 +77,16 @@ pub(crate) fn get_expiring_contracts(
                         date(
                             printf('%04d-01-01', p.contract_expiry_year),
                             printf('+%d days', p.contract_expiry_day_of_year - 1)
-                        ) AS expiry_date
+                        ) AS expiry_date,
+                        {loaned_out} IS 1 AS loaned_out
                  FROM players p
                  WHERE p.snapshot_id = ?1
-                   AND {at_managed_club}
-                   AND p.on_loan IS NOT 1
+                   AND (({at_managed_club} AND p.on_loan IS NOT 1) OR {loaned_out})
                    AND p.contract_expiry_year IS NOT NULL
                    AND p.contract_expiry_day_of_year IS NOT NULL
              )
              SELECT uid, name, age, ca, market_value_gbp, weekly_wage_gbp, expiry_date,
-                    CAST(julianday(expiry_date) - julianday(?3) AS INTEGER)
+                    CAST(julianday(expiry_date) - julianday(?3) AS INTEGER), loaned_out
              FROM contracts
              WHERE expiry_date IS NOT NULL
                AND (?3 IS NULL OR expiry_date <= date(?3, '+{CONTRACT_WINDOW_MONTHS} months'))
@@ -97,6 +103,7 @@ pub(crate) fn get_expiring_contracts(
                 weekly_wage_gbp: row.get(5)?,
                 expiry_date: row.get(6)?,
                 days_remaining: row.get(7)?,
+                loaned_out: row.get(8)?,
             })
         })
         .map_err(|error| error.to_string())?

@@ -844,7 +844,7 @@ mod tests {
     use crate::db::{migrations, Db};
     use crate::features::memory_read::service::DumpRequestResult;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v9.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v10.json");
 
     fn migrated_db(path: &std::path::Path) -> Db {
         let conn = Connection::open(path).expect("open db");

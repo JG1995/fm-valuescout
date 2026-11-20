@@ -22,6 +22,8 @@ fn lists_the_clubs_own_contracts_that_end_within_a_year_soonest_first() {
     set_contract_end(&fixture, 3, 2028, 182);
     set_contract_end(&fixture, 4, 2026, 365);
     fixture.set_player_column(4, "on_loan", 1);
+    fixture.set_player_column(4, "parent_club", OTHER_CLUB);
+    fixture.set_player_column(4, "parent_club_uid", 2000);
     set_contract_end(&fixture, 5, 2026, 365);
     fixture.set_player_column(6, "contract_expiry_year", None::<i64>);
 
@@ -60,6 +62,32 @@ fn lists_the_clubs_own_contracts_that_end_within_a_year_soonest_first() {
             .map(|player| (player.uid, player.days_remaining))
             .collect::<Vec<_>>(),
         [(2, None), (1, None), (3, None)]
+    );
+}
+
+#[test]
+fn contracts_include_the_players_the_club_has_loaned_out_and_mark_them() {
+    let fixture = open_with_players(&[
+        player(1, "At Home", HOME_CLUB, "GK"),
+        player(2, "Out On Loan", OTHER_CLUB, "GK"),
+    ]);
+    set_contract_end(&fixture, 1, 2026, 365);
+    set_contract_end(&fixture, 2, 2027, 100);
+    fixture.set_player_column(2, "parent_club", HOME_CLUB);
+    fixture.set_player_column(2, "parent_club_uid", 1000);
+    fixture.set_player_column(2, "on_loan", 1);
+
+    let contracts = get_expiring_contracts(&fixture.conn, fixture.save_id)
+        .expect("read contracts")
+        .expect("contracts for a managed club");
+
+    assert_eq!(
+        contracts
+            .players
+            .iter()
+            .map(|player| (player.uid, player.loaned_out))
+            .collect::<Vec<_>>(),
+        [(1, false), (2, true)]
     );
 }
 

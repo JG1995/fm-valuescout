@@ -534,6 +534,8 @@ pub(super) struct ClubPlayer {
     pub(super) development: Development,
     /// Each tactic lane's current and potential fit scores, where the player suits the lane.
     pub(super) lane_scores: Vec<Option<(u8, u8)>>,
+    /// On loan at the managed club from his parent club.
+    pub(super) loaned_in: bool,
 }
 
 impl ClubPlayer {
@@ -640,7 +642,7 @@ pub(super) fn load_club_players(
         .map(|column| format!(", {PLAYER_METRICS_ALIAS}.{column}"))
         .collect::<String>();
     let sql = format!(
-        "SELECT p.uid, p.name, p.preferred_foot, p.positions_json, {}{metric_select}
+        "SELECT p.uid, p.name, p.preferred_foot, p.positions_json, {}{metric_select}, p.on_loan IS 1
          FROM players p{}
          WHERE p.snapshot_id = ?1 AND {}
          ORDER BY p.uid",
@@ -661,6 +663,7 @@ pub(super) fn load_club_players(
                 row.get::<_, String>(3)?,
                 Development::from_row(row, DEVELOPMENT_COLUMN)?,
                 scores,
+                row.get::<_, bool>(SCORE_COLUMN + metric_columns.len())?,
             ))
         })
         .map_err(|error| error.to_string())?
@@ -670,7 +673,7 @@ pub(super) fn load_club_players(
     players
         .into_iter()
         .map(
-            |(uid, name, preferred_foot, positions_json, development, scores)| {
+            |(uid, name, preferred_foot, positions_json, development, scores, loaned_in)| {
                 let positions =
                     serde_json::from_str::<BTreeMap<String, Option<i64>>>(&positions_json)
                         .map_err(|error| error.to_string())?;
@@ -697,6 +700,7 @@ pub(super) fn load_club_players(
                     name,
                     development,
                     lane_scores,
+                    loaned_in,
                 })
             },
         )

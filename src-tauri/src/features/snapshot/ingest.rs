@@ -133,6 +133,8 @@ pub(crate) struct RawPreparedStaff {
     pub(crate) club: Option<String>,
     pub(crate) club_uid: Option<i64>,
     pub(crate) division: Option<String>,
+    pub(crate) team_type: Option<i64>,
+    pub(crate) team_level: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -391,6 +393,8 @@ fn raw_staff(staff_record: &serde_json::Map<String, Value>) -> Result<RawPrepare
     let club = optional_string(staff_record.get("club"))?;
     let club_uid = optional_positive_i64(staff_record.get("clubUid"))?;
     let division = optional_string(staff_record.get("division"))?;
+    let team_type = optional_i64(staff_record.get("teamType"))?;
+    let team_level = optional_string(staff_record.get("teamLevel"))?;
     Ok(RawPreparedStaff {
         uid,
         name,
@@ -410,6 +414,8 @@ fn raw_staff(staff_record: &serde_json::Map<String, Value>) -> Result<RawPrepare
         club,
         club_uid,
         division,
+        team_type,
+        team_level,
     })
 }
 
@@ -861,10 +867,12 @@ fn insert_prepared_staff_raw(
                 contract_expiry_day_of_year,
                 club,
                 club_uid,
-                division
+                division,
+                team_type,
+                team_level
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
-                ?17, ?18, ?19
+                ?17, ?18, ?19, ?20, ?21
             )",
         )
         .map_err(|error| error.to_string())?;
@@ -889,6 +897,8 @@ fn insert_prepared_staff_raw(
             s.club,
             s.club_uid,
             s.division,
+            s.team_type,
+            s.team_level,
         ])
         .map_err(|error| error.to_string())?;
     }
@@ -1077,7 +1087,7 @@ mod tests {
     use rusqlite::OptionalExtension;
     use std::path::Path;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v9.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v10.json");
 
     fn open_migrated(db_path: &Path) -> Connection {
         let conn = Connection::open(db_path).expect("open test db");
@@ -1913,7 +1923,7 @@ mod tests {
         let prior_count = role_score_count_for_snapshot(&conn, first.id);
         assert!(prior_count > 0);
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 9", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 10", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let _ = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -1950,7 +1960,7 @@ mod tests {
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
 
         assert_eq!(snapshot.save_id, active_save.id);
-        assert_eq!(snapshot.schema_version, 9);
+        assert_eq!(snapshot.schema_version, 10);
         assert_eq!(snapshot.generated_at_utc, "2026-08-08T10:00:00.000Z");
         assert_eq!(snapshot.game_version, "26.3.2.2329565");
         assert_eq!(snapshot.supported_game_version, "26.3");
@@ -2663,7 +2673,7 @@ mod tests {
         let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
         let first = ingest_dump_file(&mut conn, &good_path).expect("first ingest");
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 9", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 10", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let error = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -2789,7 +2799,7 @@ mod tests {
         write!(
             file,
             concat!(
-                r#"{{"schemaVersion":9,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
+                r#"{{"schemaVersion":10,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
                 r#""gameVersion":"26.3.2","supportedGameVersion":"26.3","bridgeVersion":"0.1.0","#,
                 r#""protocolVersion":1,"gameDate":null,"gameDateSource":"unknown","gameDateBasis":"unknown","#,
                 r#""playerDatabaseScope":"men","#,
@@ -3095,7 +3105,7 @@ mod tests {
         assert_eq!(compact_row_count(&conn, earlier.stored_snapshot.id), 0);
         assert_eq!(compact_row_count(&conn, later.stored_snapshot.id), 1);
         // Prepare errors must not have written.
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 9", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 10", "\"schemaVersion\": 4");
         assert!(prepare_dump_json(&bad_json).is_err());
         assert_eq!(snapshot_count(&conn, save_context.id), 2);
     }

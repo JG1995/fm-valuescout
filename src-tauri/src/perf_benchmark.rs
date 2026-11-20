@@ -173,13 +173,13 @@ impl Rng {
     }
 }
 
-/// Streams one schema-v9 dump record by record, so no dump is ever held in memory.
+/// Streams one schema-v10 dump record by record, so no dump is ever held in memory.
 fn write_dump(path: &Path, scale: Scale, game_date: &str, seed: u64) -> std::io::Result<()> {
     let mut out = BufWriter::with_capacity(1 << 20, std::fs::File::create(path)?);
     let mut rng = Rng(seed);
     write!(
         out,
-        r#"{{"schemaVersion":9,"generatedAtUtc":"{game_date}T10:00:00.000Z","gameVersion":"26.3.2.2329565","supportedGameVersion":"26.3","bridgeVersion":"0.1.0","protocolVersion":1,"gameDate":"{game_date}","gameDateSource":"derived","gameDateBasis":"next-fixture-consensus","playerDatabaseScope":"men","scanTruncated":false,"maxAccepted":null,"playerCount":{},"staffCount":{},"manager":null,"players":["#,
+        r#"{{"schemaVersion":10,"generatedAtUtc":"{game_date}T10:00:00.000Z","gameVersion":"26.3.2.2329565","supportedGameVersion":"26.3","bridgeVersion":"0.1.0","protocolVersion":1,"gameDate":"{game_date}","gameDateSource":"derived","gameDateBasis":"next-fixture-consensus","playerDatabaseScope":"men","scanTruncated":false,"maxAccepted":null,"playerCount":{},"staffCount":{},"manager":null,"players":["#,
         scale.players, scale.staff
     )?;
     for index in 0..scale.players {
@@ -269,7 +269,7 @@ fn write_staff(out: &mut impl Write, rng: &mut Rng, uid: i64) -> std::io::Result
     }
     write!(
         out,
-        r#"}},"jobId":16,"weeklyWageGbp":null,"contractExpiryYear":null,"contractExpiryDayOfYear":null,"club":"Club {club}","division":"Division {}","clubUid":{club}}}"#,
+        r#"}},"jobId":16,"weeklyWageGbp":null,"contractExpiryYear":null,"contractExpiryDayOfYear":null,"club":"Club {club}","division":"Division {}","clubUid":{club},"teamType":0,"teamLevel":"senior"}}"#,
         club % 300,
     )
 }

@@ -52,6 +52,31 @@ pub(crate) fn managed_club_player_sql(alias: &str, save_param: &str) -> String {
     )
 }
 
+/// SQL that is true for a `players` row aliased `alias` that the managed club has loaned out: on
+/// loan, with the managed club as the parent club. `on_loan = 1` matches the partial
+/// `idx_players_snapshot_loaned_parent_club` index.
+pub(crate) fn managed_club_loaned_out_player_sql(alias: &str, save_param: &str) -> String {
+    format!(
+        "({alias}.on_loan = 1 AND {})",
+        managed_club_sql(
+            &format!("{alias}.parent_club"),
+            &format!("{alias}.parent_club_uid"),
+            save_param,
+        )
+    )
+}
+
+/// The managed club's own players: everyone at the club, including players loaned in, plus the
+/// players it has loaned out. Squad, Youth, and contract lists show these; Planner and anything
+/// built on its rankings use [`managed_club_player_sql`], which leaves loaned-out players out.
+pub(crate) fn managed_club_owned_player_sql(alias: &str, save_param: &str) -> String {
+    format!(
+        "({} OR {})",
+        managed_club_player_sql(alias, save_param),
+        managed_club_loaned_out_player_sql(alias, save_param)
+    )
+}
+
 pub fn get_managed_club(conn: &Connection, save_id: i64) -> Result<ManagedClubStatus, String> {
     let selected = selected_club_identity(conn, save_id)?;
     let Some((club_name, club_uid)) = selected else {

@@ -4,7 +4,9 @@ use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExten
 
 use super::{fit::tactic_adjusted_score, suggested_training, tactic};
 
-use crate::features::managed_club::service::managed_club_player_sql;
+use crate::features::managed_club::service::{
+    managed_club_owned_player_sql, managed_club_player_sql,
+};
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
     compact::{
@@ -133,6 +135,8 @@ pub struct SquadPlayer {
     pub market_value_gbp: Option<i64>,
     pub suggested_training: Option<String>,
     pub dynamic_values: BTreeMap<String, Option<DynamicValue>>,
+    /// The managed club has loaned the player out; the club and division are the borrower's.
+    pub loaned_out: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -261,7 +265,7 @@ pub fn list_squad_players(
 
     let membership_sql = format!(
         "p.snapshot_id = ?1 AND {}",
-        managed_club_player_sql("p", "?2")
+        managed_club_owned_player_sql("p", "?2")
     );
 
     let count_sql = format!("SELECT COUNT(*) FROM players p WHERE {membership_sql}");
@@ -312,12 +316,14 @@ pub fn list_squad_players(
              p.ca,
              p.pa,
              p.market_value_gbp,
-             p.attributes_json{}
+             p.attributes_json{},
+             ({}) IS NOT 1
          {from_sql}
          WHERE {membership_sql}
              {order_sql}
              LIMIT ?{} OFFSET ?{}",
         dynamic_select_sql(&dynamic_fields, club_dna_bindings),
+        managed_club_player_sql("p", "?2"),
         query_bind_values.len() + 1,
         query_bind_values.len() + 2
     );
@@ -346,6 +352,7 @@ pub fn list_squad_players(
         .iter()
         .filter(|(player, _)| {
             tactic.is_some()
+                && !player.loaned_out
                 && !assignments.contains_key(&player.uid)
                 && player.ca < player.pa
                 && suggested_training::category_for_age(player.age).is_some()
@@ -354,8 +361,9 @@ pub fn list_squad_players(
         .collect::<Vec<_>>();
     let fallback_inputs = load_fallback_inputs(conn, snapshot_id, tactic.as_ref(), &fallback_uids)?;
     for (mut player, attributes) in rows {
+        // A loaned-out player trains with the borrowing club.
         player.suggested_training = match (
-            player.ca < player.pa,
+            !player.loaned_out && player.ca < player.pa,
             suggested_training::category_for_age(player.age),
         ) {
             (true, Some(category)) => suggestion_for_player(
@@ -582,6 +590,7 @@ fn map_player(
             pa: row.get(10)?,
             market_value_gbp: row.get(11)?,
             suggested_training: None,
+            loaned_out: row.get(13 + dynamic_fields.len())?,
             dynamic_values,
         },
         attributes,

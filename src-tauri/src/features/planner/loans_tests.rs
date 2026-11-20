@@ -1,8 +1,8 @@
 use super::depth::{assign_player, get_depth, PlannerTeam};
 use super::loans::{loan_benefit, loan_candidates};
 use super::test_support::{
-    add_picker_candidates, open_with_snapshot, set_development, set_player_age, set_right_winger,
-    team_strings,
+    add_picker_candidates, loan_in, loan_out, open_with_snapshot, set_development, set_player_age,
+    set_right_winger, team_strings,
 };
 
 #[test]
@@ -85,4 +85,28 @@ fn loan_candidates_are_18_to_23_outside_the_senior_squad_with_most_to_gain_first
             (79, None, "right_winger", (60, 61), 4, false),
         ]
     );
+}
+
+#[test]
+fn players_on_loan_either_way_are_no_loan_candidates() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    for uid in [78, 79, 80] {
+        set_right_winger(&conn, save_id, uid, 60, 90);
+        set_development(&conn, save_id, uid, 19, [15, 15, 15]);
+    }
+    get_depth(&conn, save_id).expect("create planner depth");
+    let candidate_uids = |conn| {
+        loan_candidates(conn, save_id)
+            .expect("rank loan candidates")
+            .iter()
+            .map(|candidate| candidate.player_uid)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(candidate_uids(&conn), [78, 79, 80]);
+
+    loan_in(&conn, save_id, 78);
+    loan_out(&conn, save_id, 79);
+
+    assert_eq!(candidate_uids(&conn), [80]);
 }

@@ -412,7 +412,7 @@ pub(crate) fn open_with_golden_snapshot() -> (tempfile::TempDir, Db) {
     let dump = temp_dir.path().join("golden.json");
     std::fs::write(
         &dump,
-        include_str!("../features/memory_read/fixtures/golden_dump_v9.json"),
+        include_str!("../features/memory_read/fixtures/golden_dump_v10.json"),
     )
     .expect("write dump");
     crate::features::snapshot::ingest::ingest_dump_file(
