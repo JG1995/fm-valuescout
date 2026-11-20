@@ -16,6 +16,10 @@ use crate::features::snapshot::service::SaveContext;
 use super::assignment_optimizer::target_job_for_fm_job;
 use super::assignment_targets::{enabled_teams, is_team_job, target_max_slot_count, CLUB_SCOPE};
 
+/// FM's board counts every coach, general, goalkeeping or fitness, in one row of this job type,
+/// which no staff contract holds.
+const BOARD_COACHES_JOB: i32 = 104;
+
 /// What following FM's staff limits did during one Load Data. Only `Followed` changes needs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(
@@ -168,8 +172,8 @@ pub(crate) fn apply_staff_limits(
 }
 
 /// The needs FM's limits set, keyed by scope and target job, and the enabled Planner teams FM
-/// sent limits for. Rows of FM jobs that fill one target, such as Coaches, Fitness Coaches and
-/// Goalkeeping Coaches, add up. The first team's Manager is the user, so it sets no need.
+/// sent limits for. Rows of FM jobs that fill one target add up. The first team's Manager is the
+/// user, so it sets no need.
 fn needs_from_limits(
     limits: &StaffLimitsResult,
     enabled: &[&str],
@@ -185,7 +189,12 @@ fn needs_from_limits(
             read_scopes.push(scope);
         }
         for job in team.groups.iter().flat_map(|group| &group.jobs) {
-            let Some(target) = target_job_for_fm_job(i64::from(job.job_type)) else {
+            let target = if job.job_type == BOARD_COACHES_JOB {
+                Some("coaches")
+            } else {
+                target_job_for_fm_job(i64::from(job.job_type))
+            };
+            let Some(target) = target else {
                 continue;
             };
             let need_scope = if is_team_job(target) {

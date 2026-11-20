@@ -73,8 +73,9 @@ fn team(level: &str, team_type: i32, jobs: Vec<StaffLimitsJob>) -> StaffLimitsTe
     }
 }
 
-/// FM's limits: the first team's coaching, recruitment and medical jobs, two reserve jobs, and
-/// nothing for the youth team. `coaches` is the first team's Coach limit.
+/// FM's limits as the bridge read them on 2026-11-20: the first team's coaching, recruitment and
+/// medical jobs, a few reserve jobs, and nothing for the youth team. FM's board counts every
+/// coach in one row of job type 104. `coaches` is the first team's Coaches limit.
 fn limits(coaches: i32, reserve_physios: i32) -> StaffLimitsResult {
     StaffLimitsResult {
         teams: vec![
@@ -84,8 +85,7 @@ fn limits(coaches: i32, reserve_physios: i32) -> StaffLimitsResult {
                 vec![
                     job(16, 1),
                     job(20, 1),
-                    job(2, coaches),
-                    job(26, 2),
+                    job(104, coaches),
                     job(60, 10),
                     job(22, 2),
                     job(64, 1),
@@ -98,7 +98,12 @@ fn limits(coaches: i32, reserve_physios: i32) -> StaffLimitsResult {
             team(
                 "reserve",
                 10,
-                vec![job(16, 1), job(2, 4), job(12, reserve_physios), job(14, 3)],
+                vec![
+                    job(16, 1),
+                    job(104, 4),
+                    job(12, reserve_physios),
+                    job(14, 3),
+                ],
             ),
             team("youth", 12, Vec::new()),
         ],
@@ -134,8 +139,8 @@ fn the_first_read_sets_each_teams_needs_and_the_club_needs_from_the_first_team()
             unread_teams: vec!["U18".to_string()],
         }
     );
-    // Coaches and Fitness Coaches add up, the Set Piece Coach is capped at one, the first
-    // team's Manager and the Doctor set nothing, and the reserves' Scout row is not club-wide.
+    // FM's Coaches row sets Coaches, the Set Piece Coach is capped at one, the first team's
+    // Manager and the Doctor set nothing, and the reserves' Scout row is not club-wide.
     assert_eq!(
         needs(&conn),
         vec![
@@ -147,7 +152,7 @@ fn the_first_read_sets_each_teams_needs_and_the_club_needs_from_the_first_team()
             need("reserves", "manager", 1),
             need("reserves", "physio", 2),
             need("senior", "assistant_manager", 1),
-            need("senior", "coaches", 15),
+            need("senior", "coaches", 13),
             need("senior", "performance_analyst", 10),
             need("senior", "physio", 6),
             need("youth", "sports_scientist", 1),
@@ -156,7 +161,7 @@ fn the_first_read_sets_each_teams_needs_and_the_club_needs_from_the_first_team()
     let targets = get_targets(&conn, &context.context_token).expect("read targets");
     assert!(targets.fm_limits.iter().any(|limit| limit.scope == "senior"
         && limit.job_id == "coaches"
-        && limit.slot_limit == 15));
+        && limit.slot_limit == 13));
     assert!(!targets.fm_limits.iter().any(|limit| limit.scope == "youth"));
 }
 
@@ -190,7 +195,7 @@ fn an_edited_need_stays_until_fms_limit_for_it_changes() {
         }
     );
     let needs = needs(&conn);
-    assert!(needs.contains(&need("senior", "coaches", 16)));
+    assert!(needs.contains(&need("senior", "coaches", 14)));
     assert!(!needs
         .iter()
         .any(|(scope, job_id, _)| scope == "reserves" && job_id == "physio"));
