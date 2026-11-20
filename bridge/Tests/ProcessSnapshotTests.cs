@@ -72,15 +72,17 @@ public sealed class ProcessSnapshotTests
             var snapshot = Assert.IsAssignableFrom<IProcessSnapshot>(capture.Snapshot);
             try
             {
+                // A successful VirtualFree is the proof that the live process released the
+                // region. The live address is not asserted free: another thread or a loaded
+                // module may take it at once, as on newer Windows CI runners.
                 Assert.True(TestNativeMethods.VirtualFree(allocation, UIntPtr.Zero, releaseFlags));
                 allocation = IntPtr.Zero;
 
-                Assert.DoesNotContain(
-                    new WindowsMemoryReader().EnumerateRegions(),
-                    region => ContainsCommittedAddress(region, address));
                 Assert.Contains(
                     snapshot.Reader.EnumerateRegions(),
                     region => ContainsCommittedAddress(region, address));
+                Assert.True(snapshot.Reader.TryReadByte(address, out var retained));
+                Assert.Equal(0xA5, retained);
             }
             finally
             {
