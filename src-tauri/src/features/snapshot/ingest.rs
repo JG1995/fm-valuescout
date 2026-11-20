@@ -10,6 +10,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::Value;
 
 use crate::features::academy::service as academy_service;
+use crate::features::managed_club::service as managed_club_service;
 use crate::features::memory_read::dump_validation::read_validated_dump;
 use crate::features::moneyball::league_strength;
 use crate::features::player_metrics::club_dna as club_dna_scores;
@@ -620,6 +621,7 @@ pub(crate) fn publish_prepared_snapshot_canonical(
     };
     let effective_snapshot_id = effective_snapshot_id
         .ok_or_else(|| "ingest did not select a current snapshot".to_string())?;
+    managed_club_service::adopt_manager_club(&tx, effective_snapshot_id)?;
     let stored_snapshot = get_snapshot_by_id(&tx, snapshot_id)?;
     let effective_snapshot = if effective_snapshot_id == snapshot_id {
         stored_snapshot.clone()
@@ -3347,6 +3349,115 @@ mod tests {
         assert_eq!(
             panic.downcast_ref::<String>().map(String::as_str),
             Some("item 10")
+        );
+    }
+
+    /// The golden dump dated `game_date`, with its one player at `player_club` and the human
+    /// manager at `manager_club`, or no manager for `None`.
+    fn dump_with_clubs(
+        game_date: &str,
+        player_club: (&str, i64),
+        manager_club: Option<(&str, Option<i64>)>,
+    ) -> String {
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse golden fixture");
+        root["gameDate"] = Value::from(game_date);
+        root["players"][0]["currentClub"] = Value::from(player_club.0);
+        root["players"][0]["currentClubUid"] = Value::from(player_club.1);
+        match manager_club {
+            Some((club, uid)) => {
+                root["manager"]["club"] = Value::from(club);
+                root["manager"]["clubUid"] = uid.map(Value::from).unwrap_or(Value::Null);
+            }
+            None => root["manager"] = Value::Null,
+        }
+        root.to_string()
+    }
+
+    fn pick_managed_club(conn: &Connection, save_id: i64, club: &str, uid: i64) {
+        conn.execute(
+            "INSERT INTO managed_club_settings (save_id, club_name, club_uid) VALUES (?1, ?2, ?3)",
+            params![save_id, club, uid],
+        )
+        .expect("pick managed club");
+    }
+
+    fn managed_club(conn: &Connection, save_id: i64) -> Option<(String, Option<i64>)> {
+        crate::features::managed_club::service::selected_club_identity(conn, save_id)
+            .expect("read managed club")
+    }
+
+    #[test]
+    fn load_data_makes_the_managers_club_the_managed_club() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("managed-club-from-fm.db"));
+        let save_id = service::capture_active_save_context(&conn)
+            .expect("active save")
+            .id;
+        pick_managed_club(&conn, save_id, "Old FC", 5);
+
+        let dump = dump_with_clubs("2026-08-14", ("New FC", 4000), Some(("New FC", Some(4000))));
+        ingest_dump_file(&mut conn, &write_dump(&temp_dir, "dump.json", &dump)).expect("ingest");
+
+        assert_eq!(
+            managed_club(&conn, save_id),
+            Some(("New FC".to_string(), Some(4000)))
+        );
+    }
+
+    #[test]
+    fn load_data_keeps_the_managed_club_without_a_usable_manager_club() {
+        for (case, manager_club) in [
+            ("no manager", None),
+            ("no club UID", Some(("New FC", None))),
+            ("a club without players", Some(("Empty FC", Some(4100)))),
+        ] {
+            let temp_dir = tempfile::tempdir().expect("temp dir");
+            let mut conn = open_migrated(&temp_dir.path().join("managed-club-kept.db"));
+            let save_id = service::capture_active_save_context(&conn)
+                .expect("active save")
+                .id;
+            pick_managed_club(&conn, save_id, "Old FC", 5);
+
+            let dump = dump_with_clubs("2026-08-14", ("New FC", 4000), manager_club);
+            ingest_dump_file(&mut conn, &write_dump(&temp_dir, "dump.json", &dump))
+                .expect("ingest");
+
+            assert_eq!(
+                managed_club(&conn, save_id),
+                Some(("Old FC".to_string(), Some(5))),
+                "{case}"
+            );
+        }
+    }
+
+    #[test]
+    fn load_data_takes_the_managed_club_from_the_snapshot_that_stays_current() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("managed-club-effective.db"));
+        let save_id = service::capture_active_save_context(&conn)
+            .expect("active save")
+            .id;
+        let later = dump_with_clubs(
+            "2026-09-01",
+            ("First FC", 4200),
+            Some(("First FC", Some(4200))),
+        );
+        let first = ingest_dump_file(&mut conn, &write_dump(&temp_dir, "later.json", &later))
+            .expect("ingest the later snapshot");
+        keep_snapshot(&conn, first.id);
+
+        let earlier = dump_with_clubs(
+            "2026-08-14",
+            ("Second FC", 4300),
+            Some(("Second FC", Some(4300))),
+        );
+        ingest_dump_file(&mut conn, &write_dump(&temp_dir, "earlier.json", &earlier))
+            .expect("ingest the earlier snapshot");
+
+        assert_eq!(current_snapshot_id(&conn, save_id), Some(first.id));
+        assert_eq!(
+            managed_club(&conn, save_id),
+            Some(("First FC".to_string(), Some(4200)))
         );
     }
 }

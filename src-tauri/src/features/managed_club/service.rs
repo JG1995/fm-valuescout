@@ -205,6 +205,32 @@ pub fn set_managed_club(
     get_managed_club(conn, save_id)
 }
 
+/// Makes the human manager's club in snapshot `snapshot_id` its save's managed club, so Load Data
+/// follows a job change in FM. Nothing changes unless FM reported the club's UID and the snapshot
+/// has a player at that exact club, the option test a picked club passes.
+pub(crate) fn adopt_manager_club(conn: &Connection, snapshot_id: i64) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO managed_club_settings (save_id, club_name, club_uid)
+         SELECT s.save_id, s.manager_club, s.manager_club_uid
+         FROM snapshots s
+         WHERE s.id = ?1
+           AND s.manager_club_uid IS NOT NULL
+           AND EXISTS (
+               SELECT 1
+               FROM players p
+               WHERE p.snapshot_id = s.id
+                 AND p.current_club = s.manager_club
+                 AND p.current_club_uid = s.manager_club_uid
+           )
+         ON CONFLICT(save_id) DO UPDATE SET
+             club_name = excluded.club_name,
+             club_uid = excluded.club_uid",
+        [snapshot_id],
+    )
+    .map(|_| ())
+    .map_err(|error| error.to_string())
+}
+
 pub fn selected_club(conn: &Connection, save_id: i64) -> Result<Option<String>, String> {
     Ok(selected_club_identity(conn, save_id)?.map(|(name, _)| name))
 }
