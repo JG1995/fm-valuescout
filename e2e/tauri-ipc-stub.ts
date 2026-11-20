@@ -2491,6 +2491,46 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             };
           }
 
+          if (cmd === "get_squad_fm_training") {
+            return {
+              players: [
+                {
+                  playerUid: 9101,
+                  name: "Potential Keeper",
+                  position: "GK",
+                  inPossessionRole: "Ball-Playing Goalkeeper",
+                  outOfPossessionRole: "Sweeper Keeper",
+                  focus: "GK Distribution",
+                },
+                {
+                  playerUid: 9103,
+                  name: "Unread Youngster",
+                  position: null,
+                  inPossessionRole: null,
+                  outOfPossessionRole: null,
+                  focus: "Quickness",
+                },
+                {
+                  playerUid: 9102,
+                  name: "Veteran Full-Back",
+                  position: "DR",
+                  inPossessionRole: "Inside Full-Back",
+                  outOfPossessionRole: "Pressing Full-Back",
+                  focus: null,
+                },
+              ],
+              unavailableReason: null,
+            };
+          }
+
+          if (cmd === "apply_squad_fm_training") {
+            return {
+              applied: args?.playerUids ?? [],
+              failed: [],
+              error: null,
+            };
+          }
+
           if (cmd === "get_planner_unassigned_players") {
             const placed = new Set(
               plannerDepth.teams.flatMap((team) =>

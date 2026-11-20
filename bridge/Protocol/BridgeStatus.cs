@@ -52,4 +52,10 @@ public sealed class BridgeStatus
 
     /// <summary>The board's staff limits for each of the club's teams, from the last staff-limit read.</summary>
     public StaffLimitsResult? StaffLimits { get; init; }
+
+    /// <summary>Whether the live player index and FM's training events and channels are all available.</summary>
+    public bool? TrainingSupported { get; init; }
+
+    /// <summary>Per-player outcomes of the last training request, when applicable.</summary>
+    public TrainingResult? Training { get; init; }
 }

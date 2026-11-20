@@ -74,6 +74,8 @@ public static class StatusWriter
             StaffChanges = status.StaffChanges,
             StaffLimitsSupported = status.StaffLimitsSupported,
             StaffLimits = status.StaffLimits,
+            TrainingSupported = status.TrainingSupported,
+            Training = status.Training,
         };
     }
 

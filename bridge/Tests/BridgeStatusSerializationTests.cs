@@ -207,6 +207,24 @@ public sealed class BridgeStatusSerializationTests
                             },
                         },
                     },
+                    TrainingSupported = true,
+                    Training = new TrainingResult
+                    {
+                        Players = new[]
+                        {
+                            new TrainingOutcome
+                            {
+                                Outcome = TrainingOutcome.Applied,
+                                IpPosition = 1024,
+                                IpRole = 144115188075855872,
+                                IpRoleName = "Midfield Playmaker",
+                                OopRole = -14,
+                                OopRoleName = "Pressing Defensive Midfielder",
+                                Focus = -1,
+                                FocusName = "None",
+                            },
+                        },
+                    },
                     Error = "Could not create C:\\Users\\player\\AppData\\Local\\fm-valuescout\\fm-bridge\\dump.json",
                 });
 
@@ -230,6 +248,11 @@ public sealed class BridgeStatusSerializationTests
             Assert.Equal(
                 (StaffLimitsGroup.Coaching, 28, 2, "Coaches", 13),
                 (group.Group, group.Max, job.JobType, job.Name, job.Max));
+            Assert.True(status.TrainingSupported);
+            var training = Assert.Single(status.Training!.Players);
+            Assert.Equal(
+                (TrainingOutcome.Applied, (int?)1024, (ulong?)144115188075855872, (int?)-14, (int?)-1, "Midfield Playmaker"),
+                (training.Outcome, training.IpPosition, training.IpRole, training.OopRole, training.Focus, training.IpRoleName));
         }
         finally
         {

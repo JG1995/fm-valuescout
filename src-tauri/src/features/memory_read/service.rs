@@ -21,6 +21,7 @@ pub const OPERATION_WONDERKID_MENTALITY: &str = "wonderkid-mentality";
 pub const OPERATION_MOVE_SQUAD_PLAYERS: &str = "move-squad-players";
 pub const OPERATION_APPLY_STAFF_CHANGES: &str = "apply-staff-changes";
 pub const OPERATION_READ_STAFF_LIMITS: &str = "read-staff-limits";
+pub const OPERATION_APPLY_TRAINING: &str = "apply-training";
 pub const PLAYER_DATABASE_SCOPE_MEN: &str = "men";
 
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -83,6 +84,10 @@ pub struct BridgeStatus {
     pub staff_limits_supported: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staff_limits: Option<StaffLimitsResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub training_supported: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub training: Option<TrainingResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1584,6 +1589,205 @@ pub fn wait_for_staff_limits_terminal(
     }
 }
 
+/// Each requested training change's outcome, in request order, with the training FM holds for
+/// the player afterwards. It carries no player identity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingResult {
+    #[serde(default)]
+    pub players: Vec<TrainingOutcome>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingOutcome {
+    /// `applied`, `not-found`, `not-at-club`, or `not-confirmed`.
+    pub outcome: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip_position: Option<i32>,
+    /// FM's in-possession role value; 0 trains the position itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip_role: Option<u64>,
+    /// FM's name for the in-possession training, such as "Half Back".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip_role_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oop_role: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oop_role_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus_name: Option<String>,
+}
+
+/// One player's training in FM27's own IDs. Each part is optional; a change sets at least one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingChangeItem {
+    pub player_uid: u32,
+    /// FM's position mask for the in-possession role, such as 16 for D (C).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ip_position: Option<i32>,
+    /// FM's in-possession role value: one bit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ip_role: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oop_role: Option<i32>,
+    /// FM's additional focus, or -1 to clear it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focus: Option<i32>,
+}
+
+/// The bridge's answer to a training request: each change's outcome, and the error that stopped
+/// the request early when one did. FM may have taken some changes before such an error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrainingResponse {
+    pub players: Vec<TrainingOutcome>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrainingRequest<'a> {
+    protocol_version: u32,
+    request_id: String,
+    created_at_utc: String,
+    operation: &'static str,
+    player_database_scope: &'static str,
+    source_request_id: &'a str,
+    club_uid: u32,
+    training_changes: &'a [TrainingChangeItem],
+}
+
+/// The most players one training request may change, enough for a whole club with all its
+/// teams; the bridge enforces the same bound.
+pub const MAX_TRAINING_CHANGES: usize = 250;
+
+/// Why training cannot be set when the bridge's live scan does not offer it.
+pub const TRAINING_NEEDS_LOAD_DATA: &str =
+    "Load Data with FM open on this save before setting training";
+
+/// Why training cannot be set when the bridge plugin predates it.
+pub const TRAINING_NEEDS_PLUGIN_UPDATE: &str =
+    "Update the bridge plugin from Settings, restart FM and Load Data to set training in FM";
+
+/// None when the bridge offers training changes for its live scan; otherwise why not.
+pub fn training_unavailable_reason(status: &BridgeStatus) -> Option<&'static str> {
+    match status.training_supported {
+        Some(true) => None,
+        Some(false) => Some(TRAINING_NEEDS_LOAD_DATA),
+        None => Some(TRAINING_NEEDS_PLUGIN_UPDATE),
+    }
+}
+
+pub fn request_training_from_local_app_data(
+    source_request_id: &str,
+    club_uid: u32,
+    changes: &[TrainingChangeItem],
+    wait: DumpWaitConfig,
+) -> Result<TrainingResponse, PlayerBoostRequestError> {
+    let bridge_directory = resolve_bridge_directory().map_err(PlayerBoostRequestError::from)?;
+    request_training(
+        &bridge_directory,
+        source_request_id,
+        club_uid,
+        changes,
+        wait,
+    )
+}
+
+/// Asks the bridge to set the managed club's players' training and waits for each change's
+/// outcome.
+pub fn request_training(
+    bridge_directory: &Path,
+    source_request_id: &str,
+    club_uid: u32,
+    changes: &[TrainingChangeItem],
+    wait: DumpWaitConfig,
+) -> Result<TrainingResponse, PlayerBoostRequestError> {
+    if source_request_id.trim().is_empty() || club_uid == 0 {
+        return Err(PlayerBoostRequestError::WriteFailed(
+            "training changes need the live scan and the managed club".to_string(),
+        ));
+    }
+    if changes.is_empty() || changes.len() > MAX_TRAINING_CHANGES {
+        return Err(PlayerBoostRequestError::WriteFailed(format!(
+            "training changes must list 1 through {MAX_TRAINING_CHANGES} players"
+        )));
+    }
+    let _bridge_request_guard = acquire_bridge_request_guard(bridge_directory)
+        .map_err(PlayerBoostRequestError::Unavailable)?;
+    let status = read_bridge_status(bridge_directory).map_err(PlayerBoostRequestError::from)?;
+    if let Some(reason) = training_unavailable_reason(&status) {
+        return Err(PlayerBoostRequestError::Unavailable(reason.to_string()));
+    }
+
+    let request_id = new_request_id();
+    let request = TrainingRequest {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        created_at_utc: utc_now_rfc3339(),
+        operation: OPERATION_APPLY_TRAINING,
+        player_database_scope: PLAYER_DATABASE_SCOPE_MEN,
+        source_request_id,
+        club_uid,
+        training_changes: changes,
+    };
+    write_bridge_request(bridge_directory, &request)?;
+    wait_for_training_terminal(bridge_directory, &request_id, changes.len(), wait)
+}
+
+pub fn wait_for_training_terminal(
+    bridge_directory: &Path,
+    request_id: &str,
+    change_count: usize,
+    wait: DumpWaitConfig,
+) -> Result<TrainingResponse, PlayerBoostRequestError> {
+    let deadline = Instant::now() + wait.timeout;
+    loop {
+        match read_bridge_status(bridge_directory) {
+            Ok(status)
+                if status.request_id.as_deref() == Some(request_id)
+                    && is_terminal_state(&status.state) =>
+            {
+                let error = (status.state == "failed").then(|| {
+                    status.error.clone().unwrap_or_else(|| {
+                        "the training changes failed without a bridge error".to_string()
+                    })
+                });
+                return match status.training {
+                    Some(result) if result.players.len() == change_count => Ok(TrainingResponse {
+                        players: result.players,
+                        error,
+                    }),
+                    Some(_) => Err(PlayerBoostRequestError::Corrupt(
+                        "the bridge reported a different number of training changes than were sent"
+                            .to_string(),
+                    )),
+                    None => Err(PlayerBoostRequestError::Failed(error.unwrap_or_else(
+                        || {
+                            "the bridge finished the training changes without their outcomes"
+                                .to_string()
+                        },
+                    ))),
+                };
+            }
+            Ok(_) => {}
+            Err(BridgeStatusError::Missing(_)) => {}
+            Err(error) => return Err(error.into()),
+        }
+
+        if Instant::now() >= deadline {
+            return Err(PlayerBoostRequestError::Timeout(
+                "timed out waiting for FM to set the training; check it in FM".to_string(),
+            ));
+        }
+
+        thread::sleep(wait.poll_interval);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2073,6 +2277,8 @@ mod tests {
             staff_changes: None,
             staff_limits_supported: None,
             staff_limits: None,
+            training_supported: None,
+            training: None,
         };
         write_status(bridge_dir, &status);
     }
@@ -2185,6 +2391,162 @@ mod tests {
         );
     }
 
+    fn write_training_status_fixture(
+        bridge_dir: &Path,
+        state: &str,
+        request_id: &str,
+        supported: Option<bool>,
+        training: Option<TrainingResult>,
+        error: Option<&str>,
+    ) {
+        let status = BridgeStatus {
+            protocol_version: PROTOCOL_VERSION,
+            plugin_version: "0.32.0".to_string(),
+            state: state.to_string(),
+            updated_at_utc: "2026-11-20T12:00:00.000Z".to_string(),
+            game_plugin_module_present: true,
+            game_assembly_module_present: true,
+            request_id: Some(request_id.to_string()),
+            players_found: None,
+            error: error.map(str::to_string),
+            player_boosts_supported: Some(true),
+            player_boost: None,
+            staff_boosts_supported: None,
+            staff_boost: None,
+            squad_moves_supported: Some(true),
+            squad_moves: None,
+            staff_changes_supported: None,
+            staff_changes: None,
+            staff_limits_supported: None,
+            staff_limits: None,
+            training_supported: supported,
+            training,
+        };
+        write_status(bridge_dir, &status);
+    }
+
+    #[test]
+    fn training_names_the_missing_step_before_writing_a_request() {
+        for (supported, reason) in [
+            (Some(false), TRAINING_NEEDS_LOAD_DATA),
+            (None, TRAINING_NEEDS_PLUGIN_UPDATE),
+        ] {
+            let temp_dir = tempfile::tempdir().expect("temp dir");
+            write_training_status_fixture(
+                temp_dir.path(),
+                "ready",
+                "scan-1",
+                supported,
+                None,
+                None,
+            );
+
+            let error = request_training(
+                temp_dir.path(),
+                "scan-1",
+                439,
+                &[TrainingChangeItem {
+                    player_uid: 77,
+                    ip_position: None,
+                    ip_role: None,
+                    oop_role: None,
+                    focus: Some(19),
+                }],
+                QUICK_WAIT,
+            )
+            .expect_err("a bridge without training must be rejected");
+
+            assert_eq!(
+                error,
+                PlayerBoostRequestError::Unavailable(reason.to_string())
+            );
+            assert!(!request_path(temp_dir.path()).exists());
+        }
+    }
+
+    #[test]
+    fn training_request_sends_only_the_parts_each_change_sets() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let changes = [
+            TrainingChangeItem {
+                player_uid: 77,
+                ip_position: Some(1024),
+                ip_role: Some(144_115_188_075_855_872),
+                oop_role: Some(-14),
+                focus: Some(19),
+            },
+            TrainingChangeItem {
+                player_uid: 78,
+                ip_position: None,
+                ip_role: None,
+                oop_role: None,
+                focus: Some(-1),
+            },
+        ];
+        write_bridge_request(
+            temp_dir.path(),
+            &TrainingRequest {
+                protocol_version: PROTOCOL_VERSION,
+                request_id: "training-1".to_string(),
+                created_at_utc: "2026-11-20T12:00:00.000Z".to_string(),
+                operation: OPERATION_APPLY_TRAINING,
+                player_database_scope: PLAYER_DATABASE_SCOPE_MEN,
+                source_request_id: "scan-1",
+                club_uid: 439,
+                training_changes: &changes,
+            },
+        )
+        .expect("write training request");
+
+        let value: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(request_path(temp_dir.path())).expect("read request"),
+        )
+        .expect("parse request");
+        assert_eq!(value["operation"], "apply-training");
+        assert_eq!(value["clubUid"], 439);
+        assert_eq!(
+            value["trainingChanges"],
+            serde_json::json!([
+                { "playerUid": 77, "ipPosition": 1024, "ipRole": 144_115_188_075_855_872_u64, "oopRole": -14, "focus": 19 },
+                { "playerUid": 78, "focus": -1 }
+            ])
+        );
+    }
+
+    #[test]
+    fn training_wait_keeps_the_outcomes_of_a_request_that_stopped_early() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let applied = TrainingOutcome {
+            outcome: "applied".to_string(),
+            ip_role: Some(144_115_188_075_855_872),
+            ip_role_name: Some("Midfield Playmaker".to_string()),
+            ..TrainingOutcome::default()
+        };
+        write_training_status_fixture(
+            temp_dir.path(),
+            "failed",
+            "training-1",
+            Some(true),
+            Some(TrainingResult {
+                players: vec![applied.clone()],
+            }),
+            Some("FM rejected an action: boom"),
+        );
+
+        let response = wait_for_training_terminal(temp_dir.path(), "training-1", 1, QUICK_WAIT)
+            .expect("outcomes of a partial request");
+
+        assert_eq!(response.players, vec![applied]);
+        assert_eq!(
+            response.error.as_deref(),
+            Some("FM rejected an action: boom")
+        );
+        assert!(matches!(
+            wait_for_training_terminal(temp_dir.path(), "training-1", 2, QUICK_WAIT),
+            Err(PlayerBoostRequestError::Corrupt(_))
+        ));
+    }
+
     fn write_staff_change_status_fixture(
         bridge_dir: &Path,
         state: &str,
@@ -2213,6 +2575,8 @@ mod tests {
             staff_changes,
             staff_limits_supported: None,
             staff_limits: None,
+            training_supported: None,
+            training: None,
         };
         write_status(bridge_dir, &status);
     }
@@ -2828,6 +3192,8 @@ mod tests {
             staff_changes: None,
             staff_limits_supported: None,
             staff_limits: None,
+            training_supported: None,
+            training: None,
         }
     }
 
@@ -2859,6 +3225,8 @@ mod tests {
             staff_changes: None,
             staff_limits_supported: None,
             staff_limits: None,
+            training_supported: None,
+            training: None,
         };
         write_status(bridge_dir, &status);
     }
@@ -2891,6 +3259,8 @@ mod tests {
             staff_changes: None,
             staff_limits_supported: None,
             staff_limits: None,
+            training_supported: None,
+            training: None,
         };
         write_status(bridge_dir, &status);
     }

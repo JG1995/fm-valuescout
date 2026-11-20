@@ -7,24 +7,25 @@ using HarmonyLib;
 namespace FmDataBridge.GameActions;
 
 /// <summary>
-/// The staff-limit read. It opens FM's staff-group channels on the club's teams as the Staff
-/// overview does, copies the values FM sends through a hook on the UI's channel-data handler, and
-/// closes the channels once FM stops sending. FM drops data for channels its UI did not open, so
-/// only the hook sees these values.
+/// The channel read, and the staff-limit read built on it. A read opens FM's channels on references
+/// as its screens do, copies the values FM sends through a hook on the UI's channel-data handler,
+/// and closes the channels once FM stops sending. FM drops data for channels its UI did not open,
+/// so only the hook sees these values. The staff-limit read opens the staff groups of the club's
+/// teams, as the Staff overview does.
 /// </summary>
 internal sealed partial class GameActionDispatcher : IStaffLimitsReader
 {
     private const int TeamReferenceType = 28;
     private const uint GuidKey = 1198877028; // "Guid"
 
-    // FM sends a group several times as it fills it in; the spike saw 13 updates within a second.
-    // The read takes the last value once none has come for StaffLimitsQuiet, stops waiting for a
-    // channel FM never answers after StaffLimitsPatience, and ends after StaffLimitsLongest.
-    private static readonly TimeSpan StaffLimitsQuiet = TimeSpan.FromMilliseconds(600);
-    private static readonly TimeSpan StaffLimitsPatience = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan StaffLimitsLongest = TimeSpan.FromSeconds(6);
+    // FM sends a value several times as it fills it in; the spike saw 13 updates of a staff group
+    // within a second. A read takes the last value once none has come for ChannelReadQuiet, stops
+    // waiting for a channel FM never answers after ChannelReadPatience, and ends after ChannelReadLongest.
+    private static readonly TimeSpan ChannelReadQuiet = TimeSpan.FromMilliseconds(600);
+    private static readonly TimeSpan ChannelReadPatience = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan ChannelReadLongest = TimeSpan.FromSeconds(6);
 
-    private static StaffLimitsRead? s_staffLimitsRead;
+    private static ChannelRead? s_channelRead;
     private LimitTypes? _limitTypes;
     private int _sessionGuid;
 
@@ -51,10 +52,10 @@ internal sealed partial class GameActionDispatcher : IStaffLimitsReader
         new(typeof(GameActionDispatcher).GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic));
 
     // Harmony prefix on FM.UI.InteropDataHandler.OnChannelDataChanged, which receives every update
-    // FM sends to its screens. It returns at once unless a staff-limit read is open.
+    // FM sends to its screens. It returns at once unless a channel read is open.
     private static void CaptureChannelData(object keys, object values)
     {
-        if (Volatile.Read(ref s_staffLimitsRead) is not { } read
+        if (Volatile.Read(ref s_channelRead) is not { } read
             || s_active?._limitTypes is not { } types)
         {
             return;
@@ -106,33 +107,69 @@ internal sealed partial class GameActionDispatcher : IStaffLimitsReader
         }
 
         var types = _types!;
-        var staff = _staffTypes!;
         var limits = _limitTypes!;
-        var channels = new List<(ulong RawKey, object Key, object Slot, int TeamIndex, uint Property)>();
-        foreach (var team in teamIndexes)
-        {
-            foreach (var property in properties)
+        var work = new Work();
+        var read = AddChannelRead(
+            work,
+            teamIndexes.SelectMany(team => properties.Select(property => (team, property))).ToArray(),
+            team =>
             {
-                var counter = Interlocked.Increment(ref _channelCounter);
-                var rawKey = ChannelKeyPrefix | (ulong)counter;
-                channels.Add((
-                    rawKey,
-                    staff.Key(rawKey),
-                    staff.DataKey((1UL << 32) | (ulong)(DataSlotBaseIndex + (counter % 10_000))),
-                    team,
-                    property));
-            }
+                var pairs = new List<(uint Id, int Value)> { (ReferenceTypeKey, TeamReferenceType) };
+                var guid = Volatile.Read(ref _sessionGuid);
+                if (guid != 0)
+                {
+                    pairs.Add((GuidKey, guid));
+                }
+
+                pairs.Add((DrefKey, (int)((TeamTable << 24) | (uint)team)));
+                return limits.NewTeamReference(types, pairs);
+            },
+            TimeSpan.Zero);
+
+        if (!Run(work, "staff limit read", out error, ChannelReadLongest))
+        {
+            return false;
         }
 
-        var read = new StaffLimitsRead(channels.ToDictionary(
+        values = read.Values();
+        return true;
+    }
+
+    /// <summary>
+    /// Adds a read to <paramref name="work"/>: after <paramref name="gap"/>, it opens each property on
+    /// the reference <paramref name="reference"/> builds for each index, with the channel steps of
+    /// FM's dialogs, waits until FM has settled, and closes every channel. The returned read holds
+    /// the last value FM sent on each channel once the work is done.
+    /// </summary>
+    private ChannelRead AddChannelRead(
+        Work work,
+        IReadOnlyList<(int Index, uint Property)> targets,
+        Func<int, object> reference,
+        TimeSpan gap)
+    {
+        var types = _types!;
+        var staff = _staffTypes!;
+        var channels = new List<(ulong RawKey, object Key, object Slot, int Index, uint Property)>();
+        foreach (var (index, property) in targets)
+        {
+            var counter = Interlocked.Increment(ref _channelCounter);
+            var rawKey = ChannelKeyPrefix | (ulong)counter;
+            channels.Add((
+                rawKey,
+                staff.Key(rawKey),
+                staff.DataKey((1UL << 32) | (ulong)(DataSlotBaseIndex + (counter % 10_000))),
+                index,
+                property));
+        }
+
+        var read = new ChannelRead(channels.ToDictionary(
             channel => channel.RawKey,
-            channel => (channel.TeamIndex, channel.Property)));
-        var work = new Work();
+            channel => (channel.Index, channel.Property)));
         var opened = false;
 
         void Release(object subsystem)
         {
-            Interlocked.CompareExchange(ref s_staffLimitsRead, null, read);
+            Interlocked.CompareExchange(ref s_channelRead, null, read);
             if (!opened)
             {
                 return;
@@ -148,40 +185,24 @@ internal sealed partial class GameActionDispatcher : IStaffLimitsReader
             }
         }
 
-        work.Then(TimeSpan.Zero, subsystem =>
+        work.Then(gap, subsystem =>
         {
             opened = true;
             work.OnFailure(Release);
             read.Start();
-            Volatile.Write(ref s_staffLimitsRead, read);
-            var guid = Volatile.Read(ref _sessionGuid);
+            Volatile.Write(ref s_channelRead, read);
             foreach (var channel in channels)
             {
-                var pairs = new List<(uint Id, int Value)> { (ReferenceTypeKey, TeamReferenceType) };
-                if (guid != 0)
-                {
-                    pairs.Add((GuidKey, guid));
-                }
-
-                pairs.Add((DrefKey, (int)((TeamTable << 24) | (uint)channel.TeamIndex)));
-                var reference = limits.NewTeamReference(types, pairs);
                 var property = staff.Property(channel.Property);
                 staff.AddNode.Invoke(subsystem, new[] { channel.Key, staff.RootKey(), property });
                 staff.AddData.Invoke(subsystem, new[] { channel.Slot });
                 staff.SetTarget.Invoke(subsystem, new[] { channel.Key, channel.Slot });
-                types.OpenChannel.Invoke(subsystem, new[] { reference, property, channel.Key });
+                types.OpenChannel.Invoke(subsystem, new[] { reference(channel.Index), property, channel.Key });
             }
         });
         work.Until(read.IsSettled);
         work.Then(TimeSpan.Zero, Release);
-
-        if (!Run(work, "staff limit read", out error, StaffLimitsLongest))
-        {
-            return false;
-        }
-
-        values = read.Values();
-        return true;
+        return read;
     }
 
     private static void TryInvoke(MethodInfo method, object subsystem, object argument)
@@ -197,16 +218,16 @@ internal sealed partial class GameActionDispatcher : IStaffLimitsReader
     }
 
     /// <summary>The channels one read opened and the last value FM sent on each.</summary>
-    private sealed class StaffLimitsRead
+    private sealed class ChannelRead
     {
         private readonly object _gate = new();
-        private readonly IReadOnlyDictionary<ulong, (int TeamIndex, uint Property)> _channels;
+        private readonly IReadOnlyDictionary<ulong, (int Index, uint Property)> _channels;
         private readonly HashSet<ulong> _answered = new();
         private readonly Dictionary<ulong, FmValue> _values = new();
         private readonly Stopwatch _sinceOpen = new();
         private readonly Stopwatch _sinceUpdate = new();
 
-        public StaffLimitsRead(IReadOnlyDictionary<ulong, (int TeamIndex, uint Property)> channels) =>
+        public ChannelRead(IReadOnlyDictionary<ulong, (int Index, uint Property)> channels) =>
             _channels = channels;
 
         public bool Expects(ulong key) => _channels.ContainsKey(key);
@@ -238,13 +259,13 @@ internal sealed partial class GameActionDispatcher : IStaffLimitsReader
         {
             lock (_gate)
             {
-                var quiet = _sinceUpdate.Elapsed >= StaffLimitsQuiet;
-                return _sinceOpen.Elapsed >= StaffLimitsLongest
-                    || (quiet && (_answered.Count == _channels.Count || _sinceOpen.Elapsed >= StaffLimitsPatience));
+                var quiet = _sinceUpdate.Elapsed >= ChannelReadQuiet;
+                return _sinceOpen.Elapsed >= ChannelReadLongest
+                    || (quiet && (_answered.Count == _channels.Count || _sinceOpen.Elapsed >= ChannelReadPatience));
             }
         }
 
-        public IReadOnlyDictionary<(int TeamIndex, uint Property), FmValue> Values()
+        public IReadOnlyDictionary<(int Index, uint Property), FmValue> Values()
         {
             lock (_gate)
             {
@@ -378,7 +399,7 @@ internal sealed partial class GameActionDispatcher : IStaffLimitsReader
         }
 
         /// <summary>Copies each value whose key the read opened, in the order FM sent them.</summary>
-        public void Copy(object keys, object values, StaffLimitsRead read)
+        public void Copy(object keys, object values, ChannelRead read)
         {
             var keyCount = (int)_spanLength.Invoke(keys, null)!;
             var keyData = SpanData(keys, keyCount);

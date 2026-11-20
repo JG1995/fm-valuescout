@@ -28,168 +28,292 @@ pub(crate) fn category_for_age(age: Option<i64>) -> Option<FocusCategory> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TrainingFocus {
     name: &'static str,
+    /// FM27's ID for the focus, which Apply in FM sends.
+    fm_id: i32,
     attributes: &'static [&'static str],
     category: FocusCategory,
 }
 
-/// Outfield focus inventory in exact Linear JAY-46 order (order is the tie-break).
-/// Each entry maps a focus name to its simulated dump-key attributes and category.
+/// FM27's outfield additional focuses in its dropdown order (order is the tie-break), each with
+/// the attributes FM lists for it as dump keys. See `.wiki/notes/fm27-training-actions.md`.
 const OUTFIELD_FOCUSES: &[TrainingFocus] = &[
     TrainingFocus {
-        name: "Free Kick Taking",
-        attributes: &["Technique", "FreeKicks"],
-        category: FocusCategory::Technical,
-    },
-    TrainingFocus {
-        name: "Corner Taking",
-        attributes: &["Technique", "Corners"],
-        category: FocusCategory::Technical,
-    },
-    TrainingFocus {
-        name: "Penalty Taking",
-        attributes: &["Technique", "PenaltyTaking"],
-        category: FocusCategory::Technical,
-    },
-    TrainingFocus {
-        name: "Long Throws",
-        attributes: &["LongThrows"],
-        category: FocusCategory::Technical,
-    },
-    TrainingFocus {
         name: "Quickness",
-        attributes: &["Acceleration", "Pace"],
+        fm_id: 9,
+        attributes: &["Pace", "Acceleration"],
         category: FocusCategory::Physical,
     },
     TrainingFocus {
         name: "Agility and Balance",
+        fm_id: 10,
         attributes: &["Agility", "Balance"],
         category: FocusCategory::Physical,
     },
     TrainingFocus {
-        name: "Strength",
-        attributes: &["JumpingReach", "Strength"],
+        name: "Resistance",
+        fm_id: 11,
+        attributes: &["Strength", "JumpingReach"],
         category: FocusCategory::Physical,
     },
     TrainingFocus {
         name: "Endurance",
-        attributes: &["WorkRate", "Stamina"],
+        fm_id: 12,
+        attributes: &["Stamina", "WorkRate"],
         category: FocusCategory::Physical,
     },
     TrainingFocus {
+        name: "Chance Conversion",
+        fm_id: 13,
+        attributes: &[
+            "Finishing",
+            "Heading",
+            "LongShots",
+            "Technique",
+            "Anticipation",
+            "Composure",
+            "OffTheBall",
+        ],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Chance Creation",
+        fm_id: 14,
+        attributes: &[
+            "Crossing",
+            "Passing",
+            "Technique",
+            "Decisions",
+            "Flair",
+            "Vision",
+        ],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Ball Retention",
+        fm_id: 15,
+        attributes: &[
+            "FirstTouch",
+            "Concentration",
+            "Composure",
+            "Decisions",
+            "Teamwork",
+        ],
+        category: FocusCategory::Mental,
+    },
+    TrainingFocus {
+        name: "Ball Progression",
+        fm_id: 16,
+        attributes: &[
+            "Dribbling",
+            "Passing",
+            "Anticipation",
+            "Decisions",
+            "Teamwork",
+            "Vision",
+        ],
+        category: FocusCategory::Mental,
+    },
+    TrainingFocus {
+        name: "Pressing",
+        fm_id: 17,
+        attributes: &[
+            "Tackling",
+            "Aggression",
+            "Anticipation",
+            "Decisions",
+            "WorkRate",
+        ],
+        category: FocusCategory::Mental,
+    },
+    TrainingFocus {
+        name: "Containment",
+        fm_id: 18,
+        attributes: &[
+            "Marking",
+            "Anticipation",
+            "Concentration",
+            "Positioning",
+            "Teamwork",
+        ],
+        category: FocusCategory::Mental,
+    },
+    TrainingFocus {
         name: "Defensive Positioning",
-        attributes: &["Marking", "Decisions", "Positioning"],
+        fm_id: 19,
+        attributes: &["Concentration", "Positioning", "Decisions"],
         category: FocusCategory::Mental,
     },
     TrainingFocus {
         name: "Attacking Movement",
-        attributes: &["Anticipation", "Decisions", "OffTheBall"],
+        fm_id: 20,
+        attributes: &["OffTheBall", "Anticipation", "Decisions"],
+        category: FocusCategory::Mental,
+    },
+    TrainingFocus {
+        name: "Final Third",
+        fm_id: 21,
+        attributes: &["Composure", "Decisions", "Vision"],
         category: FocusCategory::Mental,
     },
     TrainingFocus {
         name: "Shooting",
+        fm_id: 22,
         attributes: &["Finishing", "LongShots", "Technique"],
         category: FocusCategory::Technical,
     },
     TrainingFocus {
         name: "Passing",
-        attributes: &["Passing", "Technique", "Vision"],
+        fm_id: 23,
+        attributes: &["Passing", "Technique"],
         category: FocusCategory::Technical,
     },
     TrainingFocus {
-        name: "Final Third",
-        attributes: &["Composure", "Decisions"],
-        category: FocusCategory::Mental,
-    },
-    TrainingFocus {
         name: "Crossing",
+        fm_id: 24,
         attributes: &["Crossing", "Technique"],
         category: FocusCategory::Technical,
     },
     TrainingFocus {
         name: "Ball Control",
-        attributes: &["Dribbling", "FirstTouch", "Technique"],
+        fm_id: 25,
+        attributes: &["FirstTouch", "Dribbling", "Technique"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Tackling",
+        fm_id: 26,
+        attributes: &["Tackling", "Aggression"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Marking",
+        fm_id: 27,
+        attributes: &["Marking", "Concentration"],
         category: FocusCategory::Technical,
     },
     TrainingFocus {
         name: "Aerial",
+        fm_id: 28,
         attributes: &["Heading", "Bravery"],
         category: FocusCategory::Technical,
     },
-];
-
-/// Goalkeeper focus inventory in exact Linear JAY-46 order (order is the tie-break).
-const GOALKEEPER_FOCUSES: &[TrainingFocus] = &[
     TrainingFocus {
         name: "Free Kick Taking",
-        attributes: &["Technique", "FreeKicks"],
+        fm_id: 5,
+        attributes: &["FreeKicks", "Technique"],
         category: FocusCategory::Technical,
     },
     TrainingFocus {
         name: "Corner Taking",
-        attributes: &["Technique", "Corners"],
+        fm_id: 6,
+        attributes: &["Corners", "Technique"],
         category: FocusCategory::Technical,
     },
     TrainingFocus {
         name: "Penalty Taking",
-        attributes: &["Technique", "PenaltyTaking"],
+        fm_id: 7,
+        attributes: &["PenaltyTaking", "Technique"],
         category: FocusCategory::Technical,
     },
     TrainingFocus {
         name: "Long Throws",
+        fm_id: 8,
         attributes: &["LongThrows"],
         category: FocusCategory::Technical,
     },
+];
+
+/// FM27's goalkeeper additional focuses in its dropdown order (order is the tie-break).
+const GOALKEEPER_FOCUSES: &[TrainingFocus] = &[
     TrainingFocus {
         name: "Quickness",
-        attributes: &["Acceleration", "Pace"],
+        fm_id: 9,
+        attributes: &["Pace", "Acceleration"],
         category: FocusCategory::Physical,
     },
     TrainingFocus {
         name: "Agility and Balance",
+        fm_id: 10,
         attributes: &["Agility", "Balance"],
         category: FocusCategory::Physical,
     },
     TrainingFocus {
-        name: "Strength",
-        attributes: &["JumpingReach", "Strength"],
+        name: "Resistance",
+        fm_id: 11,
+        attributes: &["Strength", "JumpingReach", "AerialReach"],
         category: FocusCategory::Physical,
     },
     TrainingFocus {
         name: "Endurance",
-        attributes: &["WorkRate", "Stamina"],
+        fm_id: 12,
+        attributes: &["Stamina", "WorkRate"],
         category: FocusCategory::Physical,
     },
     TrainingFocus {
-        name: "GK Reactions",
-        attributes: &["Reflexes", "Anticipation", "Concentration"],
+        name: "GK Shot Stopping",
+        fm_id: 29,
+        attributes: &["Reflexes", "Anticipation", "Positioning", "Agility"],
         category: FocusCategory::Mental,
     },
     TrainingFocus {
-        name: "GK Tactical",
-        attributes: &["Communication", "Decisions", "Positioning"],
-        category: FocusCategory::Mental,
-    },
-    TrainingFocus {
-        name: "GK Technique",
-        attributes: &["Handling", "Composure", "Technique"],
+        name: "GK Handling",
+        fm_id: 30,
+        attributes: &["AerialReach", "Handling", "Concentration", "Balance"],
         category: FocusCategory::Technical,
     },
     TrainingFocus {
         name: "GK Sweeping",
-        attributes: &["CommandOfArea", "OneOnOnes", "RushingOut"],
+        fm_id: 31,
+        attributes: &["OneOnOnes", "Communication", "CommandOfArea", "RushingOut"],
         category: FocusCategory::Mental,
     },
     TrainingFocus {
-        name: "GK Distribution (Long)",
-        attributes: &["Kicking", "Throwing"],
+        name: "GK Distribution",
+        fm_id: 32,
+        attributes: &[
+            "Kicking",
+            "Throwing",
+            "FirstTouch",
+            "Passing",
+            "Composure",
+            "Vision",
+        ],
         category: FocusCategory::Technical,
     },
     TrainingFocus {
-        name: "GK Distribution (Short)",
-        attributes: &["FirstTouch", "Passing", "Vision"],
+        name: "Free Kick Taking",
+        fm_id: 5,
+        attributes: &["FreeKicks", "Technique"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Corner Taking",
+        fm_id: 6,
+        attributes: &["Corners", "Technique"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Penalty Taking",
+        fm_id: 7,
+        attributes: &["PenaltyTaking", "Technique"],
+        category: FocusCategory::Technical,
+    },
+    TrainingFocus {
+        name: "Long Throws",
+        fm_id: 8,
+        attributes: &["LongThrows"],
         category: FocusCategory::Technical,
     },
 ];
+
+/// FM27's ID for a suggested focus name.
+pub(crate) fn fm_focus_id(name: &str) -> Option<i32> {
+    OUTFIELD_FOCUSES
+        .iter()
+        .chain(GOALKEEPER_FOCUSES)
+        .find(|focus| focus.name == name)
+        .map(|focus| focus.fm_id)
+}
 
 /// The goalkeeper focus inventory applies only to the GK Planner lane.
 pub fn is_goalkeeper_lane(lane: &TacticLane) -> bool {
@@ -199,8 +323,10 @@ pub fn is_goalkeeper_lane(lane: &TacticLane) -> bool {
 /// Ranks the applicable inventory for an assigned lane and returns the winning
 /// focus name.
 ///
-/// The best unrounded combined-score gain stays local to the ranking loop: it
-/// is never displayed or exported. Returns `None` when any attribute required
+/// A focus's gain is the unrounded combined-score gain of +1 in each attribute it
+/// trains, divided by the number of attributes: FM spreads a focus's extra training
+/// across them, so a broad focus earns less per attribute. The best gain stays local
+/// to the ranking loop: it is never displayed or exported. Returns `None` when any attribute required
 /// by a focus in the selected category is missing/null (no fallback focus),
 /// when a lane role is unknown, or when a lane-role required attribute is
 /// missing/null. All-zero gains still return the first category focus; ties
@@ -245,7 +371,7 @@ pub fn suggest_for_lane(
             }
         }
         let simulated_score = blended_score(&simulated, ip_role, oop_role, lane.ip_weight)?;
-        let gain = simulated_score - baseline;
+        let gain = (simulated_score - baseline) / focus.attributes.len() as f64;
         let improves = match &best {
             None => true,
             Some((_, current_gain)) => gain > *current_gain,
@@ -275,8 +401,8 @@ mod tests {
     use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
 
     use super::{
-        category_for_age, is_goalkeeper_lane, suggest_for_lane, FocusCategory, GOALKEEPER_FOCUSES,
-        OUTFIELD_FOCUSES,
+        category_for_age, fm_focus_id, is_goalkeeper_lane, suggest_for_lane, FocusCategory,
+        TrainingFocus, GOALKEEPER_FOCUSES, OUTFIELD_FOCUSES,
     };
     use crate::features::planner::tactic::TacticLane;
 
@@ -325,168 +451,75 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn outfield_and_goalkeeper_inventories_match_linear_order_exactly() {
-        let expected_outfield = [
-            (
-                "Free Kick Taking",
-                &["Technique", "FreeKicks"] as &[&str],
-                FocusCategory::Technical,
-            ),
-            (
-                "Corner Taking",
-                &["Technique", "Corners"],
-                FocusCategory::Technical,
-            ),
-            (
-                "Penalty Taking",
-                &["Technique", "PenaltyTaking"],
-                FocusCategory::Technical,
-            ),
-            ("Long Throws", &["LongThrows"], FocusCategory::Technical),
-            (
-                "Quickness",
-                &["Acceleration", "Pace"],
-                FocusCategory::Physical,
-            ),
-            (
-                "Agility and Balance",
-                &["Agility", "Balance"],
-                FocusCategory::Physical,
-            ),
-            (
-                "Strength",
-                &["JumpingReach", "Strength"],
-                FocusCategory::Physical,
-            ),
-            (
-                "Endurance",
-                &["WorkRate", "Stamina"],
-                FocusCategory::Physical,
-            ),
-            (
-                "Defensive Positioning",
-                &["Marking", "Decisions", "Positioning"],
-                FocusCategory::Mental,
-            ),
-            (
-                "Attacking Movement",
-                &["Anticipation", "Decisions", "OffTheBall"],
-                FocusCategory::Mental,
-            ),
-            (
-                "Shooting",
-                &["Finishing", "LongShots", "Technique"],
-                FocusCategory::Technical,
-            ),
-            (
-                "Passing",
-                &["Passing", "Technique", "Vision"],
-                FocusCategory::Technical,
-            ),
-            (
-                "Final Third",
-                &["Composure", "Decisions"],
-                FocusCategory::Mental,
-            ),
-            (
-                "Crossing",
-                &["Crossing", "Technique"],
-                FocusCategory::Technical,
-            ),
-            (
-                "Ball Control",
-                &["Dribbling", "FirstTouch", "Technique"],
-                FocusCategory::Technical,
-            ),
-            ("Aerial", &["Heading", "Bravery"], FocusCategory::Technical),
-        ];
-        assert_eq!(OUTFIELD_FOCUSES.len(), expected_outfield.len());
-        for (focus, (name, attributes, category)) in OUTFIELD_FOCUSES.iter().zip(expected_outfield)
-        {
-            assert_eq!(
-                (focus.name, focus.attributes, focus.category),
-                (name, attributes, category)
-            );
-        }
+    fn inventory(focuses: &[TrainingFocus]) -> Vec<(&'static str, i32, FocusCategory)> {
+        focuses
+            .iter()
+            .map(|focus| (focus.name, focus.fm_id, focus.category))
+            .collect()
+    }
 
-        let expected_goalkeeper = [
-            (
-                "Free Kick Taking",
-                &["Technique", "FreeKicks"] as &[&str],
-                FocusCategory::Technical,
-            ),
-            (
-                "Corner Taking",
-                &["Technique", "Corners"],
-                FocusCategory::Technical,
-            ),
-            (
-                "Penalty Taking",
-                &["Technique", "PenaltyTaking"],
-                FocusCategory::Technical,
-            ),
-            ("Long Throws", &["LongThrows"], FocusCategory::Technical),
-            (
-                "Quickness",
-                &["Acceleration", "Pace"],
-                FocusCategory::Physical,
-            ),
-            (
-                "Agility and Balance",
-                &["Agility", "Balance"],
-                FocusCategory::Physical,
-            ),
-            (
-                "Strength",
-                &["JumpingReach", "Strength"],
-                FocusCategory::Physical,
-            ),
-            (
-                "Endurance",
-                &["WorkRate", "Stamina"],
-                FocusCategory::Physical,
-            ),
-            (
-                "GK Reactions",
-                &["Reflexes", "Anticipation", "Concentration"],
-                FocusCategory::Mental,
-            ),
-            (
-                "GK Tactical",
-                &["Communication", "Decisions", "Positioning"],
-                FocusCategory::Mental,
-            ),
-            (
-                "GK Technique",
-                &["Handling", "Composure", "Technique"],
-                FocusCategory::Technical,
-            ),
-            (
-                "GK Sweeping",
-                &["CommandOfArea", "OneOnOnes", "RushingOut"],
-                FocusCategory::Mental,
-            ),
-            (
-                "GK Distribution (Long)",
-                &["Kicking", "Throwing"],
-                FocusCategory::Technical,
-            ),
-            (
-                "GK Distribution (Short)",
-                &["FirstTouch", "Passing", "Vision"],
-                FocusCategory::Technical,
-            ),
+    #[test]
+    fn inventories_follow_fm27_dropdown_order_ids_and_categories() {
+        use FocusCategory::{Mental, Physical, Technical};
+        let physical = [
+            ("Quickness", 9, Physical),
+            ("Agility and Balance", 10, Physical),
+            ("Resistance", 11, Physical),
+            ("Endurance", 12, Physical),
         ];
-        assert_eq!(GOALKEEPER_FOCUSES.len(), expected_goalkeeper.len());
-        for (focus, (name, attributes, category)) in
-            GOALKEEPER_FOCUSES.iter().zip(expected_goalkeeper)
-        {
-            assert_eq!(
-                (focus.name, focus.attributes, focus.category),
-                (name, attributes, category)
-            );
-        }
+        let set_pieces = [
+            ("Free Kick Taking", 5, Technical),
+            ("Corner Taking", 6, Technical),
+            ("Penalty Taking", 7, Technical),
+            ("Long Throws", 8, Technical),
+        ];
+        let outfield = [
+            ("Chance Conversion", 13, Technical),
+            ("Chance Creation", 14, Technical),
+            ("Ball Retention", 15, Mental),
+            ("Ball Progression", 16, Mental),
+            ("Pressing", 17, Mental),
+            ("Containment", 18, Mental),
+            ("Defensive Positioning", 19, Mental),
+            ("Attacking Movement", 20, Mental),
+            ("Final Third", 21, Mental),
+            ("Shooting", 22, Technical),
+            ("Passing", 23, Technical),
+            ("Crossing", 24, Technical),
+            ("Ball Control", 25, Technical),
+            ("Tackling", 26, Technical),
+            ("Marking", 27, Technical),
+            ("Aerial", 28, Technical),
+        ];
+        let goalkeeper = [
+            ("GK Shot Stopping", 29, Mental),
+            ("GK Handling", 30, Technical),
+            ("GK Sweeping", 31, Mental),
+            ("GK Distribution", 32, Technical),
+        ];
+
+        let expected_outfield: Vec<_> = physical
+            .iter()
+            .chain(&outfield)
+            .chain(&set_pieces)
+            .copied()
+            .collect();
+        let expected_goalkeeper: Vec<_> = physical
+            .iter()
+            .chain(&goalkeeper)
+            .chain(&set_pieces)
+            .copied()
+            .collect();
+        assert_eq!(inventory(OUTFIELD_FOCUSES), expected_outfield);
+        assert_eq!(inventory(GOALKEEPER_FOCUSES), expected_goalkeeper);
+    }
+
+    #[test]
+    fn suggested_focus_names_map_to_fm27_ids() {
+        assert_eq!(fm_focus_id("Chance Conversion"), Some(13));
+        assert_eq!(fm_focus_id("GK Distribution"), Some(32));
+        assert_eq!(fm_focus_id("Resistance"), Some(11));
+        assert_eq!(fm_focus_id("Strength"), None);
     }
 
     #[test]
@@ -546,7 +579,7 @@ mod tests {
 
         let gk = suggest_for_lane(&attributes, &goalkeeper_lane(), FocusCategory::Mental)
             .expect("gk suggestion");
-        assert_eq!(gk, "GK Reactions");
+        assert_eq!(gk, "GK Shot Stopping");
 
         let outfield = suggest_for_lane(&attributes, &centre_forward_lane(), FocusCategory::Mental)
             .expect("outfield suggestion");
@@ -597,7 +630,7 @@ mod tests {
         )
         .expect("suggestion");
 
-        assert_eq!(suggestion, "Free Kick Taking");
+        assert_eq!(suggestion, "Chance Conversion");
     }
 
     #[test]

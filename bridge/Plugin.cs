@@ -9,6 +9,7 @@ using FmDataBridge.Output;
 using FmDataBridge.Protocol;
 using FmDataBridge.Scanning;
 using FmDataBridge.StaffLimits;
+using FmDataBridge.Training;
 
 namespace FmDataBridge;
 
@@ -55,6 +56,8 @@ public class Plugin : BasePlugin
         new(Layouts, PlayerMutationIndex, StaffMutationIndex, GameActions);
 
     private static readonly StaffLimitsOperationService StaffLimits = new(Layouts, PlayerMutationIndex, GameActions);
+
+    private static readonly TrainingOperationService Training = new(Layouts, PlayerMutationIndex, GameActions);
 
     public override void Load()
     {
@@ -239,6 +242,10 @@ public class Plugin : BasePlugin
                 else if (acceptedRequest.Operation == BridgeProtocol.OperationReadStaffLimits)
                 {
                     RunStaffLimits(bridgeDirectory, acceptedRequest, cancelToken);
+                }
+                else if (acceptedRequest.Operation == BridgeProtocol.OperationApplyTraining)
+                {
+                    RunTraining(bridgeDirectory, acceptedRequest, cancelToken);
                 }
                 else
                 {
@@ -929,6 +936,92 @@ public class Plugin : BasePlugin
             _ => "the staff limit read failed; Load Data again",
         };
 
+    private static void RunTraining(
+        string bridgeDirectory,
+        BridgeRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reader = new WindowsMemoryReader();
+            var modules = ModulePresence.FromBounds(reader.LocateKnownModules());
+            WriteStatus(
+                bridgeDirectory,
+                BridgeProtocol.StateScanning,
+                modules,
+                requestId: request.RequestId,
+                playersFound: null,
+                error: null,
+                playerBoostsSupported: false);
+
+            if (cancellationToken.IsCancellationRequested
+                || !GameVersionDetector.TryDetectFromCurrentProcess(out var gameVersion)
+                || string.IsNullOrWhiteSpace(gameVersion))
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    modules,
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: "the training changes could not start; retry",
+                    playerBoostsSupported: false);
+                return;
+            }
+
+            var result = Training.Execute(request, gameVersion, reader);
+            if (!result.Succeeded)
+            {
+                Log.LogWarning($"Training changes failed: {result.Failure} {result.Detail}");
+            }
+
+            WriteStatus(
+                bridgeDirectory,
+                result.Succeeded ? BridgeProtocol.StateReady : BridgeProtocol.StateFailed,
+                modules,
+                requestId: request.RequestId,
+                playersFound: null,
+                error: result.Succeeded ? null : TrainingFailureMessage(result.Failure, result.Detail),
+                playerBoostsSupported: PlayerBoosts.HasSupportedLiveIndex(gameVersion),
+                staffBoostsSupported: StaffBoosts.HasSupportedLiveIndex(gameVersion),
+                training: result.Result);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError($"Training changes crashed: {ex}");
+            try
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    DetectModulesBestEffort(),
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: "the training changes failed unexpectedly; check training in FM");
+            }
+            catch
+            {
+                // ignored — status best-effort
+            }
+        }
+    }
+
+    private static string TrainingFailureMessage(TrainingFailure failure, string? detail) =>
+        failure switch
+        {
+            TrainingFailure.InvalidRequest => "invalid training request; update the app and retry",
+            TrainingFailure.UnsupportedGameBuild =>
+                "this FM build is not supported for training changes; update the bridge plugin and Load Data",
+            TrainingFailure.NoLiveScan => "Load Data again before setting training",
+            TrainingFailure.SourceRequestMismatch => "Load Data again before setting training",
+            TrainingFailure.ClubNotFound => "the managed club was not found in FM; Load Data again",
+            TrainingFailure.ManagerNotFound => "your manager was not found in FM; update the bridge plugin",
+            TrainingFailure.TrainingUnavailable =>
+                "FM's training changes are unavailable in this game build; update the bridge plugin",
+            TrainingFailure.DispatchFailed => detail ?? "FM did not run the training changes; retry",
+            _ => "the training changes failed; check training in FM",
+        };
+
     /// <summary>
     /// game_plugin.dll may appear after plugin Load; rewrite status module flags without changing state.
     /// </summary>
@@ -969,7 +1062,8 @@ public class Plugin : BasePlugin
             staffBoost: current.StaffBoost,
             squadMoves: current.SquadMoves,
             staffChanges: current.StaffChanges,
-            staffLimits: current.StaffLimits);
+            staffLimits: current.StaffLimits,
+            training: current.Training);
     }
 
     private static void TryDeleteForceScanFlag(string bridgeDirectory)
@@ -1012,7 +1106,8 @@ public class Plugin : BasePlugin
         StaffBoostResult? staffBoost = null,
         SquadMoveResult? squadMoves = null,
         StaffChangeResult? staffChanges = null,
-        StaffLimitsResult? staffLimits = null)
+        StaffLimitsResult? staffLimits = null,
+        TrainingResult? training = null)
     {
         var status = new BridgeStatus
         {
@@ -1044,6 +1139,12 @@ public class Plugin : BasePlugin
                 ? scanned && GameActions.StaffLimitsAvailable
                 : null,
             StaffLimits = staffLimits,
+            // Training finds the club and players in the live player index, sends FM's own events,
+            // and reads the result through FM's channels.
+            TrainingSupported = playerBoostsSupported is { } live
+                ? live && GameActions.TrainingAvailable
+                : null,
+            Training = training,
         };
         StatusWriter.Write(bridgeDirectory, status);
     }

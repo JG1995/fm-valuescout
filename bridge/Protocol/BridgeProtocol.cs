@@ -19,12 +19,16 @@ public static class BridgeProtocol
     public const string OperationMoveSquadPlayers = "move-squad-players";
     public const string OperationApplyStaffChanges = "apply-staff-changes";
     public const string OperationReadStaffLimits = "read-staff-limits";
+    public const string OperationApplyTraining = "apply-training";
 
     /// <summary>Most players one squad-move request may move.</summary>
     public const int MaxSquadMoves = 100;
 
     /// <summary>Most staff one staff-change request may sack, hire, or re-hire.</summary>
     public const int MaxStaffChanges = 100;
+
+    /// <summary>Most players one training request may set training for: a whole club, all teams.</summary>
+    public const int MaxTrainingChanges = 250;
     public const string AppFolderName = "fm-valuescout";
     public const string BridgeFolderName = "fm-bridge";
     public const string StatusFileName = "status.json";

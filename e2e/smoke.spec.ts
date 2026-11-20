@@ -4978,6 +4978,37 @@ test.describe("application smoke", () => {
     await expect(trigger).toBeFocused();
   });
 
+  test("squad sets the ticked players' training in FM", async ({ page }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true, squadOverview: true });
+    await page.goto("/my-club?view=squad");
+
+    const main = page.getByRole("main");
+    const trigger = main.getByRole("button", { name: "Apply training in FM" });
+    await trigger.click();
+
+    const dialog = page.getByRole("dialog", { name: "Apply training in FM" });
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByRole("row", { name: /Potential Keeper/ }),
+    ).toContainText("Ball-Playing Goalkeeper GK");
+    await expect(
+      dialog.getByRole("row", { name: /Veteran Full-Back/ }),
+    ).toContainText("Cleared");
+    await dialog
+      .getByRole("checkbox", { name: "Set training for Unread Youngster" })
+      .uncheck();
+    await dialog
+      .getByRole("button", { name: "Set training for 2 players" })
+      .click();
+
+    await expect(dialog.getByRole("status")).toHaveText(
+      "FM took the training for 2 players.",
+    );
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
   test("planner team management renames, removes, and restores a populated team", async ({
     page,
   }) => {

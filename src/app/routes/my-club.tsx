@@ -48,6 +48,7 @@ import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { boostSquadCurrentAbility } from "@/features/squad/api/boost-squad-current-ability";
 import { boostSquadWonderkidMentality } from "@/features/squad/api/boost-squad-wonderkid-mentality";
 import { squadKeys } from "@/features/squad/api/squad-keys";
+import { SquadFmTraining } from "@/features/squad/components/squad-fm-training";
 import { SquadOverviewPanel } from "@/features/squad/components/squad-overview-panel";
 import {
   SquadBoostOutcome,
@@ -574,6 +575,11 @@ function MyClubPageContent() {
                     />
                     <fieldset className="m-0 flex min-w-0 flex-wrap justify-end gap-2 border-0 p-0">
                       <legend className="sr-only">Squad development</legend>
+                      <SquadFmTraining
+                        key={`fm-training-${snapshot.id}`}
+                        activeSaveId={snapshot.saveId}
+                        disabled={squadBoostPending}
+                      />
                       <SquadCurrentAbilityBoost
                         key={`current-ability-${snapshot.id}`}
                         pending={
