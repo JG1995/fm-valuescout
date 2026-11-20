@@ -57,6 +57,9 @@ public sealed class SquadClubIndex
 
     public HashSet<uint> MultiClubUids { get; } = new();
 
+    /// <summary>Each walked club's object address by its Unique ID; the first club wins a repeated ID.</summary>
+    public Dictionary<uint, ulong> ClubAddresses { get; } = new();
+
     public static SquadClubIndex Build(
         IMemoryReader reader,
         IFmMemoryLayout layout,
@@ -210,6 +213,11 @@ public sealed class SquadClubIndex
 
         index.ClubsWalked++;
         var owner = new SquadOwner(clubName, TryReadPositiveUid(reader, club, layout.ObjectUidOffset), ReserveClub: false);
+        if (owner.ClubUid is { } clubUid)
+        {
+            index.ClubAddresses.TryAdd(clubUid, club);
+        }
+
         foreach (var team in teams)
         {
             if (walkedTeams.Add(team))
@@ -284,7 +292,7 @@ public sealed class SquadClubIndex
     }
 
     /// <summary>A begin/end pointer vector of non-null object pointers, or null when invalid.</summary>
-    private static List<ulong>? ReadPointerVector(
+    internal static List<ulong>? ReadPointerVector(
         IMemoryReader reader,
         ulong owner,
         int beginOffset,

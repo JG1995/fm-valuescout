@@ -175,8 +175,74 @@ public static class RequestAcceptance
             BridgeProtocol.OperationBoostCurrentAbility => TryValidateBoostCurrentAbility(request, out rejectReason),
             BridgeProtocol.OperationBoostStaffCurrentAbility => TryValidateBoostStaffCurrentAbility(request, out rejectReason),
             BridgeProtocol.OperationWonderkidMentality => TryValidateWonderkidMentality(request, out rejectReason),
+            BridgeProtocol.OperationMoveSquadPlayers => TryValidateSquadMoves(request, out rejectReason),
             _ => RejectUnsupportedOperation(request.Operation, out rejectReason),
         };
+    }
+
+    private static bool HasSquadMoveFields(BridgeRequest request) =>
+        request.ClubUid is not null || request.SquadMoves is not null;
+
+    private static bool TryValidateSquadMoves(BridgeRequest request, out string? rejectReason)
+    {
+        rejectReason = null;
+        if (!string.Equals(
+                request.PlayerDatabaseScope,
+                PlayerDatabaseScopes.Men,
+                StringComparison.Ordinal))
+        {
+            rejectReason = "playerDatabaseScope is supported only by full-dump";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(request.SourceRequestId))
+        {
+            rejectReason = "sourceRequestId is required for squad moves";
+            return false;
+        }
+
+        if (request.ClubUid is not { } clubUid || clubUid == 0)
+        {
+            rejectReason = "clubUid is required for squad moves";
+            return false;
+        }
+
+        if (request.PlayerUid is not null
+            || request.StaffUid is not null
+            || request.ExpectedCurrentAbility is not null
+            || request.ExpectedPotentialAbility is not null
+            || request.CurrentAbilityIncrement is not null
+            || request.ExpectedAmbition is not null
+            || request.ExpectedProfessionalism is not null
+            || request.ExpectedDetermination is not null)
+        {
+            rejectReason = "squad moves do not accept boost fields";
+            return false;
+        }
+
+        if (request.SquadMoves is not { Count: > 0 and <= BridgeProtocol.MaxSquadMoves } moves)
+        {
+            rejectReason = $"squadMoves must list 1 through {BridgeProtocol.MaxSquadMoves} players";
+            return false;
+        }
+
+        var players = new HashSet<uint>();
+        foreach (var move in moves)
+        {
+            if (move is null || move.PlayerUid == 0 || !players.Add(move.PlayerUid))
+            {
+                rejectReason = "each squad move needs a distinct playerUid";
+                return false;
+            }
+
+            if (move.TargetLevel is not ("senior" or "reserve" or "youth"))
+            {
+                rejectReason = "squad move targetLevel must be senior, reserve, or youth";
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool TryValidateFullDump(BridgeRequest request, out string? rejectReason)
@@ -196,7 +262,8 @@ public static class RequestAcceptance
             || request.CurrentAbilityIncrement is not null
             || request.ExpectedAmbition is not null
             || request.ExpectedProfessionalism is not null
-            || request.ExpectedDetermination is not null)
+            || request.ExpectedDetermination is not null
+            || HasSquadMoveFields(request))
         {
             rejectReason = "full-dump does not accept player boost fields";
             return false;
@@ -235,7 +302,8 @@ public static class RequestAcceptance
             || request.CurrentAbilityIncrement is not null
             || request.ExpectedAmbition is not null
             || request.ExpectedProfessionalism is not null
-            || request.ExpectedDetermination is not null)
+            || request.ExpectedDetermination is not null
+            || HasSquadMoveFields(request))
         {
             rejectReason = "staff CA boost does not accept player boost fields";
             return false;
@@ -317,6 +385,12 @@ public static class RequestAcceptance
             return false;
         }
 
+        if (HasSquadMoveFields(request))
+        {
+            rejectReason = "player boosts do not accept squad move fields";
+            return false;
+        }
+
         if (!string.Equals(
                 request.PlayerDatabaseScope,
                 PlayerDatabaseScopes.Men,
@@ -377,6 +451,10 @@ public static class RequestAcceptance
             ExpectedAmbition = request.ExpectedAmbition,
             ExpectedProfessionalism = request.ExpectedProfessionalism,
             ExpectedDetermination = request.ExpectedDetermination,
+            ClubUid = request.ClubUid,
+            SquadMoves = request.SquadMoves?
+                .Select(move => new SquadMoveItem { PlayerUid = move.PlayerUid, TargetLevel = move.TargetLevel })
+                .ToArray(),
         };
 
     private static bool IsAbility(int? value) => value is >= 1 and <= 200;

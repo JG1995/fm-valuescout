@@ -24,11 +24,13 @@ internal sealed class PlayerMutationIndex
     private string? _gameVersion;
     private IReadOnlyDictionary<uint, PersonCandidate> _players =
         new Dictionary<uint, PersonCandidate>();
+    private IReadOnlyDictionary<uint, ulong> _clubs = new Dictionary<uint, ulong>();
 
     public void Replace(
         string sourceRequestId,
         string gameVersion,
-        IReadOnlyList<PersonCandidate> players)
+        IReadOnlyList<PersonCandidate> players,
+        IReadOnlyDictionary<uint, ulong>? clubs = null)
     {
         if (string.IsNullOrWhiteSpace(sourceRequestId))
         {
@@ -53,6 +55,7 @@ internal sealed class PlayerMutationIndex
         _sourceRequestId = sourceRequestId;
         _gameVersion = gameVersion;
         _players = next;
+        _clubs = clubs is null ? new Dictionary<uint, ulong>() : new Dictionary<uint, ulong>(clubs);
     }
 
     public void Clear()
@@ -60,6 +63,21 @@ internal sealed class PlayerMutationIndex
         _sourceRequestId = null;
         _gameVersion = null;
         _players = new Dictionary<uint, PersonCandidate>();
+        _clubs = new Dictionary<uint, ulong>();
+    }
+
+    /// <summary>Whether the index holds the live dump <paramref name="sourceRequestId"/> produced.</summary>
+    public bool IsFrom(string sourceRequestId) =>
+        _sourceRequestId is not null
+        && string.Equals(_sourceRequestId, sourceRequestId, StringComparison.Ordinal);
+
+    /// <summary>The club's object address from the same live dump as the players.</summary>
+    public bool TryGetClub(string sourceRequestId, uint clubUid, out ulong address)
+    {
+        address = 0;
+        return _sourceRequestId is not null
+            && string.Equals(_sourceRequestId, sourceRequestId, StringComparison.Ordinal)
+            && _clubs.TryGetValue(clubUid, out address);
     }
 
     /// <summary>

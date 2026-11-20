@@ -168,6 +168,14 @@ public sealed class BridgeStatusSerializationTests
                         PreviousCurrentAbility = 120,
                         PotentialAbility = 150,
                     },
+                    SquadMovesSupported = true,
+                    SquadMoves = new SquadMoveResult
+                    {
+                        Moves = new[]
+                        {
+                            new SquadMoveOutcome { Outcome = SquadMoveOutcome.Moved, TeamType = 10, TeamLevel = "reserve" },
+                        },
+                    },
                     Error = "Could not create C:\\Users\\player\\AppData\\Local\\fm-valuescout\\fm-bridge\\dump.json",
                 });
 
@@ -177,6 +185,9 @@ public sealed class BridgeStatusSerializationTests
             Assert.Equal("scan failed unexpectedly", status!.Error);
             Assert.True(status.StaffBoostsSupported);
             Assert.Equal("restored", status.StaffBoost!.Rollback);
+            Assert.True(status.SquadMovesSupported);
+            var move = Assert.Single(status.SquadMoves!.Moves);
+            Assert.Equal((SquadMoveOutcome.Moved, 10, "reserve"), (move.Outcome, move.TeamType, move.TeamLevel));
         }
         finally
         {
