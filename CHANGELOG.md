@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-11-20
+
+### Added
+
+- **Apply your Planner squads in FM.** **Apply in FM** beside **Optimize squads** moves your players into the FM teams their Planner squads stand for: Senior to the first team, Reserves to the reserve team, and Youth to the youth team. It lists every move, all ticked, marks a move into a squad the player is too old for with **Over age**, and then reports what FM moved and why any move failed. FM makes each move itself, as its **Move to** menu does, and does not check age.
+- **Apply the staff optimizer in FM.** **Apply in FM** in the assignment recommendations makes the optimizer's changes in FM: it sacks surplus staff, hires each recruit into the slot's job and team, and changes someone's job or team by sacking and hiring them again, because FM cannot change an employed person's job. FM sets every new contract and wage for the job, as the in-game editor's **Move to my club** does. The dialog lists each change with the person's job or club now, what they become, and their current wage, then reports each new job, team, and wage. FM checks neither the board's staff limits nor whether a job suits the person. If FM refuses a re-hire, that person is left unemployed, and the report names them.
+- **Apply training in FM.** **Apply training in FM** in Squad sets each player's individual training in FM. A player in a Planner slot trains the slot's in-possession role at its position and its out-of-possession role, and every player's additional focus becomes his Suggested Training, cleared when he has none. Players out on loan are left out. The dialog reports how many players FM took and, for any it did not, what FM holds instead.
+- **Staffing needs from FM.** Load Data reads the board's staff limits for your first, reserve, and youth teams from FM and sets the staffing needs from them. The first Load Data sets every need FM has a limit for; after that, a need you edit stays until FM's limit for it changes. **Configure staffing needs** shows FM's limit beside any need that differs from it. The Load Data message says how many needs changed, or why the limits were not read.
+- Everything in this release except the FM27 Suggested Training and the Set Piece Coach fix needs the new bridge plugin: use **Install / Update plugin** in Settings, restart FM, and Load Data with FM open on your save.
+
+### Changed
+
+- **Your club follows FM.** Load Data makes your FM manager's club the managed club, replacing an earlier pick. Choosing a club in My Club still works when Load Data cannot tell, and lasts until the next Load Data that can.
+- **Suggested Training uses FM27's focuses.** It suggests from FM27's additional focus list, such as Chance Conversion, Ball Progression, Pressing, Resistance, and the new goalkeeper focuses, each with the attributes FM lists for it. A focus is ranked by its gain per attribute it trains, so a broad focus no longer wins just by training more attributes. Many suggestions change.
+
+### Fixed
+
+- Load Data places players in their FM team even when the team lists more than 60 players.
+- The assignment optimizer keeps or replaces a current Set Piece Coach like any other job.
+
 ## [0.31.1] - 2026-11-20
 
 ### Fixed

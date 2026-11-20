@@ -1,5 +1,5 @@
 {
-  "intent": "patch",
-  "sequence": 52,
-  "version": "0.31.1"
+  "intent": "minor",
+  "sequence": 53,
+  "version": "0.32.0"
 }
