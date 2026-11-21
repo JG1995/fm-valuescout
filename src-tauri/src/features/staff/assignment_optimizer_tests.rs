@@ -1,9 +1,9 @@
 use super::assignment_optimizer::{
     allocate_staff_assignments, coach_composition, general_match_edge_bytes,
-    preferred_job_classification, CoachRequirement, PreferredJob, StaffAssignmentAction,
-    StaffAssignmentCandidate, StaffAssignmentClassification, StaffAssignmentJobSource,
-    StaffAssignmentReplacement, StaffAssignmentScoreSet, StaffAssignmentSlot,
-    StaffAssignmentSurplus,
+    preferred_job_classification, recruit_teams, CoachRequirement, PreferredJob,
+    StaffAssignmentAction, StaffAssignmentCandidate, StaffAssignmentClassification,
+    StaffAssignmentJobSource, StaffAssignmentReplacement, StaffAssignmentScoreSet,
+    StaffAssignmentSlot, StaffAssignmentSurplus, Teams,
 };
 use super::assignment_targets::StaffAssignmentTarget;
 
@@ -35,6 +35,7 @@ fn candidate(
         current_team: None,
         working_with_youngsters: Some(10),
         scores,
+        teams: Teams::ALL,
     }
 }
 
@@ -1262,5 +1263,195 @@ fn staff_whose_team_is_unknown_keep_their_job_on_any_team() {
     assert_eq!(
         recommendations(&result),
         [(1, "reserves".to_string(), StaffAssignmentAction::Keep, None)]
+    );
+}
+
+fn teams(senior: bool, reserves: bool, youth: bool) -> Teams {
+    Teams {
+        senior,
+        reserves,
+        youth,
+    }
+}
+
+#[test]
+fn each_team_with_a_shortlist_recruits_from_it_and_the_rest_from_no_teams_list() {
+    let none = teams(false, false, false);
+    let senior = teams(true, false, false);
+    let senior_and_youth = teams(true, false, true);
+
+    for (case, listed_by, with_shortlist, expected) in [
+        ("no team shortlists", none, none, Teams::ALL),
+        ("on the senior list", senior, senior, senior),
+        ("on no team's list", none, senior, teams(false, true, true)),
+        (
+            "on two lists",
+            senior_and_youth,
+            senior_and_youth,
+            senior_and_youth,
+        ),
+        ("on the senior list only", senior, senior_and_youth, senior),
+        ("on no list of three", none, Teams::ALL, none),
+    ] {
+        assert_eq!(recruit_teams(listed_by, with_shortlist), expected, "{case}");
+    }
+}
+
+#[test]
+fn recruits_fill_only_the_teams_they_may_join_and_any_club_job() {
+    let assistant = |uid, score, teams| StaffAssignmentCandidate {
+        teams,
+        ..candidate(
+            uid,
+            "Assistant Manager",
+            StaffAssignmentScoreSet {
+                assistant_manager: Some(score),
+                ..Default::default()
+            },
+        )
+    };
+    let general_coach = |uid, score, teams| StaffAssignmentCandidate {
+        teams,
+        ..candidate(
+            uid,
+            "Coach",
+            StaffAssignmentScoreSet {
+                coach_attacking_technical: Some(score),
+                ..Default::default()
+            },
+        )
+    };
+    let youth_only = teams(false, false, true);
+    let candidates = [
+        assistant(1, 90, youth_only),
+        assistant(2, 80, teams(true, false, false)),
+        assistant(3, 70, teams(false, true, true)),
+        general_coach(4, 95, youth_only),
+        general_coach(5, 60, teams(true, false, false)),
+        StaffAssignmentCandidate {
+            teams: youth_only,
+            ..candidate(
+                6,
+                "Director of Football",
+                StaffAssignmentScoreSet {
+                    director_of_football: Some(50),
+                    ..Default::default()
+                },
+            )
+        },
+    ];
+
+    let result = allocate_staff_assignments(
+        &[
+            target("senior", "assistant_manager", "Assistant Manager", 1),
+            target("senior", "coaches", "Coaches", 1),
+            target("reserves", "assistant_manager", "Assistant Manager", 1),
+            target("youth", "assistant_manager", "Assistant Manager", 1),
+            target("club", "director_of_football", "Director of Football", 1),
+        ],
+        &candidates,
+    );
+
+    let placed = result
+        .slots
+        .iter()
+        .map(|slot| match slot {
+            StaffAssignmentSlot::Recommendation(recommendation) => (
+                recommendation.scope.as_str(),
+                recommendation.job_id.as_str(),
+                Some(recommendation.uid),
+            ),
+            StaffAssignmentSlot::Vacancy(vacancy) => {
+                (vacancy.scope.as_str(), vacancy.job_id.as_str(), None)
+            }
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        placed,
+        [
+            ("senior", "assistant_manager", Some(2)),
+            ("senior", "coaches", Some(5)),
+            ("reserves", "assistant_manager", Some(3)),
+            ("youth", "assistant_manager", Some(1)),
+            ("club", "director_of_football", Some(6)),
+        ]
+    );
+}
+
+#[test]
+fn a_vacancy_counts_only_the_people_who_may_join_its_team() {
+    let physio = |uid, teams| StaffAssignmentCandidate {
+        teams,
+        ..candidate(
+            uid,
+            "Physio",
+            StaffAssignmentScoreSet {
+                physio: Some(70),
+                ..Default::default()
+            },
+        )
+    };
+    let fitness_coach = StaffAssignmentCandidate {
+        teams: teams(false, false, true),
+        ..candidate(
+            3,
+            "Fitness Coach",
+            StaffAssignmentScoreSet {
+                coach_fitness: Some(70),
+                ..Default::default()
+            },
+        )
+    };
+    let general_coach = StaffAssignmentCandidate {
+        teams: teams(false, false, true),
+        ..candidate(
+            4,
+            "Coach",
+            StaffAssignmentScoreSet {
+                coach_attacking_technical: Some(70),
+                ..Default::default()
+            },
+        )
+    };
+    let youth_only = teams(false, false, true);
+
+    let result = allocate_staff_assignments(
+        &[
+            target("senior", "physio", "Physio", 1),
+            target("senior", "coaches", "Coaches", 3),
+        ],
+        &[
+            physio(1, youth_only),
+            physio(2, youth_only),
+            fitness_coach,
+            general_coach,
+        ],
+    );
+
+    let vacancy_counts = result
+        .slots
+        .iter()
+        .map(|slot| match slot {
+            StaffAssignmentSlot::Vacancy(vacancy) => (
+                vacancy.job_id.as_str(),
+                vacancy.evidence.joined_candidate_count,
+                vacancy.evidence.eligible_score_count,
+            ),
+            StaffAssignmentSlot::Recommendation(recommendation) => {
+                panic!(
+                    "{} was recruited to a team they may not join",
+                    recommendation.uid
+                )
+            }
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        vacancy_counts,
+        [
+            ("coaches", 0, 0),
+            ("coaches", 0, 0),
+            ("coaches", 0, 0),
+            ("physio", 0, 0),
+        ]
     );
 }

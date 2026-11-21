@@ -32,9 +32,10 @@
 //! The game shows the job with the highest rating as the Preferred Job. Which job it shows
 //! when several share the highest rating is known only for the pairs listed at `TIE_ORDER`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::container::read_u32;
+use super::shortlists::ListedStaff;
 use super::{decode_date, SaveShortlistedStaff, SaveStaffShortlist, SaveStatsError};
 
 const TRAILER_BYTES: usize = 12;
@@ -139,29 +140,41 @@ const QUALIFICATIONS: [&str; 8] = [
 const QUALIFICATION_RANGE: std::ops::RangeInclusive<i8> = -8..=8;
 const UNKNOWN: &str = "-";
 
-/// The person behind each of `keys`, in that order, each Unique ID once.
+/// The person behind each of `listed`, in that order, each Unique ID once with the
+/// shortlists of every key that gives them.
 ///
 /// A key that gives nobody, or whose candidate objects give different people, is left out
 /// and counted, so no person is attributed by a guess. When nobody listed can be read, the
 /// layout does not fit the save and the read fails.
 pub(super) fn read_shortlisted_staff(
     game_db: &[u8],
-    keys: &[u32],
+    listed: &[ListedStaff],
 ) -> Result<SaveStaffShortlist, SaveStatsError> {
-    if keys.is_empty() {
+    if listed.is_empty() {
         return Ok(SaveStaffShortlist::default());
     }
+    let keys: Vec<u32> = listed.iter().map(|listed| listed.key).collect();
     if keys.contains(&0) || keys.iter().any(|key| *key > MAX_PERSON_KEY) {
         return Err(SaveStatsError::Corrupt);
     }
-    let trailers = find_trailers(game_db, keys)?;
-    let mut staff = Vec::with_capacity(keys.len());
-    let mut listed = HashSet::new();
+    let trailers = find_trailers(game_db, &keys)?;
+    let mut staff: Vec<SaveShortlistedStaff> = Vec::with_capacity(keys.len());
+    let mut by_unique_id = HashMap::new();
     let mut unread = 0;
-    for key in keys {
-        match person_of_key(game_db, *key, &trailers) {
-            Ok(person) if listed.insert(person.unique_id) => staff.push(person),
-            Ok(_) => {}
+    for listed in listed {
+        match person_of_key(game_db, listed.key, &trailers) {
+            Ok(person) => {
+                let index = *by_unique_id.entry(person.unique_id).or_insert_with(|| {
+                    staff.push(person);
+                    staff.len() - 1
+                });
+                let shortlists = &mut staff[index].shortlists;
+                for name in &listed.shortlists {
+                    if !shortlists.contains(name) {
+                        shortlists.push(name.clone());
+                    }
+                }
+            }
             Err(_) => unread += 1,
         }
     }
@@ -308,6 +321,7 @@ fn person_between(
                 unique_id: end.unique_id,
                 preferred_job: facts.preferred_job,
                 coaching_qualifications: facts.coaching_qualifications,
+                shortlists: Vec::new(),
             };
             if person.as_ref().is_some_and(|person| *person != found) {
                 return Err(SaveStatsError::Corrupt);
@@ -520,7 +534,18 @@ mod tests {
             unique_id,
             preferred_job,
             coaching_qualifications: qualifications,
+            shortlists: Vec::new(),
         }
+    }
+
+    /// Each of `keys` as listed on no named shortlist.
+    fn listed_keys(keys: &[u32]) -> Vec<ListedStaff> {
+        keys.iter()
+            .map(|key| ListedStaff {
+                key: *key,
+                shortlists: Vec::new(),
+            })
+            .collect()
     }
 
     fn game_db(staff: &[ExampleStaff]) -> Vec<u8> {
@@ -558,14 +583,20 @@ mod tests {
             unrated,
         ]);
 
-        // A key listed twice gives its person once.
-        let staff = read_shortlisted_staff(&game_db, &[520, 510, 530, 520, 540, 550]);
+        // A key listed twice gives its person once, on the shortlists of both.
+        let mut members = listed_keys(&[520, 510, 530, 520, 540, 550]);
+        members[0].shortlists = vec!["Senior Staff".to_string()];
+        members[3].shortlists = vec![String::new(), "Senior Staff".to_string()];
+        let staff = read_shortlisted_staff(&game_db, &members);
 
         assert_eq!(
             staff,
             shortlist(
                 vec![
-                    person(2_002_118_740, "Recruitment Analyst", "National C Licence"),
+                    SaveShortlistedStaff {
+                        shortlists: vec!["Senior Staff".to_string(), String::new()],
+                        ..person(2_002_118_740, "Recruitment Analyst", "National C Licence")
+                    },
                     person(9_001, "Physio", "Continental B Licence"),
                     person(9_003, "Performance Analyst", "No Qualifications"),
                     person(9_004, "Doctor", "No Qualifications"),
@@ -574,7 +605,10 @@ mod tests {
                 0
             )
         );
-        assert_eq!(read_shortlisted_staff(&game_db, &[]), shortlist(vec![], 0));
+        assert_eq!(
+            read_shortlisted_staff(&game_db, &listed_keys(&[])),
+            shortlist(vec![], 0)
+        );
     }
 
     #[test]
@@ -597,7 +631,7 @@ mod tests {
         ];
 
         assert_eq!(
-            read_shortlisted_staff(&game_db(&staff), &[510, 520, 530]),
+            read_shortlisted_staff(&game_db(&staff), &listed_keys(&[510, 520, 530])),
             shortlist(
                 vec![
                     person(9_001, "Physio", "No Qualifications"),
@@ -622,7 +656,7 @@ mod tests {
             .collect();
 
         assert_eq!(
-            read_shortlisted_staff(&game_db(&staff), &[510, 520, 530]),
+            read_shortlisted_staff(&game_db(&staff), &listed_keys(&[510, 520, 530])),
             shortlist(
                 vec![
                     person(9_001, "Physio", "-"),
@@ -642,7 +676,7 @@ mod tests {
         };
 
         assert_eq!(
-            read_shortlisted_staff(&game_db(&[person_with_it]), &[510]),
+            read_shortlisted_staff(&game_db(&[person_with_it]), &listed_keys(&[510])),
             shortlist(vec![person(9_001, "Physio", "No Qualifications")], 0)
         );
     }
@@ -656,7 +690,7 @@ mod tests {
         let next = ExampleStaff::preferring(520, 9_002, 5);
 
         assert_eq!(
-            read_shortlisted_staff(&game_db(&[stored_once, next]), &[510, 520]),
+            read_shortlisted_staff(&game_db(&[stored_once, next]), &listed_keys(&[510, 520])),
             shortlist(
                 vec![
                     person(2_002_042_661, "Physio", "No Qualifications"),
@@ -704,7 +738,7 @@ mod tests {
             .collect();
         let keys: Vec<u32> = staff.iter().map(|person| person.key).collect();
 
-        let read = read_shortlisted_staff(&game_db(&staff), &keys)
+        let read = read_shortlisted_staff(&game_db(&staff), &listed_keys(&keys))
             .expect("staff")
             .staff;
 
@@ -806,13 +840,13 @@ mod tests {
             ("two people with one key", two_people, [510, 520]),
         ] {
             assert_eq!(
-                read_shortlisted_staff(&game_db, &keys),
+                read_shortlisted_staff(&game_db, &listed_keys(&keys)),
                 shortlist(vec![person(9_009, "Scout", "No Qualifications")], 1),
                 "{case}"
             );
         }
         assert_eq!(
-            read_shortlisted_staff(&sound, &[510, 520]),
+            read_shortlisted_staff(&sound, &listed_keys(&[510, 520])),
             shortlist(
                 vec![
                     person(9_001, "Physio", "No Qualifications"),
@@ -834,7 +868,7 @@ mod tests {
             ("key past the bound", &[510, MAX_PERSON_KEY + 1]),
         ] {
             assert_eq!(
-                read_shortlisted_staff(&sound, keys),
+                read_shortlisted_staff(&sound, &listed_keys(keys)),
                 Err(SaveStatsError::Corrupt),
                 "{case}"
             );
@@ -863,12 +897,12 @@ mod tests {
         // The person's object ends at its own trailer, not at a later one that would also
         // leave it readable.
         assert_eq!(
-            read_shortlisted_staff(&crowded(8), &[510]),
+            read_shortlisted_staff(&crowded(8), &listed_keys(&[510])),
             shortlist(vec![person(9_001, "Physio", "No Qualifications")], 0)
         );
         // The search for one key is bounded: past the bound the key gives nobody.
         assert_eq!(
-            read_shortlisted_staff(&crowded(40), &[510]),
+            read_shortlisted_staff(&crowded(40), &listed_keys(&[510])),
             Err(SaveStatsError::Corrupt)
         );
     }
@@ -894,7 +928,7 @@ mod tests {
         game_db[inside_at + 12] = 0xFF;
 
         assert_eq!(
-            read_shortlisted_staff(&game_db, &[510]),
+            read_shortlisted_staff(&game_db, &listed_keys(&[510])),
             shortlist(vec![person(9_001, "Physio", "No Qualifications")], 0)
         );
     }
@@ -933,12 +967,19 @@ mod tests {
             ],
         );
 
+        let on = |person: SaveShortlistedStaff, shortlists: &[&str]| SaveShortlistedStaff {
+            shortlists: shortlists.iter().map(|name| name.to_string()).collect(),
+            ..person
+        };
         assert_eq!(
             stats.staff_shortlist,
             shortlist(
                 vec![
-                    person(9_002, "Assistant Manager", "No Qualifications"),
-                    person(9_001, "Scout", "No Qualifications"),
+                    on(
+                        person(9_002, "Assistant Manager", "No Qualifications"),
+                        &["Backroom", ""]
+                    ),
+                    on(person(9_001, "Scout", "No Qualifications"), &[""]),
                 ],
                 0
             )
@@ -950,7 +991,10 @@ mod tests {
 
         assert_eq!(
             stats.staff_shortlist,
-            shortlist(vec![person(9_001, "Scout", "No Qualifications")], 1)
+            shortlist(
+                vec![on(person(9_001, "Scout", "No Qualifications"), &[""])],
+                1
+            )
         );
 
         // A staff shortlist nobody can be read from fails the staff alone.

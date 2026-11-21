@@ -68,9 +68,17 @@ const RECORD_END: u16 = 30;
 pub(super) struct SaveLists {
     /// The player shortlists in the save's order.
     pub player_shortlists: Vec<SaveShortlist>,
-    /// The key of each person on any staff shortlist, once, in the save's order. A key is
-    /// the one that closes the person's object in `game_db`.
-    pub staff_keys: Vec<u32>,
+    /// Each person on any staff shortlist, once, in the save's order.
+    pub staff: Vec<ListedStaff>,
+}
+
+/// One person on the staff shortlists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ListedStaff {
+    /// The key that closes the person's object in `game_db`.
+    pub key: u32,
+    /// The name of each staff shortlist that lists the person, once, in the save's order.
+    pub shortlists: Vec<String>,
 }
 
 /// The player shortlists and staff shortlist members of a `scout_man` section. A player is
@@ -103,9 +111,9 @@ pub(super) fn read_lists(
 
     let mut lists = SaveLists {
         player_shortlists: Vec::new(),
-        staff_keys: Vec::new(),
+        staff: Vec::new(),
     };
-    let mut listed_staff = HashSet::new();
+    let mut staff_index = HashMap::new();
     let mut position = RECORDS_AT;
     for _ in 0..list_count {
         let Some(record) = read_record(section, position)? else {
@@ -116,12 +124,21 @@ pub(super) fn read_lists(
                 name: record.name.to_owned(),
                 player_unique_ids: listed_players(&record.member_keys, &unique_ids)?,
             }),
-            ListKind::StaffShortlist => lists.staff_keys.extend(
-                record
-                    .member_keys
-                    .iter()
-                    .filter(|key| listed_staff.insert(**key)),
-            ),
+            ListKind::StaffShortlist => {
+                for key in &record.member_keys {
+                    let index = *staff_index.entry(*key).or_insert_with(|| {
+                        lists.staff.push(ListedStaff {
+                            key: *key,
+                            shortlists: Vec::new(),
+                        });
+                        lists.staff.len() - 1
+                    });
+                    let shortlists = &mut lists.staff[index].shortlists;
+                    if !shortlists.iter().any(|name| name == record.name) {
+                        shortlists.push(record.name.to_owned());
+                    }
+                }
+            }
             ListKind::Other => {}
         }
         position = record.end;
@@ -330,14 +347,14 @@ mod tests {
     }
 
     #[test]
-    fn every_staff_shortlist_gives_its_members_keys_once_in_save_order() {
+    fn every_staff_shortlist_gives_its_members_once_in_save_order_with_their_lists() {
         let mut staff_search = ExampleList::staff_shortlist("", &[900]);
         staff_search.kind = 9;
         let section = scout_section(
             &[
                 ExampleList::staff_shortlist("Staff targets", &[503, 501]),
                 ExampleList::shortlist("Targets", &[11]),
-                ExampleList::staff_shortlist("", &[501, 502]),
+                ExampleList::staff_shortlist("", &[501, 502, 501]),
                 staff_search,
             ],
             SCHEMA,
@@ -345,7 +362,18 @@ mod tests {
 
         let lists = read_lists(&section, &records()).expect("lists");
 
-        assert_eq!(lists.staff_keys, [503, 501, 502]);
+        let listed = |key, shortlists: &[&str]| ListedStaff {
+            key,
+            shortlists: shortlists.iter().map(|name| name.to_string()).collect(),
+        };
+        assert_eq!(
+            lists.staff,
+            [
+                listed(503, &["Staff targets"]),
+                listed(501, &["Staff targets", ""]),
+                listed(502, &[""]),
+            ]
+        );
         assert_eq!(lists.player_shortlists, [shortlist("Targets", &[1_500])]);
     }
 
