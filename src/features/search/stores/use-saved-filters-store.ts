@@ -21,8 +21,14 @@ export type SavedFilter = {
   comparison: MoneyballComparison;
 };
 
+/** Whether applying a saved filter or slot replaces Search's columns. */
+export type SavedFilterColumnsChoice = "replace" | "keep";
+
 type SavedFiltersState = {
   savedFilters: SavedFilter[];
+  /** The answer to remember instead of asking, until the app restarts. */
+  columnsChoice: SavedFilterColumnsChoice | null;
+  rememberColumnsChoice: (choice: SavedFilterColumnsChoice) => void;
   /** Saves under `name`, replacing a saved filter of the same name. */
   save: (filter: Omit<SavedFilter, "id">) => void;
   rename: (id: string, name: string) => void;
@@ -73,6 +79,8 @@ export const useSavedFiltersStore = create<SavedFiltersState>()(
   persist(
     (set) => ({
       savedFilters: [],
+      columnsChoice: null,
+      rememberColumnsChoice: (choice) => set({ columnsChoice: choice }),
       save: (filter) => {
         const name = filter.name.trim();
         if (name === "") {
@@ -120,6 +128,7 @@ export const useSavedFiltersStore = create<SavedFiltersState>()(
     {
       name: "fm-valuescout-saved-filters",
       version: 1,
+      // The columns choice lasts only for this session.
       partialize: (state) => ({ savedFilters: state.savedFilters }),
       merge: (persisted, current) => {
         const stored = isRecord(persisted) ? persisted.savedFilters : undefined;

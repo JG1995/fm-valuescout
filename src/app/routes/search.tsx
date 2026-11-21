@@ -517,17 +517,33 @@ function SearchPageContent() {
     rules: FilterRule[],
     nextCombine: FilterCombineMode,
     nextComparison?: MoneyballComparison,
+    replacementColumnIds?: readonly string[],
   ) => {
+    // A tactic sort column the new layout drops cannot stay the sort.
+    const dropsSort =
+      replacementColumnIds !== undefined &&
+      isTacticColumnId(sort) &&
+      !replacementColumnIds.includes(sort);
     void updateSearch({
       filters: rules,
       combine: nextCombine,
       ...(nextComparison === undefined ? {} : { comparison: nextComparison }),
+      ...(dropsSort
+        ? {
+            sort: DEFAULT_SEARCH_SORT_FIELD,
+            dir: defaultDirForSortField(DEFAULT_SEARCH_SORT_FIELD),
+          }
+        : {}),
     }).then(() => {
-      addColumns(
-        TABLE_ID,
-        rules.map((rule) => rule.field),
-        SEARCH_TABLE_GROUPS,
-      );
+      if (replacementColumnIds) {
+        replaceLayout(TABLE_ID, replacementColumnIds);
+      } else {
+        addColumns(
+          TABLE_ID,
+          rules.map((rule) => rule.field),
+          SEARCH_TABLE_GROUPS,
+        );
+      }
     });
   };
   const shortlistControl =
@@ -635,6 +651,7 @@ function SearchPageContent() {
         combine={combine}
         comparison={comparison}
         slotPresets={slotPresets}
+        columnIds={layout.columnIds}
         onApply={handleApplyFilters}
       />
     );
