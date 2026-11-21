@@ -190,9 +190,14 @@ function SquadPlayerBoost({
           </p>
           {isCurrentAbility ? (
             <ul className="list-disc space-y-1 pl-5 text-body-sm text-on-surface-variant">
-              <li>Players aged 20 or younger receive +5 CA.</li>
-              <li>Players aged 21 through 28 receive +10 CA.</li>
+              <li>
+                Each player gains the gap between CA and PA, divided by the
+                seasons left until age 28 and rounded up.
+              </li>
+              <li>Players aged 27 or 28 count as one season left.</li>
+              <li>No player gains more than +20 CA.</li>
               <li>Players aged 29 or older are skipped.</li>
+              <li>Run it once a season.</li>
             </ul>
           ) : (
             <div className="space-y-1 text-body-sm text-on-surface-variant">

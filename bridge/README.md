@@ -42,7 +42,7 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
 
 The same protocol v1 file supports two closed player actions and one closed staff action after a successful **live** full dump:
 
-- `boost-current-ability` requires the source dump request ID, player UID, expected CA and PA, and a fixed increment of `5` or `10`. The bridge caps the target at live PA and `200`.
+- `boost-current-ability` requires the source dump request ID, player UID, expected CA and PA, and an increment from `1` through `20`. The bridge caps the target at live PA and `200`.
 - `wonderkid-mentality` requires the same source and expected CA/PA preconditions plus a snapshot expectation for each known mentality field. A `null` field is neither read nor written; a known value above `10` is rechecked and left unchanged. The bridge generates independent inclusive `11..20` targets only for known values at `10` or below.
 - `boost-staff-current-ability` requires the source dump request ID, staff UID, and expected CA and PA. The bridge always adds `10` internally and caps the target at live PA and `200`; the request cannot supply an increment or target.
 

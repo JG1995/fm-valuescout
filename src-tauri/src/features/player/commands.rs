@@ -335,7 +335,7 @@ where
 {
     execute_squad_player_boost_with(
         db,
-        service::prepare_current_ability_boost,
+        service::prepare_squad_current_ability_boost,
         request_bridge_boost,
         on_progress,
     )
@@ -352,7 +352,7 @@ where
     execute_squad_player_boost_under_guard(
         db,
         guard,
-        service::prepare_current_ability_boost,
+        service::prepare_squad_current_ability_boost,
         request_local_player_boost,
         on_progress,
     )
@@ -1036,7 +1036,7 @@ mod tests {
                         })
                         .expect("read prior squad result");
                 assert_eq!(
-                    current_ca, 155,
+                    current_ca, 153,
                     "each success must commit before the next bridge request"
                 );
             }
@@ -1049,7 +1049,7 @@ mod tests {
 
         assert_eq!(
             bridge_calls.into_inner(),
-            vec![(77, Some(5)), (78, Some(10)), (79, Some(10))]
+            vec![(77, Some(3)), (78, Some(3)), (79, Some(5))]
         );
         assert_eq!(result.updated, 3);
         assert_eq!(result.skipped, 2);
@@ -1058,7 +1058,7 @@ mod tests {
         assert_eq!(result.recovery_message, None);
 
         let conn = db.0.lock().expect("lock db");
-        for (uid, expected_ca) in [(77, 155), (78, 160), (79, 200), (80, 150), (81, 170)] {
+        for (uid, expected_ca) in [(77, 153), (78, 153), (79, 200), (80, 150), (81, 170)] {
             let ca: i64 = conn
                 .query_row(
                     "SELECT ca FROM players WHERE uid = ?1",

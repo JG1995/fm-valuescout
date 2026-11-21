@@ -128,7 +128,7 @@ export function ManagedClubBoost({
           <p>This runs these actions in order:</p>
           <ol className="list-decimal space-y-1 pl-5">
             <li>Make all Wonderkids.</li>
-            <li>Apply the age-restricted player CA boost.</li>
+            <li>Boost all player CA towards PA by age 28, at most +20 each.</li>
             <li>Apply the staff CA boost.</li>
           </ol>
           <p>Changes already applied cannot be undone.</p>

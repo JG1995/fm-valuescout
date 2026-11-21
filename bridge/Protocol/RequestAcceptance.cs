@@ -569,9 +569,9 @@ public static class RequestAcceptance
             return false;
         }
 
-        if (request.CurrentAbilityIncrement is not 5 and not 10)
+        if (request.CurrentAbilityIncrement is not (>= 1 and <= 20))
         {
-            rejectReason = "currentAbilityIncrement must be 5 or 10 for boost-current-ability";
+            rejectReason = "currentAbilityIncrement must be 1 through 20 for boost-current-ability";
             return false;
         }
 
