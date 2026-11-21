@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-11-21
+
+### Added
+
+- **Saved filters can set Search's columns.** Applying a saved filter or a tactic slot's filters from **Saved filters** now asks whether to replace the columns. **Replace columns** shows Age, Nationality, Value, the matching role scores, and a column for each field the filter uses, such as Height, Preferred foot, or a statistic. Each role the filter scores on gets both its Role Score and its Potential Role Score; a Moneyball Score rule shows only its own column. A tactic slot also shows its own Role Score and Potential. If you were sorting by a tactic column the new layout drops, the sort returns to the default. **Keep columns** adds the filter's fields to the current columns, as before, and Escape cancels the apply. Tick **Don't ask again this session** to keep your answer until the app restarts. Search does not ask when the columns already match.
+
 ## [0.33.0] - 2026-11-21
 
 ### Added
