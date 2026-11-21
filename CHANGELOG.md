@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-21
+
+### Added
+
+- **Recruit each team's staff from its own shortlist.** Put "senior", "reserve", or "youth" anywhere in an FM staff shortlist's name, in any case (such as "Reserves Staff"), and the assignment optimizer recruits for that team only from that list. A team without its own list recruits only people on no team's list, so a coach on the senior list never goes to the youth team. Club-wide jobs still recruit from every shortlist, current club staff can still fill any team, and saves without team lists are unchanged. The reasons shown for an unfilled slot count only the people that team may take. Load Data again to read the team lists; a team list with nobody Load Data could read counts as no list.
+
+### Changed
+
+- **Boost all CA paces players towards their PA by age 28.** My Club's **Boost all CA** and the player step of **Apply all boosts** in Settings now add the gap between a player's CA and PA divided by the seasons left until 28, rounded up, and never more than +20. Players aged 27 or 28 count as one season left, and players aged 29 or older are still skipped. Run it once a season: each run takes a share of the gap that is left, so more frequent runs add up. The **Boost CA** button on a player's profile still adds +5 up to age 20 and +10 from 21 through 28. This needs the new bridge plugin: use **Install / Update plugin** in Settings and restart FM. The old plugin fails every boost other than +5 or +10.
+
 ## [0.32.0] - 2026-11-20
 
 ### Added
