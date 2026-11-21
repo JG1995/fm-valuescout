@@ -2,12 +2,15 @@ import { Bookmark, Pencil, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { TextField } from "@/components/ui/field/text-field";
+import { Modal } from "@/components/ui/modal/modal";
 import {
   type SavedFilter,
+  type SavedFilterColumnsChoice,
   useSavedFiltersStore,
 } from "../stores/use-saved-filters-store";
 import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
 import type { MoneyballComparison } from "../types/search-view";
+import { savedFilterColumnIds } from "../utils/dynamic-columns";
 import { completeFilterRules } from "../utils/filter-registry";
 import {
   parseSearchFilters,
@@ -31,12 +34,28 @@ type SavedFiltersControlProps = {
   combine: FilterCombineMode;
   comparison: MoneyballComparison;
   slotPresets: readonly SlotFilterPreset[];
+  /** Search's current columns. */
+  columnIds: readonly string[];
+  /** `columnIds` replaces Search's columns; without it, the rules' columns are added. */
   onApply: (
     rules: FilterRule[],
     combine: FilterCombineMode,
     comparison: MoneyballComparison,
+    columnIds?: readonly string[],
   ) => void;
 };
+
+/** A saved filter or slot waiting on the columns question. */
+type FilterSet = {
+  rules: FilterRule[];
+  combine: FilterCombineMode;
+  comparison: MoneyballComparison;
+  columnIds: string[];
+};
+
+function sameColumns(left: readonly string[], right: readonly string[]) {
+  return left.length === right.length && left.every((id, i) => id === right[i]);
+}
 
 const ROW_BUTTON =
   "min-w-0 flex-1 truncate rounded-md px-2 py-1 text-left text-body-md text-on-surface hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -44,24 +63,32 @@ const ROW_BUTTON =
 /**
  * Saves the applied filters under a name and applies a saved set or a tactic
  * slot's recruitment filters. Applying replaces the current filters, how they
- * combine, and Percentiles vs.
+ * combine, and Percentiles vs, and asks whether to replace the columns too,
+ * unless they already match or the answer is remembered for the session.
  */
 export function SavedFiltersControl({
   rules,
   combine,
   comparison,
   slotPresets,
+  columnIds,
   onApply,
 }: SavedFiltersControlProps) {
   const savedFilters = useSavedFiltersStore((state) => state.savedFilters);
   const save = useSavedFiltersStore((state) => state.save);
   const rename = useSavedFiltersStore((state) => state.rename);
   const remove = useSavedFiltersStore((state) => state.remove);
+  const columnsChoice = useSavedFiltersStore((state) => state.columnsChoice);
+  const rememberColumnsChoice = useSavedFiltersStore(
+    (state) => state.rememberColumnsChoice,
+  );
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(
     null,
   );
+  const [asking, setAsking] = useState<FilterSet | null>(null);
+  const [dontAskAgain, setDontAskAgain] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
@@ -90,9 +117,42 @@ export function SavedFiltersControl({
     setRenaming(null);
     buttonRef.current?.focus();
   };
-  const applySaved = (saved: SavedFilter) => {
-    onApply(parseSearchFilters(saved.filters), saved.combine, saved.comparison);
+  const finishApply = (set: FilterSet, choice: SavedFilterColumnsChoice) =>
+    onApply(
+      set.rules,
+      set.combine,
+      set.comparison,
+      choice === "replace" ? set.columnIds : undefined,
+    );
+  const applySet = (set: FilterSet) => {
     close();
+    if (columnsChoice !== null) {
+      finishApply(set, columnsChoice);
+    } else if (sameColumns(set.columnIds, columnIds)) {
+      finishApply(set, "replace");
+    } else {
+      setDontAskAgain(false);
+      setAsking(set);
+    }
+  };
+  const answer = (choice: SavedFilterColumnsChoice) => {
+    if (!asking) {
+      return;
+    }
+    if (dontAskAgain) {
+      rememberColumnsChoice(choice);
+    }
+    finishApply(asking, choice);
+    setAsking(null);
+  };
+  const applySaved = (saved: SavedFilter) => {
+    const savedRules = parseSearchFilters(saved.filters);
+    applySet({
+      rules: savedRules,
+      combine: saved.combine,
+      comparison: saved.comparison,
+      columnIds: savedFilterColumnIds(savedRules),
+    });
   };
   const submitSave = (event: FormEvent) => {
     event.preventDefault();
@@ -231,10 +291,17 @@ export function SavedFiltersControl({
                       type="button"
                       className={ROW_BUTTON}
                       aria-label={`${preset.label} slot: ${preset.description}`}
-                      onClick={() => {
-                        onApply(preset.rules, "and", preset.comparison);
-                        close();
-                      }}
+                      onClick={() =>
+                        applySet({
+                          rules: preset.rules,
+                          combine: "and",
+                          comparison: preset.comparison,
+                          columnIds: savedFilterColumnIds(
+                            preset.rules,
+                            preset.laneId,
+                          ),
+                        })
+                      }
                     >
                       <span className="font-mono text-mono-sm">
                         {preset.label}
@@ -271,6 +338,36 @@ export function SavedFiltersControl({
           </form>
         </div>
       ) : null}
+      <Modal
+        open={asking !== null}
+        title="Replace the columns?"
+        onClose={() => setAsking(null)}
+        fallbackFocusTo={() => buttonRef.current}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => answer("keep")}>
+              Keep columns
+            </Button>
+            <Button onClick={() => answer("replace")}>Replace columns</Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-body-md text-on-surface-variant">
+          <p>
+            Show Age, Nationality, Value, the role scores, and the filter's
+            fields instead of the current columns.
+          </p>
+          <p>Keep columns adds the filter's fields to the current columns.</p>
+          <label className="flex items-center gap-2 text-on-surface">
+            <input
+              type="checkbox"
+              checked={dontAskAgain}
+              onChange={(event) => setDontAskAgain(event.target.checked)}
+            />
+            Don't ask again this session
+          </label>
+        </div>
+      </Modal>
     </div>
   );
 }

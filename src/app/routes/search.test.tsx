@@ -244,7 +244,7 @@ function retainedRow(table: HTMLElement): HTMLElement {
 describe("search route", () => {
   beforeEach(() => {
     useSearchViewMemory.setState({ memory: null });
-    useSavedFiltersStore.setState({ savedFilters: [] });
+    useSavedFiltersStore.setState({ savedFilters: [], columnsChoice: null });
   });
 
   it("uses protocol URLs for visible exact-UID graphics and preserves rows", async () => {
@@ -3808,6 +3808,12 @@ describe("search route", () => {
       await user.click(
         within(dialog).getByRole("button", { name: "Scouting" }),
       );
+      const prompt = await screen.findByRole("dialog", {
+        name: "Replace the columns?",
+      });
+      await user.click(
+        within(prompt).getByRole("button", { name: "Keep columns" }),
+      );
 
       await waitFor(() => {
         expect(router.state.location.search).toMatchObject({
@@ -3824,15 +3830,108 @@ describe("search route", () => {
       expect(
         screen.queryByRole("dialog", { name: "Saved filters" }),
       ).toBeNull();
-      // Applying adds the rules' columns, as applying one filter does.
+      // Keeping the columns adds the rules' columns, as applying one filter does.
       await waitFor(() =>
-        expect(
-          usePlayerTableStore.getState().layouts.search.columnIds,
-        ).toContain("moneyball.average_rating"),
+        expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual(
+          [
+            "age",
+            "nationality",
+            "height",
+            "ca",
+            "pa",
+            "value",
+            "moneyball.average_rating",
+          ],
+        ),
       );
       expect(
         await screen.findByRole("combobox", { name: "Percentiles vs" }),
       ).toHaveValue("striker");
+    });
+
+    it("replaces the columns with a saved filter's layout and stops asking once told", async () => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      useSavedFiltersStore.getState().save({
+        name: "Inside forwards",
+        filters: [
+          { field: "potential_role.inside_forward_ip", op: "gte", value: 70 },
+          { field: "height", op: "gte", value: 180 },
+        ],
+        combine: "and",
+        comparison: "own",
+      });
+      const { router } = renderSearchRoute();
+      await screen.findByRole("table", { name: "Player search results" });
+      const replaced = [
+        "age",
+        "nationality",
+        "height",
+        "value",
+        "role.inside_forward_ip",
+        "potential_role.inside_forward_ip",
+      ];
+      const columnIds = () =>
+        usePlayerTableStore.getState().layouts.search.columnIds;
+      const promptClosed = () =>
+        waitFor(() =>
+          expect(
+            screen.queryByRole("dialog", { name: "Replace the columns?" }),
+          ).toBeNull(),
+        );
+      const applyInsideForwards = async () => {
+        const dialog = await openSavedFilters(user);
+        await user.click(
+          within(dialog).getByRole("button", { name: "Inside forwards" }),
+        );
+      };
+
+      await applyInsideForwards();
+      let prompt = await screen.findByRole("dialog", {
+        name: "Replace the columns?",
+      });
+      await user.click(
+        within(prompt).getByRole("button", { name: "Replace columns" }),
+      );
+      await promptClosed();
+      await waitFor(() => expect(columnIds()).toEqual(replaced));
+      expect(router.state.location.search).toMatchObject({
+        filters: [
+          expect.objectContaining({
+            field: "potential_role.inside_forward_ip",
+          }),
+          expect.objectContaining({ field: "height" }),
+        ],
+      });
+
+      // The columns already match, so there is nothing to ask.
+      await applyInsideForwards();
+      expect(
+        screen.queryByRole("dialog", { name: "Replace the columns?" }),
+      ).toBeNull();
+
+      act(() => usePlayerTableStore.getState().addColumns("search", ["ca"]));
+      await applyInsideForwards();
+      prompt = await screen.findByRole("dialog", {
+        name: "Replace the columns?",
+      });
+      await user.click(
+        within(prompt).getByRole("checkbox", {
+          name: "Don't ask again this session",
+        }),
+      );
+      await user.click(
+        within(prompt).getByRole("button", { name: "Replace columns" }),
+      );
+      await promptClosed();
+      await waitFor(() => expect(columnIds()).toEqual(replaced));
+
+      act(() => usePlayerTableStore.getState().addColumns("search", ["ca"]));
+      await applyInsideForwards();
+      await waitFor(() => expect(columnIds()).toEqual(replaced));
+      expect(
+        screen.queryByRole("dialog", { name: "Replace the columns?" }),
+      ).toBeNull();
     });
 
     it("renames and deletes a saved filter", async () => {
@@ -3901,6 +4000,12 @@ describe("search route", () => {
       await user.click(
         within(slots).getByRole("button", { name: /^AML\/ML slot: / }),
       );
+      const prompt = await screen.findByRole("dialog", {
+        name: "Replace the columns?",
+      });
+      await user.click(
+        within(prompt).getByRole("button", { name: "Replace columns" }),
+      );
 
       // The slot only scores a player rated 12 or higher at both positions.
       const expected = [
@@ -3935,6 +4040,22 @@ describe("search route", () => {
           name: "Edit filter Position · AML suitability ≥ 12",
         }),
       ).toBeInTheDocument();
+      // The slot's own Role Score and Potential replace the other columns.
+      await waitFor(() =>
+        expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual(
+          [
+            "age",
+            "nationality",
+            "height",
+            "value",
+            "pos.AML",
+            "pos.ML",
+            "moneyball.progressive_passes",
+            "tactic_current.left_winger",
+            "tactic_potential.left_winger",
+          ],
+        ),
+      );
     });
   });
 

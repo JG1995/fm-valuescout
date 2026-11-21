@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { ROLE_CATALOG } from "@/utils/role-catalog";
-import { createFilterRuleId } from "../types/filter-rule";
-import { dynamicColumnFields, isVisibleSortField } from "./dynamic-columns";
+import { createFilterRuleId, type FilterRule } from "../types/filter-rule";
+import {
+  dynamicColumnFields,
+  isVisibleSortField,
+  savedFilterColumnIds,
+} from "./dynamic-columns";
 
 describe("dynamicColumnFields", () => {
   it("returns unique non-basic complete filter fields", () => {
@@ -160,6 +164,59 @@ describe("dynamicColumnFields", () => {
     ]) {
       expect(isVisibleSortField(field)).toBe(true);
     }
+  });
+});
+
+describe("savedFilterColumnIds", () => {
+  const rule = (
+    field: string,
+    op: string,
+    value: FilterRule["value"],
+  ): FilterRule => ({ id: createFilterRuleId(), field, op, value });
+
+  it("keeps Age, Nationality, and Value, pairs each role's current and potential scores, and orders by group", () => {
+    expect(
+      savedFilterColumnIds([
+        rule("moneyball.progressive_passes", "pct_gte", {
+          type: "integer",
+          value: 25,
+        }),
+        rule("potential_role.inside_forward_ip", "gte", {
+          type: "integer",
+          value: 70,
+        }),
+        rule("ca", "gte", { type: "integer", value: 130 }),
+        rule("realistic_signing", "is", { type: "bool", value: true }),
+        rule("preferred_foot", "in", { type: "list", value: ["left"] }),
+        rule("height", "gte", { type: "integer", value: 180 }),
+      ]),
+    ).toEqual([
+      "age",
+      "nationality",
+      "preferred_foot",
+      "height",
+      "ca",
+      "value",
+      "role.inside_forward_ip",
+      "potential_role.inside_forward_ip",
+      "moneyball.progressive_passes",
+    ]);
+  });
+
+  it("adds a tactic slot's Role Score and Potential columns", () => {
+    expect(
+      savedFilterColumnIds(
+        [rule("pos.AML", "gte", { type: "integer", value: 12 })],
+        "left_winger",
+      ),
+    ).toEqual([
+      "age",
+      "nationality",
+      "value",
+      "pos.AML",
+      "tactic_current.left_winger",
+      "tactic_potential.left_winger",
+    ]);
   });
 });
 
