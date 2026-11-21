@@ -11,9 +11,9 @@ use crate::features::staff::scoring::{
 
 use super::assignment_optimizer::{
     allocate_staff_assignments, current_job_classification, preferred_job_classification,
-    StaffAssignmentAllocation, StaffAssignmentCandidate, StaffAssignmentClassification,
-    StaffAssignmentEvidence, StaffAssignmentJobSource, StaffAssignmentScoreSet,
-    StaffAssignmentSlot, StaffAssignmentSurplus,
+    recruit_teams, StaffAssignmentAllocation, StaffAssignmentCandidate,
+    StaffAssignmentClassification, StaffAssignmentEvidence, StaffAssignmentJobSource,
+    StaffAssignmentScoreSet, StaffAssignmentSlot, StaffAssignmentSurplus, Teams,
 };
 use super::assignment_targets::{
     read_nonzero_targets_without_initializing_teams, target_job_display_rank,
@@ -354,6 +354,23 @@ pub(super) fn load_candidates(
         })
         .collect::<Result<Vec<_>, String>>()?
         .join(", ");
+    // A team has its own staff shortlist when anyone the save lists is on it, whether or not
+    // the current snapshot holds them.
+    let with_shortlist = conn
+        .query_row(
+            "SELECT COALESCE(MAX(on_senior_shortlist), 0), COALESCE(MAX(on_reserves_shortlist), 0),
+                    COALESCE(MAX(on_youth_shortlist), 0)
+             FROM staff_shortlist_entries WHERE save_id = ?1",
+            [save_id],
+            |row| {
+                Ok(Teams {
+                    senior: row.get(0)?,
+                    reserves: row.get(1)?,
+                    youth: row.get(2)?,
+                })
+            },
+        )
+        .map_err(|error| error.to_string())?;
     // The pool is the save's shortlist plus the managed club's own staff, without the human
     // manager and anyone the save has skipped. Shortlisted people join by their Preferred Job;
     // club staff off the shortlist join by the job they hold now.
@@ -363,6 +380,9 @@ pub(super) fn load_candidates(
                 staff.job_id,
                 json_extract(staff.staff_attributes_json, '$.WorkingWithYoungsters'),
                 staff.team_level,
+                COALESCE(shortlist.on_senior_shortlist, 0),
+                COALESCE(shortlist.on_reserves_shortlist, 0),
+                COALESCE(shortlist.on_youth_shortlist, 0),
                 {metric_columns}
          FROM staff
          LEFT JOIN staff_shortlist_entries shortlist
@@ -391,8 +411,13 @@ pub(super) fn load_candidates(
             let job_id: Option<i64> = row.get(5)?;
             let working_with_youngsters: Option<i64> = row.get(6)?;
             let team_level: Option<String> = row.get(7)?;
+            let listed_by = Teams {
+                senior: row.get(8)?,
+                reserves: row.get(9)?,
+                youth: row.get(10)?,
+            };
             let scores: Vec<Option<i64>> = (0..SCORE_ROLE_IDS.len())
-                .map(|index| row.get::<_, Option<i64>>(8 + index))
+                .map(|index| row.get::<_, Option<i64>>(11 + index))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok((
                 uid,
@@ -403,6 +428,7 @@ pub(super) fn load_candidates(
                 job_id,
                 working_with_youngsters,
                 team_level,
+                listed_by,
                 scores,
             ))
         })
@@ -418,6 +444,7 @@ pub(super) fn load_candidates(
             job_id,
             working_with_youngsters,
             team_level,
+            listed_by,
             scores,
         ) = row.map_err(|error| error.to_string())?;
         let (preferred_job, job_source, job) = match preferred_job {
@@ -466,6 +493,11 @@ pub(super) fn load_candidates(
                 .and_then(|value| u8::try_from(value).ok())
                 .filter(|value| (1..=20).contains(value)),
             scores: score_set,
+            teams: if at_managed_club {
+                Teams::ALL
+            } else {
+                recruit_teams(listed_by, with_shortlist)
+            },
         });
     }
     Ok(candidates)

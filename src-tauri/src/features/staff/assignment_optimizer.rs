@@ -183,6 +183,49 @@ pub(super) enum StaffAssignmentJobSource {
     CurrentJob,
 }
 
+/// A set of the Planner teams.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Teams {
+    pub(super) senior: bool,
+    pub(super) reserves: bool,
+    pub(super) youth: bool,
+}
+
+impl Teams {
+    pub(super) const ALL: Self = Self {
+        senior: true,
+        reserves: true,
+        youth: true,
+    };
+
+    /// Whether the set holds `scope`'s team. Club-wide jobs belong to no team, so it holds
+    /// them always.
+    fn allows(self, scope: &str) -> bool {
+        match scope {
+            "senior" => self.senior,
+            "reserves" => self.reserves,
+            "youth" => self.youth,
+            _ => true,
+        }
+    }
+
+    fn any(self) -> bool {
+        self.senior || self.reserves || self.youth
+    }
+}
+
+/// The teams whose slots a recruit may fill, from the teams whose staff shortlists list them
+/// and the teams that have a staff shortlist at all. A team with its own shortlist recruits only
+/// from it; a team without one recruits only people on no team's shortlist.
+pub(super) fn recruit_teams(listed_by: Teams, with_shortlist: Teams) -> Teams {
+    let open = |listed: bool, has_shortlist: bool| listed || (!has_shortlist && !listed_by.any());
+    Teams {
+        senior: open(listed_by.senior, with_shortlist.senior),
+        reserves: open(listed_by.reserves, with_shortlist.reserves),
+        youth: open(listed_by.youth, with_shortlist.youth),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StaffAssignmentCandidate {
     pub(super) uid: i64,
@@ -202,6 +245,9 @@ pub(super) struct StaffAssignmentCandidate {
     pub(super) current_team: Option<&'static str>,
     pub(super) working_with_youngsters: Option<u8>,
     pub(super) scores: StaffAssignmentScoreSet,
+    /// The teams whose slots the candidate may fill: every team for club staff, and for a
+    /// recruit the teams `recruit_teams` gives.
+    pub(super) teams: Teams,
 }
 
 /// What the club has to do to fill a slot with its recommended person.
@@ -300,31 +346,38 @@ struct EligibleCandidate<'a> {
 
 #[derive(Default)]
 struct CandidateGroup<'a> {
-    joined_candidate_count: usize,
-    unavailable_score_count: usize,
     eligible: Vec<EligibleCandidate<'a>>,
+    /// Those who joined without a score for the job.
+    unscored: Vec<&'a StaffAssignmentCandidate>,
 }
 
 impl<'a> CandidateGroup<'a> {
     fn add_candidate(&mut self, candidate: &'a StaffAssignmentCandidate, score: Option<u8>) {
-        self.joined_candidate_count += 1;
         if let Some(score) = score {
             self.eligible.push(EligibleCandidate { candidate, score });
         } else {
-            self.unavailable_score_count += 1;
+            self.unscored.push(candidate);
         }
     }
 
     fn evidence(&self, job_id: &str) -> StaffAssignmentEvidence {
         StaffAssignmentEvidence {
             job_id: job_id.to_string(),
-            joined_candidate_count: self.joined_candidate_count,
+            joined_candidate_count: self.eligible.len() + self.unscored.len(),
             eligible_score_count: self.eligible.len(),
-            unavailable_score_count: self.unavailable_score_count,
+            unavailable_score_count: self.unscored.len(),
         }
     }
 
+    /// The group's counts for a slot of `scope`, counting only those who may fill its team.
     fn evidence_for_scope(&self, job_id: &str, scope: &str) -> StaffAssignmentEvidence {
+        let joined_candidate_count = self
+            .eligible
+            .iter()
+            .map(|eligible| eligible.candidate)
+            .chain(self.unscored.iter().copied())
+            .filter(|candidate| candidate.teams.allows(scope))
+            .count();
         let eligible_score_count = self
             .eligible
             .iter()
@@ -334,37 +387,31 @@ impl<'a> CandidateGroup<'a> {
             .count();
         StaffAssignmentEvidence {
             job_id: job_id.to_string(),
-            joined_candidate_count: self.joined_candidate_count,
+            joined_candidate_count,
             eligible_score_count,
-            unavailable_score_count: self.joined_candidate_count - eligible_score_count,
+            unavailable_score_count: joined_candidate_count - eligible_score_count,
         }
     }
 
-    fn best_youth_candidate(
+    /// The unassigned candidate with the highest score for a slot of `scope`: the lowest UID
+    /// among equals, then the first to join.
+    fn best_candidate(
         &self,
+        scope: &str,
         assigned_uids: &HashSet<i64>,
-    ) -> Option<(&StaffAssignmentCandidate, u8)> {
+    ) -> Option<(&'a StaffAssignmentCandidate, u8)> {
         self.eligible
             .iter()
             .filter(|eligible| !assigned_uids.contains(&eligible.candidate.uid))
             .filter_map(|eligible| {
-                assignment_score(eligible.candidate, eligible.score, "youth")
+                assignment_score(eligible.candidate, eligible.score, scope)
                     .map(|score| (eligible.candidate, score))
             })
-            .max_by(|(left, left_score), (right, right_score)| {
-                left_score
-                    .cmp(right_score)
-                    .then_with(|| right.uid.cmp(&left.uid))
+            .min_by(|(left, left_score), (right, right_score)| {
+                right_score
+                    .cmp(left_score)
+                    .then_with(|| left.uid.cmp(&right.uid))
             })
-    }
-
-    fn sort(&mut self) {
-        self.eligible.sort_by(|left, right| {
-            right
-                .score
-                .cmp(&left.score)
-                .then_with(|| left.candidate.uid.cmp(&right.candidate.uid))
-        });
     }
 }
 
@@ -832,12 +879,6 @@ pub(super) fn allocate_staff_assignments(
         }
     }
 
-    for group in &mut groups {
-        group.sort();
-    }
-    fitness_coaches.sort();
-    goalkeeping_coaches.sort();
-
     let evidence = groups
         .iter()
         .enumerate()
@@ -865,7 +906,6 @@ pub(super) fn allocate_staff_assignments(
         .collect::<Vec<_>>();
 
     let mut assigned_uids = HashSet::new();
-    let mut next_candidate = [0_usize; 17];
     let mut slots = std::iter::repeat_with(|| None)
         .take(configured_slots.len())
         .collect::<Vec<Option<StaffAssignmentSlot>>>();
@@ -880,19 +920,10 @@ pub(super) fn allocate_staff_assignments(
             &configured_slots,
             &mut slots,
             &groups,
-            &evidence,
-            &mut next_candidate,
             &mut assigned_uids,
         );
     }
-    allocate_ordinary_slots(
-        &configured_slots,
-        &mut slots,
-        &groups,
-        &evidence,
-        &mut next_candidate,
-        &mut assigned_uids,
-    );
+    allocate_ordinary_slots(&configured_slots, &mut slots, &groups, &mut assigned_uids);
     for (index, configured_slot) in configured_slots.iter().enumerate() {
         if slots[index].is_some()
             || configured_slot.target.job_id == "coaches"
@@ -906,8 +937,7 @@ pub(super) fn allocate_staff_assignments(
         slots[index] = Some(allocate_slot(
             configured_slot,
             &groups[group_index],
-            &evidence[group_index],
-            &mut next_candidate[group_index],
+            None,
             &mut assigned_uids,
         ));
     }
@@ -952,8 +982,6 @@ fn allocate_ordinary_slots(
     configured_slots: &[ConfiguredSlot],
     slots: &mut [Option<StaffAssignmentSlot>],
     groups: &[CandidateGroup<'_>; 17],
-    evidence: &[StaffAssignmentEvidence],
-    next_candidate: &mut [usize; 17],
     assigned_uids: &mut HashSet<i64>,
 ) {
     for (slot, configured_slot) in slots.iter_mut().zip(configured_slots) {
@@ -965,8 +993,7 @@ fn allocate_ordinary_slots(
         *slot = Some(allocate_slot(
             configured_slot,
             &groups[group_index],
-            &evidence[group_index],
-            &mut next_candidate[group_index],
+            None,
             assigned_uids,
         ));
     }
@@ -977,8 +1004,6 @@ fn allocate_job_slots(
     configured_slots: &[ConfiguredSlot],
     slots: &mut [Option<StaffAssignmentSlot>],
     groups: &[CandidateGroup<'_>; 17],
-    evidence: &[StaffAssignmentEvidence],
-    next_candidate: &mut [usize; 17],
     assigned_uids: &mut HashSet<i64>,
 ) {
     let group_index = canonical_job_index(job_id).expect("allocated job is canonical");
@@ -989,8 +1014,7 @@ fn allocate_job_slots(
         *slot = Some(allocate_slot(
             configured_slot,
             &groups[group_index],
-            &evidence[group_index],
-            &mut next_candidate[group_index],
+            None,
             assigned_uids,
         ));
     }
@@ -999,33 +1023,20 @@ fn allocate_job_slots(
 fn allocate_slot(
     configured_slot: &ConfiguredSlot,
     group: &CandidateGroup<'_>,
-    evidence: &StaffAssignmentEvidence,
-    next_candidate: &mut usize,
+    coach_requirement: Option<CoachRequirement>,
     assigned_uids: &mut HashSet<i64>,
 ) -> StaffAssignmentSlot {
-    if configured_slot.target.scope == "youth" {
-        if let Some((candidate, score)) = group.best_youth_candidate(assigned_uids) {
+    let target = &configured_slot.target;
+    match group.best_candidate(&target.scope, assigned_uids) {
+        Some((candidate, score)) => {
             assigned_uids.insert(candidate.uid);
-            return recommendation(configured_slot, candidate, score, None);
+            recommendation(configured_slot, candidate, score, coach_requirement)
         }
-        return vacancy(
+        None => vacancy(
             configured_slot,
-            None,
-            group.evidence_for_scope(&evidence.job_id, "youth"),
-        );
-    }
-
-    while *next_candidate < group.eligible.len()
-        && assigned_uids.contains(&group.eligible[*next_candidate].candidate.uid)
-    {
-        *next_candidate += 1;
-    }
-    if let Some(eligible) = group.eligible.get(*next_candidate) {
-        *next_candidate += 1;
-        assigned_uids.insert(eligible.candidate.uid);
-        recommendation(configured_slot, eligible.candidate, eligible.score, None)
-    } else {
-        vacancy(configured_slot, None, evidence.clone())
+            coach_requirement,
+            group.evidence_for_scope(&target.job_id, &target.scope),
+        ),
     }
 }
 
@@ -1058,8 +1069,6 @@ fn allocate_coaches_slots(
             scope,
         )
         .into_iter();
-        let mut next_fitness = 0;
-        let mut next_goalkeeping = 0;
         for (slot_index, requirement) in coach_slots
             .iter()
             .copied()
@@ -1086,64 +1095,20 @@ fn allocate_coaches_slots(
                         None => vacancy(configured_slot, Some(assignment.requirement), evidence),
                     }
                 }
-                CoachSlotType::Fitness => allocate_coach_requirement_slot(
+                CoachSlotType::Fitness => allocate_slot(
                     configured_slot,
-                    CoachRequirement::Fitness,
                     fitness_coaches,
-                    &mut next_fitness,
+                    Some(CoachRequirement::Fitness),
                     assigned_uids,
                 ),
-                CoachSlotType::Goalkeeping => allocate_coach_requirement_slot(
+                CoachSlotType::Goalkeeping => allocate_slot(
                     configured_slot,
-                    CoachRequirement::Goalkeeping,
                     goalkeeping_coaches,
-                    &mut next_goalkeeping,
+                    Some(CoachRequirement::Goalkeeping),
                     assigned_uids,
                 ),
             });
         }
-    }
-}
-
-fn allocate_coach_requirement_slot(
-    configured_slot: &ConfiguredSlot,
-    requirement: CoachRequirement,
-    group: &CandidateGroup<'_>,
-    next_candidate: &mut usize,
-    assigned_uids: &mut HashSet<i64>,
-) -> StaffAssignmentSlot {
-    if configured_slot.target.scope == "youth" {
-        if let Some((candidate, score)) = group.best_youth_candidate(assigned_uids) {
-            assigned_uids.insert(candidate.uid);
-            return recommendation(configured_slot, candidate, score, Some(requirement));
-        }
-        return vacancy(
-            configured_slot,
-            Some(requirement),
-            group.evidence_for_scope("coaches", "youth"),
-        );
-    }
-
-    while *next_candidate < group.eligible.len()
-        && assigned_uids.contains(&group.eligible[*next_candidate].candidate.uid)
-    {
-        *next_candidate += 1;
-    }
-    if let Some(eligible) = group.eligible.get(*next_candidate) {
-        *next_candidate += 1;
-        assigned_uids.insert(eligible.candidate.uid);
-        recommendation(
-            configured_slot,
-            eligible.candidate,
-            eligible.score,
-            Some(requirement),
-        )
-    } else {
-        vacancy(
-            configured_slot,
-            Some(requirement),
-            group.evidence("coaches"),
-        )
     }
 }
 
@@ -1222,6 +1187,10 @@ fn general_evidence(
     requirement: CoachRequirement,
     scope: &str,
 ) -> StaffAssignmentEvidence {
+    let joined_candidate_count = candidates
+        .iter()
+        .filter(|candidate| candidate.teams.allows(scope))
+        .count();
     let eligible_score_count = candidates
         .iter()
         .filter(|candidate| {
@@ -1232,9 +1201,9 @@ fn general_evidence(
         .count();
     StaffAssignmentEvidence {
         job_id: "coaches".to_string(),
-        joined_candidate_count: candidates.len(),
+        joined_candidate_count,
         eligible_score_count,
-        unavailable_score_count: candidates.len() - eligible_score_count,
+        unavailable_score_count: joined_candidate_count - eligible_score_count,
     }
 }
 
@@ -1659,11 +1628,15 @@ fn canonical_job_rank(job_id: &str) -> usize {
     canonical_job_index(job_id).unwrap_or(usize::MAX)
 }
 
+/// A candidate's score for a slot of `scope`, or none when they may not fill it.
 fn assignment_score(
     candidate: &StaffAssignmentCandidate,
     role_score: u8,
     scope: &str,
 ) -> Option<u8> {
+    if !candidate.teams.allows(scope) {
+        return None;
+    }
     if scope != "youth" {
         return Some(role_score);
     }

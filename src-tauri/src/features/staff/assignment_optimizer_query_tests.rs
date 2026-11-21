@@ -1073,3 +1073,66 @@ fn pools_a_club_set_piece_coach_by_fm_job_type_22() {
         (1, &StaffAssignmentAction::Keep)
     );
 }
+
+#[test]
+fn a_team_with_its_own_staff_shortlist_recruits_only_from_it() {
+    let (_temp_dir, conn, save_token) = open();
+    let snapshot_token = insert_current_snapshot(&conn, 1);
+    configure_managed_club(&conn);
+    conn.execute_batch(
+        "INSERT INTO planner_teams (save_id, team, display_name) VALUES
+             (1, 'senior', 'Senior'),
+             (1, 'reserves', 'Reserves');
+         INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count) VALUES
+             (1, 'senior', 'assistant_manager', 2),
+             (1, 'reserves', 'assistant_manager', 1),
+             (1, 'club', 'director_of_football', 1);",
+    )
+    .expect("configure targets");
+    insert_staff(&conn, 1, "Senior-list assistant", Some("Other FC"));
+    shortlist(&conn, 1, "Assistant Manager");
+    insert_staff(&conn, 2, "Default-list assistant", Some("Other FC"));
+    shortlist(&conn, 2, "Assistant Manager");
+    insert_staff(&conn, 3, "Senior-list director", Some("Other FC"));
+    shortlist(&conn, 3, "Director of Football");
+    insert_staff(&conn, 4, "Club assistant", Some("Club A"));
+    set_job(&conn, 4, 20);
+    conn.execute_batch(
+        "UPDATE staff_shortlist_entries SET on_senior_shortlist = 1 WHERE staff_uid IN (1, 3);
+         INSERT INTO staff_role_metrics (
+             snapshot_id, uid, score_model_version, assistant_manager, director_of_football
+         ) VALUES
+             (1, 1, 1, 60, NULL),
+             (1, 2, 1, 90, NULL),
+             (1, 3, 1, NULL, 70),
+             (1, 4, 1, 95, NULL);",
+    )
+    .expect("put people on the senior shortlist and score them");
+
+    let result = optimize_staff_assignments(&conn, &save_token, &snapshot_token)
+        .expect("optimize with a senior shortlist");
+
+    let placed = result
+        .slots
+        .iter()
+        .filter_map(|result_slot| match &result_slot.slot {
+            StaffAssignmentSlot::Recommendation(recommendation) => Some((
+                recommendation.scope.as_str(),
+                recommendation.job_id.as_str(),
+                recommendation.uid,
+            )),
+            StaffAssignmentSlot::Vacancy(_) => None,
+        })
+        .collect::<Vec<_>>();
+    // Club staff fill any team, the senior team recruits from its shortlist, the reserves
+    // from the people on no team's shortlist, and club-wide jobs from anyone shortlisted.
+    assert_eq!(
+        placed,
+        [
+            ("senior", "assistant_manager", 4),
+            ("senior", "assistant_manager", 1),
+            ("club", "director_of_football", 3),
+            ("reserves", "assistant_manager", 2),
+        ]
+    );
+}

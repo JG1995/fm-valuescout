@@ -768,6 +768,7 @@ mod tests {
                 unique_id: 9_001,
                 preferred_job: "Physio",
                 coaching_qualifications: "No Qualifications",
+                shortlists: Vec::new(),
             }],
             unread: 2,
         });
@@ -807,6 +808,7 @@ mod tests {
                 unique_id: 9_001,
                 preferred_job: "Physio",
                 coaching_qualifications: "No Qualifications",
+                shortlists: Vec::new(),
             }],
             unread: 0,
         });

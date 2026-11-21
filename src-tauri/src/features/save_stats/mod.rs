@@ -384,6 +384,9 @@ pub(crate) struct SaveShortlistedStaff {
     pub preferred_job: &'static str,
     /// The game's name for the person's coaching qualification, or `-` when it is not known.
     pub coaching_qualifications: &'static str,
+    /// The name of each staff shortlist that lists the person, in the save's order. The
+    /// game's default list has an empty name.
+    pub shortlists: Vec<String>,
 }
 
 /// The people on the manager's staff shortlists.
@@ -441,7 +444,7 @@ pub(crate) fn read_season_stats(path: &Path) -> Result<SaveSeasonStats, SaveStat
         Ok(lists) => (
             Ok(lists.player_shortlists),
             // No build registers the staff layout, so its failure says nothing of the build.
-            staff::read_shortlisted_staff(&game_db, &lists.staff_keys),
+            staff::read_shortlisted_staff(&game_db, &lists.staff),
         ),
         Err(error) => (Err(error), Err(error)),
     };
