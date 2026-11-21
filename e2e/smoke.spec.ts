@@ -3029,11 +3029,12 @@ test.describe("application smoke", () => {
     await caButton.click();
     const dialog = page.getByRole("dialog", { name: "Boost all CA?" });
     await expect(dialog).toContainText(
-      "Players aged 20 or younger receive +5 CA.",
+      "Each player gains the gap between CA and PA, divided by the seasons left until age 28 and rounded up.",
     );
     await expect(dialog).toContainText(
-      "Players aged 21 through 28 receive +10 CA.",
+      "Players aged 27 or 28 count as one season left.",
     );
+    await expect(dialog).toContainText("No player gains more than +20 CA.");
     await expect(dialog).toContainText("Players aged 29 or older are skipped.");
     await dialog.getByRole("button", { name: "Boost all CA" }).click();
 

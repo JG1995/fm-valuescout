@@ -112,7 +112,9 @@ describe("Settings", () => {
 
     const dialog = screen.getByRole("dialog", { name: "Apply all boosts?" });
     expect(dialog).toHaveTextContent("Make all Wonderkids");
-    expect(dialog).toHaveTextContent("age-restricted player CA boost");
+    expect(dialog).toHaveTextContent(
+      "Boost all player CA towards PA by age 28, at most +20 each.",
+    );
     expect(dialog).toHaveTextContent("staff CA boost");
     await user.click(
       within(dialog).getByRole("button", { name: "Apply all boosts" }),

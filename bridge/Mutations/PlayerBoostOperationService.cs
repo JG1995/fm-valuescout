@@ -145,7 +145,7 @@ internal sealed class PlayerBoostOperationService
         LiveAbilityState live,
         PlayerValueMutationService mutations)
     {
-        if (request.CurrentAbilityIncrement is not 5 and not 10
+        if (request.CurrentAbilityIncrement is not (>= 1 and <= 20)
             || request.ExpectedAmbition is not null
             || request.ExpectedProfessionalism is not null
             || request.ExpectedDetermination is not null)

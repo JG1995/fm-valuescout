@@ -9,6 +9,8 @@ use crate::features::memory_read::service::{
 
 const MIN_ABILITY: i64 = 1;
 const MAX_ABILITY: i64 = 200;
+const SQUAD_BOOST_PEAK_AGE: i64 = 28;
+const SQUAD_BOOST_MAX_INCREMENT: i64 = 20;
 const MENTALITY_ELIGIBILITY_MAXIMUM: i64 = 10;
 const MENTALITY_TARGET_MINIMUM: i64 = 11;
 const MENTALITY_TARGET_MAXIMUM: i64 = 20;
@@ -137,9 +139,32 @@ pub fn set_hidden_information_revealed(conn: &Connection, revealed: bool) -> Res
     Ok(persisted == 1)
 }
 
+/// The profile CA boost adds a fixed step: +5 up to age 20, +10 from 21 through 28.
 pub(super) fn prepare_current_ability_boost(
     conn: &Connection,
     uid: i64,
+) -> Result<PreparedPlayerBoost, PlayerBoostError> {
+    prepare_current_ability_boost_with(conn, uid, |age, _| if age <= 20 { 5 } else { 10 })
+}
+
+/// The squad CA boost, run once a season, closes the gap to PA evenly over the
+/// seasons left until age 28. Ages 27 and 28 count as one season, and one boost
+/// adds at most 20.
+pub(super) fn prepare_squad_current_ability_boost(
+    conn: &Connection,
+    uid: i64,
+) -> Result<PreparedPlayerBoost, PlayerBoostError> {
+    prepare_current_ability_boost_with(conn, uid, |age, gap| {
+        let seasons_left = (SQUAD_BOOST_PEAK_AGE - age).max(1);
+        let even_share = (gap + seasons_left - 1) / seasons_left;
+        even_share.min(SQUAD_BOOST_MAX_INCREMENT)
+    })
+}
+
+fn prepare_current_ability_boost_with(
+    conn: &Connection,
+    uid: i64,
+    increment_for: impl FnOnce(i64, i64) -> i64,
 ) -> Result<PreparedPlayerBoost, PlayerBoostError> {
     let player = capture_player(conn, uid)?;
     validate_ability_snapshot(&player)?;
@@ -159,8 +184,9 @@ pub(super) fn prepare_current_ability_boost(
         ));
     }
 
-    let increment = if age <= 20 { 5 } else { 10 };
-    let target = (player.current_ability + i64::from(increment))
+    let gap = player.potential_ability.min(MAX_ABILITY) - player.current_ability;
+    let increment = increment_for(age, gap);
+    let target = (player.current_ability + increment)
         .min(player.potential_ability)
         .min(MAX_ABILITY);
     if target <= player.current_ability {
@@ -179,7 +205,7 @@ pub(super) fn prepare_current_ability_boost(
         player_uid: player.uid,
         expected_current_ability: player.current_ability,
         expected_potential_ability: player.potential_ability,
-        current_ability_increment: Some(increment),
+        current_ability_increment: Some(increment as i32),
         target_current_ability: Some(target),
         expected_ambition: None,
         expected_professionalism: None,
@@ -1327,6 +1353,53 @@ mod tests {
             super::prepare_current_ability_boost(&unknown_potential.conn, PLAYER_UID)
                 .expect_err("invalid PA must be ineligible"),
             "invalidSnapshot",
+        );
+    }
+
+    #[test]
+    fn squad_current_ability_boost_spreads_the_gap_over_the_seasons_until_twenty_eight() {
+        let mentality = || Mentality {
+            ambition: Some(14),
+            professionalism: Some(14),
+            determination: Some(14),
+        };
+        // (age, CA, PA, expected increment)
+        for (age, ca, pa, increment) in [
+            (18, 100, 200, 10),
+            (24, 140, 180, 10),
+            (22, 150, 170, 4),
+            (26, 120, 180, 20),
+            (27, 160, 175, 15),
+            (28, 168, 170, 2),
+        ] {
+            let fixture = seeded_player(Some(age), ca, pa, mentality());
+
+            let prepared = super::prepare_squad_current_ability_boost(&fixture.conn, PLAYER_UID)
+                .expect("prepare squad CA boost");
+
+            assert_eq!(
+                prepared.current_ability_increment,
+                Some(increment),
+                "increment for age {age}, CA {ca}, PA {pa}"
+            );
+            assert_eq!(
+                prepared.target_current_ability,
+                Some(ca + i64::from(increment))
+            );
+        }
+
+        let age_ineligible = seeded_player(Some(29), 150, 170, mentality());
+        assert_eligibility_kind(
+            super::prepare_squad_current_ability_boost(&age_ineligible.conn, PLAYER_UID)
+                .expect_err("age 29 must be ineligible"),
+            "ageIneligible",
+        );
+
+        let at_potential = seeded_player(Some(19), 170, 170, mentality());
+        assert_eligibility_kind(
+            super::prepare_squad_current_ability_boost(&at_potential.conn, PLAYER_UID)
+                .expect_err("CA at PA must be ineligible"),
+            "currentAbilityAtLimit",
         );
     }
 

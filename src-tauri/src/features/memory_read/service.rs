@@ -863,10 +863,10 @@ fn validate_player_boost_request(
     }
 
     match operation {
-        PlayerBoostOperation::CurrentAbility { increment: 5 | 10 } => {}
+        PlayerBoostOperation::CurrentAbility { increment: 1..=20 } => {}
         PlayerBoostOperation::CurrentAbility { .. } => {
             return Err(PlayerBoostRequestError::WriteFailed(
-                "current ability increment must be 5 or 10".to_string(),
+                "current ability increment must be 1 through 20".to_string(),
             ));
         }
         PlayerBoostOperation::WonderkidMentality {
@@ -2108,6 +2108,29 @@ mod tests {
 
         assert_eq!(result.request_id, "req-ours");
         assert_eq!(result.players_found, Some(3));
+    }
+
+    #[test]
+    fn player_boost_request_accepts_current_ability_increments_from_one_through_twenty() {
+        let validate = |increment| {
+            super::validate_player_boost_request(
+                "scan-1",
+                77,
+                99,
+                172,
+                &PlayerBoostOperation::CurrentAbility { increment },
+            )
+        };
+
+        for increment in [1, 20] {
+            validate(increment).expect("increment within 1 through 20");
+        }
+        for increment in [0, 21] {
+            assert!(
+                validate(increment).is_err(),
+                "increment {increment} must be rejected"
+            );
+        }
     }
 
     #[test]

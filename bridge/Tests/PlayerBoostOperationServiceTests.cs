@@ -40,6 +40,44 @@ public sealed class PlayerBoostOperationServiceTests
         Assert.Equal(123, ReadUInt16(reader, PlayerBlockAddress + (ulong)Layout.PotentialAbilityOffset));
     }
 
+    [Theory]
+    [InlineData(3, 123)]
+    [InlineData(20, 140)]
+    public void Boost_current_ability_applies_any_increment_from_one_through_twenty(
+        int increment,
+        int expectedCa)
+    {
+        var (reader, candidate) = CreatePlayerMemory(ca: 120, pa: 150);
+        var service = CreateService(candidate);
+
+        var result = service.Execute(
+            CurrentAbilityRequest(expectedCa: 120, expectedPa: 150, increment: increment),
+            SupportedGameVersion,
+            reader,
+            reader);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(expectedCa, result.BoostResult!.CurrentAbility);
+        Assert.Equal(expectedCa, ReadUInt16(reader, PlayerBlockAddress + (ulong)Layout.CurrentAbilityOffset));
+    }
+
+    [Fact]
+    public void Boost_current_ability_rejects_an_increment_above_twenty_without_writing()
+    {
+        var (reader, candidate) = CreatePlayerMemory(ca: 120, pa: 150);
+        var service = CreateService(candidate);
+
+        var result = service.Execute(
+            CurrentAbilityRequest(expectedCa: 120, expectedPa: 150, increment: 21),
+            SupportedGameVersion,
+            reader,
+            reader);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(PlayerBoostFailure.InvalidRequest, result.Failure);
+        Assert.Equal(120, ReadUInt16(reader, PlayerBlockAddress + (ulong)Layout.CurrentAbilityOffset));
+    }
+
     [Fact]
     public void Boost_current_ability_rejects_a_stale_source_request_without_writing()
     {

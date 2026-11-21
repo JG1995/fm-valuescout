@@ -32,7 +32,7 @@ public sealed class BridgeRequest
     /// <summary>PA observed by the source dump; used only as a stale-value precondition.</summary>
     public int? ExpectedPotentialAbility { get; init; }
 
-    /// <summary>Closed CA increment: only 5 or 10 is accepted for a CA boost.</summary>
+    /// <summary>Closed CA increment: only 1 through 20 is accepted for a CA boost.</summary>
     public int? CurrentAbilityIncrement { get; init; }
 
     /// <summary>Known snapshot Ambition for Wonderkid Mentality; null means do not modify it.</summary>

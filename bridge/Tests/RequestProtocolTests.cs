@@ -228,8 +228,11 @@ public sealed class RequestProtocolTests
         }
     }
 
-    [Fact]
-    public void Accept_preserves_the_closed_current_ability_boost_preconditions()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    [InlineData(20)]
+    public void Accept_preserves_the_closed_current_ability_boost_preconditions(int increment)
     {
         var dir = CreateTempDir();
         try
@@ -248,7 +251,7 @@ public sealed class RequestProtocolTests
                     PlayerUid = 42,
                     ExpectedCurrentAbility = 120,
                     ExpectedPotentialAbility = 150,
-                    CurrentAbilityIncrement = 5,
+                    CurrentAbilityIncrement = increment,
                 });
 
             Assert.True(
@@ -264,7 +267,7 @@ public sealed class RequestProtocolTests
             Assert.Equal(42u, request.PlayerUid);
             Assert.Equal(120, request.ExpectedCurrentAbility);
             Assert.Equal(150, request.ExpectedPotentialAbility);
-            Assert.Equal(5, request.CurrentAbilityIncrement);
+            Assert.Equal(increment, request.CurrentAbilityIncrement);
         }
         finally
         {
@@ -359,8 +362,10 @@ public sealed class RequestProtocolTests
         }
     }
 
-    [Fact]
-    public void Accept_rejects_an_arbitrary_current_ability_increment()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(21)]
+    public void Accept_rejects_a_current_ability_increment_outside_one_through_twenty(int increment)
     {
         var dir = CreateTempDir();
         try
@@ -379,7 +384,7 @@ public sealed class RequestProtocolTests
                     PlayerUid = 42,
                     ExpectedCurrentAbility = 120,
                     ExpectedPotentialAbility = 150,
-                    CurrentAbilityIncrement = 6,
+                    CurrentAbilityIncrement = increment,
                 });
 
             Assert.False(
