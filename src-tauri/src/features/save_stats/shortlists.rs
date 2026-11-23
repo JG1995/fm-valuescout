@@ -469,7 +469,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unregistered_build_reads_shortlists_and_reports_a_failed_walk_as_unsupported() {
+    fn an_unregistered_build_reads_shortlists_and_reports_a_failed_walk_as_corrupt() {
         let section = scout_section(&[ExampleList::shortlist("Targets", &[11])], SCHEMA);
         let mut damaged = section.clone();
         damaged[8] = 30;
@@ -480,7 +480,7 @@ mod tests {
         );
         assert_eq!(
             read_save(UNREGISTERED_FM27_BUILD, Some(damaged)).shortlists,
-            Err(SaveStatsError::UnsupportedBuild)
+            Err(SaveStatsError::Corrupt)
         );
     }
 }

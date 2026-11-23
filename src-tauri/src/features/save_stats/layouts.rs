@@ -275,7 +275,9 @@ pub(super) struct GateBounds {
 }
 
 /// FM26's player bounds, and FM27's season-statistics bounds, which require every record,
-/// player, overall line, and line to pass.
+/// player, and line to pass. fmsave requires the same of every overall line, but ten saves of
+/// one `27.1.0+2505117` career hold one goalkeeper, among about 150,000 overall lines, whose
+/// line counts two matches that none of the competition lines do.
 pub(super) const FM27_GATE_BOUNDS: GateBounds = GateBounds {
     minimum_applies_from_bytes: 16 * 1024 * 1024,
     height_range_cm: (150, 210),
@@ -295,7 +297,7 @@ pub(super) const FM27_GATE_BOUNDS: GateBounds = GateBounds {
     home_near_current: (Some(0.95), None),
     season_stats_records_keyed_to_players: (Some(1.0), Some(1.0)),
     season_stats_players_with_record: (Some(1.0), Some(1.0)),
-    season_stats_overall_sums_competitions: (Some(1.0), Some(1.0)),
+    season_stats_overall_sums_competitions: (Some(0.999), None),
     season_stats_minutes_in_range: (Some(1.0), Some(1.0)),
 };
 

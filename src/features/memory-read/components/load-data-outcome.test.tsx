@@ -606,7 +606,7 @@ describe("LoadDataOutcome", () => {
       "Season stats were not read: this FM27 build is not supported yet.",
     ],
     [
-      "a damaged save",
+      "a save that fails a check",
       {
         status: "failed",
         kind: "corrupt",
@@ -615,7 +615,7 @@ describe("LoadDataOutcome", () => {
         staffShortlist: { status: "notRead" },
         elapsedMs: 1,
       },
-      "Season stats were not read: the save could not be read safely.",
+      "Season stats were not read: the save failed a data check.",
     ],
     [
       "a save FM was still writing",
@@ -731,7 +731,7 @@ describe("LoadDataOutcome", () => {
     [
       "a staff shortlist that could not be read",
       { status: "failed", kind: "corrupt" },
-      `${attachedSentence} Read 2 shortlists from the save. The save's staff shortlist was not read: the save could not be read safely. The previous one is kept.`,
+      `${attachedSentence} Read 2 shortlists from the save. The save's staff shortlist was not read: the save failed a data check. The previous one is kept.`,
       true,
     ],
     [

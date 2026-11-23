@@ -766,16 +766,13 @@ mod tests {
             ("footer too long", footer_too_long),
             ("line past the end", line_past_the_end),
         ] {
-            assert_eq!(
-                read_with_schemas(FM27_BUILD, 4000, &[player], &season_stats),
-                Err(SaveStatsError::Corrupt),
-                "{case}"
-            );
-            assert_eq!(
-                read_with_schemas(UNREGISTERED_FM27_BUILD, 4000, &[player], &season_stats),
-                Err(SaveStatsError::UnsupportedBuild),
-                "{case} under a borrowed layout"
-            );
+            for build in [FM27_BUILD, UNREGISTERED_FM27_BUILD] {
+                assert_eq!(
+                    read_with_schemas(build, 4000, &[player], &season_stats),
+                    Err(SaveStatsError::Corrupt),
+                    "{case} on {build}"
+                );
+            }
         }
     }
 
@@ -877,6 +874,28 @@ mod tests {
                 "{case} below the full-save size"
             );
         }
+    }
+
+    #[test]
+    fn the_overall_gate_tolerates_rare_lines_that_do_not_sum() {
+        let with_sums = |overall_sums_competitions| SeasonCounts {
+            records: 1_000,
+            records_keyed_to_players: 1_000,
+            players: 1_000,
+            players_with_record: 1_000,
+            records_with_overall: 1_000,
+            overall_sums_competitions,
+            ..passing_counts()
+        };
+
+        assert_eq!(
+            check_season_stats(&with_sums(999), &FM27_GATE_BOUNDS, FULL_SIZE),
+            Ok(())
+        );
+        assert_eq!(
+            check_season_stats(&with_sums(998), &FM27_GATE_BOUNDS, FULL_SIZE),
+            Err(SaveStatsError::Corrupt)
+        );
     }
 
     #[test]

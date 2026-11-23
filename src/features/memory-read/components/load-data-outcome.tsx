@@ -32,7 +32,7 @@ const seasonStatsReadFailureReasons: Record<
   not_fm_save: (fileName) => `${fileName} is not a supported FM27 save`,
   unsupported_game: (fileName) => `${fileName} is not a supported FM27 save`,
   unsupported_build: () => "this FM27 build is not supported yet",
-  corrupt: () => "the save could not be read safely",
+  corrupt: () => "the save failed a data check",
   out_of_bounds: () => "the save could not be read safely",
   changed_during_read: () =>
     "the save changed while it was read. Wait for FM to finish saving, then try again",

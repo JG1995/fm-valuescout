@@ -1008,8 +1008,7 @@ mod tests {
         assert_eq!(stats.shortlists, Ok(vec![targets.clone()]));
         assert_eq!(stats.players.len(), 1);
 
-        // No build registers the staff layout, so on a build that borrows its other layouts
-        // the failure still does not say the build is unsupported.
+        // The failure says nothing of the build, so an unregistered one reports it the same.
         let stats = read(UNREGISTERED_FM27_BUILD, &nobody_read);
 
         assert_eq!(stats.staff_shortlist, Err(SaveStatsError::Corrupt));

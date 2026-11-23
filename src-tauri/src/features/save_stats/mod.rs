@@ -434,16 +434,11 @@ pub(crate) fn read_season_stats(path: &Path) -> Result<SaveSeasonStats, SaveStat
     let scout_section = container::read_section(&mut source, &index, shortlists::SECTION);
     drop(save);
 
-    let fit = |error| layout_fit(error, info.known_build);
-    let records =
-        players::read_players(&game_db, name_pool_layout, player_layout, bounds).map_err(fit)?;
-    let lists = scout_section
-        .and_then(|section| shortlists::read_lists(&section, &records))
-        .map_err(fit);
+    let records = players::read_players(&game_db, name_pool_layout, player_layout, bounds)?;
+    let lists = scout_section.and_then(|section| shortlists::read_lists(&section, &records));
     let (shortlists, staff_shortlist) = match lists {
         Ok(lists) => (
             Ok(lists.player_shortlists),
-            // No build registers the staff layout, so its failure says nothing of the build.
             staff::read_shortlisted_staff(&game_db, &lists.staff),
         ),
         Err(error) => (Err(error), Err(error)),
@@ -454,15 +449,14 @@ pub(crate) fn read_season_stats(path: &Path) -> Result<SaveSeasonStats, SaveStat
         season_layout,
         bounds,
         game_db.len(),
-    )
-    .map_err(fit)?;
+    )?;
     // Cohorts are keyed by Unique ID, so a repeated one cannot be attributed safely.
     let mut unique_ids = HashSet::with_capacity(players.len());
     if !players
         .iter()
         .all(|player| unique_ids.insert(player.unique_id))
     {
-        return Err(fit(SaveStatsError::Corrupt));
+        return Err(SaveStatsError::Corrupt);
     }
     Ok(SaveSeasonStats {
         info,
@@ -470,15 +464,6 @@ pub(crate) fn read_season_stats(path: &Path) -> Result<SaveSeasonStats, SaveStat
         shortlists,
         staff_shortlist,
     })
-}
-
-/// Damage under a registered build's own layout is damage; under a borrowed layout it means
-/// the layout does not fit.
-fn layout_fit(error: SaveStatsError, known_build: bool) -> SaveStatsError {
-    match error {
-        SaveStatsError::Corrupt if !known_build => SaveStatsError::UnsupportedBuild,
-        error => error,
-    }
 }
 
 struct GameVersion {
@@ -1095,14 +1080,11 @@ mod tests {
         ];
         let directory = tempfile::tempdir().expect("temp dir");
 
-        for (build, error) in [
-            (FM27_BUILD, SaveStatsError::Corrupt),
-            (UNREGISTERED_FM27_BUILD, SaveStatsError::UnsupportedBuild),
-        ] {
+        for build in [FM27_BUILD, UNREGISTERED_FM27_BUILD] {
             let save = season_stats_save(build, 4000, &players, &season_stats_body(&records, 15));
             assert_eq!(
                 read_season_stats(&write_save(directory.path(), &save)),
-                Err(error),
+                Err(SaveStatsError::Corrupt),
                 "{build}"
             );
         }
