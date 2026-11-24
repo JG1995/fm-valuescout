@@ -75,9 +75,12 @@ export type DashboardRecommendation = {
    */
   borrowedStatsDate: string | null;
   laneId: string;
+  /** The score in the slot after `agePenalty`. */
   score: number;
   /** Points above the slot's incumbent, or the whole score for an empty slot. */
   improvement: number;
+  /** Points the score lost for the player's age; 0 at 28 or under. */
+  agePenalty: number;
   otherLanes: DashboardOtherLane[];
 };
 

@@ -834,6 +834,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               laneId: target[5],
               score,
               improvement: score - incumbentScore(target[5]),
+              agePenalty: 0,
               otherLanes:
                 target[5] === "left_centre_back" && score > incumbentScore("right_centre_back")
                   ? [{ laneId: "right_centre_back", improvement: score - incumbentScore("right_centre_back") }]

@@ -33,6 +33,8 @@ use super::recruitment_filters::SlotFilters;
 /// The most ranked recommendations one read returns: as many as the dashboard shows at once.
 pub(crate) const MAX_RECOMMENDATIONS: usize = 12;
 const MAX_OTHER_LANES: usize = 2;
+/// The oldest age a candidate is compared at his full score, as in Search's saved filters.
+const FULL_SCORE_AGE: i64 = 28;
 
 /// Which scores compare a candidate with the club's player in a slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,9 +117,12 @@ pub(crate) struct Recommendation {
     /// player has under `MIN_SEASON_MINUTES` minutes this season and borrows them.
     pub(crate) borrowed_stats_date: Option<String>,
     pub(crate) lane_id: String,
+    /// His score in the slot after `age_penalty`.
     pub(crate) score: u8,
     /// Points above the slot's incumbent, or the whole score when the slot has none.
     pub(crate) improvement: u8,
+    /// The points his scores lost for his age; see [`age_penalty`].
+    pub(crate) age_penalty: u8,
     /// Further slots the player would improve, best first.
     pub(crate) other_lanes: Vec<OtherLane>,
 }
@@ -169,8 +174,10 @@ struct ScoredPlayer {
     minutes: Option<i64>,
     /// The date of the kept statistics behind his Moneyball scores; `None` in General mode.
     borrowed_stats_date: Option<String>,
-    /// The player's score in each tactic slot, in lane order.
+    /// The player's score in each tactic slot, in lane order, at his full ability.
     lane_scores: Vec<Option<u8>>,
+    /// The points a candidate's scores lose for his age; zero for the club's own players.
+    age_penalty: u8,
     /// Whether the player may be recommended for each slot: he has enough minutes and passes
     /// its recruitment filters. Always true for the club's own players.
     lane_allowed: Vec<bool>,
@@ -488,8 +495,9 @@ fn role_score_columns(tactic: &PlannerTactic) -> Result<Vec<String>, String> {
 /// realistic signings who cannot are never read or scored.
 ///
 /// A slot's score never exceeds the higher of its two role scores: the blend lies between
-/// them, and the fit adjustment only lowers it. A player therefore improves a slot only when
-/// one of his role scores there exceeds the incumbent's score, or zero for an empty slot.
+/// them, and the fit adjustment and the age penalty only lower it. A player therefore improves
+/// a slot only when one of his role scores there exceeds the incumbent's score, or zero for an
+/// empty slot.
 fn could_improve_sql(role_score_columns: &[String], incumbent_scores: &[Option<u8>]) -> String {
     let better = role_score_columns
         .chunks(2)
@@ -788,16 +796,22 @@ fn load_players(
                 .map_err(read)?
                 .unwrap_or(0)
                 < MIN_SEASON_MINUTES;
+        let age = row.get(2).map_err(read)?;
         players.push(ScoredPlayer {
             uid: row.get(0).map_err(read)?,
             name: row.get(1).map_err(read)?,
-            age: row.get(2).map_err(read)?,
+            age,
             club: row.get(3).map_err(read)?,
             club_uid: row.get(4).map_err(read)?,
             market_value_gbp: row.get(5).map_err(read)?,
             minutes,
             borrowed_stats_date,
             lane_scores,
+            age_penalty: if candidates {
+                age_penalty(mode, age)
+            } else {
+                0
+            },
             lane_allowed: if under_minimum_minutes {
                 vec![false; lane_count]
             } else {
@@ -895,14 +909,32 @@ fn cover(club: &[ScoredPlayer], lineup: &Lineup, lane_index: usize) -> Option<Li
         .max_by_key(|player| (player.score, Reverse(player.uid)))
 }
 
-/// The player's score in the slot and how far it exceeds the incumbent's, or the whole score
-/// for an empty slot. `None` when it does not exceed it.
+/// The points a candidate of `age` loses. Each year over `FULL_SCORE_AGE` costs one more than
+/// the last, so 1 at 29, 3 at 30, 6 at 31, 10 at 32, and 15 at 33. General mode takes half of
+/// that, rounded up, because its improvements are about a third as large: on one FM27 save the
+/// largest was 13 points there and 37 in Moneyball mode. An older player thus ranks level with
+/// a younger one only when he improves the slot by that much more, and a large enough
+/// improvement still comes through. An unknown age loses nothing. These weights are judgment
+/// calls, not Football Manager's numbers.
+pub(crate) fn age_penalty(mode: ScoreMode, age: Option<i64>) -> u8 {
+    // Fourteen years over already costs more than the highest Moneyball score.
+    let years_over = age.map_or(0, |age| age.saturating_sub(FULL_SCORE_AGE).clamp(0, 14));
+    let penalty = years_over * (years_over + 1) / 2;
+    match mode {
+        ScoreMode::General => (penalty + 1) / 2,
+        ScoreMode::Moneyball => penalty,
+    }
+    .min(100) as u8
+}
+
+/// The candidate's score in the slot, less his age penalty, and how far it exceeds the
+/// incumbent's, or the whole score for an empty slot. `None` when it does not exceed it.
 fn improvement(
     player: &ScoredPlayer,
     incumbent_scores: &[Option<u8>],
     lane_index: usize,
 ) -> Option<(u8, u8)> {
-    let score = player.lane_scores[lane_index]?;
+    let score = player.lane_scores[lane_index]?.saturating_sub(player.age_penalty);
     let improvement = score.checked_sub(incumbent_scores[lane_index].unwrap_or(0))?;
     (improvement > 0).then_some((score, improvement))
 }
@@ -938,6 +970,7 @@ fn recommend(
         lane_id: tactic.lanes[lane_index].lane_id.clone(),
         score,
         improvement,
+        age_penalty: player.age_penalty,
         other_lanes: fits
             .iter()
             .skip(1)

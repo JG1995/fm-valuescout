@@ -85,6 +85,7 @@ function recommendation(
     laneId,
     score,
     improvement,
+    agePenalty: 0,
     otherLanes: [],
   };
 }
@@ -587,6 +588,36 @@ describe("Dashboard", () => {
     await user.click(screen.getByRole("button", { name: "Retry" }));
 
     await waitFor(() => expect(signingCards()).toHaveLength(2));
+  });
+
+  it("says how many points an older signing's score lost for their age", async () => {
+    const user = userEvent.setup();
+    await seedManagedClub();
+    const veteran = { ...LEFT_BACK_TARGET, age: 32, agePenalty: 5 };
+    setDashboardSigningsIpcMock(() =>
+      signings([veteran, KEEPER_TARGET], {
+        slots: [
+          KEEPER_SLOT,
+          { ...LEFT_BACK_SLOT, bestSigning: veteran },
+          STRIKER_SLOT,
+        ],
+      }),
+    );
+    renderDashboard();
+
+    await waitFor(() => expect(signingCards()).toHaveLength(2));
+    const [older, younger] = signingCards();
+    expect(older).toHaveTextContent("+20Age −5");
+    expect(younger).not.toHaveTextContent("Age −");
+
+    await user.click(screen.getByRole("button", { name: "Best per slot" }));
+    expect(
+      within(
+        await screen.findByRole("dialog", {
+          name: "Best signing for each slot",
+        }),
+      ).getByText("Other FC · 32 years · −5 for age · €12.5M"),
+    ).toBeInTheDocument();
   });
 
   it("opens the best signing for each slot and rescores it in place", async () => {

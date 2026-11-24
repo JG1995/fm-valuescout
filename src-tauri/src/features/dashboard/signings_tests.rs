@@ -5,8 +5,8 @@ use crate::features::planner::tactic::{default_tactic, save_tactic};
 use crate::features::snapshot;
 
 use super::signings::{
-    get_signings, IncumbentSource, LineupSlot, Recommendation, ScoreBasis, ScoreMode, Signings,
-    SigningsRequest,
+    age_penalty, get_signings, IncumbentSource, LineupSlot, Recommendation, ScoreBasis, ScoreMode,
+    Signings, SigningsRequest,
 };
 use super::test_support::{open_with_players, player, Fixture, HOME_CLUB, OTHER_CLUB};
 
@@ -305,6 +305,89 @@ fn names_each_slots_best_signing_whichever_slot_suits_the_player_most() {
             .collect::<Vec<_>>(),
         [(10, 25), (11, 5)]
     );
+}
+
+#[test]
+fn players_over_28_lose_points_so_only_large_improvements_still_come_through() {
+    let fixture = open_with_players(&[
+        player(1, "Home Left Back", HOME_CLUB, "DL"),
+        player(10, "Young", OTHER_CLUB, "DL"),
+        player(11, "At The Cap", OTHER_CLUB, "DL"),
+        player(12, "Outstanding Veteran", OTHER_CLUB, "DL"),
+        player(13, "Good Veteran", OTHER_CLUB, "DL"),
+        player(14, "Slightly Over", OTHER_CLUB, "DL"),
+        player(15, "Ageless", OTHER_CLUB, "DL"),
+    ]);
+    // The club's own players keep their scores at any age.
+    fixture.set_slot_score(1, "left_back", 60);
+    fixture.set_player_column(1, "age", 35);
+    for (uid, age, score) in [
+        (10, 22, 70),
+        (11, 28, 69),
+        (12, 34, 86),
+        (13, 34, 70),
+        (14, 29, 69),
+    ] {
+        fixture.set_slot_score(uid, "left_back", score);
+        fixture.set_player_column(uid, "age", age);
+    }
+    fixture.set_slot_score(15, "left_back", 67);
+    fixture.set_player_column(15, "age", rusqlite::types::Null);
+
+    let signings = signings(&fixture, GENERAL);
+
+    assert_eq!(
+        incumbent(&signings, "left_back"),
+        Some((1, 60, IncumbentSource::BestFit))
+    );
+    // At 34 a player loses 11 points: 86 still leads, and 70 no longer improves the slot.
+    assert_eq!(
+        ranked(&signings.recommendations),
+        [
+            (12, "left_back", 75, 15),
+            (10, "left_back", 70, 10),
+            (11, "left_back", 69, 9),
+            (14, "left_back", 68, 8),
+            (15, "left_back", 67, 7),
+        ]
+    );
+    assert_eq!(
+        signings
+            .recommendations
+            .iter()
+            .map(|recommendation| recommendation.age_penalty)
+            .collect::<Vec<_>>(),
+        [11, 0, 0, 1, 0]
+    );
+    assert_eq!(signings.total_recommendations, 5);
+    // A player his age keeps out is not one a filter holds back.
+    assert_eq!(signings.filtered_out, 0);
+    assert_eq!(
+        slot(&signings, "left_back")
+            .best_signing
+            .as_ref()
+            .map(|best| (best.uid, best.score, best.improvement, best.age_penalty)),
+        Some((12, 75, 15, 11))
+    );
+}
+
+#[test]
+fn each_year_over_28_costs_more_than_the_last_and_half_as_much_in_general_mode() {
+    for (age, general, moneyball) in [
+        (None, 0, 0),
+        (Some(17), 0, 0),
+        (Some(28), 0, 0),
+        (Some(29), 1, 1),
+        (Some(30), 2, 3),
+        (Some(31), 3, 6),
+        (Some(32), 5, 10),
+        (Some(33), 8, 15),
+        (Some(35), 14, 28),
+        (Some(45), 53, 100),
+    ] {
+        assert_eq!(age_penalty(ScoreMode::General, age), general, "{age:?}");
+        assert_eq!(age_penalty(ScoreMode::Moneyball, age), moneyball, "{age:?}");
+    }
 }
 
 #[test]

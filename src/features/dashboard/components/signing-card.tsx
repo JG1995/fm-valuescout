@@ -89,7 +89,19 @@ export function SigningCard({
         </>
       }
       metricLabel="Gain"
-      metric={<Gain points={recommendation.improvement} size="lg" />}
+      metric={
+        <>
+          <Gain points={recommendation.improvement} size="lg" />
+          {recommendation.agePenalty > 0 ? (
+            <span
+              className="truncate text-[11px] leading-4 text-on-surface-variant"
+              title="Scores lose points for each year over 28, so an older player must improve the slot by more."
+            >
+              Age −{recommendation.agePenalty}
+            </span>
+          ) : null}
+        </>
+      }
     >
       <CardSlotLine
         placement={label.compact}
