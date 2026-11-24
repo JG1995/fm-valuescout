@@ -1044,6 +1044,34 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
   });
 
+  it("opens the Moneyball section at once with a placeholder in its layout", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    setPlayerMoneyballPending();
+    renderProfileRoute("/players/42?section=moneyball");
+
+    expect(
+      await screen.findByRole("tab", { name: "Moneyball", selected: true }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("player-identity-rail")).getByRole("heading", {
+        level: 1,
+        name: "Alex Scout",
+      }),
+    ).toBeInTheDocument();
+    const panel = screen.getByRole("tabpanel");
+    expect(
+      within(panel).getByText("Loading Moneyball profile…"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("profile-loading")).toBeNull();
+
+    resolvePendingPlayerMoneyball(fixturePlayerMoneyball());
+    expect(
+      await screen.findByTestId("moneyball-role-summaries"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Loading Moneyball profile…")).toBeNull();
+  });
+
   it("renders standard sections without waiting for Moneyball data", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
@@ -1064,10 +1092,10 @@ describe("player profile route", () => {
     resolvePendingPlayerMoneyball(fixturePlayerMoneyball());
   });
 
-  it("prefetches Moneyball data in the loader for resolved Moneyball sections", async () => {
+  it("starts Moneyball data in the loader without waiting for it", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
-    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+    setPlayerMoneyballPending();
     const loaderOption = Route.options.loader;
     expect(loaderOption).toBeDefined();
     const loader =
@@ -1083,8 +1111,14 @@ describe("player profile route", () => {
       params: { uid: "42" },
       deps: { section: "moneyball" },
     } as never);
-    expect(moneyballClient.getQueryData(moneyballKeys.profile(42))).toEqual(
-      expect.objectContaining({ state: "ready" }),
+    expect(
+      moneyballClient.getQueryState(moneyballKeys.profile(42))?.fetchStatus,
+    ).toBe("fetching");
+    resolvePendingPlayerMoneyball(fixturePlayerMoneyball());
+    await waitFor(() =>
+      expect(moneyballClient.getQueryData(moneyballKeys.profile(42))).toEqual(
+        expect.objectContaining({ state: "ready" }),
+      ),
     );
 
     const standardClient = new QueryClient({
