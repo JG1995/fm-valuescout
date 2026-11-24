@@ -11,6 +11,7 @@ import {
   UserRoundSearch,
   UsersRound,
 } from "lucide-react";
+import { NavigationProgress } from "@/app/components/navigation-progress";
 import { useSearchViewMemory } from "@/stores/use-search-view-memory";
 import { cn } from "@/utils/cn";
 
@@ -151,8 +152,9 @@ export function AppNavBar() {
     <nav
       aria-label="Primary"
       data-testid="app-nav-bar"
-      className="z-10 h-12 shrink-0 border-b border-outline-variant bg-surface-container"
+      className="relative z-10 h-12 shrink-0 border-b border-outline-variant bg-surface-container"
     >
+      <NavigationProgress />
       {/* Safe centring start-aligns the row when it overflows, so OS display
           scaling below the window minimum can never push the first
           destination out of reach; the band scrolls instead of clipping. */}
