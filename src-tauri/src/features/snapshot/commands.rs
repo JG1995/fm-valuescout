@@ -597,6 +597,10 @@ fn ch_send_best_effort(
     channel.send(dto).map(|_| ()).map_err(|_| ())
 }
 
+/// How long the checkpoint after a load waits for the read requests that the new data set
+/// off. The slowest of them, recommended signings, takes a few seconds on a large save.
+const LOAD_CHECKPOINT_READER_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn execute_load_data_with<L, S, R, Sc, P, Pr>(
     db: &Db,
@@ -764,12 +768,12 @@ where
     ));
     // Dropping the publishing guard advances the data generation, so no cached result for the
     // displaced snapshot is served while the checkpoint runs. Later reads then use the database
-    // file instead of a large WAL. A reader can block the checkpoint for at most the busy
-    // timeout, and a failed checkpoint never turns a published load into an error.
+    // file instead of a large WAL. Read requests wait while it closes the readers, and a failed
+    // checkpoint never turns a published load into an error.
     drop(conn);
     match db.0.lock() {
         Ok(conn) => {
-            if let Err(error) = crate::db::checkpoint_wal(&conn) {
+            if let Err(error) = db.checkpoint(&conn, LOAD_CHECKPOINT_READER_WAIT) {
                 log::warn!("database checkpoint failed after Load Data: {error}");
             }
         }
