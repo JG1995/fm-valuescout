@@ -16,6 +16,27 @@ type GraphicsImageProps = {
   slot: GraphicsImageSlot;
 };
 
+// Chromium keeps an image in memory only while an element still references it.
+// Holding recently loaded images lets a remounted virtualized row reuse them
+// without a new protocol request; the responses stay `no-store`, so nothing
+// outlives the page.
+const RETAINED_IMAGE_LIMIT = 256;
+const retainedImages = new Map<string, HTMLImageElement>();
+
+function retainLoadedImage(source: string) {
+  let image = retainedImages.get(source);
+  if (image) {
+    retainedImages.delete(source);
+  } else {
+    image = new Image();
+    image.src = source;
+  }
+  retainedImages.set(source, image);
+  if (retainedImages.size > RETAINED_IMAGE_LIMIT) {
+    retainedImages.delete(retainedImages.keys().next().value as string);
+  }
+}
+
 export function GraphicsImage({ kind, uid, slot }: GraphicsImageProps) {
   const { data: status } = useQuery(graphicsStatusQueryOptions);
   const [failedSource, setFailedSource] = useState<string | null>(null);
@@ -41,6 +62,7 @@ export function GraphicsImage({ kind, uid, slot }: GraphicsImageProps) {
       className={slot.className}
       loading="lazy"
       decoding="async"
+      onLoad={() => retainLoadedImage(source)}
       onError={() => setFailedSource(source)}
     />
   );

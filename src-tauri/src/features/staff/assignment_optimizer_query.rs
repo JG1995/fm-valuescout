@@ -374,7 +374,7 @@ pub(super) fn load_candidates(
     // The pool is the save's shortlist plus the managed club's own staff, without the human
     // manager and anyone the save has skipped. Shortlisted people join by their Preferred Job;
     // club staff off the shortlist join by the job they hold now.
-    let at_managed_club = managed_club_staff_sql("?1");
+    let at_managed_club = managed_club_staff_sql("?2", "?1");
     let sql = format!(
         "SELECT staff.uid, staff.name, staff.club, {at_managed_club}, shortlist.preferred_job,
                 staff.job_id,

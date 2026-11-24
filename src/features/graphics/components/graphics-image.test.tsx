@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_GRAPHICS_STATUS,
   setGraphicsStatusIpcMock,
@@ -9,7 +9,7 @@ import { graphicsKeys } from "../api/graphics-keys";
 import type { GraphicsStatus } from "../types/graphics";
 import { GraphicsImage } from "./graphics-image";
 
-function renderImage(initialStatus?: GraphicsStatus) {
+function renderImage(initialStatus?: GraphicsStatus, uid = 42) {
   const queryClient = new QueryClient();
   if (initialStatus) {
     queryClient.setQueryData(graphicsKeys.status(), initialStatus);
@@ -19,7 +19,7 @@ function renderImage(initialStatus?: GraphicsStatus) {
       <QueryClientProvider client={queryClient}>
         <GraphicsImage
           kind="personPortrait"
-          uid={42}
+          uid={uid}
           slot={{
             alt: "Player portrait",
             className: "portrait",
@@ -32,7 +32,49 @@ function renderImage(initialStatus?: GraphicsStatus) {
   };
 }
 
+const LOADED_STATUS = {
+  ...DEFAULT_GRAPHICS_STATUS,
+  generation: 7,
+  selected: true,
+};
+
+function loadImage(uid: number) {
+  setGraphicsStatusIpcMock(LOADED_STATUS);
+  const view = renderImage(LOADED_STATUS, uid);
+  fireEvent.load(view.getByRole("img", { name: "Player portrait" }));
+  view.unmount();
+}
+
 describe("GraphicsImage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("holds a loaded image so a remounted row reuses it without a new request", () => {
+    const image = vi.spyOn(window, "Image");
+
+    loadImage(9001);
+    loadImage(9001);
+
+    expect(image).toHaveBeenCalledTimes(1);
+    expect(image.mock.results[0]?.value).toHaveProperty(
+      "src",
+      "http://graphics.localhost/7/personPortrait/9001",
+    );
+  });
+
+  it("releases the least recently loaded image beyond its bound", () => {
+    loadImage(9101);
+    for (let uid = 9200; uid < 9200 + 256; uid += 1) {
+      loadImage(uid);
+    }
+    const image = vi.spyOn(window, "Image");
+
+    loadImage(9101);
+
+    expect(image).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the fallback while the background index rebuild is active", async () => {
     const rebuildingStatus = {
       ...DEFAULT_GRAPHICS_STATUS,

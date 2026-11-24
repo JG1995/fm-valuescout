@@ -4,11 +4,13 @@
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeMap, HashSet};
 
-use rusqlite::{params_from_iter, types::Value, Connection};
+use rusqlite::{params_from_iter, types::Value, Connection, Row};
 
 use crate::features::managed_club::service::{managed_club_player_sql, managed_club_sql};
 pub(crate) use crate::features::moneyball::comparison::MIN_SEASON_MINUTES;
-use crate::features::moneyball::comparison::{scan_statistics, GroupsSource, ResolvedGroups};
+use crate::features::moneyball::comparison::{
+    scan_in_parallel, scan_statistics, GroupsSource, ResolvedGroups,
+};
 use crate::features::moneyball::kept_stats::{
     kept_stats_snapshots, stats_join_sql, STATS_DIVISION_SQL,
 };
@@ -185,6 +187,29 @@ struct ScoredPlayer {
     under_minimum_minutes: bool,
 }
 
+/// One player's row of the candidate query, read before he is scored.
+struct CandidateRow {
+    uid: i64,
+    name: String,
+    age: Option<i64>,
+    club: Option<String>,
+    club_uid: Option<i64>,
+    market_value_gbp: Option<i64>,
+    foot: String,
+    positions_json: String,
+    /// General mode: the two role scores of each slot, in lane order.
+    role_scores: Vec<Option<u8>>,
+    /// The minutes of his statistics row, when the query reads them.
+    minutes: Option<i64>,
+    statistics_json: Option<String>,
+    /// Moneyball mode: the league he played his statistics in.
+    division: Option<String>,
+    /// The snapshot his statistics come from, when the query reads them.
+    source_id: Option<i64>,
+    /// `SlotFilters::sql_passes`, for a candidate of a tactic with recruitment filters.
+    sql_passes: Option<Vec<bool>>,
+}
+
 /// A snapshot whose season statistics score players: the current one, or a kept one that
 /// players under `MIN_SEASON_MINUTES` minutes borrow from (see `moneyball::kept_stats`).
 struct StatsSource {
@@ -207,33 +232,52 @@ enum PlayerScope<'a> {
     RealisticSignings(&'a [Option<u8>]),
 }
 
+/// A save's club and candidates scored in every tactic slot: everything a signings answer
+/// needs except the slot it is restricted to. Scoring the candidates is the slow part, so the
+/// app keeps this per data generation (`dashboard::commands::SigningsCache`) and answers a
+/// slot change from it.
+pub(crate) struct ScoredSignings {
+    tactic: PlannerTactic,
+    mode: ScoreMode,
+    scores_available: bool,
+    season_stats_available: bool,
+    season_stats_applied: bool,
+    club: Vec<ScoredPlayer>,
+    lineup: Lineup,
+    incumbent_scores: Vec<Option<u8>>,
+    /// The candidates who would improve a slot. The rest never appear in an answer.
+    candidates: Vec<ScoredPlayer>,
+    /// `Signings::candidates`.
+    candidate_count: Option<usize>,
+}
+
 /// The save's starting XI and recommended signings, or `None` without a current snapshot or a
-/// configured managed club. It only reads, so a save without stored lanes uses the default
-/// tactic in memory.
-// ponytail: every read scores the club's realistic signings again, so a slot or mode change
-// repeats the scan. On 250,000 players it takes about a second when a slot has no incumbent.
-// Upgrade to keeping the scored candidates per data generation if a read on a real save
-// takes longer than that.
+/// configured managed club.
+#[cfg(test)]
 pub(crate) fn get_signings(
     conn: &Connection,
     groups: &GroupsSource<'_>,
     save_id: i64,
     request: SigningsRequest<'_>,
 ) -> Result<Option<Signings>, String> {
+    score_signings(conn, groups, save_id, request)?
+        .map(|scored| scored.answer(request.lane_id))
+        .transpose()
+}
+
+/// Scores the save's club and the request's candidates, whatever slot it names, or `None`
+/// without a current snapshot or a configured managed club. It only reads, so a save without
+/// stored lanes uses the default tactic in memory.
+pub(crate) fn score_signings(
+    conn: &Connection,
+    groups: &GroupsSource<'_>,
+    save_id: i64,
+    request: SigningsRequest<'_>,
+) -> Result<Option<ScoredSignings>, String> {
     let Some(snapshot_id) = club_snapshot_id(conn, save_id)? else {
         return Ok(None);
     };
     let tactic = read_tactic(conn, save_id)?;
-    let lane_filter = request
-        .lane_id
-        .map(|lane_id| {
-            tactic
-                .lanes
-                .iter()
-                .position(|lane| lane.lane_id == lane_id)
-                .ok_or_else(|| format!("unknown tactic lane: {lane_id}"))
-        })
-        .transpose()?;
     let mode = request.mode;
     let kept = kept_stats_snapshots(conn, snapshot_id)?;
     let season_stats_available = !kept.is_empty() || snapshot_has_percentiles(conn, snapshot_id)?;
@@ -319,71 +363,113 @@ pub(crate) fn get_signings(
         Some(shortlist_id) => PlayerScope::Shortlist(shortlist_id),
         None => PlayerScope::RealisticSignings(&incumbent_scores),
     };
-    let candidates = load(scope)?;
+    let mut candidates = load(scope)?;
     let candidate_count = match request.shortlist_id {
         Some(_) => Some(candidates.len()),
         None if !candidates.is_empty() => None,
         None if has_realistic_signings(conn, save_id, snapshot_id, mode, &sources)? => None,
         None => Some(0),
     };
+    candidates.retain(|player| {
+        (0..tactic.lanes.len())
+            .any(|lane_index| improvement(player, &incumbent_scores, lane_index).is_some())
+    });
 
-    let mut recommendations = candidates
-        .iter()
-        .filter_map(|player| recommend(player, &tactic, &incumbent_scores, lane_filter))
-        .collect::<Vec<_>>();
-    let held_back = candidates
-        .iter()
-        .filter(|player| {
-            let mut improving = (0..tactic.lanes.len())
-                .filter(|&lane_index| lane_filter.map_or(true, |filter| filter == lane_index))
-                .filter(|&lane_index| improvement(player, &incumbent_scores, lane_index).is_some())
-                .peekable();
-            improving.peek().is_some()
-                && improving.all(|lane_index| !player.lane_allowed[lane_index])
-        })
-        .collect::<Vec<_>>();
-    let filtered_out = held_back.len();
-    let under_minimum_minutes = held_back
-        .iter()
-        .filter(|player| player.under_minimum_minutes)
-        .count();
-    recommendations.sort_by(by_improvement);
-    let total_recommendations = recommendations.len();
-    recommendations.truncate(MAX_RECOMMENDATIONS);
-
-    let slots = tactic
-        .lanes
-        .iter()
-        .enumerate()
-        .map(|(lane_index, lane)| LineupSlot {
-            lane: lane.clone(),
-            score_basis: score_basis(lane, mode),
-            incumbent: lineup.incumbents[lane_index].and_then(|(player_index, source)| {
-                lineup_player(&club[player_index], lane_index).map(|player| (player, source))
-            }),
-            cover: cover(&club, &lineup, lane_index),
-            unscored_planner_player: lineup.unscored_planner_players[lane_index].clone(),
-            best_signing: candidates
-                .iter()
-                .filter_map(|player| {
-                    recommend(player, &tactic, &incumbent_scores, Some(lane_index))
-                })
-                .min_by(by_improvement),
-        })
-        .collect();
-
-    Ok(Some(Signings {
-        tactic_is_default: tactic == default_tactic(),
+    Ok(Some(ScoredSignings {
+        tactic,
+        mode,
         scores_available,
-        slots,
-        candidates: candidate_count,
-        total_recommendations,
-        recommendations,
-        filtered_out,
-        under_minimum_minutes,
         season_stats_available,
         season_stats_applied: season_stats,
+        club,
+        lineup,
+        incumbent_scores,
+        candidates,
+        candidate_count,
     }))
+}
+
+impl ScoredSignings {
+    /// The starting XI and the recommended signings, ranked for the slot `lane_id` or for
+    /// every slot.
+    pub(crate) fn answer(&self, lane_id: Option<&str>) -> Result<Signings, String> {
+        let Self {
+            tactic,
+            club,
+            lineup,
+            incumbent_scores,
+            candidates,
+            ..
+        } = self;
+        let lane_filter = lane_id
+            .map(|lane_id| {
+                tactic
+                    .lanes
+                    .iter()
+                    .position(|lane| lane.lane_id == lane_id)
+                    .ok_or_else(|| format!("unknown tactic lane: {lane_id}"))
+            })
+            .transpose()?;
+        let mut recommendations = candidates
+            .iter()
+            .filter_map(|player| recommend(player, tactic, incumbent_scores, lane_filter))
+            .collect::<Vec<_>>();
+        let held_back = candidates
+            .iter()
+            .filter(|player| {
+                let mut improving = (0..tactic.lanes.len())
+                    .filter(|&lane_index| lane_filter.map_or(true, |filter| filter == lane_index))
+                    .filter(|&lane_index| {
+                        improvement(player, incumbent_scores, lane_index).is_some()
+                    })
+                    .peekable();
+                improving.peek().is_some()
+                    && improving.all(|lane_index| !player.lane_allowed[lane_index])
+            })
+            .collect::<Vec<_>>();
+        let filtered_out = held_back.len();
+        let under_minimum_minutes = held_back
+            .iter()
+            .filter(|player| player.under_minimum_minutes)
+            .count();
+        recommendations.sort_by(by_improvement);
+        let total_recommendations = recommendations.len();
+        recommendations.truncate(MAX_RECOMMENDATIONS);
+
+        let slots = tactic
+            .lanes
+            .iter()
+            .enumerate()
+            .map(|(lane_index, lane)| LineupSlot {
+                lane: lane.clone(),
+                score_basis: score_basis(lane, self.mode),
+                incumbent: lineup.incumbents[lane_index].and_then(|(player_index, source)| {
+                    lineup_player(&club[player_index], lane_index).map(|player| (player, source))
+                }),
+                cover: cover(club, lineup, lane_index),
+                unscored_planner_player: lineup.unscored_planner_players[lane_index].clone(),
+                best_signing: candidates
+                    .iter()
+                    .filter_map(|player| {
+                        recommend(player, tactic, incumbent_scores, Some(lane_index))
+                    })
+                    .min_by(by_improvement),
+            })
+            .collect();
+
+        Ok(Signings {
+            tactic_is_default: *tactic == default_tactic(),
+            scores_available: self.scores_available,
+            slots,
+            candidates: self.candidate_count,
+            total_recommendations,
+            recommendations,
+            filtered_out,
+            under_minimum_minutes,
+            season_stats_available: self.season_stats_available,
+            season_stats_applied: self.season_stats_applied,
+        })
+    }
 }
 
 /// Orders the larger improvement first, then the higher score, then by name.
@@ -655,6 +741,11 @@ fn load_players(
         None
     };
     let applies_minimum = candidates && season_stats;
+    let lane_count = tactic.lanes.len();
+    let first_filter_column = 8 + match mode {
+        ScoreMode::General => lane_count * 2,
+        ScoreMode::Moneyball => 4,
+    };
     let mut extra_columns = Vec::new();
     if let Some(filters) = &filters {
         let (columns, params) = filters.columns();
@@ -670,13 +761,23 @@ fn load_players(
     if mode == ScoreMode::Moneyball && filters.as_ref().is_some_and(SlotFilters::uses_role_scores) {
         from_sql.push_str(&player_metrics_join("players", true, false));
     }
-    let filter_column_count = extra_columns.len();
-    if applies_minimum && mode == ScoreMode::General {
-        extra_columns.push("moneyball.minutes".to_string());
-    }
-    if general_reads_stats {
-        extra_columns.push("moneyball.snapshot_id".to_string());
-    }
+    // Where each statistics value is read: Moneyball mode's score columns hold them all, and
+    // General mode adds only the ones it needs.
+    let mut extra_column = |needed: bool, column: &str| {
+        needed.then(|| {
+            extra_columns.push(column.to_string());
+            first_filter_column + extra_columns.len() - 1
+        })
+    };
+    let ranks_statistics = filters.as_ref().is_some_and(SlotFilters::ranks_statistics);
+    let (minutes_column, statistics_column, source_column) = match mode {
+        ScoreMode::General => (
+            extra_column(applies_minimum, "moneyball.minutes"),
+            extra_column(ranks_statistics, "moneyball.statistics_json"),
+            extra_column(general_reads_stats, "moneyball.snapshot_id"),
+        ),
+        ScoreMode::Moneyball => (Some(8), Some(9), Some(11)),
+    };
     let filter_columns = extra_columns
         .iter()
         .map(|column| format!(", {column}"))
@@ -695,71 +796,75 @@ fn load_players(
          WHERE players.snapshot_id = ?1 AND {scope_sql}
          {order_sql}"
     );
-    let lane_count = tactic.lanes.len();
     let score_bases = tactic
         .lanes
         .iter()
         .map(|lane| score_basis(lane, mode))
         .collect::<Vec<_>>();
-    let first_filter_column = 8 + match mode {
-        ScoreMode::General => lane_count * 2,
-        ScoreMode::Moneyball => 4,
+    let optional = |row: &Row<'_>, column: Option<usize>| {
+        column.map_or(Ok(None), |column| row.get::<_, Option<i64>>(column))
     };
-    let minutes_column = match mode {
-        ScoreMode::General => first_filter_column + filter_column_count,
-        ScoreMode::Moneyball => 8,
+    let read = |row: &Row<'_>| {
+        Ok(CandidateRow {
+            uid: row.get(0)?,
+            name: row.get(1)?,
+            age: row.get(2)?,
+            club: row.get(3)?,
+            club_uid: row.get(4)?,
+            market_value_gbp: row.get(5)?,
+            foot: row.get(6)?,
+            positions_json: row.get(7)?,
+            role_scores: match mode {
+                ScoreMode::General => (8..first_filter_column)
+                    .map(|column| row.get(column))
+                    .collect::<rusqlite::Result<_>>()?,
+                ScoreMode::Moneyball => Vec::new(),
+            },
+            minutes: optional(row, minutes_column)?,
+            statistics_json: statistics_column
+                .map_or(Ok(None), |column| row.get::<_, Option<String>>(column))?,
+            division: match mode {
+                ScoreMode::General => None,
+                ScoreMode::Moneyball => row.get(10)?,
+            },
+            source_id: optional(row, source_column)?,
+            sql_passes: filters
+                .as_ref()
+                .map(|filters| filters.sql_passes(row, first_filter_column))
+                .transpose()?,
+        })
     };
-    // The snapshot the player's statistics come from, when the query reads them.
-    let source_column = match mode {
-        ScoreMode::General if general_reads_stats => {
-            Some(first_filter_column + extra_columns.len() - 1)
-        }
-        ScoreMode::General => None,
-        ScoreMode::Moneyball => Some(11),
-    };
-    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
-    let mut rows = statement
-        .query(params_from_iter(bind_values.iter()))
-        .map_err(|error| error.to_string())?;
-    let mut players = Vec::new();
-    while let Some(row) = rows.next().map_err(|error| error.to_string())? {
-        let read = |error: rusqlite::Error| error.to_string();
-        let source_id = match source_column {
-            Some(column) => row.get::<_, Option<i64>>(column).map_err(read)?,
-            None => None,
-        };
-        let source = source_id
+    let score = |row: CandidateRow| {
+        let source = row
+            .source_id
             .and_then(|id| sources.iter().find(|source| source.snapshot_id == id))
             .unwrap_or(&sources[0]);
-        let foot: String = row.get(6).map_err(read)?;
-        let positions = serde_json::from_str::<BTreeMap<String, Option<i64>>>(
-            &row.get::<_, String>(7).map_err(read)?,
-        )
-        .map_err(|error| error.to_string())?;
-        let (minutes, borrowed_stats_date, lane_scores) = match mode {
-            ScoreMode::General => {
-                let mut scores = Vec::with_capacity(lane_count);
-                for (lane_index, lane) in tactic.lanes.iter().enumerate() {
-                    scores.push(tactic_adjusted_score(
-                        row.get(8 + lane_index * 2).map_err(read)?,
-                        row.get(9 + lane_index * 2).map_err(read)?,
+        let positions = serde_json::from_str::<BTreeMap<String, Option<i64>>>(&row.positions_json)
+            .map_err(|error| error.to_string())?;
+        let statistics = row
+            .statistics_json
+            .as_deref()
+            .map(scan_statistics)
+            .transpose()?;
+        let lane_scores = match mode {
+            ScoreMode::General => tactic
+                .lanes
+                .iter()
+                .zip(row.role_scores.chunks(2))
+                .map(|(lane, roles)| {
+                    tactic_adjusted_score(
+                        roles[0],
+                        roles[1],
                         lane.ip_weight,
-                        &foot,
+                        &row.foot,
                         &positions,
                         lane,
-                    ));
-                }
-                (None, None, scores)
-            }
+                    )
+                })
+                .collect(),
             ScoreMode::Moneyball => {
-                let statistics = row
-                    .get::<_, Option<String>>(9)
-                    .map_err(read)?
-                    .map(|json| scan_statistics(&json))
-                    .transpose()?;
-                let division: Option<String> = row.get(10).map_err(read)?;
-                let league_shift = source.league.shift(division.as_deref());
-                let scores = tactic
+                let league_shift = source.league.shift(row.division.as_deref());
+                tactic
                     .lanes
                     .iter()
                     .zip(&score_bases)
@@ -771,14 +876,14 @@ fn load_players(
                         match score_basis {
                             ScoreBasis::MoneyballCustom => custom_metrics_lane_score(
                                 &percentiles,
-                                &foot,
+                                &row.foot,
                                 &positions,
                                 lane,
                                 league_shift,
                             ),
                             ScoreBasis::MoneyballRoles => moneyball_roles_lane_score(
                                 &percentiles,
-                                &foot,
+                                &row.foot,
                                 &positions,
                                 lane,
                                 league_shift,
@@ -786,44 +891,55 @@ fn load_players(
                             ScoreBasis::Attributes | ScoreBasis::Unavailable => None,
                         }
                     })
-                    .collect();
-                (row.get(8).map_err(read)?, source.kept_date.clone(), scores)
+                    .collect()
             }
         };
-        let under_minimum_minutes = applies_minimum
-            && row
-                .get::<_, Option<i64>>(minutes_column)
-                .map_err(read)?
-                .unwrap_or(0)
-                < MIN_SEASON_MINUTES;
-        let age = row.get(2).map_err(read)?;
-        players.push(ScoredPlayer {
-            uid: row.get(0).map_err(read)?,
-            name: row.get(1).map_err(read)?,
-            age,
-            club: row.get(3).map_err(read)?,
-            club_uid: row.get(4).map_err(read)?,
-            market_value_gbp: row.get(5).map_err(read)?,
-            minutes,
-            borrowed_stats_date,
+        let under_minimum_minutes =
+            applies_minimum && row.minutes.unwrap_or(0) < MIN_SEASON_MINUTES;
+        let lane_allowed = match (&filters, &row.sql_passes) {
+            _ if under_minimum_minutes => vec![false; lane_count],
+            (Some(filters), Some(sql_passes)) => {
+                filters.lane_passes(sql_passes, statistics.as_deref(), source.rankings.as_ref())
+            }
+            _ => vec![true; lane_count],
+        };
+        Ok::<_, String>(ScoredPlayer {
+            uid: row.uid,
+            name: row.name,
+            age: row.age,
+            club: row.club,
+            club_uid: row.club_uid,
+            market_value_gbp: row.market_value_gbp,
+            minutes: match mode {
+                ScoreMode::General => None,
+                ScoreMode::Moneyball => row.minutes,
+            },
+            borrowed_stats_date: match mode {
+                ScoreMode::General => None,
+                ScoreMode::Moneyball => source.kept_date.clone(),
+            },
             lane_scores,
             age_penalty: if candidates {
-                age_penalty(mode, age)
+                age_penalty(mode, row.age)
             } else {
                 0
             },
-            lane_allowed: if under_minimum_minutes {
-                vec![false; lane_count]
-            } else {
-                match &filters {
-                    Some(filters) => {
-                        filters.lane_passes(row, first_filter_column, source.rankings.as_ref())?
-                    }
-                    None => vec![true; lane_count],
-                }
-            },
+            lane_allowed,
             under_minimum_minutes,
-        });
+        })
+    };
+    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
+    let mut rows = statement
+        .query(params_from_iter(bind_values.iter()))
+        .map_err(|error| error.to_string())?;
+    // The many realistic signings are scored on worker threads while SQLite reads on, which
+    // returns them in no particular order. The other scopes are few and keep the query's.
+    if matches!(scope, PlayerScope::RealisticSignings(_)) {
+        return scan_in_parallel(&mut rows, read, score);
+    }
+    let mut players = Vec::new();
+    while let Some(row) = rows.next().map_err(|error| error.to_string())? {
+        players.push(score(read(row).map_err(|error| error.to_string())?)?);
     }
     Ok(players)
 }

@@ -286,7 +286,8 @@ fn managed_club_division(
     let Some((club_name, club_uid)) = selected_club_identity(conn, save_id)? else {
         return Ok(None);
     };
-    // The UID reads an index. A club chosen before UIDs were recorded is matched by name.
+    // The UID reads `idx_players_snapshot_club_uid`. A club chosen before UIDs were
+    // recorded is matched by name on `idx_players_snapshot_current_club`.
     let (club_sql, club) = match club_uid {
         Some(uid) => (
             "current_club_uid = ?2",

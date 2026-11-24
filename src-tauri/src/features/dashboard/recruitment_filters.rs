@@ -2,19 +2,18 @@
 //!
 //! Most rules compile to SQL and run as one column per slot in the candidate query. A
 //! percentile rule ranks the candidate's statistic within the slot's comparison group (see
-//! `moneyball::comparison`). Season-stat rules run only while season stats apply.
+//! `moneyball::comparison`), read from his scanned statistics row. Season-stat rules run only
+//! while season stats apply.
 
 use rusqlite::{types::Value, Row};
 
-use crate::features::moneyball::comparison::{ComparisonGroup, ResolvedGroups};
+use crate::features::moneyball::comparison::{statistic_index, ComparisonGroup, ResolvedGroups};
 use crate::features::planner::fit::slot_group;
 use crate::features::planner::tactic::{recruitment_filter_rules, PlannerTactic};
 use crate::features::search::filter::{compile_slot_filters, CompiledFilter, SlotPercentileRule};
 
 pub(super) struct SlotFilters {
     lanes: Vec<LaneFilters>,
-    /// The statistic keys percentile rules read, in candidate column order.
-    statistic_keys: Vec<String>,
     uses_role_scores: bool,
     uses_season_stats: bool,
 }
@@ -22,8 +21,7 @@ pub(super) struct SlotFilters {
 #[derive(Default)]
 struct LaneFilters {
     sql: Option<CompiledFilter>,
-    /// Each percentile rule with its key's index in `statistic_keys`.
-    percentile_rules: Vec<(usize, SlotPercentileRule)>,
+    percentile_rules: Vec<SlotPercentileRule>,
     /// The slot's group, which its percentile rules rank within.
     group: Option<ComparisonGroup>,
 }
@@ -52,7 +50,6 @@ impl SlotFilters {
         }
         let mut filters = Self {
             lanes: Vec::with_capacity(tactic.lanes.len()),
-            statistic_keys: Vec::new(),
             uses_role_scores: false,
             uses_season_stats: false,
         };
@@ -63,33 +60,18 @@ impl SlotFilters {
             filters.uses_role_scores |= plan.uses_role_scores;
             filters.uses_season_stats |=
                 plan.uses_season_stats || !plan.percentile_rules.is_empty();
-            let percentile_rules = plan
-                .percentile_rules
-                .into_iter()
-                .map(|rule| (filters.statistic_key_index(&rule.key), rule))
-                .collect::<Vec<_>>();
-            let group = if percentile_rules.is_empty() {
+            let group = if plan.percentile_rules.is_empty() {
                 None
             } else {
                 slot_group(lane)
             };
             filters.lanes.push(LaneFilters {
                 sql: plan.sql,
-                percentile_rules,
+                percentile_rules: plan.percentile_rules,
                 group,
             });
         }
         Ok(Some(filters))
-    }
-
-    fn statistic_key_index(&mut self, key: &str) -> usize {
-        self.statistic_keys
-            .iter()
-            .position(|candidate| candidate == key)
-            .unwrap_or_else(|| {
-                self.statistic_keys.push(key.to_string());
-                self.statistic_keys.len() - 1
-            })
     }
 
     /// Whether the candidate query must join the compact role metrics row.
@@ -102,8 +84,16 @@ impl SlotFilters {
         self.uses_season_stats
     }
 
-    /// The candidate query's extra columns, which `lane_passes` reads back, and their
-    /// parameters in placeholder order.
+    /// Whether a percentile rule ranks a statistic, so `lane_passes` needs the candidate's
+    /// scanned statistics.
+    pub(super) fn ranks_statistics(&self) -> bool {
+        self.lanes
+            .iter()
+            .any(|lane| !lane.percentile_rules.is_empty())
+    }
+
+    /// The candidate query's extra columns, one for each slot with SQL rules, which
+    /// `sql_passes` reads back, and their parameters in placeholder order.
     pub(super) fn columns(&self) -> (Vec<String>, Vec<Value>) {
         let mut columns = Vec::new();
         let mut params = Vec::new();
@@ -111,52 +101,56 @@ impl SlotFilters {
             columns.push(format!("COALESCE({}, 0)", sql.sql));
             params.extend(sql.params.iter().cloned());
         }
-        columns.extend(
-            self.statistic_keys
-                .iter()
-                .map(|key| format!("json_extract(moneyball.statistics_json, '$.\"{key}\"')")),
-        );
         (columns, params)
     }
 
-    /// Whether the candidate in `row` passes each slot's filters, reading the extra columns
-    /// from `first_column`. `rankings` are those of the snapshot his statistics come from,
-    /// holding the group of every slot with a percentile rule.
-    pub(super) fn lane_passes(
+    /// Whether the candidate in `row` passes each slot's SQL rules, reading the extra columns
+    /// from `first_column`. A slot without SQL rules passes.
+    pub(super) fn sql_passes(
         &self,
         row: &Row<'_>,
         first_column: usize,
-        rankings: Option<&ResolvedGroups>,
-    ) -> Result<Vec<bool>, String> {
-        let read = |error: rusqlite::Error| error.to_string();
-        let sql_lane_count = self.lanes.iter().filter(|lane| lane.sql.is_some()).count();
-        let statistics = (0..self.statistic_keys.len())
-            .map(|index| row.get::<_, Option<f64>>(first_column + sql_lane_count + index))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(read)?;
+    ) -> rusqlite::Result<Vec<bool>> {
         let mut sql_column = first_column;
-        let mut passes = Vec::with_capacity(self.lanes.len());
-        for lane in &self.lanes {
-            let mut pass = true;
-            if lane.sql.is_some() {
-                pass = row.get::<_, i64>(sql_column).map_err(read)? != 0;
+        self.lanes
+            .iter()
+            .map(|lane| {
+                if lane.sql.is_none() {
+                    return Ok(true);
+                }
+                let pass = row.get::<_, i64>(sql_column)? != 0;
                 sql_column += 1;
-            }
-            pass = pass
-                && lane.percentile_rules.iter().all(|(key_index, rule)| {
-                    let percentile =
-                        lane.group
+                Ok(pass)
+            })
+            .collect()
+    }
+
+    /// Whether the candidate passes each slot's filters, given `sql_passes` for his row.
+    /// `statistics` are his scanned statistics (`comparison::scan_statistics`), if he has any,
+    /// and `rankings` those of the snapshot they come from, holding the group of every slot
+    /// with a percentile rule.
+    pub(super) fn lane_passes(
+        &self,
+        sql_passes: &[bool],
+        statistics: Option<&[f64]>,
+        rankings: Option<&ResolvedGroups>,
+    ) -> Vec<bool> {
+        self.lanes
+            .iter()
+            .zip(sql_passes)
+            .map(|(lane, sql_pass)| {
+                *sql_pass
+                    && lane.percentile_rules.iter().all(|rule| {
+                        let percentile = lane
+                            .group
                             .and_then(|group| rankings?.get(group))
                             .and_then(|rankings| {
-                                rankings.percentile_of(
-                                    &self.statistic_keys[*key_index],
-                                    statistics[*key_index],
-                                )
+                                let index = statistic_index(&rule.key)?;
+                                rankings.percentile(index, Some(statistics?[index]))
                             });
-                    rule.matches(percentile)
-                });
-            passes.push(pass);
-        }
-        Ok(passes)
+                        rule.matches(percentile)
+                    })
+            })
+            .collect()
     }
 }

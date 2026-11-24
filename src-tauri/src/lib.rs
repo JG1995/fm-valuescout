@@ -63,6 +63,7 @@ pub fn run() {
             app.manage(db);
             app.manage(features::search::commands::SearchCaches::default());
             app.manage(features::moneyball::comparison::ComparisonGroupsCache::default());
+            app.manage(features::dashboard::commands::SigningsCache::default());
             app.manage(features::staff::commands::StaffCaches::default());
             app.manage(db::result_cache::TableRegistry::default());
             app.manage(graphics_runtime);
@@ -169,14 +170,17 @@ pub fn run() {
         });
 }
 
+/// How long the exit waits for read requests that are still running.
+const EXIT_CHECKPOINT_READER_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Folds the WAL into the database file. A writer still busy at exit, such as Load Data,
-/// keeps its WAL, which SQLite recovers on the next open.
+/// keeps its WAL, which the next start folds in.
 fn checkpoint_database_at_exit(db: &db::Db) {
     let Ok(conn) = db.0.try_lock() else {
         log::info!("database checkpoint skipped at exit: the writer is busy");
         return;
     };
-    if let Err(error) = db::checkpoint_wal(&conn) {
+    if let Err(error) = db.checkpoint(&conn, EXIT_CHECKPOINT_READER_WAIT) {
         log::warn!("database checkpoint failed at exit: {error}");
     }
 }

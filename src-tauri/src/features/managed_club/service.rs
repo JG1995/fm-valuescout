@@ -144,21 +144,23 @@ pub fn get_managed_club(conn: &Connection, save_id: i64) -> Result<ManagedClubSt
     })
 }
 
+/// Every club in the current snapshot of the save bound to `?1`. `idx_players_snapshot_current_club`
+/// covers the read, so it never reads the `players` table.
+const MANAGED_CLUB_OPTIONS_SQL: &str = "SELECT DISTINCT p.current_club, p.current_club_uid
+     FROM players p
+     INNER JOIN snapshots s ON s.id = p.snapshot_id
+     WHERE s.save_id = ?1
+       AND s.is_current = 1
+       AND p.current_club IS NOT NULL
+       AND trim(p.current_club) <> ''
+     ORDER BY p.current_club COLLATE NOCASE, p.current_club_uid";
+
 pub fn list_managed_club_options(
     conn: &Connection,
     save_id: i64,
 ) -> Result<Vec<ManagedClubOption>, String> {
     let mut statement = conn
-        .prepare(
-            "SELECT DISTINCT p.current_club, p.current_club_uid
-             FROM players p
-             INNER JOIN snapshots s ON s.id = p.snapshot_id
-             WHERE s.save_id = ?1
-               AND s.is_current = 1
-               AND p.current_club IS NOT NULL
-               AND trim(p.current_club) <> ''
-             ORDER BY p.current_club COLLATE NOCASE, p.current_club_uid",
-        )
+        .prepare(MANAGED_CLUB_OPTIONS_SQL)
         .map_err(|error| error.to_string())?;
     let options = statement
         .query_map([save_id], |row| {
@@ -413,6 +415,69 @@ mod tests {
         let status = set_managed_club(&conn, save_id, "Managed FC", None).expect("set club");
         assert_eq!(status.availability, ManagedClubAvailability::Available);
         assert_eq!(status.unclassified_player_count, 2);
+    }
+
+    #[test]
+    fn options_read_only_the_club_index() {
+        let conn = connection();
+
+        let plan = conn
+            .prepare(&format!("EXPLAIN QUERY PLAN {MANAGED_CLUB_OPTIONS_SQL}"))
+            .expect("prepare plan")
+            .query_map([1], |row| row.get::<_, String>(3))
+            .expect("read plan")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("plan rows");
+
+        assert!(
+            plan.iter().any(|step| step
+                == "SEARCH p USING COVERING INDEX idx_players_snapshot_current_club \
+                    (snapshot_id=? AND current_club>?)"),
+            "the options read the players table: {plan:?}"
+        );
+    }
+
+    #[test]
+    fn club_players_are_read_by_club_name_not_by_scanning_the_snapshot() {
+        let conn = connection();
+
+        let plan = conn
+            .prepare(&format!(
+                "EXPLAIN QUERY PLAN SELECT p.uid FROM players p WHERE {}",
+                managed_club_owned_player_sql("p", "?1", "?2")
+            ))
+            .expect("prepare plan")
+            .query_map([1, 1], |row| row.get::<_, String>(3))
+            .expect("read plan")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("plan rows");
+
+        assert!(
+            plan.iter().any(|step| step
+                == "SEARCH owned USING COVERING INDEX idx_players_snapshot_current_club \
+                    (snapshot_id=? AND current_club=?)"),
+            "the club's players are not read by club name: {plan:?}"
+        );
+
+        // Club reads ordered by player UID take that order from the index.
+        let plan = conn
+            .prepare(&format!(
+                "EXPLAIN QUERY PLAN SELECT p.uid FROM players p
+                 WHERE p.snapshot_id = ?1 AND {} ORDER BY p.uid",
+                managed_club_player_sql("p", "?2")
+            ))
+            .expect("prepare ordered plan")
+            .query_map([1, 1], |row| row.get::<_, String>(3))
+            .expect("read ordered plan")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("ordered plan rows");
+        assert!(
+            plan.iter().any(|step| step
+                == "SEARCH p USING COVERING INDEX idx_players_snapshot_current_club \
+                    (snapshot_id=? AND current_club=?)")
+                && !plan.iter().any(|step| step.contains("TEMP B-TREE")),
+            "club players ordered by UID are not read in index order: {plan:?}"
+        );
     }
 
     #[test]

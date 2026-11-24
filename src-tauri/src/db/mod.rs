@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{
     Arc, Condvar, LockResult, Mutex, MutexGuard, OnceLock, PoisonError, TryLockError, TryLockResult,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, OpenFlags};
 use tauri::{AppHandle, Manager};
@@ -44,6 +44,29 @@ impl Db {
     /// The current data generation. A result cache looks up with it before any reader is held.
     pub fn generation(&self) -> u64 {
         self.0.generation.load(Ordering::Acquire)
+    }
+
+    /// Folds the WAL into the database file and empties it. `writer` is this database's
+    /// locked writer.
+    ///
+    /// A checkpoint completes only while no reader holds a WAL read lock. On Windows, SQLite
+    /// 3.53.2 can keep a pooled reader's lock after its read transaction ended when several
+    /// readers run at once, and every later checkpoint is then blocked for as long as that
+    /// connection stays open. Closing a connection releases its locks. So this first copies
+    /// what the running readers allow, then waits up to `reader_wait` for the read requests
+    /// that are running, closes every reader, and checkpoints with none open. Read requests
+    /// wait meanwhile and reopen their readers afterwards.
+    ///
+    /// Fails when a read request outlasted `reader_wait` or another process blocked the
+    /// checkpoint. The WAL then stays, and reads stay correct.
+    pub fn checkpoint(&self, writer: &Connection, reader_wait: Duration) -> Result<(), String> {
+        // Result ignored: the checkpoint below reports what is still blocked.
+        let _ = writer.query_row("PRAGMA wal_checkpoint(PASSIVE)", [], |_| Ok(()));
+        let _closed = match self.1.as_deref() {
+            Some(pool) => Some(pool.close_readers(reader_wait)?),
+            None => None,
+        };
+        checkpoint_wal(writer)
     }
 
     /// Hands out a read connection inside one deferred read transaction, so every statement
@@ -157,10 +180,27 @@ impl Drop for WriterGuard<'_> {
 /// Read-only connections handed out one request at a time.
 struct ReaderPool {
     path: PathBuf,
+    state: Mutex<PoolState>,
+    /// Signalled when a reader returns and when a checkpoint lets requests in again.
+    changed: Condvar,
+}
+
+struct PoolState {
     /// `None` is a free slot whose connection was discarded; the next acquire reopens it.
     /// Boxed, so a connection's address identifies it for `data_generation`.
-    idle: Mutex<Vec<Option<Box<Connection>>>>,
-    returned: Condvar,
+    idle: Vec<Option<Box<Connection>>>,
+    /// A checkpoint is closing the readers: no request gets one until it ends.
+    closing: bool,
+}
+
+/// Keeps a pool's readers closed and its requests waiting until dropped.
+struct ClosedReaders<'a>(&'a ReaderPool);
+
+impl Drop for ClosedReaders<'_> {
+    fn drop(&mut self) {
+        self.0.lock().closing = false;
+        self.0.changed.notify_all();
+    }
 }
 
 impl ReaderPool {
@@ -170,23 +210,32 @@ impl ReaderPool {
             .collect::<Result<_, _>>()?;
         Ok(Self {
             path: path.to_path_buf(),
-            idle: Mutex::new(idle),
-            returned: Condvar::new(),
+            state: Mutex::new(PoolState {
+                idle,
+                closing: false,
+            }),
+            changed: Condvar::new(),
         })
     }
 
+    fn lock(&self) -> MutexGuard<'_, PoolState> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     fn acquire(&self) -> Result<Box<Connection>, String> {
-        let mut idle = self.idle.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut state = self.lock();
         let slot = loop {
-            if let Some(slot) = idle.pop() {
-                break slot;
+            if !state.closing {
+                if let Some(slot) = state.idle.pop() {
+                    break slot;
+                }
             }
-            idle = self
-                .returned
-                .wait(idle)
+            state = self
+                .changed
+                .wait(state)
                 .unwrap_or_else(PoisonError::into_inner);
         };
-        drop(idle);
+        drop(state);
 
         match slot {
             Some(conn) => Ok(conn),
@@ -197,11 +246,33 @@ impl ReaderPool {
     }
 
     fn release(&self, conn: Option<Box<Connection>>) {
-        self.idle
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(conn);
-        self.returned.notify_one();
+        self.lock().idle.push(conn);
+        // A request and a checkpoint may both wait, and only one of them can go on.
+        self.changed.notify_all();
+    }
+
+    /// Closes every reader once the requests holding one have returned it, waiting up to
+    /// `wait` for them. No request gets a reader until the result is dropped.
+    fn close_readers(&self, wait: Duration) -> Result<ClosedReaders<'_>, String> {
+        let deadline = Instant::now() + wait;
+        let mut state = self.lock();
+        state.closing = true;
+        let closed = ClosedReaders(self);
+        while state.idle.len() < READER_COUNT {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                drop(state);
+                return Err("read requests were still running".to_string());
+            }
+            state = self
+                .changed
+                .wait_timeout(state, remaining)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
+        }
+        state.idle.fill_with(|| None);
+        drop(state);
+        Ok(closed)
     }
 }
 
@@ -274,7 +345,12 @@ pub fn open(db_path: &Path) -> Result<Db, String> {
 
     let conn = Connection::open(db_path).map_err(|error| error.to_string())?;
     configure_writer(&conn)?;
+    // No reader is open yet, so nothing in this process can block these. The first folds in a
+    // WAL that an earlier session left behind, so the migrations and every later read use the
+    // database file; the second folds in what the migrations wrote.
+    checkpoint_at_open(&conn);
     migrations::apply(&conn).map_err(|error| error.to_string())?;
+    checkpoint_at_open(&conn);
 
     let path = std::fs::canonicalize(db_path).map_err(|error| error.to_string())?;
     let readers = ReaderPool::open(&path)?;
@@ -283,6 +359,19 @@ pub fn open(db_path: &Path) -> Result<Db, String> {
         WriterLock::new(conn, generation),
         Some(Arc::new(readers)),
     ))
+}
+
+/// A checkpoint that never fails the open: another process may hold the database.
+fn checkpoint_at_open(conn: &Connection) {
+    let started = Instant::now();
+    match checkpoint_wal(conn) {
+        Ok(()) if started.elapsed() >= Duration::from_secs(1) => log::info!(
+            "database checkpoint at startup took {} s",
+            started.elapsed().as_secs()
+        ),
+        Ok(()) => {}
+        Err(error) => log::warn!("database checkpoint failed at startup: {error}"),
+    }
 }
 
 fn configure_writer(conn: &Connection) -> Result<(), String> {
@@ -321,9 +410,8 @@ fn configure_connection(conn: &Connection, cache_kib: i64) -> rusqlite::Result<(
     conn.pragma_update(None, "temp_store", "MEMORY")
 }
 
-/// Copies the WAL into the database file and truncates it. The app runs it at exit, and Load
-/// Data runs it once its publishing writer guard has advanced the data generation
-/// (`snapshot::commands::execute_load_data_with`).
+/// Copies the WAL into the database file and truncates it, unless a reader blocks that.
+/// `Db::checkpoint` closes the app's readers first.
 pub fn checkpoint_wal(conn: &Connection) -> Result<(), String> {
     let blocked: i64 = conn
         .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get(0))
@@ -633,5 +721,79 @@ mod tests {
         checkpoint_wal(&db.0.lock().expect("lock writer")).expect("checkpoint");
 
         assert_eq!(std::fs::metadata(&wal).expect("wal file").len(), 0);
+    }
+
+    /// Returns a reader to the pool while it still holds a WAL read lock, as SQLite on
+    /// Windows can leave one behind.
+    fn pin_an_idle_reader(db: &Db) {
+        let pool = db.1.as_deref().expect("reader pool");
+        let conn = pool.acquire().expect("acquire reader");
+        conn.execute_batch("BEGIN").expect("begin");
+        assert_eq!(probe_sum(&conn), 1);
+        pool.release(Some(conn));
+    }
+
+    #[test]
+    fn a_checkpoint_completes_although_an_idle_reader_kept_its_read_lock() {
+        let (temp_dir, db) = opened();
+        let wal = temp_dir.path().join(format!("{APP_DB_FILE}-wal"));
+        pin_an_idle_reader(&db);
+        let writer = db.0.lock().expect("lock writer");
+        writer
+            .execute("UPDATE probe SET value = 7", [])
+            .expect("commit change");
+        writer
+            .busy_timeout(Duration::from_millis(50))
+            .expect("shorten the wait for the blocked checkpoint");
+        checkpoint_wal(&writer).expect_err("the pinned reader blocks a plain checkpoint");
+
+        db.checkpoint(&writer, Duration::from_secs(5))
+            .expect("checkpoint");
+
+        assert_eq!(std::fs::metadata(&wal).expect("wal file").len(), 0);
+        drop(writer);
+        assert_eq!(probe_sum(&db.read().expect("reader reopens")), 7);
+    }
+
+    #[test]
+    fn a_checkpoint_waits_for_a_running_read_request() {
+        let (temp_dir, db) = opened();
+        let wal = temp_dir.path().join(format!("{APP_DB_FILE}-wal"));
+        let reader = db.read().expect("acquire reader");
+        assert_eq!(probe_sum(&reader), 1);
+        std::thread::scope(|scope| {
+            let checkpoint = scope.spawn(|| {
+                let writer = db.0.lock().expect("lock writer");
+                writer
+                    .execute("UPDATE probe SET value = 7", [])
+                    .expect("commit change");
+                db.checkpoint(&writer, Duration::from_secs(5))
+            });
+            std::thread::sleep(Duration::from_millis(100));
+            assert!(!checkpoint.is_finished(), "the checkpoint did not wait");
+            drop(reader);
+            checkpoint.join().expect("join").expect("checkpoint");
+        });
+
+        assert_eq!(std::fs::metadata(&wal).expect("wal file").len(), 0);
+    }
+
+    #[test]
+    fn a_checkpoint_gives_up_on_a_read_request_that_outlasts_its_wait() {
+        let (_temp_dir, db) = opened();
+        let reader = db.read().expect("acquire reader");
+        assert_eq!(probe_sum(&reader), 1);
+
+        let error = db
+            .checkpoint(
+                &db.0.lock().expect("lock writer"),
+                Duration::from_millis(50),
+            )
+            .expect_err("the request still runs");
+
+        assert_eq!(error, "read requests were still running");
+        // The pool serves requests again, and the held reader still works.
+        assert_eq!(probe_sum(&db.read().expect("another reader")), 1);
+        assert_eq!(probe_sum(&reader), 1);
     }
 }
