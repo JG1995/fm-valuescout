@@ -22,6 +22,29 @@ describe("warmQuery", () => {
     expect(queryFn).toHaveBeenCalledTimes(1);
   });
 
+  it("refetches a cached result that something invalidated", async () => {
+    const queryClient = new QueryClient();
+    const queryFn = vi
+      .fn()
+      .mockResolvedValueOnce("before Load Data")
+      .mockResolvedValueOnce("after Load Data");
+    const options = queryOptions({
+      queryKey: ["squad"],
+      queryFn,
+      staleTime: 60_000,
+    });
+    await queryClient.fetchQuery(options);
+    await queryClient.invalidateQueries({ queryKey: options.queryKey });
+
+    warmQuery(queryClient, options);
+
+    await vi.waitFor(() =>
+      expect(queryClient.getQueryData(options.queryKey)).toBe(
+        "after Load Data",
+      ),
+    );
+  });
+
   it("swallows a failed read so a hover never raises an unhandled rejection", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },

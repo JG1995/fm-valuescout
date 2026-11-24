@@ -1,14 +1,15 @@
 import type {
-  EnsureQueryDataOptions,
+  FetchQueryOptions,
   QueryClient,
   QueryKey,
 } from "@tanstack/react-query";
 
 /**
  * Starts a read the next screen will want without making navigation wait for
- * it. It fetches only when nothing is cached: a cached result, even a stale
- * one, paints at once and the screen's own observer refreshes it. A failure
- * surfaces where the screen reads the query.
+ * it. It fetches when nothing is cached or when the cached result was
+ * invalidated. A result that is merely old is left alone: the screen paints it
+ * at once and its own observer refreshes it, so hovering a link never reruns
+ * an expensive read. A failure surfaces where the screen reads the query.
  */
 export function warmQuery<
   TQueryFnData,
@@ -17,7 +18,9 @@ export function warmQuery<
   TQueryKey extends QueryKey,
 >(
   queryClient: QueryClient,
-  options: EnsureQueryDataOptions<TQueryFnData, TError, TData, TQueryKey>,
+  options: FetchQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
 ): void {
-  void queryClient.ensureQueryData(options).catch(() => undefined);
+  const state = queryClient.getQueryState(options.queryKey);
+  if (state?.data !== undefined && !state.isInvalidated) return;
+  void queryClient.prefetchQuery(options);
 }
