@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-11-24
+
+### Added
+
+- **Optimize squads without position familiarity.** Turn off **Position familiarity** under **Optimize squads** in the Planner to place players in any position by their role scores and preferred foot alone, and see where each player's attributes fit best. Pins, age limits, and every other rule still apply, and goalkeepers and outfield players never swap. Optimize then says how many players are out of position. The board marks each player who cannot play his slot, including one you placed yourself. Reserves and Youth still place each player in the slot he stands out in, so one slot can hold many of them. The checkbox is on again when the app restarts. The Dashboard still needs position familiarity, so it shows an out-of-position Planner pick as having no score there.
+
+### Changed
+
+- **Saved filters add your recruiting defaults.** Applying a saved filter or a tactic slot's filters from **Saved filters** in Search also adds **Age ≤ 28** and, when your club is set, **Realistic signing**. Remove either chip to search without it. A filter with its own age or realistic-signing rule keeps it, and a filter that matches **Any** of several rules gains neither.
+- **Recommended signings count age.** Players over 28 lose points for each year: in Moneyball mode 1 at 29, 3 at 30, 6 at 31, 10 at 32, and 15 at 33, and in General mode half of that, rounded up. The score, gain, and order in **Recommended signings** and **Best per slot** use what is left, so an older player is recommended only for a large enough improvement. A card shows the points lost, such as **Age −5**, beside the gain. Shortlisted players lose points too; scores everywhere else are unchanged.
+- **Youth staff recommendations** weigh Working with Youngsters at 40%, down from half. Reserves, Senior, and club-wide jobs are unchanged.
+- Updated compatible Rust dependencies.
+
+### Fixed
+
+- **Season stats on more saves.** Load Data and **Refresh stats** no longer reject a save because a few players' overall totals do not match the sum of their competitions. A save that fails a data check now says so and is no longer reported as an unsupported FM27 build.
+
 ## [0.34.0] - 2026-11-21
 
 ### Added
