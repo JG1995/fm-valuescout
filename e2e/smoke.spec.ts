@@ -6494,11 +6494,10 @@ test.describe("application smoke", () => {
         plannerSnapshot: true,
         squadOverview: true,
       });
-      await page.goto("/");
-      await expect(
-        page.getByRole("heading", { name: "Recommended signings" }),
-      ).toBeVisible();
-      await page.evaluate(`(() => {
+      // The hold is in place before the app starts: the background preload of
+      // the main screens would otherwise answer this read before the visit.
+      await page.addInitScript({
+        content: `
         const original = window.__TAURI_INTERNALS__.invoke;
         let held = true;
         const waiting = [];
@@ -6507,7 +6506,12 @@ test.describe("application smoke", () => {
           if (held && cmd === ${JSON.stringify(command)}) await new Promise(resolve => waiting.push(resolve));
           return original(cmd, args);
         };
-      })()`);
+      `,
+      });
+      await page.goto("/");
+      await expect(
+        page.getByRole("heading", { name: "Recommended signings" }),
+      ).toBeVisible();
       await page
         .getByRole("navigation", { name: "Primary" })
         .getByRole("link", { name: destination, exact: true })
