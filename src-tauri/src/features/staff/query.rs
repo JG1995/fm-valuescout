@@ -159,15 +159,31 @@ pub struct StaffPage {
     pub preferred_job_options: Vec<String>,
 }
 
-/// SQL that is true for a `staff` row at the save bound to `save_param`'s managed club. Once the
-/// club's UID is recorded it decides, so a namesake club elsewhere never counts as the managed
-/// club; a club chosen before UIDs were recorded still matches by name.
-pub(super) fn managed_club_staff_sql(save_param: &str) -> String {
+/// SQL that is true for a `staff` row in the snapshot bound to `snapshot_param` at the save bound
+/// to `save_param`'s managed club, and false, never null, otherwise. Once the club's UID is
+/// recorded it decides, so a namesake club elsewhere never counts as the managed club; a club
+/// chosen before UIDs were recorded still matches by name.
+///
+/// It reads the two cases as separate reads, because SQLite plans `by UID OR by name` as a scan
+/// of the whole snapshot. The UID case reads `idx_staff_snapshot_club_uid`; the name case reads
+/// the snapshot only for a club without a UID. Callers that need only the managed club's staff
+/// leave out their own `snapshot_id` term so the planner looks the rows up by rowid instead of
+/// scanning the snapshot.
+pub(super) fn managed_club_staff_sql(snapshot_param: &str, save_param: &str) -> String {
     format!(
-        "EXISTS (SELECT 1 FROM managed_club_settings managed
-                 WHERE managed.save_id = {save_param}
-                   AND (staff.club_uid = managed.club_uid
-                        OR (managed.club_uid IS NULL AND staff.club = managed.club_name)))"
+        "(staff.rowid IN (
+             SELECT club_staff.rowid FROM managed_club_settings managed
+             INNER JOIN staff club_staff
+                 ON club_staff.snapshot_id = {snapshot_param}
+                AND club_staff.club_uid = managed.club_uid
+             WHERE managed.save_id = {save_param}
+             UNION ALL
+             SELECT club_staff.rowid FROM managed_club_settings managed
+             INNER JOIN staff club_staff
+                 ON club_staff.snapshot_id = {snapshot_param}
+                AND club_staff.club = managed.club_name
+             WHERE managed.save_id = {save_param} AND managed.club_uid IS NULL
+         ))"
     )
 }
 
@@ -191,10 +207,9 @@ pub fn list_my_staff_uids(
         .prepare(&format!(
             "SELECT DISTINCT staff.uid
              FROM staff
-             WHERE staff.snapshot_id = ?1
-               AND {}
+             WHERE {}
              ORDER BY staff.uid ASC",
-            managed_club_staff_sql("?2")
+            managed_club_staff_sql("?1", "?2")
         ))
         .map_err(|error| error.to_string())?;
     let staff_uids = statement
@@ -557,15 +572,15 @@ fn plan_staff_query(
     }
 
     let mut binds = vec![Value::Integer(snapshot_id)];
-    let mut where_sql = "staff.snapshot_id = ?1".to_string();
+    let mut where_sql = if scope == StaffScope::MyStaff {
+        binds.push(Value::Integer(save_id));
+        managed_club_staff_sql("?1", "?2")
+    } else {
+        "staff.snapshot_id = ?1".to_string()
+    };
     let mut from_sql = "staff".to_string();
     if needs_metrics {
         from_sql.push_str(&staff_metrics_join("staff"));
-    }
-    if scope == StaffScope::MyStaff {
-        binds.push(Value::Integer(save_id));
-        where_sql.push_str(" AND ");
-        where_sql.push_str(&managed_club_staff_sql("?2"));
     }
     if shortlisted {
         let has_shortlist: bool = conn
@@ -1033,6 +1048,35 @@ mod tests {
         .unwrap();
         assert_eq!(my_staff(&conn), [1, 4]);
         assert_eq!(list_my_staff_uids(&conn, 1, 1).unwrap(), Some(vec![1, 4]));
+    }
+
+    #[test]
+    fn my_staff_reads_the_club_uid_index_instead_of_the_snapshot() {
+        let conn = open();
+        let sql = format!(
+            "EXPLAIN QUERY PLAN SELECT staff.uid FROM staff WHERE {}",
+            managed_club_staff_sql("?1", "?2")
+        );
+
+        let plan = conn
+            .prepare(&sql)
+            .unwrap()
+            .query_map([1, 1], |row| row.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        assert!(
+            plan.iter().any(|step| step
+                == "SEARCH club_staff USING COVERING INDEX idx_staff_snapshot_club_uid \
+                    (snapshot_id=? AND club_uid=?)"),
+            "the UID case does not read the club UID index: {plan:?}"
+        );
+        assert!(
+            plan.iter()
+                .any(|step| step == "SEARCH staff USING INTEGER PRIMARY KEY (rowid=?)"),
+            "my staff are not read by rowid: {plan:?}"
+        );
     }
 
     #[test]

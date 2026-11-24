@@ -94,14 +94,16 @@ pub(crate) fn clause(wanted: bool) -> String {
         format!("NOT {realistic}")
     };
     // MATERIALIZED keeps SQLite from merging `club` into the per-player test, which would
-    // read the club's squad again for every player.
+    // read the club's squad again for every player. Both squad reads use
+    // `idx_players_snapshot_club_uid`; the `+` keeps SQLite from walking the whole
+    // snapshot down `idx_players_snapshot_ca` to find the club's best players.
     format!(
         "EXISTS (WITH club AS MATERIALIZED (\
            SELECT managed.club_uid AS uid, \
              (SELECT AVG(best.ca) FROM (\
                 SELECT squad.ca FROM players squad \
                 WHERE squad.snapshot_id = ?1 AND squad.current_club_uid = managed.club_uid \
-                ORDER BY squad.ca DESC LIMIT {SQUAD_LEVEL_PLAYERS}) best) AS squad_level, \
+                ORDER BY +squad.ca DESC LIMIT {SQUAD_LEVEL_PLAYERS}) best) AS squad_level, \
              (SELECT MAX(squad.club_reputation) FROM players squad \
               WHERE squad.snapshot_id = ?1 AND squad.current_club_uid = managed.club_uid) \
                AS reputation \
@@ -140,6 +142,16 @@ mod tests {
         assert!(
             plan.iter().any(|step| step == "MATERIALIZE club"),
             "the club's standing is not materialized: {plan:?}"
+        );
+        let squad_reads = plan
+            .iter()
+            .filter(|step| step.starts_with("SEARCH squad"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            squad_reads,
+            ["SEARCH squad USING INDEX idx_players_snapshot_club_uid \
+                 (snapshot_id=? AND current_club_uid=?)"; 2],
+            "the club's squad is not read by its UID: {plan:?}"
         );
     }
 }
