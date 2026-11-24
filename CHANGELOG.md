@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-11-24
+
+### Added
+
+- **Training page.** **Training**, between Tactic and Youth, lists the individual training each player at your club would get in FM, under one heading per squad string: his slot, the in-possession role and its position, the out-of-possession role, and the focus. A filter shows all players, one squad, the players in no squad, or the players learning a position.
+- **Training for a position a player is still learning.** FM builds position familiarity only where the in-possession role is trained, so the plan now reads each player's familiarity with his Planner slot's two positions. A player below 16 of 20 at the slot's in-possession position trains the slot's own role there and is marked **Learning** with his familiarity. A player who is familiar there but below 16 at the out-of-possession position trains an in-possession role at that position instead: the slot's own role where FM has it there, otherwise the closest one by attributes. He goes back to the slot's own training once a later Load Data shows him familiar. This suits squads optimized with **Position familiarity** off.
+
+### Changed
+
+- **Apply training in FM moved to Training.** It was in Squad. It sets the training of the ticked players in the current filter, so you can apply one squad or only the players learning a position, and its result stays above the table. The list follows the Planner: squad, string, and slot, then the players in no slot by name.
+
 ## [0.36.0] - 2026-11-24
 
 ### Changed
