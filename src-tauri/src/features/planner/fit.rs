@@ -254,12 +254,19 @@ pub(super) fn foot_matches(player_foot: &str, preferred_foot: &str) -> bool {
     }
 }
 
+/// The familiarity from which a position costs a player nothing.
+pub(super) const FULL_FAMILIARITY: i64 = 16;
+
+/// The player's familiarity with a placement's position, however low.
+pub(super) fn position_familiarity(
+    positions: &BTreeMap<String, Option<i64>>,
+    position: &str,
+) -> Option<i64> {
+    positions.get(base_position(position)).copied().flatten()
+}
+
 fn suitable_familiarity(positions: &BTreeMap<String, Option<i64>>, position: &str) -> Option<i64> {
-    positions
-        .get(base_position(position))
-        .copied()
-        .flatten()
-        .filter(|familiarity| *familiarity >= 12)
+    position_familiarity(positions, position).filter(|familiarity| *familiarity >= 12)
 }
 
 fn foot_penalty(player_foot: &str, preferred_foot: &str, foot_preference: &str) -> Option<u8> {
@@ -273,7 +280,7 @@ fn foot_penalty(player_foot: &str, preferred_foot: &str, foot_preference: &str) 
 }
 
 fn familiarity_penalty(familiarity: i64) -> u8 {
-    u8::from(familiarity < 16) * 5
+    u8::from(familiarity < FULL_FAMILIARITY) * 5
 }
 
 fn adjust_score(score: u8, penalty: u8) -> u8 {

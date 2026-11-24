@@ -1174,37 +1174,82 @@ pub async fn apply_planner_fm_moves(
     .await
 }
 
+/// Where the Planner has a player.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadFmTrainingSlotDto {
+    pub team: &'static str,
+    pub team_name: String,
+    pub string_name: String,
+    /// The slot's placements in and out of possession, such as `AMR` and `MR`.
+    pub ip_position: String,
+    pub oop_position: String,
+    /// The slot's own in-possession role, which he trains unless he is learning the
+    /// out-of-possession position.
+    pub in_possession_role: String,
+}
+
+/// A slot position a player trains to become fully familiar with it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadFmTrainingLearningDto {
+    pub position: String,
+    /// His familiarity there out of 20; 0 when he has none.
+    pub familiarity: i64,
+    /// Whether it is the slot's out-of-possession position, which he trains in place of the
+    /// slot's own in-possession role and position.
+    pub out_of_possession: bool,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SquadFmTrainingPlayerDto {
     pub player_uid: i64,
     pub name: String,
-    /// The Planner slot's in-possession position; absent for a player in no slot.
+    pub age: Option<i64>,
+    /// His Planner slot; absent for a player in no slot, whose roles FM keeps.
+    pub slot: Option<SquadFmTrainingSlotDto>,
+    /// The position his in-possession role is trained at; absent for a player in no slot.
     pub position: Option<String>,
     pub in_possession_role: Option<String>,
     pub out_of_possession_role: Option<String>,
+    pub learning: Option<SquadFmTrainingLearningDto>,
     /// His Suggested Training; absent means his focus is cleared.
     pub focus: Option<String>,
 }
 
 impl From<FmTrainingChange> for SquadFmTrainingPlayerDto {
     fn from(planned: FmTrainingChange) -> Self {
-        let (position, in_possession_role, out_of_possession_role) = match planned.roles {
-            Some(roles) => (
-                Some(roles.position),
-                Some(roles.in_possession),
-                Some(roles.out_of_possession),
-            ),
-            None => (None, None, None),
-        };
-        Self {
+        let mut player = Self {
             player_uid: planned.player_uid,
             name: planned.name,
-            position,
-            in_possession_role,
-            out_of_possession_role,
+            age: planned.age,
+            slot: None,
+            position: None,
+            in_possession_role: None,
+            out_of_possession_role: None,
+            learning: None,
             focus: planned.focus,
+        };
+        if let Some(slot) = planned.slot {
+            player.position = Some(slot.roles.position);
+            player.in_possession_role = Some(slot.roles.in_possession);
+            player.out_of_possession_role = Some(slot.roles.out_of_possession);
+            player.learning = slot.learning.map(|learning| SquadFmTrainingLearningDto {
+                position: learning.position,
+                familiarity: learning.familiarity,
+                out_of_possession: learning.out_of_possession,
+            });
+            player.slot = Some(SquadFmTrainingSlotDto {
+                team: slot.team.as_str(),
+                team_name: slot.team_name,
+                string_name: slot.string_name,
+                ip_position: slot.ip_position,
+                oop_position: slot.oop_position,
+                in_possession_role: slot.in_possession,
+            });
         }
+        player
     }
 }
 
