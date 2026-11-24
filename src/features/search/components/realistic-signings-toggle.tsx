@@ -1,6 +1,9 @@
 import { useId } from "react";
-import { createFilterRuleId, type FilterRule } from "../types/filter-rule";
-import { REALISTIC_SIGNING_FIELD_ID } from "../utils/filter-registry";
+import type { FilterRule } from "../types/filter-rule";
+import {
+  createRealisticSigningRule,
+  REALISTIC_SIGNING_FIELD_ID,
+} from "../utils/filter-registry";
 import { MAX_FILTER_RULES } from "../utils/search-url-search";
 
 type RealisticSigningsToggleProps = {
@@ -55,15 +58,7 @@ export function RealisticSigningsToggle({
           onChange={(event) =>
             onRulesChange(
               event.target.checked
-                ? [
-                    ...otherRules,
-                    {
-                      id: createFilterRuleId(),
-                      field: REALISTIC_SIGNING_FIELD_ID,
-                      op: "is",
-                      value: { type: "bool", value: true },
-                    },
-                  ]
+                ? [...otherRules, createRealisticSigningRule()]
                 : otherRules,
             )
           }

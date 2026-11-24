@@ -49,6 +49,7 @@ import {
   getPlannerTacticOptionsIpcMockCalls,
   getPlannerTacticSaveIpcMockCalls,
   resolvePlannerTacticIpcMock,
+  setManagedClubIpcMock,
   setPlannerTacticForContext,
 } from "@/testing/planner-ipc-mock";
 import { renderWithProviders } from "@/testing/render-with-providers";
@@ -3901,6 +3902,8 @@ describe("search route", () => {
             field: "potential_role.inside_forward_ip",
           }),
           expect.objectContaining({ field: "height" }),
+          // Without a managed club, the age limit is the only default.
+          expect.objectContaining({ field: "age", op: "lte", value: 28 }),
         ],
       });
 
@@ -3973,9 +3976,15 @@ describe("search route", () => {
       ).toBeInTheDocument();
     });
 
-    it("applies a tactic slot's positions and recruitment filters, ranked among the slot's two families", async () => {
+    it("applies a tactic slot's positions, recruitment filters, and recruiting defaults, ranked among the slot's two families", async () => {
       const user = userEvent.setup();
       await resolveLoadDataIpcMock();
+      setManagedClubIpcMock({
+        clubName: "Stevenage",
+        clubUid: 22,
+        status: "available",
+        unclassifiedPlayerCount: 0,
+      });
       const tactic = resolvePlannerTacticIpcMock();
       const winger = tactic.lanes.find((lane) => lane.laneId === "left_winger");
       if (!winger) throw new Error("Expected the left winger slot");
@@ -3990,6 +3999,10 @@ describe("search route", () => {
       setSearchPlayersOverride([playerNamed("Wide Scout", 160)]);
       const { router } = renderSearchRoute();
       await screen.findByText("Wide Scout");
+      const realistic = screen.getByRole("checkbox", {
+        name: "Only realistic signings",
+      });
+      await waitFor(() => expect(realistic).toBeEnabled());
 
       const dialog = await openSavedFilters(user);
       const slots = await within(dialog).findByRole("region", {
@@ -4013,6 +4026,8 @@ describe("search route", () => {
         { field: "pos.ML", op: "gte", value: 12 },
         { field: "height", op: "gte", value: 180 },
         { field: "moneyball.progressive_passes", op: "pct_gte", value: 25 },
+        { field: "realistic_signing", op: "is", value: true },
+        { field: "age", op: "lte", value: 28 },
       ];
       await waitFor(() => {
         expect(router.state.location.search).toMatchObject({
@@ -4025,6 +4040,11 @@ describe("search route", () => {
           filters: expected,
         });
       });
+      expect(
+        await screen.findByRole("checkbox", {
+          name: "Only realistic signings",
+        }),
+      ).toBeChecked();
       const comparison = await screen.findByRole("combobox", {
         name: "Percentiles vs",
       });

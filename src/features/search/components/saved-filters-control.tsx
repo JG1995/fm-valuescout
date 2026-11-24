@@ -13,6 +13,10 @@ import type { MoneyballComparison } from "../types/search-view";
 import { savedFilterColumnIds } from "../utils/dynamic-columns";
 import { completeFilterRules } from "../utils/filter-registry";
 import {
+  RECRUITING_MAX_AGE,
+  withRecruitingDefaults,
+} from "../utils/recruiting-defaults";
+import {
   parseSearchFilters,
   searchFiltersForUrl,
 } from "../utils/search-url-search";
@@ -34,6 +38,8 @@ type SavedFiltersControlProps = {
   combine: FilterCombineMode;
   comparison: MoneyballComparison;
   slotPresets: readonly SlotFilterPreset[];
+  /** Whether there is a managed club to estimate realistic signings for. */
+  realisticAvailable: boolean;
   /** Search's current columns. */
   columnIds: readonly string[];
   /** `columnIds` replaces Search's columns; without it, the rules' columns are added. */
@@ -63,14 +69,16 @@ const ROW_BUTTON =
 /**
  * Saves the applied filters under a name and applies a saved set or a tactic
  * slot's recruitment filters. Applying replaces the current filters, how they
- * combine, and Percentiles vs, and asks whether to replace the columns too,
- * unless they already match or the answer is remembered for the session.
+ * combine, and Percentiles vs, adds the recruiting defaults, and asks whether
+ * to replace the columns too, unless they already match or the answer is
+ * remembered for the session.
  */
 export function SavedFiltersControl({
   rules,
   combine,
   comparison,
   slotPresets,
+  realisticAvailable,
   columnIds,
   onApply,
 }: SavedFiltersControlProps) {
@@ -117,13 +125,19 @@ export function SavedFiltersControl({
     setRenaming(null);
     buttonRef.current?.focus();
   };
-  const finishApply = (set: FilterSet, choice: SavedFilterColumnsChoice) =>
+  const finishApply = (set: FilterSet, choice: SavedFilterColumnsChoice) => {
+    const defaulted = withRecruitingDefaults({
+      rules: set.rules,
+      combine: set.combine,
+      realisticAvailable,
+    });
     onApply(
-      set.rules,
-      set.combine,
+      defaulted.rules,
+      defaulted.combine,
       set.comparison,
       choice === "replace" ? set.columnIds : undefined,
     );
+  };
   const applySet = (set: FilterSet) => {
     close();
     if (columnsChoice !== null) {
@@ -314,6 +328,14 @@ export function SavedFiltersControl({
                 ))}
               </ul>
             </section>
+          ) : null}
+          {savedFilters.length > 0 || slotPresets.length > 0 ? (
+            <p className="text-body-sm text-on-surface-variant">
+              Applying one adds{" "}
+              {realisticAvailable ? "Realistic signing and " : null}
+              Age ≤ {RECRUITING_MAX_AGE}, unless it sets its own or uses Match
+              Any.
+            </p>
           ) : null}
           <form
             className="flex items-end gap-2 border-t border-outline-variant pt-3"
