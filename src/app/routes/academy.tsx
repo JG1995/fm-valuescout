@@ -31,6 +31,7 @@ import {
   managedClubQueryOptions,
 } from "@/features/managed-club/api/managed-club-query-options";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
+import { warmQuery } from "@/lib/warm-query";
 
 export type AcademySearch = {
   view: AcademyView;
@@ -46,12 +47,38 @@ export const Route = createFileRoute("/academy")({
     }
     return { view };
   },
-  loader: ({ context: { queryClient } }) =>
-    Promise.all([
+  loaderDeps: ({ search: { view, classId } }) => ({ view, classId }),
+  loader: async ({ context: { queryClient }, deps: { view, classId } }) => {
+    // All fast reads. The class the URL names loads alongside the class list;
+    // the page reports a failed class read itself.
+    const [snapshot, , classes] = await Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(managedClubQueryOptions),
       queryClient.ensureQueryData(academyClassesQueryOptions),
-    ]),
+      classId === undefined
+        ? undefined
+        : queryClient
+            .ensureQueryData(academyClassQueryOptions(classId))
+            .catch(() => undefined),
+    ]);
+    if (!snapshot) return;
+    // Overview and Graduates summarize every class; the Class view shows one.
+    const details = classes.map((academyClass) =>
+      academyClassQueryOptions(academyClass.id),
+    );
+    if (view === "class") {
+      for (const options of details) warmQuery(queryClient, options);
+      // The outcome dialogs on this view offer every club; have the list on
+      // its way before one opens.
+      warmQuery(queryClient, managedClubOptionsQueryOptions);
+      return;
+    }
+    await Promise.all(
+      details.map((options) =>
+        queryClient.ensureQueryData(options).catch(() => undefined),
+      ),
+    );
+  },
   component: AcademyRoute,
 });
 
@@ -123,9 +150,12 @@ function AcademyPageContent() {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: managedClub } = useSuspenseQuery(managedClubQueryOptions);
   const { data: classes } = useSuspenseQuery(academyClassesQueryOptions);
+  // Only the outcome dialog's club picker reads these slow options, so they
+  // load when that dialog first opens.
+  const [clubOptionsWanted, setClubOptionsWanted] = useState(false);
   const clubOptions = useQuery({
     ...managedClubOptionsQueryOptions,
-    enabled: Boolean(snapshot),
+    enabled: clubOptionsWanted,
   });
   const classDetailQueries = useQueries({
     queries: classes.map((academyClass) => ({
@@ -238,6 +268,7 @@ function AcademyPageContent() {
             clubOptions={
               clubOptions.data?.map((option) => option.clubName) ?? []
             }
+            onOutcomeDialogOpen={() => setClubOptionsWanted(true)}
             onSelectClass={onOpenClass}
             onDelete={() => setDeleteTarget(selectedClass)}
           />

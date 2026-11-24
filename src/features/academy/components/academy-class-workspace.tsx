@@ -41,7 +41,9 @@ import {
 type AcademyClassWorkspaceProps = {
   academyClass: AcademyClass;
   academyClasses: AcademyClass[];
+  /** The club picker's options, which load once an outcome dialog opens. */
   clubOptions: string[];
+  onOutcomeDialogOpen: () => void;
   onSelectClass: (academyClass: AcademyClass) => void;
   onDelete: () => void;
 };
@@ -83,6 +85,7 @@ export function AcademyClassWorkspace({
   academyClass,
   academyClasses,
   clubOptions,
+  onOutcomeDialogOpen,
   onSelectClass,
   onDelete,
 }: AcademyClassWorkspaceProps) {
@@ -191,6 +194,7 @@ export function AcademyClassWorkspace({
                 members={members.filter(group.includes)}
                 removePending={remove.isPending}
                 onOpenOutcome={(member, mode, returnFocusTo) => {
+                  onOutcomeDialogOpen();
                   setOutcomeTarget({ member, mode, returnFocusTo });
                 }}
                 onRemove={(member, returnFocusTo) => {
