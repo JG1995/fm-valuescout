@@ -1,3 +1,4 @@
+use super::fit::PositionRule;
 use super::standout::load_slot_rankings;
 use super::tactic;
 use super::test_support::{
@@ -41,8 +42,13 @@ fn a_score_ranks_against_the_players_who_can_play_the_slot() {
             .expect("tactic lane")
     };
 
-    let rankings = load_slot_rankings(&conn, current_snapshot_id(&conn, save_id), &tactic)
-        .expect("rank the save");
+    let rankings = load_slot_rankings(
+        &conn,
+        current_snapshot_id(&conn, save_id),
+        &tactic,
+        PositionRule::Familiarity,
+    )
+    .expect("rank the save");
 
     // Players below count in full and players level count half.
     let right_winger = rankings.lane(lane_index("right_winger"));

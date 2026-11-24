@@ -2,9 +2,12 @@ use rusqlite::params;
 
 use std::collections::HashSet;
 
-use super::depth::{assign_player, clear_all, get_depth, set_assignment_pinned, PlannerTeam};
+use super::depth::{
+    assign_player, clear_all, get_depth, set_assignment_pinned, PlannerDepth, PlannerTeam,
+};
+use super::fit::PositionRule;
 use super::optimizer::{
-    allocate_rotation, match_lanes, optimize_depth, unassigned_players, OptimizerCandidate,
+    self, allocate_rotation, match_lanes, unassigned_players, OptimizerCandidate,
 };
 use super::tactic;
 use super::teams::{save_team_settings, PlannerTeamInput};
@@ -16,6 +19,26 @@ use super::test_support::{
     set_player_preferred_foot, set_right_winger, set_right_winger_scores, set_role_score,
     team_strings,
 };
+
+/// Optimizes with position familiarity, the Planner's default.
+fn optimize_depth(conn: &rusqlite::Connection, save_id: i64) -> Result<PlannerDepth, String> {
+    optimizer::optimize_depth(conn, save_id, PositionRule::Familiarity)
+}
+
+fn optimize_in_any_position(conn: &rusqlite::Connection, save_id: i64) -> PlannerDepth {
+    optimizer::optimize_depth(conn, save_id, PositionRule::AnyPosition)
+        .expect("optimize without position familiarity")
+}
+
+/// Whether the player placed first in the senior lane cannot play its positions.
+fn out_of_position(depth: &PlannerDepth, lane_id: &str) -> bool {
+    team_strings(depth, PlannerTeam::Senior)[0]
+        .assignments
+        .iter()
+        .find(|assignment| assignment.lane_id == lane_id)
+        .expect("senior assignment")
+        .out_of_position
+}
 
 /// Keeps only the named teams, each with its usual age limit unless `max_age` sets one.
 fn keep_teams(conn: &rusqlite::Connection, save_id: i64, teams: &[(&str, Option<i64>)]) {
@@ -107,6 +130,130 @@ fn optimizer_penalizes_sub_16_familiarity_without_excluding_eligible_players() {
         assigned_player_uid(&both_below, PlannerTeam::Senior, "right_winger"),
         Some(78)
     );
+}
+
+#[test]
+fn without_position_familiarity_the_senior_squad_is_picked_on_scores_and_foot_alone() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    clear_current_scores_except(
+        &conn,
+        save_id,
+        &[77, 78, 79, 80],
+        &["winger_ip", "tracking_wide_midfielder_oop"],
+    );
+    for (player_uid, positions, score) in [
+        (77, r#"{"AMR": 20, "MR": 20}"#, 70),
+        (78, r#"{"ST": 20, "AMR": 11, "MR": 11}"#, 75),
+        (79, r#"{"AMR": 12, "MR": 12}"#, 74),
+        (80, r#"{"GK": 20}"#, 99),
+    ] {
+        set_player_positions(&conn, save_id, player_uid, positions);
+        set_right_winger_scores(&conn, save_id, player_uid, Some(score));
+        set_player_preferred_foot(&conn, save_id, player_uid, "right");
+        set_player_age(&conn, save_id, player_uid, Some(25));
+    }
+    // The left winger takes a role nobody has a score in, so only one lane is in play.
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic
+        .lanes
+        .iter_mut()
+        .find(|lane| lane.lane_id == "left_winger")
+        .expect("left winger")
+        .ip_role_id = "inside_forward_ip".to_string();
+    tactic::save_tactic(&conn, save_id, &tactic).expect("save left winger role");
+    let right_winger = |depth: &PlannerDepth| {
+        lane_players(depth, PlannerTeam::Senior, "right_winger")
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+    };
+
+    // The striker cannot play there, and the half-familiar winger loses 10 points.
+    let with_positions = optimize_depth(&conn, save_id).expect("optimize with familiarity");
+    assert_eq!(right_winger(&with_positions), [77, 79]);
+    assert!(!out_of_position(&with_positions, "right_winger"));
+
+    // Neither counts now, but a goalkeeper still plays only in goal.
+    let any_position = optimize_in_any_position(&conn, save_id);
+    assert_eq!(right_winger(&any_position), [78, 79, 77]);
+    assert!(out_of_position(&any_position, "right_winger"));
+
+    // The foot rule still marks the wrong foot down, or keeps him out.
+    set_player_preferred_foot(&conn, save_id, 78, "left");
+    tactic.lanes[9].preferred_foot = "right".to_string();
+    for (foot_preference, expected) in [("preferred", vec![79, 77, 78]), ("strict", vec![79, 77])] {
+        tactic.lanes[9].foot_preference = foot_preference.to_string();
+        tactic::save_tactic(&conn, save_id, &tactic).expect("save foot preference");
+        assert_eq!(
+            right_winger(&optimize_in_any_position(&conn, save_id)),
+            expected,
+            "{foot_preference}"
+        );
+    }
+}
+
+#[test]
+fn without_position_familiarity_an_outfield_player_never_plays_in_goal() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    clear_current_scores_except(&conn, save_id, &[77, 78, 79, 80], &[]);
+    for (player_uid, positions, score) in [(77, r#"{"GK": 20}"#, 40), (78, r#"{"DC": 20}"#, 90)] {
+        set_player_positions(&conn, save_id, player_uid, positions);
+        set_lane_scores(&conn, save_id, player_uid, "goalkeeper", score, score);
+    }
+
+    let optimized = optimize_in_any_position(&conn, save_id);
+
+    assert_eq!(
+        lane_players(&optimized, PlannerTeam::Senior, "goalkeeper"),
+        [Some(77), None, None]
+    );
+}
+
+#[test]
+fn without_position_familiarity_a_development_player_stands_out_among_those_who_play_a_slot() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    let rivals = (201..=210).collect::<Vec<_>>();
+    let uids = [&[77][..], &rivals].concat();
+    seed_players(&temp_dir, &mut conn, save_id, &uids);
+    clear_current_scores_except(&conn, save_id, &uids, &[]);
+    set_player_age(&conn, save_id, 77, Some(20));
+    set_player_positions(&conn, save_id, 77, r#"{"AMR": 18, "MR": 18}"#);
+    set_lane_scores(&conn, save_id, 77, "right_winger", 73, 73);
+    set_lane_scores(&conn, save_id, 77, "centre_forward", 58, 58);
+    // Across the save, right wingers score in the 70s and centre-forwards in the 40s. The
+    // wingers would make better centre-forwards than 77, but none of them plays there.
+    for (index, rival) in rivals.iter().copied().enumerate() {
+        set_player_club(&conn, save_id, rival, "Elsewhere FC");
+        let step = (index / 2) as u8;
+        if index % 2 == 0 {
+            set_player_positions(&conn, save_id, rival, r#"{"AMR": 18, "MR": 18}"#);
+            set_lane_scores(&conn, save_id, rival, "right_winger", 70 + step, 70 + step);
+            set_lane_scores(&conn, save_id, rival, "centre_forward", 90, 90);
+        } else {
+            set_player_positions(&conn, save_id, rival, r#"{"ST": 18}"#);
+            set_lane_scores(
+                &conn,
+                save_id,
+                rival,
+                "centre_forward",
+                40 + step,
+                40 + step,
+            );
+        }
+    }
+    keep_teams(&conn, save_id, &[("reserves", Some(23))]);
+    let reserves = |depth: &PlannerDepth| {
+        ["right_winger", "centre_forward"]
+            .map(|lane_id| lane_players(depth, PlannerTeam::Reserves, lane_id))
+    };
+
+    let with_positions = optimize_depth(&conn, save_id).expect("optimize with familiarity");
+    assert_eq!(reserves(&with_positions), [[Some(77)], [None]]);
+
+    let any_position = optimize_in_any_position(&conn, save_id);
+    assert_eq!(reserves(&any_position), [[None], [Some(77)]]);
 }
 
 #[test]

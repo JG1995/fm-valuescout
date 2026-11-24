@@ -60,6 +60,7 @@ import {
 import { setDashboardProspectsIpcMock } from "@/testing/dashboard-ipc-mock";
 import {
   getLastManagedClubSaveArgs,
+  getLastPlannerOptimizeArgs,
   getPlannerClearAllIpcMockCalls,
   getPlannerDepthIpcMockCalls,
   getPlannerOptimizeIpcMockCalls,
@@ -5696,6 +5697,7 @@ describe("My Club route", () => {
                     age: 19,
                     pinned: true,
                     overAge: true,
+                    outOfPosition: false,
                     combinedScore: 60,
                     expectedCombinedScore: 70,
                     potentialCombinedScore: 75,
@@ -6274,6 +6276,61 @@ describe("My Club route", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("optimizes without position familiarity and marks who is out of position", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
+    const optimized = withReserveGoalkeeper(resolvePlannerDepthIpcMock());
+    setPlannerOptimizeDepth(optimized);
+    renderMyClubRoute();
+
+    const toggle = await screen.findByRole("checkbox", {
+      name: "Position familiarity",
+    });
+    expect(toggle).toBeChecked();
+    expect(toggle).toHaveAccessibleDescription(
+      /only in positions they can play/,
+    );
+    await user.click(screen.getByRole("button", { name: "Optimize squads" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /^Squads optimized\.$/,
+    );
+    expect(getLastPlannerOptimizeArgs()).toEqual({ positionFamiliarity: true });
+
+    await user.click(toggle);
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toHaveAccessibleDescription(/in any position/);
+    setPlannerOptimizeDepth({
+      ...optimized,
+      teams: optimized.teams.map((team) => ({
+        ...team,
+        strings: team.strings.map((plannerString) => ({
+          ...plannerString,
+          assignments: plannerString.assignments.map((assignment) => ({
+            ...assignment,
+            outOfPosition: true,
+          })),
+        })),
+      })),
+    });
+    await user.click(screen.getByRole("button", { name: "Optimize squads" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Squads optimized without position familiarity. 1 player is out of position.",
+      ),
+    );
+    expect(getLastPlannerOptimizeArgs()).toEqual({
+      positionFamiliarity: false,
+    });
+    const cell = screen.getByRole("button", {
+      name: /Reserve Keeper, Resolved, .*, out of position$/,
+    });
+    expect(
+      within(cell).getByTitle("Out of position: he cannot play this slot yet"),
+    ).toBeInTheDocument();
+  });
+
   it("keeps the depth unchanged and reports optimizer errors", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -6712,6 +6769,7 @@ function withReserveGoalkeeper(depth: PlannerDepth): PlannerDepth {
                     age: null,
                     pinned: false,
                     overAge: false,
+                    outOfPosition: false,
                     combinedScore: 80,
                     expectedCombinedScore: null,
                     potentialCombinedScore: null,
@@ -6768,6 +6826,7 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     age: null,
                     pinned: false,
                     overAge: false,
+                    outOfPosition: false,
                     combinedScore: 82,
                     expectedCombinedScore: 88,
                     potentialCombinedScore: 91,
@@ -6782,6 +6841,7 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     age: null,
                     pinned: false,
                     overAge: false,
+                    outOfPosition: false,
                     combinedScore: 61,
                     expectedCombinedScore: 66,
                     potentialCombinedScore: 70,
@@ -6796,6 +6856,7 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     age: null,
                     pinned: false,
                     overAge: false,
+                    outOfPosition: false,
                     combinedScore: null,
                     expectedCombinedScore: null,
                     potentialCombinedScore: null,
@@ -6810,6 +6871,7 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     age: null,
                     pinned: false,
                     overAge: false,
+                    outOfPosition: false,
                     combinedScore: null,
                     expectedCombinedScore: null,
                     potentialCombinedScore: null,
@@ -6840,6 +6902,7 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
               age: null,
               pinned: false,
               overAge: false,
+              outOfPosition: false,
               combinedScore: 82,
               expectedCombinedScore: null,
               potentialCombinedScore: null,
@@ -6855,6 +6918,7 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
                 age: null,
                 pinned: false,
                 overAge: false,
+                outOfPosition: false,
                 combinedScore: 80,
                 expectedCombinedScore: null,
                 potentialCombinedScore: null,
@@ -6869,6 +6933,7 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
                 age: null,
                 pinned: false,
                 overAge: false,
+                outOfPosition: false,
                 combinedScore: 78,
                 expectedCombinedScore: null,
                 potentialCombinedScore: null,

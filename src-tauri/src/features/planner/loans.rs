@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use rusqlite::{params, Connection};
 
 use super::depth::{ensure_depth, preflight_depth_snapshot, PlannerTeam};
+use super::fit::PositionRule;
 use super::optimizer::load_club_players;
 use super::outlook::expected_score;
 
@@ -77,7 +78,13 @@ pub(super) fn loan_candidates(
     let snapshot_id = preflight_depth_snapshot(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
     let tactic = ensure_depth(conn, save_id)?;
-    let players = load_club_players(conn, save_id, snapshot_id, &tactic)?;
+    let players = load_club_players(
+        conn,
+        save_id,
+        snapshot_id,
+        &tactic,
+        PositionRule::Familiarity,
+    )?;
     let places = load_places(conn, save_id)?;
     let lane_index = |lane_id: &str| tactic.lanes.iter().position(|lane| lane.lane_id == lane_id);
 

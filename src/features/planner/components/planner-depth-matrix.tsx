@@ -7,6 +7,7 @@ import { clearPlannerDepth } from "../api/clear-planner-depth";
 import { optimizePlannerDepth } from "../api/optimize-planner-depth";
 import { plannerKeys } from "../api/planner-keys";
 import { plannerLoanCandidatesQueryOptions } from "../api/planner-loan-candidates-query-options";
+import { useOptimizeOptions } from "../stores/use-optimize-options";
 import type { PlannerDepth } from "../types/depth";
 import type { TacticOptions } from "../types/tactic";
 import type { PlannerTeam } from "../types/team";
@@ -21,9 +22,28 @@ import {
 import { PlannerSquadBoard } from "./planner-squad-board";
 import { PlannerTeamManagement } from "./planner-team-management";
 import { PlannerUnassignedPlayers } from "./planner-unassigned-players";
+import { PositionFamiliarityToggle } from "./position-familiarity-toggle";
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** What Optimize did; without position familiarity, how many players it leaves out of position. */
+function optimizedStatus(depth: PlannerDepth, positionFamiliarity: boolean) {
+  if (positionFamiliarity) {
+    return "Squads optimized.";
+  }
+  const count = depth.teams
+    .flatMap((team) => team.strings)
+    .flatMap((plannerString) => plannerString.assignments)
+    .filter((assignment) => assignment.outOfPosition).length;
+  return `Squads optimized without position familiarity. ${
+    count === 0
+      ? "Nobody is"
+      : count === 1
+        ? "1 player is"
+        : `${count} players are`
+  } out of position.`;
 }
 
 /** Separates the squad controls that change the board, open a view, and set it up. */
@@ -61,6 +81,12 @@ export function PlannerDepthMatrix({
   const [roleReferenceOpen, setRoleReferenceOpen] = useState(false);
   const [roleReferenceReturnFocus, setRoleReferenceReturnFocus] =
     useState<HTMLElement | null>(null);
+  const positionFamiliarity = useOptimizeOptions(
+    (state) => state.positionFamiliarity,
+  );
+  const setPositionFamiliarity = useOptimizeOptions(
+    (state) => state.setPositionFamiliarity,
+  );
   const queryClient = useQueryClient();
   const loanCandidates = useQuery(
     plannerLoanCandidatesQueryOptions(activeSaveId),
@@ -135,13 +161,13 @@ export function PlannerDepthMatrix({
 
   const optimize = useMutation({
     mutationFn: optimizePlannerDepth,
-    onSuccess: async (nextDepth) => {
+    onSuccess: async (nextDepth, optimizedWithFamiliarity) => {
       queryClient.setQueryData(plannerKeys.depth(), nextDepth);
       await queryClient.invalidateQueries({
         queryKey: plannerKeys.slotCandidates(),
       });
       setOptimizeError(null);
-      setActionStatus("Squads optimized.");
+      setActionStatus(optimizedStatus(nextDepth, optimizedWithFamiliarity));
     },
     onError: (error) => {
       setOptimizeError(`Optimization failed: ${errorMessage(error)}`);
@@ -163,7 +189,7 @@ export function PlannerDepthMatrix({
     }
     setOptimizeError(null);
     setActionStatus(null);
-    optimize.mutate();
+    optimize.mutate(positionFamiliarity);
   };
 
   const closeClearAll = () => {
@@ -297,6 +323,13 @@ export function PlannerDepthMatrix({
             />
           </div>
         </fieldset>
+        <PositionFamiliarityToggle
+          checked={positionFamiliarity}
+          disabled={
+            clearAll.isPending || optimize.isPending || teamManagementPending
+          }
+          onChange={setPositionFamiliarity}
+        />
         {actionStatus ? (
           <p className="text-body-sm text-success" role="status">
             {actionStatus}

@@ -51,6 +51,45 @@ pub(crate) fn lane_fit_score(
     ))
 }
 
+/// Whether Optimize holds a player's position familiarity against him.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PositionRule {
+    /// He can fill only the lanes whose positions he can play, and loses points for a
+    /// position he is less familiar with.
+    Familiarity,
+    /// He can fill any lane on his role scores and preferred foot alone, except that
+    /// goalkeepers and outfield players never trade places.
+    AnyPosition,
+}
+
+impl PositionRule {
+    /// The player's fit score in the lane, or `None` when he cannot fill it.
+    pub(super) fn lane_score(
+        self,
+        score: Option<u8>,
+        player_foot: &str,
+        positions: &BTreeMap<String, Option<i64>>,
+        lane: &TacticLane,
+    ) -> Option<u8> {
+        match self {
+            Self::Familiarity => lane_fit_score(score, player_foot, positions, lane),
+            Self::AnyPosition => {
+                let goalkeeper = suitable_familiarity(positions, "GK").is_some();
+                if goalkeeper != is_goalkeeper_lane(lane) {
+                    return None;
+                }
+                let foot_penalty =
+                    foot_penalty(player_foot, &lane.preferred_foot, &lane.foot_preference)?;
+                Some(adjust_score(score?, foot_penalty))
+            }
+        }
+    }
+}
+
+pub(super) fn is_goalkeeper_lane(lane: &TacticLane) -> bool {
+    base_position(&lane.ip_position) == "GK"
+}
+
 pub(crate) fn tactic_adjusted_score(
     ip_score: Option<u8>,
     oop_score: Option<u8>,
@@ -134,7 +173,7 @@ pub(crate) fn slot_group(lane: &TacticLane) -> Option<ComparisonGroup> {
 /// Whether the player can play both of the lane's positions, without which he has no score
 /// there. The Moneyball lane scores ask first, because most players cannot play most lanes
 /// and scoring a role from percentiles is the costly part.
-fn plays_lane(positions: &BTreeMap<String, Option<i64>>, lane: &TacticLane) -> bool {
+pub(super) fn plays_lane(positions: &BTreeMap<String, Option<i64>>, lane: &TacticLane) -> bool {
     suitable_familiarity(positions, &lane.ip_position).is_some()
         && suitable_familiarity(positions, &lane.oop_position).is_some()
 }
@@ -146,7 +185,8 @@ pub(super) enum PositionFit {
     Suited,
     /// Playable, but marked down for a position he is less familiar with.
     Unfamiliar,
-    /// Cannot play one of the lane's positions, so Optimize never places him there.
+    /// Cannot play one of the lane's positions, so Optimize places him there only under
+    /// [`PositionRule::AnyPosition`].
     Unsuited,
 }
 

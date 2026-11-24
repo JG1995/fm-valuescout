@@ -12,9 +12,10 @@ use rusqlite::{params, Connection};
 use crate::features::player_metrics::compact::{
     player_current_column, player_metrics_join, player_potential_column, PLAYER_METRICS_ALIAS,
 };
+use crate::features::scoring::combine::combine_role_scores;
 
 use super::depth::PlannerTeam;
-use super::fit::{phase_fit_score, tactic_adjusted_score};
+use super::fit::{phase_fit_score, plays_lane, PositionRule};
 use super::outlook::{future_weight, Development};
 use super::tactic::{PlannerTactic, TacticLane};
 
@@ -75,12 +76,15 @@ impl LaneRankings {
         player_foot: &str,
         positions: &BTreeMap<String, Option<i64>>,
         scores: &[Option<u8>],
+        position_rule: PositionRule,
     ) {
+        let plays_lane = plays_lane(positions, lane);
         let lane_fit = |ip_score, oop_score| {
-            tactic_adjusted_score(
-                ip_score,
-                oop_score,
-                lane.ip_weight,
+            if !plays_lane {
+                return None;
+            }
+            position_rule.lane_score(
+                combine_role_scores(ip_score, oop_score, lane.ip_weight),
                 player_foot,
                 positions,
                 lane,
@@ -153,7 +157,8 @@ impl SlotRankings {
 }
 
 /// Ranks every lane of `tactic` over all of the snapshot's players. A player counts in a lane
-/// when he can play its positions and has the role scores, exactly as Optimize scores him.
+/// when he can play its positions and has the role scores, and `position_rule` scores him
+/// there as Optimize does.
 ///
 // ponytail: every call reads the whole snapshot once, for Optimize and for Best role fit.
 // Upgrade to rankings kept per snapshot and tactic if that read takes over a second on a
@@ -162,6 +167,7 @@ pub(super) fn load_slot_rankings(
     conn: &Connection,
     snapshot_id: i64,
     tactic: &PlannerTactic,
+    position_rule: PositionRule,
 ) -> Result<SlotRankings, String> {
     // The foot and positions, then each lane's scores.
     const SCORE_COLUMN: usize = 2;
@@ -216,7 +222,7 @@ pub(super) fn load_slot_rankings(
             .zip(&mut lanes)
             .zip(scores.chunks_exact(SCORES_PER_LANE))
         {
-            rankings.add_player(lane, player_foot, &positions, lane_scores);
+            rankings.add_player(lane, player_foot, &positions, lane_scores, position_rule);
         }
     }
     Ok(SlotRankings { lanes })

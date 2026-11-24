@@ -15,6 +15,8 @@ export type PlannerAssignment = {
   pinned: boolean;
   /** Older than the team's age limit. */
   overAge: boolean;
+  /** He cannot play one of the slot's positions. */
+  outOfPosition: boolean;
   combinedScore: number | null;
   /** The score the player is expected to reach, given his age and personality. */
   expectedCombinedScore: number | null;
@@ -79,7 +81,10 @@ export type PlannerAssignmentLocation = {
   laneId: string;
 };
 
-/** How a player's positions suit a slot. Optimize never places an unsuited player. */
+/**
+ * How a player's positions suit a slot. Optimize places an unsuited player only
+ * without position familiarity.
+ */
 export type PlannerPositionFit = "suited" | "unfamiliar" | "unsuited";
 /** How a player's foot suits a slot. Optimize never places an excluded player. */
 export type PlannerFootFit = "matches" | "mismatch" | "excluded";

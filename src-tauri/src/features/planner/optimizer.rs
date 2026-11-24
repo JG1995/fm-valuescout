@@ -16,10 +16,10 @@ use super::depth::{
     remove_empty_trailing_strings, AssignmentProvenance, PlannerDepth, PlannerTeam,
     ROTATION_PLACES,
 };
-use super::fit::lane_fit_score;
+use super::fit::{is_goalkeeper_lane, PositionRule};
 use super::outlook::{expected_score, slot_value, Development};
 use super::standout::load_slot_rankings;
-use super::tactic::{base_position, PlannerTactic, TacticLane, TACTIC_LANE_COUNT};
+use super::tactic::{PlannerTactic, TACTIC_LANE_COUNT};
 use super::teams;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -278,10 +278,6 @@ pub(super) fn allocate_rotation(
     allocation
 }
 
-fn is_goalkeeper_lane(lane: &TacticLane) -> bool {
-    base_position(&lane.ip_position) == "GK"
-}
-
 /// Refills every cell the user has not pinned, using each player once.
 ///
 /// The senior squad comes first and takes the best players of any age. The exact match
@@ -293,7 +289,15 @@ fn is_goalkeeper_lane(lane: &TacticLane) -> bool {
 /// stands out in ([`SlotRankings::standout_lane`]) rather than where a match would put him.
 /// Each slot lists its players best first, so those teams gain and lose strings to hold their
 /// deepest slot, and a slot nobody stands out in stays empty.
-pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerDepth, String> {
+///
+/// `position_rule` decides which lanes a player can fill, in every team. Under
+/// [`PositionRule::AnyPosition`] the rankings still hold only the players who can play each
+/// slot, so a player stands out where he outscores the players who do.
+pub(super) fn optimize_depth(
+    conn: &Connection,
+    save_id: i64,
+    position_rule: PositionRule,
+) -> Result<PlannerDepth, String> {
     let snapshot_id = preflight_depth_snapshot(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
     let tactic = ensure_depth(conn, save_id)?;
@@ -320,7 +324,7 @@ pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerD
     )
     .map_err(|error| error.to_string())?;
 
-    let players = load_club_players(&tx, save_id, snapshot_id, &tactic)?;
+    let players = load_club_players(&tx, save_id, snapshot_id, &tactic, position_rule)?;
     let strings = load_ordered_strings(&tx, save_id)?;
     let is_pinned = |string_id: i64, lane_id: &str| {
         manual_lanes
@@ -369,7 +373,7 @@ pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerD
         .filter(|setting| setting.team != PlannerTeam::Senior)
         .collect::<Vec<_>>();
     if !development_settings.is_empty() {
-        let rankings = load_slot_rankings(&tx, snapshot_id, &tactic)?;
+        let rankings = load_slot_rankings(&tx, snapshot_id, &tactic, position_rule)?;
         for setting in &development_settings {
             let team = setting.team;
             let mut slots = vec![Vec::new(); tactic.lanes.len()];
@@ -585,7 +589,14 @@ pub(super) fn unassigned_players(
         .collect::<Result<HashSet<_>, _>>()
         .map_err(|error| error.to_string())?;
 
-    let mut players = load_club_players(conn, save_id, snapshot_id, &tactic)?
+    let club_players = load_club_players(
+        conn,
+        save_id,
+        snapshot_id,
+        &tactic,
+        PositionRule::Familiarity,
+    )?;
+    let mut players = club_players
         .into_iter()
         .filter(|player| !assigned_uids.contains(&player.uid))
         .map(|player| {
@@ -623,6 +634,7 @@ pub(super) fn load_club_players(
     save_id: i64,
     snapshot_id: i64,
     tactic: &PlannerTactic,
+    position_rule: PositionRule,
 ) -> Result<Vec<ClubPlayer>, String> {
     // Four identity columns, then the four development columns, then the lane scores.
     const DEVELOPMENT_COLUMN: usize = 4;
@@ -683,7 +695,7 @@ pub(super) fn load_club_players(
                     .zip(scores.chunks_exact(SCORES_PER_LANE))
                     .map(|(lane, scores)| {
                         let fit = |ip_score, oop_score| {
-                            lane_fit_score(
+                            position_rule.lane_score(
                                 combine_role_scores(ip_score, oop_score, lane.ip_weight),
                                 &preferred_foot,
                                 &positions,

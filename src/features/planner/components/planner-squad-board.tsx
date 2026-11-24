@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Pin, TriangleAlert } from "lucide-react";
+import { ArrowRightLeft, MapPinOff, Pin, TriangleAlert } from "lucide-react";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import type {
   PlannerAssignment,
@@ -140,6 +140,7 @@ function AssignmentCell({
         assignment.age === null ? null : `aged ${assignment.age}`,
         assignment.pinned ? "pinned" : null,
         assignment.overAge ? "over the age limit" : null,
+        assignment.outOfPosition ? "out of position" : null,
         loanCandidate ? "loan candidate" : null,
       ]
         .filter((part) => part !== null)
@@ -198,6 +199,14 @@ function AssignmentCell({
                   title="Pinned: Optimize keeps this player here"
                 >
                   <Pin aria-hidden="true" className="size-3" />
+                </span>
+              ) : null}
+              {assignment.outOfPosition ? (
+                <span
+                  className="shrink-0 text-warning"
+                  title="Out of position: he cannot play this slot yet"
+                >
+                  <MapPinOff aria-hidden="true" className="size-3" />
                 </span>
               ) : null}
               {loanCandidate ? (
