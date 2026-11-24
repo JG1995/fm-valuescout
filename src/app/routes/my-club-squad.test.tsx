@@ -280,6 +280,33 @@ function recordSquadPageRequests() {
   return recorder;
 }
 
+/**
+ * Rejects `cmd` requests, `times` of them or all, so a read the route loader
+ * makes fails. Other requests keep the shared IPC mock.
+ */
+function rejectIpcRequests(cmd: string, message: string, times = Infinity) {
+  const internals = (
+    window as unknown as {
+      __TAURI_INTERNALS__: {
+        invoke: (
+          cmd: string,
+          args?: Record<string, unknown>,
+          options?: unknown,
+        ) => Promise<unknown>;
+      };
+    }
+  ).__TAURI_INTERNALS__;
+  const invoke = internals.invoke;
+  let remaining = times;
+  internals.invoke = (command, args, options) => {
+    if (command === cmd && remaining > 0) {
+      remaining -= 1;
+      return Promise.reject(new Error(message));
+    }
+    return invoke(command, args, options);
+  };
+}
+
 const CLUB_DNA_CONTEXT = { saveId: 1, contextToken: "save-token-1" };
 const SECOND_SAVE: SaveSummary = {
   id: 2,
@@ -682,7 +709,7 @@ describe("My Club route", () => {
     ).toBeDisabled();
   });
 
-  it("keeps a disabled Define DNA placeholder while saves initially load", async () => {
+  it("waits for the save list before offering Define DNA", async () => {
     await resolveLoadDataIpcMock();
     setManagedClubIpcMock({
       clubName: "Barcelona",
@@ -704,15 +731,18 @@ describe("My Club route", () => {
 
     renderMyClubRoute({ initialEntry: "/my-club", queryClient });
 
-    expect(
-      await screen.findByRole("button", { name: "Define DNA" }),
-    ).toBeDisabled();
+    // The route loader waits for the save list, so no Club DNA action can
+    // belong to an unknown save.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole("button", { name: "Define DNA" })).toBeNull();
     expect(
       screen.queryByRole("dialog", { name: "Define Club DNA" }),
     ).toBeNull();
 
     resolveSaves(savesFor(CLUB_DNA_CONTEXT.saveId));
     await pendingSaves;
+    const trigger = await screen.findByRole("button", { name: "Define DNA" });
+    await waitFor(() => expect(trigger).toBeEnabled());
   });
 
   it("keeps a disabled Define DNA placeholder after an initial saves error", async () => {
@@ -728,11 +758,7 @@ describe("My Club route", () => {
         queries: { retry: false, refetchOnMount: false, staleTime: 0 },
       },
     });
-    const savesError = queryClient.fetchQuery({
-      ...savesQueryOptions,
-      queryFn: () => Promise.reject(new Error("Could not load saves")),
-    });
-    await expect(savesError).rejects.toThrow("Could not load saves");
+    rejectIpcRequests("list_saves", "Could not load saves");
 
     renderMyClubRoute({ initialEntry: "/my-club", queryClient });
 
@@ -945,11 +971,16 @@ describe("My Club route", () => {
       status: "available",
       unclassifiedPlayerCount: 0,
     });
-    setClubDnaGetIpcMockMode("busy");
-    renderMyClubRoute({ initialEntry: "/my-club" });
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     const trigger = await screen.findByRole("button", { name: "Define DNA" });
-    expect(trigger).toBeDisabled();
+    await waitFor(() => expect(trigger).toBeEnabled());
+    // The route loader waits for the first read, so hold a refetch instead.
+    setClubDnaGetIpcMockMode("busy");
+    void queryClient.invalidateQueries({
+      queryKey: clubDnaKeys.definition(CLUB_DNA_CONTEXT),
+    });
+    await waitFor(() => expect(trigger).toBeDisabled());
     await user.click(trigger);
     expect(
       screen.queryByRole("dialog", { name: "Define Club DNA" }),
@@ -4247,12 +4278,9 @@ describe("My Club route", () => {
     await waitFor(() => expect(saveButton).toBeEnabled());
   });
 
-  it.each([
-    ["get_planner_tactic", plannerKeys.tactic(CLUB_DNA_CONTEXT)],
-    ["get_planner_tactic_options", plannerKeys.tacticOptions(CLUB_DNA_CONTEXT)],
-  ])(
+  it.each([["get_planner_tactic"], ["get_planner_tactic_options"]])(
     "shows one tactic load retry and refetches both queries when %s fails",
-    async (_failedCommand, failedQueryKey) => {
+    async (failedCommand) => {
       const user = userEvent.setup();
       await resolveLoadDataIpcMock();
       setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
@@ -4266,11 +4294,7 @@ describe("My Club route", () => {
           },
         },
       });
-      const failedQuery = queryClient.fetchQuery({
-        queryKey: failedQueryKey,
-        queryFn: () => Promise.reject(new Error("Initial tactic load failed")),
-      });
-      await expect(failedQuery).rejects.toThrow("Initial tactic load failed");
+      rejectIpcRequests(failedCommand, "Initial tactic load failed", 1);
       renderMyClubRoute({
         initialEntry: "/my-club?view=tactic",
         queryClient,

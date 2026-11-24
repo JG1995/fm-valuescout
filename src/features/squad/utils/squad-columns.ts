@@ -1,5 +1,10 @@
-import { PLAYER_METRICS, type PlayerMetric } from "@/utils/player-metrics";
+import {
+  getPlayerMetric,
+  PLAYER_METRICS,
+  type PlayerMetric,
+} from "@/utils/player-metrics";
 import { SUGGESTED_TRAINING_COLUMN_ID } from "@/utils/suggested-training";
+import { SQUAD_SORT_FIELDS } from "../types/squad-sort";
 
 /**
  * Squad-only Suggested Training metric. It stays out of the shared
@@ -37,4 +42,23 @@ export function getSquadTableMetric(
   metricId: string,
 ): PlayerMetric | undefined {
   return SQUAD_METRIC_BY_ID.get(metricId);
+}
+
+/**
+ * The extra fields Squad's page read requests for a column layout: every known
+ * column the basic fields and Suggested Training do not already carry, sorted
+ * so the query key does not depend on column order.
+ */
+export function squadRequestedFields(columnIds: readonly string[]): string[] {
+  return columnIds
+    .flatMap((columnId) => {
+      const id = (getSquadTableMetric(columnId) ?? getPlayerMetric(columnId))
+        ?.id;
+      return id === undefined ||
+        (SQUAD_SORT_FIELDS as readonly string[]).includes(id) ||
+        id === SUGGESTED_TRAINING_COLUMN_ID
+        ? []
+        : [id];
+    })
+    .sort();
 }
