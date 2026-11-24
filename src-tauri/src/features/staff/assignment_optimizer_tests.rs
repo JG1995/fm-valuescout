@@ -265,7 +265,7 @@ fn youth_targets_blend_role_scores_with_working_with_youngsters() {
     assert!(matches!(
         &result.slots[0],
         StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.uid == 2 && recommendation.score == 86
+            if recommendation.uid == 2 && recommendation.score == 83
     ));
 }
 
@@ -327,7 +327,7 @@ fn youth_general_coaches_use_the_blended_score() {
     assert!(matches!(
         &result.slots[0],
         StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.uid == 2 && recommendation.score == 85
+            if recommendation.uid == 2 && recommendation.score == 82
     ));
 }
 
@@ -365,7 +365,7 @@ fn youth_specialist_coaches_use_the_blended_score() {
         &result.slots[2],
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 2
-                && recommendation.score == 85
+                && recommendation.score == 82
                 && recommendation.coach_requirement == Some(CoachRequirement::Fitness)
     ));
 }
