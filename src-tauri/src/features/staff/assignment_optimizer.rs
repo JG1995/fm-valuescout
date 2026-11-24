@@ -52,6 +52,9 @@ const GENERAL_REQUIREMENTS: [CoachRequirement; 6] = [
 ];
 const MAX_GENERAL_COACH_SLOTS: usize = 50;
 
+/// How much of a youth slot's score Working with Youngsters makes up; the role score is the rest.
+const YOUNGSTERS_WEIGHT_PERCENT: u16 = 40;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum CoachRequirement {
     AttackingTechnical,
@@ -1641,7 +1644,9 @@ fn assignment_score(
         return Some(role_score);
     }
     let youngster_score = u16::from(candidate.working_with_youngsters?) * 5;
-    u8::try_from((u16::from(role_score) + youngster_score).div_ceil(2)).ok()
+    let blended = u16::from(role_score) * (100 - YOUNGSTERS_WEIGHT_PERCENT)
+        + youngster_score * YOUNGSTERS_WEIGHT_PERCENT;
+    u8::try_from((blended + 50) / 100).ok()
 }
 
 fn score_for_job(scores: &StaffAssignmentScoreSet, job_id: &str) -> Option<u8> {
