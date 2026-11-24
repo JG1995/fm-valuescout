@@ -20,6 +20,7 @@ import {
   setBridgeStatusIpcMockMode,
   setDumpRequestIpcMockMode,
 } from "@/features/memory-read/api/bridge-status-ipc-mock";
+import { useOptimizeOptions } from "@/features/planner/stores/use-optimize-options";
 import { usePlayerShortlistSelectionStore } from "@/stores/use-player-shortlist-selection-store";
 import {
   defaultPlayerTableLayouts,
@@ -400,7 +401,7 @@ function registerIpcMocks() {
     }
 
     if (cmd === "optimize_planner_depth") {
-      return resolveOptimizePlannerDepthIpcMock();
+      return resolveOptimizePlannerDepthIpcMock(args);
     }
 
     if (cmd === "get_planner_slot_candidates") {
@@ -491,6 +492,7 @@ afterEach(() => {
   resetPlayerMoneyballOverride();
   resetManagedClubBoostIpcMock();
   resetPlannerIpcMock();
+  useOptimizeOptions.setState({ positionFamiliarity: true });
   resetAcademyIpcMock();
   usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });
   usePlayerTableStore.persist.clearStorage();

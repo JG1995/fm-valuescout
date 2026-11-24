@@ -11,6 +11,7 @@ use super::depth::{
     self as depth_service, PlannerAssignment, PlannerAssignmentLocation, PlannerDepth,
     PlannerDepthTeam, PlannerSlotCandidate, PlannerString, PlannerTeam,
 };
+use super::fit::PositionRule;
 use super::fm_moves::{self, FmSquadMove, FmSquadMoveReport};
 use super::fm_training::{self, FmTrainingChange, FmTrainingReport};
 use super::loans::{self, LoanCandidate};
@@ -349,6 +350,7 @@ pub struct PlannerAssignmentDto {
     pub age: Option<i64>,
     pub pinned: bool,
     pub over_age: bool,
+    pub out_of_position: bool,
     pub combined_score: Option<u8>,
     pub expected_combined_score: Option<u8>,
     pub potential_combined_score: Option<u8>,
@@ -366,6 +368,7 @@ impl From<PlannerAssignment> for PlannerAssignmentDto {
             age: assignment.age,
             pinned: assignment.pinned,
             over_age: assignment.over_age,
+            out_of_position: assignment.out_of_position,
             combined_score: assignment.combined_score,
             expected_combined_score: assignment.expected_combined_score,
             potential_combined_score: assignment.potential_combined_score,
@@ -836,15 +839,25 @@ pub async fn save_planner_teams(
     .await
 }
 
+/// Refills the squads. Without `position_familiarity`, players are placed on role scores and
+/// preferred foot alone, whatever positions they can play.
 #[tauri::command]
-pub async fn optimize_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
+pub async fn optimize_planner_depth(
+    position_familiarity: bool,
+    db: State<'_, Db>,
+) -> Result<PlannerDepthDto, String> {
     let db = db.inner().clone();
+    let position_rule = if position_familiarity {
+        PositionRule::Familiarity
+    } else {
+        PositionRule::AnyPosition
+    };
     blocking::run(move || {
         let conn =
             db.0.lock()
                 .map_err(|_| "database lock poisoned".to_string())?;
         let save_id = service::active_save_id(&conn)?;
-        Ok(optimizer::optimize_depth(&conn, save_id)?.into())
+        Ok(optimizer::optimize_depth(&conn, save_id, position_rule)?.into())
     })
     .await
 }

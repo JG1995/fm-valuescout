@@ -77,6 +77,8 @@ pub struct PlannerAssignment {
     pub pinned: bool,
     /// Whether the player is older than his team's age limit.
     pub over_age: bool,
+    /// Whether the player cannot play one of the lane's positions.
+    pub out_of_position: bool,
     pub combined_score: Option<u8>,
     /// The combined score the player is expected to reach, given his age and personality.
     pub expected_combined_score: Option<u8>,
@@ -745,6 +747,7 @@ fn load_assignments(
                 over_age: max_age
                     .zip(resolved.age)
                     .is_some_and(|(max_age, age)| age > max_age),
+                out_of_position: resolved.out_of_position,
                 combined_score: resolved.combined_score,
                 expected_combined_score: resolved.expected_combined_score,
                 potential_combined_score: resolved.potential_combined_score,
@@ -757,6 +760,7 @@ struct ResolvedAssignment {
     current_name: Option<String>,
     state: AssignmentState,
     age: Option<i64>,
+    out_of_position: bool,
     combined_score: Option<u8>,
     expected_combined_score: Option<u8>,
     potential_combined_score: Option<u8>,
@@ -774,6 +778,7 @@ fn resolve_assignment(
             current_name: None,
             state: AssignmentState::Unresolved,
             age: None,
+            out_of_position: false,
             combined_score: None,
             expected_combined_score: None,
             potential_combined_score: None,
@@ -794,6 +799,7 @@ fn resolve_assignment(
                     {PLAYER_METRICS_ALIAS}.{potential_ip_column},
                     {PLAYER_METRICS_ALIAS}.{potential_oop_column},
                     {PLAYER_METRICS_ALIAS}.score_model_version IS NOT NULL,
+                    p.positions_json,
                     {}
                  FROM players p{}
                  WHERE p.snapshot_id = ?2 AND p.uid = ?3",
@@ -811,7 +817,8 @@ fn resolve_assignment(
                     row.get::<_, Option<u8>>(4)?,
                     row.get::<_, Option<u8>>(5)?,
                     row.get::<_, bool>(6)?,
-                    Development::from_row(row, 7)?,
+                    row.get::<_, String>(7)?,
+                    Development::from_row(row, 8)?,
                 ))
             },
         )
@@ -826,6 +833,7 @@ fn resolve_assignment(
         potential_ip_score,
         potential_oop_score,
         has_compact_row,
+        positions_json,
         development,
     )) = player
     else {
@@ -833,6 +841,7 @@ fn resolve_assignment(
             current_name: None,
             state: AssignmentState::Unresolved,
             age: None,
+            out_of_position: false,
             combined_score: None,
             expected_combined_score: None,
             potential_combined_score: None,
@@ -847,6 +856,8 @@ fn resolve_assignment(
         AssignmentState::OutsidePool
     };
 
+    let positions = serde_json::from_str::<BTreeMap<String, Option<i64>>>(&positions_json)
+        .map_err(|error| error.to_string())?;
     let combined_score = combine_role_scores(ip_score, oop_score, lane.ip_weight);
     let potential_combined_score =
         combine_role_scores(potential_ip_score, potential_oop_score, lane.ip_weight);
@@ -854,6 +865,7 @@ fn resolve_assignment(
         current_name: Some(current_name),
         state,
         age: development.age,
+        out_of_position: lane_position_fit(&positions, lane) == PositionFit::Unsuited,
         combined_score,
         expected_combined_score: combined_score.zip(potential_combined_score).map(
             |(current, potential)| expected_score(current, potential, &development).round() as u8,

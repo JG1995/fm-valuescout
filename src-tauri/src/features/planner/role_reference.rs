@@ -12,7 +12,7 @@ use crate::features::{
 
 use super::{
     depth::current_snapshot_id,
-    fit::phase_fit_score,
+    fit::{phase_fit_score, PositionRule},
     standout::{load_slot_rankings, LaneRankings, ScoreDistribution},
     tactic::{self, TacticLane},
 };
@@ -151,7 +151,7 @@ pub fn get_role_reference(
         .map(|(_, role, _)| role.role_id)
         .collect::<BTreeSet<_>>();
     let players = load_players(conn, save_id, snapshot_id, &role_ids)?;
-    let rankings = load_slot_rankings(conn, snapshot_id, &tactic)?;
+    let rankings = load_slot_rankings(conn, snapshot_id, &tactic, PositionRule::Familiarity)?;
     let mut assigned = (0..tactic.lanes.len())
         .map(|_| Vec::new())
         .collect::<Vec<Vec<RoleReferencePlayer>>>();

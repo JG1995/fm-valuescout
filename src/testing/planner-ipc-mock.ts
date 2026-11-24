@@ -315,6 +315,7 @@ let optimizeDepth: PlannerDepth | null = null;
 let optimizeError: string | null = null;
 let optimizePending = false;
 let optimizeCalls = 0;
+let lastOptimizeArgs: unknown;
 let teamSaveError: string | null = null;
 let teamSavePending = false;
 let teamRemovalImpactOverride: PlannerTeamRemovalImpact[] | null = null;
@@ -520,6 +521,7 @@ export function resetPlannerIpcMock() {
   optimizeError = null;
   optimizePending = false;
   optimizeCalls = 0;
+  lastOptimizeArgs = undefined;
   teamSaveError = null;
   teamSavePending = false;
   pendingPlannerTeamSave = null;
@@ -756,6 +758,10 @@ export function getPlannerOptimizeIpcMockCalls() {
   return optimizeCalls;
 }
 
+export function getLastPlannerOptimizeArgs() {
+  return lastOptimizeArgs;
+}
+
 export function resolvePlannerSlotCandidatesIpcMock(args: unknown) {
   slotCandidateFetchCount += 1;
   const search =
@@ -886,6 +892,7 @@ function resolvePlannerAssignmentIpcMock(args: unknown, move: boolean) {
     age: null,
     pinned: true,
     overAge: false,
+    outOfPosition: false,
     combinedScore: candidate?.combinedScore ?? null,
     expectedCombinedScore: null,
     potentialCombinedScore: null,
@@ -989,8 +996,9 @@ export function resolveClearPlannerDepthIpcMock(args: unknown) {
   return cloneDepth(depth);
 }
 
-export function resolveOptimizePlannerDepthIpcMock() {
+export function resolveOptimizePlannerDepthIpcMock(args: unknown) {
   optimizeCalls += 1;
+  lastOptimizeArgs = args;
   if (optimizeError) {
     throw optimizeError;
   }
