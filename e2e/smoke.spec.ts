@@ -35,7 +35,7 @@ test.describe("application smoke", () => {
         );
         const nav = page.getByRole("navigation", { name: "Primary" });
         await expect(nav).toHaveCSS("height", "48px");
-        await expect(nav.getByRole("link")).toHaveCount(9);
+        await expect(nav.getByRole("link")).toHaveCount(10);
         for (const link of await nav.getByRole("link").all()) {
           const box = await link.boundingBox();
           expect(box).not.toBeNull();
@@ -867,6 +867,7 @@ test.describe("application smoke", () => {
       "Squad",
       "Planner",
       "Tactic",
+      "Training",
       "Youth",
       "Settings",
     ] as const) {
@@ -4979,33 +4980,38 @@ test.describe("application smoke", () => {
     await expect(trigger).toBeFocused();
   });
 
-  test("squad sets the ticked players' training in FM", async ({ page }) => {
+  test("training lists the plan and sets the ticked players' training in FM", async ({
+    page,
+  }) => {
     await stubTauriIpc(page, { plannerSnapshot: true, squadOverview: true });
-    await page.goto("/my-club?view=squad");
+    await page.goto("/my-club?view=training");
 
     const main = page.getByRole("main");
-    const trigger = main.getByRole("button", { name: "Apply training in FM" });
+    await expect(
+      main.getByRole("row", { name: /Potential Keeper/ }),
+    ).toContainText("Ball-Playing Goalkeeper GK");
+    await expect(
+      main.getByRole("row", { name: /Veteran Full-Back/ }),
+    ).toContainText("Cleared");
+    await expect(
+      main.getByRole("row", { name: /Converted Winger/ }),
+    ).toContainText("Learning MR");
+    await main
+      .getByRole("checkbox", { name: "Set training for Unread Youngster" })
+      .uncheck();
+    const trigger = main.getByRole("button", {
+      name: "Apply training in FM (6)",
+    });
     await trigger.click();
 
     const dialog = page.getByRole("dialog", { name: "Apply training in FM" });
-    await expect(dialog).toBeVisible();
-    await expect(
-      dialog.getByRole("row", { name: /Potential Keeper/ }),
-    ).toContainText("Ball-Playing Goalkeeper GK");
-    await expect(
-      dialog.getByRole("row", { name: /Veteran Full-Back/ }),
-    ).toContainText("Cleared");
     await dialog
-      .getByRole("checkbox", { name: "Set training for Unread Youngster" })
-      .uncheck();
-    await dialog
-      .getByRole("button", { name: "Set training for 2 players" })
+      .getByRole("button", { name: "Set training for 6 players" })
       .click();
 
-    await expect(dialog.getByRole("status")).toHaveText(
-      "FM took the training for 2 players.",
-    );
-    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(
+      main.getByRole("status").filter({ hasText: "FM took" }),
+    ).toHaveText("FM took the training for 6 players.");
     await expect(dialog).toBeHidden();
     await expect(trigger).toBeFocused();
   });

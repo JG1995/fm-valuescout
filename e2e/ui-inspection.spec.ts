@@ -68,6 +68,11 @@ const canonicalPages: readonly InspectionPage[] = [
   },
   { name: "tactic", route: "/my-club?view=tactic", readyText: "Tactical XI" },
   {
+    name: "training",
+    route: "/my-club?view=training",
+    readyText: "Potential Keeper",
+  },
+  {
     name: "academy-overview",
     route: "/academy",
     readyText: "Class of 2026",

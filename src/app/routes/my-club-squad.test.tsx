@@ -165,6 +165,7 @@ async function openMyClubWorkspace(
     squad: "Squad",
     planner: "Planner",
     tactic: "Tactic",
+    training: "Training",
   };
   const navigation = screen.getByRole("navigation", { name: "Primary" });
   await user.click(
