@@ -3,6 +3,7 @@ import { CircleAlert, FileClock } from "lucide-react";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { TableSkeleton } from "@/components/ui/skeleton/skeleton";
 import { cn } from "@/utils/cn";
 import {
   formatDaysRemaining,
@@ -118,9 +119,11 @@ export function ExpiringContractsPanel({
           {query.error.message}
         </EmptyState>
       ) : query.isPending ? (
-        <p className="p-4 text-body-md text-on-surface-variant" role="status">
-          Loading expiring contracts…
-        </p>
+        <div className="relative min-h-40 flex-1 border-t border-outline-variant">
+          <div className="absolute inset-0 flex flex-col">
+            <TableSkeleton label="Loading expiring contracts…" />
+          </div>
+        </div>
       ) : contracts === null || contracts.players.length === 0 ? (
         <div className="flex flex-1 items-center justify-center overflow-y-auto">
           <EmptyState icon={FileClock} title="No contracts end soon">
@@ -130,7 +133,7 @@ export function ExpiringContractsPanel({
           </EmptyState>
         </div>
       ) : (
-        <>
+        <div className="flex min-h-0 flex-1 animate-enter flex-col">
           {/* The one list that can outgrow its panel: it scrolls in place, out of
               flow so its length never stretches the grid. */}
           <div className="relative min-h-40 flex-1 border-t border-outline-variant">
@@ -159,7 +162,7 @@ export function ExpiringContractsPanel({
               this period.
             </p>
           ) : null}
-        </>
+        </div>
       )}
     </Panel>
   );

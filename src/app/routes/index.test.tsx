@@ -1,12 +1,20 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  createMemoryHistory,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { RouterContext } from "@/app/router-context";
 import type {
   DashboardLineupSlot,
   DashboardRecommendation,
   DashboardSignings,
   DashboardSigningsRequest,
 } from "@/features/dashboard/types/dashboard";
+import { routeTree } from "@/routeTree.gen";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
   getDashboardSigningsIpcRequests,
@@ -155,6 +163,53 @@ function renderDashboard(entry = "/") {
   return renderWithProviders({ initialEntries: [entry] });
 }
 
+/**
+ * A router whose loader can run before anything renders, as a hover on the
+ * Dashboard link runs it. It records every IPC request and leaves the
+ * commands in `held` pending; the test setup restores the shared IPC mock.
+ */
+function dashboardRouter(entry: string, held: readonly string[] = []) {
+  const internals = (
+    window as unknown as {
+      __TAURI_INTERNALS__: {
+        invoke: (
+          cmd: string,
+          args?: Record<string, unknown>,
+          options?: unknown,
+        ) => Promise<unknown>;
+      };
+    }
+  ).__TAURI_INTERNALS__;
+  const invoke = internals.invoke;
+  const requests: string[] = [];
+  internals.invoke = (cmd, args, options) => {
+    requests.push(cmd);
+    return held.includes(cmd)
+      ? new Promise(() => {})
+      : invoke(cmd, args, options);
+  };
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+  });
+  const router = createRouter({
+    routeTree,
+    context: { queryClient } satisfies RouterContext,
+    defaultPreloadStaleTime: 0,
+    history: createMemoryHistory({ initialEntries: [entry] }),
+  });
+  return {
+    router,
+    requestCount: (cmd: string) =>
+      requests.filter((request) => request === cmd).length,
+    renderRouter: () =>
+      render(
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>,
+      ),
+  };
+}
+
 function signingCards() {
   return within(
     screen.getByRole("list", { name: "Recommended signings, best first" }),
@@ -254,6 +309,69 @@ describe("Dashboard", () => {
     ).toHaveTextContent("Weakest");
   });
 
+  it("starts every panel read from the loader with the panels' own request", async () => {
+    useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
+    await seedManagedClub();
+    const { router, requestCount, renderRouter } =
+      dashboardRouter("/?stats=false");
+
+    await router.load();
+    expect(getDashboardSigningsIpcRequests()).toEqual([
+      {
+        mode: "moneyball",
+        shortlistId: null,
+        laneId: null,
+        seasonStats: false,
+      },
+    ]);
+    expect(requestCount("get_dashboard_prospects")).toBe(1);
+    expect(requestCount("get_dashboard_expiring_contracts")).toBe(1);
+    expect(requestCount("list_managed_club_options")).toBe(0);
+
+    renderRouter();
+    await waitFor(() => expect(signingNames()).toEqual(["Better Keeper"]));
+    // Every visit reads again, but always with the request the loader made.
+    expect(
+      new Set(getDashboardSigningsIpcRequests().map((r) => JSON.stringify(r))),
+    ).toEqual(
+      new Set([
+        JSON.stringify({
+          mode: "moneyball",
+          shortlistId: null,
+          laneId: null,
+          seasonStats: false,
+        }),
+      ]),
+    );
+  });
+
+  it("shows the dashboard while the panel reads are still running", async () => {
+    await seedManagedClub();
+    const { router, renderRouter } = dashboardRouter("/", [
+      "get_dashboard_signings",
+      "get_dashboard_prospects",
+      "get_dashboard_expiring_contracts",
+    ]);
+
+    await router.load();
+    renderRouter();
+
+    for (const label of [
+      "Loading recommended signings…",
+      "Loading starting XI…",
+      "Loading development prospects…",
+      "Loading expiring contracts…",
+    ]) {
+      expect(
+        screen.getByText(label).closest('[role="status"]'),
+      ).toHaveAttribute("aria-busy", "true");
+    }
+    expect(screen.queryByText("Loading dashboard…")).toBeNull();
+    expect(
+      screen.getByRole("group", { name: "Score mode" }),
+    ).toBeInTheDocument();
+  });
+
   it("switches every score to Moneyball mode and keeps the mode in the URL", async () => {
     const user = userEvent.setup();
     await seedManagedClub();
@@ -281,9 +399,15 @@ describe("Dashboard", () => {
     renderDashboard();
 
     await waitFor(() => expect(signingCards()).toHaveLength(1));
-    expect(getDashboardSigningsIpcRequests()).toEqual([
-      { mode: "moneyball", shortlistId: null, laneId: null, seasonStats: true },
-    ]);
+    // The loader and the panel both read; each read asks for Moneyball.
+    for (const request of getDashboardSigningsIpcRequests()) {
+      expect(request).toEqual({
+        mode: "moneyball",
+        shortlistId: null,
+        laneId: null,
+        seasonStats: true,
+      });
+    }
   });
 
   it("narrows the signings to a selected slot and to one shortlist", async () => {

@@ -46,6 +46,23 @@ export function dashboardSigningsQueryOptions(
   });
 }
 
+/**
+ * The signings read before a shortlist or slot is chosen: what the panel
+ * requests first, so the route loader warms exactly that read.
+ */
+export function dashboardFirstSigningsQueryOptions(
+  context: DashboardContext,
+  mode: DashboardSigningsRequest["mode"],
+  seasonStats: boolean,
+) {
+  return dashboardSigningsQueryOptions(context, {
+    mode,
+    shortlistId: null,
+    laneId: null,
+    seasonStats,
+  });
+}
+
 export function dashboardExpiringContractsQueryOptions(
   context: DashboardContext,
 ) {
