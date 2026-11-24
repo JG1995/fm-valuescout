@@ -44,6 +44,16 @@ const REALISTIC_SIGNING_FIELD: FilterOnlyField = {
   ],
 };
 
+/** Keeps the players the managed club could plausibly sign. */
+export function createRealisticSigningRule(): FilterRule {
+  return {
+    id: createFilterRuleId(),
+    field: REALISTIC_SIGNING_FIELD_ID,
+    op: "is",
+    value: { type: "bool", value: true },
+  };
+}
+
 const SEARCH_FILTER_FIELDS: readonly FilterFieldDef[] = [
   ...SEARCH_METRICS,
   REALISTIC_SIGNING_FIELD,

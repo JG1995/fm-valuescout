@@ -608,18 +608,18 @@ function SearchPageContent() {
       />
     </>
   );
+  // The realistic-signing estimate measures the club's squad by its UID in the snapshot.
+  const realisticClubName =
+    managedClub?.status === "available" && managedClub.clubUid !== null
+      ? managedClub.clubName
+      : null;
   const datasetToggles = (
     <>
       {shortlistControl}
       <RealisticSigningsToggle
         rules={filters}
         onRulesChange={handleRulesChange}
-        // The estimate measures the club's squad by its UID in the snapshot.
-        clubName={
-          managedClub?.status === "available" && managedClub.clubUid !== null
-            ? managedClub.clubName
-            : null
-        }
+        clubName={realisticClubName}
       />
       {usesSeasonStats ? comparisonControl : null}
     </>
@@ -651,6 +651,7 @@ function SearchPageContent() {
         combine={combine}
         comparison={comparison}
         slotPresets={slotPresets}
+        realisticAvailable={realisticClubName !== null}
         columnIds={layout.columnIds}
         onApply={handleApplyFilters}
       />
