@@ -495,8 +495,9 @@ fn role_score_columns(tactic: &PlannerTactic) -> Result<Vec<String>, String> {
 /// realistic signings who cannot are never read or scored.
 ///
 /// A slot's score never exceeds the higher of its two role scores: the blend lies between
-/// them, and the fit adjustment and the age penalty only lower it. A player therefore improves a slot only when
-/// one of his role scores there exceeds the incumbent's score, or zero for an empty slot.
+/// them, and the fit adjustment and the age penalty only lower it. A player therefore improves
+/// a slot only when one of his role scores there exceeds the incumbent's score, or zero for an
+/// empty slot.
 fn could_improve_sql(role_score_columns: &[String], incumbent_scores: &[Option<u8>]) -> String {
     let better = role_score_columns
         .chunks(2)
@@ -910,11 +911,11 @@ fn cover(club: &[ScoredPlayer], lineup: &Lineup, lane_index: usize) -> Option<Li
 
 /// The points a candidate of `age` loses. Each year over `FULL_SCORE_AGE` costs one more than
 /// the last, so 1 at 29, 3 at 30, 6 at 31, 10 at 32, and 15 at 33. General mode takes half of
-/// that, rounded up, because its improvements are about a third as large: on one FM27
-/// save the largest was 13 points there and 37 in Moneyball mode. An older player thus
-/// ranks level with a younger one only when he improves the slot by that much more, and a
-/// large enough improvement still comes through. An unknown age loses nothing. These weights
-/// are judgment calls, not Football Manager's numbers.
+/// that, rounded up, because its improvements are about a third as large: on one FM27 save the
+/// largest was 13 points there and 37 in Moneyball mode. An older player thus ranks level with
+/// a younger one only when he improves the slot by that much more, and a large enough
+/// improvement still comes through. An unknown age loses nothing. These weights are judgment
+/// calls, not Football Manager's numbers.
 pub(crate) fn age_penalty(mode: ScoreMode, age: Option<i64>) -> u8 {
     // Fourteen years over already costs more than the highest Moneyball score.
     let years_over = age.map_or(0, |age| age.saturating_sub(FULL_SCORE_AGE).clamp(0, 14));
