@@ -14,6 +14,7 @@ const recommendation: DashboardRecommendation = {
   laneId: "goalkeeper",
   score: 88,
   improvement: 30,
+  agePenalty: 0,
   otherLanes: [],
 };
 

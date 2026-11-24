@@ -125,8 +125,11 @@ pub struct RecommendationDto {
     /// The in-game date of kept statistics behind a Moneyball score.
     pub borrowed_stats_date: Option<String>,
     pub lane_id: String,
+    /// The score after `age_penalty`.
     pub score: u8,
     pub improvement: u8,
+    /// Points taken off for his age.
+    pub age_penalty: u8,
     pub other_lanes: Vec<OtherLaneDto>,
 }
 
@@ -144,6 +147,7 @@ impl From<Recommendation> for RecommendationDto {
             lane_id: value.lane_id,
             score: value.score,
             improvement: value.improvement,
+            age_penalty: value.age_penalty,
             other_lanes: value.other_lanes.into_iter().map(Into::into).collect(),
         }
     }

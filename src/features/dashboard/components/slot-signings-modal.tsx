@@ -125,7 +125,15 @@ export function SlotSigningsModal({
                         <PlayerIdentity
                           uid={best.uid}
                           name={best.name}
-                          detail={`${signingClubLine(best)} · ${signingValueLine(best, mode)}`}
+                          detail={[
+                            signingClubLine(best),
+                            best.agePenalty > 0
+                              ? `−${best.agePenalty} for age`
+                              : null,
+                            signingValueLine(best, mode),
+                          ]
+                            .filter((part) => part !== null)
+                            .join(" · ")}
                           view={mode}
                           portrait={graphics.portrait(best.uid, best.name)}
                         />

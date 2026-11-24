@@ -317,7 +317,7 @@ function SigningsEmptyState({
         }
       >
         Your current player scores at least as high there as every{" "}
-        {candidateNoun}.
+        {candidateNoun}, after points off for age.
       </EmptyState>
     );
   }
@@ -343,7 +343,7 @@ function SigningsEmptyState({
       title={`No ${candidateNoun} improves your XI`}
     >
       Your current players score at least as high in every slot as the{" "}
-      {candidateNoun}s who can play there.
+      {candidateNoun}s who can play there, after points off for age.
     </EmptyState>
   );
 }
