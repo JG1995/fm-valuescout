@@ -3,6 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   CalendarDays,
   ClipboardList,
+  Dumbbell,
   GraduationCap,
   LayoutDashboard,
   Search,
@@ -23,6 +24,7 @@ type DestinationId =
   | "squad"
   | "planner"
   | "tactic"
+  | "training"
   | "youth"
   | "settings";
 
@@ -44,7 +46,7 @@ type Destination = {
 };
 
 function clubViewTransition(
-  view: "squad" | "planner" | "tactic",
+  view: "squad" | "planner" | "tactic" | "training",
 ): (previous: Record<string, unknown>) => Record<string, unknown> {
   return (previous) => ({
     view,
@@ -99,6 +101,14 @@ const destinations: Destination[] = [
     search: { view: "tactic" },
     searchTransition: clubViewTransition("tactic"),
   },
+  {
+    id: "training",
+    label: "Training",
+    icon: Dumbbell,
+    to: "/my-club",
+    search: { view: "training" },
+    searchTransition: clubViewTransition("training"),
+  },
   { id: "youth", label: "Youth", icon: GraduationCap, to: "/academy" },
   { id: "settings", label: "Settings", icon: SettingsIcon, to: "/settings" },
 ];
@@ -107,7 +117,7 @@ const groups: DestinationId[][] = [
   ["dashboard"],
   ["search"],
   ["staff-search", "my-staff"],
-  ["squad", "planner", "tactic", "youth"],
+  ["squad", "planner", "tactic", "training", "youth"],
   ["settings"],
 ];
 
@@ -125,6 +135,7 @@ function currentDestinationId(
     if (search.view === undefined || search.view === "squad") return "squad";
     if (search.view === "planner") return "planner";
     if (search.view === "tactic") return "tactic";
+    if (search.view === "training") return "training";
     return null;
   }
   if (pathname === "/academy") return "youth";

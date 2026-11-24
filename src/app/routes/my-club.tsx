@@ -63,7 +63,6 @@ import {
   squadKeys,
 } from "@/features/squad/api/squad-keys";
 import { squadFirstPageQueryOptions } from "@/features/squad/api/squad-players-query-options";
-import { SquadFmTraining } from "@/features/squad/components/squad-fm-training";
 import { SquadOverviewPanel } from "@/features/squad/components/squad-overview-panel";
 import {
   SquadBoostOutcome,
@@ -91,12 +90,19 @@ import {
   isStaffSortDir,
   isStaffSortField,
 } from "@/features/staff/types/staff-sort";
+import { fmTrainingQueryOptions } from "@/features/training/api/fm-training";
+import { TrainingWorkspace } from "@/features/training/components/training-workspace";
 import { useIsRefetchingInvalidated } from "@/lib/use-is-refetching-invalidated";
 import { warmQuery } from "@/lib/warm-query";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { isValidTacticLaneId } from "@/utils/tactic-ids";
 
-export const MY_CLUB_WORKSPACES = ["squad", "planner", "tactic"] as const;
+export const MY_CLUB_WORKSPACES = [
+  "squad",
+  "planner",
+  "tactic",
+  "training",
+] as const;
 export type MyClubWorkspace = (typeof MY_CLUB_WORKSPACES)[number];
 
 export function parseMyClubWorkspace(raw: unknown): MyClubWorkspace | null {
@@ -231,6 +237,10 @@ export const Route = createFileRoute("/my-club")({
             squadPageContext(activeSave, snapshot, managedClub),
           ),
         );
+      }
+    } else if (deps.view === "training") {
+      if (managedClub.clubName) {
+        warmQuery(queryClient, fmTrainingQueryOptions(snapshot.saveId));
       }
     } else if (snapshot.saveId === activeSave.id) {
       reads.push(
@@ -386,6 +396,35 @@ function TacticQueryError({
         Retry
       </Button>
     </div>
+  );
+}
+
+/** Shown in place of a workspace that needs the managed club. */
+function ChooseManagedClub({
+  title,
+  children,
+}: {
+  title: string;
+  children: string;
+}) {
+  return (
+    <Panel title={title} flush>
+      <EmptyState
+        icon={UsersRound}
+        title="Choose your managed club"
+        action={
+          <Link
+            to="/my-club"
+            hash="managed-club"
+            className="inline-flex h-8 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
+          >
+            Open Managed Club
+          </Link>
+        }
+      >
+        {children}
+      </EmptyState>
+    </Panel>
   );
 }
 
@@ -673,11 +712,6 @@ function MyClubPageContent() {
                     />
                     <fieldset className="m-0 flex min-w-0 flex-wrap justify-end gap-2 border-0 p-0">
                       <legend className="sr-only">Squad development</legend>
-                      <SquadFmTraining
-                        key={`fm-training-${snapshot.id}`}
-                        activeSaveId={snapshot.saveId}
-                        disabled={squadBoostPending}
-                      />
                       <SquadCurrentAbilityBoost
                         key={`current-ability-${snapshot.id}`}
                         pending={
@@ -749,23 +783,9 @@ function MyClubPageContent() {
               />
             )
           ) : (
-            <Panel title="Squad" flush>
-              <EmptyState
-                icon={UsersRound}
-                title="Choose your managed club"
-                action={
-                  <Link
-                    to="/my-club"
-                    hash="managed-club"
-                    className="inline-flex h-8 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
-                  >
-                    Open Managed Club
-                  </Link>
-                }
-              >
-                Choose your managed club in My Club before reviewing your squad.
-              </EmptyState>
-            </Panel>
+            <ChooseManagedClub title="Squad">
+              Choose your managed club in My Club before reviewing your squad.
+            </ChooseManagedClub>
           )}
         </div>
       ) : null}
@@ -900,6 +920,30 @@ function MyClubPageContent() {
               }}
             </TacticContextBoundary>
           ) : null}
+        </div>
+      ) : null}
+      {/* The plan follows the Planner and FM, so each visit reads it again. */}
+      {activeWorkspace === "training" ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          {!managedClub.clubName ? (
+            <ChooseManagedClub title="Training">
+              Choose your managed club in My Club before planning training.
+            </ChooseManagedClub>
+          ) : isSquadResultBlocked ? (
+            <Panel
+              flush
+              className="flex min-h-0 flex-1 flex-col"
+              contentClassName="flex min-h-0 flex-1 flex-col"
+            >
+              <TableSkeleton label="Planning training…" />
+            </Panel>
+          ) : (
+            <TrainingWorkspace
+              key={`${snapshot.id}:${managedClub.clubName}`}
+              activeSaveId={snapshot.saveId}
+              disabled={squadBoostPending}
+            />
+          )}
         </div>
       ) : null}
     </div>

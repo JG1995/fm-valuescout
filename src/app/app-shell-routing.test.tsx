@@ -52,7 +52,7 @@ describe("app shell routing", () => {
     ).toBeNull();
   });
 
-  it("lists all nine grouped destinations with working targets", async () => {
+  it("lists all ten grouped destinations with working targets", async () => {
     renderWithProviders();
 
     const nav = await screen.findByRole("navigation", { name: "Primary" });
@@ -68,6 +68,7 @@ describe("app shell routing", () => {
       ["Squad", "/my-club?view=squad"],
       ["Planner", "/my-club?view=planner"],
       ["Tactic", "/my-club?view=tactic"],
+      ["Training", "/my-club?view=training"],
       ["Youth", "/academy"],
       ["Settings", "/settings"],
     ]);
@@ -84,6 +85,7 @@ describe("app shell routing", () => {
     ["/my-club", "Squad"],
     ["/my-club?view=planner", "Planner"],
     ["/my-club?view=tactic", "Tactic"],
+    ["/my-club?view=training", "Training"],
     ["/academy", "Youth"],
     ["/academy?view=graduates", "Youth"],
     ["/settings", "Settings"],
