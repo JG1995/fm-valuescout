@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-11-24
+
+### Changed
+
+- **Smoother navigation.** A screen now opens once, in its final layout. The main screens load in the background after the app starts and after Load Data and stay ready for 30 minutes, so most navigation shows no loading state. Where a screen still waits, a placeholder in the shape of its content holds the space, and nothing moves when the data arrives. A sort, filter, or column change keeps its table in place and dims the rows until the new order arrives. The page fades between screens, menus and pickers ease in, and a thin bar on the navigation shows when a screen takes more than a moment to open. The window opens dark with a dark title bar.
+- **Faster screens on large saves.** Squad, My Staff, the club picker, a player's Moneyball tab, Search sorted by a Moneyball Score, and the Dashboard's expiring contracts and prospects now read from indexes where they scanned the whole snapshot. On a save with 170,000 players, Squad and My Staff open in a few milliseconds, and a Moneyball sort in Search takes about half as long.
+- **Recommended signings are scored once.** The Dashboard scores them after your data, tactic, Planner, or shortlists change, and answers later visits and slot changes from that without scoring again. The scoring itself is two to three times faster in Moneyball mode.
+- **Portraits and crests stay loaded.** A table row that scrolls back into view shows its portrait and crest without loading them again.
+
+### Fixed
+
+- **A growing database log slowed every screen.** On Windows the app could not finish folding its write-ahead log into the database after Load Data or at exit, so the log kept growing, to 14 GB on one save, and every screen read through it. The app now finishes that step after each Load Data, at exit, and at start. The first start after this update takes a minute or two before the window opens, because the app folds in the old log and builds the new indexes once.
+
 ## [0.35.0] - 2026-11-24
 
 ### Added
