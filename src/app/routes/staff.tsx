@@ -12,22 +12,26 @@ import {
 } from "@tanstack/react-router";
 import { Suspense, useEffect, useMemo } from "react";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
+import { TableSkeleton } from "@/components/ui/skeleton/skeleton";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
-import {
-  managedClubOptionsQueryOptions,
-  managedClubQueryOptions,
-} from "@/features/managed-club/api/managed-club-query-options";
+import { managedClubQueryOptions } from "@/features/managed-club/api/managed-club-query-options";
+import type { ManagedClubStatus } from "@/features/managed-club/types/managed-club";
 import { plannerDepthQueryOptions } from "@/features/planner/api/planner-depth-query-options";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
+import type { PlannerDepth } from "@/features/planner/types/depth";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
-import {
-  staffMyStaffQueryOptions,
-  staffSearchQueryOptions,
-} from "@/features/staff/api/staff-query-options";
+import type { SaveSummary } from "@/features/snapshot/types/save";
+import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
+import { staffAssignmentTargetsQueryOptions } from "@/features/staff/api/staff-assignment-targets-query-options";
+import { staffSearchQueryOptions } from "@/features/staff/api/staff-query-options";
 import { StaffAssignmentOptimizer } from "@/features/staff/components/staff-assignment-optimizer";
-import { StaffSearchResultsPanel } from "@/features/staff/components/staff-search-results-panel";
+import {
+  type StaffResultsQueryParams,
+  StaffSearchResultsPanel,
+  staffResultsFirstPageOptions,
+} from "@/features/staff/components/staff-search-results-panel";
 import type { StaffAssignmentContext } from "@/features/staff/types/staff-assignment";
 import type { StaffFilterRule } from "@/features/staff/types/staff-filter-rule";
 import type {
@@ -41,6 +45,7 @@ import {
   isStaffSortDir,
   isStaffSortField,
 } from "@/features/staff/types/staff-sort";
+import type { StaffPage as StaffResultsPage } from "@/features/staff/types/staff-summary";
 import { staffShortlistPresentation } from "@/features/staff/utils/staff-shortlist-presentation";
 import {
   parseShortlistOnly,
@@ -50,6 +55,7 @@ import {
   staffFiltersForUrl,
 } from "@/features/staff/utils/staff-url-search";
 import { useIsRefetchingInvalidated } from "@/lib/use-is-refetching-invalidated";
+import { warmQuery } from "@/lib/warm-query";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import {
   shortlistFilterKey,
@@ -85,6 +91,139 @@ function normalizedStaffSort(
   return {
     sort,
     dir: isStaffSortDir(rawDir) ? rawDir : defaultDirForStaffSortField(sort),
+  };
+}
+
+type StaffPanelParams = Omit<StaffResultsQueryParams, "requestedFields">;
+
+function staffAssignmentContextFor(
+  activeSave: SaveSummary | undefined,
+  snapshot: SnapshotSummary | null | undefined,
+): StaffAssignmentContext | null {
+  return activeSave && snapshot && activeSave.id === snapshot.saveId
+    ? {
+        saveId: activeSave.id,
+        saveContextToken: activeSave.contextToken,
+        snapshotId: snapshot.id,
+        snapshotContextToken: snapshot.contextToken,
+      }
+    : null;
+}
+
+/** Whether the active save stores a staff shortlist, keyed by its context. */
+function staffShortlistProbeOptions(context: StaffAssignmentContext | null) {
+  return staffSearchQueryOptions(
+    0,
+    1,
+    "ca",
+    "desc",
+    [],
+    "and",
+    [],
+    true,
+    undefined,
+    false,
+    context,
+  );
+}
+
+/**
+ * A URL choice wins; otherwise the per-save choice, which defaults to whether
+ * the save stores a shortlist.
+ */
+function resolveStaffShortlistOnly(
+  routeShortlistOnly: boolean | undefined,
+  storedChoice: boolean | undefined,
+  context: StaffAssignmentContext | null,
+  shortlistPresent: boolean,
+) {
+  return (
+    (routeShortlistOnly ??
+      storedChoice ??
+      (context !== null && shortlistPresent)) === true
+  );
+}
+
+function storedStaffShortlistChoice(context: StaffAssignmentContext | null) {
+  return context === null
+    ? undefined
+    : useShortlistFilterStore.getState().choices[
+        shortlistFilterKey("staff", {
+          saveId: context.saveId,
+          contextToken: context.saveContextToken,
+        })
+      ];
+}
+
+// Load Data can re-read the shortlist without replacing the snapshot, so an
+// assignment result is also bound to who is shortlisted.
+function staffOptimizerContextKey(
+  activeSave: SaveSummary | undefined,
+  snapshot: SnapshotSummary | null | undefined,
+  managedClub: ManagedClubStatus | undefined,
+  depth: PlannerDepth | undefined,
+  shortlistProbe: StaffResultsPage,
+) {
+  const shortlistContextKey = `${activeSave?.id ?? "none"}:${activeSave?.contextToken ?? "none"}:${snapshot?.saveId ?? "none"}:${snapshot?.id ?? "none"}:${snapshot?.contextToken ?? "none"}`;
+  const staffAssignmentContextKey = `${shortlistContextKey}:${managedClub?.clubName ?? "none"}:${(depth?.teams ?? []).map((team) => `${team.team}:${team.displayName}`).join("|")}`;
+  return `${staffAssignmentContextKey}:${shortlistProbe.total}:${(shortlistProbe.preferredJobOptions ?? []).join("|")}`;
+}
+
+function effectiveShortlistSortFor(search: StaffSearch): {
+  sort: StaffSortField;
+  dir: StaffSortDir;
+} {
+  const {
+    preferredJob,
+    shortlistSort,
+    shortlistDir,
+    shortlistContextSort,
+    shortlistContextDir,
+  } = search;
+  const shortlistPresentation = staffShortlistPresentation(preferredJob);
+  if (!shortlistPresentation) return { sort: shortlistSort, dir: shortlistDir };
+  if (
+    shortlistContextSort &&
+    shortlistContextDir &&
+    shortlistPresentation.columnIds.includes(shortlistContextSort)
+  ) {
+    return { sort: shortlistContextSort, dir: shortlistContextDir };
+  }
+  if (shortlistPresentation.sort) {
+    return {
+      sort: shortlistPresentation.sort,
+      dir: shortlistPresentation.dir,
+    };
+  }
+  return shortlistPresentation.columnIds.includes(shortlistSort)
+    ? { sort: shortlistSort, dir: shortlistDir }
+    : { sort: "ca", dir: "desc" };
+}
+
+function staffSearchPanelParams(
+  search: StaffSearch,
+  shortlistOnly: boolean,
+): StaffPanelParams {
+  const shortlistSort = effectiveShortlistSortFor(search);
+  return {
+    sortBy: shortlistOnly ? shortlistSort.sort : search.sort,
+    sortDir: shortlistOnly ? shortlistSort.dir : search.dir,
+    filters: parseStaffFilters(search.filters),
+    filterCombine: search.combine,
+    shortlistOnly,
+    preferredJob: search.preferredJob,
+    unemployedOnly: search.unemployedOnly === true,
+  };
+}
+
+function myStaffPanelParams(search: StaffSearch): StaffPanelParams {
+  return {
+    sortBy: search.myStaffSort,
+    sortDir: search.myStaffDir,
+    filters: [],
+    filterCombine: "and",
+    shortlistOnly: false,
+    unemployedOnly: false,
   };
 }
 
@@ -174,85 +313,91 @@ export const Route = createFileRoute("/staff")({
       return;
     }
   },
-  loaderDeps: ({
-    search: {
-      view,
-      sort,
-      dir,
-      filters,
-      combine,
-      shortlistOnly,
-      preferredJob,
-      unemployedOnly,
-    },
-  }) => ({
-    view,
-    sort,
-    dir,
-    filters,
-    combine,
-    shortlistOnly,
-    preferredJob,
-    unemployedOnly,
-  }),
-  loader: ({
+  // Every search key, so the loader warms the page the panel will request.
+  loaderDeps: ({ search }) => search,
+  loader: async ({
     context: { queryClient },
-    deps: {
-      view,
-      sort,
-      dir,
-      filters,
-      combine,
-      shortlistOnly,
-      preferredJob,
-      unemployedOnly,
-    },
+    deps: search,
     location,
+    cause,
   }) => {
     const currentSnapshot = queryClient.ensureQueryData(
       currentSnapshotQueryOptions,
     );
     if (location.pathname !== "/staff") return currentSnapshot;
-    if (view === "my-staff") {
-      return Promise.all([
+    // The loader waits only for fast reads the first paint needs and starts
+    // the table's first page without waiting. A sort or filter change on the
+    // page ("stay") leaves that page to the panel, whose named request can
+    // supersede an older one.
+    const warmFirstPage = cause !== "stay";
+    if (search.view === "my-staff") {
+      if (warmFirstPage) {
+        warmQuery(
+          queryClient,
+          staffResultsFirstPageOptions("my-staff", myStaffPanelParams(search)),
+        );
+      }
+      await Promise.all([
         currentSnapshot,
         queryClient.ensureQueryData(managedClubQueryOptions),
-        queryClient.ensureQueryData(
-          staffMyStaffQueryOptions(0, undefined, sort, dir, []),
-        ),
       ]);
+      return;
     }
-    return Promise.all([
+    // The page reports a failed save, Managed Club, or Planner read itself.
+    const [snapshot, saves, managedClub, depth] = await Promise.all([
       currentSnapshot,
-      queryClient.prefetchQuery(managedClubQueryOptions),
-      queryClient.prefetchQuery(managedClubOptionsQueryOptions),
-      queryClient.prefetchQuery(plannerDepthQueryOptions),
-      queryClient.ensureQueryData(
-        staffSearchQueryOptions(
-          0,
-          undefined,
-          sort,
-          dir,
-          parseStaffFilters(filters),
-          combine,
-          [],
-          shortlistOnly === true,
-          preferredJob,
-          unemployedOnly,
-        ),
-      ),
+      queryClient.ensureQueryData(savesQueryOptions).catch(() => undefined),
+      queryClient
+        .ensureQueryData(managedClubQueryOptions)
+        .catch(() => undefined),
+      queryClient
+        .ensureQueryData(plannerDepthQueryOptions)
+        .catch(() => undefined),
     ]);
+    const activeSave = saves?.find((save) => save.isActive);
+    const context = staffAssignmentContextFor(activeSave, snapshot);
+    const shortlistProbe = await queryClient.ensureQueryData(
+      staffShortlistProbeOptions(context),
+    );
+    if (warmFirstPage) {
+      const shortlistOnly = resolveStaffShortlistOnly(
+        search.shortlistOnly,
+        storedStaffShortlistChoice(context),
+        context,
+        shortlistProbe.state === "ready",
+      );
+      warmQuery(
+        queryClient,
+        staffResultsFirstPageOptions(
+          "search",
+          staffSearchPanelParams(search, shortlistOnly),
+        ),
+      );
+    }
+    if (context) {
+      await queryClient
+        .ensureQueryData(
+          staffAssignmentTargetsQueryOptions(
+            context,
+            staffOptimizerContextKey(
+              activeSave,
+              snapshot,
+              managedClub,
+              depth,
+              shortlistProbe,
+            ),
+          ),
+        )
+        .catch(() => undefined);
+    }
   },
   component: StaffPage,
 });
 
 function StaffFallback() {
   return (
-    <div
-      className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant"
-      aria-busy="true"
-    >
-      Loading staff search…
+    <div className="flex min-h-40 flex-1 flex-col overflow-hidden rounded-lg border border-outline-variant bg-surface-container">
+      <TableSkeleton label="Loading staff search…" />
     </div>
   );
 }
@@ -317,19 +462,9 @@ function MyStaffContent() {
 }
 
 function StaffSearchContent() {
-  const {
-    sort,
-    dir,
-    filters: filterUrls,
-    combine,
-    shortlistOnly: routeShortlistOnly,
-    preferredJob: routePreferredJob,
-    unemployedOnly: routeUnemployedOnly,
-    shortlistSort,
-    shortlistDir,
-    shortlistContextSort,
-    shortlistContextDir,
-  } = Route.useSearch();
+  const search = Route.useSearch();
+  const { shortlistOnly: routeShortlistOnly, preferredJob: routePreferredJob } =
+    search;
   const navigate = Route.useNavigate();
   const router = useRouter();
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
@@ -340,47 +475,12 @@ function StaffSearchContent() {
   const depthQuery = useQuery(plannerDepthQueryOptions);
   const depth = depthQuery.data;
   const addColumns = usePlayerTableStore((state) => state.addColumns);
-  const filters = useMemo(() => parseStaffFilters(filterUrls), [filterUrls]);
-  const unemployedOnly = routeUnemployedOnly === true;
 
   const shortlistPresentation = staffShortlistPresentation(routePreferredJob);
-  const shortlistSortIsVisible =
-    !shortlistPresentation ||
-    shortlistPresentation.columnIds.includes(shortlistSort);
-  const shortlistContextSortIsVisible =
-    shortlistPresentation &&
-    shortlistContextSort &&
-    shortlistContextDir &&
-    shortlistPresentation.columnIds.includes(shortlistContextSort);
-  const effectiveShortlistSort = shortlistPresentation
-    ? shortlistContextSortIsVisible &&
-      shortlistContextSort &&
-      shortlistContextDir
-      ? {
-          sort: shortlistContextSort,
-          dir: shortlistContextDir,
-        }
-      : shortlistPresentation.sort
-        ? {
-            sort: shortlistPresentation.sort,
-            dir: shortlistPresentation.dir,
-          }
-        : shortlistSortIsVisible
-          ? { sort: shortlistSort, dir: shortlistDir }
-          : { sort: "ca", dir: "desc" as const }
-    : { sort: shortlistSort, dir: shortlistDir };
-
-  const shortlistContextKey = `${activeSave?.id ?? "none"}:${activeSave?.contextToken ?? "none"}:${snapshot?.saveId ?? "none"}:${snapshot?.id ?? "none"}:${snapshot?.contextToken ?? "none"}`;
-  const staffAssignmentContext: StaffAssignmentContext | null =
-    activeSave && snapshot && activeSave.id === snapshot.saveId
-      ? {
-          saveId: activeSave.id,
-          saveContextToken: activeSave.contextToken,
-          snapshotId: snapshot.id,
-          snapshotContextToken: snapshot.contextToken,
-        }
-      : null;
-  const staffAssignmentContextKey = `${shortlistContextKey}:${managedClub?.clubName ?? "none"}:${(depth?.teams ?? []).map((team) => `${team.team}:${team.displayName}`).join("|")}`;
+  const staffAssignmentContext = staffAssignmentContextFor(
+    activeSave,
+    snapshot,
+  );
   const isPlannerRefreshing = useIsRefetchingInvalidated(plannerKeys.all);
   const isSnapshotRefreshing = useIsRefetchingInvalidated(snapshotKeys.all);
   const isSavesRefreshing = useIsRefetchingInvalidated(snapshotKeys.saves());
@@ -403,19 +503,7 @@ function StaffSearchContent() {
     isPlayerResultContextMutating;
 
   const { data: shortlistOptionsPage } = useSuspenseQuery(
-    staffSearchQueryOptions(
-      0,
-      1,
-      "ca",
-      "desc",
-      [],
-      "and",
-      [],
-      true,
-      undefined,
-      false,
-      staffAssignmentContext,
-    ),
+    staffShortlistProbeOptions(staffAssignmentContext),
   );
   // The shortlist probe reports `state` per active save: `ready` only when
   // the save stores shortlist entries (stored-but-zero-current-match stays
@@ -427,9 +515,13 @@ function StaffSearchContent() {
   const staffSaveContextToken =
     staffAssignmentContext?.saveContextToken ?? null;
   const shortlistPresent = shortlistOptionsPage.state === "ready";
-  // Load Data can re-read the shortlist without replacing the snapshot, so an assignment
-  // result is also bound to who is shortlisted.
-  const optimizerContextKey = `${staffAssignmentContextKey}:${shortlistOptionsPage.total}:${(shortlistOptionsPage.preferredJobOptions ?? []).join("|")}`;
+  const optimizerContextKey = staffOptimizerContextKey(
+    activeSave,
+    snapshot,
+    managedClub,
+    depth,
+    shortlistOptionsPage,
+  );
   const shortlistChoice = useShortlistFilterStore((state) =>
     staffSaveId === null || staffSaveContextToken === null
       ? undefined
@@ -452,7 +544,18 @@ function StaffSearchContent() {
         shortlistPresent,
       );
   }, [staffSaveId, staffSaveContextToken, shortlistPresent]);
-  const shortlistOnly = (routeShortlistOnly ?? shortlistChoice) === true;
+  // Before the effect above stores the default, the presence it will store
+  // already decides the first paint.
+  const shortlistOnly = resolveStaffShortlistOnly(
+    routeShortlistOnly,
+    shortlistChoice,
+    staffAssignmentContext,
+    shortlistPresent,
+  );
+  const panelParams = useMemo(
+    () => staffSearchPanelParams(search, shortlistOnly),
+    [search, shortlistOnly],
+  );
 
   const updateSearch = (
     patch: Partial<{
@@ -566,15 +669,15 @@ function StaffSearchContent() {
           <Suspense fallback={<StaffFallback />}>
             <StaffSearchResultsPanel
               activeSnapshotId={snapshot?.id ?? null}
-              sortBy={shortlistOnly ? effectiveShortlistSort.sort : sort}
-              sortDir={shortlistOnly ? effectiveShortlistSort.dir : dir}
-              filters={filters}
-              filterCombine={combine}
-              preferredJob={routePreferredJob}
+              sortBy={panelParams.sortBy}
+              sortDir={panelParams.sortDir}
+              filters={panelParams.filters}
+              filterCombine={panelParams.filterCombine}
+              preferredJob={panelParams.preferredJob}
               preferredJobOptions={
                 shortlistOptionsPage.preferredJobOptions ?? []
               }
-              unemployedOnly={unemployedOnly}
+              unemployedOnly={panelParams.unemployedOnly}
               shortlistOnly={shortlistOnly}
               onSortChange={
                 shortlistOnly

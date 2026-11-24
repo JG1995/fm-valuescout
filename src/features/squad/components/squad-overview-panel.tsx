@@ -24,6 +24,7 @@ import {
   TABLE_TEXT_CELL_CLASS as TEXT_CELL,
 } from "@/components/player-table/table-cells";
 import type { TableGroupInput } from "@/components/player-table/table-groups";
+import { TablePendingStatus } from "@/components/player-table/table-pending-status";
 import { TableToolbar } from "@/components/player-table/table-toolbar";
 import {
   type ConfigurableTableIdentity,
@@ -32,6 +33,7 @@ import {
 } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { Skeleton, TableSkeleton } from "@/components/ui/skeleton/skeleton";
 import {
   isIdentityColumnId,
   usePlayerTableStore,
@@ -54,6 +56,7 @@ import {
 import {
   getSquadTableMetric,
   SQUAD_HEADER_METRICS,
+  squadRequestedFields,
 } from "../utils/squad-columns";
 
 type BasicSquadSortField = (typeof SQUAD_SORT_FIELDS)[number];
@@ -85,6 +88,18 @@ function SquadFeedbackSlot({
       className="flex min-h-6 shrink-0 items-center px-4 text-body-sm break-words focus:outline-2 focus:outline-offset-[-2px] focus:outline-primary"
     >
       <div className="min-w-0 max-w-full">{feedback}</div>
+    </div>
+  );
+}
+
+/** Holds the "N players · sorted by" line's height while the first page loads. */
+function SquadSummarySkeleton() {
+  return (
+    <div
+      aria-hidden="true"
+      className="flex h-[1lh] animate-enter-late items-center"
+    >
+      <Skeleton className="h-3 w-56" />
     </div>
   );
 }
@@ -485,16 +500,8 @@ export function SquadOverviewPanel({
     [layout],
   );
   const requestedFields = useMemo(
-    () =>
-      columns
-        .filter(
-          (column) =>
-            !(SQUAD_SORT_FIELDS as readonly string[]).includes(column.id) &&
-            column.id !== SUGGESTED_TRAINING_COLUMN_ID,
-        )
-        .map((column) => column.id)
-        .sort(),
-    [columns],
+    () => squadRequestedFields(layout.columnIds),
+    [layout.columnIds],
   );
   const requested = useMemo(
     () => ({ sortBy, sortDir, requestedFields, pageContext }),
@@ -585,16 +592,13 @@ export function SquadOverviewPanel({
         </button>
       </div>
     ) : (
-      <p
-        className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
-        role="status"
-      >
+      <TablePendingStatus>
         {replacementKind === "columns"
           ? "Loading columns…"
           : requested.sortBy.startsWith("potential_role.")
             ? "Calculating and sorting…"
             : "Sorting…"}
-      </p>
+      </TablePendingStatus>
     );
 
   useEffect(() => {
@@ -679,31 +683,38 @@ export function SquadOverviewPanel({
     requestMatchesCommitted || isRetainedReplacement
       ? committedQuery.data
       : undefined;
-  if (!page) {
+  if (!page && requestedQuery.isError) {
     return (
       <Panel actions={actions} flush>
         <SquadFeedbackSlot feedback={feedback} feedbackRef={feedbackRef} />
         {renderToolbar()}
         <EmptyState
           icon={UsersRound}
-          title={
-            requestedQuery.isError ? "Could not load squad" : "Loading squad"
-          }
+          title="Could not load squad"
           action={
-            requestedQuery.isError ? (
-              <button
-                type="button"
-                onClick={() => void requestedQuery.refetch()}
-              >
-                Retry
-              </button>
-            ) : undefined
+            <button type="button" onClick={() => void requestedQuery.refetch()}>
+              Retry
+            </button>
           }
         >
-          {requestedQuery.isError
-            ? requestedQuery.error.message
-            : "Loading squad overview…"}
+          {requestedQuery.error.message}
         </EmptyState>
+      </Panel>
+    );
+  }
+
+  if (!page) {
+    // The full-height table's box, so the rows replace the placeholder in place.
+    return (
+      <Panel
+        actions={actions}
+        flush
+        className="flex min-h-0 flex-1 flex-col"
+        contentClassName="flex min-h-0 flex-1 flex-col"
+      >
+        <SquadFeedbackSlot feedback={feedback} feedbackRef={feedbackRef} />
+        {renderToolbar(<SquadSummarySkeleton />)}
+        <TableSkeleton label="Loading squad overview…" />
       </Panel>
     );
   }
@@ -742,23 +753,25 @@ export function SquadOverviewPanel({
         </p>,
       )}
       {replacementFeedback}
-      <SquadOverviewTable
-        total={page.total}
-        sortBy={committed.sortBy}
-        sortDir={committed.sortDir}
-        columns={columns}
-        identity={identity}
-        requestedFields={committed.requestedFields}
-        pageContext={committed.pageContext}
-        firstPageQueryOptions={committedOptions}
-        isReplacementActive={isReplacementActive}
-        unresolvedFieldIds={unresolvedFieldIds}
-        onSortChange={onSortChange}
-        onAddColumn={addColumn}
-        onRemoveColumn={removeColumn}
-        onMoveColumn={moveColumn}
-        onResizeColumn={resizeColumn}
-      />
+      <div className="flex min-h-0 flex-1 animate-enter flex-col">
+        <SquadOverviewTable
+          total={page.total}
+          sortBy={committed.sortBy}
+          sortDir={committed.sortDir}
+          columns={columns}
+          identity={identity}
+          requestedFields={committed.requestedFields}
+          pageContext={committed.pageContext}
+          firstPageQueryOptions={committedOptions}
+          isReplacementActive={isReplacementActive}
+          unresolvedFieldIds={unresolvedFieldIds}
+          onSortChange={onSortChange}
+          onAddColumn={addColumn}
+          onRemoveColumn={removeColumn}
+          onMoveColumn={moveColumn}
+          onResizeColumn={resizeColumn}
+        />
+      </div>
     </Panel>
   );
 }

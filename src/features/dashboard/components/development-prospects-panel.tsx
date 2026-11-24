@@ -20,6 +20,7 @@ import {
   dashboardPanelClass,
   dashboardPanelContentClass,
 } from "./dashboard-grid";
+import { CardPanelSkeleton } from "./dashboard-skeletons";
 import { Gain } from "./dashboard-table";
 import { expandablePanelClass, PanelExpandButton } from "./panel-expand-button";
 import {
@@ -134,9 +135,7 @@ export function DevelopmentProspectsPanel({
             {query.error.message}
           </EmptyState>
         ) : query.isPending ? (
-          <p className="p-4 text-body-md text-on-surface-variant" role="status">
-            Loading development prospects…
-          </p>
+          <CardPanelSkeleton label="Loading development prospects…" />
         ) : prospects === null || prospects.players.length === 0 ? (
           <div className="flex flex-1 items-center justify-center overflow-y-auto">
             <EmptyState

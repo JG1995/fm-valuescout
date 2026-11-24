@@ -6,12 +6,13 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DatabaseZap, RefreshCw } from "lucide-react";
-import { Suspense, useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { clearPlayerResultContext } from "@/app/player-result-context";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { TableSkeleton } from "@/components/ui/skeleton/skeleton";
 import { dashboardKeys } from "@/features/dashboard/api/dashboard-keys";
 import { GraphicsImage } from "@/features/graphics/components/graphics-image";
 import { managedClubQueryOptions } from "@/features/managed-club/api/managed-club-query-options";
@@ -21,9 +22,12 @@ import {
 } from "@/features/memory-read/api/refresh-season-stats";
 import { seasonStatsCopy } from "@/features/memory-read/components/load-data-outcome";
 import { loadDataMutationKey } from "@/features/memory-read/hooks/use-load-data";
+import { leagueAdjustmentQueryOptions } from "@/features/moneyball/api/league-adjustment-query-options";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import { MoneyballLeagueToggle } from "@/features/moneyball/components/moneyball-league-toggle";
 import { MoneyballStatsAsOf } from "@/features/moneyball/components/moneyball-profile-panel";
+import { plannerTacticOptionsQueryOptions } from "@/features/planner/api/planner-tactic-options-query-options";
+import { plannerTacticQueryOptions } from "@/features/planner/api/planner-tactic-query-options";
 import type { TacticContextBoundaryState } from "@/features/planner/components/tactic-context-boundary";
 import { TacticContextBoundary } from "@/features/planner/components/tactic-context-boundary";
 import type {
@@ -37,6 +41,10 @@ import {
 } from "@/features/planner/utils/tactic-editor";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
+import {
+  searchFirstPageQueryOptions,
+  searchRequestedFields,
+} from "@/features/search/api/search-players-query-options";
 import { RealisticSigningsToggle } from "@/features/search/components/realistic-signings-toggle";
 import {
   SavedFiltersControl,
@@ -82,6 +90,8 @@ import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-sna
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { staffKeys } from "@/features/staff/api/staff-keys";
+import { useIsRefetchingInvalidated } from "@/lib/use-is-refetching-invalidated";
+import { warmQuery } from "@/lib/warm-query";
 import {
   playerShortlistSelectionKey,
   usePlayerShortlistSelectionStore,
@@ -196,23 +206,80 @@ export const Route = createFileRoute("/search")({
     combine,
     comparison: comparison ?? "own",
   }),
-  loader: ({ context: { queryClient } }) =>
-    Promise.all([
+  loader: async ({ context: { queryClient }, deps, cause }) => {
+    const [snapshot, saves] = await Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(savesQueryOptions),
-    ]),
+    ]);
+    const activeSave = saves.find((save) => save.isActive);
+    if (!snapshot || !activeSave || snapshot.saveId !== activeSave.id) {
+      return;
+    }
+    const context = {
+      saveId: activeSave.id,
+      contextToken: activeSave.contextToken,
+    };
+    // A sort, filter, or comparison change on the open page is the table's
+    // own named request, which a newer one may supersede; only arriving at
+    // the page warms its first page.
+    if (cause !== "stay") {
+      warmQuery(
+        queryClient,
+        searchFirstPageQueryOptions({
+          sortBy: deps.sort,
+          sortDir: deps.dir,
+          filters: parseSearchFilters(deps.filters),
+          filterCombine: deps.combine,
+          requestedFields: searchRequestedFields(
+            usePlayerTableStore.getState().layouts[TABLE_ID].columnIds,
+          ),
+          comparison: deps.comparison,
+          shortlistId: selectedShortlistId(
+            usePlayerShortlistSelectionStore.getState().selections[
+              playerShortlistSelectionKey(context)
+            ],
+            activeSave.playerShortlists,
+          ),
+          pageContext: {
+            activeSave: {
+              id: activeSave.id,
+              contextToken: context.contextToken,
+            },
+            currentSnapshot: { id: snapshot.id, saveId: snapshot.saveId },
+          },
+        }),
+      );
+    }
+    // The tactic enables the Add Tactic controls and the score setting shows
+    // in the toolbar; each reports its own failure in place.
+    await Promise.all([
+      queryClient
+        .ensureQueryData(leagueAdjustmentQueryOptions)
+        .catch(() => undefined),
+      queryClient
+        .ensureQueryData(plannerTacticQueryOptions(context))
+        .catch(() => undefined),
+      queryClient
+        .ensureQueryData(plannerTacticOptionsQueryOptions(context))
+        .catch(() => undefined),
+    ]);
+  },
   component: SearchPage,
 });
 
-function PanelFallback() {
-  return (
-    <>
-      <h1 className="text-headline-md text-on-surface">Player Search</h1>
-      <div className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
-        Loading search results…
-      </div>
-    </>
-  );
+/**
+ * The shortlist that restricts the results: the stored selection while the
+ * save still lists it. A shortlist emptied in FM before the last read selects
+ * nothing.
+ */
+function selectedShortlistId(
+  storedShortlistId: number | undefined,
+  shortlists: readonly { id: number }[],
+): number | null {
+  return storedShortlistId !== undefined &&
+    shortlists.some((shortlist) => shortlist.id === storedShortlistId)
+    ? storedShortlistId
+    : null;
 }
 
 function tacticLaneLabels(
@@ -333,10 +400,18 @@ function SearchPageContent() {
   const managedClub = useQuery(managedClubQueryOptions).data;
   const snapshot = snapshotQuery.data;
   const activeSave = savesQuery.data?.find((save) => save.isActive);
+  // A refetch of merely stale data returns the same context, so only an
+  // invalidated or first read hides the results.
+  const isSnapshotRefreshing = useIsRefetchingInvalidated(
+    snapshotKeys.current(),
+  );
+  const isSavesRefreshing = useIsRefetchingInvalidated(snapshotKeys.saves());
   const isResultContextChanging =
     useIsMutating({ mutationKey: playerResultContextMutationKey }) > 0 ||
-    snapshotQuery.isFetching ||
-    savesQuery.isFetching ||
+    isSnapshotRefreshing ||
+    isSavesRefreshing ||
+    snapshotQuery.isLoading ||
+    savesQuery.isLoading ||
     snapshotQuery.isError ||
     savesQuery.isError;
   const queryClient = useQueryClient();
@@ -381,13 +456,7 @@ function SearchPageContent() {
           })
         ],
   );
-  // A stored shortlist the save no longer lists, such as one emptied in FM
-  // before the last read, selects nothing.
-  const shortlistId =
-    storedShortlistId !== undefined &&
-    shortlists.some((shortlist) => shortlist.id === storedShortlistId)
-      ? storedShortlistId
-      : null;
+  const shortlistId = selectedShortlistId(storedShortlistId, shortlists);
   const layout = usePlayerTableStore((state) => state.layouts[TABLE_ID]);
   const navigate = Route.useNavigate();
   // A legacy shortlist URL opens Search with no shortlist selected; the URL
@@ -668,6 +737,7 @@ function SearchPageContent() {
 
     let tacticMessage: string | null = null;
     let tacticMessageIsError = false;
+    let tacticIsLoading = false;
     let retryTactic: (() => void) | null = null;
     if (!activeSave) {
       tacticMessage =
@@ -675,13 +745,13 @@ function SearchPageContent() {
     } else if (!resultContext) {
       tacticMessage = "No snapshot loaded: use Load Data";
     } else if (isResultContextChanging || tacticState?.isPending) {
-      tacticMessage = "Loading tactic…";
+      tacticIsLoading = true;
     } else if (tacticState?.initialError) {
       tacticMessage = "Could not load tactic";
       tacticMessageIsError = true;
       retryTactic = tacticState.retryBoth;
     } else if (!tactic || !options) {
-      tacticMessage = "Loading tactic…";
+      tacticIsLoading = true;
     } else if (validationError) {
       tacticMessage = validationError;
       tacticMessageIsError = true;
@@ -792,6 +862,13 @@ function SearchPageContent() {
             datasetToggles={usesSeasonStats ? comparisonControl : undefined}
           />
         )}
+        {tacticIsLoading ? (
+          // Only a context change still loads the tactic here. The disabled
+          // Add Tactic controls show it; a visible line would move the page.
+          <p role="status" className="sr-only">
+            Loading tactic…
+          </p>
+        ) : null}
         {tacticMessage ? (
           <div
             className={`flex items-center justify-between gap-3 text-body-sm ${tacticMessageIsError ? "text-error" : "text-on-surface-variant"}`}
@@ -807,10 +884,12 @@ function SearchPageContent() {
         ) : null}
         <div className="flex min-h-0 flex-1 flex-col">
           {isResultContextChanging ? (
-            <Panel flush>
-              <p className="p-4 text-body-md text-on-surface-variant">
-                Loading player results…
-              </p>
+            <Panel
+              flush
+              className="flex min-h-0 flex-1 flex-col"
+              contentClassName="flex min-h-0 flex-1 flex-col"
+            >
+              <TableSkeleton label="Loading player results…" />
             </Panel>
           ) : resultContext ? (
             <SearchResultsPanel
@@ -885,9 +964,7 @@ function SearchPageContent() {
 function SearchPage() {
   return (
     <div className="flex h-full min-w-0 flex-col gap-gutter">
-      <Suspense fallback={<PanelFallback />}>
-        <SearchPageContent />
-      </Suspense>
+      <SearchPageContent />
     </div>
   );
 }

@@ -5,6 +5,14 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FM ValueScout</title>
+    <!-- Paints the app background before the stylesheet loads, so the window
+         never opens white. Mirrors `background` in src/styles/global.css. -->
+    <style>
+      html {
+        background-color: #0f151d;
+        color-scheme: dark;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

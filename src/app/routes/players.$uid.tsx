@@ -1,5 +1,6 @@
 import {
   useMutation,
+  useQuery,
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
@@ -8,12 +9,14 @@ import { DatabaseZap, Shield, UserX } from "lucide-react";
 import { type ReactNode, Suspense, useEffect, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { LoadingRegion, Skeleton } from "@/components/ui/skeleton/skeleton";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { GraphicsImage } from "@/features/graphics/components/graphics-image";
 import { getPlayerMoneyballQueryOptions } from "@/features/moneyball/api/get-player-moneyball-query-options";
 import { MoneyballProfilePanel } from "@/features/moneyball/components/moneyball-profile-panel";
 import { MoneyballRoleFitPanel } from "@/features/moneyball/components/moneyball-role-fit-panel";
 import { MoneyballRoleSummary } from "@/features/moneyball/components/moneyball-role-summary";
+import type { MoneyballProfile } from "@/features/moneyball/types/moneyball-profile";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { boostCurrentAbility } from "@/features/player-profile/api/boost-current-ability";
 import { boostWonderkidMentality } from "@/features/player-profile/api/boost-wonderkid-mentality";
@@ -48,6 +51,7 @@ import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-sna
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { staffKeys } from "@/features/staff/api/staff-keys";
+import { warmQuery } from "@/lib/warm-query";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { cn } from "@/utils/cn";
 
@@ -96,30 +100,18 @@ export const Route = createFileRoute("/players/$uid")({
     if (uid === null) {
       return queryClient.ensureQueryData(currentSnapshotQueryOptions);
     }
-    const queries: Promise<unknown>[] = [
+    // The Moneyball profile takes up to a second; its section shows a
+    // placeholder until it arrives.
+    if (section === "moneyball") {
+      warmQuery(queryClient, getPlayerMoneyballQueryOptions(uid));
+    }
+    return Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(getPlayerQueryOptions(uid)),
-    ];
-    if (section === "moneyball") {
-      queries.push(
-        queryClient.ensureQueryData(getPlayerMoneyballQueryOptions(uid)),
-      );
-    }
-    return Promise.all(queries);
+    ]);
   },
   component: PlayerProfileRoute,
 });
-
-function SkeletonBar({ className }: { className?: string }) {
-  return (
-    <div
-      className={cn(
-        "rounded-sm bg-surface-container-high motion-safe:animate-[pulse_1.5s_ease-in-out_infinite]",
-        className,
-      )}
-    />
-  );
-}
 
 const SKELETON_SLOTS = ["s1", "s2", "s3", "s4", "s5", "s6"] as const;
 
@@ -134,38 +126,38 @@ function ProfileFallback() {
       <section className="grid gap-4 rounded-lg border border-outline-variant bg-surface-container p-4 lg:grid-cols-3">
         {SKELETON_SLOTS.slice(0, 3).map((slot) => (
           <div key={slot} className="space-y-3">
-            <SkeletonBar className="h-6 w-36" />
-            <SkeletonBar className="h-4 w-full" />
-            <SkeletonBar className="h-4 w-4/5" />
+            <Skeleton className="h-6 w-36" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-4/5" />
           </div>
         ))}
       </section>
       <div className={profileWorkspaceClassName()}>
         <Panel title="Attributes">
-          <SkeletonBar className="mb-4 h-8 w-full rounded-full" />
+          <Skeleton className="mb-4 h-8 w-full rounded-full" />
           <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-3">
             {SKELETON_SLOTS.map((slot) => (
               <div
                 key={slot}
                 className="flex min-h-9 items-center justify-between"
               >
-                <SkeletonBar className="h-4 w-24" />
-                <SkeletonBar className="h-6 w-16" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-6 w-16" />
               </div>
             ))}
           </div>
         </Panel>
         <Panel title="Role fit">
           <div className="grid gap-4 sm:grid-cols-[minmax(180px,0.8fr)_minmax(240px,1.2fr)]">
-            <SkeletonBar className="min-h-80 w-full rounded-lg" />
+            <Skeleton className="min-h-80 w-full rounded-lg" />
             <div className="space-y-3">
               {SKELETON_SLOTS.map((slot) => (
                 <div
                   key={slot}
                   className="flex min-h-12 items-center justify-between gap-3"
                 >
-                  <SkeletonBar className="h-4 w-36" />
-                  <SkeletonBar className="h-7 w-20 rounded-full" />
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-7 w-20 rounded-full" />
                 </div>
               ))}
             </div>
@@ -296,6 +288,48 @@ function GeneralPlayerProfile({
   );
 }
 
+const MONEYBALL_PLACEHOLDER_ROWS = ["m1", "m2", "m3", "m4", "m5", "m6"];
+
+/**
+ * The Moneyball section's two columns while the profile loads: the summaries
+ * and stats panel on the left, the role fit panel on the right.
+ */
+function MoneyballSectionPlaceholder() {
+  return (
+    <LoadingRegion
+      label="Loading Moneyball profile…"
+      className="flex min-h-0 min-w-0 flex-col gap-gutter lg:col-span-2"
+    >
+      <div
+        aria-hidden="true"
+        className="grid min-h-0 flex-1 gap-gutter lg:grid-cols-[minmax(0,0.95fr)_minmax(500px,1.05fr)]"
+      >
+        <div className="grid min-h-0 min-w-0 gap-gutter lg:grid-rows-[auto_minmax(0,1fr)]">
+          <div className="space-y-3 rounded-lg border border-outline-variant bg-surface-container px-4 py-3">
+            <Skeleton className="h-6 w-56" />
+            <div className="grid grid-cols-2 gap-3">
+              <Skeleton className="h-12" />
+              <Skeleton className="h-12" />
+            </div>
+          </div>
+          <div className="space-y-3 overflow-hidden rounded-lg border border-outline-variant bg-surface-container p-4">
+            <Skeleton className="h-6 w-32" />
+            {MONEYBALL_PLACEHOLDER_ROWS.map((row) => (
+              <Skeleton key={row} className="h-8 w-full" />
+            ))}
+          </div>
+        </div>
+        <div className="space-y-3 overflow-hidden rounded-lg border border-outline-variant bg-surface-container p-4">
+          <Skeleton className="h-6 w-48" />
+          {MONEYBALL_PLACEHOLDER_ROWS.map((row) => (
+            <Skeleton key={row} className="h-10 w-full" />
+          ))}
+        </div>
+      </div>
+    </LoadingRegion>
+  );
+}
+
 function MoneyballPlayerProfile({
   uid,
   player,
@@ -311,12 +345,14 @@ function MoneyballPlayerProfile({
   restoreAnalysisFocus: boolean;
   onAnalysisFocusRestored: () => void;
 }) {
-  const { data: profile } = useSuspenseQuery(
-    getPlayerMoneyballQueryOptions(uid),
-  );
+  const profileQuery = useQuery(getPlayerMoneyballQueryOptions(uid));
+  const profile: MoneyballProfile | null | undefined = profileQuery.data;
+  // A failed first read reaches the route's error boundary, as it did when
+  // the loader waited for it.
+  if (profileQuery.isError && profile === undefined) throw profileQuery.error;
 
-  if (!profile) return <PlayerNotFound />;
-  const readyProfile = profile.state === "ready" ? profile : null;
+  if (profile === null) return <PlayerNotFound />;
+  const readyProfile = profile?.state === "ready" ? profile : null;
 
   return (
     <div className="flex min-h-0 flex-col gap-gutter lg:h-full lg:overflow-hidden">
@@ -328,34 +364,43 @@ function MoneyballPlayerProfile({
         onFocusRestored={onAnalysisFocusRestored}
       />
       <div
+        // The panel mounts again once the profile replaces the placeholder,
+        // so the profile fades in once.
+        key={profile === undefined ? "loading" : "ready"}
         id="player-analysis-panel"
         role="tabpanel"
         aria-labelledby="player-analysis-tab-moneyball"
-        className="grid min-h-0 min-w-0 flex-1 gap-gutter lg:h-0 lg:grid-cols-[minmax(0,0.95fr)_minmax(500px,1.05fr)] [&>*]:min-h-0"
+        className="grid min-h-0 min-w-0 flex-1 animate-enter gap-gutter lg:h-0 lg:grid-cols-[minmax(0,0.95fr)_minmax(500px,1.05fr)] [&>*]:min-h-0"
       >
-        <div
-          data-testid="moneyball-primary-column"
-          className="grid min-h-0 min-w-0 gap-gutter lg:grid-rows-[auto_minmax(0,1fr)]"
-        >
-          <MoneyballRoleSummary
-            positions={player.positions}
-            roleScores={readyProfile?.roleScores ?? null}
-          />
-          <MoneyballProfilePanel
-            profile={profile}
-            moneyballStatsGameDate={snapshot.moneyballStatsGameDate}
-            snapshotGameDate={snapshot.gameDate}
-          />
-        </div>
-        {readyProfile ? (
-          <MoneyballRoleFitPanel
-            key={player.uid}
-            positions={player.positions}
-            roleScores={readyProfile.roleScores}
-            catalogVersion={readyProfile.roleCatalogVersion}
-            leagueAdjustment={readyProfile.leagueAdjustment}
-          />
-        ) : null}
+        {profile === undefined ? (
+          <MoneyballSectionPlaceholder />
+        ) : (
+          <>
+            <div
+              data-testid="moneyball-primary-column"
+              className="grid min-h-0 min-w-0 gap-gutter lg:grid-rows-[auto_minmax(0,1fr)]"
+            >
+              <MoneyballRoleSummary
+                positions={player.positions}
+                roleScores={readyProfile?.roleScores ?? null}
+              />
+              <MoneyballProfilePanel
+                profile={profile}
+                moneyballStatsGameDate={snapshot.moneyballStatsGameDate}
+                snapshotGameDate={snapshot.gameDate}
+              />
+            </div>
+            {readyProfile ? (
+              <MoneyballRoleFitPanel
+                key={player.uid}
+                positions={player.positions}
+                roleScores={readyProfile.roleScores}
+                catalogVersion={readyProfile.roleCatalogVersion}
+                leagueAdjustment={readyProfile.leagueAdjustment}
+              />
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );

@@ -6526,6 +6526,47 @@ test.describe("application smoke", () => {
     });
   }
 
+  test("a pending sort keeps the Search table in place", async ({ page }) => {
+    await stubTauriIpc(page, {
+      playerTableRowCount: 24,
+      squadOverview: true,
+      snapshotHistory: true,
+    });
+    await page.goto("/search");
+    const scroller = page.getByTestId("search-results-scroller");
+    await expect(scroller.getByText("Player 001")).toBeVisible();
+    const before = await scroller.boundingBox();
+    await page.evaluate(`(() => {
+      const original = window.__TAURI_INTERNALS__.invoke;
+      let held = true;
+      const waiting = [];
+      window.__releaseSort = () => { held = false; waiting.forEach(resolve => resolve()); };
+      window.__TAURI_INTERNALS__.invoke = async (cmd, args) => {
+        if (held && cmd === "search_players") await new Promise(resolve => waiting.push(resolve));
+        return original(cmd, args);
+      };
+    })()`);
+
+    await scroller
+      .getByRole("columnheader", { name: /PA/ })
+      .getByRole("button")
+      .first()
+      .click();
+
+    // The status floats over the rows it is about to replace; it takes no
+    // line of its own, so the table neither moves nor shrinks.
+    const status = page
+      .getByRole("main")
+      .getByText("Sorting…", { exact: true });
+    await expect(status).toBeVisible();
+    await expect(scroller.getByText("Player 001")).toBeVisible();
+    expect(await scroller.boundingBox()).toEqual(before);
+
+    await page.evaluate("window.__releaseSort()");
+    await expect(status).toHaveCount(0);
+    expect(await scroller.boundingBox()).toEqual(before);
+  });
+
   for (const [destination, command] of [
     ["Staff Search", "search_staff"],
     ["Youth", "list_academy_classes"],

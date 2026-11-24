@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import {
   CircleAlert,
   ListPlus,
+  Maximize2,
   Target,
   UserRoundCheck,
   UserRoundSearch,
@@ -31,6 +32,7 @@ import {
   dashboardPanelClass,
   dashboardPanelContentClass,
 } from "./dashboard-grid";
+import { CardPanelSkeleton, StartingXiSkeleton } from "./dashboard-skeletons";
 import {
   aboveExpandClass,
   expandablePanelClass,
@@ -448,6 +450,19 @@ export function SigningsWorkspace({
         <PanelExpandButton onClick={() => setSlotsOpen(true)}>
           Best per slot
         </PanelExpandButton>
+      ) : query.isPending ? (
+        // Holds the button's width so the controls beside it stay put when
+        // the first read arrives.
+        <Button
+          variant="secondary"
+          icon={Maximize2}
+          aria-hidden="true"
+          tabIndex={-1}
+          disabled
+          className="invisible"
+        >
+          Best per slot
+        </Button>
       ) : null}
     </>
   );
@@ -482,9 +497,7 @@ export function SigningsWorkspace({
             {query.error.message}
           </EmptyState>
         ) : query.isPending ? (
-          <p className="p-4 text-body-md text-on-surface-variant" role="status">
-            Loading recommended signings…
-          </p>
+          <CardPanelSkeleton label="Loading recommended signings…" />
         ) : signings === null ? (
           <EmptyState icon={CircleAlert} title="No squad to compare">
             The active save has no current snapshot for your managed club.
@@ -572,9 +585,7 @@ export function SigningsWorkspace({
             The starting XI could not be loaded.
           </p>
         ) : query.isPending ? (
-          <p className="p-4 text-body-md text-on-surface-variant" role="status">
-            Loading starting XI…
-          </p>
+          <StartingXiSkeleton label="Loading starting XI…" />
         ) : signings === null || !signings.scoresAvailable ? (
           <p className="p-4 text-body-md text-on-surface-variant">
             {signings === null
@@ -582,7 +593,7 @@ export function SigningsWorkspace({
               : "Moneyball scores need season stats from your linked FM save."}
           </p>
         ) : (
-          <>
+          <div className="flex min-h-0 flex-1 animate-enter flex-col">
             <StartingXiList
               slots={signings.slots}
               selectedLaneId={laneId}
@@ -609,7 +620,7 @@ export function SigningsWorkspace({
                 </p>
               ) : null}
             </div>
-          </>
+          </div>
         )}
       </Panel>
       {signings ? (

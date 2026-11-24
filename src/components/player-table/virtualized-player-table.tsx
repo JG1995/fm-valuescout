@@ -464,7 +464,15 @@ export function ConfigurableVirtualizedTable<
             ))}
           </colgroup>
           {thead}
-          <tbody>
+          <tbody
+            // Rows a sort, filter, or column change is about to replace dim
+            // once the change has taken 150ms; a quick one never dims them.
+            className={
+              isReplacementActive
+                ? "opacity-60 transition-opacity delay-150 duration-150 ease-out"
+                : undefined
+            }
+          >
             {paddingTop > 0 ? (
               <tr>
                 <td

@@ -53,6 +53,37 @@ function valueOrDefault<T>(value: T | undefined, fallback: T): T {
   return value === undefined ? fallback : value;
 }
 
+type IpcCall = { cmd: string; args?: Record<string, unknown> };
+
+/**
+ * Records every IPC request and holds the `held` command's requests until the
+ * test releases them.
+ */
+function recordIpc(held?: string) {
+  const internals = (
+    window as unknown as {
+      __TAURI_INTERNALS__: {
+        invoke: (
+          cmd: string,
+          args?: Record<string, unknown>,
+          options?: unknown,
+        ) => Promise<unknown>;
+      };
+    }
+  ).__TAURI_INTERNALS__;
+  const invoke = internals.invoke;
+  const calls: IpcCall[] = [];
+  const releases: (() => void)[] = [];
+  internals.invoke = (cmd, args, options) => {
+    calls.push({ cmd, args });
+    if (cmd !== held) return invoke(cmd, args, options);
+    return new Promise((resolve) => {
+      releases.push(() => resolve(invoke(cmd, args, options)));
+    });
+  };
+  return { calls, releases };
+}
+
 describe("academy route", () => {
   async function loadConfiguredSave() {
     await resolveLoadDataIpcMock();
@@ -107,6 +138,63 @@ describe("academy route", () => {
         name: "Youth Academy",
       }),
     ).toBeInTheDocument();
+  });
+
+  it("reads the class the URL names alongside the class list", async () => {
+    await loadConfiguredSave();
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 0 }]);
+    const ipc = recordIpc("list_academy_classes");
+    renderAcademyRoute("/academy?view=class&classId=7");
+
+    await waitFor(() => expect(ipc.releases).toHaveLength(1));
+    await waitFor(() =>
+      expect(ipc.calls).toContainEqual({
+        cmd: "get_academy_class",
+        args: { classId: 7 },
+      }),
+    );
+    for (const release of ipc.releases) release();
+    expect(
+      await screen.findByRole("combobox", { name: "Academy class" }),
+    ).toHaveValue("7");
+  });
+
+  it("paints the Overview with its class statistics", async () => {
+    await loadConfiguredSave();
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 1 }]);
+    setAcademyClassMembers(7, [
+      academyMember({ playerUid: 77, lastKnownName: "Club prospect" }),
+    ]);
+    renderAcademyRoute("/academy");
+
+    await screen.findByRole("heading", { level: 1, name: "Youth Academy" });
+    expect(
+      screen.getByRole("region", { name: "Academy outcomes" }),
+    ).toHaveAttribute("aria-busy", "false");
+  });
+
+  it("reads the managed-club options only on the view whose dialogs offer them, without holding it", async () => {
+    await loadConfiguredSave();
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 1 }]);
+    setAcademyClassMembers(7, [
+      academyMember({ playerUid: 77, lastKnownName: "Club prospect" }),
+    ]);
+    const ipc = recordIpc("list_managed_club_options");
+    const optionReads = () =>
+      ipc.calls.filter((call) => call.cmd === "list_managed_club_options");
+    const { history } = renderAcademyRoute("/academy");
+
+    await screen.findByRole("heading", { level: 1, name: "Youth Academy" });
+    expect(optionReads()).toHaveLength(0);
+
+    history.push("/academy?view=class&classId=7");
+
+    // The Class view paints while the slow options read is still held.
+    expect(
+      await screen.findByRole("row", { name: /^Club prospect/ }),
+    ).toBeInTheDocument();
+    expect(optionReads()).toHaveLength(1);
+    for (const release of ipc.releases) release();
   });
 
   it("shows persisted classes and keeps workspace selection in the URL", async () => {

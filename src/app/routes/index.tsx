@@ -8,6 +8,11 @@ import {
 } from "@/app/components/managed-club-setup";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import {
+  dashboardExpiringContractsQueryOptions,
+  dashboardFirstSigningsQueryOptions,
+  dashboardProspectsQueryOptions,
+} from "@/features/dashboard/api/dashboard-query-options";
 import { DashboardGrid } from "@/features/dashboard/components/dashboard-grid";
 import {
   type DashboardSetupNote,
@@ -20,15 +25,14 @@ import type {
   DashboardContext,
   DashboardScoreMode,
 } from "@/features/dashboard/types/dashboard";
-import {
-  managedClubOptionsQueryOptions,
-  managedClubQueryOptions,
-} from "@/features/managed-club/api/managed-club-query-options";
+import { managedClubQueryOptions } from "@/features/managed-club/api/managed-club-query-options";
+import type { ManagedClubStatus } from "@/features/managed-club/types/managed-club";
 import { formatRecruitmentFilter } from "@/features/search/utils/recruitment-filters";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import type { SaveSummary } from "@/features/snapshot/types/save";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
+import { warmQuery } from "@/lib/warm-query";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
   formatAbsoluteUtc,
@@ -52,14 +56,58 @@ export const Route = createFileRoute("/")({
       ? { stats: false as const }
       : {}),
   }),
-  loader: ({ context: { queryClient } }) =>
-    Promise.all([
+  loaderDeps: ({ search }) => ({ mode: search.mode, stats: search.stats }),
+  // Waits for the fast reads the header and the panels' context need, and
+  // starts the panel reads without waiting: the signings read can take
+  // seconds. A hover on the Dashboard link runs this too, and a cached result
+  // is never read again here.
+  loader: async ({ context: { queryClient }, deps }) => {
+    const [saves, snapshot, managedClub] = await Promise.all([
+      // The page reads a failed save list again itself.
+      queryClient.ensureQueryData(savesQueryOptions).catch(() => undefined),
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(managedClubQueryOptions),
-      queryClient.prefetchQuery(managedClubOptionsQueryOptions),
-    ]),
+    ]);
+    const { context } = dashboardContext(saves, snapshot, managedClub);
+    if (!context || managedClub.status !== "available") {
+      return;
+    }
+    const mode =
+      deps.mode ?? useMoneyballPreferences.getState().defaultAnalysisView;
+    warmQuery(
+      queryClient,
+      dashboardFirstSigningsQueryOptions(context, mode, deps.stats !== false),
+    );
+    warmQuery(queryClient, dashboardProspectsQueryOptions(context));
+    warmQuery(queryClient, dashboardExpiringContractsQueryOptions(context));
+  },
   component: DashboardPage,
 });
+
+/**
+ * The panels' context, once the snapshot and the save list describe the same
+ * save: they refresh separately.
+ */
+function dashboardContext(
+  saves: readonly SaveSummary[] | undefined,
+  snapshot: SnapshotSummary | null,
+  managedClub: ManagedClubStatus,
+): { save: SaveSummary | undefined; context: DashboardContext | null } {
+  const activeSave = saves?.find((save) => save.isActive);
+  const save = activeSave?.id === snapshot?.saveId ? activeSave : undefined;
+  return {
+    save,
+    context:
+      snapshot && save && managedClub.clubName !== null
+        ? {
+            saveId: save.id,
+            contextToken: save.contextToken,
+            snapshotId: snapshot.id,
+            clubName: managedClub.clubName,
+          }
+        : null,
+  };
+}
 
 const setupLinkClass =
   "inline-flex h-8 shrink-0 items-center rounded-md border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high active:bg-surface-container-highest";
@@ -120,19 +168,7 @@ function DashboardPage() {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: managedClub } = useSuspenseQuery(managedClubQueryOptions);
   const { data: saves } = useQuery(savesQueryOptions);
-  const activeSave = saves?.find((save) => save.isActive);
-  // The snapshot and the save list refresh separately, so the panels wait
-  // until both describe the same save.
-  const save = activeSave?.id === snapshot?.saveId ? activeSave : undefined;
-  const context: DashboardContext | null =
-    snapshot && save && managedClub.clubName !== null
-      ? {
-          saveId: save.id,
-          contextToken: save.contextToken,
-          snapshotId: snapshot.id,
-          clubName: managedClub.clubName,
-        }
-      : null;
+  const { save, context } = dashboardContext(saves, snapshot, managedClub);
 
   const header = (
     <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">

@@ -153,6 +153,66 @@ function holdIpcCommand(command: string): (() => void)[] {
   return held;
 }
 
+type IpcInvoke = (
+  cmd: string,
+  args?: Record<string, unknown>,
+  options?: unknown,
+) => Promise<unknown>;
+
+function tauriInternals() {
+  return (window as unknown as { __TAURI_INTERNALS__: { invoke: IpcInvoke } })
+    .__TAURI_INTERNALS__;
+}
+
+/** Records the arguments of every `command` request. */
+function recordIpcCalls(command: string): Record<string, unknown>[] {
+  const internals = tauriInternals();
+  const invoke = internals.invoke;
+  const calls: Record<string, unknown>[] = [];
+  internals.invoke = (cmd, args, options) => {
+    if (cmd === command) calls.push(args ?? {});
+    return invoke(cmd, args, options);
+  };
+  return calls;
+}
+
+/** Holds every `command` request that `matches` until the test releases it. */
+function holdMatchingIpcCalls(
+  command: string,
+  matches: (args: Record<string, unknown>) => boolean,
+): (() => void)[] {
+  const internals = tauriInternals();
+  const invoke = internals.invoke;
+  const held: (() => void)[] = [];
+  internals.invoke = (cmd, args, options) => {
+    if (cmd !== command || !matches(args ?? {})) {
+      return invoke(cmd, args, options);
+    }
+    return new Promise((resolve) => {
+      held.push(() => resolve(invoke(cmd, args, options)));
+    });
+  };
+  return held;
+}
+
+/** Records every text that appeared in the document while it is observed. */
+function observeTexts() {
+  const texts = new Set<string>();
+  const observer = new MutationObserver(() => {
+    texts.add(document.body.textContent ?? "");
+  });
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
+  return {
+    sawText: (text: string) =>
+      [...texts].some((content) => content.includes(text)),
+    stop: () => observer.disconnect(),
+  };
+}
+
 describe("staff route", () => {
   beforeEach(() => {
     usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });
@@ -1806,6 +1866,88 @@ describe("staff route", () => {
     expect(screen.getByText("Loading staff results…")).toBeInTheDocument();
     act(() => held[0].resolve());
     expect(await screen.findByText("No staff shortlisted")).toBeInTheDocument();
+  });
+
+  describe("navigation", () => {
+    it("requests the Staff Search first page once, with the table's columns", async () => {
+      await resolveLoadDataIpcMock();
+      const calls = recordIpcCalls("search_staff");
+      renderStaffRoute("/staff");
+      await screen.findByRole("table", { name: "Staff search results" });
+
+      const firstPages = calls.filter(
+        (args) => args.offset === 0 && args.limit !== 1,
+      );
+      expect(firstPages.length).toBeGreaterThan(0);
+      const requestedFields = firstPages.map((args) => args.requestedFields);
+      expect(requestedFields[0]).toContain("role.coach_goalkeeping");
+      expect(
+        new Set(requestedFields.map((fields) => JSON.stringify(fields))),
+      ).toHaveLength(1);
+    });
+
+    it("requests the My Staff first page once, with the table's columns", async () => {
+      await resolveLoadDataIpcMock();
+      const calls = recordIpcCalls("list_my_staff");
+      renderStaffRoute("/staff?view=my-staff");
+      await screen.findByRole("table", { name: "Staff overview" });
+
+      const requestedFields = calls
+        .filter((args) => args.offset === 0)
+        .map((args) => JSON.stringify(args.requestedFields));
+      expect(requestedFields.length).toBeGreaterThan(0);
+      expect(requestedFields[0]).not.toBe("[]");
+      expect(new Set(requestedFields)).toHaveLength(1);
+    });
+
+    it("paints Staff Search with a table skeleton while its first page loads", async () => {
+      await resolveLoadDataIpcMock();
+      const texts = observeTexts();
+      const held = holdMatchingIpcCalls(
+        "search_staff",
+        (args) => args.limit !== 1,
+      );
+      renderStaffRoute("/staff");
+
+      expect(
+        await screen.findByRole("switch", { name: "Shortlist: Off" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Loading staff results…",
+      );
+      for (const release of held) act(release);
+      expect(
+        await screen.findByRole("table", { name: "Staff search results" }),
+      ).toBeInTheDocument();
+      texts.stop();
+      expect(texts.sawText("Loading staff search…")).toBe(false);
+      expect(texts.sawText("Loading staffing needs…")).toBe(false);
+    });
+
+    it("paints My Staff with a table skeleton while its first page loads", async () => {
+      await resolveLoadDataIpcMock();
+      const held = holdMatchingIpcCalls("list_my_staff", () => true);
+      renderStaffRoute("/staff?view=my-staff");
+
+      expect(
+        await screen.findByRole("heading", { level: 1, name: "My Staff" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Loading staff results…",
+      );
+      for (const release of held) act(release);
+      expect(
+        await screen.findByRole("table", { name: "Staff overview" }),
+      ).toBeInTheDocument();
+    });
+
+    it("does not read the managed-club options for Staff Search", async () => {
+      await resolveLoadDataIpcMock();
+      const calls = recordIpcCalls("list_managed_club_options");
+      renderStaffRoute("/staff");
+      await screen.findByRole("table", { name: "Staff search results" });
+      expect(calls).toEqual([]);
+    });
   });
 
   describe("staff table toolbar", () => {

@@ -69,11 +69,27 @@ pub(crate) fn managed_club_loaned_out_player_sql(alias: &str, save_param: &str) 
 /// The managed club's own players: everyone at the club, including players loaned in, plus the
 /// players it has loaned out. Squad, Youth, and contract lists show these; Planner and anything
 /// built on its rankings use [`managed_club_player_sql`], which leaves loaned-out players out.
-pub(crate) fn managed_club_owned_player_sql(alias: &str, save_param: &str) -> String {
+///
+/// The SQL is true only for a `players` row aliased `alias` in the snapshot bound to
+/// `snapshot_param`, and false, never null, otherwise. It reads the two groups as separate
+/// indexed reads, because SQLite plans `at club OR loaned out` as a scan of the whole snapshot.
+/// Callers leave out their own `snapshot_id` term so the planner looks the rows up by rowid
+/// instead of scanning a snapshot index.
+pub(crate) fn managed_club_owned_player_sql(
+    alias: &str,
+    snapshot_param: &str,
+    save_param: &str,
+) -> String {
     format!(
-        "({} OR {})",
-        managed_club_player_sql(alias, save_param),
-        managed_club_loaned_out_player_sql(alias, save_param)
+        "({alias}.rowid IN (
+             SELECT owned.rowid FROM players owned
+             WHERE owned.snapshot_id = {snapshot_param} AND {}
+             UNION ALL
+             SELECT owned.rowid FROM players owned
+             WHERE owned.snapshot_id = {snapshot_param} AND {}
+         ))",
+        managed_club_player_sql("owned", save_param),
+        managed_club_loaned_out_player_sql("owned", save_param)
     )
 }
 

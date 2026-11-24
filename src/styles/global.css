@@ -162,6 +162,45 @@
   --spacing-table-row-height-two-line: 40px;
   --spacing-table-header-height: 32px;
   --spacing-gutter: 16px;
+
+  /* Motion. Content that arrives fades in once; a loading placeholder waits
+     150ms first, so data that is already on its way never flashes one. No
+     entrance fills forwards: a finished animation that still held `opacity`
+     would keep its element a stacking context for good. */
+  --animate-enter: enter 150ms ease-out;
+  --animate-enter-late: enter 150ms ease-out 150ms backwards;
+  --animate-skeleton: skeleton 1.5s ease-in-out infinite;
+  --animate-progress: progress 1.2s ease-in-out infinite;
+  /* A menu, picker, or tooltip settles into place under its trigger. */
+  --animate-pop: pop 120ms ease-out;
+
+  @keyframes enter {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes skeleton {
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  @keyframes pop {
+    from {
+      opacity: 0;
+      translate: 0 -2px;
+    }
+  }
+
+  @keyframes progress {
+    from {
+      translate: -100% 0;
+    }
+    to {
+      translate: 300% 0;
+    }
+  }
 }
 
 @layer base {
@@ -218,6 +257,39 @@
     scrollbar-color: var(--color-outline-variant) transparent;
   }
 
+  /* Every popover built on `useAnchoredPopover` enters like the menus that
+     carry `animate-pop` themselves. */
+  [popover]:popover-open {
+    animation: var(--animate-pop);
+  }
+
+  /* A destination change cross-fades the page area only: the header and the
+     navigation bar are the root snapshot and hold still. The router starts a
+     view transition for those navigations alone (`src/app/router.tsx`). */
+  ::view-transition {
+    /* The overlay must not swallow a click made during the 150ms fade. */
+    pointer-events: none;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+
+  ::view-transition-old(page) {
+    animation: 100ms ease-out both page-out;
+  }
+
+  ::view-transition-new(page) {
+    animation: 150ms ease-out both enter;
+  }
+
+  @keyframes page-out {
+    to {
+      opacity: 0;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     /* biome-ignore-start lint/complexity/noImportantStyles: a motion reset only
        works if it cannot be overridden — Tailwind's transition utilities carry
@@ -229,6 +301,12 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
+    }
+
+    ::view-transition-group(*),
+    ::view-transition-old(*),
+    ::view-transition-new(*) {
+      animation: none !important;
     }
     /* biome-ignore-end lint/complexity/noImportantStyles: end motion reset */
   }

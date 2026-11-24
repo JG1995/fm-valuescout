@@ -1,5 +1,6 @@
 import {
   useMutation,
+  useQuery,
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
@@ -18,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button/button";
 import { TextField } from "@/components/ui/field/text-field";
 import { useAnchoredPopover } from "@/components/ui/use-anchored-popover";
+import { warmQuery } from "@/lib/warm-query";
 import { managedClubKeys } from "../api/managed-club-keys";
 import {
   managedClubOptionsQueryOptions,
@@ -27,11 +29,14 @@ import { setManagedClub } from "../api/set-managed-club";
 import type { ManagedClubOption } from "../types/managed-club";
 
 const CLUB_SUGGEST_LIMIT = 10;
+const NO_CLUBS: ManagedClubOption[] = [];
 
 type ManagedClubPickerProps = {
   clubs: ManagedClubOption[];
   value: string;
   autoFocus: boolean;
+  /** Whether the club list is still loading; typing already works. */
+  loading: boolean;
   onSelect: (club: ManagedClubOption) => void;
   onSearchChange: (query: string) => void;
 };
@@ -40,6 +45,7 @@ function ManagedClubPicker({
   clubs,
   value,
   autoFocus,
+  loading,
   onSelect,
   onSearchChange,
 }: ManagedClubPickerProps) {
@@ -97,7 +103,7 @@ function ManagedClubPicker({
         autoComplete="off"
         autoFocus={autoFocus}
         label="Managed club"
-        placeholder="Search clubs…"
+        placeholder={loading ? "Loading clubs…" : "Search clubs…"}
         role="combobox"
         type="text"
         value={query}
@@ -194,15 +200,22 @@ export function ManagedClubSelector({
 }) {
   const queryClient = useQueryClient();
   const { data: managedClub } = useSuspenseQuery(managedClubQueryOptions);
-  const { data: availableClubs } = useSuspenseQuery(
-    managedClubOptionsQueryOptions,
-  );
   const [selectedOption, setSelectedOption] = useState<ManagedClubOption>({
     clubName: managedClub.clubName ?? "",
     clubUid: managedClub.clubUid ?? null,
   });
   const [searchPending, setSearchPending] = useState(false);
   const [editing, setEditing] = useState(!managedClub.clubName);
+  // The club list is a large, slow read only the picker needs, so it loads
+  // when the picker opens. A failure reaches the setup's error boundary.
+  const clubsQuery = useQuery({
+    ...managedClubOptionsQueryOptions,
+    enabled: editing,
+    throwOnError: true,
+  });
+  const availableClubs = clubsQuery.data ?? NO_CLUBS;
+  const warmClubs = () =>
+    warmQuery(queryClient, managedClubOptionsQueryOptions);
   const controlsRef = useRef<HTMLFieldSetElement>(null);
   const wasEditing = useRef(editing);
 
@@ -280,6 +293,7 @@ export function ManagedClubSelector({
               <ManagedClubPicker
                 autoFocus={managedClub.clubName !== null}
                 clubs={clubOptions}
+                loading={clubsQuery.isPending}
                 value={selectedOption.clubName}
                 onSearchChange={(query) =>
                   setSearchPending(query !== selectedOption.clubName)
@@ -313,6 +327,8 @@ export function ManagedClubSelector({
         ) : (
           <Button
             variant="secondary"
+            onPointerEnter={warmClubs}
+            onFocus={warmClubs}
             onClick={() => {
               save.reset();
               setEditing(true);

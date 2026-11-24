@@ -58,6 +58,30 @@ const HISTORY: SnapshotMetadata[] = [
   },
 ];
 
+/** Holds every request for the `commands` until the test releases it. */
+function holdIpcCommands(commands: string[]): (() => void)[] {
+  const internals = (
+    window as unknown as {
+      __TAURI_INTERNALS__: {
+        invoke: (
+          cmd: string,
+          args?: Record<string, unknown>,
+          options?: unknown,
+        ) => Promise<unknown>;
+      };
+    }
+  ).__TAURI_INTERNALS__;
+  const invoke = internals.invoke;
+  const held: (() => void)[] = [];
+  internals.invoke = (cmd, args, options) => {
+    if (!commands.includes(cmd)) return invoke(cmd, args, options);
+    return new Promise((resolve) => {
+      held.push(() => resolve(invoke(cmd, args, options)));
+    });
+  };
+  return held;
+}
+
 describe("Settings", () => {
   beforeEach(() => {
     useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
@@ -86,6 +110,58 @@ describe("Settings", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("combobox", { name: "Active save" }),
+    ).toBeInTheDocument();
+  });
+
+  it("paints the snapshot history with the page, without a loading state", async () => {
+    setSnapshotHistoryIpcMock(HISTORY);
+    const seen = new Set<string>();
+    const observer = new MutationObserver(() => {
+      seen.add(document.body.textContent ?? "");
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    await screen.findByRole("heading", { level: 1, name: "Settings" });
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Snapshot history" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Rename snapshot 2026-08-01" }),
+    ).toBeInTheDocument();
+    observer.disconnect();
+    expect(
+      [...seen].some((text) => text.includes("Loading snapshot history…")),
+    ).toBe(false);
+  });
+
+  it("does not wait for the bridge and graphics status to paint", async () => {
+    const held = holdIpcCommands([
+      "get_bridge_install_status",
+      "get_bridge_status",
+      "get_graphics_status",
+    ]);
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    await screen.findByRole("heading", { level: 1, name: "Settings" });
+    expect(
+      screen.getByRole("combobox", { name: "Active save" }),
+    ).toBeInTheDocument();
+    const bridge = screen.getByRole("region", { name: "Bridge" });
+    expect(within(bridge).getByRole("status")).toHaveTextContent(
+      "Loading bridge status…",
+    );
+    const graphics = screen.getByRole("region", { name: "Graphics" });
+    expect(within(graphics).getByRole("status")).toHaveTextContent(
+      "Loading graphics status…",
+    );
+
+    for (const release of held) release();
+    expect(
+      await within(bridge).findByRole("heading", {
+        level: 3,
+        name: "Bridge plugin install",
+      }),
     ).toBeInTheDocument();
   });
 

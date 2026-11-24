@@ -17,8 +17,14 @@ import { playerResultContextMutationKey } from "@/components/player-table/player
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import {
+  LoadingRegion,
+  Skeleton,
+  TableSkeleton,
+} from "@/components/ui/skeleton/skeleton";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
+import { clubDnaQueryOptions } from "@/features/club-dna/api/club-dna-query-options";
 import { ClubDnaDefinition } from "@/features/club-dna/components/club-dna-definition";
 import type {
   ClubDnaContext,
@@ -26,16 +32,19 @@ import type {
   ClubDnaUpsertResult,
 } from "@/features/club-dna/types/club-dna";
 import { SquadCsvImportActions } from "@/features/csv-import/components/squad-csv-import-actions";
+import { dashboardProspectsQueryOptions } from "@/features/dashboard/api/dashboard-query-options";
 import { YouthXiAction } from "@/features/dashboard/components/youth-xi-action";
 import type { DashboardContext } from "@/features/dashboard/types/dashboard";
 import { GraphicsImage } from "@/features/graphics/components/graphics-image";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
-import {
-  managedClubOptionsQueryOptions,
-  managedClubQueryOptions,
-} from "@/features/managed-club/api/managed-club-query-options";
+import { managedClubQueryOptions } from "@/features/managed-club/api/managed-club-query-options";
+import type { ManagedClubStatus } from "@/features/managed-club/types/managed-club";
 import { plannerDepthQueryOptions } from "@/features/planner/api/planner-depth-query-options";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
+import { plannerLoanCandidatesQueryOptions } from "@/features/planner/api/planner-loan-candidates-query-options";
+import { plannerTacticOptionsQueryOptions } from "@/features/planner/api/planner-tactic-options-query-options";
+import { plannerTacticQueryOptions } from "@/features/planner/api/planner-tactic-query-options";
+import { plannerUnassignedPlayersQueryOptions } from "@/features/planner/api/planner-unassigned-players-query-options";
 import { PlannerDepthMatrix } from "@/features/planner/components/planner-depth-matrix";
 import { PlannerTacticEditor } from "@/features/planner/components/planner-tactic-editor";
 import { TacticContextBoundary } from "@/features/planner/components/tactic-context-boundary";
@@ -45,9 +54,15 @@ import { RecruitmentFilterEditor } from "@/features/search/components/recruitmen
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import type { SaveSummary } from "@/features/snapshot/types/save";
+import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { boostSquadCurrentAbility } from "@/features/squad/api/boost-squad-current-ability";
 import { boostSquadWonderkidMentality } from "@/features/squad/api/boost-squad-wonderkid-mentality";
-import { squadKeys } from "@/features/squad/api/squad-keys";
+import {
+  type SquadPlayerPageContext,
+  squadKeys,
+} from "@/features/squad/api/squad-keys";
+import { squadFirstPageQueryOptions } from "@/features/squad/api/squad-players-query-options";
 import { SquadFmTraining } from "@/features/squad/components/squad-fm-training";
 import { SquadOverviewPanel } from "@/features/squad/components/squad-overview-panel";
 import {
@@ -77,6 +92,7 @@ import {
   isStaffSortField,
 } from "@/features/staff/types/staff-sort";
 import { useIsRefetchingInvalidated } from "@/lib/use-is-refetching-invalidated";
+import { warmQuery } from "@/lib/warm-query";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { isValidTacticLaneId } from "@/utils/tactic-ids";
 
@@ -112,6 +128,24 @@ function squadSortForSearch(search: MyClubSearch): {
       ? defaultDirForSquadSortField(sort)
       : DEFAULT_SQUAD_SORT_DIR;
   return { sort, dir };
+}
+
+/** The context Squad's page reads are keyed by, for the table and the loader. */
+function squadPageContext(
+  activeSave: Pick<SaveSummary, "id" | "contextToken"> | undefined,
+  snapshot: Pick<SnapshotSummary, "id" | "saveId">,
+  managedClub: Pick<ManagedClubStatus, "clubName" | "status">,
+): SquadPlayerPageContext {
+  return {
+    activeSave: activeSave
+      ? { id: activeSave.id, contextToken: activeSave.contextToken }
+      : null,
+    currentSnapshot: { id: snapshot.id, saveId: snapshot.saveId },
+    managedClub: {
+      clubName: managedClub.clubName,
+      status: managedClub.status,
+    },
+  };
 }
 
 type SquadBoostMutationVariables = {
@@ -161,13 +195,70 @@ export const Route = createFileRoute("/my-club")({
       dir,
     };
   },
-  loader: ({ context: { queryClient } }) => {
-    return Promise.all([
+  // Waits only for the fast reads the workspace's first paint needs and starts
+  // its slow reads without waiting. The managed-club picker reads its club list
+  // when it opens.
+  loader: async ({ context: { queryClient }, deps, cause }) => {
+    const [saves, snapshot, managedClub] = await Promise.all([
+      // The page shows a failed save list itself.
+      queryClient.ensureQueryData(savesQueryOptions).catch(() => undefined),
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(managedClubQueryOptions),
-      queryClient.prefetchQuery(managedClubOptionsQueryOptions),
       queryClient.ensureQueryData(plannerDepthQueryOptions),
     ]);
+    const activeSave = saves?.find((save) => save.isActive);
+    if (!snapshot || !activeSave) {
+      return;
+    }
+    const context = {
+      saveId: activeSave.id,
+      contextToken: activeSave.contextToken,
+    };
+    // Each read below shows its own failure on the page.
+    const reads: Promise<unknown>[] = [
+      queryClient.ensureQueryData(clubDnaQueryOptions(context)),
+    ];
+    if (deps.view === "squad") {
+      // A sort change on the page stays on this route: the table requests the
+      // new order itself and keeps the current rows until it arrives.
+      if (managedClub.clubName && cause !== "stay") {
+        warmQuery(
+          queryClient,
+          squadFirstPageQueryOptions(
+            deps.sort,
+            deps.dir,
+            usePlayerTableStore.getState().layouts.squad.columnIds,
+            squadPageContext(activeSave, snapshot, managedClub),
+          ),
+        );
+      }
+    } else if (snapshot.saveId === activeSave.id) {
+      reads.push(
+        queryClient.ensureQueryData(plannerTacticQueryOptions(context)),
+        queryClient.ensureQueryData(plannerTacticOptionsQueryOptions(context)),
+      );
+      if (deps.view === "planner") {
+        reads.push(
+          queryClient.ensureQueryData(
+            plannerUnassignedPlayersQueryOptions(activeSave.id),
+          ),
+          queryClient.ensureQueryData(
+            plannerLoanCandidatesQueryOptions(activeSave.id),
+          ),
+        );
+        if (managedClub.clubName !== null) {
+          warmQuery(
+            queryClient,
+            dashboardProspectsQueryOptions({
+              ...context,
+              snapshotId: snapshot.id,
+              clubName: managedClub.clubName,
+            }),
+          );
+        }
+      }
+    }
+    await Promise.all(reads.map((read) => read.catch(() => undefined)));
   },
   beforeLoad: ({ location }) => {
     // Legacy Club Staff links replace the history entry with the canonical
@@ -259,6 +350,19 @@ export const Route = createFileRoute("/my-club")({
   },
   component: MyClubPage,
 });
+
+/** Fills a Planner or Tactic workspace while its context loads. */
+function WorkspaceSkeleton({ label }: { label: string }) {
+  return (
+    <LoadingRegion
+      label={label}
+      className="flex h-full min-h-40 flex-1 flex-col gap-4 p-4"
+    >
+      <Skeleton className="h-8 w-full max-w-xl" />
+      <Skeleton className="flex-1" />
+    </LoadingRegion>
+  );
+}
 
 function TacticQueryError({
   error,
@@ -537,28 +641,22 @@ function MyClubPageContent() {
         >
           {managedClub.clubName ? (
             isSquadResultBlocked ? (
-              <Panel flush>
-                <p className="p-4 text-body-md text-on-surface-variant">
-                  Loading squad overview…
-                </p>
+              <Panel
+                flush
+                className="flex min-h-0 flex-1 flex-col"
+                contentClassName="flex min-h-0 flex-1 flex-col"
+              >
+                <TableSkeleton label="Loading squad overview…" />
               </Panel>
             ) : (
               <SquadOverviewPanel
                 key={`${activeSave?.id}:${activeSave?.contextToken}:${snapshot.id}:${snapshot.saveId}:${managedClub.clubName}:${managedClub.status}`}
                 identityGraphics={squadIdentityGraphics}
-                pageContext={{
-                  activeSave: activeSave
-                    ? {
-                        id: activeSave.id,
-                        contextToken: activeSave.contextToken,
-                      }
-                    : null,
-                  currentSnapshot: { id: snapshot.id, saveId: snapshot.saveId },
-                  managedClub: {
-                    clubName: managedClub.clubName,
-                    status: managedClub.status,
-                  },
-                }}
+                pageContext={squadPageContext(
+                  activeSave,
+                  snapshot,
+                  managedClub,
+                )}
                 feedback={squadBoostFeedback}
                 feedbackRef={squadBoostFeedbackRef}
                 actions={
@@ -687,11 +785,7 @@ function MyClubPageContent() {
                 retryBoth,
               }) => {
                 if (isPending) {
-                  return (
-                    <p className="p-4 text-body-md text-on-surface-variant">
-                      Loading tactic…
-                    </p>
-                  );
+                  return <WorkspaceSkeleton label="Loading tactic…" />;
                 }
                 if (initialError) {
                   return (
@@ -734,9 +828,7 @@ function MyClubPageContent() {
               }}
             </TacticContextBoundary>
           ) : (
-            <p className="p-4 text-body-md text-on-surface-variant">
-              Loading planner…
-            </p>
+            <WorkspaceSkeleton label="Loading planner…" />
           )}
         </div>
       ) : null}
@@ -757,11 +849,7 @@ function MyClubPageContent() {
                 retryBoth,
               }) => {
                 if (isPending) {
-                  return (
-                    <p className="p-4 text-body-md text-on-surface-variant">
-                      Loading tactic…
-                    </p>
-                  );
+                  return <WorkspaceSkeleton label="Loading tactic…" />;
                 }
                 if (initialError) {
                   return (
