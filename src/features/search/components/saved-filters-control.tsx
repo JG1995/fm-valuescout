@@ -210,7 +210,7 @@ export function SavedFiltersControl({
           id={panelId}
           role="dialog"
           aria-label="Saved filters"
-          className="absolute right-0 top-full z-30 mt-1 max-h-[28rem] w-80 space-y-3 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-highest p-3 text-left shadow-overlay"
+          className="absolute right-0 top-full z-30 mt-1 max-h-[28rem] w-80 animate-pop space-y-3 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-highest p-3 text-left shadow-overlay"
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();

@@ -510,7 +510,7 @@ function ConfigurableTableHeaderView({
               {revealed ? (
                 <span
                   role="tooltip"
-                  className="pointer-events-none absolute top-full left-0 z-30 mt-1 w-56 rounded-md border border-outline-variant bg-surface-container-highest p-2 text-left text-body-sm normal-case text-on-surface shadow-overlay"
+                  className="pointer-events-none absolute top-full left-0 z-30 mt-1 w-56 animate-pop rounded-md border border-outline-variant bg-surface-container-highest p-2 text-left text-body-sm normal-case text-on-surface shadow-overlay"
                 >
                   {accessibleName}
                 </span>
@@ -521,7 +521,7 @@ function ConfigurableTableHeaderView({
                   ref={menuRef}
                   role="menu"
                   aria-label={`${accessibleName} column actions`}
-                  className="absolute right-1 top-full z-30 mt-1 w-52 rounded-md border border-outline-variant bg-surface-container-highest p-1 text-left shadow-overlay"
+                  className="absolute right-1 top-full z-30 mt-1 w-52 animate-pop rounded-md border border-outline-variant bg-surface-container-highest p-1 text-left shadow-overlay"
                   onKeyDown={(event) => {
                     if (event.key === "Escape") {
                       event.preventDefault();
@@ -629,7 +629,7 @@ function ConfigurableTableHeaderView({
                   ref={menuRef}
                   role="dialog"
                   aria-label="Add a column"
-                  className="absolute right-1 top-full z-30 mt-1 w-72 rounded-md border border-outline-variant bg-surface-container-highest p-3 text-left shadow-overlay"
+                  className="absolute right-1 top-full z-30 mt-1 w-72 animate-pop rounded-md border border-outline-variant bg-surface-container-highest p-3 text-left shadow-overlay"
                   onKeyDown={(event) => {
                     if (event.key === "Escape") {
                       event.preventDefault();
@@ -792,7 +792,7 @@ export function ConfigurableColumnsControl({
           ref={panelRef}
           role="dialog"
           aria-label="Columns"
-          className="absolute right-0 top-full z-30 mt-1 max-h-96 w-72 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-highest p-3 text-left shadow-overlay"
+          className="absolute right-0 top-full z-30 mt-1 max-h-96 w-72 animate-pop overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-highest p-3 text-left shadow-overlay"
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();

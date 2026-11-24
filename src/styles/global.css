@@ -169,6 +169,8 @@
   --animate-enter-late: enter 150ms ease-out 150ms both;
   --animate-skeleton: skeleton 1.5s ease-in-out infinite;
   --animate-progress: progress 1.2s ease-in-out infinite;
+  /* A menu, picker, or tooltip settles into place under its trigger. */
+  --animate-pop: pop 120ms ease-out both;
 
   @keyframes enter {
     from {
@@ -179,6 +181,13 @@
   @keyframes skeleton {
     50% {
       opacity: 0.5;
+    }
+  }
+
+  @keyframes pop {
+    from {
+      opacity: 0;
+      translate: 0 -2px;
     }
   }
 
@@ -244,6 +253,12 @@
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--color-outline-variant) transparent;
+  }
+
+  /* Every popover built on `useAnchoredPopover` enters like the menus that
+     carry `animate-pop` themselves. */
+  [popover]:popover-open {
+    animation: var(--animate-pop);
   }
 
   /* A destination change cross-fades the page area only: the header and the
