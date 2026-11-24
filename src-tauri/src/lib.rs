@@ -63,6 +63,7 @@ pub fn run() {
             app.manage(db);
             app.manage(features::search::commands::SearchCaches::default());
             app.manage(features::moneyball::comparison::ComparisonGroupsCache::default());
+            app.manage(features::dashboard::commands::SigningsCache::default());
             app.manage(features::staff::commands::StaffCaches::default());
             app.manage(db::result_cache::TableRegistry::default());
             app.manage(graphics_runtime);

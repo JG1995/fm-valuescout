@@ -2,6 +2,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::blocking;
+use crate::db::result_cache::ResultCache;
 use crate::db::Db;
 use crate::features::moneyball::comparison::{ComparisonGroupsCache, GroupsSource};
 use crate::features::planner::commands::RecruitmentFilterDto;
@@ -9,7 +10,7 @@ use crate::features::snapshot::service::active_save_id;
 
 use super::signings::{
     self, IncumbentSource, LineupPlayer, LineupSlot, OtherLane, Recommendation, ScoreBasis,
-    ScoreMode, Signings, SigningsRequest,
+    ScoreMode, ScoredSignings, Signings, SigningsRequest,
 };
 use super::squad::{
     self, ExpiringContract, ExpiringContracts, Prospect, Prospects, YouthXiPlayer, YouthXiSlot,
@@ -192,6 +193,19 @@ impl From<Signings> for DashboardSigningsDto {
     }
 }
 
+/// The active save's scored signings, kept as app state for the newest data generation: one
+/// entry for each score mode, candidate source, and season-stats choice last asked for. Every
+/// write advances the generation, so a tactic, Planner, shortlist, or data change scores
+/// again.
+#[derive(Clone)]
+pub struct SigningsCache(ResultCache<Option<ScoredSignings>>);
+
+impl Default for SigningsCache {
+    fn default() -> Self {
+        Self(ResultCache::new(4))
+    }
+}
+
 /// The active save's starting XI and recommended signings in a score mode (`general` or
 /// `moneyball`), or `null` without a current snapshot or a managed club.
 #[tauri::command]
@@ -202,13 +216,16 @@ pub async fn get_dashboard_signings(
     season_stats: bool,
     db: State<'_, Db>,
     groups: State<'_, ComparisonGroupsCache>,
+    cache: State<'_, SigningsCache>,
 ) -> Result<Option<DashboardSigningsDto>, String> {
     let db = db.inner().clone();
     let groups = groups.inner().clone();
+    let cache = cache.inner().clone();
     blocking::run(move || {
         read_dashboard_signings(
             &db,
             &groups,
+            &cache,
             &mode,
             shortlist_id,
             lane_id.as_deref(),
@@ -221,20 +238,32 @@ pub async fn get_dashboard_signings(
 fn read_dashboard_signings(
     db: &Db,
     groups: &ComparisonGroupsCache,
+    cache: &SigningsCache,
     mode: &str,
     shortlist_id: Option<i64>,
     lane_id: Option<&str>,
     season_stats: bool,
 ) -> Result<Option<DashboardSigningsDto>, String> {
+    let mode = ScoreMode::parse(mode)?;
+    // Moneyball mode applies season stats whatever the request says.
+    let season_stats = season_stats || mode == ScoreMode::Moneyball;
+    let key = format!("{mode:?}|{shortlist_id:?}|{season_stats}");
     let request = SigningsRequest {
-        mode: ScoreMode::parse(mode)?,
+        mode,
         shortlist_id,
         lane_id,
         season_stats,
     };
-    let conn = db.read()?;
-    let groups = GroupsSource::Cached(groups, conn.generation());
-    Ok(signings::get_signings(&conn, &groups, active_save_id(&conn)?, request)?.map(Into::into))
+    let scored = cache.0.get_or_compute(&key, db.generation(), || {
+        let conn = db.read()?;
+        let groups = GroupsSource::Cached(groups, conn.generation());
+        let scored = signings::score_signings(&conn, &groups, active_save_id(&conn)?, request)?;
+        Ok::<_, String>((conn.generation(), scored))
+    })?;
+    (*scored)
+        .as_ref()
+        .map(|scored| scored.answer(request.lane_id).map(Into::into))
+        .transpose()
 }
 
 #[derive(Debug, Serialize)]
@@ -426,6 +455,7 @@ mod tests {
             read_dashboard_signings(
                 db,
                 &ComparisonGroupsCache::default(),
+                &SigningsCache::default(),
                 "general",
                 None,
                 None,
@@ -441,6 +471,7 @@ mod tests {
             read_dashboard_signings(
                 &db,
                 &ComparisonGroupsCache::default(),
+                &SigningsCache::default(),
                 "potential",
                 None,
                 None,
@@ -449,5 +480,47 @@ mod tests {
             .map(|_| ()),
             Err("unknown dashboard score mode: potential".to_string())
         );
+    }
+
+    #[test]
+    fn signings_are_scored_once_for_a_data_generation_and_answer_each_slot_from_it() {
+        let (temp_dir, db) = crate::db::open_with_golden_snapshot();
+        {
+            let conn = db.0.lock().expect("lock writer");
+            let save_id = active_save_id(&conn).expect("active save");
+            set_managed_club(&conn, save_id, "Loan FC", Some(1000))
+                .expect("configure managed club");
+        }
+        let groups = ComparisonGroupsCache::default();
+        let cache = SigningsCache::default();
+        let read = |lane_id: Option<&str>| {
+            read_dashboard_signings(&db, &groups, &cache, "general", None, lane_id, false)
+        };
+        let scored = read(None).expect("signings").expect("a managed club");
+
+        // A change behind the app's writer leaves the data generation alone, so the next
+        // request shows whether it scored again: without a managed club it would answer null.
+        rusqlite::Connection::open(temp_dir.path().join(crate::db::APP_DB_FILE))
+            .expect("open outside the app")
+            .execute("DELETE FROM managed_club_settings", [])
+            .expect("remove the managed club");
+        let lane_id = scored.slots[0].lane_id.clone();
+        let slot = read(Some(&lane_id))
+            .expect("one slot's signings")
+            .expect("answered from the scored signings");
+        assert_eq!(slot.slots.len(), scored.slots.len());
+        assert_eq!(
+            read(Some("no-such-slot")).map(|_| ()),
+            Err("unknown tactic lane: no-such-slot".to_string())
+        );
+
+        db.0.lock()
+            .expect("lock writer")
+            .execute(
+                "UPDATE saves SET moneyball_league_adjusted = NOT moneyball_league_adjusted",
+                [],
+            )
+            .expect("write through the app");
+        assert!(read(None).expect("scored again").is_none());
     }
 }
