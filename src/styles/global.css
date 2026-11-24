@@ -164,13 +164,15 @@
   --spacing-gutter: 16px;
 
   /* Motion. Content that arrives fades in once; a loading placeholder waits
-     150ms first, so data that is already on its way never flashes one. */
-  --animate-enter: enter 150ms ease-out both;
-  --animate-enter-late: enter 150ms ease-out 150ms both;
+     150ms first, so data that is already on its way never flashes one. No
+     entrance fills forwards: a finished animation that still held `opacity`
+     would keep its element a stacking context for good. */
+  --animate-enter: enter 150ms ease-out;
+  --animate-enter-late: enter 150ms ease-out 150ms backwards;
   --animate-skeleton: skeleton 1.5s ease-in-out infinite;
   --animate-progress: progress 1.2s ease-in-out infinite;
   /* A menu, picker, or tooltip settles into place under its trigger. */
-  --animate-pop: pop 120ms ease-out both;
+  --animate-pop: pop 120ms ease-out;
 
   @keyframes enter {
     from {
