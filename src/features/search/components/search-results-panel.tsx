@@ -31,6 +31,7 @@ import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { PlayerMetricPicker } from "@/components/ui/player-metric-picker";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
+import { TableSkeleton } from "@/components/ui/skeleton/skeleton";
 import {
   isIdentityColumnId,
   usePlayerTableStore,
@@ -55,7 +56,9 @@ import { isSupersededError } from "../api/fetch-search-players";
 import type { SearchPlayerPageContext } from "../api/search-keys";
 import {
   SEARCH_PAGE_SIZE,
+  searchFirstPageQueryOptions,
   searchPlayersQueryOptions,
+  searchRequestedFields,
 } from "../api/search-players-query-options";
 import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
 import { filterValueToIpc } from "../types/filter-rule";
@@ -78,6 +81,12 @@ import { buildTacticColumnOrder } from "../utils/tactic-columns";
 import { type FilterFieldRequest, SearchFilterBar } from "./search-filter-bar";
 
 type TableColumn = PlayerTableColumn;
+
+/**
+ * Wraps the rows or the empty result. It stays mounted while either replaces
+ * the other, so it fades in once: when the first page replaces the skeleton.
+ */
+const RESULTS_BODY_CLASS = "flex min-h-0 flex-1 flex-col animate-enter";
 
 const TABLE_ID = "search";
 
@@ -577,12 +586,8 @@ export function SearchResultsPanel({
     [laneLabels, layout],
   );
   const requestedFields = useMemo(
-    () =>
-      columns
-        .filter((column) => !isBasicSearchSortField(column.id))
-        .map((column) => column.id)
-        .sort(),
-    [columns],
+    () => searchRequestedFields(layout.columnIds),
+    [layout.columnIds],
   );
 
   const requested = useMemo(
@@ -611,31 +616,8 @@ export function SearchResultsPanel({
   const [fieldRequest, setFieldRequest] = useState<FilterFieldRequest | null>(
     null,
   );
-  const committedOptions = searchPlayersQueryOptions(
-    0,
-    SEARCH_PAGE_SIZE,
-    committed.sortBy,
-    committed.sortDir,
-    committed.filters,
-    committed.filterCombine,
-    committed.requestedFields,
-    committed.comparison,
-    committed.shortlistId,
-    committed.pageContext,
-  );
-  const namedRequestOptions = searchPlayersQueryOptions(
-    0,
-    SEARCH_PAGE_SIZE,
-    requested.sortBy,
-    requested.sortDir,
-    requested.filters,
-    requested.filterCombine,
-    requested.requestedFields,
-    requested.comparison,
-    requested.shortlistId,
-    requested.pageContext,
-    TABLE_ID,
-  );
+  const committedOptions = searchFirstPageQueryOptions(committed);
+  const namedRequestOptions = searchFirstPageQueryOptions(requested, TABLE_ID);
   const requestMatchesCommitted =
     JSON.stringify(committedOptions.queryKey) ===
     JSON.stringify(namedRequestOptions.queryKey);
@@ -907,24 +889,30 @@ export function SearchResultsPanel({
   );
   if (!page) {
     return (
-      <Panel flush>
+      <Panel
+        flush
+        className="flex min-h-0 flex-1 flex-col"
+        contentClassName="flex min-h-0 flex-1 flex-col"
+      >
         {renderToolbar()}
-        <EmptyState
-          icon={SearchX}
-          title={requestedError ? "Could not load players" : "Loading players"}
-          action={
-            requestedError ? (
+        {requestedError ? (
+          <EmptyState
+            icon={SearchX}
+            title="Could not load players"
+            action={
               <button
                 type="button"
                 onClick={() => void requestedQuery.refetch()}
               >
                 Retry
               </button>
-            ) : undefined
-          }
-        >
-          {requestedError ? requestedError.message : "Loading player results…"}
-        </EmptyState>
+            }
+          >
+            {requestedError.message}
+          </EmptyState>
+        ) : (
+          <TableSkeleton label="Loading player results…" />
+        )}
       </Panel>
     );
   }
@@ -1003,9 +991,11 @@ export function SearchResultsPanel({
       >
         {renderToolbar(summary)}
         {replacementFeedback}
-        <EmptyState icon={SearchX} title={emptyTitle}>
-          {emptyBody}
-        </EmptyState>
+        <div className={RESULTS_BODY_CLASS}>
+          <EmptyState icon={SearchX} title={emptyTitle}>
+            {emptyBody}
+          </EmptyState>
+        </div>
       </Panel>
     );
   }
@@ -1018,29 +1008,31 @@ export function SearchResultsPanel({
     >
       {renderToolbar(summary)}
       {replacementFeedback}
-      <SearchResultsVirtualTable
-        key={listKey}
-        total={page.total}
-        sortBy={committed.sortBy}
-        sortDir={committed.sortDir}
-        filters={committed.filters}
-        filterCombine={committed.filterCombine}
-        columns={columns}
-        identity={identity}
-        requestedFields={committed.requestedFields}
-        comparison={committed.comparison}
-        shortlistId={committed.shortlistId}
-        pageContext={committed.pageContext}
-        firstPageQueryOptions={committedOptions}
-        isReplacementActive={isReplacementActive}
-        unresolvedFieldIds={unresolvedFieldIds}
-        onSortChange={onSortChange}
-        onAddColumn={addColumn}
-        onRemoveColumn={removeColumn}
-        onMoveColumn={moveColumn}
-        onFilterColumn={filterColumn}
-        onResizeColumn={resizeColumn}
-      />
+      <div className={RESULTS_BODY_CLASS}>
+        <SearchResultsVirtualTable
+          key={listKey}
+          total={page.total}
+          sortBy={committed.sortBy}
+          sortDir={committed.sortDir}
+          filters={committed.filters}
+          filterCombine={committed.filterCombine}
+          columns={columns}
+          identity={identity}
+          requestedFields={committed.requestedFields}
+          comparison={committed.comparison}
+          shortlistId={committed.shortlistId}
+          pageContext={committed.pageContext}
+          firstPageQueryOptions={committedOptions}
+          isReplacementActive={isReplacementActive}
+          unresolvedFieldIds={unresolvedFieldIds}
+          onSortChange={onSortChange}
+          onAddColumn={addColumn}
+          onRemoveColumn={removeColumn}
+          onMoveColumn={moveColumn}
+          onFilterColumn={filterColumn}
+          onResizeColumn={resizeColumn}
+        />
+      </div>
     </Panel>
   );
 }

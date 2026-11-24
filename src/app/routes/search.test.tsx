@@ -422,6 +422,119 @@ describe("search route", () => {
     );
   });
 
+  it("warms the table's exact first page from the loader", async () => {
+    await resolveLoadDataIpcMock();
+    usePlayerTableStore
+      .getState()
+      .addColumns("search", ["attr.Acceleration", "attr.Agility"]);
+    const requests = recordSearchRequests();
+    const { router } = renderSearchRoute("/settings");
+    await waitFor(() => expect(router.state.status).toBe("idle"));
+
+    // Hovering the Search link runs the loader.
+    await act(() =>
+      router.preloadRoute({
+        to: "/search",
+        search: { sort: "ca", dir: "desc", filters: [], combine: "and" },
+      }),
+    );
+    expect(requests).toEqual([
+      expect.objectContaining({
+        offset: 0,
+        sortBy: "ca",
+        requestedFields: ["attr.Acceleration", "attr.Agility", "height"],
+      }),
+    ]);
+
+    await act(() =>
+      router.navigate({
+        to: "/search",
+        search: { sort: "ca", dir: "desc", filters: [], combine: "and" },
+      }),
+    );
+    expect(
+      await screen.findByRole("table", { name: "Player search results" }),
+    ).toBeInTheDocument();
+    // The table reads the warmed page instead of requesting its own.
+    expect(requests).toHaveLength(1);
+  });
+
+  it("paints the tactic controls ready on the first frame", async () => {
+    await resolveLoadDataIpcMock();
+    renderSearchRoute();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Player Search" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Loading tactic…")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
+    ).toBeEnabled();
+  });
+
+  it("keeps the results while a stale snapshot refetches unchanged", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Kept Player", 160)]);
+    const { queryClient } = renderSearchRoute();
+    expect(await screen.findByText("Kept Player")).toBeInTheDocument();
+
+    const internals = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (
+            cmd: string,
+            args?: Record<string, unknown>,
+            options?: unknown,
+          ) => Promise<unknown>;
+        };
+      }
+    ).__TAURI_INTERNALS__;
+    const invoke = internals.invoke;
+    let release = () => {};
+    internals.invoke = (cmd, args, options) =>
+      cmd === "get_current_snapshot"
+        ? new Promise((resolve) => {
+            release = () => resolve(invoke(cmd, args, options));
+          })
+        : invoke(cmd, args, options);
+
+    // A newly mounted observer refetches data that is merely stale.
+    const refetch = queryClient.refetchQueries({
+      queryKey: snapshotKeys.current(),
+    });
+    await waitFor(() =>
+      expect(queryClient.isFetching({ queryKey: snapshotKeys.current() })).toBe(
+        1,
+      ),
+    );
+    expect(screen.getByText("Kept Player")).toBeInTheDocument();
+    expect(screen.queryByText("Loading player results…")).toBeNull();
+    expect(screen.queryByText("Loading tactic…")).toBeNull();
+
+    release();
+    await act(() => refetch);
+    expect(screen.getByText("Kept Player")).toBeInTheDocument();
+  });
+
+  it("holds the table's place with a skeleton while the first page loads", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersPageIpcMockMode("pendingReplacement");
+    renderSearchRoute("/search?sort=value&dir=desc");
+
+    const label = await screen.findByText("Loading player results…");
+    expect(label.closest('[role="status"]')).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(screen.queryByText("Loading players")).toBeNull();
+
+    resolvePendingSearchPlayersPageIpcMock();
+    expect(
+      await screen.findByRole("table", { name: "Player search results" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Loading player results…")).toBeNull();
+  });
+
   it("atomically appends, interleaves, and re-compacts tactic groups", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -633,22 +746,40 @@ describe("search route", () => {
         ]),
       ]);
     usePlayerTableStore.getState().moveColumn("search", potentialIds[0], 22);
-    renderSearchRoute("/search", (queryClient) => {
-      void queryClient.fetchQuery({
-        queryKey: plannerKeys.tactic({
-          saveId: 1,
-          contextToken: "save-token-1",
-        }),
-        queryFn: () => new Promise<never>(() => undefined),
-      });
-    });
+    const { queryClient } = renderSearchRoute();
 
     const table = await screen.findByRole("table", {
       name: "Player search results",
     });
-    expect(
-      screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
-    ).toBeDisabled();
+    // The tactic reloads from nothing, as after a context change, and stays
+    // pending.
+    const internals = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (
+            cmd: string,
+            args?: Record<string, unknown>,
+            options?: unknown,
+          ) => Promise<unknown>;
+        };
+      }
+    ).__TAURI_INTERNALS__;
+    const invoke = internals.invoke;
+    internals.invoke = (cmd, args, options) =>
+      cmd === "get_planner_tactic"
+        ? new Promise<never>(() => undefined)
+        : invoke(cmd, args, options);
+    void queryClient.resetQueries({
+      queryKey: plannerKeys.tactic({
+        saveId: 1,
+        contextToken: "save-token-1",
+      }),
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Add Tactic (Role Score)" }),
+      ).toBeDisabled(),
+    );
     fireEvent.contextMenu(
       within(table).getAllByRole("columnheader", { name: "goalkeeper" })[0],
     );
@@ -2109,12 +2240,13 @@ describe("search route", () => {
     expect(getSearchPlayersCallCount()).toBeGreaterThanOrEqual(1);
 
     setSearchPlayersPageIpcMockMode("success");
+    const callsBeforeRetry = getSearchPlayersCallCount();
     await user.click(screen.getByRole("button", { name: "Retry" }));
     expect(
       await screen.findByRole("table", { name: "Player search results" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Recovered Search")).toBeInTheDocument();
-    expect(getSearchPlayersCallCount()).toBe(2);
+    expect(getSearchPlayersCallCount()).toBe(callsBeforeRetry + 1);
   });
 
   it("blocks Search results after an owner refresh fails", async () => {
