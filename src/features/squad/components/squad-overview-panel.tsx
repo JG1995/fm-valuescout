@@ -24,6 +24,7 @@ import {
   TABLE_TEXT_CELL_CLASS as TEXT_CELL,
 } from "@/components/player-table/table-cells";
 import type { TableGroupInput } from "@/components/player-table/table-groups";
+import { TablePendingStatus } from "@/components/player-table/table-pending-status";
 import { TableToolbar } from "@/components/player-table/table-toolbar";
 import {
   type ConfigurableTableIdentity,
@@ -591,16 +592,13 @@ export function SquadOverviewPanel({
         </button>
       </div>
     ) : (
-      <p
-        className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
-        role="status"
-      >
+      <TablePendingStatus>
         {replacementKind === "columns"
           ? "Loading columns…"
           : requested.sortBy.startsWith("potential_role.")
             ? "Calculating and sorting…"
             : "Sorting…"}
-      </p>
+      </TablePendingStatus>
     );
 
   useEffect(() => {

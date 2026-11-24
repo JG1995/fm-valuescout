@@ -22,6 +22,7 @@ import {
   TableScoreContent,
   TABLE_TEXT_CELL_CLASS as TEXT_CELL,
 } from "@/components/player-table/table-cells";
+import { TablePendingStatus } from "@/components/player-table/table-pending-status";
 import {
   type ConfigurableTableIdentity,
   type ConfigurableTableRenderHeader,
@@ -714,10 +715,7 @@ export function SearchResultsPanel({
         </button>
       </div>
     ) : (
-      <p
-        className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
-        role="status"
-      >
+      <TablePendingStatus>
         {replacementKind === "filter"
           ? "Filtering…"
           : replacementKind === "columns"
@@ -725,7 +723,7 @@ export function SearchResultsPanel({
             : requested.sortBy.startsWith("potential_role.")
               ? "Calculating and sorting…"
               : "Sorting…"}
-      </p>
+      </TablePendingStatus>
     );
 
   // The user came back to a query whose request was superseded while it ran.
