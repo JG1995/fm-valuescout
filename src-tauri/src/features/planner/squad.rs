@@ -263,10 +263,7 @@ pub fn list_squad_players(
         query_bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
     }
 
-    let membership_sql = format!(
-        "p.snapshot_id = ?1 AND {}",
-        managed_club_owned_player_sql("p", "?2")
-    );
+    let membership_sql = managed_club_owned_player_sql("p", "?1", "?2");
 
     let count_sql = format!("SELECT COUNT(*) FROM players p WHERE {membership_sql}");
     let total = conn

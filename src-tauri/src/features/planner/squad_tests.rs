@@ -1765,3 +1765,42 @@ fn the_squad_marks_loaned_out_players_and_its_boost_cohort_leaves_them_out() {
         [77, 79, 80]
     );
 }
+
+#[test]
+fn the_squad_keeps_its_loaned_out_players_by_uid_or_legacy_name() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    loan_out(&conn, save_id, 78);
+    loan_out(&conn, save_id, 79);
+    // A namesake club loaned player 79 out.
+    conn.execute(
+        "UPDATE players SET parent_club_uid = 3000 WHERE snapshot_id = ?1 AND uid = 79",
+        params![current_snapshot_id(&conn, save_id)],
+    )
+    .expect("move parent club to namesake");
+    let squad = |conn: &Connection| {
+        let page = list_squad_players(
+            conn,
+            save_id,
+            0,
+            DEFAULT_SQUAD_PAGE_LIMIT,
+            SquadSortField::DEFAULT,
+            SquadSortDir::DEFAULT,
+            &[],
+        )
+        .expect("list squad");
+        let mut uids = page
+            .players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>();
+        uids.sort_unstable();
+        (page.total, uids)
+    };
+
+    assert_eq!(squad(&conn), (3, vec![77, 78, 80]));
+
+    // A club chosen before UIDs were recorded matches its loans by name.
+    forget_managed_club_uid(&conn, save_id);
+    assert_eq!(squad(&conn), (4, vec![77, 78, 79, 80]));
+}

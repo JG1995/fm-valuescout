@@ -371,7 +371,7 @@ pub fn list_candidates(
                )
              ORDER BY p.name COLLATE NOCASE, p.uid
              LIMIT ?4",
-            managed_club_owned_player_sql("p", "?3")
+            managed_club_owned_player_sql("p", "?1", "?3")
         ))
         .map_err(|error| error.to_string())?;
     let candidates = statement
@@ -424,7 +424,7 @@ pub fn assign_member(
                 "SELECT p.name
                  FROM players p
                  WHERE p.snapshot_id = ?1 AND p.uid = ?2 AND {}",
-                managed_club_owned_player_sql("p", "?3")
+                managed_club_owned_player_sql("p", "?1", "?3")
             ),
             params![snapshot_id, player_uid, save_id],
             |row| row.get(0),
@@ -753,7 +753,7 @@ fn load_current_player(
                     COALESCE({}, 0)
                  FROM players
                  WHERE snapshot_id = ?1 AND uid = ?2",
-                managed_club_owned_player_sql("players", "?3"),
+                managed_club_owned_player_sql("players", "?1", "?3"),
                 managed_club_loaned_out_player_sql("players", "?3")
             ),
             params![snapshot_id, player_uid, save_id],

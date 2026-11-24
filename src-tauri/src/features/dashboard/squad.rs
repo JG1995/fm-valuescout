@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashSet};
 use rusqlite::{params, Connection};
 
 use crate::features::managed_club::service::{
-    managed_club_loaned_out_player_sql, managed_club_player_sql,
+    managed_club_loaned_out_player_sql, managed_club_owned_player_sql, managed_club_player_sql,
 };
 use crate::features::planner::fit::tactic_adjusted_score;
 use crate::features::planner::optimizer::{allocate_lanes, OptimizerCandidate};
@@ -70,6 +70,8 @@ pub(crate) fn get_expiring_contracts(
         .map_err(|error| error.to_string())?;
     let at_managed_club = managed_club_player_sql("p", "?2");
     let loaned_out = managed_club_loaned_out_player_sql("p", "?2");
+    // Reads only the club's own players in the snapshot; the next line decides between them.
+    let owned = managed_club_owned_player_sql("p", "?1", "?2");
     let mut players = conn
         .prepare(&format!(
             "WITH contracts AS (
@@ -80,7 +82,7 @@ pub(crate) fn get_expiring_contracts(
                         ) AS expiry_date,
                         {loaned_out} IS 1 AS loaned_out
                  FROM players p
-                 WHERE p.snapshot_id = ?1
+                 WHERE {owned}
                    AND (({at_managed_club} AND p.on_loan IS NOT 1) OR {loaned_out})
                    AND p.contract_expiry_year IS NOT NULL
                    AND p.contract_expiry_day_of_year IS NOT NULL
@@ -180,12 +182,13 @@ pub(crate) fn get_prospects(conn: &Connection, save_id: i64) -> Result<Option<Pr
             ));
         }
     }
+    // The unary `+` keeps SQLite on the club index: the age index reads every young player.
     let sql = format!(
         "SELECT p.uid, p.name, p.age, p.preferred_foot, p.positions_json{score_columns}
          FROM players p{}
          WHERE p.snapshot_id = ?1
            AND {}
-           AND p.age <= ?3
+           AND +p.age <= ?3
          ORDER BY p.uid",
         player_metrics_join("p", true, true),
         managed_club_player_sql("p", "?2")
