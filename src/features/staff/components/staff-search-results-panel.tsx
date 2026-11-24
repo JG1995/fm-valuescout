@@ -30,6 +30,7 @@ import {
 } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { TableSkeleton } from "@/components/ui/skeleton/skeleton";
 import {
   isIdentityColumnId,
   usePlayerTableStore,
@@ -291,7 +292,7 @@ export function staffTableColumnForMetric(
   };
 }
 
-type StaffResultsQueryParams = {
+export type StaffResultsQueryParams = {
   sortBy: StaffSortField;
   sortDir: StaffSortDir;
   filters: StaffFilterRule[];
@@ -333,6 +334,73 @@ function staffResultsPageOptions(
         null,
         tableId,
       );
+}
+
+function staffLayoutId(
+  scope: StaffWorkspaceScope,
+  isShortlist: boolean,
+): StaffLayoutId {
+  return scope === "my-staff"
+    ? "my-staff"
+    : isShortlist
+      ? "staff-shortlist"
+      : "staff-search";
+}
+
+function staffFixedColumnIds(isShortlist: boolean, preferredJob?: string) {
+  const shortlistPresentation = isShortlist
+    ? staffShortlistPresentation(preferredJob)
+    : undefined;
+  return shortlistPresentation
+    ? withoutIdentityColumnIds(shortlistPresentation.columnIds)
+    : undefined;
+}
+
+function staffColumns(
+  columnIds: string[],
+  widths: Record<string, number | undefined>,
+  isShortlist: boolean,
+) {
+  return columnIds.flatMap((id) => {
+    const column = staffTableColumnForMetric(id, isShortlist, widths[id]);
+    return column ? [column] : [];
+  });
+}
+
+function staffRequestedFields(columns: ConfigurableTableColumn[]) {
+  return columns
+    .filter(
+      (column) =>
+        !STAFF_BASIC_METRIC_IDS.includes(column.id) &&
+        !["preferred_job", "coaching_qualifications"].includes(column.id),
+    )
+    .map((column) => column.id)
+    .sort();
+}
+
+/**
+ * The first page the panel requests when it mounts with these props, with
+ * the columns of the stored table layout, so a route loader can warm exactly
+ * the page the table reads.
+ */
+export function staffResultsFirstPageOptions(
+  scope: StaffWorkspaceScope,
+  params: Omit<StaffResultsQueryParams, "requestedFields">,
+) {
+  const isShortlist = scope === "search" && params.shortlistOnly;
+  const layout =
+    usePlayerTableStore.getState().layouts[staffLayoutId(scope, isShortlist)];
+  const columns = staffColumns(
+    staffFixedColumnIds(isShortlist, params.preferredJob) ?? layout.columnIds,
+    layout.widths,
+    isShortlist,
+  );
+  return staffResultsPageOptions(
+    scope,
+    { ...params, requestedFields: staffRequestedFields(columns) },
+    0,
+    STAFF_PAGE_SIZE,
+  );
 }
 
 function StaffSearchTable({
@@ -565,20 +633,11 @@ export function StaffSearchResultsPanel({
   onRowActivate?: (staff: StaffSummary) => void;
 }) {
   const isShortlist = scope === "search" && shortlistOnly;
-  const fixedColumnIds = useMemo(() => {
-    const shortlistPresentation = isShortlist
-      ? staffShortlistPresentation(preferredJob)
-      : undefined;
-    return shortlistPresentation
-      ? withoutIdentityColumnIds(shortlistPresentation.columnIds)
-      : undefined;
-  }, [isShortlist, preferredJob]);
-  const layoutId: StaffLayoutId =
-    scope === "my-staff"
-      ? "my-staff"
-      : isShortlist
-        ? "staff-shortlist"
-        : "staff-search";
+  const fixedColumnIds = useMemo(
+    () => staffFixedColumnIds(isShortlist, preferredJob),
+    [isShortlist, preferredJob],
+  );
+  const layoutId = staffLayoutId(scope, isShortlist);
   const layout = usePlayerTableStore((state) => state.layouts[layoutId]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const removeColumn = usePlayerTableStore((state) => state.removeColumn);
@@ -626,26 +685,15 @@ export function StaffSearchResultsPanel({
   const boostOutcomeRef = useRef<HTMLDivElement>(null);
   const columns = useMemo(
     () =>
-      (fixedColumnIds ?? layout.columnIds).flatMap((id) => {
-        const column = staffTableColumnForMetric(
-          id,
-          isShortlist,
-          layout.widths[id],
-        );
-        return column ? [column] : [];
-      }),
+      staffColumns(
+        fixedColumnIds ?? layout.columnIds,
+        layout.widths,
+        isShortlist,
+      ),
     [fixedColumnIds, isShortlist, layout],
   );
   const requestedFields = useMemo(
-    () =>
-      columns
-        .filter(
-          (column) =>
-            !STAFF_BASIC_METRIC_IDS.includes(column.id) &&
-            !["preferred_job", "coaching_qualifications"].includes(column.id),
-        )
-        .map((column) => column.id)
-        .sort(),
+    () => staffRequestedFields(columns),
     [columns],
   );
   const requested: StaffResultsQueryParams = useMemo(
@@ -978,22 +1026,24 @@ export function StaffSearchResultsPanel({
         contentClassName="flex min-h-0 flex-1 flex-col"
       >
         {renderToolbar()}
-        <EmptyState
-          icon={SearchX}
-          title={requestedError ? "Could not load staff" : "Loading staff"}
-          action={
-            requestedError ? (
+        {requestedError ? (
+          <EmptyState
+            icon={SearchX}
+            title="Could not load staff"
+            action={
               <button
                 type="button"
                 onClick={() => void requestedQuery.refetch()}
               >
                 Retry
               </button>
-            ) : undefined
-          }
-        >
-          {requestedError ? requestedError.message : "Loading staff results…"}
-        </EmptyState>
+            }
+          >
+            {requestedError.message}
+          </EmptyState>
+        ) : (
+          <TableSkeleton label="Loading staff results…" />
+        )}
       </Panel>
     );
   }
@@ -1172,34 +1222,38 @@ export function StaffSearchResultsPanel({
           and run Load Data to calculate them.
         </p>
       ) : null}
-      <StaffSearchTable
-        key={listKey}
-        total={page.total}
-        sortBy={committed.sortBy}
-        sortDir={committed.sortDir}
-        columns={columns}
-        identity={identity}
-        pageQueryOptions={pageQueryOptions}
-        firstPageQueryOptions={committedOptions}
-        isReplacementActive={isReplacementActive}
-        unresolvedFieldIds={unresolvedFieldIds}
-        caption={
-          scope === "my-staff"
-            ? "Staff overview"
-            : isShortlist
-              ? "Staff Shortlist"
-              : "Staff search results"
-        }
-        testId={`${layoutId}-results-scroller`}
-        onSortChange={onSortChange}
-        onAddColumn={addStoredColumn}
-        onRemoveColumn={removeStoredColumn}
-        onMoveColumn={moveStoredColumn}
-        onResizeColumn={resizeStoredColumn}
-        onRowActivate={onRowActivate}
-        shortlist={isShortlist}
-        configurable={!fixedColumnIds}
-      />
+      {/* The table fades in once when it replaces the loading skeleton; a
+          sort or filter remounts only the keyed table inside. */}
+      <div className="flex min-h-0 flex-1 animate-enter flex-col">
+        <StaffSearchTable
+          key={listKey}
+          total={page.total}
+          sortBy={committed.sortBy}
+          sortDir={committed.sortDir}
+          columns={columns}
+          identity={identity}
+          pageQueryOptions={pageQueryOptions}
+          firstPageQueryOptions={committedOptions}
+          isReplacementActive={isReplacementActive}
+          unresolvedFieldIds={unresolvedFieldIds}
+          caption={
+            scope === "my-staff"
+              ? "Staff overview"
+              : isShortlist
+                ? "Staff Shortlist"
+                : "Staff search results"
+          }
+          testId={`${layoutId}-results-scroller`}
+          onSortChange={onSortChange}
+          onAddColumn={addStoredColumn}
+          onRemoveColumn={removeStoredColumn}
+          onMoveColumn={moveStoredColumn}
+          onResizeColumn={resizeStoredColumn}
+          onRowActivate={onRowActivate}
+          shortlist={isShortlist}
+          configurable={!fixedColumnIds}
+        />
+      </div>
     </Panel>
   );
 }
