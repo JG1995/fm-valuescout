@@ -21,11 +21,20 @@ pub const APP_DB_FILE: &str = "app-v2.db";
 
 const READER_COUNT: usize = 4;
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
-const WRITER_CACHE_KIB: i64 = 256 * 1024;
-const READER_CACHE_KIB: i64 = 64 * 1024;
+/// The writer's page cache while a write holds it, for the pages a transaction changes.
+const WRITING_CACHE_KIB: i64 = 256 * 1024;
+/// Every connection's page cache otherwise. Reads take their pages from the memory-mapped
+/// file, so a cache only holds pages that are still in the WAL.
+///
+/// The bundled SQLite is built with `SQLITE_ENABLE_MEMORY_MANAGEMENT`, which makes all
+/// connections share one cache budget: any of them may use the sum of their sizes. The sum,
+/// not one connection's size, is therefore what bounds the memory.
+const IDLE_CACHE_KIB: i64 = 8 * 1024;
 const JOURNAL_SIZE_LIMIT_BYTES: i64 = 64 * 1024 * 1024;
-/// The bundled SQLite's default `SQLITE_MAX_MMAP_SIZE`; SQLite clamps larger requests to it.
-const MMAP_SIZE_BYTES: i64 = 0x7fff_0000;
+/// How much of the database file a connection maps. `src-tauri/.cargo/config.toml` raises the
+/// bundled SQLite's `SQLITE_MAX_MMAP_SIZE` from its 2 GiB default to this; a build without it
+/// clamps the mapping, and reads past it go through the page cache.
+const MMAP_SIZE_BYTES: i64 = 64 * 1024 * 1024 * 1024;
 
 /// The application database: one writer and, for a database file, a pool of read-only
 /// readers. Clones share both.
@@ -103,6 +112,28 @@ impl Db {
             .map_err(|error| error.to_string())?;
         Ok(reader)
     }
+
+    /// Unmaps the database file from the connections nothing is using, once no read request
+    /// has ended for `idle_for`. It does nothing more until another request has ended.
+    ///
+    /// Every mapped page a connection touched counts towards the process's working set until
+    /// its mapping goes, although the page belongs to the operating system's file cache. This
+    /// closes the readers that no request holds, which the next requests reopen, and drops
+    /// the writer's mapping unless a write holds the writer.
+    pub fn release_idle_mappings(&self, idle_for: Duration) {
+        let Some(pool) = self.1.as_deref() else {
+            return;
+        };
+        if !pool.close_idle(idle_for) {
+            return;
+        }
+        if let Ok(writer) = self.0.conn.try_lock() {
+            // Results ignored: a mapping that stays costs working set, never correctness.
+            // SQLite maps the file again when the writer next reads it.
+            let _ = writer.pragma_update(None, "mmap_size", 0);
+            let _ = writer.pragma_update(None, "mmap_size", MMAP_SIZE_BYTES);
+        }
+    }
 }
 
 /// The writer connection behind a lock. Its guard advances the data generation when the
@@ -139,6 +170,8 @@ impl WriterLock {
     }
 
     fn guard<'a>(&'a self, conn: MutexGuard<'a, Connection>) -> WriterGuard<'a> {
+        // Result ignored: a cache that stays small only makes a large write slower.
+        let _ = set_cache_size(&conn, WRITING_CACHE_KIB);
         WriterGuard {
             changes_at_lock: conn.total_changes(),
             conn,
@@ -174,6 +207,7 @@ impl Drop for WriterGuard<'_> {
         if self.conn.total_changes() != self.changes_at_lock {
             self.generation.fetch_add(1, Ordering::Release);
         }
+        release_write_cache(&self.conn);
     }
 }
 
@@ -191,6 +225,8 @@ struct PoolState {
     idle: Vec<Option<Box<Connection>>>,
     /// A checkpoint is closing the readers: no request gets one until it ends.
     closing: bool,
+    /// When a read request last ended, until `close_idle` has acted on it.
+    last_release: Option<Instant>,
 }
 
 /// Keeps a pool's readers closed and its requests waiting until dropped.
@@ -213,6 +249,7 @@ impl ReaderPool {
             state: Mutex::new(PoolState {
                 idle,
                 closing: false,
+                last_release: None,
             }),
             changed: Condvar::new(),
         })
@@ -246,9 +283,36 @@ impl ReaderPool {
     }
 
     fn release(&self, conn: Option<Box<Connection>>) {
-        self.lock().idle.push(conn);
+        let mut state = self.lock();
+        state.idle.push(conn);
+        state.last_release = Some(Instant::now());
+        drop(state);
         // A request and a checkpoint may both wait, and only one of them can go on.
         self.changed.notify_all();
+    }
+
+    /// Closes the readers no request holds, when the last read request ended at least
+    /// `idle_for` ago and nothing has closed them since. Each slot stays free and reopens on
+    /// demand. Returns whether it acted.
+    fn close_idle(&self, idle_for: Duration) -> bool {
+        let mut state = self.lock();
+        if !state
+            .last_release
+            .is_some_and(|released| released.elapsed() >= idle_for)
+        {
+            return false;
+        }
+        state.last_release = None;
+        let closed = state
+            .idle
+            .iter_mut()
+            .filter_map(Option::take)
+            .collect::<Vec<_>>();
+        // Closed after the pool lock is released: unmapping a large file takes a while, and
+        // no request should wait for it.
+        drop(state);
+        drop(closed);
+        true
     }
 
     /// Closes every reader once the requests holding one have returned it, waiting up to
@@ -352,6 +416,8 @@ pub fn open(db_path: &Path) -> Result<Db, String> {
     migrations::apply(&conn).map_err(|error| error.to_string())?;
     checkpoint_at_open(&conn);
 
+    release_write_cache(&conn);
+
     let path = std::fs::canonicalize(db_path).map_err(|error| error.to_string())?;
     let readers = ReaderPool::open(&path)?;
     let generation = registered_generation(path);
@@ -383,7 +449,7 @@ fn configure_writer(conn: &Connection) -> Result<(), String> {
     }
     conn.pragma_update(None, "synchronous", "NORMAL")
         .and_then(|()| conn.pragma_update(None, "journal_size_limit", JOURNAL_SIZE_LIMIT_BYTES))
-        .and_then(|()| configure_connection(conn, WRITER_CACHE_KIB))
+        .and_then(|()| configure_connection(conn, WRITING_CACHE_KIB))
         .and_then(|()| conn.pragma_update(None, "foreign_keys", true))
         .map_err(|error| error.to_string())
 }
@@ -396,7 +462,7 @@ fn open_reader(path: &Path) -> Result<Connection, String> {
             | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(|error| error.to_string())?;
-    configure_connection(&conn, READER_CACHE_KIB)
+    configure_connection(&conn, IDLE_CACHE_KIB)
         .and_then(|()| conn.pragma_update(None, "query_only", true))
         .map_err(|error| error.to_string())?;
     Ok(conn)
@@ -404,10 +470,22 @@ fn open_reader(path: &Path) -> Result<Connection, String> {
 
 fn configure_connection(conn: &Connection, cache_kib: i64) -> rusqlite::Result<()> {
     conn.busy_timeout(BUSY_TIMEOUT)?;
-    // A negative cache size is in KiB.
-    conn.pragma_update(None, "cache_size", -cache_kib)?;
+    set_cache_size(conn, cache_kib)?;
     conn.pragma_update(None, "mmap_size", MMAP_SIZE_BYTES)?;
     conn.pragma_update(None, "temp_store", "MEMORY")
+}
+
+fn set_cache_size(conn: &Connection, cache_kib: i64) -> rusqlite::Result<()> {
+    // A negative cache size is in KiB.
+    conn.pragma_update(None, "cache_size", -cache_kib)
+}
+
+/// Shrinks the writer's page cache to its idle size and frees the pages a write left in it,
+/// which SQLite would otherwise keep until the connection closes.
+fn release_write_cache(conn: &Connection) {
+    // Results ignored: a cache that stays large costs memory, never correctness.
+    let _ = set_cache_size(conn, IDLE_CACHE_KIB);
+    let _ = conn.execute_batch("PRAGMA shrink_memory");
 }
 
 /// Copies the WAL into the database file and truncates it, unless a reader blocks that.
@@ -531,6 +609,12 @@ mod tests {
     fn probe_sum(conn: &Connection) -> i64 {
         conn.query_row("SELECT SUM(value) FROM probe", [], |row| row.get(0))
             .expect("read probe")
+    }
+
+    fn open_idle_readers(db: &Db) -> usize {
+        let pool = db.1.as_deref().expect("reader pool");
+        let state = pool.lock();
+        state.idle.iter().flatten().count()
     }
 
     #[test]
@@ -710,6 +794,82 @@ mod tests {
         for reader in &readers {
             assert_eq!(probe_sum(reader), 7);
         }
+    }
+
+    #[test]
+    fn every_connection_maps_the_whole_database_file() {
+        let (_temp_dir, db) = opened();
+        let mapped = |conn: &Connection| -> i64 {
+            conn.pragma_query_value(None, "mmap_size", |row| row.get(0))
+                .expect("read mmap size")
+        };
+
+        // SQLite reports the size it applied. A smaller one means that the bundled SQLite was
+        // built without the limit in `src-tauri/.cargo/config.toml`.
+        assert_eq!(mapped(&db.0.lock().expect("lock writer")), MMAP_SIZE_BYTES);
+        assert_eq!(mapped(&db.read().expect("acquire reader")), MMAP_SIZE_BYTES);
+    }
+
+    #[test]
+    fn the_writer_has_its_large_page_cache_only_while_a_write_holds_it() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = open(&temp_dir.path().join(APP_DB_FILE)).expect("open db");
+        let cache_kib = |conn: &Connection| -> i64 {
+            -conn
+                .pragma_query_value(None, "cache_size", |row| row.get::<_, i64>(0))
+                .expect("read cache size")
+        };
+        let idle_writer = || cache_kib(&db.0.conn.lock().expect("writer connection"));
+        assert_eq!(idle_writer(), IDLE_CACHE_KIB);
+
+        let writer = db.0.lock().expect("lock writer");
+        assert_eq!(cache_kib(&writer), WRITING_CACHE_KIB);
+        drop(writer);
+
+        assert_eq!(idle_writer(), IDLE_CACHE_KIB);
+        assert_eq!(
+            cache_kib(&db.read().expect("acquire reader")),
+            IDLE_CACHE_KIB
+        );
+    }
+
+    #[test]
+    fn idle_mappings_are_released_once_after_the_last_read_request() {
+        let (_temp_dir, db) = opened();
+        let held = db.read().expect("acquire reader");
+        assert_eq!(probe_sum(&db.read().expect("another reader")), 1);
+
+        // The request that just ended is too recent for a long wait.
+        db.release_idle_mappings(Duration::from_secs(3600));
+        assert_eq!(open_idle_readers(&db), READER_COUNT - 1);
+
+        db.release_idle_mappings(Duration::ZERO);
+        assert_eq!(open_idle_readers(&db), 0);
+        // The held reader is untouched, a closed one reopens for the next request, and the
+        // writer reads and writes with its mapping dropped.
+        assert_eq!(probe_sum(&held), 1);
+        assert_eq!(probe_sum(&db.read().expect("reopened reader")), 1);
+        let writer = db.0.lock().expect("lock writer");
+        writer
+            .execute("UPDATE probe SET value = 2", [])
+            .expect("write");
+        assert_eq!(probe_sum(&writer), 2);
+    }
+
+    #[test]
+    fn releasing_idle_mappings_waits_for_a_read_request_to_end() {
+        let (_temp_dir, db) = opened();
+        drop(db.read().expect("acquire reader"));
+        db.release_idle_mappings(Duration::ZERO);
+        drop(db.read().expect("reopened reader"));
+        db.release_idle_mappings(Duration::ZERO);
+        assert_eq!(open_idle_readers(&db), 0);
+
+        // No request has ended since, so a reader that opens for one stays open.
+        let reader = db.read().expect("acquire reader");
+        db.release_idle_mappings(Duration::ZERO);
+        drop(reader);
+        assert_eq!(open_idle_readers(&db), 1);
     }
 
     #[test]
