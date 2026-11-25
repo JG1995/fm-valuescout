@@ -4,9 +4,10 @@ use cap_std::fs::{Dir, File, OpenOptions};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BinaryHeap};
+use std::collections::{BTreeMap, BinaryHeap, HashMap};
 use std::io::{self, BufReader, Read};
 use std::path::Path;
+use std::sync::Arc;
 
 // Calibrated against the complete representative root; depth and image size retain their security bounds.
 const MAX_DEPTH: usize = 32;
@@ -111,15 +112,27 @@ impl PartialOrd for Identity {
         Some(self.cmp(other))
     }
 }
-#[derive(Debug)]
+/// One image's place below the root: its directory, by position in
+/// `GraphicsIndex::directories`, and its file name, as a byte range of `GraphicsIndex::names`.
+///
+/// A large pack maps several hundred thousand images from a few hundred directories, so a
+/// mapping that owned its whole path would cost about a kilobyte of small allocations.
+#[derive(Clone, Copy, Debug)]
 struct Mapping {
-    path: Identity,
+    directory: u32,
+    name_start: u32,
+    name_len: u32,
 }
 #[derive(Debug)]
 pub struct GraphicsIndex {
     root: Option<Dir>,
     people: BTreeMap<u32, Mapping>,
     clubs: BTreeMap<u32, (Option<Mapping>, Option<Mapping>)>,
+    /// Every directory that holds a mapped image, as its components below the root.
+    directories: Vec<Arc<[String]>>,
+    directory_ids: HashMap<Arc<[String]>, u32>,
+    /// The mapped images' file names, back to back.
+    names: String,
     summary: GraphicsSummary,
     metrics: ScanMetrics,
     limits: Limits,
@@ -148,13 +161,30 @@ impl ImageLocator {
 
 impl GraphicsIndex {
     pub fn empty() -> Self {
+        Self::without_mappings(
+            None,
+            GraphicsSummary::default(),
+            ScanMetrics::default(),
+            PRODUCTION_LIMITS,
+        )
+    }
+
+    fn without_mappings(
+        root: Option<Dir>,
+        summary: GraphicsSummary,
+        metrics: ScanMetrics,
+        limits: Limits,
+    ) -> Self {
         Self {
-            root: None,
+            root,
             people: BTreeMap::new(),
             clubs: BTreeMap::new(),
-            summary: GraphicsSummary::default(),
-            metrics: ScanMetrics::default(),
-            limits: PRODUCTION_LIMITS,
+            directories: Vec::new(),
+            directory_ids: HashMap::new(),
+            names: String::new(),
+            summary,
+            metrics,
+            limits,
             #[cfg(test)]
             source_directory_enumerations: 0,
             #[cfg(test)]
@@ -169,24 +199,18 @@ impl GraphicsIndex {
         let root_dir = match Dir::open_ambient_dir(root, ambient_authority()) {
             Ok(dir) => dir,
             Err(_) => {
-                return Self {
-                    root: None,
-                    people: BTreeMap::new(),
-                    clubs: BTreeMap::new(),
-                    summary: GraphicsSummary {
+                return Self::without_mappings(
+                    None,
+                    GraphicsSummary {
                         diagnostics: ScanDiagnostics {
                             source_unreadable: 1,
                             ..Default::default()
                         },
                         ..Default::default()
                     },
-                    metrics: ScanMetrics::default(),
+                    ScanMetrics::default(),
                     limits,
-                    #[cfg(test)]
-                    source_directory_enumerations: 0,
-                    #[cfg(test)]
-                    source_probe_comparisons: 0,
-                }
+                )
             }
         };
         let mut state = Discovery {
@@ -202,42 +226,22 @@ impl GraphicsIndex {
             state.summary.truncated = true;
             state.summary.diagnostics.entry_limit += 1;
         }
-        if state.summary.truncated {
-            return Self {
-                root: Some(root_dir),
-                people: BTreeMap::new(),
-                clubs: BTreeMap::new(),
-                summary: state.summary,
-                metrics: ScanMetrics {
-                    discovery_entries: state.entries,
-                    discovery_elapsed_ms,
-                    ..Default::default()
-                },
-                limits,
-                #[cfg(test)]
-                source_directory_enumerations: 0,
-                #[cfg(test)]
-                source_probe_comparisons: 0,
-            };
-        }
-        let mut configs = state.configs.into_vec();
-        configs.sort();
-        let mut index = Self {
-            root: Some(root_dir),
-            people: BTreeMap::new(),
-            clubs: BTreeMap::new(),
-            summary: state.summary,
-            metrics: ScanMetrics {
+        let truncated = state.summary.truncated;
+        let mut index = Self::without_mappings(
+            Some(root_dir),
+            state.summary,
+            ScanMetrics {
                 discovery_entries: state.entries,
                 discovery_elapsed_ms,
                 ..Default::default()
             },
             limits,
-            #[cfg(test)]
-            source_directory_enumerations: 0,
-            #[cfg(test)]
-            source_probe_comparisons: 0,
-        };
+        );
+        if truncated {
+            return index;
+        }
+        let mut configs = state.configs.into_vec();
+        configs.sort();
         let mut parser_bytes = 0;
         let mut parser_records = 0;
         let mut parser_attributes = 0;
@@ -275,6 +279,7 @@ impl GraphicsIndex {
         index.metrics.parser_attributes = parser_attributes;
         index.metrics.parser_elapsed_ms = parser_elapsed_ms;
         index.metrics.source_elapsed_ms = source_elapsed_ms;
+        index.names.shrink_to_fit();
         index
     }
     pub fn summary(&self) -> &GraphicsSummary {
@@ -296,10 +301,43 @@ impl GraphicsIndex {
                 .and_then(|x| x.0.as_ref().or(x.1.as_ref())),
             GraphicsKind::ClubIcon => self.clubs.get(&uid).and_then(|x| x.1.as_ref()),
         }?;
+        let name_start = mapping.name_start as usize;
+        let name = self
+            .names
+            .get(name_start..name_start + mapping.name_len as usize)?;
+        let mut path = self.directories.get(mapping.directory as usize)?.to_vec();
+        path.push(name.to_string());
         Some(ImageLocator {
             root: self.root.as_ref()?.try_clone().ok()?,
-            path: mapping.path.0.clone(),
+            path,
             limit: self.limits.image_bytes,
+        })
+    }
+
+    /// The position of the directory with these components below the root.
+    fn intern_directory(&mut self, components: Vec<String>) -> u32 {
+        if let Some(id) = self.directory_ids.get(components.as_slice()) {
+            return *id;
+        }
+        // The root's record limit keeps the directories far below `u32::MAX`.
+        let id = self.directories.len() as u32;
+        let directory: Arc<[String]> = components.into();
+        self.directories.push(Arc::clone(&directory));
+        self.directory_ids.insert(directory, id);
+        id
+    }
+
+    /// Stores a mapped image's file name, or returns `None` when the names no longer fit
+    /// the range a mapping can address.
+    fn intern_name(&mut self, directory: u32, name: &str) -> Option<Mapping> {
+        let name_start = u32::try_from(self.names.len()).ok()?;
+        let name_len = u32::try_from(name.len()).ok()?;
+        name_start.checked_add(name_len)?;
+        self.names.push_str(name);
+        Some(Mapping {
+            directory,
+            name_start,
+            name_len,
         })
     }
 
@@ -485,18 +523,23 @@ fn read_bounded(file: File, limit: u64) -> Result<Vec<u8>, ReadBoundedError> {
 #[derive(Debug)]
 struct ConfigCandidate {
     from: String,
-    to: String,
+    /// The record's image kind and UID, or `None` for a target the app does not show.
+    target: Option<(GraphicsKind, u32)>,
 }
 
+/// A config record with a known target and a well-formed source path.
 #[derive(Debug)]
 struct PreparedCandidate {
     kind: GraphicsKind,
     uid: u32,
-    paths: Vec<Identity>,
-    directory: Vec<String>,
-    names: Vec<String>,
-    valid: Vec<bool>,
+    /// The source's directory below the config, by position in the config's directories.
+    directory: u32,
+    /// The source's file name as the config gives it.
+    name: String,
 }
+
+/// The extensions tried, in this order, for a source name that has none.
+const PROBED_EXTENSIONS: [&str; 4] = ["png", "jpeg", "jpg", "webp"];
 
 enum ParseConfigResult {
     Complete {
@@ -630,7 +673,10 @@ fn parse_config(
                     break;
                 }
                 if let (Some(from), Some(to)) = (from, to) {
-                    mappings.push(ConfigCandidate { from, to });
+                    mappings.push(ConfigCandidate {
+                        from,
+                        target: parse_target(&to),
+                    });
                 } else {
                     index.summary.diagnostics.invalid_mapping += 1;
                 }
@@ -693,84 +739,94 @@ fn validate_config_sources(
     config_parent: &[String],
     mappings: Vec<ConfigCandidate>,
 ) {
+    let mut directories: Vec<Vec<String>> = Vec::new();
+    let mut directory_ids: HashMap<Vec<String>, u32> = HashMap::new();
     let mut candidates = Vec::new();
     for candidate in mappings {
-        let Some((kind, uid)) = parse_target(&candidate.to) else {
+        let Some((kind, uid)) = candidate.target else {
             index.summary.diagnostics.invalid_mapping += 1;
             continue;
         };
-        let Some(parts) = source_relative_identity(&candidate.from) else {
+        let Some(mut parts) = source_relative_identity(&candidate.from) else {
             index.summary.diagnostics.source_unreadable += 1;
             continue;
         };
-        let Some(identity) = source_identity(config_parent, &candidate.from) else {
+        let Some(name) = parts.pop() else {
             index.summary.diagnostics.source_unreadable += 1;
             continue;
         };
-        let Some(last) = parts.last() else {
-            index.summary.diagnostics.source_unreadable += 1;
-            continue;
+        let directory = match directory_ids.get(&parts) {
+            Some(id) => *id,
+            None => {
+                // A config holds fewer records than `u32::MAX`, so the position fits.
+                let id = directories.len() as u32;
+                directories.push(parts.clone());
+                directory_ids.insert(parts, id);
+                id
+            }
         };
-        let probe = !last.contains('.');
-        let paths = source_candidates(&identity, probe);
-        let names = paths
-            .iter()
-            .filter_map(|path| path.0.last().cloned())
-            .collect::<Vec<_>>();
-        let directory = parts[..parts.len() - 1].to_vec();
-        let name_count = names.len();
         candidates.push(PreparedCandidate {
             kind,
             uid,
-            paths,
             directory,
-            names,
-            valid: vec![false; name_count],
+            name,
         });
     }
+    drop(directory_ids);
 
     index.metrics.source_records += candidates.len();
     let mut successful_image_sizes =
         BinaryHeap::from(std::mem::take(&mut index.metrics.successful_image_sizes));
-    let mut grouped = candidates
-        .iter()
-        .enumerate()
-        .map(|(ordinal, candidate)| (candidate.directory.clone(), ordinal))
-        .collect::<Vec<_>>();
-    grouped.sort_by(|left, right| left.0.cmp(&right.0));
+    // The file names found for each candidate, as bits: bit 0 for a source name with an
+    // extension, and otherwise one bit per probed extension, in probing order.
+    let mut found = vec![0u8; candidates.len()];
+    let mut grouped = (0..candidates.len()).collect::<Vec<_>>();
+    grouped.sort_unstable_by(|left, right| {
+        let (left, right) = (&candidates[*left], &candidates[*right]);
+        left.directory
+            .cmp(&right.directory)
+            .then_with(|| left.name.cmp(&right.name))
+    });
     let mut group_start = 0;
     while group_start < grouped.len() {
-        let directory = &grouped[group_start].0;
-        let mut group_end = group_start + 1;
-        while group_end < grouped.len() && grouped[group_end].0 == *directory {
-            group_end += 1;
-        }
+        let directory = candidates[grouped[group_start]].directory;
+        let group_len = grouped[group_start..]
+            .partition_point(|ordinal| candidates[*ordinal].directory == directory);
+        let group = &grouped[group_start..group_start + group_len];
+        group_start += group_len;
         index.metrics.source_directories += 1;
         #[cfg(test)]
         {
             index.source_directory_enumerations += 1;
         }
-        let entries = match open_relative(config_dir, directory).and_then(|dir| dir.entries()) {
+        let entries = match open_relative(config_dir, &directories[directory as usize])
+            .and_then(|dir| dir.entries())
+        {
             Ok(entries) => entries,
             Err(_) => {
-                for _ in &grouped[group_start..group_end] {
-                    index.summary.diagnostics.source_unreadable += 1;
-                }
-                group_start = group_end;
+                index.summary.diagnostics.source_unreadable += group.len();
                 continue;
             }
         };
-        let mut probes = grouped[group_start..group_end]
-            .iter()
-            .flat_map(|(_, ordinal)| {
-                candidates[*ordinal]
-                    .names
-                    .iter()
-                    .enumerate()
-                    .map(|(probe, name)| (name.clone(), *ordinal, probe))
-            })
-            .collect::<Vec<_>>();
-        probes.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+        // Marks the group's candidates named `name` and says whether there was one.
+        let mut mark = |name: &str, bit: u8| {
+            let lower = group.partition_point(|ordinal| {
+                #[cfg(test)]
+                {
+                    index.source_probe_comparisons += 1;
+                }
+                candidates[*ordinal].name.as_str() < name
+            });
+            let matches = group[lower..]
+                .iter()
+                .take_while(|ordinal| candidates[**ordinal].name == name);
+            let mut any = false;
+            for ordinal in matches {
+                found[*ordinal] |= bit;
+                any = true;
+            }
+            any
+        };
         for entry in entries.flatten() {
             let Ok(file_type) = entry.file_type() else {
                 continue;
@@ -779,22 +835,21 @@ fn validate_config_sources(
                 continue;
             }
             let name = entry.file_name().to_string_lossy().into_owned();
-            let lower = probes.partition_point(|probe| {
-                #[cfg(test)]
+            let Some((stem, extension)) = name.rsplit_once('.') else {
+                continue;
+            };
+            // A source name with an extension names this file outright. One without names
+            // it by its stem when the file adds a probed extension.
+            let mut matched = mark(&name, 1);
+            if !stem.contains('.') {
+                if let Some(probe) = PROBED_EXTENSIONS
+                    .iter()
+                    .position(|probed| *probed == extension)
                 {
-                    index.source_probe_comparisons += 1;
+                    matched |= mark(stem, 1 << probe);
                 }
-                probe.0.as_str() < name.as_str()
-            });
-            let upper = lower
-                + probes[lower..].partition_point(|probe| {
-                    #[cfg(test)]
-                    {
-                        index.source_probe_comparisons += 1;
-                    }
-                    probe.0.as_str() == name.as_str()
-                });
-            if lower < upper {
+            }
+            if matched {
                 if let Ok(length) = entry.metadata().map(|metadata| metadata.len()) {
                     successful_image_sizes.push(length);
                     if successful_image_sizes.len() > CALIBRATION_SAMPLE_LIMIT {
@@ -802,28 +857,40 @@ fn validate_config_sources(
                     }
                 }
             }
-            for (_, ordinal, probe) in &probes[lower..upper] {
-                candidates[*ordinal].valid[*probe] = true;
-            }
         }
-        group_start = group_end;
     }
     index.metrics.successful_image_sizes = successful_image_sizes.into_sorted_vec();
-    for candidate in candidates {
-        let Some(probe) = candidate.valid.iter().position(|valid| *valid) else {
+    drop(grouped);
+
+    // Each config directory's position in the index, resolved when its first image maps.
+    let mut index_directories = vec![None; directories.len()];
+    for (candidate, found) in candidates.into_iter().zip(found) {
+        if found == 0 {
             index.summary.diagnostics.source_unreadable += 1;
             continue;
+        }
+        let name = if candidate.name.contains('.') {
+            candidate.name
+        } else {
+            let extension = PROBED_EXTENSIONS[found.trailing_zeros() as usize];
+            format!("{}.{extension}", candidate.name)
         };
-        fold_mapping(
-            index,
-            candidate.kind,
-            candidate.uid,
-            candidate.paths[probe].clone(),
-        );
+        let directory = *index_directories[candidate.directory as usize].get_or_insert_with(|| {
+            let mut components = config_parent.to_vec();
+            components.extend_from_slice(&directories[candidate.directory as usize]);
+            index.intern_directory(components)
+        });
+        fold_mapping(index, candidate.kind, candidate.uid, directory, &name);
     }
 }
 
-fn fold_mapping(index: &mut GraphicsIndex, kind: GraphicsKind, uid: u32, path: Identity) {
+fn fold_mapping(
+    index: &mut GraphicsIndex,
+    kind: GraphicsKind,
+    uid: u32,
+    directory: u32,
+    name: &str,
+) {
     let duplicate = match kind {
         GraphicsKind::PersonPortrait => index.people.contains_key(&uid),
         GraphicsKind::ClubLogo => index.clubs.get(&uid).is_some_and(|x| x.0.is_some()),
@@ -837,7 +904,11 @@ fn fold_mapping(index: &mut GraphicsIndex, kind: GraphicsKind, uid: u32, path: I
         index.summary.truncated = true;
         return;
     }
-    let mapping = Mapping { path };
+    let Some(mapping) = index.intern_name(directory, name) else {
+        index.summary.diagnostics.mapping_limit += 1;
+        index.summary.truncated = true;
+        return;
+    };
     match kind {
         GraphicsKind::PersonPortrait => {
             index.people.insert(uid, mapping);
@@ -860,35 +931,6 @@ fn source_relative_identity(source: &str) -> Option<Vec<String>> {
         .map(|component| match component {
             std::path::Component::Normal(value) => Some(value.to_string_lossy().into_owned()),
             _ => None,
-        })
-        .collect()
-}
-fn source_identity(parent: &[String], source: &str) -> Option<Identity> {
-    let path = Path::new(source);
-    if path.is_absolute() {
-        return None;
-    }
-    let mut parts = parent.to_vec();
-    for component in path.components() {
-        match component {
-            std::path::Component::Normal(value) => parts.push(value.to_string_lossy().into_owned()),
-            _ => return None,
-        }
-    }
-    Some(Identity(parts))
-}
-fn source_candidates(identity: &Identity, probe: bool) -> Vec<Identity> {
-    if !probe {
-        return vec![identity.clone()];
-    }
-    ["png", "jpeg", "jpg", "webp"]
-        .iter()
-        .map(|ext| {
-            let mut p = identity.0.clone();
-            let last = p.last_mut().unwrap();
-            last.push('.');
-            last.push_str(ext);
-            Identity(p)
         })
         .collect()
 }
@@ -1381,6 +1423,45 @@ mod tests {
                 expected_mime
             );
         }
+    }
+    #[test]
+    fn a_source_name_matches_its_exact_file_or_a_probed_extension_only() {
+        let d = tempdir().unwrap();
+        let image = |path: &str, content: &[u8]| {
+            fs::write(
+                d.path().join(path),
+                [b"\x89PNG\r\n\x1a\n", content].concat(),
+            )
+            .unwrap();
+        };
+        fs::create_dir(d.path().join("a")).unwrap();
+        fs::create_dir(d.path().join("b")).unwrap();
+        image("a/shared.png", b"shared");
+        image("b/other.png", b"other");
+        image("a/dotted.v2.png", b"");
+        image("a/bare", b"");
+        image("b/exact.png.png", b"");
+        fs::write(
+            d.path().join("config.xml"),
+            r#"<r>
+                <record from="a/shared" to="graphics/pictures/person/1/portrait"/>
+                <record from="b/other.png" to="graphics/pictures/person/2/portrait"/>
+                <record from="a/shared" to="graphics/pictures/person/3/portrait"/>
+                <record from="a/dotted.v2" to="graphics/pictures/person/4/portrait"/>
+                <record from="a/bare" to="graphics/pictures/person/5/portrait"/>
+                <record from="b/exact.png" to="graphics/pictures/person/6/portrait"/>
+            </r>"#,
+        )
+        .unwrap();
+
+        let index = GraphicsIndex::scan(d.path());
+
+        let portrait = |uid| index.resolve(GraphicsKind::PersonPortrait, uid);
+        assert!(portrait(1).unwrap().bytes.ends_with(b"shared"));
+        assert!(portrait(2).unwrap().bytes.ends_with(b"other"));
+        assert!(portrait(3).unwrap().bytes.ends_with(b"shared"));
+        assert_eq!(index.people_len(), 3);
+        assert_eq!(index.summary().diagnostics.source_unreadable, 3);
     }
     #[cfg(unix)]
     #[test]
