@@ -113,25 +113,16 @@ impl Db {
         Ok(reader)
     }
 
-    /// Unmaps the database file from the connections nothing is using, once no read request
-    /// has ended for `idle_for`. It does nothing more until another request has ended.
+    /// Closes the readers that no request holds, once no read request has ended for
+    /// `idle_for`. It does nothing more until another request has ended; the next requests
+    /// reopen their readers.
     ///
-    /// Every mapped page a connection touched counts towards the process's working set until
-    /// its mapping goes, although the page belongs to the operating system's file cache. This
-    /// closes the readers that no request holds, which the next requests reopen, and drops
-    /// the writer's mapping unless a write holds the writer.
-    pub fn release_idle_mappings(&self, idle_for: Duration) {
-        let Some(pool) = self.1.as_deref() else {
-            return;
-        };
-        if !pool.close_idle(idle_for) {
-            return;
-        }
-        if let Ok(writer) = self.0.conn.try_lock() {
-            // Results ignored: a mapping that stays costs working set, never correctness.
-            // SQLite maps the file again when the writer next reads it.
-            let _ = writer.pragma_update(None, "mmap_size", 0);
-            let _ = writer.pragma_update(None, "mmap_size", MMAP_SIZE_BYTES);
+    /// A reader maps the database file, and every mapped page it touched counts towards the
+    /// process's working set until the reader closes, although the page belongs to the
+    /// operating system's file cache.
+    pub fn close_idle_readers(&self, idle_for: Duration) {
+        if let Some(pool) = self.1.as_deref() {
+            pool.close_idle(idle_for);
         }
     }
 }
@@ -206,6 +197,7 @@ impl Drop for WriterGuard<'_> {
         // advance happens before the mutex unlocks, so the next writer sees it.
         if self.conn.total_changes() != self.changes_at_lock {
             self.generation.fetch_add(1, Ordering::Release);
+            drop_mapping(&self.conn);
         }
         release_write_cache(&self.conn);
     }
@@ -293,14 +285,14 @@ impl ReaderPool {
 
     /// Closes the readers no request holds, when the last read request ended at least
     /// `idle_for` ago and nothing has closed them since. Each slot stays free and reopens on
-    /// demand. Returns whether it acted.
-    fn close_idle(&self, idle_for: Duration) -> bool {
+    /// demand.
+    fn close_idle(&self, idle_for: Duration) {
         let mut state = self.lock();
         if !state
             .last_release
             .is_some_and(|released| released.elapsed() >= idle_for)
         {
-            return false;
+            return;
         }
         state.last_release = None;
         let closed = state
@@ -312,7 +304,6 @@ impl ReaderPool {
         // no request should wait for it.
         drop(state);
         drop(closed);
-        true
     }
 
     /// Closes every reader once the requests holding one have returned it, waiting up to
@@ -488,6 +479,19 @@ fn release_write_cache(conn: &Connection) {
     let _ = conn.execute_batch("PRAGMA shrink_memory");
 }
 
+/// Drops the writer's mapping of the database file after it wrote or checkpointed. SQLite
+/// maps the file again on the writer's next read, at the size the file then has.
+///
+/// A connection keeps its mapping until it sees another connection's change, so the writer's
+/// own writes and checkpoints would leave it mapping the file's old size. The pages added
+/// since would then come through slower file reads, which a later large write pays for when
+/// it reads the rows it replaces.
+fn drop_mapping(conn: &Connection) {
+    // Results ignored: a stale mapping costs speed, never correctness.
+    let _ = conn.pragma_update(None, "mmap_size", 0);
+    let _ = conn.pragma_update(None, "mmap_size", MMAP_SIZE_BYTES);
+}
+
 /// Copies the WAL into the database file and truncates it, unless a reader blocks that.
 /// `Db::checkpoint` closes the app's readers first.
 pub fn checkpoint_wal(conn: &Connection) -> Result<(), String> {
@@ -497,6 +501,7 @@ pub fn checkpoint_wal(conn: &Connection) -> Result<(), String> {
     if blocked != 0 {
         return Err("a reader blocked the WAL checkpoint".to_string());
     }
+    drop_mapping(conn);
     Ok(())
 }
 
@@ -834,42 +839,52 @@ mod tests {
     }
 
     #[test]
-    fn idle_mappings_are_released_once_after_the_last_read_request() {
+    fn idle_readers_close_once_after_the_last_read_request() {
         let (_temp_dir, db) = opened();
         let held = db.read().expect("acquire reader");
         assert_eq!(probe_sum(&db.read().expect("another reader")), 1);
 
         // The request that just ended is too recent for a long wait.
-        db.release_idle_mappings(Duration::from_secs(3600));
+        db.close_idle_readers(Duration::from_secs(3600));
         assert_eq!(open_idle_readers(&db), READER_COUNT - 1);
 
-        db.release_idle_mappings(Duration::ZERO);
+        db.close_idle_readers(Duration::ZERO);
         assert_eq!(open_idle_readers(&db), 0);
-        // The held reader is untouched, a closed one reopens for the next request, and the
-        // writer reads and writes with its mapping dropped.
+        // The held reader is untouched, and a closed one reopens for the next request.
         assert_eq!(probe_sum(&held), 1);
         assert_eq!(probe_sum(&db.read().expect("reopened reader")), 1);
-        let writer = db.0.lock().expect("lock writer");
-        writer
-            .execute("UPDATE probe SET value = 2", [])
-            .expect("write");
-        assert_eq!(probe_sum(&writer), 2);
     }
 
     #[test]
-    fn releasing_idle_mappings_waits_for_a_read_request_to_end() {
+    fn closing_idle_readers_waits_for_a_read_request_to_end() {
         let (_temp_dir, db) = opened();
         drop(db.read().expect("acquire reader"));
-        db.release_idle_mappings(Duration::ZERO);
-        drop(db.read().expect("reopened reader"));
-        db.release_idle_mappings(Duration::ZERO);
+        db.close_idle_readers(Duration::ZERO);
         assert_eq!(open_idle_readers(&db), 0);
 
         // No request has ended since, so a reader that opens for one stays open.
         let reader = db.read().expect("acquire reader");
-        db.release_idle_mappings(Duration::ZERO);
+        db.close_idle_readers(Duration::ZERO);
         drop(reader);
         assert_eq!(open_idle_readers(&db), 1);
+    }
+
+    #[test]
+    fn the_writer_maps_the_file_again_after_a_write_and_a_checkpoint() {
+        let (_temp_dir, db) = opened();
+        let writer = db.0.lock().expect("lock writer");
+        writer
+            .execute("UPDATE probe SET value = 2", [])
+            .expect("write");
+        checkpoint_wal(&writer).expect("checkpoint");
+        drop(writer);
+
+        let writer = db.0.lock().expect("lock writer");
+        let mapped: i64 = writer
+            .pragma_query_value(None, "mmap_size", |row| row.get(0))
+            .expect("read mmap size");
+        assert_eq!(mapped, MMAP_SIZE_BYTES);
+        assert_eq!(probe_sum(&writer), 2);
     }
 
     #[test]

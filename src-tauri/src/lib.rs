@@ -179,15 +179,14 @@ pub fn run() {
 const IDLE_RELEASE_AFTER: std::time::Duration = std::time::Duration::from_secs(30);
 const IDLE_RELEASE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// Starts the thread that, once the app has been idle for a while, unmaps the database file
-/// from the idle connections and drops the image bytes kept for repeated requests. The next
-/// requests map and read again.
+/// Starts the thread that, once the app has been idle for a while, closes the idle database
+/// readers, which unmaps the database file from them, and drops the image bytes kept for
+/// repeated requests. The next requests open, map, and read again.
 fn start_idle_release(app: &tauri::AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(IDLE_RELEASE_CHECK_INTERVAL);
-        app.state::<db::Db>()
-            .release_idle_mappings(IDLE_RELEASE_AFTER);
+        app.state::<db::Db>().close_idle_readers(IDLE_RELEASE_AFTER);
         app.state::<features::graphics::runtime::GraphicsRuntime>()
             .release_idle_images(IDLE_RELEASE_AFTER);
     });
