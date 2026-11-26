@@ -173,6 +173,8 @@
   --animate-progress: progress 1.2s ease-in-out infinite;
   /* A menu, picker, or tooltip settles into place under its trigger. */
   --animate-pop: pop 120ms ease-out;
+  /* The tick a button shows once its action has worked. */
+  --animate-tick: tick 150ms ease-out;
 
   @keyframes enter {
     from {
@@ -190,6 +192,13 @@
     from {
       opacity: 0;
       translate: 0 -2px;
+    }
+  }
+
+  @keyframes tick {
+    from {
+      opacity: 0;
+      scale: 0.6;
     }
   }
 
