@@ -1335,7 +1335,7 @@ mod tests {
         let compiled = compile_filters(&ast, 2).expect("compile filter");
         assert!(compiled.sql.contains("attributes_json"));
         assert!(compiled.sql.contains(PLAYER_METRICS_ALIAS));
-        assert!(compiled.sql.contains("moneyball.statistics_json"));
+        assert!(compiled.sql.contains("moneyball.xg_per_90"));
         assert!(ast_reads_season_stats(&ast));
         let players_only =
             parse_filter_ast(vec![rule("ca", "gte", FilterValue::Integer(120))], None)

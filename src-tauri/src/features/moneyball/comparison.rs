@@ -19,6 +19,7 @@ use std::sync::{mpsc, Arc, Mutex, OnceLock, PoisonError};
 use rusqlite::{Connection, Row, Rows};
 
 use super::catalog::is_lower_is_better_statistic_key;
+use super::columns::StatisticColumns;
 use super::json_scan::{parse_json_value, scan_json_object};
 use super::MONEYBALL_STATISTIC_KEYS;
 use crate::db::result_cache::ResultCache;
@@ -161,40 +162,6 @@ pub(crate) fn statistic_index(key: &str) -> Option<usize> {
         })
         .get(key)
         .copied()
-}
-
-/// Calls `found` with the catalog index and raw value text of each statistic in one stored
-/// statistics object. Stored objects list the catalog's keys alphabetically, as their JSON map
-/// serializes them, so each key is matched with one comparison against the next expected key;
-/// a key out of that order falls back to a lookup.
-pub(crate) fn scan_statistic_values(
-    json: &str,
-    mut found: impl FnMut(usize, &str) -> Result<(), String>,
-) -> Result<(), String> {
-    static STORED_ORDER: OnceLock<Vec<(&'static str, usize)>> = OnceLock::new();
-    let order = STORED_ORDER.get_or_init(|| {
-        let mut order = MONEYBALL_STATISTIC_KEYS
-            .iter()
-            .enumerate()
-            .map(|(index, key)| (*key, index))
-            .collect::<Vec<_>>();
-        order.sort_unstable();
-        order
-    });
-    let mut next = 0;
-    scan_json_object(json, |key, text| {
-        let index = match order.get(next) {
-            Some((expected, index)) if *expected == key => {
-                next += 1;
-                Some(*index)
-            }
-            _ => statistic_index(key),
-        };
-        match index {
-            Some(index) => found(index, text),
-            None => Ok(()),
-        }
-    })
 }
 
 fn lower_is_better(index: usize) -> bool {
@@ -371,58 +338,60 @@ pub(crate) struct ComparisonGroups {
     families: Vec<Arc<GroupRankings>>,
     /// Each family's peers' UIDs in ascending order, for building a slot's group.
     members: Vec<Vec<i64>>,
-    /// Each player with season statistics and the family of his best position.
+    /// Each player with `MIN_SEASON_MINUTES` minutes and the family of his best position.
     own: HashMap<i64, PositionFamily>,
     /// Slot groups of two families, built when first needed.
     slots: Mutex<HashMap<ComparisonGroup, Arc<GroupRankings>>>,
 }
 
-/// One row of a snapshot's season statistics, read for the groups.
+/// One row of a snapshot's season statistics with `MIN_SEASON_MINUTES` minutes, read for the
+/// groups.
 struct ScannedPlayer {
     uid: i64,
     own: Option<PositionFamily>,
     /// The families the player is a peer of, as a `ComparisonGroup` bit set.
     peer_of: u16,
-    /// Every statistic for a peer, NaN when absent; `None` otherwise.
+    /// Every statistic for a peer, NaN when absent; `None` for a peer of no family.
     statistics: Option<Box<[f64]>>,
 }
 
 impl ComparisonGroups {
-    /// Reads the snapshot's season statistics and ranks every family's peers.
+    /// Reads the season statistics of the snapshot's players with `MIN_SEASON_MINUTES`
+    /// minutes and ranks every family's peers. A player with fewer is no peer, and nothing
+    /// looks up his own family: a short sample ranks nowhere on its own.
     pub(crate) fn load(conn: &Connection, snapshot_id: i64) -> Result<Self, String> {
+        let columns = StatisticColumns::all();
         let mut statement = conn
-            .prepare(
-                "SELECT moneyball.player_uid, players.positions_json,
-                        CASE WHEN moneyball.minutes >= ?2 THEN moneyball.statistics_json END
+            .prepare(&format!(
+                "SELECT moneyball.player_uid, players.positions_json{}
                  FROM player_moneyball_stats moneyball
                  INNER JOIN players ON players.snapshot_id = moneyball.snapshot_id
                     AND players.uid = moneyball.player_uid
-                 WHERE moneyball.snapshot_id = ?1 AND moneyball.percentiles_json IS NOT NULL",
-            )
+                 WHERE moneyball.snapshot_id = ?1 AND moneyball.percentiles_json IS NOT NULL
+                   AND moneyball.minutes >= ?2",
+                columns.appended_sql("moneyball")
+            ))
             .map_err(|error| error.to_string())?;
         let mut rows = statement
             .query([snapshot_id, MIN_SEASON_MINUTES])
             .map_err(|error| error.to_string())?;
+        // The statistics come off the row here; the workers scan the position maps.
         let scanned = scan_in_parallel(
             &mut rows,
             |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
+                    columns.read(row, 2)?,
                 ))
             },
-            |(uid, positions_json, statistics_json)| {
+            |(uid, positions_json, statistics)| {
                 let (own, peer_of) = scan_positions(&positions_json)?;
-                let statistics = match statistics_json {
-                    Some(json) if peer_of != 0 => Some(scan_statistics(&json)?),
-                    _ => None,
-                };
                 Ok(ScannedPlayer {
                     uid,
                     own,
                     peer_of,
-                    statistics,
+                    statistics: (peer_of != 0).then_some(statistics),
                 })
             },
         )?;
@@ -463,7 +432,7 @@ impl ComparisonGroups {
         })
     }
 
-    /// The family of the best position of a player with season statistics.
+    /// The family of the best position of a player with `MIN_SEASON_MINUTES` minutes.
     pub(crate) fn own_family(&self, uid: i64) -> Option<PositionFamily> {
         self.own.get(&uid).copied()
     }
@@ -503,21 +472,24 @@ impl ComparisonGroups {
             .collect::<Vec<_>>();
         uids.sort_unstable();
         uids.dedup();
+        let columns = StatisticColumns::all();
         let mut statement = conn
-            .prepare(
-                "SELECT statistics_json FROM player_moneyball_stats
-                 WHERE snapshot_id = ?1 AND player_uid IN (SELECT value FROM json_each(?2))",
-            )
+            .prepare(&format!(
+                "SELECT moneyball.player_uid{}
+                 FROM player_moneyball_stats moneyball
+                 WHERE moneyball.snapshot_id = ?1
+                   AND moneyball.player_uid IN (SELECT value FROM json_each(?2))",
+                columns.appended_sql("moneyball")
+            ))
             .map_err(|error| error.to_string())?;
         let uids = serde_json::to_string(&uids).map_err(|error| error.to_string())?;
-        let mut rows = statement
-            .query(rusqlite::params![self.snapshot_id, uids])
+        let statistics = statement
+            .query_map(rusqlite::params![self.snapshot_id, uids], |row| {
+                columns.read(row, 1)
+            })
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
             .map_err(|error| error.to_string())?;
-        let statistics = scan_in_parallel(
-            &mut rows,
-            |row| row.get::<_, String>(0),
-            |json| scan_statistics(&json),
-        )?;
         let peers = statistics
             .iter()
             .map(|values| &values[..])
@@ -567,20 +539,8 @@ fn scan_positions(json: &str) -> Result<(Option<PositionFamily>, u16), String> {
     Ok((own, peer_of))
 }
 
-/// Every statistic of one stored statistics object, NaN when null or absent.
-pub(crate) fn scan_statistics(json: &str) -> Result<Box<[f64]>, String> {
-    let mut values = vec![f64::NAN; MONEYBALL_STATISTIC_KEYS.len()].into_boxed_slice();
-    scan_statistic_values(json, |index, text| {
-        if let Some(value) = parse_json_value(text, |text| text.parse::<f64>().ok())? {
-            values[index] = value;
-        }
-        Ok(())
-    })?;
-    Ok(values)
-}
-
-/// Reads `rows` on this thread and runs `scan` on each one on worker threads, so the JSON
-/// scanning overlaps SQLite's reads. The results are in no particular order.
+/// Reads `rows` on this thread and runs `scan` on each one on worker threads, so the scoring
+/// overlaps SQLite's reads. The results are in no particular order.
 pub(crate) fn scan_in_parallel<I: Send, T: Send>(
     rows: &mut Rows<'_>,
     read: impl Fn(&Row<'_>) -> rusqlite::Result<I>,
@@ -780,26 +740,6 @@ mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    fn statistics_scan_in_stored_order_and_out_of_it() {
-        let stored = MONEYBALL_STATISTIC_KEYS
-            .iter()
-            .enumerate()
-            .map(|(index, key)| ((*key).to_string(), serde_json::json!(index)))
-            .collect::<serde_json::Map<_, _>>();
-        let values = scan_statistics(&serde_json::Value::Object(stored).to_string()).unwrap();
-        assert!(values
-            .iter()
-            .enumerate()
-            .all(|(index, value)| *value == index as f64));
-
-        let shuffled = r#"{"xg":2.5,"unknown":1,"assists":3,"goals":null}"#;
-        let values = scan_statistics(shuffled).unwrap();
-        let value = |key| values[statistic_index(key).unwrap()];
-        assert_eq!((value("xg"), value("assists")), (2.5, 3.0));
-        assert!(value("goals").is_nan());
     }
 
     #[test]

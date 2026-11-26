@@ -212,8 +212,8 @@ mod tests {
     fn add_stats(conn: &Connection, snapshot_id: i64, uid: i64, minutes: i64) {
         conn.execute(
             "INSERT INTO player_moneyball_stats (
-                 snapshot_id, player_uid, minutes, statistics_json, percentiles_json
-             ) VALUES (?1, ?2, ?3, '{}', '{}')",
+                 snapshot_id, player_uid, minutes, percentiles_json
+             ) VALUES (?1, ?2, ?3, '{}')",
             params![snapshot_id, uid, minutes],
         )
         .expect("insert stats row");

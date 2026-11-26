@@ -5,7 +5,9 @@ use rusqlite::{params, Connection};
 
 use crate::db::migrations;
 use crate::features::managed_club::service as managed_club_service;
+use crate::features::moneyball::columns::statistic_column_of;
 use crate::features::moneyball::kept_stats;
+use crate::features::moneyball::persistence::test_support::insert_statistics_row;
 use crate::features::moneyball::{is_lower_is_better_statistic_key, MONEYBALL_STATISTIC_KEYS};
 use crate::features::planner::tactic::{
     default_tactic, get_tactic, save_tactic, RecruitmentFilter,
@@ -279,36 +281,44 @@ impl Fixture {
         for (key, value) in overrides {
             statistics.insert((*key).to_string(), (*value).into());
         }
-        self.conn
-            .execute(
-                "INSERT INTO player_moneyball_stats (
-                     snapshot_id, player_uid, minutes, statistics_json, percentiles_json
-                 ) VALUES (?1, ?2, ?3, ?4, '{}')",
-                params![
-                    snapshot_id,
-                    uid,
-                    minutes,
-                    serde_json::Value::Object(statistics).to_string()
-                ],
-            )
-            .expect("insert moneyball stats");
+        insert_statistics_row(
+            &self.conn,
+            snapshot_id,
+            uid,
+            Some(minutes),
+            &serde_json::Value::Object(statistics).to_string(),
+            Some("{}"),
+        );
     }
 
-    /// Replaces the season statistics of a player who already has a stats row.
+    /// Replaces the season statistics of a player who already has a stats row: he keeps
+    /// `statistics` and no others.
     pub(super) fn set_statistics(&self, uid: i64, statistics: &[(&str, f64)]) {
-        let statistics = statistics
+        let assignments = MONEYBALL_STATISTIC_KEYS
             .iter()
-            .map(|(key, value)| ((*key).to_string(), serde_json::Value::from(*value)))
-            .collect::<serde_json::Map<_, _>>();
+            .map(|key| {
+                let value = statistics
+                    .iter()
+                    .find(|(named, _)| named == key)
+                    .map_or("NULL".to_string(), |(_, value)| format!("{value:?}"));
+                let column = statistic_column_of(key).expect("catalog statistic");
+                format!("{column} = {value}")
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        assert!(
+            statistics
+                .iter()
+                .all(|(key, _)| statistic_column_of(key).is_some()),
+            "every statistic is a catalog key"
+        );
         self.conn
             .execute(
-                "UPDATE player_moneyball_stats SET statistics_json = ?1
-                 WHERE snapshot_id = ?2 AND player_uid = ?3",
-                params![
-                    serde_json::Value::Object(statistics).to_string(),
-                    self.snapshot_id,
-                    uid
-                ],
+                &format!(
+                    "UPDATE player_moneyball_stats SET {assignments}
+                     WHERE snapshot_id = ?1 AND player_uid = ?2"
+                ),
+                params![self.snapshot_id, uid],
             )
             .expect("set statistics");
     }

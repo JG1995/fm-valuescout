@@ -1082,8 +1082,8 @@ mod tests {
         let snapshot = insert_snapshot(&conn, save.id, Some("2026-02-01"), "2026-08-11T11:00:00Z");
         insert_player(&conn, snapshot, 77);
         conn.execute(
-            "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, statistics_json)
-             VALUES (?1, 77, '{\"goals\":3}')",
+            "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, goals)
+             VALUES (?1, 77, 3)",
             [snapshot],
         )
         .expect("insert Moneyball row");
@@ -1113,14 +1113,14 @@ mod tests {
         assert_eq!(cleared.linked_save_file_name, None);
         assert_eq!(stored_link(&conn, save.id), None);
 
-        let statistics: String = conn
+        let goals: i64 = conn
             .query_row(
-                "SELECT statistics_json FROM player_moneyball_stats WHERE snapshot_id = ?1",
+                "SELECT goals FROM player_moneyball_stats WHERE snapshot_id = ?1",
                 [snapshot],
                 |row| row.get(0),
             )
             .expect("Moneyball row survives");
-        assert_eq!(statistics, "{\"goals\":3}");
+        assert_eq!(goals, 3);
     }
 
     #[test]
@@ -1367,8 +1367,7 @@ mod tests {
         insert_staff_record(&conn, historical, 77);
         insert_staff_record(&conn, current, 77);
         conn.execute(
-            "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, statistics_json)
-             VALUES (?1, 77, '{}')",
+            "INSERT INTO player_moneyball_stats (snapshot_id, player_uid) VALUES (?1, 77)",
             [historical],
         )
         .expect("insert historical Moneyball row");

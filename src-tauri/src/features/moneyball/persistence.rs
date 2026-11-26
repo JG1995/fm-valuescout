@@ -1,17 +1,23 @@
-//! Writes snapshot-owned Moneyball cohorts: the 138-key statistics JSON and whole cohort
-//! replacement with its as-of date. A cohort stays with its snapshot until that is deleted.
+//! Writes snapshot-owned Moneyball cohorts: one row per player with a column for each of the
+//! 138 catalog statistics (see `columns`), and whole cohort replacement with its as-of date. A
+//! cohort stays with its snapshot until that is deleted.
 //!
 //! Percentiles are not stored: `moneyball::comparison` ranks the stored statistics when they
 //! are read. The `percentiles_json` column only marks a row written by an import that could be
 //! scored: rows from before v30 have none, and readers ask for a refresh instead.
 
-use rusqlite::{params, Transaction};
-use serde_json::{Map, Number, Value};
+use std::sync::OnceLock;
 
-use super::{MoneyballMetricValue, MoneyballStatistics};
+use rusqlite::{params, types::Null, Statement, Transaction};
+
+use super::columns::statistic_column;
+use super::{MoneyballMetricValue, MoneyballStatistics, MONEYBALL_STATISTIC_KEYS};
 
 /// What `percentiles_json` holds for a scored row: an empty object.
 const SCORED_ROW_MARKER: &str = "{}";
+
+/// The insert's first statistic parameter, after the row's six other values.
+const FIRST_STATISTIC_PARAMETER: usize = 7;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MoneyballPersistenceError {
@@ -29,27 +35,28 @@ pub(crate) struct CohortRow {
     pub statistics: MoneyballStatistics,
 }
 
-pub(crate) fn serialize_moneyball_statistics(
+/// A row's statistics in `MONEYBALL_STATISTIC_KEYS` order. They must be the whole catalog and
+/// nothing else, with finite decimals.
+fn catalog_values(
     statistics: &MoneyballStatistics,
-) -> Result<String, MoneyballPersistenceError> {
-    let mut serialized = Map::new();
-    for (key, value) in statistics {
-        let value = match value {
-            None => Value::Null,
-            Some(MoneyballMetricValue::Count(value)) => Value::Number(Number::from(*value)),
-            Some(MoneyballMetricValue::Decimal(value)) => Value::Number(
-                Number::from_f64(*value).ok_or(MoneyballPersistenceError::InvalidStatistics)?,
-            ),
-        };
-        serialized.insert(key.clone(), value);
+) -> Result<Box<[Option<MoneyballMetricValue>]>, MoneyballPersistenceError> {
+    if statistics.len() != MONEYBALL_STATISTIC_KEYS.len() {
+        return Err(MoneyballPersistenceError::InvalidStatistics);
     }
-
-    serde_json::to_string(&Value::Object(serialized))
-        .map_err(|_| MoneyballPersistenceError::InvalidStatistics)
+    MONEYBALL_STATISTIC_KEYS
+        .iter()
+        .map(|key| match statistics.get(*key) {
+            Some(Some(MoneyballMetricValue::Decimal(value))) if !value.is_finite() => {
+                Err(MoneyballPersistenceError::InvalidStatistics)
+            }
+            Some(value) => Ok(*value),
+            None => Err(MoneyballPersistenceError::InvalidStatistics),
+        })
+        .collect()
 }
 
-/// A replacement cohort whose statistics JSON is already built, so writing it only replaces
-/// rows.
+/// A replacement cohort whose statistics are already checked and in column order, so writing
+/// it only replaces rows.
 #[derive(Debug)]
 pub(crate) struct PreparedCohort {
     rows: Vec<PreparedCohortRow>,
@@ -61,7 +68,8 @@ struct PreparedCohortRow {
     starts: i64,
     substitute_appearances: i64,
     minutes: i64,
-    statistics_json: String,
+    /// In `MONEYBALL_STATISTIC_KEYS` order.
+    statistics: Box<[Option<MoneyballMetricValue>]>,
 }
 
 #[cfg(test)]
@@ -71,8 +79,8 @@ thread_local! {
         std::cell::RefCell::new(None);
 }
 
-/// Serializes each row's statistics. It needs no database, so callers run it before taking
-/// the writer.
+/// Checks each row's statistics and puts them in column order. It needs no database, so
+/// callers run it before taking the writer.
 pub(crate) fn prepare_snapshot_cohort(
     rows: &[CohortRow],
 ) -> Result<PreparedCohort, MoneyballPersistenceError> {
@@ -84,7 +92,7 @@ pub(crate) fn prepare_snapshot_cohort(
                 starts: row.starts,
                 substitute_appearances: row.substitute_appearances,
                 minutes: row.minutes,
-                statistics_json: serialize_moneyball_statistics(&row.statistics)?,
+                statistics: catalog_values(&row.statistics)?,
             })
         })
         .collect::<Result<_, _>>()?;
@@ -96,6 +104,53 @@ pub(crate) fn prepare_snapshot_cohort(
         }
     });
     Ok(PreparedCohort { rows })
+}
+
+/// The insert of one cohort row: its six other values, then every statistic in catalog order.
+fn insert_sql() -> &'static str {
+    static SQL: OnceLock<String> = OnceLock::new();
+    SQL.get_or_init(|| {
+        let statistics = 0..MONEYBALL_STATISTIC_KEYS.len();
+        let columns = statistics
+            .clone()
+            .map(|index| format!(", {}", statistic_column(index)))
+            .collect::<String>();
+        let parameters = statistics
+            .map(|index| format!(", ?{}", FIRST_STATISTIC_PARAMETER + index))
+            .collect::<String>();
+        format!(
+            "INSERT INTO player_moneyball_stats (
+                snapshot_id, player_uid, starts, substitute_appearances, minutes,
+                percentiles_json{columns}
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6{parameters})"
+        )
+    })
+}
+
+fn insert_row(
+    insert: &mut Statement<'_>,
+    snapshot_id: i64,
+    row: &PreparedCohortRow,
+) -> rusqlite::Result<()> {
+    insert.raw_bind_parameter(1, snapshot_id)?;
+    insert.raw_bind_parameter(2, row.player_uid)?;
+    insert.raw_bind_parameter(3, row.starts)?;
+    insert.raw_bind_parameter(4, row.substitute_appearances)?;
+    insert.raw_bind_parameter(5, row.minutes)?;
+    insert.raw_bind_parameter(6, SCORED_ROW_MARKER)?;
+    for (index, value) in row.statistics.iter().enumerate() {
+        let parameter = FIRST_STATISTIC_PARAMETER + index;
+        match value {
+            None => insert.raw_bind_parameter(parameter, Null)?,
+            Some(MoneyballMetricValue::Count(value)) => {
+                insert.raw_bind_parameter(parameter, value)?;
+            }
+            Some(MoneyballMetricValue::Decimal(value)) => {
+                insert.raw_bind_parameter(parameter, value)?;
+            }
+        }
+    }
+    insert.raw_execute().map(|_| ())
 }
 
 /// Replaces the snapshot's whole cohort with the prepared rows and records the save's in-game
@@ -114,24 +169,10 @@ pub(crate) fn replace_snapshot_cohort(
     .map_err(|_| MoneyballPersistenceError::Database)?;
 
     let mut insert = tx
-        .prepare(
-            "INSERT INTO player_moneyball_stats (
-                snapshot_id, player_uid, starts, substitute_appearances, minutes,
-                statistics_json, percentiles_json
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        )
+        .prepare(insert_sql())
         .map_err(|_| MoneyballPersistenceError::Database)?;
     for row in &cohort.rows {
-        insert
-            .execute(params![
-                snapshot_id,
-                row.player_uid,
-                row.starts,
-                row.substitute_appearances,
-                row.minutes,
-                row.statistics_json,
-                SCORED_ROW_MARKER,
-            ])
+        insert_row(&mut insert, snapshot_id, row)
             .map_err(|_| MoneyballPersistenceError::Database)?;
     }
 
@@ -149,23 +190,17 @@ pub(crate) fn replace_snapshot_cohort(
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use rusqlite::{params, Connection};
+    use rusqlite::{params, params_from_iter, types::Value, Connection};
+
+    use crate::features::moneyball::columns::statistic_column_of;
+    use crate::features::moneyball::json_scan::scan_json_object;
 
     /// Gives `snapshot_id` a one-player cohort with every statistic null and `as_of` as its
     /// as-of date. The player must belong to the snapshot.
     pub(crate) fn seed_cohort(conn: &Connection, snapshot_id: i64, player_uid: i64, as_of: &str) {
-        let statistics = crate::features::moneyball::MONEYBALL_STATISTIC_KEYS
-            .iter()
-            .map(|key| ((*key).to_string(), serde_json::Value::Null))
-            .collect::<serde_json::Map<_, _>>();
         conn.execute(
-            "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, statistics_json)
-             VALUES (?1, ?2, ?3)",
-            params![
-                snapshot_id,
-                player_uid,
-                serde_json::to_string(&statistics).expect("serialize statistics")
-            ],
+            "INSERT INTO player_moneyball_stats (snapshot_id, player_uid) VALUES (?1, ?2)",
+            params![snapshot_id, player_uid],
         )
         .expect("seed Moneyball row");
         conn.execute(
@@ -173,6 +208,51 @@ pub(crate) mod test_support {
             params![as_of, snapshot_id],
         )
         .expect("seed as-of date");
+    }
+
+    /// Inserts a player's statistics row from a JSON object of catalog keys and numbers. A
+    /// statistic the object lacks or holds as `null` is NULL.
+    pub(crate) fn insert_statistics_row(
+        conn: &Connection,
+        snapshot_id: i64,
+        player_uid: i64,
+        minutes: Option<i64>,
+        statistics_json: &str,
+        percentiles_json: Option<&str>,
+    ) {
+        let mut columns = String::new();
+        let mut values = vec![
+            Value::from(snapshot_id),
+            Value::from(player_uid),
+            Value::from(minutes),
+            Value::from(percentiles_json.map(str::to_string)),
+        ];
+        scan_json_object(statistics_json, |key, text| {
+            let column = statistic_column_of(key)
+                .unwrap_or_else(|| panic!("{key} is not a catalog statistic"));
+            columns.push_str(", ");
+            columns.push_str(column);
+            values.push(match text.parse::<i64>() {
+                Ok(count) => Value::Integer(count),
+                Err(_) if text == "null" => Value::Null,
+                Err(_) => Value::Real(text.parse().expect("a statistic is a number or null")),
+            });
+            Ok(())
+        })
+        .expect("statistics object");
+        let parameters = (1..=values.len())
+            .map(|parameter| format!("?{parameter}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        conn.execute(
+            &format!(
+                "INSERT INTO player_moneyball_stats (
+                    snapshot_id, player_uid, minutes, percentiles_json{columns}
+                 ) VALUES ({parameters})"
+            ),
+            params_from_iter(values),
+        )
+        .expect("insert statistics row");
     }
 
     /// The snapshot's Moneyball row count and as-of date.
@@ -197,7 +277,7 @@ mod tests {
 
     use super::*;
     use crate::db::migrations;
-    use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
+    use crate::features::moneyball::columns::StatisticColumns;
     use crate::features::snapshot::service as snapshot_service;
 
     /// Players in an unsorted order, with counts, decimals, ties, negatives, and nulls in
@@ -272,16 +352,20 @@ mod tests {
         (conn, snapshot_id)
     }
 
-    type StoredRow = (i64, i64, i64, i64, String, String);
+    /// A stored row: its player, playing time, scored-row marker, and each statistic.
+    type StoredRow = (i64, i64, i64, i64, String, Vec<Option<f64>>);
 
     /// The snapshot's stored cohort rows by player, and its as-of date.
     fn stored(conn: &Connection, snapshot_id: i64) -> (Vec<StoredRow>, Option<String>) {
+        let statistics = StatisticColumns::all();
         let rows = conn
-            .prepare(
-                "SELECT player_uid, starts, substitute_appearances, minutes, statistics_json,
-                    percentiles_json
-                 FROM player_moneyball_stats WHERE snapshot_id = ?1 ORDER BY player_uid",
-            )
+            .prepare(&format!(
+                "SELECT stats.player_uid, stats.starts, stats.substitute_appearances,
+                        stats.minutes, stats.percentiles_json{}
+                 FROM player_moneyball_stats stats
+                 WHERE stats.snapshot_id = ?1 ORDER BY stats.player_uid",
+                statistics.appended_sql("stats")
+            ))
             .expect("prepare stored rows")
             .query_map([snapshot_id], |row| {
                 Ok((
@@ -290,7 +374,11 @@ mod tests {
                     row.get(2)?,
                     row.get(3)?,
                     row.get(4)?,
-                    row.get(5)?,
+                    statistics
+                        .read(row, 5)?
+                        .iter()
+                        .map(|value| Some(*value).filter(|value| !value.is_nan()))
+                        .collect(),
                 ))
             })
             .expect("query stored rows")
@@ -318,20 +406,85 @@ mod tests {
         let mut expected = rows
             .iter()
             .map(|row| {
+                let statistics = MONEYBALL_STATISTIC_KEYS
+                    .iter()
+                    .map(|key| match row.statistics[*key] {
+                        None => None,
+                        Some(MoneyballMetricValue::Count(value)) => Some(f64::from(value)),
+                        Some(MoneyballMetricValue::Decimal(value)) => Some(value),
+                    })
+                    .collect::<Vec<_>>();
                 (
                     row.player_uid,
                     row.starts,
                     row.substitute_appearances,
                     row.minutes,
-                    serialize_moneyball_statistics(&row.statistics).expect("statistics"),
                     "{}".to_string(),
+                    statistics,
                 )
             })
             .collect::<Vec<_>>();
-        expected.sort();
+        expected.sort_by_key(|row| row.0);
         assert_eq!(
             stored(&conn, snapshot_id),
             (expected, Some("2031-05-01".to_string()))
         );
+    }
+
+    #[test]
+    fn a_cohort_must_hold_the_whole_catalog_in_finite_values() {
+        let whole = fixed_cohort().remove(0);
+        let with = |change: &dyn Fn(&mut MoneyballStatistics)| {
+            let mut row = whole.clone();
+            change(&mut row.statistics);
+            prepare_snapshot_cohort(&[row]).map(|_| ())
+        };
+
+        assert_eq!(with(&|_| {}), Ok(()));
+        for (case, result) in [
+            (
+                "a missing statistic",
+                with(&|statistics| {
+                    statistics.remove("goals");
+                }),
+            ),
+            (
+                "a statistic outside the catalog",
+                with(&|statistics| {
+                    statistics.insert("own_goals".to_string(), None);
+                }),
+            ),
+            (
+                "another statistic in place of a catalog one",
+                with(&|statistics| {
+                    statistics.remove("goals");
+                    statistics.insert("own_goals".to_string(), None);
+                }),
+            ),
+            (
+                "a decimal that is not a number",
+                with(&|statistics| {
+                    statistics.insert(
+                        "xg".to_string(),
+                        Some(MoneyballMetricValue::Decimal(f64::NAN)),
+                    );
+                }),
+            ),
+            (
+                "an infinite decimal",
+                with(&|statistics| {
+                    statistics.insert(
+                        "xg".to_string(),
+                        Some(MoneyballMetricValue::Decimal(f64::INFINITY)),
+                    );
+                }),
+            ),
+        ] {
+            assert_eq!(
+                result,
+                Err(MoneyballPersistenceError::InvalidStatistics),
+                "{case}"
+            );
+        }
     }
 }
