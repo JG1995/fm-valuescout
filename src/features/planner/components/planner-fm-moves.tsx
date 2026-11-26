@@ -119,12 +119,6 @@ export function PlannerFmMoves({
           )
         }
       >
-        <p className="pb-3 text-body-md text-on-surface-variant">
-          Moves each player into the FM team his Planner squad stands for:
-          Senior to the first team, Reserves to the reserve team, and Youth to
-          the youth team. FM makes each move itself, as its Move to menu does.
-          Players outside the Planner stay where they are.
-        </p>
         {result ? (
           <MoveResult result={result} />
         ) : plan.error ? (
@@ -137,7 +131,7 @@ export function PlannerFmMoves({
           </p>
         ) : moves.length === 0 ? (
           <p className="text-body-md text-on-surface">
-            Every placed player is already in the matching FM team.
+            FM already matches the Planner.
           </p>
         ) : (
           <div className="max-h-[24rem] overflow-auto rounded-md border border-outline-variant">
@@ -239,9 +233,6 @@ function MoveResult({ result }: { result: PlannerFmMoveResult }) {
         {result.moved.length === 0
           ? "FM moved nobody."
           : `FM moved ${players(result.moved.length)}.`}
-        {result.unchanged.length > 0
-          ? ` ${players(result.unchanged.length)} already sat in the right FM team.`
-          : ""}
       </p>
       {result.failed.length > 0 ? (
         <ul className="list-disc space-y-1 pl-5 text-body-sm text-on-surface-variant">

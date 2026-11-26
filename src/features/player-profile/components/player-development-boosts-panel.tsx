@@ -327,7 +327,7 @@ export function PlayerDevelopmentActions({
                 )}
                 <p>
                   FM may redistribute attributes over the following in-game
-                  days, sometimes up to one month.
+                  days, up to a month.
                 </p>
               </div>
             }
@@ -424,15 +424,15 @@ export function PlayerDevelopmentActions({
         {currentAbilityConfirmation ? (
           <div className="space-y-3">
             <p className="text-body-md text-on-surface-variant">
-              This raises current ability from {player.ca} to{" "}
+              Current ability rises from {player.ca} to{" "}
               {"target" in currentAbilityPreview
                 ? currentAbilityPreview.target
                 : player.ca}
               .
             </p>
             <p className="text-body-sm text-on-surface-variant">
-              FM may redistribute attributes over the following in-game days,
-              sometimes up to one month.
+              FM may redistribute attributes over the following in-game days, up
+              to a month.
             </p>
             <div aria-live="polite">
               <BoostOutcome result={undefined} error={error} />

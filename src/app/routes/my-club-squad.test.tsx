@@ -660,7 +660,7 @@ describe("My Club route", () => {
       screen.getByText("No data loaded for this save"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Use Load Data to scan Football Manager/i),
+      screen.getByText("Use Load Data to read it from Football Manager."),
     ).toBeInTheDocument();
   });
 
@@ -1145,9 +1145,7 @@ describe("My Club route", () => {
     expect(screen.getByText("Managed club: Legacy FC")).toBeInTheDocument();
     await user.click(editButton);
     let picker = screen.getByRole("combobox", { name: "Managed club" });
-    const warning = screen.getByText(
-      "Legacy FC is not in the latest snapshot. The saved selection remains active until you replace it.",
-    );
+    const warning = screen.getByText("Legacy FC is not in the latest data.");
     const controls = screen.getByRole("group", {
       name: "Managed club controls",
     });
@@ -1170,9 +1168,7 @@ describe("My Club route", () => {
     await user.clear(picker);
     await user.type(picker, "Bar");
     await user.click(screen.getByRole("option", { name: "Barcelona" }));
-    expect(
-      screen.getByText("Unsaved selection. Analysis still uses Legacy FC."),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Unsaved");
     expect(screen.getByText("Managed club: Legacy FC")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(getLastManagedClubSaveArgs()).toBeNull();
@@ -1232,9 +1228,7 @@ describe("My Club route", () => {
       screen.getByRole("button", { name: "Edit managed club" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "Legacy FC is not in the latest snapshot. The saved selection remains active until you replace it.",
-      ),
+      screen.getByText("Legacy FC is not in the latest data."),
     ).toBeInTheDocument();
     expect(
       screen.queryByText(/supported FM team level/i),
@@ -1480,9 +1474,7 @@ describe("My Club route", () => {
     renderMyClubRoute({ initialEntry: "/my-club" });
 
     expect(
-      await screen.findByText(
-        "No current-snapshot players match your managed club.",
-      ),
+      await screen.findByText("No players at your managed club"),
     ).toBeInTheDocument();
   });
 
@@ -1744,9 +1736,6 @@ describe("My Club route", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Upload Youth Academy CSV",
     });
-    expect(dialog).toHaveTextContent(
-      "Only a Youth Academy export can be imported",
-    );
     await user.click(
       within(dialog).getByRole("button", { name: "Browse files" }),
     );
@@ -5149,9 +5138,7 @@ describe("My Club route", () => {
       name: "Current player",
     });
     expect(current).toHaveTextContent(RESERVES_FIRST_KEEPER);
-    expect(current).toHaveTextContent(
-      "Placed by Optimize, which may replace him.",
-    );
+    expect(current).not.toHaveTextContent("Pinned");
     const ownOption = await within(replaceDialog).findByRole("option", {
       name: /Reserve Keeper/,
     });
@@ -6319,9 +6306,10 @@ describe("My Club route", () => {
       /only in positions they can play/,
     );
     await user.click(screen.getByRole("button", { name: "Optimize squads" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      /^Squads optimized\.$/,
-    );
+    const optimizedStatus = await screen.findByRole("status");
+    expect(optimizedStatus).toHaveTextContent(/^Squads optimized\.$/);
+    // Nobody is out of position, so only a screen reader hears it.
+    expect(optimizedStatus).toHaveClass("sr-only");
     expect(getLastPlannerOptimizeArgs()).toEqual({ positionFamiliarity: true });
 
     await user.click(toggle);
@@ -6344,9 +6332,10 @@ describe("My Club route", () => {
 
     await waitFor(() =>
       expect(screen.getByRole("status")).toHaveTextContent(
-        "Squads optimized without position familiarity. 1 player is out of position.",
+        "Squads optimized. 1 out of position",
       ),
     );
+    expect(screen.getByRole("status")).not.toHaveClass("sr-only");
     expect(getLastPlannerOptimizeArgs()).toEqual({
       positionFamiliarity: false,
     });
@@ -6508,18 +6497,18 @@ describe("My Club route", () => {
     await waitFor(() =>
       expect(development).toHaveAttribute("aria-pressed", "true"),
     );
-    expect(
-      screen.getByText(
-        /gives a player aged 23 or under only his development slot/,
-      ),
-    ).toBeVisible();
+    expect(development).toHaveAccessibleDescription(
+      /Gives a player aged 23 or under only his development slot/,
+    );
     expect(resolvePlannerDevelopmentIpcMock().optimizeFor).toBe("development");
 
     await user.click(screen.getByRole("button", { name: "Optimize squads" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Squads optimized for development. The starters it placed average 62.5, 10.0 below the strongest lineup.",
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(
+      "Squads optimized for development. Starters average 62.5 · 10.0 below the strongest lineup",
     );
+    expect(status).not.toHaveClass("sr-only");
   });
 
   it("counts the recommended loans, lists every candidate, and marks them on the board", async () => {

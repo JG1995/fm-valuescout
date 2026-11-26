@@ -265,7 +265,7 @@ export function StaffAssignmentOptimizer({
           </p>
         ) : null}
         {statusSuccess ? (
-          <p className="text-success">Staffing needs saved.</p>
+          <p className="sr-only">Staffing needs saved.</p>
         ) : null}
         {message ? <p className="text-on-surface-variant">{message}</p> : null}
       </div>

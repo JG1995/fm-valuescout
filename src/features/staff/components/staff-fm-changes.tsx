@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
@@ -149,15 +150,18 @@ export function StaffFmChanges({
     >
       <div className="space-y-2 pb-3 text-body-md text-on-surface-variant">
         <p>
-          Sacks the staff the recommendations leave without a job and hires the
-          recommended people through FM's editor, as its Move to my club does,
-          so FM sets each new contract and wage for the job. A new job or team
-          for your own staff means sacking and hiring them again; if FM refuses
-          the second step, they end up unemployed.
+          Sacks the staff left without a job and hires the recommended people.
+          FM sets each contract and wage.
         </p>
-        <p>
-          FM does not hold these changes to the board's staff limits. Check FM's
-          staff overview afterwards.
+        <p className="flex items-start gap-2 text-body-sm text-on-surface">
+          <TriangleAlert
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0 text-warning"
+            strokeWidth={1.5}
+          />
+          Moving your own staff to a new job means sacking and rehiring them; if
+          FM refuses the rehire, they end up unemployed. FM does not apply the
+          board's staff limits to these changes.
         </p>
       </div>
       {result ? (

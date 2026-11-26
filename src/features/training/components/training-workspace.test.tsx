@@ -330,7 +330,7 @@ describe("Training workspace", () => {
     renderTraining(plan);
 
     expect(await row("Veteran Keeper")).toHaveTextContent(
-      "Veteran Keeper · 31GKOver 23Trains the slot he playsGoalkeeper GKLine-Holding KeeperCleared",
+      "Veteran Keeper · 31GKOver 23Goalkeeper GKLine-Holding KeeperCleared",
     );
     const prospect = await row("Unplaced Prospect");
     // His development slot is named by its position and the tactic's role.
@@ -339,7 +339,7 @@ describe("Training workspace", () => {
     );
     // By Planner slot, his development slot is shown but not trained.
     expect(prospect).toHaveTextContent(
-      "Not used: training follows the Planner slotUnchangedUnchangedQuickness",
+      "at potentialUnchangedUnchangedQuickness",
     );
     expect(
       screen.queryByRole("combobox", { name: /Development slot for/ }),
@@ -369,7 +369,9 @@ describe("Training workspace", () => {
     expect(await row("Youth Stopper")).toHaveTextContent(
       "Centre-Back DCLearning DCNo familiarity yetStopping Centre-Back",
     );
-    expect(screen.getByText("4 players · 2 learning a position")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Learning a position 2" }),
+    ).toBeVisible();
   });
 
   it("sets the training of the ticked players in the chosen group", async () => {
@@ -427,6 +429,11 @@ describe("Training workspace", () => {
       failed: [],
       error: null,
     });
+    expect(
+      await screen.findByRole("button", { name: "Planner slot" }),
+    ).toHaveAccessibleDescription(
+      "Every player trains the roles of the slot he plays.",
+    );
 
     await user.click(
       await screen.findByRole("checkbox", {
@@ -441,6 +448,10 @@ describe("Training workspace", () => {
     );
 
     expect(applied).toEqual([{ playerUids: [79, 77, 80] }]);
+    // FM took them all: the button ticks and only a screen reader hears it.
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("FM took the training for 3 players.");
+    expect(status.firstElementChild).toHaveClass("sr-only");
   });
 
   it("explains why the training cannot be set and blocks it", async () => {
@@ -459,14 +470,12 @@ describe("Training workspace", () => {
     );
   });
 
-  it("says when only focuses are set", async () => {
+  it("sets only the focus of a player with no slot to train for", async () => {
     renderTraining({ ...plan, players: [unplaced] });
 
-    expect(
-      await screen.findByText(
-        "1 player · no one has a slot to train for, so only focuses are set",
-      ),
-    ).toBeVisible();
+    expect(await row("Unplaced Prospect")).toHaveTextContent(
+      "UnchangedUnchangedQuickness",
+    );
     expect(
       screen.queryByRole("button", { name: /Learning a position/ }),
     ).not.toBeInTheDocument();
@@ -507,13 +516,13 @@ describe("Training workspace", () => {
       "Top 10% at potential · same as his slot",
     );
     expect(await row("Veteran Keeper")).toHaveTextContent(
-      "Over 23Trains the slot he plays",
+      "Over 23Goalkeeper GK",
     );
     expect(
-      screen.getByText(
-        "4 players · 1 trains away from his slot · 2 learning a position",
-      ),
-    ).toBeVisible();
+      screen.getByRole("button", { name: "Development slot" }),
+    ).toHaveAccessibleDescription(
+      "Players aged 23 or under train the slot of your tactic where their potential ranks highest in the save. Older players train the slot they play.",
+    );
     expect(
       screen.getByRole("button", { name: "Away from slot 1" }),
     ).toBeVisible();
@@ -528,9 +537,8 @@ describe("Training workspace", () => {
     expect(
       screen.getByRole("button", { name: "DCL, DCR: 1 player" }),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "GK: 0 players" })).toBeVisible();
     expect(
-      screen.getByText("Nobody aged 23 or under is developing towards GK."),
+      screen.getByRole("button", { name: "GK: no players" }),
     ).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "STC: 1 player" }));

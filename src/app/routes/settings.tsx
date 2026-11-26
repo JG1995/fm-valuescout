@@ -150,7 +150,6 @@ function SettingsPage() {
             Default player analysis view
           </label>
           <select
-            aria-describedby="default-analysis-view-description"
             className="h-9 rounded-md border border-outline bg-surface-container-high px-2 text-body-md text-on-surface"
             id="default-analysis-view"
             value={defaultAnalysisView}
@@ -163,13 +162,6 @@ function SettingsPage() {
             <option value="general">General</option>
             <option value="moneyball">Moneyball</option>
           </select>
-          <span
-            className="text-body-sm text-on-surface-variant"
-            id="default-analysis-view-description"
-          >
-            Used by the Player Profile and the Dashboard when their URL does not
-            specify a view.
-          </span>
         </div>
       </section>
 

@@ -769,9 +769,7 @@ describe("staff route", () => {
     renderStaffRoute("/staff?view=my-staff");
 
     expect(
-      await screen.findByText(
-        "No current-snapshot staff match your managed club.",
-      ),
+      await screen.findByText("No staff at your managed club"),
     ).toBeInTheDocument();
   });
 
@@ -803,9 +801,9 @@ describe("staff route", () => {
     await user.click(screen.getByRole("button", { name: "Boost all CA" }));
     const dialog = await screen.findByRole("dialog", { name: "Boost all CA?" });
     expect(dialog).toHaveTextContent(
-      "every eligible staff member at your managed club",
+      "every eligible staff member at your club",
     );
-    expect(dialog).toHaveTextContent("Each boost stops at PA or 200.");
+    expect(dialog).toHaveTextContent("up to PA. Cannot be undone.");
     await user.click(
       within(dialog).getByRole("button", { name: "Boost all CA" }),
     );
@@ -1178,25 +1176,25 @@ describe("staff route", () => {
     );
     renderStaffRoute("/staff?shortlistOnly=true");
 
-    expect(await screen.findByText("No staff shortlisted")).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "Staff shortlists come from your linked FM save file. Add staff to a staff shortlist in FM, save the game, then use Load Data.",
-      ),
-    ).toBeInTheDocument();
+      (await screen.findByText("No staff shortlisted")).parentElement,
+    ).toHaveTextContent(
+      "Shortlist staff in FM, save the game, then use Load Data.",
+    );
     expect(screen.queryByRole("button", { name: "Upload CSV" })).toBeNull();
     expect(
       await screen.findByRole("switch", { name: "Shortlist: On" }),
     ).toHaveAttribute("aria-checked", "true");
 
-    await user.click(
-      screen.getByRole("button", { name: "Optimize assignments" }),
-    );
-    expect(
-      await screen.findByText(
+    const optimize = screen.getByRole("button", {
+      name: "Optimize assignments",
+    });
+    await user.click(optimize);
+    await waitFor(() =>
+      expect(optimize).toHaveAccessibleDescription(
         "Shortlist staff in FM, save the game, then use Load Data.",
       ),
-    ).toBeInTheDocument();
+    );
   });
 
   it("shows shortlist-filter guidance when the preferred job excludes every row and escapes via the switch", async () => {
@@ -1218,7 +1216,7 @@ describe("staff route", () => {
       await screen.findByText("No shortlist staff match these filters"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Adjust or clear filters to widen the results."),
+      screen.getByText("Clear filters to see more staff."),
     ).toBeInTheDocument();
     expect(
       await screen.findByRole("switch", { name: "Shortlist: On" }),
@@ -1245,7 +1243,7 @@ describe("staff route", () => {
       await screen.findByText("No shortlist staff match these filters"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Adjust or clear filters to widen the results."),
+      screen.getByText("Clear filters to see more staff."),
     ).toBeInTheDocument();
   });
 

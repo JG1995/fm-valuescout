@@ -25,10 +25,10 @@ describe("RecruitmentFilterEditor", () => {
     );
     await user.click(screen.getByRole("button", { name: "Percentile" }));
     expect(
-      screen.getByText(
-        /Ranked among players with 450\+ minutes rated 16 or higher in the position families/,
-      ),
-    ).toBeInTheDocument();
+      screen.getByRole("combobox", { name: "Operator" }),
+    ).toHaveAccessibleDescription(
+      /^Ranked among players with 450\+ minutes rated 16 or higher in the position families/,
+    );
     const value = screen.getByLabelText("Value");
     await user.clear(value);
     await user.type(value, "25");

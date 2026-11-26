@@ -184,8 +184,7 @@ function PlayerNotFound() {
   return (
     <Panel>
       <EmptyState icon={UserX} title="Player not in this snapshot">
-        This player is not in the active save’s current snapshot. Return to
-        Search or load a fresher snapshot.
+        Return to Search, or use Load Data.
       </EmptyState>
     </Panel>
   );
@@ -472,8 +471,7 @@ function PlayerProfileContent({
     return (
       <Panel>
         <EmptyState icon={DatabaseZap} title="No data loaded for this save">
-          No snapshot loaded for the active save. Use Load Data to scan Football
-          Manager and ingest players into the database.
+          Use Load Data to read it from Football Manager.
         </EmptyState>
       </Panel>
     );

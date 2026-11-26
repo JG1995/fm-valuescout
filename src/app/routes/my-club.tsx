@@ -669,8 +669,7 @@ function MyClubPageContent() {
         {myClubHeader}
         <Panel title="Squad" flush>
           <EmptyState icon={DatabaseZap} title="No data loaded for this save">
-            No snapshot loaded for the active save. Use Load Data to scan
-            Football Manager and ingest players before reviewing your squad.
+            Use Load Data to read it from Football Manager.
           </EmptyState>
         </Panel>
       </div>

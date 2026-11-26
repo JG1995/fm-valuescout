@@ -218,29 +218,24 @@ function StaffFilterEditorModal({
       }
     >
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-body-md text-on-surface-variant">
-            Changes apply when you select Done.
-          </p>
-          <fieldset className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5">
-            <legend className="sr-only">Combine filters</legend>
-            {(["and", "or"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={draftCombine === mode}
-                className={
-                  draftCombine === mode
-                    ? "h-8 rounded-sm bg-primary px-3 text-label-md text-on-primary uppercase"
-                    : "h-8 rounded-sm px-3 text-label-md text-on-surface-variant uppercase hover:bg-surface-container-highest"
-                }
-                onClick={() => setDraftCombine(mode)}
-              >
-                {mode}
-              </button>
-            ))}
-          </fieldset>
-        </div>
+        <fieldset className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5">
+          <legend className="sr-only">Combine filters</legend>
+          {(["and", "or"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              aria-pressed={draftCombine === mode}
+              className={
+                draftCombine === mode
+                  ? "h-8 rounded-sm bg-primary px-3 text-label-md text-on-primary uppercase"
+                  : "h-8 rounded-sm px-3 text-label-md text-on-surface-variant uppercase hover:bg-surface-container-highest"
+              }
+              onClick={() => setDraftCombine(mode)}
+            >
+              {mode}
+            </button>
+          ))}
+        </fieldset>
         {!complete ? (
           <p className="text-body-sm text-error" role="alert">
             Complete every filter rule before applying filters.
@@ -248,9 +243,7 @@ function StaffFilterEditorModal({
         ) : null}
         <div className="space-y-3">
           {draftRules.length === 0 ? (
-            <p className="text-body-md text-on-surface-variant">
-              No filter rules yet. Add one below.
-            </p>
+            <p className="text-body-md text-on-surface-variant">No filters</p>
           ) : (
             draftRules.map((rule) => (
               <FilterRuleRow

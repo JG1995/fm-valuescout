@@ -3,6 +3,7 @@ import type { KeyboardEvent } from "react";
 import { useId, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import { formatLongGameDate } from "@/utils/format";
 import {
   MONEYBALL_METRIC_CATEGORIES,
@@ -142,10 +143,7 @@ function ComparisonSummary({
   }`;
   return (
     <div className="flex shrink-0 flex-col gap-1 text-body-sm text-on-surface-variant">
-      <p
-        className="flex flex-wrap items-center gap-x-2"
-        title={`Peers have ${minimumMinutes}+ minutes this season and a rating of 16 or higher at the family's positions.`}
-      >
+      <p className="flex flex-wrap items-center gap-x-2">
         {comparisons.length > 1 ? (
           <label className="flex items-center gap-2">
             Percentiles vs
@@ -164,7 +162,12 @@ function ComparisonSummary({
         ) : (
           <span>Percentiles vs {label.toLowerCase()}</span>
         )}
-        <span>· {peers}</span>
+        <Tooltip
+          content={`Players with ${minimumMinutes}+ minutes this season rated 16 or higher at the family's positions.`}
+          focusable
+        >
+          <span>· {peers}</span>
+        </Tooltip>
       </p>
       {selected.peers === 0 ? (
         <p role="status">
@@ -174,8 +177,8 @@ function ComparisonSummary({
       ) : null}
       {(minutes ?? 0) < minimumMinutes ? (
         <p>
-          Short sample: under {minimumMinutes} minutes, so this player is ranked
-          against the peers without counting among them.
+          Short sample: under {minimumMinutes} minutes, so ranked against the
+          peers without counting among them.
         </p>
       ) : null}
     </div>
@@ -204,9 +207,7 @@ export function MoneyballProfilePanel({
           icon={DatabaseZap}
           title="No Moneyball data for this player"
         >
-          This player has no Moneyball stats in the current snapshot. Moneyball
-          stats come from the FM save file linked in Settings. Use Refresh stats
-          in Player Search to read the latest save.
+          Use Refresh stats in Player Search to read the linked FM save.
         </EmptyState>
       </Panel>
     );
@@ -216,8 +217,7 @@ export function MoneyballProfilePanel({
     return (
       <Panel title="Moneyball">
         <EmptyState icon={DatabaseZap} title="Refresh Moneyball stats">
-          These stats were saved before percentile scores were available. Use
-          Refresh stats in Player Search to read the linked FM save file again.
+          Use Refresh stats in Player Search to read the linked FM save again.
         </EmptyState>
       </Panel>
     );

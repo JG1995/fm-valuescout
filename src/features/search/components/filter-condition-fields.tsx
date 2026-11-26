@@ -2,6 +2,7 @@ import { useId } from "react";
 import { fieldLabelClasses } from "@/components/ui/field/field-styles";
 import { SelectField } from "@/components/ui/field/select-field";
 import { TextField } from "@/components/ui/field/text-field";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import { cn } from "@/utils/cn";
 import { isPercentileOperator } from "@/utils/moneyball-search-metrics";
 import type { FilterRule, FilterValue } from "../types/filter-rule";
@@ -49,6 +50,7 @@ export function FilterConditionFields({
   view,
   error,
   operators = field.operators,
+  operatorHint,
   onChange,
 }: {
   rule: FilterRule;
@@ -57,6 +59,8 @@ export function FilterConditionFields({
   error?: string;
   /** The operators to offer; defaults to all of the field's operators. */
   operators?: FilterFieldDef["operators"];
+  /** Who the operator's scale ranks against, shown as the operator's tooltip. */
+  operatorHint?: string;
   onChange: (next: FilterRule) => void;
 }) {
   const percentile = isPercentileOperator(rule.op);
@@ -213,19 +217,27 @@ export function FilterConditionFields({
     }
   }
 
+  const operatorSelect = (
+    <SelectField
+      label="Operator"
+      value={rule.op}
+      onChange={(event) => changeOperator(event.target.value)}
+    >
+      {operators.map((operator) => (
+        <option key={operator.id} value={operator.id}>
+          {operator.label}
+        </option>
+      ))}
+    </SelectField>
+  );
+
   return (
     <>
-      <SelectField
-        label="Operator"
-        value={rule.op}
-        onChange={(event) => changeOperator(event.target.value)}
-      >
-        {operators.map((operator) => (
-          <option key={operator.id} value={operator.id}>
-            {operator.label}
-          </option>
-        ))}
-      </SelectField>
+      {operatorHint === undefined ? (
+        operatorSelect
+      ) : (
+        <Tooltip content={operatorHint}>{operatorSelect}</Tooltip>
+      )}
       <div className="min-w-0" data-filter-value>
         {valueControl}
       </div>

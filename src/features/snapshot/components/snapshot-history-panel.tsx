@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { TextField } from "@/components/ui/field/text-field";
 import { Modal } from "@/components/ui/modal/modal";
 import { Panel } from "@/components/ui/panel/panel";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import {
   formatAbsoluteUtc,
   formatCount,
@@ -143,12 +144,10 @@ function SnapshotRenameModal({
         <TextField
           label="Snapshot name"
           value={name}
+          placeholder="In-game date"
           onChange={(event) => setName(event.target.value)}
           error={rename.isError ? rename.error.message : undefined}
         />
-        <p className="text-body-sm text-on-surface-variant">
-          Leave this blank to use the in-game date as the label.
-        </p>
       </form>
     </Modal>
   );
@@ -345,9 +344,8 @@ function SnapshotDeletionModal({
       }
     >
       <p className="text-body-md text-on-surface-variant">
-        This permanently removes this snapshot’s players, staff, role scores,
-        bridge provenance, and Moneyball import data. Planner, Academy, and
-        Youth data stay in this save.
+        Permanently deletes {snapshotLabel(visibleTarget)} with its players,
+        staff, scores, and Moneyball import.
       </p>
       {remove.isError ? (
         <p className="mt-3 text-body-sm text-error" role="alert">
@@ -397,13 +395,10 @@ export function SnapshotHistoryPanel({
       <Panel title="Snapshot history" headingLevel={3} flush>
         {snapshots.length === 0 ? (
           <EmptyState icon={DatabaseZap} title="No snapshots stored">
-            Load data to store the first dated snapshot for this save.
+            Use Load Data to store the first snapshot.
           </EmptyState>
         ) : (
           <>
-            <p className="px-4 pb-3 text-body-sm text-on-surface-variant">
-              Load Data replaces every snapshot you have not kept.
-            </p>
             {keep.isError ? (
               <p className="px-4 pb-3 text-body-sm text-error" role="alert">
                 {keep.error.message}
@@ -478,17 +473,19 @@ export function SnapshotHistoryPanel({
                       </td>
                       <td className="px-4">
                         <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            loading={
-                              keep.isPending &&
-                              keep.variables.id === snapshot.id
-                            }
-                            onClick={() => keep.mutate(snapshot)}
-                            aria-label={`${snapshot.isKept ? "Don't keep" : "Keep"} snapshot ${snapshotTargetLabel(snapshot)}`}
-                          >
-                            {snapshot.isKept ? "Don't keep" : "Keep"}
-                          </Button>
+                          <Tooltip content="Load Data replaces every snapshot you have not kept.">
+                            <Button
+                              variant="ghost"
+                              loading={
+                                keep.isPending &&
+                                keep.variables.id === snapshot.id
+                              }
+                              onClick={() => keep.mutate(snapshot)}
+                              aria-label={`${snapshot.isKept ? "Don't keep" : "Keep"} snapshot ${snapshotTargetLabel(snapshot)}`}
+                            >
+                              {snapshot.isKept ? "Don't keep" : "Keep"}
+                            </Button>
+                          </Tooltip>
                           <Button
                             variant="ghost"
                             onClick={() => setRenameTarget(snapshot)}

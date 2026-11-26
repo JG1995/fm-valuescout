@@ -163,9 +163,6 @@ export function SquadCsvImportModal({
         <p className="text-body-md text-on-surface">
           Drop one CSV file here, or browse your files.
         </p>
-        <p className="mt-1 text-body-sm text-on-surface-variant">
-          Only a Youth Academy export can be imported from this dialog.
-        </p>
       </div>
       <div className="mt-4">
         <CsvImportOutcome state={state} />

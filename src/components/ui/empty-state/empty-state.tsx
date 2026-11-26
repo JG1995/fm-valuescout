@@ -6,8 +6,11 @@ type EmptyStateProps = {
   icon: LucideIcon;
   /** Names the situation in the user's terms — never a raw error string. */
   title: string;
-  /** One line explaining the state, or the underlying reason for a failure. */
-  children: ReactNode;
+  /**
+   * One line naming the next step, or the underlying reason for a failure.
+   * Leave it out when the title or the action already says it.
+   */
+  children?: ReactNode;
   /** The single next step. A state with no way forward is a dead end. */
   action?: ReactNode;
   className?: string;
@@ -37,9 +40,11 @@ export function EmptyState({
         className="shrink-0 text-on-surface-variant"
       />
       <p className="text-headline-sm text-on-surface">{title}</p>
-      <p className="max-w-prose text-body-md text-on-surface-variant">
-        {children}
-      </p>
+      {children ? (
+        <p className="max-w-prose text-body-md text-on-surface-variant">
+          {children}
+        </p>
+      ) : null}
       {action}
     </div>
   );

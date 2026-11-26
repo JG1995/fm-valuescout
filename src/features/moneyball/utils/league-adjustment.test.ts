@@ -54,9 +54,7 @@ describe("leagueAdjustmentSummary", () => {
       leagueAdjustmentSummary(
         breakdown({ division: "Premier League", strength: 149.4, shift: 0 }),
       ),
-    ).toBe(
-      "League strength: role scores not moved (Premier League is the reference league)",
-    );
+    ).toBe("Reference league: Premier League");
     expect(
       leagueAdjustmentSummary(
         breakdown({ division: "LaLiga", strength: 149, shift: 0 }),

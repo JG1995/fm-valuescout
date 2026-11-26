@@ -4,6 +4,7 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
+import { CircleDashed } from "lucide-react";
 import {
   type ReactNode,
   useEffect,
@@ -18,6 +19,7 @@ import {
 } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { TextField } from "@/components/ui/field/text-field";
+import { StatusChip } from "@/components/ui/status-chip/status-chip";
 import { useAnchoredPopover } from "@/components/ui/use-anchored-popover";
 import { warmQuery } from "@/lib/warm-query";
 import { managedClubKeys } from "../api/managed-club-keys";
@@ -323,6 +325,13 @@ export function ManagedClubSelector({
                 Cancel
               </Button>
             ) : null}
+            {selectionChanged || searchPending ? (
+              <span role="status" className="mb-1.5">
+                <StatusChip tone="warning" icon={CircleDashed}>
+                  Unsaved
+                </StatusChip>
+              </span>
+            ) : null}
           </>
         ) : (
           <Button
@@ -340,23 +349,9 @@ export function ManagedClubSelector({
         {action}
       </fieldset>
 
-      {editing && managedClub.clubName ? (
-        <p className="text-body-sm text-on-surface-variant">
-          Load Data sets this to the club you manage in FM whenever the plugin
-          can read it.
-        </p>
-      ) : null}
-      {editing && (selectionChanged || searchPending) ? (
-        <p className="text-body-sm text-on-surface-variant" role="status">
-          {managedClub.clubName
-            ? `Unsaved selection. Analysis still uses ${managedClub.clubName}.`
-            : "Unsaved selection. Save an exact club to use it for analysis."}
-        </p>
-      ) : null}
       {managedClub.status === "missing" ? (
         <p className="text-body-sm text-warning">
-          {managedClub.clubName} is not in the latest snapshot. The saved
-          selection remains active until you replace it.
+          {managedClub.clubName} is not in the latest data.
         </p>
       ) : null}
       {save.error ? (

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Modal } from "@/components/ui/modal/modal";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
+import { InfoTip } from "@/components/ui/tooltip/tooltip";
 import { formatMissable } from "@/utils/format";
 import { plannerRoleReferenceQueryOptions } from "../api/planner-role-reference-query-options";
 import type {
@@ -419,11 +420,6 @@ export function PlannerRoleReferenceModal({
       className="max-w-[720px]"
     >
       <div className="space-y-4">
-        <p className="text-body-md text-on-surface-variant">
-          Each player is listed under the slot he stands out in: where his score
-          ranks highest against every player in the save who can play that slot,
-          not where it is highest.
-        </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <fieldset className="min-w-0">
             <legend className="text-label-md text-on-surface">
@@ -492,14 +488,21 @@ export function PlannerRoleReferenceModal({
             className="min-w-0 rounded-lg border border-outline-variant bg-surface-container"
           >
             <div className="border-b border-outline-variant px-3 py-2">
-              <h3
-                className="truncate text-body-md font-semibold text-on-surface"
-                title={`${positionName} · ${roleName}`}
-              >
-                {positionName} · {roleName}
-              </h3>
+              <div className="flex items-center gap-1">
+                <h3
+                  className="min-w-0 truncate text-body-md font-semibold text-on-surface"
+                  title={`${positionName} · ${roleName}`}
+                >
+                  {positionName} · {roleName}
+                </h3>
+                <InfoTip label="About best role fit">
+                  Each player is listed under the slot where his score ranks
+                  highest against every player in the save who can play it, not
+                  where his score is highest.
+                </InfoTip>
+              </div>
               <p className="text-body-sm text-on-surface-variant">
-                {selectedPhase.label} · ranked independently of squad need
+                {selectedPhase.label}
               </p>
             </div>
             <div className="min-h-0 px-3">
@@ -523,10 +526,7 @@ export function PlannerRoleReferenceModal({
                 <EmptyState
                   icon={UsersRound}
                   title="No players at your managed club"
-                >
-                  No players are available in the current snapshot for this
-                  managed club.
-                </EmptyState>
+                />
               ) : selectedReferenceLane && sortedPlayers.length > 0 ? (
                 <PlayerTable
                   players={sortedPlayers}

@@ -82,6 +82,19 @@ export function FilterRulePopover({
   const moneyballScore =
     view === "search" && field !== undefined && "role" in field && field.role;
   const statisticPercentile = view === "search" && percentile;
+  // Who a percentile or Moneyball score ranks the player against.
+  const peerNote =
+    view === "slot" && percentile
+      ? "Ranked among players with 450+ minutes rated 16 or higher in the position families of this slot's positions."
+      : moneyballScore
+        ? "Scored among the role's position family: players with 450+ minutes rated 16 or higher there."
+        : statisticPercentile
+          ? `${
+              comparison === undefined || comparison === "own"
+                ? "Ranked among the peers of each player's own position"
+                : `Ranked among ${moneyballComparisonLabel(comparison).toLowerCase()}`
+            }, with 450+ minutes and a rating of 16 or higher there. Change this with Percentiles vs in the toolbar.`
+          : undefined;
 
   useEffect(() => {
     if (!shown || focusRequest === null) {
@@ -226,29 +239,10 @@ export function FilterRulePopover({
                         )
                       : field.operators
                   }
+                  operatorHint={peerNote}
                   onChange={(next) => setDraft(next)}
                 />
               </div>
-              {view === "slot" && percentile ? (
-                <p className="text-body-sm text-on-surface-variant">
-                  Ranked among players with 450+ minutes rated 16 or higher in
-                  the position families of this slot's positions.
-                </p>
-              ) : null}
-              {moneyballScore ? (
-                <p className="text-body-sm text-on-surface-variant">
-                  Scored among the role's position family: players with 450+
-                  minutes rated 16 or higher there.
-                </p>
-              ) : statisticPercentile ? (
-                <p className="text-body-sm text-on-surface-variant">
-                  {comparison === undefined || comparison === "own"
-                    ? "Ranked among the peers of each player's own position."
-                    : `Ranked among ${moneyballComparisonLabel(comparison).toLowerCase()}.`}{" "}
-                  Peers have 450+ minutes and a rating of 16 or higher there.
-                  Change this with Percentiles vs in the toolbar.
-                </p>
-              ) : null}
             </>
           ) : showError ? (
             <p className="text-body-sm text-error" role="alert">

@@ -63,8 +63,8 @@ describe("SquadCsvImportModal", () => {
       screen.getByRole("dialog", { name: "Upload Youth Academy CSV" }),
     ).toHaveTextContent("Drop one CSV file here, or browse your files.");
     expect(
-      screen.getByText(/Matching player rows add or update CSV enrichment/i),
-    ).toHaveTextContent("Omitted players keep their earlier enrichment");
+      screen.getByText("Choose a Youth Academy CSV export."),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Browse files" }));
 
     expect(open).toHaveBeenCalledWith({
@@ -92,7 +92,7 @@ describe("SquadCsvImportModal", () => {
 
     expect(getLastCsvImportIpcArgs()).toBeUndefined();
     expect(
-      screen.getByText(/Choose a Youth Academy CSV export to import/i),
+      screen.getByText("Choose a Youth Academy CSV export."),
     ).toBeInTheDocument();
   });
 
@@ -264,7 +264,7 @@ describe("SquadCsvImportModal", () => {
 
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
     expect(
-      screen.getByText(/Choose a Youth Academy CSV export to import/i),
+      screen.getByText("Choose a Youth Academy CSV export."),
     ).toBeInTheDocument();
   });
 

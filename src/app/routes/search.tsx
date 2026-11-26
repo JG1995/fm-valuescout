@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { TableSkeleton } from "@/components/ui/skeleton/skeleton";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import { dashboardKeys } from "@/features/dashboard/api/dashboard-keys";
 import { GraphicsImage } from "@/features/graphics/components/graphics-image";
 import { managedClubQueryOptions } from "@/features/managed-club/api/managed-club-query-options";
@@ -641,33 +642,35 @@ function SearchPageContent() {
           snapshotGameDate={resultContext.snapshot.gameDate}
         />
       ) : null}
-      <label
-        className="flex items-center gap-2 text-body-md text-on-surface"
-        title="Percentile badges and percentile filters rank each player among this group's peers: players with 450+ minutes rated 16 or higher there. Role and tactic scores always rank within their own positions."
-      >
-        Percentiles vs
-        <select
-          className="h-8 max-w-64 rounded-md border border-outline bg-surface-container-high px-2 text-body-md text-on-surface"
-          value={comparison}
-          onChange={(event) =>
-            updateSearch({
-              comparison: parseMoneyballComparison(event.target.value),
-            })
-          }
-        >
-          <option value="own">Own position</option>
-          {POSITION_FAMILIES.map((family) => (
-            <option key={family.id} value={family.id}>
-              {family.label}
-            </option>
-          ))}
-          {comparison.includes("+") ? (
-            <option value={comparison}>
-              {moneyballComparisonLabel(comparison)}
-            </option>
-          ) : null}
-        </select>
-      </label>
+      <Tooltip content="Percentiles rank each player among this group's players with 450+ minutes rated 16 or higher there. Role and tactic scores always rank within their own positions.">
+        {(tooltipId) => (
+          <label className="flex items-center gap-2 text-body-md text-on-surface">
+            Percentiles vs
+            <select
+              aria-describedby={tooltipId}
+              className="h-8 max-w-64 rounded-md border border-outline bg-surface-container-high px-2 text-body-md text-on-surface"
+              value={comparison}
+              onChange={(event) =>
+                updateSearch({
+                  comparison: parseMoneyballComparison(event.target.value),
+                })
+              }
+            >
+              <option value="own">Own position</option>
+              {POSITION_FAMILIES.map((family) => (
+                <option key={family.id} value={family.id}>
+                  {family.label}
+                </option>
+              ))}
+              {comparison.includes("+") ? (
+                <option value={comparison}>
+                  {moneyballComparisonLabel(comparison)}
+                </option>
+              ) : null}
+            </select>
+          </label>
+        )}
+      </Tooltip>
       <MoneyballLeagueToggle
         onBeforeChange={() => clearPlayerResultContext(queryClient)}
         onChanged={() => {
@@ -933,8 +936,7 @@ function SearchPageContent() {
                 icon={DatabaseZap}
                 title="No data loaded for this save"
               >
-                No snapshot loaded for the active save. Use Load Data to scan
-                Football Manager and ingest players into the database.
+                Use Load Data to read it from Football Manager.
               </EmptyState>
             </Panel>
           )}

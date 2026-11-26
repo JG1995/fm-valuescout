@@ -165,7 +165,7 @@ export function AcademyAddPlayersModal({
         ) : null}
         {!candidatesQuery.isPending && candidates.length === 0 ? (
           <p className="text-body-sm text-on-surface-variant">
-            No unclassified managed-club players match this search.
+            No players match this search.
           </p>
         ) : null}
         {candidates.length > 0 ? (

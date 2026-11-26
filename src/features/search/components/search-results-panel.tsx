@@ -973,13 +973,18 @@ export function SearchResultsPanel({
       : appliedFilters.length > 0
         ? "No players match these filters"
         : "No players in snapshot";
+    const seasonStatFiltered = appliedFilters.some((rule) =>
+      rule.field.startsWith("moneyball"),
+    );
     const emptyBody = shortlistEmpty
       ? appliedFilters.length > 0
-        ? "Adjust or clear filters in the toolbar above, or select No shortlist to widen the result set."
-        : "None of the shortlist's players are in this snapshot. Select No shortlist to browse every snapshot player."
+        ? "Clear filters, or select No shortlist."
+        : "Select No shortlist to browse every player."
       : appliedFilters.length > 0
-        ? "Adjust or clear filters in the toolbar above to widen the result set. Players without 450 minutes of season stats drop out of every season stats and Moneyball Score filter."
-        : "The snapshot exists but holds no player rows. Run Load Data again with Football Manager in an active save.";
+        ? seasonStatFiltered
+          ? "Clear filters to see more players. Players under 450 minutes drop out of season-stat filters."
+          : "Clear filters to see more players."
+        : "Run Load Data again with a save open in Football Manager.";
 
     return (
       <Panel

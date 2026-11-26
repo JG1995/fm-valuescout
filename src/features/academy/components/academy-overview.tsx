@@ -64,8 +64,7 @@ export function AcademyOverview({
       >
         {classes.length === 0 ? (
           <EmptyState icon={FolderOpen} title="No academy classes yet">
-            Create a class to start grouping players by the year they came
-            through your club.
+            Group players by the year they came through your club.
           </EmptyState>
         ) : (
           <ul className="divide-y divide-outline-variant">

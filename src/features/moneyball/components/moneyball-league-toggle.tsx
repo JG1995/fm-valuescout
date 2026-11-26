@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import {
   leagueAdjustmentQueryOptions,
   setMoneyballLeagueAdjustment,
@@ -40,40 +41,40 @@ export function MoneyballLeagueToggle({
       : `League-adjusted scores show how a player would score in ${reference}.`;
   return (
     <>
-      {/* One item, so the label wraps with its buttons. */}
-      <span className="inline-flex items-center gap-2">
-        <span
-          aria-hidden
-          className="text-label-md text-on-surface-variant"
-          title={hint}
-        >
-          Scores
-        </span>
-        <fieldset
-          aria-description={hint}
-          disabled={reference === null || change.isPending}
-          className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5 disabled:opacity-60"
-        >
-          <legend className="sr-only">Scores</legend>
-          {[true, false].map((enabled) => (
-            <button
-              key={String(enabled)}
-              type="button"
-              aria-pressed={adjustment.enabled === enabled}
-              className={
-                adjustment.enabled === enabled
-                  ? "h-8 rounded-sm bg-primary px-3 text-label-md text-on-primary"
-                  : "h-8 rounded-sm px-3 text-label-md text-on-surface-variant hover:text-on-surface"
-              }
-              onClick={() => {
-                if (adjustment.enabled !== enabled) change.mutate(enabled);
-              }}
+      <Tooltip content={hint}>
+        {(tooltipId) => (
+          // One item, so the label wraps with its buttons.
+          <span className="inline-flex items-center gap-2">
+            <span aria-hidden className="text-label-md text-on-surface-variant">
+              Scores
+            </span>
+            <fieldset
+              aria-describedby={tooltipId}
+              disabled={reference === null || change.isPending}
+              className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5 disabled:opacity-60"
             >
-              {enabled ? "League-adjusted" : "Raw"}
-            </button>
-          ))}
-        </fieldset>
-      </span>
+              <legend className="sr-only">Scores</legend>
+              {[true, false].map((enabled) => (
+                <button
+                  key={String(enabled)}
+                  type="button"
+                  aria-pressed={adjustment.enabled === enabled}
+                  className={
+                    adjustment.enabled === enabled
+                      ? "h-8 rounded-sm bg-primary px-3 text-label-md text-on-primary"
+                      : "h-8 rounded-sm px-3 text-label-md text-on-surface-variant hover:text-on-surface"
+                  }
+                  onClick={() => {
+                    if (adjustment.enabled !== enabled) change.mutate(enabled);
+                  }}
+                >
+                  {enabled ? "League-adjusted" : "Raw"}
+                </button>
+              ))}
+            </fieldset>
+          </span>
+        )}
+      </Tooltip>
       {change.isError ? (
         <span role="alert" className="text-body-sm text-error">
           The score setting could not be changed. Try again.

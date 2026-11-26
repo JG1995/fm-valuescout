@@ -730,9 +730,7 @@ export function SquadOverviewPanel({
           </p>,
         )}
         {replacementFeedback}
-        <EmptyState icon={UsersRound} title="No players at your managed club">
-          No current-snapshot players match your managed club.
-        </EmptyState>
+        <EmptyState icon={UsersRound} title="No players at your managed club" />
       </Panel>
     );
   }

@@ -142,15 +142,14 @@ export function DevelopmentProspectsPanel({
               icon={TrendingUp}
               title="No prospects with room to grow"
             >
-              No player aged {YOUTH_MAX_AGE} or younger is projected to improve
-              in a slot of your tactic.
+              None aged {YOUTH_MAX_AGE} or younger is projected to improve in
+              your tactic.
             </EmptyState>
           </div>
         ) : (
           <>
             <p className={cardPanelSummaryClass}>
-              Aged {YOUTH_MAX_AGE} or younger with room to grow · highest
-              potential first
+              Aged {YOUTH_MAX_AGE} or younger
             </p>
             <div className="flex flex-1 border-t border-outline-variant">
               <CardGrid

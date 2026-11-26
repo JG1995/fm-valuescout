@@ -84,9 +84,6 @@ export function AcademyClassCreationModal({
           create.mutate();
         }}
       >
-        <p className="text-body-md text-on-surface-variant">
-          Group players by the year they came through your club.
-        </p>
         <p className="text-headline-sm text-on-surface" aria-live="polite">
           Class of {year || "YYYY"}
         </p>

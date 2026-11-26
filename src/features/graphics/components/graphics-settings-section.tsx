@@ -6,6 +6,7 @@ import {
 import { CircleCheck, CircleDashed, CircleX, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
+import { useDoneFlash } from "@/components/ui/button/use-done-flash";
 import { Panel } from "@/components/ui/panel/panel";
 import { StatusChip } from "@/components/ui/status-chip/status-chip";
 import { graphicsKeys } from "../api/graphics-keys";
@@ -20,6 +21,7 @@ import type { GraphicsStatus } from "../types/graphics";
 function useGraphicsMutation(
   mutationFn: () => Promise<GraphicsStatus>,
   onCancellation: () => void,
+  onApplied?: () => void,
 ) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -39,6 +41,7 @@ function useGraphicsMutation(
       }
 
       queryClient.setQueryData(graphicsKeys.status(), status);
+      onApplied?.();
       void queryClient.invalidateQueries({ queryKey: graphicsKeys.status() });
       void queryClient.invalidateQueries({ queryKey: graphicsKeys.all });
     },
@@ -68,14 +71,20 @@ export function GraphicsSettingsSection() {
     null,
   );
   const [activeAction, setActiveAction] = useState<GraphicsAction | null>(null);
-  const choose = useGraphicsMutation(chooseGraphicsRoot, () =>
-    setCancelledGeneration(data.generation),
+  const [chooseDone, flashChoose] = useDoneFlash();
+  const [rescanDone, flashRescan] = useDoneFlash();
+  const choose = useGraphicsMutation(
+    chooseGraphicsRoot,
+    () => setCancelledGeneration(data.generation),
+    flashChoose,
   );
   const clear = useGraphicsMutation(clearGraphicsRoot, () =>
     setCancelledGeneration(null),
   );
-  const rescan = useGraphicsMutation(rescanGraphics, () =>
-    setCancelledGeneration(null),
+  const rescan = useGraphicsMutation(
+    rescanGraphics,
+    () => setCancelledGeneration(null),
+    flashRescan,
   );
   const pending = choose.isPending || clear.isPending || rescan.isPending;
   const activeMutation =
@@ -125,14 +134,12 @@ export function GraphicsSettingsSection() {
           icon={RefreshCw}
         >{`Generation ${data.generation}`}</StatusChip>
       </div>
-      <p className="mt-3 max-w-prose text-body-sm text-on-surface-variant">
-        Local FM27 graphics are used for portraits and club logos. The app keeps
-        the selected root private and never displays its path.
-      </p>
-      <p className="mt-2 text-body-sm text-on-surface-variant">
-        Indexed {data.summary.configs} configs and {data.summary.mappings}{" "}
-        mappings.
-      </p>
+      {data.selected ? (
+        <p className="mt-3 text-body-sm text-on-surface-variant">
+          Indexed {data.summary.configs} configs and {data.summary.mappings}{" "}
+          mappings.
+        </p>
+      ) : null}
       {diagnostics.length > 0 ? (
         <p className="mt-2 max-w-prose text-body-sm text-warning">
           Diagnostics:{" "}
@@ -144,6 +151,7 @@ export function GraphicsSettingsSection() {
       ) : null}
       <div className="mt-4 flex flex-wrap gap-2">
         <Button
+          done={chooseDone}
           loading={choose.isPending}
           loadingLabel="Choosing…"
           disabled={pending}
@@ -157,6 +165,7 @@ export function GraphicsSettingsSection() {
         </Button>
         <Button
           variant="secondary"
+          done={rescanDone}
           loading={rescan.isPending}
           loadingLabel="Rescanning…"
           disabled={pending || !data.selected}
@@ -187,21 +196,16 @@ export function GraphicsSettingsSection() {
           Graphics update failed: {error.message}
         </p>
       ) : null}
-      {activeAction === "choose" &&
-      choose.isSuccess &&
-      cancelledGeneration === data.generation ? (
-        <p className="mt-3 text-body-sm text-on-surface-variant">
-          Folder choice cancelled. Graphics settings are unchanged.
-        </p>
-      ) : activeMutation?.isSuccess ? (
-        <p className="mt-3 text-body-sm text-success">
-          {activeAction === "clear"
-            ? "Graphics folder selection cleared. Portrait and crest fallbacks are active."
+      <p className="sr-only" role="status">
+        {activeMutation?.isSuccess &&
+        !(activeAction === "choose" && cancelledGeneration === data.generation)
+          ? activeAction === "clear"
+            ? "Graphics folder selection cleared."
             : data.rebuilding
               ? "Graphics settings updated. The index is rebuilding in the background."
-              : "Graphics settings updated."}
-        </p>
-      ) : null}
+              : "Graphics settings updated."
+          : null}
+      </p>
     </Panel>
   );
 }

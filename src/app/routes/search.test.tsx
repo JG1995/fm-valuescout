@@ -1288,8 +1288,8 @@ describe("search route", () => {
       }),
     );
     expect(
-      within(dialog).getByText(/Scored among the role's position family/),
-    ).toBeInTheDocument();
+      within(dialog).getByRole("combobox", { name: "Operator" }),
+    ).toHaveAccessibleDescription(/^Scored among the role's position family/);
     fireEvent.change(within(dialog).getByLabelText("Value"), {
       target: { value: "70" },
     });
@@ -3100,7 +3100,7 @@ describe("search route", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        /Adjust or clear filters in the toolbar above.*Players without 450 minutes of season stats drop out/,
+        "Clear filters to see more players. Players under 450 minutes drop out of season-stat filters.",
       ),
     ).toBeInTheDocument();
   });
@@ -3707,7 +3707,7 @@ describe("search route", () => {
       route: "/search",
       filters: "",
       title: "No shortlisted player in this snapshot",
-      body: "None of the shortlist's players are in this snapshot. Select No shortlist to browse every snapshot player.",
+      body: "Select No shortlist to browse every player.",
     },
     {
       state: "no shortlisted player matching the filters",
@@ -3716,7 +3716,7 @@ describe("search route", () => {
         JSON.stringify([{ field: "ca", op: "gte", value: 150 }]),
       )}`,
       title: "No shortlisted players match these filters",
-      body: "Adjust or clear filters in the toolbar above, or select No shortlist to widen the result set.",
+      body: "Clear filters, or select No shortlist.",
     },
   ])(
     "explains a selected shortlist with $state",
@@ -3896,9 +3896,7 @@ describe("search route", () => {
       await screen.findByText("High CA");
 
       let dialog = await openSavedFilters(user);
-      expect(
-        within(dialog).getByText(/No saved filters yet/),
-      ).toBeInTheDocument();
+      expect(within(dialog).getByText("No saved filters")).toBeInTheDocument();
       const name = within(dialog).getByLabelText("Save current filters as");
       expect(
         within(dialog).getByRole("button", { name: "Save" }),
@@ -4103,9 +4101,7 @@ describe("search route", () => {
         within(dialog).getByRole("button", { name: "Delete Teen prospects" }),
       );
       expect(useSavedFiltersStore.getState().savedFilters).toEqual([]);
-      expect(
-        within(dialog).getByText(/No saved filters yet/),
-      ).toBeInTheDocument();
+      expect(within(dialog).getByText("No saved filters")).toBeInTheDocument();
     });
 
     it("applies a tactic slot's positions, recruitment filters, and recruiting defaults, ranked among the slot's two families", async () => {

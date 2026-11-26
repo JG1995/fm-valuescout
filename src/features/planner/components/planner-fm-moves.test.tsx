@@ -147,9 +147,7 @@ describe("Apply squads in FM", () => {
     const dialog = await screen.findByRole("dialog");
 
     expect(
-      await within(dialog).findByText(
-        "Every placed player is already in the matching FM team.",
-      ),
+      await within(dialog).findByText("FM already matches the Planner."),
     ).toBeInTheDocument();
     expect(
       within(dialog).getByRole("button", { name: "Move 0 players" }),

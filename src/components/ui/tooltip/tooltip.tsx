@@ -147,7 +147,7 @@ export function Tooltip({
         popover={supportsPopover ? "manual" : undefined}
         hidden={supportsPopover ? undefined : !open}
         className={cn(
-          "fixed inset-auto z-50 m-0 w-max max-w-72 rounded-md border border-outline-variant bg-surface-container-highest px-2.5 py-1.5",
+          "fixed inset-auto z-50 m-0 w-max max-w-72 overflow-visible rounded-md border border-outline-variant bg-surface-container-highest px-2.5 py-1.5",
           "text-left text-body-sm font-normal normal-case tracking-normal whitespace-normal text-on-surface shadow-overlay",
           className,
         )}

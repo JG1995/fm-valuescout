@@ -1050,8 +1050,7 @@ export function StaffSearchResultsPanel({
     return (
       <Panel flush>
         <EmptyState icon={DatabaseZap} title="No data loaded for this save">
-          Use Load Data to scan Football Manager and ingest staff into the
-          database.
+          Use Load Data to read it from Football Manager.
         </EmptyState>
       </Panel>
     );
@@ -1086,8 +1085,7 @@ export function StaffSearchResultsPanel({
       >
         {renderToolbar()}
         <EmptyState icon={UsersRound} title="No staff shortlisted">
-          Staff shortlists come from your linked FM save file. Add staff to a
-          staff shortlist in FM, save the game, then use Load Data.
+          Shortlist staff in FM, save the game, then use Load Data.
         </EmptyState>
       </Panel>
     );
@@ -1138,14 +1136,14 @@ export function StaffSearchResultsPanel({
           }
         >
           {scope === "my-staff"
-            ? "No current-snapshot staff match your managed club."
+            ? null
             : isShortlist
               ? hasShortlistFilter
-                ? "Adjust or clear filters to widen the results."
-                : "Load Data to restore saved shortlist people who are absent from the current snapshot."
+                ? "Clear filters to see more staff."
+                : "Use Load Data to read the shortlist again."
               : hasCommittedFilters
-                ? "Adjust or clear filters to widen the result set."
-                : "The snapshot exists but contains no staff rows."}
+                ? "Clear filters to see more staff."
+                : null}
         </EmptyState>
       </Panel>
     );

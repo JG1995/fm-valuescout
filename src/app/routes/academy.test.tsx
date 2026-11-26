@@ -324,8 +324,12 @@ describe("academy route", () => {
     );
     expect(screen.getByTestId("academy-stat-graduates")).toHaveTextContent("—");
     expect(
-      screen.getByTestId("academy-stat-goals").parentElement,
-    ).toHaveTextContent(/have not been imported for every tracked player/i);
+      within(
+        screen.getByRole("region", { name: "Academy outcomes" }),
+      ).getByText("Goals"),
+    ).toHaveAccessibleDescription(
+      "Career goals have not been imported for every tracked player.",
+    );
 
     const outcomes = screen.getByRole("region", {
       name: "Academy outcomes",
@@ -626,7 +630,7 @@ describe("academy route", () => {
       await screen.findByText("No data loaded for this save"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Use Load Data to scan Football Manager/i),
+      screen.getByText("Use Load Data to read it from Football Manager."),
     ).toBeInTheDocument();
   });
 
@@ -1208,9 +1212,7 @@ describe("academy route", () => {
       name: "Add players to Class of 2026",
     });
     expect(
-      await within(reopened).findByText(
-        "No unclassified managed-club players match this search.",
-      ),
+      await within(reopened).findByText("No players match this search."),
     ).toBeInTheDocument();
     await user.click(within(reopened).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(trigger).toHaveFocus());

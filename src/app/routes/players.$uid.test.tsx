@@ -489,9 +489,7 @@ describe("player profile route", () => {
     const first = renderProfileRoute("/players/42?view=moneyball");
 
     expect(
-      await screen.findByText(
-        /has no Moneyball stats in the current snapshot/i,
-      ),
+      await screen.findByText("No Moneyball data for this player"),
     ).toBeInTheDocument();
     const noDataSummary = screen.getByRole("region", {
       name: "Moneyball tactical summaries",
@@ -508,7 +506,7 @@ describe("player profile route", () => {
     renderProfileRoute("/players/42?view=moneyball");
 
     expect(
-      await screen.findByText(/before percentile scores were available/i),
+      await screen.findByText("Refresh Moneyball stats"),
     ).toBeInTheDocument();
     const needsReimportSummary = screen.getByRole("region", {
       name: "Moneyball tactical summaries",
@@ -2405,11 +2403,11 @@ describe("player profile route", () => {
       within(dialog).getByRole("heading", { level: 2, name: "Boost CA?" }),
     ).toBeInTheDocument();
     expect(
-      within(dialog).getByText("This raises current ability from 140 to 150."),
+      within(dialog).getByText("Current ability rises from 140 to 150."),
     ).toBeInTheDocument();
     expect(
       within(dialog).getAllByText(
-        "FM may redistribute attributes over the following in-game days, sometimes up to one month.",
+        "FM may redistribute attributes over the following in-game days, up to a month.",
       ),
     ).toHaveLength(1);
 

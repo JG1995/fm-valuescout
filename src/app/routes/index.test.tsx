@@ -771,9 +771,7 @@ describe("Dashboard", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Best signing for each slot",
     });
-    expect(dialog).toHaveTextContent(
-      "Realistic signings with 450+ minutes: the player who would improve each slot most.",
-    );
+    expect(dialog).toHaveTextContent("Realistic signings with 450+ minutes");
     // Goalkeeper to striker, whatever order the slots arrive in.
     const [keeper, leftBack, striker] = within(dialog)
       .getAllByRole("row")

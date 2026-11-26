@@ -10,6 +10,7 @@ import {
   type LucideIcon,
   UsersRound,
 } from "lucide-react";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import { formatCount, formatMoney } from "@/utils/format";
 import type { AcademyStatistics as AcademyStatisticsData } from "../utils/academy-statistics";
 
@@ -26,7 +27,8 @@ type Metric = {
   id: string;
   label: string;
   value: string;
-  explanation: string;
+  /** A definition or the reason the value is missing, shown on the label. */
+  tooltip?: string;
   icon: LucideIcon;
 };
 
@@ -38,20 +40,19 @@ export function AcademyStatistics({
 }: AcademyStatisticsProps) {
   const unavailableExplanation =
     status === "loading"
-      ? "Waiting for the current Academy details to load."
+      ? "Loading Academy details…"
       : status === "error"
-        ? "Unavailable because the current Academy details could not be loaded."
+        ? "Could not load the Academy details."
         : null;
   const outcomeMetrics: Metric[] = [
     {
       id: "graduates",
       label: "Graduates",
       value: formatNullableCount(statistics.graduates),
-      explanation:
-        unavailableExplanation ??
-        (statistics.graduates === null
-          ? "Graduate data is unavailable until career appearances have been imported for every tracked player."
-          : "Players with at least one reported all-time career appearance."),
+      tooltip:
+        status === "ready" && statistics.graduates === null
+          ? "Career appearances have not been imported for every tracked player."
+          : "At least one career appearance.",
       icon: GraduationCap,
     },
     {
@@ -61,55 +62,50 @@ export function AcademyStatistics({
         statistics.saleFeeEur === null
           ? "—"
           : formatMoney(statistics.saleFeeEur),
-      explanation:
-        unavailableExplanation ??
-        (statistics.saleFeeEur === null
-          ? "Manual Academy outcomes are unavailable while details load."
-          : "Manual sale fees recorded for tracked players."),
+      tooltip:
+        status === "ready" && statistics.saleFeeEur === null
+          ? "Unavailable while details load."
+          : "Sale fees you recorded.",
       icon: BadgeEuro,
     },
     {
       id: "released-players",
       label: "Released players",
       value: formatNullableCount(statistics.releasedPlayers),
-      explanation:
-        unavailableExplanation ??
-        (statistics.releasedPlayers === null
-          ? "Manual Academy outcomes are unavailable while details load."
-          : "Players manually marked as released in this cohort."),
+      tooltip:
+        status === "ready" && statistics.releasedPlayers === null
+          ? "Unavailable while details load."
+          : undefined,
       icon: CircleMinus,
     },
     {
       id: "goals",
       label: "Goals",
       value: formatNullableCount(statistics.goals),
-      explanation:
-        unavailableExplanation ??
-        (statistics.goals === null
+      tooltip:
+        status === "ready" && statistics.goals === null
           ? "Career goals have not been imported for every tracked player."
-          : "Reported career goals for tracked players."),
+          : undefined,
       icon: Goal,
     },
     {
       id: "assists",
       label: "Assists",
       value: formatNullableCount(statistics.assists),
-      explanation:
-        unavailableExplanation ??
-        (statistics.assists === null
+      tooltip:
+        status === "ready" && statistics.assists === null
           ? "Career assists have not been imported for every tracked player."
-          : "Reported career assists for tracked players."),
+          : undefined,
       icon: Handshake,
     },
     {
       id: "international-caps",
       label: "International caps",
       value: formatNullableCount(statistics.internationalCaps),
-      explanation:
-        unavailableExplanation ??
-        (statistics.internationalCaps === null
+      tooltip:
+        status === "ready" && statistics.internationalCaps === null
           ? "International caps have not been imported for every tracked player."
-          : "Reported international caps for tracked players."),
+          : undefined,
       icon: Globe2,
     },
   ];
@@ -121,7 +117,6 @@ export function AcademyStatistics({
             id: "classes",
             label: "Classes",
             value: formatCount(classes),
-            explanation: "Saved Class of YYYY cohorts.",
             icon: Library,
           },
         ]),
@@ -129,16 +124,13 @@ export function AcademyStatistics({
       id: "tracked-players",
       label: "Tracked players",
       value: formatCount(trackedPlayers),
-      explanation: "Players retained in Academy classes for this save.",
       icon: UsersRound,
     },
     {
       id: "reported-senior-players",
       label: "Reported senior players",
       value: formatNullableCount(statistics.reportedSeniorPlayers),
-      explanation:
-        unavailableExplanation ??
-        "Resolved members whose current snapshot reports team_level = senior; this is not a graduation proxy.",
+      tooltip: "In the senior squad in the current snapshot.",
       icon: BadgeCheck,
     },
   ];
@@ -178,16 +170,13 @@ function AcademyOutcomeMetric({ metric }: { metric: Metric }) {
     <div className="min-w-0">
       <dt className="flex items-center gap-2 text-label-md text-on-surface-variant uppercase">
         <Icon aria-hidden className="size-4 shrink-0" strokeWidth={1.5} />
-        <span>{metric.label}</span>
+        <MetricLabel metric={metric} />
       </dt>
       <dd
         data-testid={`academy-stat-${metric.id}`}
         className="mt-1 font-mono text-mono-lg text-on-surface tabular-nums"
       >
         {metric.value}
-        <p className="mt-1 font-sans text-body-sm font-normal text-on-surface-variant normal-case">
-          {metric.explanation}
-        </p>
       </dd>
     </div>
   );
@@ -204,20 +193,35 @@ function AcademyContextMetric({ metric }: { metric: Metric }) {
           className="size-4 shrink-0 text-on-surface-variant"
           strokeWidth={1.5}
         />
-        <span className="min-w-0 text-label-sm text-on-surface-variant uppercase">
-          {metric.label}
-        </span>
+        <MetricLabel
+          metric={metric}
+          className="min-w-0 text-label-sm text-on-surface-variant uppercase"
+        />
       </dt>
       <dd
         data-testid={`academy-stat-${metric.id}`}
         className="mt-1 min-w-0 pl-6 font-mono text-mono-md text-on-surface tabular-nums"
       >
         {metric.value}
-        <p className="mt-1 font-sans text-body-sm font-normal text-on-surface-variant normal-case">
-          {metric.explanation}
-        </p>
       </dd>
     </div>
+  );
+}
+
+function MetricLabel({
+  metric,
+  className,
+}: {
+  metric: Metric;
+  className?: string;
+}) {
+  const label = <span className={className}>{metric.label}</span>;
+  return metric.tooltip ? (
+    <Tooltip content={metric.tooltip} focusable>
+      {label}
+    </Tooltip>
+  ) : (
+    label
   );
 }
 

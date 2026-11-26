@@ -224,9 +224,6 @@ describe("StaffAssignmentTargetModal", () => {
     );
     const dialog = await screen.findByRole("dialog");
     const { teamJobs, clubJobs } = needsTables(dialog);
-    expect(
-      within(dialog).getByText(/Jobs left at 0 get no recommendation\./),
-    ).toBeInTheDocument();
     const boundedInput = within(clubJobs).getByRole("spinbutton", {
       name: "Head of Youth Development",
     });
@@ -289,10 +286,10 @@ describe("StaffAssignmentTargetModal", () => {
     const dialog = await screen.findByRole("dialog");
     const { teamJobs } = needsTables(dialog);
     expect(
-      within(dialog).getByText(
-        /Load Data sets each job to FM's staff limit whenever that limit changes\./,
-      ),
-    ).toBeInTheDocument();
+      within(teamJobs).getByRole("button", { name: "About FM's staff limits" }),
+    ).toHaveAccessibleDescription(
+      "Load Data resets a job to FM's staff limit whenever that limit changes.",
+    );
     expect(
       within(teamJobs).getByRole("spinbutton", { name: "Senior Physio" }),
     ).toHaveAccessibleDescription("FM's staff limit is 4.");

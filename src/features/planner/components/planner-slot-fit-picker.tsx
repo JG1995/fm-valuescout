@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/field/field-styles";
 import { Modal } from "@/components/ui/modal/modal";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import { assignPlannerPlayer } from "../api/assign-planner-player";
 import { clearPlannerAssignment } from "../api/clear-planner-assignment";
 import { movePlannerPlayer } from "../api/move-planner-player";
@@ -305,11 +306,14 @@ export function PlannerSlotFitPicker({
                   {occupant.name}
                 </span>
                 {targetLocation(target, teamLabels)}
-                <span className="block">
-                  {occupant.pinned
-                    ? "Pinned: Optimize keeps him here."
-                    : "Placed by Optimize, which may replace him."}
-                </span>
+                {occupant.pinned ? (
+                  <Tooltip focusable content="Optimize keeps him here.">
+                    <span className="flex w-fit items-center gap-1">
+                      <Pin aria-hidden="true" size={16} strokeWidth={1.5} />
+                      Pinned
+                    </span>
+                  </Tooltip>
+                ) : null}
               </p>
               <span className="flex shrink-0 gap-2">
                 <Button
@@ -386,7 +390,7 @@ export function PlannerSlotFitPicker({
           ) : null}
           {!candidatesQuery.isPending && candidates.length === 0 ? (
             <p className="text-body-sm text-on-surface-variant">
-              No managed-club players match this search.
+              No players match this search.
             </p>
           ) : null}
           {candidates.length > 0 ? (

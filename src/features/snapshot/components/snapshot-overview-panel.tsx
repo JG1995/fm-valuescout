@@ -17,8 +17,7 @@ export function SnapshotOverviewPanel() {
     return (
       <Panel title="Snapshot" headingLevel={3} flush>
         <EmptyState icon={DatabaseZap} title="No data loaded for this save">
-          No snapshot loaded for the active save. Use Load Data to scan Football
-          Manager and ingest players into the database.
+          Use Load Data to read it from Football Manager.
         </EmptyState>
       </Panel>
     );
@@ -51,7 +50,7 @@ export function SnapshotOverviewPanel() {
               ? null
               : formatCount(snapshot.maxAccepted),
           )}{" "}
-          players. Review results with care.
+          players.
         </p>
       )}
     </Panel>

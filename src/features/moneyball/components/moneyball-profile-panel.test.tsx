@@ -40,7 +40,9 @@ describe("MoneyballProfilePanel", () => {
     expect(
       screen.getByRole("combobox", { name: "Percentiles vs" }),
     ).toHaveValue("winger");
-    expect(screen.getByText("· 24 peers")).toBeInTheDocument();
+    expect(screen.getByText("· 24 peers")).toHaveAccessibleDescription(
+      "Players with 450+ minutes this season rated 16 or higher at the family's positions.",
+    );
     expect(screen.getByText("xGP")).toBeInTheDocument();
     expect(screen.getByText("xG Overperformance")).toBeInTheDocument();
     for (const hiddenLabel of [
@@ -108,7 +110,7 @@ describe("MoneyballProfilePanel", () => {
 
     expect(
       screen.getByText(
-        "Short sample: under 450 minutes, so this player is ranked against the peers without counting among them.",
+        "Short sample: under 450 minutes, so ranked against the peers without counting among them.",
       ),
     ).toBeInTheDocument();
     expect(
@@ -201,10 +203,13 @@ describe("MoneyballProfilePanel", () => {
       <MoneyballProfilePanel {...undatedStats} profile={{ state: "noData" }} />,
     );
     expect(
-      screen.getByText(/has no Moneyball stats in the current snapshot/i),
-    ).toHaveTextContent(
-      "Moneyball stats come from the FM save file linked in Settings. Use Refresh stats in Player Search to read the latest save.",
-    );
+      screen.getByText("No Moneyball data for this player"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Use Refresh stats in Player Search to read the linked FM save.",
+      ),
+    ).toBeInTheDocument();
 
     rerender(
       <MoneyballProfilePanel
@@ -212,10 +217,11 @@ describe("MoneyballProfilePanel", () => {
         profile={{ state: "needsReimport" }}
       />,
     );
+    expect(screen.getByText("Refresh Moneyball stats")).toBeInTheDocument();
     expect(
-      screen.getByText(/before percentile scores were available/i),
-    ).toHaveTextContent(
-      "Use Refresh stats in Player Search to read the linked FM save file again.",
-    );
+      screen.getByText(
+        "Use Refresh stats in Player Search to read the linked FM save again.",
+      ),
+    ).toBeInTheDocument();
   });
 });

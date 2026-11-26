@@ -100,15 +100,16 @@ export function StartingXiList({
               <span className="min-w-0">
                 <span className="flex min-w-0 items-center gap-1">
                   {slot.incumbent?.source === "planner" ? (
-                    <>
+                    // A native title: a Tooltip cannot sit inside the row's button.
+                    <span title="The Planner's starter" className="shrink-0">
                       <Pin
                         aria-hidden="true"
                         size={12}
                         strokeWidth={1.5}
-                        className="shrink-0 text-on-surface-variant"
+                        className="text-on-surface-variant"
                       />
                       <span className="sr-only">Planner pick:</span>
-                    </>
+                    </span>
                   ) : null}
                   <span
                     className={cn(

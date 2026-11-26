@@ -193,9 +193,7 @@ for (const inspectedPage of pages) {
           .getByRole("button", { name: "Development", exact: true })
           .click();
         await main.getByRole("button", { name: "Optimize squads" }).click();
-        await expect(
-          main.getByText(/Squads optimized for development/),
-        ).toBeVisible();
+        await expect(main.getByText(/Starters average/)).toBeVisible();
       }
     }
 
@@ -214,9 +212,6 @@ for (const inspectedPage of pages) {
         name: "Configure staffing needs",
       });
       await expect(dialog).toBeVisible();
-      await expect(
-        dialog.getByText(/Set how many people you want in each job\./),
-      ).toBeVisible();
       const coachesInput = dialog
         .getByRole("spinbutton", { name: "First Team Coaches" })
         .first();

@@ -60,8 +60,7 @@ function StaffNotFound() {
   return (
     <Panel>
       <EmptyState icon={UserX} title="Staff member not in this snapshot">
-        This staff member is not in the active save’s current snapshot. Return
-        to Staff or load a fresher snapshot.
+        Return to Staff, or use Load Data.
       </EmptyState>
     </Panel>
   );
@@ -96,8 +95,7 @@ function StaffProfileContent({ uid }: { uid: number }) {
     return (
       <Panel>
         <EmptyState icon={DatabaseZap} title="No data loaded for this save">
-          No snapshot loaded for the active save. Use Load Data to scan Football
-          Manager and ingest staff.
+          Use Load Data to read it from Football Manager.
         </EmptyState>
       </Panel>
     );
