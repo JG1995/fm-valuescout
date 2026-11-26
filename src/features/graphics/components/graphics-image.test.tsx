@@ -6,10 +6,17 @@ import {
   setGraphicsStatusIpcMock,
 } from "../api/graphics-ipc-mock";
 import { graphicsKeys } from "../api/graphics-keys";
-import type { GraphicsStatus } from "../types/graphics";
+import type { GraphicsKind, GraphicsStatus } from "../types/graphics";
+import { GameFaceSnapshotContext } from "./game-face-snapshot";
 import { GraphicsImage } from "./graphics-image";
 
-function renderImage(initialStatus?: GraphicsStatus, uid = 42) {
+function renderImage(
+  initialStatus?: GraphicsStatus,
+  uid = 42,
+  gameFace: { snapshotId: number | null; kind?: GraphicsKind } = {
+    snapshotId: null,
+  },
+) {
   const queryClient = new QueryClient();
   if (initialStatus) {
     queryClient.setQueryData(graphicsKeys.status(), initialStatus);
@@ -17,15 +24,17 @@ function renderImage(initialStatus?: GraphicsStatus, uid = 42) {
   return {
     ...render(
       <QueryClientProvider client={queryClient}>
-        <GraphicsImage
-          kind="personPortrait"
-          uid={uid}
-          slot={{
-            alt: "Player portrait",
-            className: "portrait",
-            fallback: <span>Initials</span>,
-          }}
-        />
+        <GameFaceSnapshotContext value={gameFace.snapshotId}>
+          <GraphicsImage
+            kind={gameFace.kind ?? "personPortrait"}
+            uid={uid}
+            slot={{
+              alt: "Player portrait",
+              className: "portrait",
+              fallback: <span>Initials</span>,
+            }}
+          />
+        </GameFaceSnapshotContext>
       </QueryClientProvider>,
     ),
     queryClient,
@@ -140,6 +149,67 @@ describe("GraphicsImage", () => {
     expect(
       await screen.findByRole("img", { name: "Player portrait" }),
     ).toHaveAttribute("src", "http://graphics.localhost/8/personPortrait/42");
+  });
+
+  it("asks for FM's own face of the current snapshot when no graphics folder is selected", async () => {
+    const status = { ...DEFAULT_GRAPHICS_STATUS, gameFaces: true };
+    setGraphicsStatusIpcMock(status);
+    renderImage(status, 2002086752, { snapshotId: 31 });
+
+    expect(
+      await screen.findByRole("img", { name: "Player portrait" }),
+    ).toHaveAttribute(
+      "src",
+      "http://graphics.localhost/31/gameFace/2002086752",
+    );
+  });
+
+  it("falls back from the graphics folder to FM's own face, then to the caller fallback", async () => {
+    const status = { ...LOADED_STATUS, gameFaces: true };
+    setGraphicsStatusIpcMock(status);
+    renderImage(status, 42, { snapshotId: 31 });
+    const image = () => screen.getByRole("img", { name: "Player portrait" });
+    expect(image()).toHaveAttribute(
+      "src",
+      "http://graphics.localhost/7/personPortrait/42",
+    );
+
+    fireEvent.error(image());
+    expect(image()).toHaveAttribute(
+      "src",
+      "http://graphics.localhost/31/gameFace/42",
+    );
+
+    fireEvent.error(image());
+    expect(await screen.findByText("Initials")).toBeVisible();
+    expect(screen.queryByRole("img", { name: "Player portrait" })).toBeNull();
+  });
+
+  it("shows FM's own face while the graphics folder is still being indexed", async () => {
+    const status = { ...LOADED_STATUS, rebuilding: true, gameFaces: true };
+    setGraphicsStatusIpcMock(status);
+    renderImage(status, 42, { snapshotId: 31 });
+
+    expect(
+      await screen.findByRole("img", { name: "Player portrait" }),
+    ).toHaveAttribute("src", "http://graphics.localhost/31/gameFace/42");
+  });
+
+  it("asks for no game face for a club, without a snapshot, or when FM's faces are off", async () => {
+    const faces = { ...DEFAULT_GRAPHICS_STATUS, gameFaces: true };
+    setGraphicsStatusIpcMock(faces);
+    const club = renderImage(faces, 42, { snapshotId: 31, kind: "clubLogo" });
+    expect(await club.findByText("Initials")).toBeVisible();
+    club.unmount();
+
+    const noSnapshot = renderImage(faces, 42, { snapshotId: null });
+    expect(await noSnapshot.findByText("Initials")).toBeVisible();
+    noSnapshot.unmount();
+
+    setGraphicsStatusIpcMock(DEFAULT_GRAPHICS_STATUS);
+    renderImage(DEFAULT_GRAPHICS_STATUS, 42, { snapshotId: 31 });
+    expect(await screen.findByText("Initials")).toBeVisible();
+    expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("leaves the caller fallback after a native error", async () => {

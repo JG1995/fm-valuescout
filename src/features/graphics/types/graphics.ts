@@ -16,6 +16,8 @@ export type GraphicsStatus = {
   generation: number;
   selected: boolean;
   rebuilding?: boolean;
+  /** FM's own faces are served for the players FM generated. */
+  gameFaces?: boolean;
   candidate: {
     available: boolean;
     source: "documents" | "onedrive" | "absent";

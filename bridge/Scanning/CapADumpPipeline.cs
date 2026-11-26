@@ -259,7 +259,7 @@ public sealed class CapADumpPipeline
                 layout);
 
             var parentLink = ContractClubReader.TryRead(reader, candidate.ObjectAddress, layout);
-            var gender = PlayerGenderReader.Read(reader, candidate.ObjectAddress, layout);
+            var looks = PlayerAppearanceReader.Read(reader, candidate.ObjectAddress, layout);
             if (parentLink is { ClubAddress: not 0 })
             {
                 clubAddresses.Add(parentLink.ClubAddress);
@@ -278,7 +278,8 @@ public sealed class CapADumpPipeline
                     attrs,
                     contract,
                     parentLink,
-                    gender));
+                    looks.Gender,
+                    looks.Appearance));
 
             if (diagnostics.SampleAttributeSnapshots.Count < ScanDiagnostics.MaxSampleAttributeSnapshots)
             {
@@ -486,6 +487,7 @@ public sealed class CapADumpPipeline
                     Nationalities = draft.Identity.Nationalities,
                     NationUid = draft.Identity.NationUid,
                     Gender = PlayerGenderValues.ToWireValue(draft.Gender),
+                    Appearance = draft.Appearance,
                     HeightCm = draft.Identity.HeightCm,
                     PreferredFoot = draft.Identity.PreferredFoot,
                     Positions = draft.Identity.Positions,
@@ -735,7 +737,8 @@ public sealed class CapADumpPipeline
         PlayerAttributes Attrs,
         PlayerContractFields Contract,
         ContractClubLink? ParentLink,
-        PlayerGender Gender);
+        PlayerGender Gender,
+        IReadOnlyList<int>? Appearance);
 
     private sealed record StaffDraft(
         PersonCandidate Candidate,

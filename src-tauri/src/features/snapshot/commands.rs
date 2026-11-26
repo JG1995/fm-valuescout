@@ -881,7 +881,7 @@ mod tests {
     use crate::db::{migrations, Db};
     use crate::features::memory_read::service::DumpRequestResult;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v10.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v11.json");
 
     /// Tests run without a bridge; a save without a managed club never calls this.
     fn no_staff_limits(_: &str, _: u32) -> Result<StaffLimitsResult, String> {

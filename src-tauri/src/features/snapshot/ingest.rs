@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use crate::features::academy::service as academy_service;
 use crate::features::managed_club::service as managed_club_service;
-use crate::features::memory_read::dump_validation::read_validated_dump;
+use crate::features::memory_read::dump_validation::{appearance_values, read_validated_dump};
 use crate::features::moneyball::league_strength;
 use crate::features::player_metrics::club_dna as club_dna_scores;
 use crate::features::player_metrics::compact as player_compact;
@@ -86,6 +86,8 @@ pub(crate) struct RawPreparedPlayer {
     pub(crate) age: Option<i64>,
     pub(crate) nationalities_json: String,
     pub(crate) height_cm: Option<i64>,
+    /// `PlayerAppearance::pack` of the dump's `appearance`, or `None` when it is null.
+    pub(crate) appearance: Option<i64>,
     pub(crate) preferred_foot: String,
     pub(crate) positions_json: String,
     pub(crate) attributes_json: String,
@@ -308,6 +310,7 @@ fn raw_player(player: &serde_json::Map<String, Value>) -> Result<RawPreparedPlay
     let age = optional_i64(player.get("age"))?;
     let nationalities_json = json_string(required_value(player, "nationalities")?)?;
     let height_cm = optional_i64(player.get("heightCm"))?;
+    let appearance = optional_appearance(player.get("appearance"))?;
     let preferred_foot = require_string(player, "preferredFoot")?;
     let positions_json = json_string(required_value(player, "positions")?)?;
     let attributes_json = json_string(required_value(player, "attributes")?)?;
@@ -344,6 +347,7 @@ fn raw_player(player: &serde_json::Map<String, Value>) -> Result<RawPreparedPlay
         age,
         nationalities_json,
         height_cm,
+        appearance,
         preferred_foot,
         positions_json,
         attributes_json,
@@ -791,11 +795,12 @@ fn insert_prepared_players_raw(
                 nation_uid,
                 gender,
                 club_reputation,
-                team_type
+                team_type,
+                appearance
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
                 ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
-                ?31, ?32, ?33, ?34, ?35, ?36
+                ?31, ?32, ?33, ?34, ?35, ?36, ?37
             )",
         )
         .map_err(|error| error.to_string())?;
@@ -837,6 +842,7 @@ fn insert_prepared_players_raw(
             p.gender,
             p.club_reputation,
             p.team_type,
+            p.appearance,
         ])
         .map_err(|error| error.to_string())?;
     }
@@ -1034,6 +1040,15 @@ fn optional_i64(value: Option<&Value>) -> Result<Option<i64>, String> {
     }
 }
 
+fn optional_appearance(value: Option<&Value>) -> Result<Option<i64>, String> {
+    match value {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => appearance_values(value)
+            .map(|appearance| Some(appearance.pack()))
+            .ok_or_else(|| "expected appearance array or null".to_string()),
+    }
+}
+
 fn optional_bool(value: Option<&Value>) -> Result<Option<i32>, String> {
     match value {
         None | Some(Value::Null) => Ok(None),
@@ -1089,7 +1104,7 @@ mod tests {
     use rusqlite::OptionalExtension;
     use std::path::Path;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v10.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v11.json");
 
     fn open_migrated(db_path: &Path) -> Connection {
         let conn = Connection::open(db_path).expect("open test db");
@@ -1925,7 +1940,7 @@ mod tests {
         let prior_count = role_score_count_for_snapshot(&conn, first.id);
         assert!(prior_count > 0);
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 10", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 11", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let _ = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -1962,7 +1977,7 @@ mod tests {
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
 
         assert_eq!(snapshot.save_id, active_save.id);
-        assert_eq!(snapshot.schema_version, 10);
+        assert_eq!(snapshot.schema_version, 11);
         assert_eq!(snapshot.generated_at_utc, "2026-08-08T10:00:00.000Z");
         assert_eq!(snapshot.game_version, "26.3.2.2329565");
         assert_eq!(snapshot.supported_game_version, "26.3");
@@ -2588,6 +2603,36 @@ mod tests {
     }
 
     #[test]
+    fn stores_each_players_packed_appearance_or_null() {
+        use crate::features::player::appearance::PlayerAppearance;
+
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse fixture");
+        let mut stored = |appearance: Value, name: &str| -> Option<i64> {
+            root["players"][0]["appearance"] = appearance;
+            let mut conn = open_migrated(&temp_dir.path().join(format!("{name}.db")));
+            let path = write_dump(&temp_dir, &format!("{name}.json"), &root.to_string());
+            let snapshot = ingest_dump_file(&mut conn, &path).expect("ingest");
+            conn.query_row(
+                "SELECT appearance FROM players WHERE snapshot_id = ?1 AND uid = 77",
+                [snapshot.id],
+                |row| row.get(0),
+            )
+            .expect("read appearance")
+        };
+
+        assert_eq!(
+            stored(serde_json::json!([0, 3, 2, 11, 0, 2, 0]), "array"),
+            Some(
+                PlayerAppearance::from_dump([0, 3, 2, 11, 0, 2, 0])
+                    .unwrap()
+                    .pack()
+            )
+        );
+        assert_eq!(stored(Value::Null, "null"), None);
+    }
+
+    #[test]
     fn invalid_winning_source_attribute_rolls_back_ingest() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("ingest-domain-rollback.db"));
@@ -2675,7 +2720,7 @@ mod tests {
         let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
         let first = ingest_dump_file(&mut conn, &good_path).expect("first ingest");
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 10", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 11", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let error = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -2801,7 +2846,7 @@ mod tests {
         write!(
             file,
             concat!(
-                r#"{{"schemaVersion":10,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
+                r#"{{"schemaVersion":11,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
                 r#""gameVersion":"26.3.2","supportedGameVersion":"26.3","bridgeVersion":"0.1.0","#,
                 r#""protocolVersion":1,"gameDate":null,"gameDateSource":"unknown","gameDateBasis":"unknown","#,
                 r#""playerDatabaseScope":"men","#,
@@ -2819,7 +2864,7 @@ mod tests {
                 file,
                 concat!(
                     r#"{{"uid":{uid},"ca":1,"pa":1,"name":"P{uid}","birthYear":2000,"birthDayOfYear":1,"#,
-                    r#""age":null,"nationalities":[],"nationUid":null,"gender":"unknown","heightCm":null,"preferredFoot":"right","#,
+                    r#""age":null,"nationalities":[],"nationUid":null,"gender":"unknown","heightCm":null,"appearance":null,"preferredFoot":"right","#,
                     r#""positions":{{"GK":null,"SW":null,"DL":null,"DC":null,"DR":null,"DM":null,"ML":null,"MC":null,"MR":null,"AML":null,"AMC":null,"AMR":null,"ST":null,"WBL":null,"WBR":null}},"attributes":{{}},"hiddenAttributes":{{}},"personality":{{}},"#,
                     r#""weeklyWageGbp":null,"contractExpiryYear":null,"contractExpiryDayOfYear":null,"#,
                     r#""transferListed":null,"loanListed":null,"notForSale":null,"setForRelease":null,"#,
@@ -3107,7 +3152,7 @@ mod tests {
         assert_eq!(compact_row_count(&conn, earlier.stored_snapshot.id), 0);
         assert_eq!(compact_row_count(&conn, later.stored_snapshot.id), 1);
         // Prepare errors must not have written.
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 10", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 11", "\"schemaVersion\": 4");
         assert!(prepare_dump_json(&bad_json).is_err());
         assert_eq!(snapshot_count(&conn, save_context.id), 2);
     }

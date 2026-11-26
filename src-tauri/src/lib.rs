@@ -20,9 +20,12 @@ pub fn run() {
             // for dozens of images a second, and a thread started for each one costs more
             // than reading the image.
             tauri::async_runtime::spawn_blocking(move || {
-                let runtime = app_handle.state::<features::graphics::runtime::GraphicsRuntime>();
-                let response =
-                    features::graphics::commands::graphics_protocol_response(request, &runtime);
+                let response = features::graphics::commands::respond(
+                    request,
+                    &app_handle.state::<features::graphics::runtime::GraphicsRuntime>(),
+                    &app_handle.state::<features::graphics::faces::GameFaces>(),
+                    &app_handle.state::<db::Db>(),
+                );
                 responder.respond(response);
             });
         })
@@ -70,6 +73,7 @@ pub fn run() {
             app.manage(features::staff::commands::StaffCaches::default());
             app.manage(db::result_cache::TableRegistry::default());
             app.manage(graphics_runtime);
+            app.manage(features::graphics::faces::GameFaces::for_fm_install());
             app.state::<features::graphics::runtime::GraphicsRuntime>()
                 .start_worker();
             start_idle_release(app.handle());
@@ -195,6 +199,8 @@ fn start_idle_release(app: &tauri::AppHandle) {
         app.state::<db::Db>().close_idle_readers(IDLE_RELEASE_AFTER);
         app.state::<features::graphics::runtime::GraphicsRuntime>()
             .release_idle_images(IDLE_RELEASE_AFTER);
+        app.state::<features::graphics::faces::GameFaces>()
+            .release_idle(IDLE_RELEASE_AFTER);
     });
 }
 

@@ -1,3 +1,4 @@
+use super::faces::GameFaces;
 use super::index::GraphicsKind;
 use super::runtime::{picker, GraphicsRuntime, GraphicsStatus, ImageLookupResult};
 use crate::blocking;
@@ -6,8 +7,22 @@ use serde::{Deserialize, Serialize};
 use tauri::{http, AppHandle, Manager, State};
 
 #[tauri::command(async)]
-pub fn get_graphics_status(runtime: State<'_, GraphicsRuntime>) -> GraphicsStatus {
-    runtime.status()
+pub fn get_graphics_status(
+    runtime: State<'_, GraphicsRuntime>,
+    faces: State<'_, GameFaces>,
+) -> GraphicsStatus {
+    status(&runtime, &faces)
+}
+
+fn status(runtime: &GraphicsRuntime, faces: &GameFaces) -> GraphicsStatus {
+    GraphicsStatus {
+        game_faces: faces.available(),
+        ..runtime.status()
+    }
+}
+
+fn app_status(app: &AppHandle) -> GraphicsStatus {
+    status(&app.state::<GraphicsRuntime>(), &app.state::<GameFaces>())
 }
 
 #[tauri::command]
@@ -19,15 +34,15 @@ pub async fn choose_graphics_root(
     blocking::run(move || {
         let runtime = app.state::<GraphicsRuntime>();
         let Some(root) = picker(&app)? else {
-            return Ok(runtime.status());
+            return Ok(app_status(&app));
         };
         if root.as_os_str().is_empty() {
-            return Ok(runtime.status());
+            return Ok(app_status(&app));
         }
         if let Some(target) = runtime.persist_transition(&db.0, Some(root))? {
             runtime.enqueue(target);
         }
-        Ok(runtime.status())
+        Ok(app_status(&app))
     })
     .await
 }
@@ -43,7 +58,7 @@ pub async fn clear_graphics_root(
         if runtime.persist_transition(&db.0, None)?.is_some() {
             runtime.cancel_pending();
         }
-        Ok(runtime.status())
+        Ok(app_status(&app))
     })
     .await
 }
@@ -56,7 +71,7 @@ pub async fn rescan_graphics(app: AppHandle, db: State<'_, Db>) -> Result<Graphi
         if let Some(target) = runtime.begin_rescan(&db.0)? {
             runtime.enqueue(target);
         }
-        Ok(runtime.status())
+        Ok(app_status(&app))
     })
     .await
 }
@@ -68,9 +83,15 @@ pub struct ProtocolRequest {
     pub uid: u32,
 }
 
-pub fn parse_protocol_request(
-    request: &http::Request<Vec<u8>>,
-) -> Result<ProtocolRequest, http::StatusCode> {
+/// A request for FM's own face of one player of one snapshot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GameFaceRequest {
+    pub snapshot_id: i64,
+    pub uid: u32,
+}
+
+/// The three path segments of a request in the closed grammar `/<number>/<kind>/<uid>`.
+fn identity_segments(request: &http::Request<Vec<u8>>) -> Result<[&str; 3], http::StatusCode> {
     if request.method() != http::Method::GET {
         return Err(http::StatusCode::METHOD_NOT_ALLOWED);
     }
@@ -85,33 +106,59 @@ pub fn parse_protocol_request(
         return Err(http::StatusCode::BAD_REQUEST);
     }
     let mut segments = uri.path().split('/');
-    if segments.next() != Some("") {
-        return Err(http::StatusCode::BAD_REQUEST);
+    match (
+        segments.next(),
+        segments.next(),
+        segments.next(),
+        segments.next(),
+        segments.next(),
+    ) {
+        (Some(""), Some(number), Some(kind), Some(uid), None) => Ok([number, kind, uid]),
+        _ => Err(http::StatusCode::BAD_REQUEST),
     }
-    let generation = segments
-        .next()
-        .filter(|segment| canonical_decimal(segment, true))
-        .and_then(|segment| segment.parse().ok())
-        .ok_or(http::StatusCode::BAD_REQUEST)?;
-    let kind = match segments.next() {
-        Some("personPortrait") => GraphicsKind::PersonPortrait,
-        Some("clubLogo") => GraphicsKind::ClubLogo,
-        Some("clubIcon") => GraphicsKind::ClubIcon,
-        _ => return Err(http::StatusCode::BAD_REQUEST),
-    };
-    let uid = segments
-        .next()
+}
+
+fn parse_uid(segment: &str) -> Result<u32, http::StatusCode> {
+    Some(segment)
         .filter(|segment| canonical_decimal(segment, false))
         .and_then(|segment| segment.parse().ok())
         .filter(|uid: &u32| *uid > 0)
+        .ok_or(http::StatusCode::BAD_REQUEST)
+}
+
+pub fn parse_protocol_request(
+    request: &http::Request<Vec<u8>>,
+) -> Result<ProtocolRequest, http::StatusCode> {
+    let [generation, kind, uid] = identity_segments(request)?;
+    let generation = Some(generation)
+        .filter(|segment| canonical_decimal(segment, true))
+        .and_then(|segment| segment.parse().ok())
         .ok_or(http::StatusCode::BAD_REQUEST)?;
-    if segments.next().is_some() {
-        return Err(http::StatusCode::BAD_REQUEST);
-    }
+    let kind = match kind {
+        "personPortrait" => GraphicsKind::PersonPortrait,
+        "clubLogo" => GraphicsKind::ClubLogo,
+        "clubIcon" => GraphicsKind::ClubIcon,
+        _ => return Err(http::StatusCode::BAD_REQUEST),
+    };
     Ok(ProtocolRequest {
         generation,
         kind,
-        uid,
+        uid: parse_uid(uid)?,
+    })
+}
+
+/// Parses `/<snapshot id>/gameFace/<uid>`; `None` for every other request.
+pub fn parse_game_face_request(request: &http::Request<Vec<u8>>) -> Option<GameFaceRequest> {
+    let [snapshot_id, "gameFace", uid] = identity_segments(request).ok()? else {
+        return None;
+    };
+    let snapshot_id = Some(snapshot_id)
+        .filter(|segment| canonical_decimal(segment, false))
+        .and_then(|segment| segment.parse().ok())
+        .filter(|snapshot_id: &i64| *snapshot_id > 0)?;
+    Some(GameFaceRequest {
+        snapshot_id,
+        uid: parse_uid(uid).ok()?,
     })
 }
 
@@ -141,6 +188,24 @@ fn image_protocol_response(result: ImageLookupResult) -> http::Response<Vec<u8>>
             .expect("static protocol response is valid"),
         ImageLookupResult::Missing => protocol_response(http::StatusCode::NOT_FOUND),
     }
+}
+
+/// Answers a request of the `graphics` protocol: a game face from the snapshot's stored
+/// appearance and FM's portrait bundle, or an image of the selected graphics folder.
+pub fn respond(
+    request: http::Request<Vec<u8>>,
+    runtime: &GraphicsRuntime,
+    faces: &GameFaces,
+    db: &Db,
+) -> http::Response<Vec<u8>> {
+    let Some(face) = parse_game_face_request(&request) else {
+        return graphics_protocol_response(request, runtime);
+    };
+    let result = match db.read() {
+        Ok(conn) => faces.resolve(&conn, face.snapshot_id, face.uid),
+        Err(_) => ImageLookupResult::Missing,
+    };
+    image_protocol_response(result)
 }
 
 pub fn graphics_protocol_response(
@@ -185,6 +250,49 @@ mod tests {
             .uri(uri)
             .body(Vec::new())
             .unwrap()
+    }
+
+    #[test]
+    fn a_game_face_request_names_one_snapshot_and_one_player() {
+        let parse = |method, uri| parse_game_face_request(&request(method, uri));
+
+        assert_eq!(
+            parse(
+                http::Method::GET,
+                "graphics://localhost/12/gameFace/2002086752"
+            ),
+            Some(GameFaceRequest {
+                snapshot_id: 12,
+                uid: 2_002_086_752,
+            })
+        );
+        for uri in [
+            "graphics://localhost/0/gameFace/77",
+            "graphics://localhost/012/gameFace/77",
+            "graphics://localhost/-1/gameFace/77",
+            "graphics://localhost/12/gameFace/0",
+            "graphics://localhost/12/gameFace/4294967296",
+            "graphics://localhost/12/gameFace/77/extra",
+            "graphics://localhost/12/gameFace/77?size=2",
+            "graphics://localhost/12/gameface/77",
+            "graphics://localhost/12/personPortrait/77",
+            "graphics://elsewhere/12/gameFace/77",
+            "graphics://localhost:80/12/gameFace/77",
+        ] {
+            assert_eq!(parse(http::Method::GET, uri), None, "{uri}");
+        }
+        assert_eq!(
+            parse(http::Method::POST, "graphics://localhost/12/gameFace/77"),
+            None
+        );
+        // The graphics folder's grammar does not accept the kind either.
+        assert_eq!(
+            parse_protocol_request(&request(
+                http::Method::GET,
+                "graphics://localhost/12/gameFace/77"
+            )),
+            Err(http::StatusCode::BAD_REQUEST)
+        );
     }
 
     #[test]

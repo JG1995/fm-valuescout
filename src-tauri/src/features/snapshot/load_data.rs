@@ -280,7 +280,7 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v10.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v11.json");
 
     fn open_migrated(db_path: &Path) -> Connection {
         let conn = Connection::open(db_path).expect("open test db");

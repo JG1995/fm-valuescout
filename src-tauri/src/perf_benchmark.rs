@@ -179,7 +179,7 @@ fn write_dump(path: &Path, scale: Scale, game_date: &str, seed: u64) -> std::io:
     let mut rng = Rng(seed);
     write!(
         out,
-        r#"{{"schemaVersion":10,"generatedAtUtc":"{game_date}T10:00:00.000Z","gameVersion":"26.3.2.2329565","supportedGameVersion":"26.3","bridgeVersion":"0.1.0","protocolVersion":1,"gameDate":"{game_date}","gameDateSource":"derived","gameDateBasis":"next-fixture-consensus","playerDatabaseScope":"men","scanTruncated":false,"maxAccepted":null,"playerCount":{},"staffCount":{},"manager":null,"players":["#,
+        r#"{{"schemaVersion":11,"generatedAtUtc":"{game_date}T10:00:00.000Z","gameVersion":"26.3.2.2329565","supportedGameVersion":"26.3","bridgeVersion":"0.1.0","protocolVersion":1,"gameDate":"{game_date}","gameDateSource":"derived","gameDateBasis":"next-fixture-consensus","playerDatabaseScope":"men","scanTruncated":false,"maxAccepted":null,"playerCount":{},"staffCount":{},"manager":null,"players":["#,
         scale.players, scale.staff
     )?;
     for index in 0..scale.players {
@@ -208,7 +208,7 @@ fn write_player(out: &mut impl Write, rng: &mut Rng, uid: i64) -> std::io::Resul
     let natural_position = rng.range(0, POSITION_KEYS.len() as i64 - 1) as usize;
     write!(
         out,
-        r#"{{"uid":{uid},"ca":{ca},"pa":{pa},"name":"{} {} {uid}","birthYear":{},"birthDayOfYear":{},"age":{age},"nationalities":["{}"],"nationUid":{},"gender":"male","heightCm":{},"preferredFoot":"{}","positions":{{"#,
+        r#"{{"uid":{uid},"ca":{ca},"pa":{pa},"name":"{} {} {uid}","birthYear":{},"birthDayOfYear":{},"age":{age},"nationalities":["{}"],"nationUid":{},"gender":"male","heightCm":{},"appearance":"#,
         rng.pick(&FIRST_NAMES),
         rng.pick(&LAST_NAMES),
         2026 - age,
@@ -216,6 +216,25 @@ fn write_player(out: &mut impl Write, rng: &mut Rng, uid: i64) -> std::io::Resul
         rng.pick(&NATIONS),
         rng.range(1, 200),
         rng.range(160, 200),
+    )?;
+    // Only the players FM generated carry an appearance.
+    if rng.chance(10) {
+        write!(
+            out,
+            "[{},{},{},{},{},2,{}]",
+            rng.range(0, 10),
+            rng.range(0, 20),
+            rng.range(0, 4),
+            rng.range(0, 20),
+            rng.range(0, 6),
+            rng.range(0, 1),
+        )?;
+    } else {
+        out.write_all(b"null")?;
+    }
+    write!(
+        out,
+        r#","preferredFoot":"{}","positions":{{"#,
         rng.pick(&["right", "left", "either"]),
     )?;
     for (index, key) in POSITION_KEYS.iter().enumerate() {

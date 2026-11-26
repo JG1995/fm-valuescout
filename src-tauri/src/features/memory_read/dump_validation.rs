@@ -4,7 +4,9 @@ use serde_json::{Map, Value};
 use std::collections::HashSet;
 use std::io::{BufReader, Read};
 
-pub const DUMP_SCHEMA_VERSION: i64 = 10;
+use crate::features::player::appearance::PlayerAppearance;
+
+pub const DUMP_SCHEMA_VERSION: i64 = 11;
 pub const DUMP_PROTOCOL_VERSION: i64 = 1;
 
 const POSITION_KEYS: &[&str] = &[
@@ -55,6 +57,7 @@ const REQUIRED_PLAYER_NULLABLE_KEYS: &[&str] = &[
     "age",
     "nationUid",
     "heightCm",
+    "appearance",
     "weeklyWageGbp",
     "contractExpiryYear",
     "contractExpiryDayOfYear",
@@ -685,6 +688,11 @@ fn validate_player_object(player: &Value, index: usize) -> Result<u64, DumpValid
     )?;
     require_nullable_i64_at(object, &format!("players[{index}].age"), "age")?;
     require_nullable_i64_at(object, &format!("players[{index}].heightCm"), "heightCm")?;
+    require_nullable_appearance_at(
+        object,
+        &format!("players[{index}].appearance"),
+        "appearance",
+    )?;
     require_nullable_i64_at(
         object,
         &format!("players[{index}].weeklyWageGbp"),
@@ -885,6 +893,41 @@ fn require_i64_at(
             field: display_field.to_string(),
             detail: "expected number".to_string(),
         })
+}
+
+/// `null`, or the seven bytes [`PlayerAppearance::from_dump`] reads.
+fn require_nullable_appearance_at(
+    object: &serde_json::Map<String, Value>,
+    display_field: &str,
+    key: &str,
+) -> Result<(), DumpValidationError> {
+    match object.get(key) {
+        Some(Value::Null) => Ok(()),
+        Some(value) if appearance_values(value).is_some() => Ok(()),
+        Some(_) => Err(DumpValidationError::WrongType {
+            field: display_field.to_string(),
+            detail: format!(
+                "expected null or {} integers from 0 to 255 ending in 0 or 1",
+                PlayerAppearance::DUMP_LEN
+            ),
+        }),
+        None => Err(DumpValidationError::MissingField(display_field.to_string())),
+    }
+}
+
+/// The appearance a dump's `appearance` array describes, or `None` when it is not one.
+pub(crate) fn appearance_values(value: &Value) -> Option<PlayerAppearance> {
+    let Value::Array(items) = value else {
+        return None;
+    };
+    let mut values = [0u8; PlayerAppearance::DUMP_LEN];
+    if items.len() != values.len() {
+        return None;
+    }
+    for (slot, item) in values.iter_mut().zip(items) {
+        *slot = u8::try_from(item.as_u64()?).ok()?;
+    }
+    PlayerAppearance::from_dump(values)
 }
 
 fn require_i64(
@@ -1374,7 +1417,8 @@ fn require_object_at(
 mod tests {
     use super::*;
 
-    const GOLDEN_FIXTURE: &str = include_str!("fixtures/golden_dump_v10.json");
+    const GOLDEN_FIXTURE: &str = include_str!("fixtures/golden_dump_v11.json");
+    const STALE_V10_FIXTURE: &str = include_str!("fixtures/golden_dump_v10.json");
     const STALE_V9_FIXTURE: &str = include_str!("fixtures/golden_dump_v9.json");
     const STALE_V8_FIXTURE: &str = include_str!("fixtures/golden_dump_v8.json");
     const STALE_V7_FIXTURE: &str = include_str!("fixtures/golden_dump_v7.json");
@@ -1382,20 +1426,20 @@ mod tests {
     const STALE_V5_FIXTURE: &str = include_str!("fixtures/golden_dump_v5.json");
 
     fn fixture_with_positions(positions: Value) -> String {
-        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v10 fixture");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v11 fixture");
         root["players"][0]["positions"] = positions;
         root.to_string()
     }
 
     #[test]
     fn golden_fixture_passes_ingestibility_validation() {
-        validate_dump_json(GOLDEN_FIXTURE).expect("golden dump v10 should be ingestible");
+        validate_dump_json(GOLDEN_FIXTURE).expect("golden dump v11 should be ingestible");
     }
 
     #[test]
     fn rejects_malformed_documents_with_whole_document_messages() {
         let with_field = |field: &str, value: Value| {
-            let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v10 fixture");
+            let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v11 fixture");
             root[field] = value;
             root.to_string()
         };
@@ -1420,11 +1464,11 @@ mod tests {
             ),
             (
                 truncated,
-                "dump is not valid JSON: EOF while parsing a value at line 46 column 6",
+                "dump is not valid JSON: EOF while parsing a value at line 47 column 6",
             ),
             (
                 &trailing,
-                "dump is not valid JSON: trailing characters at line 137 column 1",
+                "dump is not valid JSON: trailing characters at line 138 column 1",
             ),
         ];
         for (json, expected) in cases {
@@ -1452,7 +1496,7 @@ mod tests {
 
     #[test]
     fn accepts_nullable_club_uids_and_rejects_non_positive_values() {
-        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v10 fixture");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v11 fixture");
         root["players"][0]["currentClubUid"] = Value::Null;
         root["players"][0]["parentClubUid"] = Value::Null;
         root["staff"][0]["clubUid"] = Value::Null;
@@ -1474,6 +1518,61 @@ mod tests {
     }
 
     #[test]
+    fn rejects_stale_schema_v10_with_plugin_update_and_rescan_instruction() {
+        // The v10 players lack their appearance, so the version must be checked first.
+        let stale: Value = serde_json::from_str(STALE_V10_FIXTURE).expect("parse v10 fixture");
+        assert!(validate_player_object(&stale["players"][0], 0).is_err());
+
+        let error = validate_dump_json(STALE_V10_FIXTURE).expect_err("stale schema v10");
+        assert!(error
+            .to_string()
+            .contains("update the FM bridge plugin and rescan"));
+        assert!(matches!(
+            error,
+            DumpValidationError::UnsupportedSchemaVersion {
+                found: 10,
+                expected: 11
+            }
+        ));
+    }
+
+    #[test]
+    fn accepts_a_null_appearance_and_rejects_malformed_ones() {
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v11 fixture");
+        root["players"][0]["appearance"] = Value::Null;
+        validate_dump_json(&root.to_string()).expect("null appearance should validate");
+
+        for appearance in [
+            serde_json::json!([0, 3, 2, 11, 0, 2]),
+            serde_json::json!([0, 3, 2, 11, 0, 2, 0, 0]),
+            serde_json::json!([0, 3, 2, 11, 0, 2.5, 0]),
+            serde_json::json!([0, 3, "2", 11, 0, 2, 0]),
+            serde_json::json!([0, 3, 2, 256, 0, 2, 0]),
+            serde_json::json!([-1, 3, 2, 11, 0, 2, 0]),
+            serde_json::json!([0, 3, 2, 11, 0, 2, 2]),
+            serde_json::json!({"ethnicity": 0}),
+            serde_json::json!(5),
+        ] {
+            let mut invalid = root.clone();
+            invalid["players"][0]["appearance"] = appearance.clone();
+            let error = validate_dump_json(&invalid.to_string()).expect_err("bad appearance");
+            assert!(
+                matches!(&error, DumpValidationError::WrongType { field, .. } if field == "players[0].appearance"),
+                "{appearance}: {error}"
+            );
+        }
+
+        root["players"][0]
+            .as_object_mut()
+            .expect("player object")
+            .remove("appearance");
+        let error = validate_dump_json(&root.to_string()).expect_err("missing appearance");
+        assert!(
+            matches!(error, DumpValidationError::MissingField(field) if field == "players[0].appearance")
+        );
+    }
+
+    #[test]
     fn rejects_stale_schema_v9_with_plugin_update_and_rescan_instruction() {
         // The v9 staff records lack their team, so the version must be checked first.
         let stale: Value = serde_json::from_str(STALE_V9_FIXTURE).expect("parse v9 fixture");
@@ -1487,7 +1586,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 9,
-                expected: 10
+                expected: 11
             }
         ));
     }
@@ -1506,7 +1605,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 8,
-                expected: 10
+                expected: 11
             }
         ));
     }
@@ -1522,7 +1621,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 7,
-                expected: 10
+                expected: 11
             }
         ));
     }
@@ -1538,7 +1637,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 6,
-                expected: 10
+                expected: 11
             }
         ));
     }
@@ -1554,14 +1653,14 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 5,
-                expected: 10
+                expected: 11
             }
         ));
     }
 
     #[test]
     fn validates_a_dump_whose_header_follows_its_records() {
-        let golden: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v10 fixture");
+        let golden: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v11 fixture");
         let header_last = |root: &Value| {
             let fields = root.as_object().expect("fixture object");
             let header = fields
@@ -1584,7 +1683,7 @@ mod tests {
             validate_dump_json(&header_last(&stale)).expect_err("stale schema after records"),
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 8,
-                expected: 10
+                expected: 11
             }
         ));
 
@@ -1601,7 +1700,7 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_schema_version() {
-        let json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 10", "\"schemaVersion\": 4");
+        let json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 11", "\"schemaVersion\": 4");
 
         let error = validate_dump_json(&json).expect_err("schema v4");
 
@@ -1609,7 +1708,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 4,
-                expected: 10
+                expected: 11
             }
         ));
     }
@@ -1697,7 +1796,7 @@ mod tests {
 
     #[test]
     fn rejects_missing_scan_truncated() {
-        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v10 fixture");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v11 fixture");
         root.as_object_mut()
             .expect("fixture object")
             .remove("scanTruncated");
@@ -1712,7 +1811,7 @@ mod tests {
     #[test]
     fn rejects_empty_players_without_empty_save_marker() {
         let json = r#"{
-  "schemaVersion": 10,
+  "schemaVersion": 11,
   "generatedAtUtc": "2026-07-29T10:00:00.000Z",
   "gameVersion": "26.3.2",
   "supportedGameVersion": "26.3",
@@ -1738,7 +1837,7 @@ mod tests {
     #[test]
     fn accepts_explicit_empty_save_marker() {
         let json = r#"{
-  "schemaVersion": 10,
+  "schemaVersion": 11,
   "generatedAtUtc": "2026-07-29T10:00:00.000Z",
   "gameVersion": "26.3.2",
   "supportedGameVersion": "26.3",
@@ -1789,7 +1888,7 @@ mod tests {
 
     #[test]
     fn rejects_player_missing_reputation_object() {
-        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v10 fixture");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v11 fixture");
         root["players"][0]
             .as_object_mut()
             .expect("player object")

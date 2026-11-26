@@ -21,7 +21,7 @@ pub(super) fn open_with_snapshot() -> (tempfile::TempDir, Connection, i64) {
     let dump_path = temp_dir.path().join("dump.json");
     std::fs::write(
         &dump_path,
-        include_str!("../memory_read/fixtures/golden_dump_v10.json"),
+        include_str!("../memory_read/fixtures/golden_dump_v11.json"),
     )
     .expect("write dump");
     snapshot::ingest::ingest_dump_file(&mut conn, &dump_path).expect("ingest dump");
@@ -369,7 +369,7 @@ pub(super) fn add_picker_candidates(
 ) {
     let dump_path = temp_dir.path().join("picker-candidates.json");
     let mut dump: serde_json::Value =
-        serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v10.json"))
+        serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v11.json"))
             .expect("parse golden dump");
     let original = dump["players"][0].clone();
     // The golden player is on loan at the managed club; the copies are the club's own.
@@ -412,7 +412,7 @@ pub(super) fn seed_players(
 ) {
     let dump_path = temp_dir.path().join("seeded-players.json");
     let mut dump: serde_json::Value =
-        serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v10.json"))
+        serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v11.json"))
             .expect("parse golden dump");
     let players = uids
         .iter()

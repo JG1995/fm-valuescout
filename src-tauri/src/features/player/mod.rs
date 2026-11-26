@@ -1,3 +1,4 @@
+pub mod appearance;
 pub(crate) mod boost_gate;
 pub mod commands;
 pub mod query;

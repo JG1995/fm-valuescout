@@ -847,7 +847,7 @@ mod tests {
         scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS},
     };
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v10.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v11.json");
     const PLAYER_UID: i64 = 77;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

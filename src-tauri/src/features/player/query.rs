@@ -428,7 +428,7 @@ mod tests {
 
     fn ingest_players(conn: &mut Connection, players: Vec<Value>) {
         let mut root: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v10.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v11.json"))
                 .expect("parse golden fixture");
         let mut players = players;
         for player in &mut players {
@@ -477,6 +477,7 @@ mod tests {
             "nationUid": null,
             "gender": "unknown",
             "heightCm": 180,
+            "appearance": null,
             "preferredFoot": "right",
             "positions": { "MC": 18 },
             "attributes": { "Acceleration": 10 },
@@ -644,7 +645,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("known-uid.db"));
         let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/features/memory_read/fixtures/golden_dump_v10.json");
+            .join("src/features/memory_read/fixtures/golden_dump_v11.json");
         ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
         set_role_score(&conn, 77, "goalkeeper_ip", Some(42));
 
@@ -989,7 +990,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-role-inventory.db"));
         let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/features/memory_read/fixtures/golden_dump_v10.json");
+            .join("src/features/memory_read/fixtures/golden_dump_v11.json");
         ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
         set_role_score(&conn, 77, "wing_back_ip", Some(73));
         set_role_score(&conn, 77, "centre_back_oop", Some(61));
