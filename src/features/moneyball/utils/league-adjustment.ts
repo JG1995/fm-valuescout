@@ -9,7 +9,7 @@ export function signedPoints(points: number) {
 /** One line saying how a player's league moved his role scores. */
 export function leagueAdjustmentSummary(adjustment: MoneyballLeagueBreakdown) {
   if (adjustment.division === adjustment.referenceDivision) {
-    return `League strength: role scores not moved (${adjustment.division} is the reference league)`;
+    return `Reference league: ${adjustment.division}`;
   }
   const league =
     adjustment.division === null

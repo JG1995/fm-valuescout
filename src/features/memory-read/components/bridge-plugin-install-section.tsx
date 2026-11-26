@@ -80,15 +80,6 @@ export function BridgePluginInstallSection() {
         Target:{" "}
         <code className="font-mono text-mono-sm">{data.pluginsPath}</code>
       </p>
-      <p className="mt-2 max-w-prose text-body-sm text-on-surface-variant">
-        Installs or updates{" "}
-        <code className="font-mono text-mono-sm">FmDataBridge.dll</code> in your
-        Steam FM27{" "}
-        <code className="font-mono text-mono-sm">BepInEx/plugins</code> folder.
-        Restart Football Manager after install so BepInEx loads the new DLL.
-        Windows may prompt for permission or antivirus approval when writing
-        into the game folder.
-      </p>
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Button

@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Dumbbell, MapPinOff, Split, TriangleAlert } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
+import { useDoneFlash } from "@/components/ui/button/use-done-flash";
 import { Modal } from "@/components/ui/modal/modal";
 import { Panel } from "@/components/ui/panel/panel";
 import { TableSkeleton } from "@/components/ui/skeleton/skeleton";
@@ -172,10 +173,16 @@ export function TrainingWorkspace({
   const selectAllRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const plan = useQuery(fmTrainingQueryOptions(activeSaveId));
+  const [applied, flashApplied] = useDoneFlash();
   // Nothing in the app changes: snapshots do not hold training.
   const apply = useMutation({
     mutationFn: applyFmTraining,
-    onSuccess: () => setConfirming(false),
+    onSuccess: (result) => {
+      setConfirming(false);
+      if (fullyApplied(result)) {
+        flashApplied();
+      }
+    },
   });
   const develop = useMutation({
     mutationFn: changeDevelopment,
@@ -207,10 +214,6 @@ export function TrainingWorkspace({
   const unavailableReason = plan.data?.unavailableReason ?? null;
   const allTicked = listed.length > 0 && chosen.length === listed.length;
   const someTicked = chosen.length > 0 && !allTicked;
-  const learningCount = planned.filter(
-    (player) => player.learning !== null,
-  ).length;
-  const awayCount = planned.filter(trainsAwayFromSlot).length;
   const changing = develop.isPending || apply.isPending;
   // A control shows its new value at once, while the plan that follows it loads.
   const pending = develop.isPending ? develop.variables : undefined;
@@ -253,14 +256,28 @@ export function TrainingWorkspace({
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
     >
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 pt-4">
-        <p className="max-w-[100ch] min-w-0 flex-1 basis-80 text-body-sm text-on-surface-variant">
-          {basis === "development"
-            ? `The individual training each player would get in FM. Players aged ${maxAge} or under train the roles of their development slot: the slot of your tactic where their potential ranks highest in the save. Older players train the slot they play. Each player's Suggested Training is the focus, and a player who is not fully familiar with a position he trains for learns it first.`
-            : "The individual training each player would get in FM: his Planner slot's roles, and his Suggested Training as the focus. A player who is not fully familiar with a slot position trains there first."}
-        </p>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 px-4 pt-4 pb-3">
+        {plan.data && planned.length > 0 && !plan.error ? (
+          <TrainForControl
+            basis={pending && "basis" in pending ? pending.basis : basis}
+            maxAge={pending && "maxAge" in pending ? pending.maxAge : maxAge}
+            positionFamiliarity={
+              pending && "positionFamiliarity" in pending
+                ? pending.positionFamiliarity
+                : (plan.data?.developmentPositionFamiliarity ?? true)
+            }
+            disabled={disabled || changing}
+            onBasisChange={(next) => develop.mutate({ basis: next })}
+            onMaxAgeChange={(next) => develop.mutate({ maxAge: next })}
+            onPositionFamiliarityChange={(next) =>
+              develop.mutate({ positionFamiliarity: next })
+            }
+          />
+        ) : null}
         <Button
           icon={Dumbbell}
+          className="ml-auto"
+          done={applied}
           disabled={
             disabled ||
             develop.isPending ||
@@ -281,11 +298,11 @@ export function TrainingWorkspace({
             : "Apply training in FM"}
         </Button>
       </div>
-      <div className="mt-1 min-h-6 shrink-0 px-4 pb-2">
+      <div className="shrink-0 px-4">
         {unavailableReason ? (
           <p
             id={unavailableId}
-            className="flex items-start gap-2 text-body-sm text-on-surface"
+            className="flex items-start gap-2 pb-2 text-body-sm text-on-surface"
           >
             <TriangleAlert
               aria-hidden="true"
@@ -296,7 +313,7 @@ export function TrainingWorkspace({
         ) : null}
         {apply.data ? <TrainingResult result={apply.data} /> : null}
         {develop.error ? (
-          <p className="text-body-sm text-error" role="alert">
+          <p className="pb-2 text-body-sm text-error" role="alert">
             Could not save the change: {errorMessage(develop.error)}
           </p>
         ) : null}
@@ -321,47 +338,14 @@ export function TrainingWorkspace({
         </p>
       ) : (
         <>
-          <div className="shrink-0 px-4 pb-3">
-            <TrainForControl
-              basis={pending && "basis" in pending ? pending.basis : basis}
-              maxAge={pending && "maxAge" in pending ? pending.maxAge : maxAge}
-              positionFamiliarity={
-                pending && "positionFamiliarity" in pending
-                  ? pending.positionFamiliarity
-                  : (plan.data?.developmentPositionFamiliarity ?? true)
-              }
-              disabled={disabled || changing}
-              onBasisChange={(next) => develop.mutate({ basis: next })}
-              onMaxAgeChange={(next) => develop.mutate({ maxAge: next })}
-              onPositionFamiliarityChange={(next) =>
-                develop.mutate({ positionFamiliarity: next })
-              }
-            />
-          </div>
           {basis === "development" ? (
             <DevelopmentPipeline
               groups={groups}
-              maxAge={maxAge}
               selectedId={slotGroup?.id ?? null}
               onSelect={setSlotGroupId}
             />
           ) : null}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-y border-outline-variant px-4 py-2">
-            <p className="text-body-sm text-on-surface-variant">
-              {players(planned.length)}
-              {basis === "development" && awayCount > 0
-                ? awayCount === 1
-                  ? " · 1 trains away from his slot"
-                  : ` · ${awayCount} train away from their slots`
-                : null}
-              {learningCount > 0
-                ? ` · ${learningCount} learning a position`
-                : null}
-              {planned.every((player) => player.target === null)
-                ? " · no one has a slot to train for, so only focuses are set"
-                : null}
-              {slotGroup ? ` · showing ${slotGroup.label}` : null}
-            </p>
+          <div className="flex flex-wrap items-center gap-2 border-y border-outline-variant px-4 py-2">
             <fieldset className="inline-flex flex-wrap rounded-md border border-outline bg-surface-container-high p-0.5">
               <legend className="sr-only">Show players</legend>
               {filters.map((item) => (
@@ -476,11 +460,9 @@ export function TrainingWorkspace({
         }
       >
         <p className="text-body-md text-on-surface-variant">
-          Sets the individual training of the {players(chosen.length)} ticked in
-          the list. A player gets the roles listed for him, and one whose roles
-          read Unchanged keeps his. Every player's additional focus becomes the
-          one listed, and a player without one has his focus cleared. Players
-          out on loan train with their loan club and are left out.
+          Sets the roles and focus listed for the {chosen.length} ticked{" "}
+          {chosen.length === 1 ? "player" : "players"} in FM. A player with no
+          listed focus has his cleared.
         </p>
         {apply.error ? (
           <p className="pt-3 text-body-sm text-error" role="alert">
@@ -624,10 +606,24 @@ function TrainingRow({
   );
 }
 
+/** FM took every ticked player's training: the button's tick says so. */
+function fullyApplied(result: FmTrainingResult) {
+  return (
+    result.applied.length > 0 && result.failed.length === 0 && !result.error
+  );
+}
+
 function TrainingResult({ result }: { result: FmTrainingResult }) {
   return (
-    <div className="space-y-1" role="status">
-      <p className="text-body-sm text-on-surface">
+    <div
+      className={fullyApplied(result) ? undefined : "space-y-1 pb-2"}
+      role="status"
+    >
+      <p
+        className={
+          fullyApplied(result) ? "sr-only" : "text-body-sm text-on-surface"
+        }
+      >
         {result.applied.length === 0
           ? "FM took no player's training."
           : `FM took the training for ${players(result.applied.length)}.`}

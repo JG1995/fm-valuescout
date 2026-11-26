@@ -114,8 +114,10 @@ describe("Planner slot picker", () => {
     });
 
     expect(
-      screen.getByRole("region", { name: "Current player" }),
-    ).toHaveTextContent("Pinned: Optimize keeps him here.");
+      within(screen.getByRole("region", { name: "Current player" })).getByText(
+        "Pinned",
+      ),
+    ).toHaveAccessibleDescription("Optimize keeps him here.");
     expect(screen.queryByRole("button", { name: "Pin" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Unpin" }));
 

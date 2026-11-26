@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { StatusChip } from "@/components/ui/status-chip/status-chip";
+import { InfoTip } from "@/components/ui/tooltip/tooltip";
 import type { PlannerLoanCandidate } from "../types/depth";
 import type { PlannerTactic, TacticOptions } from "../types/tactic";
 import type { PlannerTeam } from "../types/team";
@@ -60,14 +61,6 @@ export function PlannerLoanCandidates({
         variant="informational"
         className="max-w-[64rem]!"
       >
-        <p className="pb-3 text-body-md text-on-surface-variant">
-          Your players aged 18 to 23 outside the senior squad, most to gain from
-          a loan first. The benefit weighs how much each is expected to grow,
-          how close he is to the senior squad in his slot, and how little he
-          would play here. Recommended players are also marked on the board. A
-          player already out on loan may be listed, because loans cannot be read
-          from FM27.
-        </p>
         {error ? (
           <p className="text-body-sm text-error" role="alert">
             Could not load loan candidates: {errorMessage(error)}
@@ -99,7 +92,16 @@ export function PlannerLoanCandidates({
                     Expected
                   </th>
                   <th scope="col" className={headingClass}>
-                    Loan benefit
+                    <span className="inline-flex items-center gap-1">
+                      Loan benefit
+                      <InfoTip label="About loan candidates">
+                        Players aged 18 to 23 outside the senior squad. Benefit
+                        weighs expected growth, how close he is to the senior
+                        squad in his slot, and how little he would play here.
+                        Loans cannot be read from FM27, so a player already out
+                        on loan may be listed.
+                      </InfoTip>
+                    </span>
                   </th>
                 </tr>
               </thead>

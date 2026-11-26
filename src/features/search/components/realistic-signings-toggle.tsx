@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import type { FilterRule } from "../types/filter-rule";
 import {
   createRealisticSigningRule,
@@ -31,7 +31,6 @@ export function RealisticSigningsToggle({
   onRulesChange,
   clubName,
 }: RealisticSigningsToggleProps) {
-  const hintId = useId();
   const checked = rules.some(asksForRealistic);
   const otherRules = rules.filter(
     (rule) => rule.field !== REALISTIC_SIGNING_FIELD_ID,
@@ -39,36 +38,31 @@ export function RealisticSigningsToggle({
   const hint =
     clubName === null
       ? "Choose your club in My Club to use this."
-      : `An estimate of who would join ${clubName}, from ability and reputation. It is a best guess, not Football Manager's own check.`;
+      : `An estimate of who would join ${clubName}, from ability and reputation, not Football Manager's own check.`;
 
   return (
-    <>
-      <label
-        className="flex items-center gap-2 text-body-md text-on-surface"
-        title={hint}
-      >
-        <input
-          type="checkbox"
-          checked={checked}
-          disabled={
-            clubName === null ||
-            (!checked && otherRules.length >= MAX_FILTER_RULES)
-          }
-          aria-describedby={hintId}
-          onChange={(event) =>
-            onRulesChange(
-              event.target.checked
-                ? [...otherRules, createRealisticSigningRule()]
-                : otherRules,
-            )
-          }
-        />
-        Only realistic signings
-      </label>
-      {/* Outside the label, so the hint describes the checkbox without joining its name. */}
-      <span id={hintId} className="sr-only">
-        {hint}
-      </span>
-    </>
+    <Tooltip content={hint}>
+      {(tooltipId) => (
+        <label className="flex items-center gap-2 text-body-md text-on-surface">
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={
+              clubName === null ||
+              (!checked && otherRules.length >= MAX_FILTER_RULES)
+            }
+            aria-describedby={tooltipId}
+            onChange={(event) =>
+              onRulesChange(
+                event.target.checked
+                  ? [...otherRules, createRealisticSigningRule()]
+                  : otherRules,
+              )
+            }
+          />
+          Only realistic signings
+        </label>
+      )}
+    </Tooltip>
   );
 }

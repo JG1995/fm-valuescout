@@ -182,36 +182,41 @@ function SquadPlayerBoost({
       >
         <div className="space-y-3">
           <p className="text-body-md text-on-surface-variant">
-            This{" "}
             {isCurrentAbility
-              ? "boosts current ability for"
-              : "applies Wonderkid Mentality to"}{" "}
-            every eligible player at your managed club, one player at a time.
+              ? "Boosts the current ability of every eligible player at your club."
+              : "Applies Wonderkid Mentality to every eligible player at your club."}{" "}
+            Cannot be undone.
           </p>
-          {isCurrentAbility ? (
-            <ul className="list-disc space-y-1 pl-5 text-body-sm text-on-surface-variant">
-              <li>
-                Each player gains the gap between CA and PA, divided by the
-                seasons left until age 28 and rounded up.
-              </li>
-              <li>Players aged 27 or 28 count as one season left.</li>
-              <li>No player gains more than +20 CA.</li>
-              <li>Players aged 29 or older are skipped.</li>
-              <li>Run it once a season.</li>
+          <details className="text-body-sm text-on-surface-variant">
+            <summary className="cursor-pointer text-on-surface">
+              How the boost is worked out
+            </summary>
+            <ul className="list-disc space-y-1 pt-2 pl-5">
+              {isCurrentAbility ? (
+                <>
+                  <li>
+                    Each player gains the gap between CA and PA, divided by the
+                    seasons left until age 28 and rounded up.
+                  </li>
+                  <li>Players aged 27 or 28 count as one season left.</li>
+                  <li>No player gains more than +20 CA.</li>
+                  <li>Players aged 29 or older are skipped.</li>
+                  <li>Run it once a season.</li>
+                </>
+              ) : (
+                <>
+                  <li>
+                    Known Ambition, Professionalism, and Determination values at
+                    10 or below can change.
+                  </li>
+                  <li>
+                    Each eligible value receives a random value from 11 to 20.
+                  </li>
+                  <li>Unknown and higher values are unchanged.</li>
+                </>
+              )}
             </ul>
-          ) : (
-            <div className="space-y-1 text-body-sm text-on-surface-variant">
-              <p>
-                Known Ambition, Professionalism, and Determination values at 10
-                or below can change.
-              </p>
-              <p>Each eligible value receives a random value from 11 to 20.</p>
-              <p>Unknown and higher values are unchanged.</p>
-            </div>
-          )}
-          <p className="text-body-sm text-on-surface-variant">
-            Changes already applied cannot be undone.
-          </p>
+          </details>
           {pending ? (
             <div aria-live="polite">
               {progress ? (

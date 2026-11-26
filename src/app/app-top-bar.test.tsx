@@ -197,9 +197,7 @@ describe("app top bar", () => {
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
 
-    expect(
-      await screen.findByText(/Loaded 3 players into the database/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Loaded 3 players/)).toBeInTheDocument();
     expect(screen.getByText(/Scan 1\.2s/i)).toBeInTheDocument();
     expect(screen.getByText(/preparation 300ms/i)).toBeInTheDocument();
     expect(screen.getByText(/scoring 400ms/i)).toBeInTheDocument();
@@ -215,7 +213,7 @@ describe("app top bar", () => {
     renderWithProviders();
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    await screen.findByText(/Loaded 3 players into the database/i);
+    await screen.findByText(/Loaded 3 players/);
 
     const args = getLastLoadDataIpcArgs() as Record<string, unknown>;
     expect(args.saveId).toBe(1);
@@ -245,7 +243,7 @@ describe("app top bar", () => {
     });
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    await screen.findByText(/Loaded 3 players into the database/i);
+    await screen.findByText(/Loaded 3 players/);
 
     expect(preservedDuringInvoke).toBe(true);
     expect(neutralDuringInvoke).toBe(false);
@@ -306,7 +304,7 @@ describe("app top bar", () => {
   });
 
   it.each([
-    ["success", /Loaded 3 players into the database/i],
+    ["success", /Loaded 3 players/],
     ["scanFailed", /Scan failed/i],
   ] as const)("dismisses a completed %s outcome", async (mode, message) => {
     setLoadDataIpcMockMode(mode);
@@ -821,9 +819,7 @@ describe("app top bar", () => {
     await act(async () => {
       resolveBusyLoadDataRequest();
     });
-    expect(
-      await screen.findByText(/Loaded 3 players into the database/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Loaded 3 players/)).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(screen.getByText(/Scan 1\.2s/i)).toBeInTheDocument();
     // dismiss preserves live region
@@ -977,9 +973,7 @@ describe("app top bar", () => {
     await act(async () => {
       resolveBusyLoadDataRequest();
     });
-    expect(
-      await screen.findByText(/Loaded 3 players into the database/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Loaded 3 players/)).toBeInTheDocument();
     expect(loadButton).toBeEnabled();
     setActiveSaveIpcMockMode("success");
   });

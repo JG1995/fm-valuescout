@@ -277,9 +277,7 @@ function AcademyRosterGroup({
         {title} ({members.length})
       </h3>
       {members.length === 0 ? (
-        <p className="text-body-sm text-on-surface-variant">
-          No players are currently in this group.
-        </p>
+        <p className="text-body-sm text-on-surface-variant">No players</p>
       ) : (
         <div className="mt-2 max-h-[min(55vh,560px)] overflow-auto rounded-lg border border-outline-variant">
           <table
@@ -630,8 +628,8 @@ function AcademyMemberRemovalModal({
       }
     >
       <p className="text-body-md text-on-surface-variant">
-        This removes {name} from the class and deletes any manual sale or
-        release outcome. It does not affect other Academy classes.
+        Removes {name} from the class and deletes any manual sale or release
+        outcome.
       </p>
       {error ? (
         <p className="mt-3 text-body-sm text-error" role="alert">

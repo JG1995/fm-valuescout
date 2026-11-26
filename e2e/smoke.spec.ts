@@ -352,7 +352,6 @@ test.describe("application smoke", () => {
     await expect(
       main.getByRole("button", { name: "Choose graphics folder" }),
     ).toBeVisible();
-    await expect(main.getByText(/never displays its path/)).toBeVisible();
     await expect(main.getByRole("region", { name: "Save data" })).toBeVisible();
     await expect(
       main.getByRole("region", { name: "Managed club" }),
@@ -427,10 +426,10 @@ test.describe("application smoke", () => {
         outcomes.getByTestId("academy-stat-graduates"),
       ).toContainText("—");
       await expect(
-        outcomes.getByText(
-          "Graduate data is unavailable until career appearances have been imported for every tracked player.",
-        ),
-      ).toBeVisible();
+        outcomes.getByText("Graduates", { exact: true }),
+      ).toHaveAccessibleDescription(
+        "Career appearances have not been imported for every tracked player.",
+      );
       await expect(outcomes.locator("svg").first()).toHaveCSS("width", "16px");
       const outcomeBox = await outcomes.boundingBox();
       expect(outcomeBox?.height).toBeLessThanOrEqual(160);
@@ -498,9 +497,7 @@ test.describe("application smoke", () => {
       for (const name of ["Sold (0)", "Released (0)"]) {
         const empty = main.getByRole("region", { name, exact: true });
         await expect(empty.getByRole("table")).toHaveCount(0);
-        await expect(empty).toContainText(
-          "No players are currently in this group.",
-        );
+        await expect(empty).toContainText("No players");
         expect((await empty.boundingBox())?.height).toBeLessThanOrEqual(32);
       }
       const lastRow = table.locator("tbody tr").last();
@@ -594,7 +591,9 @@ test.describe("application smoke", () => {
     const main = page.getByRole("main");
     await main.getByRole("button", { name: "Define DNA" }).click();
     const dialog = page.getByRole("dialog", { name: "Define Club DNA" });
-    await expect(dialog).toContainText("scales each selected 1–20 value by 5");
+    await expect(
+      dialog.getByText(/^Selected attributes/),
+    ).toHaveAccessibleDescription(/Scales each selected 1–20 value by 5/);
     await dialog.getByRole("checkbox", { name: "Acceleration" }).check();
     await expect(dialog.getByText("Selected attributes (1)")).toBeVisible();
     await dialog.getByRole("button", { name: "Save Club DNA" }).click();
@@ -630,7 +629,7 @@ test.describe("application smoke", () => {
       .getByRole("button", { name: /^Delete snapshot 2026-06-01/ })
       .click();
     const deletion = page.getByRole("dialog", { name: /Delete snapshot/ });
-    await expect(deletion).toContainText("Moneyball import data");
+    await expect(deletion).toContainText("Moneyball import");
     await deletion
       .getByRole("button", { name: "Delete snapshot", exact: true })
       .click();
@@ -705,7 +704,7 @@ test.describe("application smoke", () => {
     await main.getByRole("button", { name: /^Delete save Archive/ }).click();
     const inactiveDeletion = page.getByRole("dialog", { name: /Delete save/ });
     await expect(inactiveDeletion).toContainText(
-      "The active save stays unchanged",
+      "Permanently deletes this save and everything in it.",
     );
     await inactiveDeletion
       .getByRole("button", { name: "Delete save", exact: true })
@@ -1367,9 +1366,7 @@ test.describe("application smoke", () => {
       .getByTestId("app-header")
       .getByRole("button", { name: "Load Data" })
       .click();
-    await expect(
-      page.getByText("Loaded 4 players into the database."),
-    ).toBeVisible();
+    await expect(page.getByText("Loaded 4 players")).toBeVisible();
     await expect(results).toHaveCount(0);
     await expect(optimize).toBeEnabled();
   });
@@ -1675,7 +1672,7 @@ test.describe("application smoke", () => {
     );
     await main.getByRole("button", { name: "Boost all CA" }).click();
     const dialog = page.getByRole("dialog", { name: "Boost all CA?" });
-    await expect(dialog).toContainText("at your managed club");
+    await expect(dialog).toContainText("at your club");
     await dialog.getByRole("button", { name: "Boost all CA" }).click();
     await expect(main.getByTestId("staff-boost-outcome")).toContainText(
       "1 processed: 1 updated, 0 skipped, 0 failed.",
@@ -1706,7 +1703,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
     await expect(
-      main.getByText(/Use Load Data to scan Football Manager/i),
+      main.getByText("Use Load Data to read it from Football Manager."),
     ).toBeVisible();
   });
 
@@ -1797,9 +1794,7 @@ test.describe("application smoke", () => {
       .getByRole("option", { name: "Barca Athletic", exact: true })
       .click();
     await expect(
-      page
-        .getByRole("main")
-        .getByText("Unsaved selection. Analysis still uses Barcelona."),
+      page.getByRole("main").getByText("Unsaved", { exact: true }),
     ).toBeVisible();
     await page
       .getByRole("main")
@@ -2659,7 +2654,7 @@ test.describe("application smoke", () => {
       name: "Upload Youth Academy CSV",
     });
     await expect(youthDialog).toContainText(
-      "Only a Youth Academy export can be imported",
+      "Choose a Youth Academy CSV export.",
     );
     await youthDialog.getByRole("button", { name: "Browse files" }).click();
     await expect(
@@ -2726,9 +2721,7 @@ test.describe("application smoke", () => {
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "Player search results" });
     const scores = main.getByRole("group", { name: "Scores" });
-    const leagueLine = page.getByText(
-      "League strength: role scores not moved (Premier Division is the reference league)",
-    );
+    const leagueLine = page.getByText("Reference league: Premier Division");
     const openMoneyballProfile = async () => {
       await table.getByText("Moneyball player 001").click();
       await page.getByRole("tab", { name: "Moneyball" }).click();
@@ -2894,8 +2887,8 @@ test.describe("application smoke", () => {
       .fill("wing-back (ip · wbr");
     await dialog.getByRole("option", { name: roleName, exact: true }).click();
     await expect(
-      dialog.getByText(/Scored among the role's position family/),
-    ).toBeVisible();
+      dialog.getByRole("combobox", { name: "Operator" }),
+    ).toHaveAccessibleDescription(/Scored among the role's position family/);
     await dialog.getByLabel("Value").fill("70");
     await dialog.getByRole("button", { name: "Add" }).click();
     await expect(
@@ -3119,10 +3112,10 @@ test.describe("application smoke", () => {
       .getByRole("button", { name: "Percentile", exact: true })
       .click();
     await expect(
-      editor.getByText(
-        /rated 16 or higher in the position families of this slot/,
-      ),
-    ).toBeVisible();
+      editor.getByRole("combobox", { name: "Operator" }),
+    ).toHaveAccessibleDescription(
+      /rated 16 or higher in the position families of this slot/,
+    );
     // The editor opens beside its button and stays inside the window.
     const editorBox = await editor.boundingBox();
     expect(editorBox).not.toBeNull();
@@ -5036,7 +5029,7 @@ test.describe("application smoke", () => {
     await expect(winger).toContainText("Channel Forward ST");
     await expect(winger).toContainText("Away from slot");
     await expect(
-      main.getByRole("button", { name: "DCL, DCR: 0 players" }),
+      main.getByRole("button", { name: "DCL, DCR: no players" }),
     ).toBeVisible();
     // A player in no squad trains his development slot too.
     await expect(
@@ -5051,9 +5044,9 @@ test.describe("application smoke", () => {
     // The box follows the saved setting, so it is clicked, not unchecked.
     await familiarity.click();
     await expect(familiarity).not.toBeChecked();
-    await expect(
-      main.getByText(/A development slot is suggested in any position/),
-    ).toBeVisible();
+    await expect(familiarity).toHaveAccessibleDescription(
+      /A development slot is suggested in any position/,
+    );
 
     // Choosing the slot he plays keeps the choice and ends the split.
     const slot = winger.getByRole("combobox", {
@@ -5599,7 +5592,7 @@ test.describe("application smoke", () => {
     });
     await expect(
       picker.getByRole("region", { name: "Current player" }),
-    ).toContainText("Placed by Optimize, which may replace him.");
+    ).not.toContainText("Pinned");
     await expect(
       picker.getByRole("option", { name: /Potential Keeper/ }),
     ).toBeDisabled();

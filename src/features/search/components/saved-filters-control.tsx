@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { TextField } from "@/components/ui/field/text-field";
 import { Modal } from "@/components/ui/modal/modal";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import {
   type SavedFilter,
   type SavedFilterColumnsChoice,
@@ -12,10 +13,7 @@ import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
 import type { MoneyballComparison } from "../types/search-view";
 import { savedFilterColumnIds } from "../utils/dynamic-columns";
 import { completeFilterRules } from "../utils/filter-registry";
-import {
-  RECRUITING_MAX_AGE,
-  withRecruitingDefaults,
-} from "../utils/recruiting-defaults";
+import { withRecruitingDefaults } from "../utils/recruiting-defaults";
 import {
   parseSearchFilters,
   searchFiltersForUrl,
@@ -228,7 +226,7 @@ export function SavedFiltersControl({
             </h3>
             {savedFilters.length === 0 ? (
               <p className="text-body-sm text-on-surface-variant">
-                No saved filters yet. Apply some, then save them below.
+                No saved filters
               </p>
             ) : (
               <ul className="space-y-0.5">
@@ -329,14 +327,6 @@ export function SavedFiltersControl({
               </ul>
             </section>
           ) : null}
-          {savedFilters.length > 0 || slotPresets.length > 0 ? (
-            <p className="text-body-sm text-on-surface-variant">
-              Applying one adds{" "}
-              {realisticAvailable ? "Realistic signing and " : null}
-              Age ≤ {RECRUITING_MAX_AGE}, unless it sets its own or uses Match
-              Any.
-            </p>
-          ) : null}
           <form
             className="flex items-end gap-2 border-t border-outline-variant pt-3"
             onSubmit={submitSave}
@@ -367,28 +357,25 @@ export function SavedFiltersControl({
         fallbackFocusTo={() => buttonRef.current}
         footer={
           <>
-            <Button variant="secondary" onClick={() => answer("keep")}>
-              Keep columns
-            </Button>
-            <Button onClick={() => answer("replace")}>Replace columns</Button>
+            <Tooltip content="Add the filter's fields to the current columns.">
+              <Button variant="secondary" onClick={() => answer("keep")}>
+                Keep columns
+              </Button>
+            </Tooltip>
+            <Tooltip content="Show Age, Nationality, Value, the role scores, and the filter's fields instead.">
+              <Button onClick={() => answer("replace")}>Replace columns</Button>
+            </Tooltip>
           </>
         }
       >
-        <div className="space-y-3 text-body-md text-on-surface-variant">
-          <p>
-            Show Age, Nationality, Value, the role scores, and the filter's
-            fields instead of the current columns.
-          </p>
-          <p>Keep columns adds the filter's fields to the current columns.</p>
-          <label className="flex items-center gap-2 text-on-surface">
-            <input
-              type="checkbox"
-              checked={dontAskAgain}
-              onChange={(event) => setDontAskAgain(event.target.checked)}
-            />
-            Don't ask again this session
-          </label>
-        </div>
+        <label className="flex items-center gap-2 text-body-md text-on-surface">
+          <input
+            type="checkbox"
+            checked={dontAskAgain}
+            onChange={(event) => setDontAskAgain(event.target.checked)}
+          />
+          Don't ask again this session
+        </label>
       </Modal>
     </div>
   );

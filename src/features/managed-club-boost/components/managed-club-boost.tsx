@@ -54,10 +54,6 @@ export function ManagedClubBoost({
 
   return (
     <div className="max-w-2xl space-y-3 rounded-lg border border-outline-variant bg-surface-container p-4">
-      <p className="text-body-md text-on-surface-variant">
-        Apply every managed-club player and staff boost from the current Load
-        Data scan.
-      </p>
       <Button
         id="apply-all-boosts"
         icon={ChevronsUp}
@@ -125,13 +121,12 @@ export function ManagedClubBoost({
         }
       >
         <div className="space-y-3 text-body-md text-on-surface-variant">
-          <p>This runs these actions in order:</p>
           <ol className="list-decimal space-y-1 pl-5">
             <li>Make all Wonderkids.</li>
             <li>Boost all player CA towards PA by age 28, at most +20 each.</li>
             <li>Apply the staff CA boost.</li>
           </ol>
-          <p>Changes already applied cannot be undone.</p>
+          <p>Cannot be undone.</p>
           {boost.isPending ? (
             <div className="space-y-2 text-body-sm" aria-live="polite">
               {currentProgress && currentProgress.total > 0 ? (

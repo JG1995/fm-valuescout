@@ -127,7 +127,7 @@ describe("snapshot panels", () => {
 
     expect(await screen.findByText(/^Snapshot$/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/No snapshot loaded for the active save/i),
+      screen.getByText("No data loaded for this save"),
     ).toBeInTheDocument();
     expect(screen.getByText(/^Saves$/i)).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Active save" })).toHaveValue(
@@ -139,12 +139,10 @@ describe("snapshot panels", () => {
     const user = userEvent.setup();
     renderWithProviders();
 
-    await screen.findByText(/No snapshot loaded for the active save/i);
+    await screen.findByText("No data loaded for this save");
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
 
-    expect(
-      await screen.findByText(/Loaded 3 players into the database/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Loaded 3 players/)).toBeInTheDocument();
     expect(screen.getByText(/In database:/i)).toBeInTheDocument();
     expect(
       screen.queryByRole("table", { name: "Player sanity list" }),
@@ -295,7 +293,7 @@ describe("snapshot panels", () => {
     const user = userEvent.setup();
     renderWithProviders();
 
-    await screen.findByText(/No snapshot loaded for the active save/i);
+    await screen.findByText("No data loaded for this save");
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
     expect(await screen.findByText(/In database:/i)).toBeInTheDocument();
 
@@ -306,12 +304,10 @@ describe("snapshot panels", () => {
     await user.selectOptions(select, "2");
 
     expect(
-      await screen.findByText(/No snapshot loaded for the active save/i),
+      await screen.findByText("No data loaded for this save"),
     ).toBeInTheDocument();
     expect(screen.queryByText(/In database:/i)).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/Loaded 3 players into the database/i),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Loaded 3 players/)).not.toBeInTheDocument();
 
     await user.selectOptions(select, "1");
     expect(await screen.findByText(/In database:/i)).toBeInTheDocument();
@@ -399,10 +395,14 @@ describe("snapshot panels", () => {
     const table = await screen.findByRole("table", {
       name: "Snapshot history",
     });
-    expect(
-      screen.getByText("Load Data replaces every snapshot you have not kept."),
-    ).toBeVisible();
     const rows = within(table).getAllByRole("row");
+    for (const row of rows.slice(1)) {
+      expect(
+        within(row).getByRole("button", { name: /keep snapshot/i }),
+      ).toHaveAccessibleDescription(
+        "Load Data replaces every snapshot you have not kept.",
+      );
+    }
     expect(within(rows[1]).queryByText("Kept")).not.toBeInTheDocument();
     expect(within(rows[2]).getByText("Kept")).toBeVisible();
 
@@ -459,8 +459,9 @@ describe("snapshot panels", () => {
       }),
     );
     const dialog = screen.getByRole("dialog", { name: /^Delete snapshot/ });
-    expect(dialog).toHaveTextContent("Moneyball import data");
-    expect(dialog).toHaveTextContent("Planner, Academy, and Youth data stay");
+    expect(dialog).toHaveTextContent(
+      "Permanently deletes 2026-06-01 with its players, staff, scores, and Moneyball import.",
+    );
     await user.click(
       within(dialog).getByRole("button", { name: "Delete snapshot" }),
     );
@@ -620,7 +621,10 @@ describe("snapshot panels", () => {
       await screen.findByRole("button", { name: /^Delete save Archive/ }),
     );
     const dialog = screen.getByRole("dialog", { name: /^Delete save/ });
-    expect(dialog).toHaveTextContent("The active save stays unchanged");
+    expect(dialog).toHaveTextContent(
+      "Permanently deletes this save and everything in it.",
+    );
+    expect(dialog).not.toHaveTextContent("Another save will become active");
     await user.click(
       within(dialog).getByRole("button", { name: "Delete save" }),
     );
@@ -772,9 +776,7 @@ describe("snapshot panels", () => {
     renderWithProviders();
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    expect(
-      await screen.findByText(/Loaded 3 players into the database/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Loaded 3 players/)).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", { name: /^Delete save Default save/ }),
@@ -787,11 +789,9 @@ describe("snapshot panels", () => {
     );
 
     expect(
-      await screen.findByText(/No snapshot loaded for the active save/i),
+      await screen.findByText("No data loaded for this save"),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByText(/Loaded 3 players into the database/i),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Loaded 3 players/)).not.toBeInTheDocument();
   });
 
   it("restores focus to a cancelled snapshot deletion trigger", async () => {

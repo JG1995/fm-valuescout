@@ -97,8 +97,7 @@ function AcademyNoSnapshot() {
   return (
     <Panel flush>
       <EmptyState icon={DatabaseZap} title="No data loaded for this save">
-        No snapshot loaded for the active save. Use Load Data to scan Football
-        Manager and ingest players before creating academy classes.
+        Use Load Data to read it from Football Manager.
       </EmptyState>
     </Panel>
   );
@@ -120,8 +119,7 @@ function AcademyNoManagedClub() {
           </Link>
         }
       >
-        Choose the club you manage to define which current players can be
-        tracked.
+        Choose the club you manage.
       </EmptyState>
     </Panel>
   );
@@ -139,8 +137,7 @@ function AcademyNoClasses({ onCreate }: { onCreate: () => void }) {
           </Button>
         }
       >
-        Create a class to start grouping players by the year they came through
-        your club.
+        Group players by the year they came through your club.
       </EmptyState>
     </Panel>
   );
@@ -235,7 +232,7 @@ function AcademyPageContent() {
         <div>
           <h1 className="text-headline-md text-on-surface">Youth Academy</h1>
           <p className="text-body-sm text-on-surface-variant">
-            {managedClub.clubName} · Managed-club class cohorts
+            {managedClub.clubName}
           </p>
         </div>
         <AcademyWorkspaceTabs view={activeView} onViewChange={onViewChange} />

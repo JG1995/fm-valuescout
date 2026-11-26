@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import {
   HIDDEN_ATTRIBUTE_KEYS,
   labelFromPascal,
@@ -62,7 +63,7 @@ const ATTRIBUTE_SECTIONS: readonly AttributeSection[] = [
 
 const ALL_OPTIONS = ATTRIBUTE_SECTIONS.flatMap((section) => section.options);
 const FORMULA =
-  "Club DNA scales each selected 1–20 value by 5, gives every selected attribute equal weight, averages the values, and rounds to a whole 0–100 score.";
+  "Scales each selected 1–20 value by 5, gives every selected attribute equal weight, averages the values, and rounds to a whole 0–100 score.";
 
 function contextKey({ saveId, contextToken }: ClubDnaContext) {
   return `${saveId}:${contextToken}`;
@@ -331,7 +332,7 @@ export function ClubDnaDefinition({
         {confirmRemoval ? (
           <div className="space-y-3">
             <p className="text-body-md text-on-surface-variant">
-              This removes the Club DNA definition and its saved scores.
+              Removes the Club DNA definition and its saved scores.
             </p>
             {removeError ? (
               <p className="text-body-sm text-error" role="alert">
@@ -347,7 +348,6 @@ export function ClubDnaDefinition({
               save();
             }}
           >
-            <p className="text-body-md text-on-surface-variant">{FORMULA}</p>
             {definition.isPending ? (
               <p className="text-body-md text-on-surface-variant" role="status">
                 Loading Club DNA…
@@ -392,12 +392,14 @@ export function ClubDnaDefinition({
               aria-labelledby="club-dna-selected-attributes"
               className="space-y-2"
             >
-              <h3
-                id="club-dna-selected-attributes"
-                className="text-label-lg text-on-surface"
-              >
-                Selected attributes ({selectedOptions.length})
-              </h3>
+              <Tooltip focusable content={FORMULA}>
+                <h3
+                  id="club-dna-selected-attributes"
+                  className="w-fit text-label-lg text-on-surface"
+                >
+                  Selected attributes ({selectedOptions.length})
+                </h3>
+              </Tooltip>
               {selectedOptions.length === 0 ? (
                 <p className="text-body-sm text-on-surface-variant">
                   Select at least one attribute.

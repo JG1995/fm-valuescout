@@ -89,10 +89,11 @@ describe("ClubDnaDefinition", () => {
     const { onSaved } = renderDefinition();
 
     await user.click(screen.getByRole("button", { name: "Define DNA" }));
+    await screen.findByRole("dialog", { name: "Define Club DNA" });
     expect(
-      await screen.findByRole("dialog", { name: "Define Club DNA" }),
-    ).toHaveTextContent(
-      "Club DNA scales each selected 1–20 value by 5, gives every selected attribute equal weight, averages the values, and rounds to a whole 0–100 score.",
+      screen.getByRole("heading", { name: /Selected attributes/ }),
+    ).toHaveAccessibleDescription(
+      "Scales each selected 1–20 value by 5, gives every selected attribute equal weight, averages the values, and rounds to a whole 0–100 score.",
     );
     expect(
       screen.getByRole("button", { name: "Save Club DNA" }),

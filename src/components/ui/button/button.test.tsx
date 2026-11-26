@@ -33,6 +33,12 @@ describe("Button", () => {
     expect(screen.getByText("Scanning…")).toBeInTheDocument();
   });
 
+  it("keeps its name while a tick confirms the action", () => {
+    render(<Button done>Save tactic</Button>);
+
+    expect(screen.getByRole("button", { name: "Save tactic" })).toBeEnabled();
+  });
+
   it("uses the error token for destructive actions", () => {
     render(<Button variant="destructive">Clear squad</Button>);
 

@@ -89,8 +89,7 @@ export function YouthXiModal({
       className="max-w-[72rem]!"
     >
       <p className="pb-3 text-body-md text-on-surface-variant">
-        Your players aged {YOUTH_MAX_AGE} or younger in your tactic, placed by
-        potential score. Each shows the score now and the potential.
+        Aged {YOUTH_MAX_AGE} or younger, placed by potential.
       </p>
       <div className="relative h-[34rem] overflow-hidden rounded-lg bg-surface-container">
         {/* The pitch, attacking toward the right. Each line keeps its 1px

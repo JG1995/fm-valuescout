@@ -36,6 +36,8 @@ export function BridgeStatusPanel() {
   };
   const modulesDetected =
     data.gamePluginModulePresent && data.gameAssemblyModulePresent;
+  const connected =
+    modulesDetected && (chip.tone === "success" || chip.tone === "info");
 
   return (
     <Panel
@@ -71,12 +73,12 @@ export function BridgeStatusPanel() {
           {formatRelativeAge(data.updatedAtUtc)}
         </span>
       </p>
-      <p className="mt-2 max-w-prose text-body-sm text-on-surface-variant">
-        Keep Football Manager 27 running with the bridge plugin installed. Use
-        the plugin install controls in this section or see{" "}
-        <code className="font-mono text-mono-sm">bridge/README.md</code> for
-        manual steps.
-      </p>
+      {connected ? null : (
+        <p className="mt-2 text-body-sm text-on-surface-variant">
+          Run FM27 with the bridge plugin installed. Manual steps:{" "}
+          <code className="font-mono text-mono-sm">bridge/README.md</code>
+        </p>
+      )}
     </Panel>
   );
 }

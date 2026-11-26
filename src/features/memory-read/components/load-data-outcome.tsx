@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { CircleAlert, CircleCheck, LoaderCircle, X } from "lucide-react";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { cn } from "@/utils/cn";
 import { formatCount, formatLongGameDate } from "@/utils/format";
@@ -39,6 +40,20 @@ const seasonStatsReadFailureReasons: Record<
 };
 
 /**
+ * One sentence of an outcome. `isProblem` is whether it left data unchanged;
+ * `quiet` marks a plain confirmation that Load Data keeps behind Details.
+ */
+type OutcomeStep = { text: string; isProblem: boolean; quiet?: boolean };
+
+function seasonStatsSteps(stats: SeasonStatsOutcome): OutcomeStep[] {
+  return [
+    statsStepCopy(stats),
+    saveShortlistsCopy(stats.shortlists),
+    staffShortlistCopy(stats.staffShortlist),
+  ].filter((step) => step !== null);
+}
+
+/**
  * The read of the linked save: one sentence for the stats, then one each for
  * the save's player shortlists and staff shortlist when they were read or
  * failed. `isProblem` is whether the read left the snapshot without new stats
@@ -48,11 +63,7 @@ export function seasonStatsCopy(stats: SeasonStatsOutcome): {
   text: string;
   isProblem: boolean;
 } {
-  const steps = [
-    statsStepCopy(stats),
-    saveShortlistsCopy(stats.shortlists),
-    staffShortlistCopy(stats.staffShortlist),
-  ].filter((step) => step !== null);
+  const steps = seasonStatsSteps(stats);
   return {
     text: steps.map((step) => step.text).join(" "),
     isProblem: steps.some((step) => step.isProblem),
@@ -62,7 +73,7 @@ export function seasonStatsCopy(stats: SeasonStatsOutcome): {
 /** How many shortlists the save gave, or why they were not read; null when there is nothing to say. */
 function saveShortlistsCopy(
   shortlists: SaveShortlistsOutcome,
-): { text: string; isProblem: boolean } | null {
+): OutcomeStep | null {
   switch (shortlists.status) {
     case "read":
       return shortlists.count === 0
@@ -70,6 +81,7 @@ function saveShortlistsCopy(
         : {
             text: `Read ${formatCount(shortlists.count)} ${shortlists.count === 1 ? "shortlist" : "shortlists"} from the save.`,
             isProblem: false,
+            quiet: true,
           };
     case "notRead":
       return null;
@@ -90,7 +102,7 @@ function saveShortlistsCopy(
  */
 function staffShortlistCopy(
   staffShortlist: SaveShortlistsOutcome,
-): { text: string; isProblem: boolean } | null {
+): OutcomeStep | null {
   switch (staffShortlist.status) {
     case "read": {
       const { count, unread } = staffShortlist;
@@ -103,6 +115,7 @@ function staffShortlistCopy(
             ? `Read ${formatCount(count)} shortlisted staff from the save.`
             : `Read ${formatCount(count)} of ${formatCount(count + unread)} shortlisted staff from the save. ${formatCount(unread)} could not be read.`,
         isProblem: false,
+        quiet: unread === 0,
       };
     }
     case "notRead":
@@ -118,15 +131,13 @@ function staffShortlistCopy(
   }
 }
 
-function statsStepCopy(stats: SeasonStatsOutcome): {
-  text: string;
-  isProblem: boolean;
-} {
+function statsStepCopy(stats: SeasonStatsOutcome): OutcomeStep {
   switch (stats.status) {
     case "attached":
       return {
         text: `Attached season stats for ${formatCount(stats.matchedPlayers)} players from the save dated ${formatLongGameDate(stats.gameDate)}.`,
         isProblem: false,
+        quiet: true,
       };
     case "notLinked":
       return {
@@ -166,36 +177,49 @@ function formatTeamList(teams: string[]): string {
 }
 
 /**
- * What following FM's staff limits did to the staffing needs, or null when there was no
- * managed club to read them for.
+ * What following FM's staff limits did to the staffing needs; empty when there
+ * was no managed club to read them for.
  */
-export function staffLimitsCopy(
-  outcome: StaffLimitsOutcome,
-): { text: string; isProblem: boolean } | null {
+function staffLimitsSteps(outcome: StaffLimitsOutcome): OutcomeStep[] {
   switch (outcome.status) {
     case "followed": {
-      const changed =
+      const changed: OutcomeStep =
         outcome.changed === 0
-          ? "Staffing needs match FM's staff limits."
-          : `FM's staff limits changed ${outcome.changed} staffing ${outcome.changed === 1 ? "need" : "needs"}.`;
-      const unread =
-        outcome.unreadTeams.length === 0
-          ? ""
-          : ` FM sent no staff limits for ${formatTeamList(outcome.unreadTeams)}, so ${outcome.unreadTeams.length === 1 ? "its" : "their"} needs are unchanged.`;
-      return { text: `${changed}${unread}`, isProblem: false };
+          ? {
+              text: "Staffing needs match FM's staff limits.",
+              isProblem: false,
+              quiet: true,
+            }
+          : {
+              text: `FM's staff limits changed ${outcome.changed} staffing ${outcome.changed === 1 ? "need" : "needs"}.`,
+              isProblem: false,
+            };
+      return outcome.unreadTeams.length === 0
+        ? [changed]
+        : [
+            changed,
+            {
+              text: `FM sent no staff limits for ${formatTeamList(outcome.unreadTeams)}, so ${outcome.unreadTeams.length === 1 ? "its" : "their"} needs are unchanged.`,
+              isProblem: false,
+            },
+          ];
     }
     case "notRead":
-      return {
-        text: `Staff limits were not read: ${outcome.reason}. Staffing needs are unchanged.`,
-        isProblem: true,
-      };
+      return [
+        {
+          text: `Staff limits were not read: ${outcome.reason}. Staffing needs are unchanged.`,
+          isProblem: true,
+        },
+      ];
     case "staleContext":
-      return {
-        text: "The save changed while staff limits were read, so staffing needs are unchanged.",
-        isProblem: true,
-      };
+      return [
+        {
+          text: "The save changed while staff limits were read, so staffing needs are unchanged.",
+          isProblem: true,
+        },
+      ];
     case "noManagedClub":
-      return null;
+      return [];
   }
 }
 
@@ -210,7 +234,7 @@ function formatLoadTimings(timings: LoadDataResult["timings"]): string {
   if (timings.totalMs === 0) {
     return "";
   }
-  return ` Scan ${formatDurationMs(timings.scanMs)}, preparation ${formatDurationMs(timings.prepareMs)}, scoring ${formatDurationMs(timings.scoringMs)}, save ${formatDurationMs(timings.saveMs)}, finalization ${formatDurationMs(timings.finalizeMs)}, season stats ${formatDurationMs(timings.statsMs)}, total ${formatDurationMs(timings.totalMs)}.`;
+  return `Scan ${formatDurationMs(timings.scanMs)}, preparation ${formatDurationMs(timings.prepareMs)}, scoring ${formatDurationMs(timings.scoringMs)}, save ${formatDurationMs(timings.saveMs)}, finalization ${formatDurationMs(timings.finalizeMs)}, season stats ${formatDurationMs(timings.statsMs)}, total ${formatDurationMs(timings.totalMs)}.`;
 }
 
 type LoadDataOutcomeProps = {
@@ -227,6 +251,8 @@ type Banner = {
   /** Rendered as a lead-in before the body, for failures that need naming. */
   title?: string;
   body: string;
+  /** Plain confirmations and timings, shown once Details is opened. */
+  details?: string[];
 };
 
 const toneClasses = {
@@ -253,21 +279,35 @@ function resolveBanner({ error, result }: LoadDataOutcomeProps): Banner | null {
 
   const storedSnapshot = result.storedSnapshot;
   const latestSnapshot = result.effectiveSnapshot;
-  const loaded = `Loaded ${formatCount(storedSnapshot.playerCount)} players into the database.${formatLoadTimings(result.timings)}`;
+  const loaded = `Loaded ${formatCount(storedSnapshot.playerCount)} players`;
   const storedBecameLatest =
     storedSnapshot.contextToken === latestSnapshot.contextToken;
-  const latestMessage = storedBecameLatest
-    ? " This snapshot is now the latest."
-    : ` The kept snapshot from ${formatSnapshotDate(latestSnapshot.gameDate)} is later and stays current.`;
-  const stats = seasonStatsCopy(result.stats);
-  const staffLimits = staffLimitsCopy(result.staffLimits);
-  const isProblem = stats.isProblem || (staffLimits?.isProblem ?? false);
+  const steps: OutcomeStep[] = [
+    storedBecameLatest
+      ? {
+          text: "This snapshot is now the latest.",
+          isProblem: false,
+          quiet: true,
+        }
+      : {
+          text: `The kept snapshot from ${formatSnapshotDate(latestSnapshot.gameDate)} is later and stays current.`,
+          isProblem: false,
+        },
+    ...seasonStatsSteps(result.stats),
+    ...staffLimitsSteps(result.staffLimits),
+  ];
+  const notices = steps.filter((step) => !step.quiet).map((step) => step.text);
+  const timings = formatLoadTimings(result.timings);
+  const details = [
+    ...(timings ? [timings] : []),
+    ...steps.filter((step) => step.quiet).map((step) => step.text),
+  ];
+  const isProblem = steps.some((step) => step.isProblem);
   return {
     icon: isProblem ? CircleAlert : CircleCheck,
     tone: isProblem ? toneClasses.warning : toneClasses.success,
-    body: [`${loaded}${latestMessage}`, stats.text, staffLimits?.text]
-      .filter(Boolean)
-      .join(" "),
+    body: notices.length === 0 ? loaded : [`${loaded}.`, ...notices].join(" "),
+    details,
   };
 }
 
@@ -277,6 +317,12 @@ function formatSnapshotDate(gameDate: string | null): string {
 
 export function LoadDataOutcome(props: LoadDataOutcomeProps) {
   const banner = resolveBanner(props);
+  const detailsId = useId();
+  // Open for one outcome only, so the next load starts as one line again.
+  const [detailsOf, setDetailsOf] = useState<
+    LoadDataOutcomeProps["result"] | null
+  >(null);
+  const detailsOpen = detailsOf != null && detailsOf === props.result;
   const progress = props.progress ?? null;
   const hasPending = progress !== null;
   const hasBanner = banner !== null;
@@ -344,12 +390,38 @@ export function LoadDataOutcome(props: LoadDataOutcomeProps) {
               strokeWidth={1.5}
               className="shrink-0"
             />
-            <p className="min-w-0 flex-1">
-              {banner.title ? (
-                <span className="text-label-lg">{banner.title}. </span>
+            <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3">
+              <p className="min-w-0">
+                {banner.title ? (
+                  <span className="text-label-lg">{banner.title}. </span>
+                ) : null}
+                {banner.body}
+              </p>
+              {banner.details && banner.details.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    aria-expanded={detailsOpen}
+                    aria-controls={detailsId}
+                    className="underline decoration-current/50 underline-offset-2 hover:decoration-current"
+                    onClick={() =>
+                      setDetailsOf(detailsOpen ? null : props.result)
+                    }
+                  >
+                    Details
+                  </button>
+                  <div
+                    id={detailsId}
+                    hidden={!detailsOpen}
+                    className="basis-full"
+                  >
+                    {banner.details.map((line) => (
+                      <p key={line}>{line}</p>
+                    ))}
+                  </div>
+                </>
               ) : null}
-              {banner.body}
-            </p>
+            </div>
           </>
         ) : null}
       </div>

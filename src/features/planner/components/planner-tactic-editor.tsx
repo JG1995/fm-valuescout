@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
+import { useDoneFlash } from "@/components/ui/button/use-done-flash";
 import { Panel } from "@/components/ui/panel/panel";
 import { type PlannerContext, plannerKeys } from "../api/planner-keys";
 import { savePlannerTactic } from "../api/save-planner-tactic";
@@ -118,6 +119,7 @@ export function PlannerTacticEditor({
     setSlotTab("recruitment");
   }, [draft.lanes, recruitmentLaneId]);
   const [saveSucceeded, setSaveSucceeded] = useState(false);
+  const [saved, flashSaved] = useDoneFlash();
   const viewButtonRefs = useRef<Record<TacticView, HTMLButtonElement | null>>({
     ip: null,
     oop: null,
@@ -147,6 +149,7 @@ export function PlannerTacticEditor({
       setDraft(nextTactic);
       setLastSavedTactic(nextTactic);
       setSaveSucceeded(true);
+      flashSaved();
       queryClient.setQueryData(plannerKeys.tactic(vars.context), nextTactic);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: plannerKeys.depth() }),
@@ -357,7 +360,7 @@ export function PlannerTacticEditor({
               </p>
             ) : null}
             {saveSucceeded ? (
-              <p className="text-body-sm text-success" role="status">
+              <p className="sr-only" role="status">
                 Tactic saved.
               </p>
             ) : null}
@@ -369,6 +372,7 @@ export function PlannerTacticEditor({
             }
             loading={save.isPending}
             loadingLabel="Saving…"
+            done={saved}
             onClick={() => save.mutate({ context, tactic: draft })}
           >
             Save tactic

@@ -32,6 +32,7 @@ describe("bridge status panel", () => {
     expect(await screen.findByText(/^Bridge:/i)).toHaveTextContent("ready");
     expect(screen.getByText(/^Plugin version:/i)).toHaveTextContent("0.1.0");
     expect(screen.getByText(/^FM modules:/i)).toHaveTextContent("detected");
+    expect(screen.queryByText(/bridge\/README\.md/)).toBeNull();
   });
 
   it("marks a failed scan with the error tone", async () => {
@@ -43,6 +44,7 @@ describe("bridge status panel", () => {
     expect(chip).toHaveTextContent("failed");
     // Tone as well as wording: a failed bridge must not wear a green tick.
     expect(chip).toHaveClass("bg-error-container");
+    expect(screen.getByText(/bridge\/README\.md/)).toBeInTheDocument();
   });
 
   it("shows missing bridge guidance when status file is absent", async () => {

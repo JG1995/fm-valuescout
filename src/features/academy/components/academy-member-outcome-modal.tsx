@@ -235,10 +235,6 @@ export function AcademyMemberOutcomeModal({
       >
         {activeMode === "sale" ? (
           <>
-            <p className="text-body-md text-on-surface-variant">
-              Record the buying club and agreed transfer fee. This manual entry
-              stays with the Academy membership.
-            </p>
             <div ref={anchorRef} className="relative">
               <TextField
                 aria-activedescendant={
@@ -341,13 +337,7 @@ export function AcademyMemberOutcomeModal({
               }}
             />
           </>
-        ) : (
-          <p className="text-body-md text-on-surface-variant">
-            {activeMode === "released"
-              ? "This keeps the player in their class but marks the outcome as released."
-              : "This clears the manual outcome while keeping the player in their class."}
-          </p>
-        )}
+        ) : null}
         {error ? (
           <p className="text-body-sm text-error" role="alert">
             {error}

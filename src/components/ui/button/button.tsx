@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { LoaderCircle } from "lucide-react";
+import { Check, LoaderCircle } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "@/utils/cn";
 
@@ -15,6 +15,12 @@ type ButtonBaseProps = Omit<
   loading?: boolean;
   /** Phase-specific label shown while `loading` (for example "Scanning…"). */
   loadingLabel?: string;
+  /**
+   * Shows a tick for as long as it is set, to confirm the action worked
+   * without a sentence. Drive it with `useDoneFlash`; the caller keeps any
+   * announcement for screen readers.
+   */
+  done?: boolean;
 };
 
 /** An icon-only button has no visible text, so the type demands an icon and an
@@ -54,12 +60,17 @@ export function Button({
   icon: Icon,
   loading = false,
   loadingLabel,
+  done = false,
   type = "button",
   disabled,
   title,
   ...props
 }: ButtonProps) {
-  const LeadingIcon = loading ? LoaderCircle : Icon;
+  const confirmed = done && !loading;
+  // The tick takes the icon's place, or the label's when there is no icon, so
+  // the button keeps its width.
+  const LeadingIcon = loading ? LoaderCircle : confirmed && Icon ? Check : Icon;
+  const tickInLabel = confirmed && !Icon;
 
   return (
     <button
@@ -82,8 +93,12 @@ export function Button({
         <LeadingIcon
           aria-hidden="true"
           size={16}
-          strokeWidth={1.5}
-          className={cn("shrink-0", loading && "animate-spin")}
+          strokeWidth={confirmed ? 2 : 1.5}
+          className={cn(
+            "shrink-0",
+            loading && "animate-spin",
+            confirmed && "animate-tick",
+          )}
         />
       ) : null}
       {children ? (
@@ -94,10 +109,23 @@ export function Button({
         <span className="grid">
           <span
             aria-hidden={loading || undefined}
-            className={cn("col-start-1 row-start-1", loading && "invisible")}
+            className={cn(
+              "col-start-1 row-start-1",
+              loading && "invisible",
+              // Transparent, not hidden: the label stays the button's name.
+              tickInLabel && "opacity-0",
+            )}
           >
             {children}
           </span>
+          {tickInLabel ? (
+            <Check
+              aria-hidden="true"
+              size={16}
+              strokeWidth={2}
+              className="col-start-1 row-start-1 animate-tick place-self-center"
+            />
+          ) : null}
           {loadingLabel ? (
             <span
               aria-hidden={!loading || undefined}

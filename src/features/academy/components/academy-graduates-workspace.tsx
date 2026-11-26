@@ -108,8 +108,7 @@ function AcademyGraduatesUnavailable() {
   return (
     <Panel>
       <EmptyState icon={GraduationCap} title="Graduate data unavailable">
-        Career appearances have not been imported for every tracked player, so
-        graduate status and totals remain unavailable.
+        Career appearances have not been imported for every tracked player.
       </EmptyState>
     </Panel>
   );

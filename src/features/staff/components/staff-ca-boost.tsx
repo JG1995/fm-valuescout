@@ -154,8 +154,7 @@ export function StaffCaBoost({
             </p>
           )}
           <p className="text-body-sm text-on-surface-variant">
-            Staff CA boosts always add 10 and stop at PA or 200. Changes already
-            applied cannot be undone.
+            Adds 10 CA, up to PA. Cannot be undone.
           </p>
           {pending ? (
             <p

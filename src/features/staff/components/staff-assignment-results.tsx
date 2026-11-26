@@ -13,6 +13,7 @@ import { Fragment, useId } from "react";
 import { Button } from "@/components/ui/button/button";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { StatusChip } from "@/components/ui/status-chip/status-chip";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import type {
   CoachRequirement,
   StaffAssignmentAction,
@@ -346,16 +347,21 @@ export function StaffAssignmentResults({
         </p>
       )}
       {result.surplus.length > 0 ? (
-        <section aria-labelledby={surplusHeadingId} className="space-y-2">
-          <h3
-            id={surplusHeadingId}
-            className="text-label-md text-on-surface-variant"
+        <section
+          aria-labelledby={surplusHeadingId}
+          className="flex flex-col gap-2"
+        >
+          <Tooltip
+            content="Your staff who lost every slot they could fill to someone better."
+            focusable
           >
-            Staff to sack ({result.surplus.length})
-          </h3>
-          <p className="text-body-sm text-on-surface-variant">
-            Your staff who lost every slot they could fill to someone better.
-          </p>
+            <h3
+              id={surplusHeadingId}
+              className="w-fit text-label-md text-on-surface-variant"
+            >
+              Staff to sack ({result.surplus.length})
+            </h3>
+          </Tooltip>
           <ul className="grid gap-x-6 gap-y-1 text-body-sm text-on-surface sm:grid-cols-2">
             {result.surplus.map((staff) => (
               <li key={staff.uid} className="min-w-0">
@@ -392,16 +398,21 @@ export function StaffAssignmentResults({
         </section>
       ) : null}
       {result.skipped.length > 0 ? (
-        <section aria-labelledby={skippedHeadingId} className="space-y-2">
-          <h3
-            id={skippedHeadingId}
-            className="text-label-md text-on-surface-variant"
+        <section
+          aria-labelledby={skippedHeadingId}
+          className="flex flex-col gap-2"
+        >
+          <Tooltip
+            content="Left out of every recommendation until you restore them."
+            focusable
           >
-            Skipped staff
-          </h3>
-          <p className="text-body-sm text-on-surface-variant">
-            They stay out of every recommendation until you restore them.
-          </p>
+            <h3
+              id={skippedHeadingId}
+              className="w-fit text-label-md text-on-surface-variant"
+            >
+              Skipped staff
+            </h3>
+          </Tooltip>
           <ul className="flex flex-wrap gap-2">
             {result.skipped.map((skip) => {
               const name = skip.name ?? `Staff ${skip.uid}`;

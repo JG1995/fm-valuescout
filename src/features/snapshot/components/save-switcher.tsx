@@ -146,17 +146,15 @@ function SaveDeletionModal({
       }
     >
       <p className="text-body-md text-on-surface-variant">
-        This permanently removes every snapshot, player, staff, Moneyball
-        import, Planner setting, Academy record, and Youth enrichment in this
-        save.
+        Permanently deletes this save and everything in it.
       </p>
-      <p className="mt-3 text-body-sm text-on-surface-variant">
-        {replacingFinalSave
-          ? "A blank Default save will replace it."
-          : targetIsActive
-            ? "Another save will become active."
-            : "The active save stays unchanged."}
-      </p>
+      {replacingFinalSave || targetIsActive ? (
+        <p className="mt-3 text-body-sm text-on-surface-variant">
+          {replacingFinalSave
+            ? "A blank Default save will replace it."
+            : "Another save will become active."}
+        </p>
+      ) : null}
       {remove.isError ? (
         <p className="mt-3 text-body-sm text-error" role="alert">
           {remove.error.message}

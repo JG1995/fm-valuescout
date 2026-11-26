@@ -53,11 +53,6 @@ export function PlannerUnassignedPlayers({
         variant="informational"
         className="max-w-[52rem]!"
       >
-        <p className="pb-3 text-body-md text-on-surface-variant">
-          Your players in no squad, best fit first. Each shows the slot of your
-          tactic he fits best, with his score there now and the score he is
-          expected to reach.
-        </p>
         <div className="max-h-[28rem] overflow-y-auto rounded-md border border-outline-variant">
           <table className="w-full border-collapse text-left text-body-sm text-on-surface">
             <caption className="sr-only">

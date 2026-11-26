@@ -82,7 +82,6 @@ function SigningsSummary({
         : signings.candidates === null
           ? `${plural(total, candidateNoun)} would improve your XI`
           : `${formatCount(total)} of ${plural(signings.candidates, candidateNoun)} would improve your XI`}
-      {total > 0 ? " · best first" : null}
       {selectedSlot === null ? null : (
         <>
           {" · "}
@@ -248,16 +247,14 @@ function SigningsEmptyState({
           </div>
         }
       >
-        Moneyball scores come from the FM save linked in Settings. Link it, then
-        use Load Data to read its season stats.
+        Link your FM save in Settings, then use Load Data.
       </EmptyState>
     );
   }
   if (signings.candidates === 0) {
     return shortlisted ? (
       <EmptyState icon={ListPlus} title="No shortlisted players to compare">
-        None of this shortlist's players are in the current snapshot outside
-        your club.
+        None of its players are outside your club in this data.
       </EmptyState>
     ) : (
       <EmptyState
@@ -265,10 +262,8 @@ function SigningsEmptyState({
         title="No realistic signings to compare"
       >
         {mode === "moneyball"
-          ? "No player within your club's reach has season stats in this snapshot."
-          : "No player in this snapshot looks within your club's reach."}{" "}
-        If that seems wrong, choose your club again in My Club so its squad can
-        be measured.
+          ? "None within your club's reach has season stats."
+          : "If that seems wrong, choose your club again in My Club."}
       </EmptyState>
     );
   }
@@ -318,8 +313,7 @@ function SigningsEmptyState({
           </Button>
         }
       >
-        Your current player scores at least as high there as every{" "}
-        {candidateNoun}, after points off for age.
+        Your current player scores as high or higher, after points off for age.
       </EmptyState>
     );
   }
@@ -344,8 +338,7 @@ function SigningsEmptyState({
       icon={UserRoundCheck}
       title={`No ${candidateNoun} improves your XI`}
     >
-      Your current players score at least as high in every slot as the{" "}
-      {candidateNoun}s who can play there, after points off for age.
+      Your current players score as high or higher, after points off for age.
     </EmptyState>
   );
 }
@@ -402,9 +395,6 @@ export function SigningsWorkspace({
   const selectedSlotName = selectedSlot
     ? slotLabel(selectedSlot).compact
     : null;
-  const hasPlannerPicks =
-    signings?.slots.some((slot) => slot.incumbent?.source === "planner") ??
-    false;
   // The per-slot view opens once any slot has a signing to show.
   const expandable =
     signings?.slots.some((slot) => slot.bestSigning !== null) ?? false;
@@ -500,7 +490,7 @@ export function SigningsWorkspace({
           <CardPanelSkeleton label="Loading recommended signings…" />
         ) : signings === null ? (
           <EmptyState icon={CircleAlert} title="No squad to compare">
-            The active save has no current snapshot for your managed club.
+            Use Load Data to read your club's squad.
           </EmptyState>
         ) : signings.recommendations.length === 0 ? (
           <div
@@ -569,13 +559,24 @@ export function SigningsWorkspace({
         title="Starting XI"
         flush
         actions={
-          <Link
-            to="/my-club"
-            search={{ view: "planner" }}
-            className={linkButtonClass}
-          >
-            Open Planner
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {signings?.tacticIsDefault ? (
+              <Link
+                to="/my-club"
+                search={{ view: "tactic" }}
+                className={linkButtonClass}
+              >
+                Set up your tactic
+              </Link>
+            ) : null}
+            <Link
+              to="/my-club"
+              search={{ view: "planner" }}
+              className={linkButtonClass}
+            >
+              Open Planner
+            </Link>
+          </div>
         }
         className={cn(dashboardArea.lineup, dashboardPanelClass)}
         contentClassName={dashboardPanelContentClass}
@@ -589,7 +590,7 @@ export function SigningsWorkspace({
         ) : signings === null || !signings.scoresAvailable ? (
           <p className="p-4 text-body-md text-on-surface-variant">
             {signings === null
-              ? "No current snapshot for your managed club."
+              ? "No data for your club in this save."
               : "Moneyball scores need season stats from your linked FM save."}
           </p>
         ) : (
@@ -600,26 +601,6 @@ export function SigningsWorkspace({
               onSelectLane={setLaneId}
               graphics={graphics}
             />
-            <div className="shrink-0 space-y-1 border-t border-outline-variant px-4 py-2 text-body-sm text-on-surface-variant">
-              <p>
-                {hasPlannerPicks
-                  ? "A pin marks the Planner's first string; other slots take the best remaining fit."
-                  : "The Planner has no first string, so every slot takes the best fit."}{" "}
-                Select a slot to see its signings.
-              </p>
-              {signings.tacticIsDefault ? (
-                <p>
-                  These are the default tactic's slots.{" "}
-                  <Link
-                    to="/my-club"
-                    search={{ view: "tactic" }}
-                    className="text-on-surface underline underline-offset-2"
-                  >
-                    Set up your tactic
-                  </Link>
-                </p>
-              ) : null}
-            </div>
           </div>
         )}
       </Panel>

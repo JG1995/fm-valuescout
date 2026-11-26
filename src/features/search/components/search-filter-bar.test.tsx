@@ -204,8 +204,10 @@ describe("SearchFilterBar", () => {
     expect(screen.getByLabelText("Value")).toHaveValue(90);
     expect(operatorValues()).toEqual(["pct_gte", "pct_lte", "pct_between"]);
     expect(
-      screen.getByText(/Ranked among the peers of each player's own position/),
-    ).toBeInTheDocument();
+      screen.getByRole("combobox", { name: "Operator" }),
+    ).toHaveAccessibleDescription(
+      /^Ranked among the peers of each player's own position/,
+    );
     await user.click(screen.getByRole("button", { name: "Add" }));
 
     expect(onApply).toHaveBeenCalledWith(

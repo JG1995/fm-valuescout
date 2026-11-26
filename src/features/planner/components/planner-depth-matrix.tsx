@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Maximize2, Split } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
+import { useDoneFlash } from "@/components/ui/button/use-done-flash";
 import { Panel } from "@/components/ui/panel/panel";
 import { clearPlannerDepth } from "../api/clear-planner-depth";
 import { optimizePlannerDepth } from "../api/optimize-planner-depth";
@@ -35,31 +36,16 @@ function errorMessage(error: unknown) {
 }
 
 /**
- * What Optimize did: without position familiarity, how many players it leaves
- * out of position, and for development, what its starters give up against the
- * strongest lineup.
+ * What Optimize did, for screen readers, and what the board does not show: for
+ * development, what its starters give up against the strongest lineup, and
+ * without position familiarity, how many players it leaves out of position.
  */
-function optimizedStatus(depth: PlannerDepth, positionFamiliarity: boolean) {
+function optimizedOutcome(
+  depth: PlannerDepth,
+  positionFamiliarity: boolean,
+): ActionStatus {
   const comparison = depth.starterComparison ?? null;
-  const parts = [
-    comparison ? "Squads optimized for development" : "Squads optimized",
-  ];
-  if (!positionFamiliarity) {
-    const count = depth.teams
-      .flatMap((team) => team.strings)
-      .flatMap((plannerString) => plannerString.assignments)
-      .filter((assignment) => assignment.outOfPosition).length;
-    parts[0] += " without position familiarity";
-    parts.push(
-      `${
-        count === 0
-          ? "Nobody is"
-          : count === 1
-            ? "1 player is"
-            : `${count} players are`
-      } out of position`,
-    );
-  }
+  const notes: string[] = [];
   if (comparison && comparison.starters > 0) {
     const average = comparison.score / comparison.starters;
     const strongest =
@@ -67,16 +53,33 @@ function optimizedStatus(depth: PlannerDepth, positionFamiliarity: boolean) {
         ? comparison.strongestScore / comparison.strongestStarters
         : average;
     const gap = strongest - average;
-    parts.push(
-      `The starters it placed average ${average.toFixed(1)}, ${
+    notes.push(
+      `Starters average ${average.toFixed(1)} · ${
         gap >= 0.05
           ? `${gap.toFixed(1)} below the strongest lineup`
           : "level with the strongest lineup"
       }`,
     );
   }
-  return `${parts.join(". ")}.`;
+  if (!positionFamiliarity) {
+    const count = depth.teams
+      .flatMap((team) => team.strings)
+      .flatMap((plannerString) => plannerString.assignments)
+      .filter((assignment) => assignment.outOfPosition).length;
+    if (count > 0) {
+      notes.push(`${count} out of position`);
+    }
+  }
+  return {
+    message: comparison
+      ? "Squads optimized for development."
+      : "Squads optimized.",
+    note: notes.length > 0 ? notes.join(" · ") : null,
+  };
 }
+
+/** A squad action's outcome: the message is for screen readers only. */
+type ActionStatus = { message: string; note: string | null };
 
 /** The players who play a slot that trains differently from their development slot. */
 function awayFromDevelopmentSlot(
@@ -131,7 +134,8 @@ export function PlannerDepthMatrix({
   const [clearAllOpen, setClearAllOpen] = useState(false);
   const [clearAllError, setClearAllError] = useState<string | null>(null);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
-  const [actionStatus, setActionStatus] = useState<string | null>(null);
+  const [actionStatus, setActionStatus] = useState<ActionStatus | null>(null);
+  const [optimized, flashOptimized] = useDoneFlash();
   const [teamManagementPending, setTeamManagementPending] = useState(false);
   const [roleReferenceOpen, setRoleReferenceOpen] = useState(false);
   const [roleReferenceReturnFocus, setRoleReferenceReturnFocus] =
@@ -228,7 +232,7 @@ export function PlannerDepthMatrix({
         queryKey: plannerKeys.slotCandidates(),
       });
       setClearAllError(null);
-      setActionStatus("All squads cleared.");
+      setActionStatus({ message: "All squads cleared.", note: null });
       setClearAllOpen(false);
     },
     onError: (error) => {
@@ -244,7 +248,8 @@ export function PlannerDepthMatrix({
         queryKey: plannerKeys.slotCandidates(),
       });
       setOptimizeError(null);
-      setActionStatus(optimizedStatus(nextDepth, optimizedWithFamiliarity));
+      setActionStatus(optimizedOutcome(nextDepth, optimizedWithFamiliarity));
+      flashOptimized();
     },
     onError: (error) => {
       setOptimizeError(`Optimization failed: ${errorMessage(error)}`);
@@ -296,7 +301,7 @@ export function PlannerDepthMatrix({
     setPicker(null);
     setPickerError(null);
     setOptimizeError(null);
-    setActionStatus("Team settings saved.");
+    setActionStatus({ message: "Team settings saved.", note: null });
 
     if (removedTeams.length === 0) {
       return;
@@ -333,6 +338,7 @@ export function PlannerDepthMatrix({
               }
               loading={optimize.isPending}
               loadingLabel="Optimizing…"
+              done={optimized}
               onClick={runOptimization}
             >
               Optimize squads
@@ -407,11 +413,11 @@ export function PlannerDepthMatrix({
           </div>
         </fieldset>
         <div className="flex flex-col gap-1.5">
-          {/* On its own line, as the familiarity option is: the action row
-              must stay on one line at 1280px. */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {/* Below the action row, which must stay on one line at 1280px. */}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <OptimizeForControl
               optimizeFor={optimizeFor}
+              maxAge={development.data?.maxAge}
               disabled={
                 !development.data ||
                 chooseGoal.isPending ||
@@ -421,19 +427,16 @@ export function PlannerDepthMatrix({
               }
               onChange={(goal) => chooseGoal.mutate(goal)}
             />
-            <span className="text-body-sm text-on-surface-variant">
-              {optimizeFor === "development" && development.data
-                ? `Optimize squads gives a player aged ${development.data.maxAge} or under only his development slot. He starts there if he earns it, and otherwise sits behind it.`
-                : "Optimize squads puts every player where the squads are strongest today."}
-            </span>
+            <PositionFamiliarityToggle
+              checked={positionFamiliarity}
+              disabled={
+                clearAll.isPending ||
+                optimize.isPending ||
+                teamManagementPending
+              }
+              onChange={setPositionFamiliarity}
+            />
           </div>
-          <PositionFamiliarityToggle
-            checked={positionFamiliarity}
-            disabled={
-              clearAll.isPending || optimize.isPending || teamManagementPending
-            }
-            onChange={setPositionFamiliarity}
-          />
           {awayUids.size > 0 ? (
             <p className="flex items-start gap-2 text-body-sm text-on-surface">
               <Split
@@ -442,17 +445,23 @@ export function PlannerDepthMatrix({
               />
               {awayUids.size === 1
                 ? "1 developing player plays away from his development slot."
-                : `${awayUids.size} developing players play away from their development slots.`}{" "}
-              Training can still follow it: choose Development slot on the
-              Training page.
+                : `${awayUids.size} developing players play away from their development slots.`}
+            </p>
+          ) : null}
+          {actionStatus ? (
+            <p
+              className={
+                actionStatus.note
+                  ? "text-body-sm text-on-surface-variant"
+                  : "sr-only"
+              }
+              role="status"
+            >
+              <span className="sr-only">{actionStatus.message} </span>
+              {actionStatus.note}
             </p>
           ) : null}
         </div>
-        {actionStatus ? (
-          <p className="text-body-sm text-success" role="status">
-            {actionStatus}
-          </p>
-        ) : null}
         {pickerError ? (
           <p className="text-body-sm text-error" role="alert">
             {pickerError}

@@ -68,9 +68,7 @@ export function CsvImportOutcome({ state }: CsvImportOutcomeProps) {
   if (state.status === "idle") {
     return (
       <p className="text-body-md text-on-surface-variant">
-        Choose a Youth Academy CSV export to import. Matching player rows add or
-        update CSV enrichment. Omitted players keep their earlier enrichment;
-        player IDs outside the current snapshot are skipped.
+        Choose a Youth Academy CSV export.
       </p>
     );
   }
@@ -81,9 +79,7 @@ export function CsvImportOutcome({ state }: CsvImportOutcomeProps) {
         <StatusChip icon={FileUp} tone="info">
           Importing CSV
         </StatusChip>
-        <span className="text-body-md text-on-surface-variant">
-          Importing the selected CSV for the current snapshot.
-        </span>
+        <span className="text-body-md text-on-surface-variant">Importing…</span>
       </div>
     );
   }
@@ -133,15 +129,10 @@ export function CsvImportOutcome({ state }: CsvImportOutcomeProps) {
             className="mt-0.5 shrink-0"
           />
           {summary.skippedPlayers === 1
-            ? `${formatCount(summary.skippedPlayers)} player ID was skipped because it does not match the current snapshot.`
-            : `${formatCount(summary.skippedPlayers)} player IDs were skipped because they do not match the current snapshot.`}
+            ? `${formatCount(summary.skippedPlayers)} player ID not in this snapshot was skipped.`
+            : `${formatCount(summary.skippedPlayers)} player IDs not in this snapshot were skipped.`}
         </p>
-      ) : (
-        <p className="flex items-center gap-2 text-body-sm text-success">
-          <CircleCheck aria-hidden="true" size={16} strokeWidth={1.5} />
-          Every exported player ID was stored.
-        </p>
-      )}
+      ) : null}
     </div>
   );
 }

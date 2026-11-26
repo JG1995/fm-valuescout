@@ -61,7 +61,6 @@ export function SlotSigningsModal({
           {signings.seasonStatsApplied
             ? ` with ${formatCount(signings.minimumMinutes)}+ minutes`
             : null}
-          : the player who would improve each slot most.
           {refreshing ? " Updating…" : null}
         </p>
         <ScoreModeToggle mode={mode} onChange={onModeChange} />
@@ -163,8 +162,8 @@ export function SlotSigningsModal({
         </div>
       ) : (
         <p className="text-body-md text-on-surface">
-          Moneyball scores need season stats from your linked FM save. Switch to
-          General, or link the save in Settings and use Load Data.
+          Moneyball scores need season stats. Switch to General, or link the
+          save in Settings and use Load Data.
         </p>
       )}
     </Modal>

@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Minus, Plus } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
+import { useDoneFlash } from "@/components/ui/button/use-done-flash";
 import { Modal } from "@/components/ui/modal/modal";
+import { InfoTip } from "@/components/ui/tooltip/tooltip";
 import { saveStaffAssignmentTargets } from "../api/save-staff-assignment-targets";
 import { staffAssignmentTargetsQueryOptions } from "../api/staff-assignment-targets-query-options";
 import { staffKeys } from "../api/staff-keys";
@@ -146,6 +148,7 @@ export function StaffAssignmentTargetModal({
   const changeOpen = onOpenChange ?? setInternalOpen;
   const [draft, setDraft] = useState<DraftTarget[]>([]);
   const [saved, setSaved] = useState(false);
+  const [savedTick, flashSaved] = useDoneFlash();
   const previousOpen = useRef(resolvedOpen);
   const controlIdPrefix = useId();
   const configureButtonId = useId();
@@ -181,6 +184,7 @@ export function StaffAssignmentTargetModal({
         return;
       }
       setSaved(true);
+      flashSaved();
       changeOpen(false);
       setDraft([]);
       onSaved?.(result);
@@ -393,11 +397,19 @@ export function StaffAssignmentTargetModal({
     );
   };
 
+  const limitsTip =
+    fmLimits.length > 0 ? (
+      <InfoTip label="About FM's staff limits">
+        Load Data resets a job to FM's staff limit whenever that limit changes.
+      </InfoTip>
+    ) : null;
+
   const needsTable = (
     tableId: string,
     caption: string,
     columns: NeedsColumn[],
     targets: StaffAssignmentTarget[],
+    captionTip: ReactNode = null,
   ) => {
     const columnTotal = (scope: StaffAssignmentScope) => {
       const values = targets
@@ -412,7 +424,14 @@ export function StaffAssignmentTargetModal({
     return (
       <table className="w-full text-left text-body-sm text-on-surface">
         <caption className="pb-1 text-left text-label-lg text-on-surface">
-          {caption}
+          {captionTip ? (
+            <span className="inline-flex items-center gap-1">
+              {caption}
+              {captionTip}
+            </span>
+          ) : (
+            caption
+          )}
         </caption>
         {/* One Club column needs no visible header. */}
         <thead
@@ -522,12 +541,13 @@ export function StaffAssignmentTargetModal({
         id={configureButtonId}
         variant="secondary"
         disabled={resolvedPending || resolvedError !== null || pending}
+        done={savedTick}
         onClick={openModal}
       >
         Configure staffing needs
       </Button>
       {!onStatusChange && saved ? (
-        <p role="status" className="text-body-sm text-success">
+        <p role="status" className="sr-only">
           Staffing needs saved.
         </p>
       ) : null}
@@ -567,13 +587,6 @@ export function StaffAssignmentTargetModal({
             save();
           }}
         >
-          <p className="text-body-md text-on-surface-variant">
-            Set how many people you want in each job. Jobs left at 0 get no
-            recommendation.
-            {fmLimits.length > 0
-              ? " Load Data sets each job to FM's staff limit whenever that limit changes. A number you change here stays until then, with FM's limit shown beside it."
-              : null}
-          </p>
           {formError ? (
             <p role="alert" className="text-body-sm text-error">
               {formError}
@@ -581,7 +594,13 @@ export function StaffAssignmentTargetModal({
           ) : null}
           <div className="grid items-start gap-x-8 gap-y-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             {teamTargets.length > 0
-              ? needsTable("team", "Team jobs", teamColumns, teamTargets)
+              ? needsTable(
+                  "team",
+                  "Team jobs",
+                  teamColumns,
+                  teamTargets,
+                  limitsTip,
+                )
               : null}
             {clubTargets.length > 0
               ? needsTable(
@@ -589,6 +608,7 @@ export function StaffAssignmentTargetModal({
                   "Club-wide jobs",
                   [{ scope: "club", label: "Club" }],
                   clubTargets,
+                  teamTargets.length > 0 ? null : limitsTip,
                 )
               : null}
           </div>

@@ -5,6 +5,7 @@ import {
   type MetricPickerMetric,
   PlayerMetricPicker,
 } from "@/components/ui/player-metric-picker";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import { cn } from "@/utils/cn";
 import {
   MONEYBALL_METRIC_CATEGORIES,
@@ -146,12 +147,9 @@ function PhaseControls({
 
 function SlotMetricControls({
   metricKeys,
-  peers,
   onChange,
 }: {
   metricKeys: string[];
-  /** Whom each metric ranks the player among. */
-  peers: string;
   onChange: (metricKeys: string[]) => void;
 }) {
   const available = SLOT_METRIC_OPTIONS.filter(
@@ -160,11 +158,6 @@ function SlotMetricControls({
 
   return (
     <>
-      <p className="text-body-sm text-on-surface-variant">
-        The score is the mean of each metric's percentile among {peers} with
-        450+ minutes rated 16 or higher. It uses both phases; the IP/OOP weight
-        does not apply.
-      </p>
       {metricKeys.length === 0 ? (
         <p className="text-body-sm text-on-surface-variant">
           No metrics chosen.
@@ -305,13 +298,25 @@ function SlotTabs({
 function SectionHeading({
   children,
   count,
+  hint,
 }: {
   children: ReactNode;
   count?: string;
+  /** How the section works, in the heading's tooltip. */
+  hint?: ReactNode;
 }) {
+  const heading = (
+    <h3 className="text-label-md text-on-surface-variant">{children}</h3>
+  );
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <h3 className="text-label-md text-on-surface-variant">{children}</h3>
+      {hint ? (
+        <Tooltip focusable content={hint}>
+          {heading}
+        </Tooltip>
+      ) : (
+        heading
+      )}
       {count ? (
         <p className="font-mono text-mono-sm text-on-surface-variant tabular-nums">
           {count}
@@ -501,12 +506,12 @@ export function PlannerTacticInspector({
         <div {...panelProps("scoring")}>
           <SectionHeading
             count={`${selectedLane.customMetricKeys.length}/${MAX_SLOT_METRICS}`}
+            hint={`The mean of each metric's percentile among ${slotPeers(selectedLane)} with 450+ minutes rated 16 or higher. Both phases count; the IP/OOP weight does not apply.`}
           >
             Moneyball Metrics
           </SectionHeading>
           <SlotMetricControls
             metricKeys={selectedLane.customMetricKeys}
-            peers={slotPeers(selectedLane)}
             onChange={onCustomMetricsChange}
           />
         </div>
@@ -514,14 +519,10 @@ export function PlannerTacticInspector({
         <div {...panelProps("recruitment")}>
           <SectionHeading
             count={`${selectedLane.recruitmentFilters.length}/${MAX_RECRUITMENT_FILTERS}`}
+            hint={`Recommended signings must pass every filter; your own players are never filtered. Percentiles rank among ${slotPeers(selectedLane)} with 450+ minutes rated 16 or higher.`}
           >
             Recruitment Filters
           </SectionHeading>
-          <p className="text-body-sm text-on-surface-variant">
-            Recommended signings for this slot must pass every filter. Your own
-            players are never filtered. Percentiles rank a statistic among{" "}
-            {slotPeers(selectedLane)} with 450+ minutes rated 16 or higher.
-          </p>
           {renderRecruitmentFilters({
             filters: selectedLane.recruitmentFilters,
             onChange: onRecruitmentFiltersChange,

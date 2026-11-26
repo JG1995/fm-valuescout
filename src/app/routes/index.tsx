@@ -121,7 +121,7 @@ function setupNotes(
   if (save.linkedSaveFileName === null) {
     notes.push({
       id: "save-file",
-      text: "Link your FM save file to read season stats for Moneyball mode and the shortlists you keep in FM.",
+      text: "Link your FM save file to read season stats and shortlists.",
       action: (
         <Link to="/settings" className={setupLinkClass}>
           Open Settings
@@ -131,7 +131,7 @@ function setupNotes(
   } else if (snapshot.moneyballStatsGameDate === null) {
     notes.push({
       id: "season-stats",
-      text: "This snapshot has no season stats yet. Use Load Data to read them from your linked FM save.",
+      text: "No season stats in this snapshot yet. Use Load Data to read them.",
     });
   }
   return notes;
@@ -218,8 +218,7 @@ function DashboardPage() {
         {header}
         <Panel flush>
           <EmptyState icon={DatabaseZap} title="No data loaded for this save">
-            No snapshot loaded for the active save. Use Load Data to scan
-            Football Manager and ingest players before reviewing your club.
+            Use Load Data to read it from Football Manager.
           </EmptyState>
         </Panel>
       </div>
@@ -239,8 +238,8 @@ function DashboardPage() {
         >
           <p className="max-w-prose pb-4 text-body-md text-on-surface-variant">
             {managedClub.status === "missing"
-              ? "The dashboard needs your club's players in the current snapshot. Load data from the save where you manage this club, or choose another club."
-              : "The dashboard compares your squad with the players you could sign, so it needs to know which club you manage. Squad, Planner, Tactic, Youth, and My Staff use the same choice, and you can change it later in My Club."}
+              ? "Load Data from the save where you manage this club, or choose another club."
+              : "Choose the club you manage. You can change it later in My Club."}
           </p>
           <ManagedClubSetup />
         </Panel>

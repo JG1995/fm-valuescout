@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type {
   LoadDataProgress,
@@ -124,7 +124,62 @@ function successResult(): LoadDataResult {
   };
 }
 
+/** The visible outcome line. */
+function outcomeLine() {
+  return screen.getByText(/^Loaded 3 players/);
+}
+
+/** The text behind the Details button, one line per entry. */
+function detailLines() {
+  const details = document.getElementById(
+    screen
+      .getByRole("button", { name: "Details" })
+      .getAttribute("aria-controls") ?? "",
+  );
+  return Array.from(details?.querySelectorAll("p") ?? []).map(
+    (line) => line.textContent,
+  );
+}
+
+function outcomeRow() {
+  return screen.getByRole("button", { name: "Dismiss Load Data outcome" })
+    .parentElement;
+}
+
 describe("LoadDataOutcome", () => {
+  it("shows a clean success as one line and keeps confirmations behind Details", () => {
+    render(
+      <LoadDataOutcome
+        error={null}
+        result={{
+          ...successResult(),
+          stats: {
+            status: "attached",
+            matchedPlayers: 2,
+            unmatchedPlayers: 0,
+            gameDate: "2027-01-01",
+            elapsedMs: 1,
+            shortlists: { status: "read", count: 2, unread: 0 },
+            staffShortlist: { status: "read", count: 13, unread: 0 },
+          },
+          staffLimits: { status: "followed", changed: 0, unreadTeams: [] },
+        }}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(outcomeLine()).toHaveTextContent(/^Loaded 3 players$/);
+    expect(detailLines()).toEqual([
+      "Scan 1.2s, preparation 300ms, scoring 400ms, save 200ms, finalization 200ms, season stats 100ms, total 2.2s.",
+      "This snapshot is now the latest.",
+      "Attached season stats for 2 players from the save dated 1st January 2027.",
+      "Read 2 shortlists from the save.",
+      "Read 13 shortlisted staff from the save.",
+      "Staffing needs match FM's staff limits.",
+    ]);
+    expect(outcomeRow()).toHaveClass("bg-success-container");
+  });
+
   it("distinguishes an earlier stored snapshot from the latest data", () => {
     render(
       <LoadDataOutcome
@@ -364,9 +419,7 @@ describe("LoadDataOutcome", () => {
     );
     expect(screen.queryByText("Scanning…")).toBeNull();
     expect(screen.queryByRole("progressbar")).toBeNull();
-    expect(
-      screen.getByText(/Loaded 3 players into the database/i),
-    ).toBeInTheDocument();
+    expect(outcomeLine()).toBeInTheDocument();
 
     // dismiss button still visible for success
     expect(
@@ -407,6 +460,9 @@ describe("LoadDataOutcome", () => {
       />,
     );
 
+    expect(screen.getByText(/Scan 1\.2s/)).not.toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(screen.getByText(/Scan 1\.2s/)).toBeVisible();
     // scan 1.2s, preparation 300ms, scoring 400ms, save 200ms, finalization 200ms, season stats 100ms, total 2.2s
     expect(screen.getByText(/Scan 1\.2s/i)).toBeInTheDocument();
     expect(screen.getByText(/preparation 300ms/i)).toBeInTheDocument();
@@ -455,9 +511,7 @@ describe("LoadDataOutcome", () => {
       />,
     );
 
-    expect(
-      screen.getByText(/Loaded 3 players into the database\./i),
-    ).toBeInTheDocument();
+    expect(outcomeLine()).toBeInTheDocument();
     expect(screen.queryByText(/Scan/)).toBeNull();
     expect(screen.queryByText(/total/)).toBeNull();
   });
@@ -472,17 +526,19 @@ describe("LoadDataOutcome", () => {
     expect(loadDataPhaseLabels.staffLimits).toBe("Reading staff limits…");
   });
 
-  it.each<[string, StaffLimitsOutcome, string | null, boolean]>([
+  it.each<[string, StaffLimitsOutcome, string | null, string | null, boolean]>([
     [
       "needs FM's limits changed",
       { status: "followed", changed: 3, unreadTeams: [] },
       "FM's staff limits changed 3 staffing needs.",
+      null,
       false,
     ],
     [
       "needs that already match and teams FM sent no limits for",
       { status: "followed", changed: 0, unreadTeams: ["U21", "U18"] },
-      "Staffing needs match FM's staff limits. FM sent no staff limits for U21 and U18, so their needs are unchanged.",
+      "FM sent no staff limits for U21 and U18, so their needs are unchanged.",
+      "Staffing needs match FM's staff limits.",
       false,
     ],
     [
@@ -492,17 +548,19 @@ describe("LoadDataOutcome", () => {
         reason: "FM sent no staff limits for the first team",
       },
       "Staff limits were not read: FM sent no staff limits for the first team. Staffing needs are unchanged.",
+      null,
       true,
     ],
     [
       "nothing without a managed club",
       { status: "noManagedClub" },
       null,
+      null,
       false,
     ],
   ])(
     "reports %s after the season stats",
-    (_case, staffLimits, expected, isProblem) => {
+    (_case, staffLimits, visible, quiet, isProblem) => {
       render(
         <LoadDataOutcome
           error={null}
@@ -511,19 +569,25 @@ describe("LoadDataOutcome", () => {
         />,
       );
 
-      const outcome = screen.getByText(/Loaded 3 players into the database/i);
-      if (expected === null) {
+      const outcome = outcomeLine();
+      if (visible === null) {
         expect(outcome).not.toHaveTextContent(/staff limits/i);
       } else {
-        expect(outcome).toHaveTextContent(expected);
+        expect(outcome).toHaveTextContent(visible);
       }
-      expect(outcome.parentElement?.parentElement).toHaveClass(
+      if (quiet === null) {
+        expect(outcomeRow()).not.toHaveTextContent(/Staffing needs match/);
+      } else {
+        expect(outcome).not.toHaveTextContent(quiet);
+        expect(detailLines()).toContain(quiet);
+      }
+      expect(outcomeRow()).toHaveClass(
         isProblem ? "bg-warning-container" : "bg-success-container",
       );
     },
   );
 
-  it.each<[string, SeasonStatsOutcome, string]>([
+  it.each<[string, SeasonStatsOutcome, string, boolean?]>([
     [
       "attached stats with the save's date",
       {
@@ -536,6 +600,7 @@ describe("LoadDataOutcome", () => {
         elapsedMs: 1300,
       },
       "Attached season stats for 35,903 players from the save dated 1st January 2027.",
+      true,
     ],
     [
       "link guidance",
@@ -641,20 +706,27 @@ describe("LoadDataOutcome", () => {
       },
       "Season stats could not be stored, so the previous stats are unchanged.",
     ],
-  ])("reports %s after the snapshot outcome", (_case, stats, expected) => {
-    render(
-      <LoadDataOutcome
-        error={null}
-        result={{ ...successResult(), stats }}
-        onDismiss={() => undefined}
-      />,
-    );
+  ])(
+    "reports %s after the snapshot outcome",
+    (_case, stats, expected, quiet = false) => {
+      render(
+        <LoadDataOutcome
+          error={null}
+          result={{ ...successResult(), stats }}
+          onDismiss={() => undefined}
+        />,
+      );
 
-    const outcome = screen.getByText(/Loaded 3 players into the database/i);
-    expect(outcome).toHaveTextContent(
-      `This snapshot is now the latest. ${expected}`,
-    );
-  });
+      if (quiet) {
+        expect(outcomeLine()).toHaveTextContent(/^Loaded 3 players$/);
+        expect(detailLines()).toContain(expected);
+      } else {
+        expect(outcomeLine()).toHaveTextContent(
+          `Loaded 3 players. ${expected}`,
+        );
+      }
+    },
+  );
 
   const attached = {
     status: "attached",
@@ -672,25 +744,25 @@ describe("LoadDataOutcome", () => {
     [
       "several shortlists read from the save",
       { status: "read", count: 5, unread: 0 },
-      `${attachedSentence} Read 5 shortlists from the save.`,
+      "Read 5 shortlists from the save.",
       false,
     ],
     [
       "one shortlist read from the save",
       { status: "read", count: 1, unread: 0 },
-      `${attachedSentence} Read 1 shortlist from the save.`,
+      "Read 1 shortlist from the save.",
       false,
     ],
     [
       "shortlists an FM build stores differently",
       { status: "failed", kind: "unsupported_build" },
-      `${attachedSentence} The save's shortlists were not read: this FM27 build is not supported yet. The previous ones are kept.`,
+      "The save's shortlists were not read: this FM27 build is not supported yet. The previous ones are kept.",
       true,
     ],
     [
       "shortlists that could not be stored",
       { status: "failed", kind: "database" },
-      `${attachedSentence} The save's shortlists could not be stored, so the previous ones are kept.`,
+      "The save's shortlists could not be stored, so the previous ones are kept.",
       true,
     ],
   ])(
@@ -707,48 +779,62 @@ describe("LoadDataOutcome", () => {
         />,
       );
 
-      const outcome = screen.getByText(/Loaded 3 players into the database/i);
-      expect(outcome).toHaveTextContent(expected);
-      expect(outcome.parentElement?.parentElement).toHaveClass(
+      // A problem stays in view; a plain read waits behind Details.
+      if (isProblem) {
+        expect(outcomeLine()).toHaveTextContent(
+          `Loaded 3 players. ${expected}`,
+        );
+        expect(detailLines()).toEqual([
+          expect.stringMatching(/^Scan /),
+          "This snapshot is now the latest.",
+          attachedSentence,
+        ]);
+      } else {
+        expect(outcomeLine()).toHaveTextContent(/^Loaded 3 players$/);
+        expect(detailLines().slice(2)).toEqual([attachedSentence, expected]);
+      }
+      expect(outcomeRow()).toHaveClass(
         isProblem ? "bg-warning-container" : "bg-success-container",
       );
     },
   );
 
-  it.each<[string, SeasonStatsOutcome["staffShortlist"], string, boolean]>([
+  it.each<
+    [string, SeasonStatsOutcome["staffShortlist"], string | null, boolean]
+  >([
     [
       "the staff on the save's staff shortlists",
       { status: "read", count: 13, unread: 0 },
-      `${attachedSentence} Read 2 shortlists from the save. Read 13 shortlisted staff from the save.`,
+      null,
       false,
     ],
     [
       "the staff read when some listed staff could not be",
       { status: "read", count: 1482, unread: 1 },
-      `${attachedSentence} Read 2 shortlists from the save. Read 1,482 of 1,483 shortlisted staff from the save. 1 could not be read.`,
+      "Read 1,482 of 1,483 shortlisted staff from the save. 1 could not be read.",
       false,
     ],
     [
       "a staff shortlist that could not be read",
       { status: "failed", kind: "corrupt" },
-      `${attachedSentence} Read 2 shortlists from the save. The save's staff shortlist was not read: the save failed a data check. The previous one is kept.`,
+      "The save's staff shortlist was not read: the save failed a data check. The previous one is kept.",
       true,
     ],
     [
       "a staff shortlist that could not be stored",
       { status: "failed", kind: "database" },
-      `${attachedSentence} Read 2 shortlists from the save. The save's staff shortlist could not be stored, so the previous one is kept.`,
+      "The save's staff shortlist could not be stored, so the previous one is kept.",
       true,
     ],
     [
       "nothing for a staff shortlist that holds nobody",
       { status: "read", count: 0, unread: 0 },
-      `${attachedSentence} Read 2 shortlists from the save.`,
+      null,
       false,
     ],
   ])(
     "reports %s after the player shortlists",
-    (_case, staffShortlist, expected, isProblem) => {
+    (_case, staffShortlist, visible, isProblem) => {
       render(
         <LoadDataOutcome
           error={null}
@@ -764,10 +850,20 @@ describe("LoadDataOutcome", () => {
         />,
       );
 
-      const outcome = screen.getByText(/Loaded 3 players into the database/i);
-      expect(outcome).toHaveTextContent(expected);
-      expect(outcome).not.toHaveTextContent(`${expected} `);
-      expect(outcome.parentElement?.parentElement).toHaveClass(
+      expect(outcomeLine()).toHaveTextContent(
+        visible === null
+          ? /^Loaded 3 players$/
+          : `Loaded 3 players. ${visible}`,
+      );
+      expect(outcomeLine()).not.toHaveTextContent(`${visible} `);
+      expect(detailLines().slice(2, 4)).toEqual([
+        attachedSentence,
+        "Read 2 shortlists from the save.",
+      ]);
+      expect(
+        detailLines().includes("Read 13 shortlisted staff from the save."),
+      ).toBe(staffShortlist.status === "read" && staffShortlist.count === 13);
+      expect(outcomeRow()).toHaveClass(
         isProblem ? "bg-warning-container" : "bg-success-container",
       );
     },
@@ -788,9 +884,8 @@ describe("LoadDataOutcome", () => {
       />,
     );
 
-    const outcome = screen.getByText(/Loaded 3 players into the database/i);
-    expect(outcome).toHaveTextContent(attachedSentence);
-    expect(outcome).not.toHaveTextContent("shortlist");
+    expect(detailLines()).toContain(attachedSentence);
+    expect(outcomeRow()).not.toHaveTextContent("shortlist");
   });
 
   const statsSentence =
@@ -805,9 +900,7 @@ describe("LoadDataOutcome", () => {
       />,
     );
 
-    expect(
-      screen.getByText(/Loaded 3 players into the database/i).textContent,
-    ).toMatch(new RegExp(`${statsSentence}$`));
+    expect(outcomeLine().textContent).toMatch(new RegExp(`${statsSentence}$`));
   });
 
   it("keeps progressbar outside the polite live region while phase text stays inside", () => {

@@ -1,6 +1,6 @@
 import { Lock } from "lucide-react";
-import { useId } from "react";
 import { fieldClasses } from "@/components/ui/field/field-styles";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import { cn } from "@/utils/cn";
 import type {
   FmTrainingLane,
@@ -87,7 +87,7 @@ const MAX_AGES = Array.from({ length: 14 }, (_, index) => 15 + index);
  * What training follows, and how a development slot is found: up to what age
  * a player has one, and whether his positions count. The last two also decide
  * what the Planner optimizes for development, so they show whatever training
- * follows.
+ * follows. The parts sit in the caller's control row.
  */
 export function TrainForControl({
   basis,
@@ -106,19 +106,19 @@ export function TrainForControl({
   onMaxAgeChange: (maxAge: number) => void;
   onPositionFamiliarityChange: (positionFamiliarity: boolean) => void;
 }) {
-  const hintId = useId();
+  const basisHints: Record<TrainingBasis, string> = {
+    planner: "Every player trains the roles of the slot he plays.",
+    development: `Players aged ${maxAge} or under train the slot of your tactic where their potential ranks highest in the save. Older players train the slot they play.`,
+  };
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-label-md text-on-surface-variant">
-            Train for
-          </span>
-          <fieldset className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5">
-            <legend className="sr-only">Train for</legend>
-            {BASES.map((option) => (
+    <>
+      <div className="flex items-center gap-2">
+        <span className="text-label-md text-on-surface-variant">Train for</span>
+        <fieldset className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5">
+          <legend className="sr-only">Train for</legend>
+          {BASES.map((option) => (
+            <Tooltip key={option.basis} content={basisHints[option.basis]}>
               <button
-                key={option.basis}
                 type="button"
                 aria-pressed={basis === option.basis}
                 disabled={disabled}
@@ -135,67 +135,67 @@ export function TrainForControl({
               >
                 {option.label}
               </button>
-            ))}
-          </fieldset>
-        </div>
-        <label className="flex items-center gap-2 text-label-md text-on-surface-variant">
-          Develop players aged up to
-          <select
-            className={cn(fieldClasses, "tabular-nums")}
-            value={maxAge}
-            disabled={disabled}
-            onChange={(event) => onMaxAgeChange(Number(event.target.value))}
-          >
-            {MAX_AGES.map((age) => (
-              <option key={age} value={age}>
-                {age}
-              </option>
-            ))}
-          </select>
-        </label>
+            </Tooltip>
+          ))}
+        </fieldset>
       </div>
-      {/* The Planner's familiarity option, for development slots. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <label
-          className={cn(
-            "flex items-center gap-2 text-body-md",
-            disabled ? "text-on-surface-variant" : "text-on-surface",
-          )}
+      <label className="flex items-center gap-2 text-label-md text-on-surface-variant">
+        Develop players aged up to
+        <select
+          className={cn(fieldClasses, "tabular-nums")}
+          value={maxAge}
+          disabled={disabled}
+          onChange={(event) => onMaxAgeChange(Number(event.target.value))}
         >
-          <input
-            type="checkbox"
-            checked={positionFamiliarity}
-            disabled={disabled}
-            aria-describedby={hintId}
-            onChange={(event) =>
-              onPositionFamiliarityChange(event.target.checked)
-            }
-          />
-          Position familiarity
-        </label>
-        <span id={hintId} className="text-body-sm text-on-surface-variant">
-          {positionFamiliarity
+          {MAX_AGES.map((age) => (
+            <option key={age} value={age}>
+              {age}
+            </option>
+          ))}
+        </select>
+      </label>
+      {/* The Planner's familiarity option, for development slots. */}
+      <Tooltip
+        content={
+          positionFamiliarity
             ? "A development slot is suggested only among the positions a player can play."
-            : "A development slot is suggested in any position, by role scores and preferred foot alone. Goalkeepers and outfield players never swap."}
-        </span>
-      </div>
-    </div>
+            : "A development slot is suggested in any position, by role scores and preferred foot alone. Goalkeepers and outfield players never swap."
+        }
+      >
+        {(tooltipId) => (
+          <label
+            className={cn(
+              "flex items-center gap-2 text-body-md",
+              disabled ? "text-on-surface-variant" : "text-on-surface",
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={positionFamiliarity}
+              disabled={disabled}
+              aria-describedby={tooltipId}
+              onChange={(event) =>
+                onPositionFamiliarityChange(event.target.checked)
+              }
+            />
+            Position familiarity
+          </label>
+        )}
+      </Tooltip>
+    </>
   );
 }
 
 /** How many players are growing into each slot, and the slots nobody is growing into. */
 export function DevelopmentPipeline({
   groups,
-  maxAge,
   selectedId,
   onSelect,
 }: {
   groups: readonly SlotGroup[];
-  maxAge: number;
   selectedId: string | null;
   onSelect: (groupId: string | null) => void;
 }) {
-  const empty = groups.filter((group) => group.count === 0);
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-outline-variant px-4 py-2">
       <span className="text-label-md text-on-surface-variant">
@@ -208,7 +208,7 @@ export function DevelopmentPipeline({
             key={group.id}
             type="button"
             aria-pressed={selectedId === group.id}
-            aria-label={`${group.label}: ${group.count === 1 ? "1 player" : `${group.count} players`}`}
+            aria-label={`${group.label}: ${group.count === 0 ? "no players" : group.count === 1 ? "1 player" : `${group.count} players`}`}
             className={cn(
               "inline-flex h-7 items-center gap-1.5 rounded-sm border px-2 font-mono text-mono-sm",
               group.count === 0
@@ -231,11 +231,6 @@ export function DevelopmentPipeline({
           </button>
         ))}
       </fieldset>
-      <span className="text-body-sm text-on-surface-variant">
-        {empty.length === 0
-          ? "Every slot has a player developing towards it."
-          : `Nobody aged ${maxAge} or under is developing towards ${empty.map((group) => group.label).join("; ")}.`}
-      </span>
     </div>
   );
 }
@@ -293,25 +288,15 @@ export function DevelopsAsCell({
   onChoose: (laneId: string | null) => void;
 }) {
   const { development } = player;
-  const fallback =
-    player.slot === null ? "Keeps his roles" : "Trains the slot he plays";
   if (development === null) {
     return (
-      <>
-        <span className="text-on-surface-variant">
-          {player.age === null ? "Age unknown" : `Over ${maxAge}`}
-        </span>
-        <Detail>{fallback}</Detail>
-      </>
+      <span className="text-on-surface-variant">
+        {player.age === null ? "Age unknown" : `Over ${maxAge}`}
+      </span>
     );
   }
   if (development.options.length === 0) {
-    return (
-      <>
-        <span className="text-on-surface-variant">Suits no slot</span>
-        <Detail>{fallback}</Detail>
-      </>
-    );
+    return <span className="text-on-surface-variant">Suits no slot</span>;
   }
 
   const chosen = development.options.find(
@@ -322,18 +307,15 @@ export function DevelopsAsCell({
   );
   if (basis === "planner") {
     return (
-      <>
-        <span className="flex items-center gap-2 text-on-surface-variant">
-          <span>{chosen ? slotName(chosen) : "No slot"}</span>
-          {chosen ? (
-            <Scores
-              current={chosen.currentScore}
-              potential={chosen.potentialScore}
-            />
-          ) : null}
-        </span>
-        <Detail>Not used: training follows the Planner slot</Detail>
-      </>
+      <span className="flex items-center gap-2 text-on-surface-variant">
+        <span>{chosen ? slotName(chosen) : "No slot"}</span>
+        {chosen ? (
+          <Scores
+            current={chosen.currentScore}
+            potential={chosen.potentialScore}
+          />
+        ) : null}
+      </span>
     );
   }
 
@@ -423,7 +405,7 @@ export function DevelopsAsCell({
             .join(" · ")
             .replace(/^a /, "A ")
         ) : (
-          "He can play no slot yet; choose one to learn"
+          "No playable slot yet: choose one to learn"
         )}
       </Detail>
     </>

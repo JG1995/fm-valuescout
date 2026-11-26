@@ -4,6 +4,7 @@ import { playerResultContextMutationKey } from "@/components/player-table/player
 import { Button } from "@/components/ui/button/button";
 import { TextField } from "@/components/ui/field/text-field";
 import { Modal } from "@/components/ui/modal/modal";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import { fetchPlannerTeamRemovalImpacts } from "../api/fetch-planner-team-removal-impacts";
 import {
   type PlannerTeamSettingInput,
@@ -405,11 +406,6 @@ export function PlannerTeamManagement({
               requestSave();
             }}
           >
-            <p className="text-body-md text-on-surface-variant">
-              Choose one to three teams, name them, and set the oldest age
-              Reserves and Youth take. A player outside the senior squad joins
-              the team with the lowest age limit that takes him.
-            </p>
             <fieldset className="space-y-3">
               <legend className="text-label-lg text-on-surface">
                 Available teams
@@ -453,20 +449,29 @@ export function PlannerTeamManagement({
                           }
                         />
                         {team.team === "senior" ? null : (
-                          <TextField
-                            className="w-36"
-                            label={`${PLANNER_TEAM_NAMES[team.team]} oldest age`}
-                            inputMode="numeric"
-                            placeholder="No limit"
-                            value={team.maxAge}
-                            error={validation.maxAgeErrors[team.team]}
-                            disabled={busy}
-                            onChange={(event) =>
-                              updateDraft(team.team, {
-                                maxAge: event.target.value,
-                              })
-                            }
-                          />
+                          <Tooltip content="A player outside the senior squad joins the team with the lowest age limit that takes him.">
+                            {(tooltipId) => (
+                              <TextField
+                                className="w-36"
+                                label={`${PLANNER_TEAM_NAMES[team.team]} oldest age`}
+                                inputMode="numeric"
+                                placeholder="No limit"
+                                value={team.maxAge}
+                                error={validation.maxAgeErrors[team.team]}
+                                // An error takes the description's place; an
+                                // undefined key would hide the error's too.
+                                {...(validation.maxAgeErrors[team.team]
+                                  ? {}
+                                  : { "aria-describedby": tooltipId })}
+                                disabled={busy}
+                                onChange={(event) =>
+                                  updateDraft(team.team, {
+                                    maxAge: event.target.value,
+                                  })
+                                }
+                              />
+                            )}
+                          </Tooltip>
                         )}
                       </>
                     ) : null}

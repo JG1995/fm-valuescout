@@ -303,7 +303,7 @@ describe("Settings", () => {
 
     const graphics = await screen.findByRole("region", { name: "Graphics" });
     expect(graphics).toHaveTextContent("No root selected");
-    expect(graphics).toHaveTextContent("never displays its path");
+    expect(graphics).not.toHaveTextContent("Indexed");
     expect(
       within(graphics).getByRole("button", { name: "Choose graphics folder" }),
     ).toBeInTheDocument();
@@ -342,9 +342,7 @@ describe("Settings", () => {
       within(graphics).getByRole("button", { name: "Clear graphics folder" }),
     );
     expect(
-      await within(graphics).findByText(
-        "Graphics folder selection cleared. Portrait and crest fallbacks are active.",
-      ),
+      await within(graphics).findByText("Graphics folder selection cleared."),
     ).toBeInTheDocument();
     expect(graphics).toHaveTextContent("No root selected");
     expect(graphics).not.toHaveTextContent("index is rebuilding");
@@ -422,15 +420,17 @@ describe("Settings", () => {
 
     const graphics = await screen.findByRole("region", { name: "Graphics" });
     const statusBefore = queryClient.getQueryData(graphicsKeys.status());
-    await user.click(
-      within(graphics).getByRole("button", { name: "Choose graphics folder" }),
-    );
+    const choose = within(graphics).getByRole("button", {
+      name: "Choose graphics folder",
+    });
+    await user.click(choose);
 
-    expect(
-      await within(graphics).findByText(
-        "Folder choice cancelled. Graphics settings are unchanged.",
+    await waitFor(() =>
+      expect(queryClient.getMutationCache().getAll()[0]?.state.status).toBe(
+        "success",
       ),
-    ).toBeInTheDocument();
+    );
+    expect(within(graphics).getByRole("status")).toBeEmptyDOMElement();
     expect(graphics).toHaveTextContent("Generation 7");
     expect(graphics).not.toHaveTextContent("index is rebuilding");
     expect(queryClient.getQueryData(graphicsKeys.status())).toEqual(
@@ -478,11 +478,6 @@ describe("Settings", () => {
       name: "Default player analysis view",
     });
     expect(control).toHaveValue("general");
-    expect(
-      screen.getByText(
-        "Used by the Player Profile and the Dashboard when their URL does not specify a view.",
-      ),
-    ).toBeInTheDocument();
 
     await user.selectOptions(control, "moneyball");
 
