@@ -11,7 +11,7 @@ import {
 import { type ReactNode, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
-import { fieldClasses } from "@/components/ui/field/field-styles";
+import { selectClasses } from "@/components/ui/field/field-styles";
 import { Panel } from "@/components/ui/panel/panel";
 import { cn } from "@/utils/cn";
 import { formatCount } from "@/utils/format";
@@ -408,7 +408,7 @@ export function SigningsWorkspace({
           <label className="flex items-center gap-2 text-body-md text-on-surface">
             Candidates
             <select
-              className={cn(fieldClasses, "max-w-56")}
+              className={cn(selectClasses, "max-w-56")}
               value={shortlistId ?? ""}
               onChange={(event) =>
                 setChosenShortlistId(

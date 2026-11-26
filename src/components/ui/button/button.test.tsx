@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { Trash2 } from "lucide-react";
+import { describe, expect, it, vi } from "vitest";
 import { Button } from "@/components/ui/button/button";
 
 describe("Button", () => {
@@ -37,6 +38,25 @@ describe("Button", () => {
     render(<Button done>Save tactic</Button>);
 
     expect(screen.getByRole("button", { name: "Save tactic" })).toBeEnabled();
+  });
+
+  it("shows an icon-only button's name as a tooltip without describing it twice", () => {
+    vi.useFakeTimers();
+    try {
+      render(<Button size="icon" icon={Trash2} aria-label="Delete filter" />);
+      const button = screen.getByRole("button", { name: "Delete filter" });
+
+      expect(button).not.toHaveAttribute("title");
+      expect(screen.queryByText("Delete filter")).toBeNull();
+
+      fireEvent.pointerEnter(button);
+      act(() => vi.advanceTimersByTime(300));
+
+      expect(screen.getByText("Delete filter")).toBeVisible();
+      expect(button).not.toHaveAccessibleDescription();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("uses the error token for destructive actions", () => {

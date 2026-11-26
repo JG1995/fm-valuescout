@@ -27,7 +27,7 @@ describe("RealisticSigningsToggle", () => {
         onRulesChange={onRulesChange}
       />,
     );
-    const toggle = screen.getByRole("checkbox", {
+    const toggle = screen.getByRole("switch", {
       name: "Only realistic signings",
     });
     expect(toggle).not.toBeChecked();
@@ -50,7 +50,7 @@ describe("RealisticSigningsToggle", () => {
         onRulesChange={onRulesChange}
       />,
     );
-    const toggle = screen.getByRole("checkbox", {
+    const toggle = screen.getByRole("switch", {
       name: "Only realistic signings",
     });
     expect(toggle).toBeChecked();
@@ -69,7 +69,7 @@ describe("RealisticSigningsToggle", () => {
       />,
     );
 
-    expect(screen.getByRole("checkbox")).not.toBeChecked();
+    expect(screen.getByRole("switch")).not.toBeChecked();
   });
 
   it("is unavailable until a club is chosen", () => {
@@ -80,7 +80,7 @@ describe("RealisticSigningsToggle", () => {
         onRulesChange={vi.fn()}
       />,
     );
-    const toggle = screen.getByRole("checkbox", {
+    const toggle = screen.getByRole("switch", {
       name: "Only realistic signings",
     });
 

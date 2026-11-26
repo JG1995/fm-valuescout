@@ -135,7 +135,7 @@ export function MyStaffCaBoost({
               {progress && progress.total > 0 ? (
                 <progress
                   aria-label="Staff boost progress"
-                  className="h-2 w-full accent-primary"
+                  className="w-full"
                   max={progress.total}
                   value={progress.processed}
                 />

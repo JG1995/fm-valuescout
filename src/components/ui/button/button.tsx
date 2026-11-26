@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { Check, LoaderCircle } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import { cn } from "@/utils/cn";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "destructive";
@@ -63,7 +64,6 @@ export function Button({
   done = false,
   type = "button",
   disabled,
-  title,
   ...props
 }: ButtonProps) {
   const confirmed = done && !loading;
@@ -72,13 +72,10 @@ export function Button({
   const LeadingIcon = loading ? LoaderCircle : confirmed && Icon ? Check : Icon;
   const tickInLabel = confirmed && !Icon;
 
-  return (
+  const button = (
     <button
       type={type}
       disabled={disabled || loading}
-      // An icon-only button gets its tooltip from the accessible name the type
-      // already requires, so no call site can ship an unexplained glyph.
-      title={title ?? (size === "icon" ? props["aria-label"] : undefined)}
       className={cn(
         "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 text-label-lg",
         "transition-colors duration-150 ease-out",
@@ -137,5 +134,15 @@ export function Button({
         </span>
       ) : null}
     </button>
+  );
+
+  // An icon-only button gets its tooltip from the accessible name the type
+  // already requires, so no call site can ship an unexplained glyph.
+  return size === "icon" ? (
+    <Tooltip content={props["aria-label"]} repeatsName>
+      {button}
+    </Tooltip>
+  ) : (
+    button
   );
 }

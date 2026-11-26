@@ -1,5 +1,10 @@
 import { X } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, useId } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+  useId,
+} from "react";
 import { SelectField } from "@/components/ui/field/select-field";
 import {
   type MetricPickerMetric,
@@ -424,7 +429,8 @@ export function PlannerTacticInspector({
               value={weight}
               aria-label="IP/OOP score weight"
               aria-valuetext={`IP ${weight}%, OOP ${100 - weight}%`}
-              className="h-2 w-full cursor-pointer accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="w-full"
+              style={{ "--range-fill": `${weight}%` } as CSSProperties}
               onKeyDown={(event) => {
                 const next = nextWeight(weight, event.key);
                 if (next === null) {

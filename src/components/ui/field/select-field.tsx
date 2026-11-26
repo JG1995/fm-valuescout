@@ -1,8 +1,8 @@
 import type { ReactNode, SelectHTMLAttributes } from "react";
 import { useId } from "react";
 import {
-  fieldClasses,
   fieldLabelClasses,
+  selectClasses,
 } from "@/components/ui/field/field-styles";
 import { cn } from "@/utils/cn";
 
@@ -30,7 +30,7 @@ export function SelectField({
       <label className={fieldLabelClasses} htmlFor={selectId}>
         {label}
       </label>
-      <select id={selectId} className={cn(fieldClasses, "w-full")} {...props}>
+      <select id={selectId} className={cn(selectClasses, "w-full")} {...props}>
         {children}
       </select>
     </div>

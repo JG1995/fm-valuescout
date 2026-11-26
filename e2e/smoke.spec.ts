@@ -1029,11 +1029,11 @@ test.describe("application smoke", () => {
     await expect(
       table.getByRole("columnheader", { name: "Technical Director" }),
     ).toBeVisible();
-    await main.getByRole("checkbox", { name: "Only unemployed" }).check();
+    await main.getByRole("switch", { name: "Only unemployed" }).check();
     await expect(table.getByText("Coach Casey")).toBeVisible();
     await expect(table.getByText("Manager Morgan")).toBeVisible();
     await expect(table.getByText("Alex Coach")).toHaveCount(0);
-    await main.getByRole("checkbox", { name: "Only unemployed" }).uncheck();
+    await main.getByRole("switch", { name: "Only unemployed" }).uncheck();
     await table
       .locator("tr[data-index]")
       .filter({ hasText: "Alex Coach" })

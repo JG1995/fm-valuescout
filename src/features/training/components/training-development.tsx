@@ -1,5 +1,8 @@
 import { Lock } from "lucide-react";
-import { fieldClasses } from "@/components/ui/field/field-styles";
+import {
+  compactSelectClasses,
+  selectClasses,
+} from "@/components/ui/field/field-styles";
 import { Switch } from "@/components/ui/switch/switch";
 import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import { cn } from "@/utils/cn";
@@ -143,7 +146,7 @@ export function TrainForControl({
       <label className="flex items-center gap-2 text-label-md text-on-surface-variant">
         Develop players aged up to
         <select
-          className={cn(fieldClasses, "tabular-nums")}
+          className={cn(selectClasses, "tabular-nums")}
           value={maxAge}
           disabled={disabled}
           onChange={(event) => onMaxAgeChange(Number(event.target.value))}
@@ -321,10 +324,9 @@ export function DevelopsAsCell({
       <span className="flex items-center gap-2">
         <select
           aria-label={`Development slot for ${player.name}`}
-          // Smaller than a form field, to sit in a table row.
           // The list shows each name in full; the closed box may cut the
           // suggested mark off a long one, which the line below still says.
-          className="h-7 max-w-56 rounded-sm border border-outline bg-surface-container-high px-1.5 text-body-sm text-on-surface hover:border-on-surface-variant focus-visible:outline-offset-0 disabled:cursor-not-allowed disabled:opacity-45"
+          className={cn(compactSelectClasses, "max-w-56")}
           value={development.laneId ?? ""}
           disabled={disabled}
           onChange={(event) =>

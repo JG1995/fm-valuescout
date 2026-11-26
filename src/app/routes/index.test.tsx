@@ -533,7 +533,7 @@ describe("Dashboard", () => {
     const { router } = renderDashboard();
     await waitFor(() => expect(signingCards()).toHaveLength(1));
 
-    const toggle = screen.getByRole("checkbox", { name: "Season stats" });
+    const toggle = screen.getByRole("switch", { name: "Season stats" });
     expect(toggle).toBeChecked();
     expect(toggle).toHaveAccessibleDescription(
       /Candidates need 450\+ competitive minutes this season/,
@@ -553,7 +553,7 @@ describe("Dashboard", () => {
     expect(router.state.location.search).toEqual({ stats: false });
 
     await user.click(screen.getByRole("button", { name: "Moneyball" }));
-    const locked = screen.getByRole("checkbox", { name: "Season stats" });
+    const locked = screen.getByRole("switch", { name: "Season stats" });
     expect(locked).toBeChecked();
     expect(locked).toBeDisabled();
     expect(router.state.location.search).toEqual({

@@ -343,12 +343,12 @@ export function LoadDataOutcome(props: LoadDataOutcomeProps) {
     progress.completed == null || progress.total == null ? (
       <progress
         aria-label={loadDataPhaseLabels[progress.phase]}
-        className="h-2 w-32 shrink-0 accent-primary"
+        className="w-32 shrink-0"
       />
     ) : progress.total === 0 ? null : (
       <progress
         aria-label={`${loadDataPhaseLabels[progress.phase]} ${progress.completed} of ${progress.total}`}
-        className="h-2 w-32 shrink-0 accent-primary"
+        className="w-32 shrink-0"
         max={progress.total}
         value={progress.completed}
       />

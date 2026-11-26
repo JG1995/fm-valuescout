@@ -35,6 +35,23 @@ describe("Tooltip", () => {
     expect(tooltip).not.toBeVisible();
   });
 
+  it("leaves when its trigger is pressed", () => {
+    render(
+      <Tooltip content="Ranks players within their own position">
+        <button type="button">Percentiles</button>
+      </Tooltip>,
+    );
+    const trigger = screen.getByRole("button", { name: "Percentiles" });
+    const tooltip = screen.getByRole("tooltip", { hidden: true });
+
+    fireEvent.pointerEnter(trigger);
+    act(() => vi.advanceTimersByTime(300));
+    expect(tooltip).toBeVisible();
+
+    fireEvent.pointerDown(trigger);
+    expect(tooltip).not.toBeVisible();
+  });
+
   it("shows on keyboard focus and leaves on Escape", () => {
     render(
       <Tooltip content="Kept through the next Load Data">

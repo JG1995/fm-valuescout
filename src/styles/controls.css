@@ -1,0 +1,315 @@
+/* Native form controls drawn in the app's style. They stay the browser's own
+   elements, so the keyboard, form, and accessibility behaviour is untouched;
+   only the paint changes. The rules sit in the base layer, so a utility on one
+   control still wins. Specs: .wiki/DESIGN.md, "Components". */
+
+:root {
+  /* Lucide glyphs, used as masks so each takes a token colour. */
+  --icon-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  --icon-minus: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14'/%3E%3C/svg%3E");
+  --icon-chevron-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --icon-chevron-right: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
+  --icon-x: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 6 6 18'/%3E%3Cpath d='m6 6 12 12'/%3E%3C/svg%3E");
+}
+
+/* Checkbox: a 16px box that fills with the primary colour and draws a tick. */
+input[type="checkbox"] {
+  appearance: none;
+  display: inline-grid;
+  flex: none;
+  place-content: center;
+  inline-size: 1rem;
+  block-size: 1rem;
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-container-high);
+  transition:
+    background-color 150ms ease-out,
+    border-color 150ms ease-out;
+}
+
+input[type="checkbox"]::before {
+  content: "";
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+  background-color: var(--color-on-primary);
+  mask: var(--icon-check) center / contain no-repeat;
+  opacity: 0;
+  scale: 0.6;
+  transition:
+    opacity 150ms ease-out,
+    scale 150ms ease-out;
+}
+
+input[type="checkbox"]:enabled:hover,
+label:hover input[type="checkbox"]:enabled {
+  border-color: var(--color-on-surface-variant);
+}
+
+input[type="checkbox"]:is(:checked, :indeterminate),
+label:hover input[type="checkbox"]:enabled:is(:checked, :indeterminate) {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary);
+}
+
+input[type="checkbox"]:is(:checked, :indeterminate)::before {
+  opacity: 1;
+  scale: 1;
+}
+
+/* Some but not all of a group: a dash, not a tick. */
+input[type="checkbox"]:indeterminate::before {
+  mask-image: var(--icon-minus);
+}
+
+input[type="checkbox"]:disabled {
+  opacity: 0.45;
+}
+
+/* Slider: a 4px track with a fader-shaped thumb. The caller sets
+   `--range-fill` to the value as a percentage to colour the lower part. The
+   input takes 8px of the layout and the 16px thumb overhangs it. */
+input[type="range"] {
+  --range-fill: 0%;
+  appearance: none;
+  block-size: 0.5rem;
+  background: transparent;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  block-size: 0.25rem;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--color-primary) var(--range-fill),
+    var(--color-outline) var(--range-fill)
+  );
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  inline-size: 0.5rem;
+  block-size: 1rem;
+  /* Centres the 16px thumb on the 4px track. */
+  margin-block-start: -0.375rem;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-on-surface);
+}
+
+/* The focus ring goes round the thumb, not the whole row the input fills. */
+input[type="range"]:focus-visible {
+  outline: none;
+}
+
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+input[type="range"]:disabled {
+  opacity: 0.45;
+}
+
+/* Progress: a slim bar. With no value, a third of it sweeps across like the
+   navigation's progress bar. */
+progress {
+  appearance: none;
+  overflow: hidden;
+  block-size: 0.25rem;
+  border: 0;
+  border-radius: 9999px;
+  background-color: var(--color-surface-container-highest);
+}
+
+progress::-webkit-progress-bar {
+  background-color: transparent;
+}
+
+progress::-webkit-progress-value {
+  border-radius: 9999px;
+  background-color: var(--color-primary);
+  transition: inline-size 150ms ease-out;
+}
+
+progress:indeterminate {
+  background-image: linear-gradient(var(--color-primary), var(--color-primary));
+  background-repeat: no-repeat;
+  background-size: 33.3% 100%;
+  animation: progress-sweep 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-sweep {
+  from {
+    background-position: -50% 0;
+  }
+  to {
+    background-position: 150% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* A still, full bar: the sweep would otherwise stop out of sight. */
+  progress:indeterminate {
+    background-size: 100% 100%;
+    animation: none;
+  }
+}
+
+/* Number field: no spin buttons. The arrow keys still step the value. */
+input[type="number"] {
+  appearance: textfield;
+  font-variant-numeric: tabular-nums;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+/* Search field: the clear button is the icon set's cross. */
+input[type="search"]::-webkit-search-cancel-button {
+  appearance: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  margin-inline-start: 0.25rem;
+  background-color: var(--color-on-surface-variant);
+  mask: var(--icon-x) center / contain no-repeat;
+  cursor: pointer;
+}
+
+input[type="search"]::-webkit-search-cancel-button:hover {
+  background-color: var(--color-on-surface);
+}
+
+/* Disclosure: a chevron that turns down when the details open. */
+summary {
+  display: block;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+summary::before {
+  content: "";
+  display: inline-block;
+  inline-size: 1rem;
+  block-size: 1rem;
+  margin-inline-end: 0.25rem;
+  vertical-align: -0.1875rem;
+  background-color: var(--color-on-surface-variant);
+  mask: var(--icon-chevron-right) center / contain no-repeat;
+  transition: rotate 150ms ease-out;
+}
+
+details[open] > summary::before {
+  rotate: 90deg;
+}
+
+/* Select: the closed field keeps its own utilities; this draws the chevron
+   and the list. A browser without customizable selects keeps its native
+   control. */
+@supports (appearance: base-select) {
+  select,
+  ::picker(select) {
+    appearance: base-select;
+  }
+
+  /* One clamped line, so a long name ends in an ellipsis instead of wrapping
+     or running under the chevron. The clamp needs the line to be as tall as
+     the field's inside, and the chevron needs room at the end: `selectClasses`
+     sets both. */
+  select {
+    position: relative;
+    display: -webkit-inline-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    /* A clipped inline box sits on the text baseline, which would leave a
+       few pixels of descender space under the field. */
+    vertical-align: top;
+  }
+
+  select::picker-icon {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0.375rem;
+    inline-size: 1rem;
+    block-size: 1rem;
+    margin-block: auto;
+    background-color: var(--color-on-surface-variant);
+    mask: var(--icon-chevron-down) center / contain no-repeat;
+    transition: rotate 150ms ease-out;
+  }
+
+  select:open::picker-icon {
+    rotate: 180deg;
+  }
+
+  ::picker(select) {
+    margin-block: 0.25rem;
+    padding: 0.25rem;
+    border: 1px solid var(--color-outline-variant);
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface-container-highest);
+    color: var(--color-on-surface);
+    box-shadow: var(--shadow-overlay);
+  }
+
+  select:open::picker(select) {
+    animation: var(--animate-pop);
+  }
+
+  select option {
+    gap: 0.5rem;
+    min-block-size: 1.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-body-md);
+    font-weight: 400;
+    line-height: var(--text-body-md--line-height);
+    letter-spacing: normal;
+    color: var(--color-on-surface);
+  }
+
+  select option:enabled:hover {
+    background-color: var(--color-surface-container-high);
+  }
+
+  select option:focus-visible {
+    outline-offset: -2px;
+  }
+
+  select option:disabled {
+    color: var(--color-on-surface-variant);
+  }
+
+  /* The tick sits at the end, so it does not indent the names. */
+  select option::checkmark {
+    content: "";
+    order: 1;
+    flex: none;
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    margin-inline-start: auto;
+    background-color: var(--color-primary);
+    mask: var(--icon-check) center / contain no-repeat;
+  }
+
+  /* The group's name lines up with its options, which step back out. */
+  select optgroup {
+    padding-block-start: 0.375rem;
+    padding-inline-start: 0.5rem;
+    font-size: var(--text-label-sm);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--color-on-surface-variant);
+  }
+
+  select optgroup option {
+    margin-inline-start: -0.5rem;
+  }
+}

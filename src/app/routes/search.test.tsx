@@ -4127,7 +4127,7 @@ describe("search route", () => {
       setSearchPlayersOverride([playerNamed("Wide Scout", 160)]);
       const { router } = renderSearchRoute();
       await screen.findByText("Wide Scout");
-      const realistic = screen.getByRole("checkbox", {
+      const realistic = screen.getByRole("switch", {
         name: "Only realistic signings",
       });
       await waitFor(() => expect(realistic).toBeEnabled());
@@ -4169,7 +4169,7 @@ describe("search route", () => {
         });
       });
       expect(
-        await screen.findByRole("checkbox", {
+        await screen.findByRole("switch", {
           name: "Only realistic signings",
         }),
       ).toBeChecked();
