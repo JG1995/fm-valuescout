@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-11-26
+
+### Added
+
+- **FM's own faces for newgens.** A player FM generated now shows the face FM shows for him when **Use pre-generated images of players and staff** is on, wherever the app shows a portrait and your graphics folder has no image for him. The app works the face out with FM's own rule and reads the picture from the portrait file of your FM install, so an installed face mod is what you see. An image from your graphics folder still comes first, as in FM, and the faces also show with no graphics folder chosen. Real players without a photo and staff keep the placeholder. The first face after the app starts takes a few seconds. The faces were checked against FM 27.1.1 with the Photoreal Faces V2 mod; an install whose portrait file is in another format shows the placeholder.
+
+### Changed
+
+- **This release needs the new bridge plugin.** Use **Install / Update plugin** in Settings, restart FM, and Load Data with FM open on your save. Load Data does not work with the older plugin, and a snapshot loaded before this update shows no game faces until you load data again.
+
 ## [0.38.0] - 2026-11-26
 
 ### Added
