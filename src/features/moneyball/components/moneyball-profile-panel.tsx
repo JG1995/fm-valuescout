@@ -2,6 +2,7 @@ import { DatabaseZap } from "lucide-react";
 import type { KeyboardEvent } from "react";
 import { useId, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
+import { compactSelectClasses } from "@/components/ui/field/field-styles";
 import { Panel } from "@/components/ui/panel/panel";
 import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import { formatLongGameDate } from "@/utils/format";
@@ -148,7 +149,7 @@ function ComparisonSummary({
           <label className="flex items-center gap-2">
             Percentiles vs
             <select
-              className="h-7 rounded-md border border-outline bg-surface-container-high px-1.5 text-body-sm text-on-surface"
+              className={compactSelectClasses}
               value={selected.family}
               onChange={(event) => onSelect(event.target.value)}
             >

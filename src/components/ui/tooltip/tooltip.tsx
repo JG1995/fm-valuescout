@@ -28,6 +28,15 @@ function focusIsVisible(target: Element) {
   }
 }
 
+/** Whether a select in the trigger has its list open, which the tooltip would cover. */
+function hasOpenList(wrapper: Element | null) {
+  try {
+    return wrapper?.querySelector("select:open") != null;
+  } catch {
+    return false;
+  }
+}
+
 type TooltipProps = {
   /** What the trigger cannot say itself. Nothing the user must read to act. */
   content: ReactNode;
@@ -44,6 +53,11 @@ type TooltipProps = {
    * for buttons, links, and fields, which are focusable already.
    */
   focusable?: boolean;
+  /**
+   * The content is the trigger's accessible name, as on an icon-only button.
+   * It is shown but not announced again, and exists only while it is open.
+   */
+  repeatsName?: boolean;
   className?: string;
 };
 
@@ -55,6 +69,7 @@ export function Tooltip({
   content,
   children,
   focusable = false,
+  repeatsName = false,
   className,
 }: TooltipProps) {
   const tooltipId = useId();
@@ -68,11 +83,12 @@ export function Tooltip({
 
   const schedule = (next: boolean, delay: number) => {
     window.clearTimeout(timer.current);
+    const apply = () => setOpen(next && !hasOpenList(wrapperRef.current));
     if (delay === 0) {
-      setOpen(next);
+      apply();
       return;
     }
-    timer.current = window.setTimeout(() => setOpen(next), delay);
+    timer.current = window.setTimeout(apply, delay);
   };
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -81,7 +97,10 @@ export function Tooltip({
     if (!open) return;
     const close = () => setOpen(false);
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      // A key pressed in a select opens or moves through its list.
+      if (event.key === "Escape" || event.target instanceof HTMLSelectElement) {
+        close();
+      }
     };
     document.addEventListener("keydown", onKeyDown);
     window.addEventListener("scroll", close, true);
@@ -124,7 +143,9 @@ export function Tooltip({
   const trigger =
     typeof children === "function"
       ? children(tooltipId)
-      : cloneElement(children, { "aria-describedby": tooltipId });
+      : repeatsName
+        ? children
+        : cloneElement(children, { "aria-describedby": tooltipId });
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only listens for the hover and focus of the control inside it.
@@ -133,6 +154,8 @@ export function Tooltip({
       className="contents"
       onPointerEnter={() => schedule(true, HOVER_DELAY_MS)}
       onPointerLeave={() => schedule(false, LEAVE_GRACE_MS)}
+      // A press means the user is acting, and may open a list right here.
+      onPointerDown={() => schedule(false, 0)}
       onFocus={(event) => {
         // A click focuses the trigger too; only keyboard focus opens at once.
         if (focusIsVisible(event.target)) schedule(true, 0);
@@ -140,20 +163,23 @@ export function Tooltip({
       onBlur={() => schedule(false, 0)}
     >
       {focusable ? cloneElement(trigger, { tabIndex: 0 }) : trigger}
-      <span
-        ref={tooltipRef}
-        id={tooltipId}
-        role="tooltip"
-        popover={supportsPopover ? "manual" : undefined}
-        hidden={supportsPopover ? undefined : !open}
-        className={cn(
-          "fixed inset-auto z-50 m-0 w-max max-w-72 overflow-visible rounded-md border border-outline-variant bg-surface-container-highest px-2.5 py-1.5",
-          "text-left text-body-sm font-normal normal-case tracking-normal whitespace-normal text-on-surface shadow-overlay",
-          className,
-        )}
-      >
-        {content}
-      </span>
+      {repeatsName && !open ? null : (
+        <span
+          ref={tooltipRef}
+          id={tooltipId}
+          role="tooltip"
+          aria-hidden={repeatsName || undefined}
+          popover={supportsPopover ? "manual" : undefined}
+          hidden={supportsPopover ? undefined : !open}
+          className={cn(
+            "fixed inset-auto z-50 m-0 w-max max-w-72 overflow-visible rounded-md border border-outline-variant bg-surface-container-highest px-2.5 py-1.5",
+            "text-left text-body-sm font-normal normal-case tracking-normal whitespace-normal text-on-surface shadow-overlay",
+            className,
+          )}
+        >
+          {content}
+        </span>
+      )}
     </span>
   );
 }

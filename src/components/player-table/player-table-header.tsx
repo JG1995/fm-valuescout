@@ -844,7 +844,7 @@ export function ConfigurableColumnsControl({
                                 onAddColumn(metric.id);
                               }
                             }}
-                            className="size-4 shrink-0 accent-primary"
+                            className="shrink-0"
                           />
                           {metric.label}
                         </label>

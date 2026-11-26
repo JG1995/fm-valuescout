@@ -948,7 +948,6 @@ export function SearchResultsPanel({
       <button
         type="button"
         aria-label={`Sort direction: ${dirLabel}`}
-        title="Reverse the sort direction"
         className="rounded-sm text-on-surface underline decoration-dotted underline-offset-4 hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         onClick={() =>
           onSortChange(

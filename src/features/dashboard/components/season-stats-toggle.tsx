@@ -1,5 +1,5 @@
+import { Switch } from "@/components/ui/switch/switch";
 import { Tooltip } from "@/components/ui/tooltip/tooltip";
-import { cn } from "@/utils/cn";
 import { formatCount } from "@/utils/format";
 import type { DashboardScoreMode } from "../types/dashboard";
 
@@ -37,21 +37,13 @@ export function SeasonStatsToggle({
   return (
     <Tooltip content={hint}>
       {(tooltipId) => (
-        <label
-          className={cn(
-            "flex items-center gap-2 text-body-md",
-            locked ? "text-on-surface-variant" : "text-on-surface",
-          )}
-        >
-          <input
-            type="checkbox"
-            checked={available !== false && (mode === "moneyball" || checked)}
-            disabled={locked}
-            aria-describedby={tooltipId}
-            onChange={(event) => onChange(event.target.checked)}
-          />
-          Season stats
-        </label>
+        <Switch
+          label="Season stats"
+          checked={available !== false && (mode === "moneyball" || checked)}
+          disabled={locked}
+          aria-describedby={tooltipId}
+          onChange={onChange}
+        />
       )}
     </Tooltip>
   );

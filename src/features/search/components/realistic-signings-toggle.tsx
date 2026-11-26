@@ -1,3 +1,4 @@
+import { Switch } from "@/components/ui/switch/switch";
 import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import type { FilterRule } from "../types/filter-rule";
 import {
@@ -43,25 +44,20 @@ export function RealisticSigningsToggle({
   return (
     <Tooltip content={hint}>
       {(tooltipId) => (
-        <label className="flex items-center gap-2 text-body-md text-on-surface">
-          <input
-            type="checkbox"
-            checked={checked}
-            disabled={
-              clubName === null ||
-              (!checked && otherRules.length >= MAX_FILTER_RULES)
-            }
-            aria-describedby={tooltipId}
-            onChange={(event) =>
-              onRulesChange(
-                event.target.checked
-                  ? [...otherRules, createRealisticSigningRule()]
-                  : otherRules,
-              )
-            }
-          />
-          Only realistic signings
-        </label>
+        <Switch
+          label="Only realistic signings"
+          checked={checked}
+          disabled={
+            clubName === null ||
+            (!checked && otherRules.length >= MAX_FILTER_RULES)
+          }
+          aria-describedby={tooltipId}
+          onChange={(next) =>
+            onRulesChange(
+              next ? [...otherRules, createRealisticSigningRule()] : otherRules,
+            )
+          }
+        />
       )}
     </Tooltip>
   );

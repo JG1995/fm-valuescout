@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { clearPlayerResultContext } from "@/app/player-result-context";
+import { SelectField } from "@/components/ui/field/select-field";
 import { LoadingRegion, Skeleton } from "@/components/ui/skeleton/skeleton";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
@@ -145,24 +146,19 @@ function SettingsPage() {
         >
           Preferences
         </h2>
-        <div className="grid max-w-md gap-1 text-body-md text-on-surface">
-          <label htmlFor="default-analysis-view">
-            Default player analysis view
-          </label>
-          <select
-            className="h-9 rounded-md border border-outline bg-surface-container-high px-2 text-body-md text-on-surface"
-            id="default-analysis-view"
-            value={defaultAnalysisView}
-            onChange={(event) =>
-              setDefaultAnalysisView(
-                event.target.value === "moneyball" ? "moneyball" : "general",
-              )
-            }
-          >
-            <option value="general">General</option>
-            <option value="moneyball">Moneyball</option>
-          </select>
-        </div>
+        <SelectField
+          className="max-w-md"
+          label="Default player analysis view"
+          value={defaultAnalysisView}
+          onChange={(event) =>
+            setDefaultAnalysisView(
+              event.target.value === "moneyball" ? "moneyball" : "general",
+            )
+          }
+        >
+          <option value="general">General</option>
+          <option value="moneyball">Moneyball</option>
+        </SelectField>
       </section>
 
       <section

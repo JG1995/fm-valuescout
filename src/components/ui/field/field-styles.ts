@@ -12,4 +12,19 @@ export const fieldClasses = [
   "transition-colors duration-150 ease-out",
 ].join(" ");
 
+/** A select: the field chrome, with room at the end for the chevron that
+ *  `src/styles/controls.css` draws, and one line as tall as the field's inside
+ *  (32px less the border) so that stylesheet can clamp a long name to it. */
+export const selectClasses = `${fieldClasses} pr-7 leading-[1.875rem]`;
+
+/** A 28px select for a table row or a line of secondary text. */
+export const compactSelectClasses = [
+  "h-7 rounded-md border border-outline bg-surface-container-high pr-6 pl-1.5",
+  "text-body-sm leading-[1.625rem] text-on-surface",
+  "hover:border-on-surface-variant",
+  "focus-visible:outline-offset-0",
+  "disabled:cursor-not-allowed disabled:opacity-45",
+  "transition-colors duration-150 ease-out",
+].join(" ");
+
 export const fieldLabelClasses = "block text-label-md text-on-surface-variant";

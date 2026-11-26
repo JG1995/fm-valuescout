@@ -30,8 +30,10 @@ import {
   ConfigurableVirtualizedTable,
 } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
+import { selectClasses } from "@/components/ui/field/field-styles";
 import { Panel } from "@/components/ui/panel/panel";
 import { TableSkeleton } from "@/components/ui/skeleton/skeleton";
+import { Switch } from "@/components/ui/switch/switch";
 import {
   isIdentityColumnId,
   usePlayerTableStore,
@@ -73,17 +75,7 @@ function ShortlistSwitch({
   onChange?: (next: boolean) => void;
 }) {
   if (!onChange) return null;
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className="inline-flex h-8 items-center gap-2 rounded-md border border-outline px-3 text-label-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-    >
-      Shortlist: {checked ? "On" : "Off"}
-    </button>
-  );
+  return <Switch label="Shortlist" checked={checked} onChange={onChange} />;
 }
 
 function nextSort(
@@ -962,10 +954,11 @@ export function StaffSearchResultsPanel({
         />
         {isShortlist ? (
           <>
-            <label className="flex items-center gap-2 text-body-md text-on-surface">
+            {/* Set apart from the Shortlist switch's label before it. */}
+            <label className="ml-2 flex items-center gap-2 text-body-md text-on-surface">
               Preferred Job
               <select
-                className="h-8 rounded-md border border-outline bg-surface-container-high px-2 text-body-md text-on-surface"
+                className={selectClasses}
                 value={preferredJob ?? ""}
                 onChange={(event) => onPreferredJobChange?.(event.target.value)}
               >
@@ -977,16 +970,11 @@ export function StaffSearchResultsPanel({
                 ))}
               </select>
             </label>
-            <label className="flex items-center gap-2 text-body-md text-on-surface">
-              <input
-                type="checkbox"
-                checked={unemployedOnly === true}
-                onChange={(event) =>
-                  onUnemployedOnlyChange?.(event.target.checked)
-                }
-              />
-              Only unemployed
-            </label>
+            <Switch
+              label="Only unemployed"
+              checked={unemployedOnly === true}
+              onChange={(next) => onUnemployedOnlyChange?.(next)}
+            />
           </>
         ) : null}
       </>

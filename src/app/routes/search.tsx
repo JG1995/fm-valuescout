@@ -11,6 +11,7 @@ import { clearPlayerResultContext } from "@/app/player-result-context";
 import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
+import { selectClasses } from "@/components/ui/field/field-styles";
 import { Panel } from "@/components/ui/panel/panel";
 import { TableSkeleton } from "@/components/ui/skeleton/skeleton";
 import { Tooltip } from "@/components/ui/tooltip/tooltip";
@@ -621,7 +622,7 @@ function SearchPageContent() {
       <label className="flex items-center gap-2 text-body-md text-on-surface">
         Shortlist
         <select
-          className="h-8 max-w-64 rounded-md border border-outline bg-surface-container-high px-2 text-body-md text-on-surface"
+          className={cn(selectClasses, "max-w-64")}
           value={shortlistId ?? ""}
           onChange={(event) => selectShortlist(event.target.value)}
         >
@@ -648,7 +649,7 @@ function SearchPageContent() {
             Percentiles vs
             <select
               aria-describedby={tooltipId}
-              className="h-8 max-w-64 rounded-md border border-outline bg-surface-container-high px-2 text-body-md text-on-surface"
+              className={cn(selectClasses, "max-w-64")}
               value={comparison}
               onChange={(event) =>
                 updateSearch({

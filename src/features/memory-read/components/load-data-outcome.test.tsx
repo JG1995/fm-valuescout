@@ -142,8 +142,9 @@ function detailLines() {
 }
 
 function outcomeRow() {
-  return screen.getByRole("button", { name: "Dismiss Load Data outcome" })
-    .parentElement;
+  return screen
+    .getByRole("button", { name: "Dismiss Load Data outcome" })
+    .closest("div");
 }
 
 describe("LoadDataOutcome", () => {

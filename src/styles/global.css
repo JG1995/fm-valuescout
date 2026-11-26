@@ -13,6 +13,7 @@
 @import "@fontsource/ibm-plex-sans/400.css";
 @import "@fontsource/ibm-plex-sans/500.css";
 @import "@fontsource/ibm-plex-sans/600.css";
+@import "./controls.css" layer(base);
 
 /* Design tokens bridged from .wiki/DESIGN.md. Values there are authoritative —
    change the spec first, then mirror it here. */

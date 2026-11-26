@@ -3,7 +3,7 @@ import {
   type ClearPlayerResultContext,
   playerResultContextMutationKey,
 } from "@/components/player-table/player-result-context";
-import { fieldClasses } from "@/components/ui/field/field-styles";
+import { selectClasses } from "@/components/ui/field/field-styles";
 import { cn } from "@/utils/cn";
 import { formatLongGameDate } from "@/utils/format";
 import { currentSnapshotQueryOptions } from "../api/current-snapshot-query-options";
@@ -49,7 +49,7 @@ export function ActiveSaveSelect({
         aria-label="Active save"
         aria-invalid={switchSave.isError || undefined}
         className={cn(
-          fieldClasses,
+          selectClasses,
           "max-w-72",
           switchSave.isError && "border-error",
         )}

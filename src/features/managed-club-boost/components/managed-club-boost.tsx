@@ -132,7 +132,7 @@ export function ManagedClubBoost({
               {currentProgress && currentProgress.total > 0 ? (
                 <progress
                   aria-label="Managed club boost progress"
-                  className="h-2 w-full accent-primary"
+                  className="w-full"
                   max={currentProgress.total}
                   value={currentProgress.processed}
                 />

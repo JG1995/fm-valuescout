@@ -147,8 +147,6 @@ describe("app top bar", () => {
       forward.compareDocumentPosition(search) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(back).toHaveAttribute("title", "Back");
-    expect(forward).toHaveAttribute("title", "Forward");
     back.focus();
     expect(back).toHaveFocus();
   });

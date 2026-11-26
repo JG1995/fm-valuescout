@@ -908,15 +908,15 @@ describe("staff route", () => {
       screen.queryByRole("combobox", { name: "Preferred Job" }),
     ).toBeNull();
     expect(
-      screen.queryByRole("checkbox", { name: "Only unemployed" }),
+      screen.queryByRole("switch", { name: "Only unemployed" }),
     ).toBeNull();
 
     await user.click(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+      await screen.findByRole("switch", { name: "Shortlist", checked: false }),
     );
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
-    ).toHaveAttribute("aria-checked", "true");
+      await screen.findByRole("switch", { name: "Shortlist", checked: true }),
+    ).toBeChecked();
     expect(router.state.location.search.shortlistOnly).toBeUndefined();
     expect(
       useShortlistFilterStore.getState().choices[
@@ -930,7 +930,7 @@ describe("staff route", () => {
       await screen.findByRole("combobox", { name: "Preferred Job" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("checkbox", { name: "Only unemployed" }),
+      screen.getByRole("switch", { name: "Only unemployed" }),
     ).toBeInTheDocument();
   });
 
@@ -940,8 +940,8 @@ describe("staff route", () => {
     renderStaffRoute("/staff");
 
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
-    ).toHaveAttribute("aria-checked", "true");
+      await screen.findByRole("switch", { name: "Shortlist", checked: true }),
+    ).toBeChecked();
     expect(
       await screen.findByRole("table", { name: "Staff Shortlist" }),
     ).toBeInTheDocument();
@@ -952,8 +952,8 @@ describe("staff route", () => {
     renderStaffRoute("/staff");
 
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
+      await screen.findByRole("switch", { name: "Shortlist", checked: false }),
+    ).not.toBeChecked();
     expect(
       await screen.findByRole("table", { name: "Staff search results" }),
     ).toBeInTheDocument();
@@ -965,8 +965,8 @@ describe("staff route", () => {
     const { queryClient } = renderStaffRoute("/staff");
 
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
-    ).toHaveAttribute("aria-checked", "true");
+      await screen.findByRole("switch", { name: "Shortlist", checked: true }),
+    ).toBeChecked();
     expect(
       useShortlistFilterStore.getState().choices[
         shortlistFilterKey("staff", {
@@ -993,8 +993,8 @@ describe("staff route", () => {
     });
 
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
+      await screen.findByRole("switch", { name: "Shortlist", checked: false }),
+    ).not.toBeChecked();
     expect(
       useShortlistFilterStore.getState().choices[
         shortlistFilterKey("staff", {
@@ -1019,20 +1019,22 @@ describe("staff route", () => {
     const { router } = renderStaffRoute("/staff");
 
     await user.click(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
+      await screen.findByRole("switch", { name: "Shortlist", checked: false }),
     );
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
-    ).toHaveAttribute("aria-checked", "true");
+      await screen.findByRole("switch", { name: "Shortlist", checked: true }),
+    ).toBeChecked();
     expect(router.state.location.search.shortlistOnly).toBeUndefined();
     await waitFor(() => {
       expect(getLastStaffArgs()).toMatchObject({ shortlistOnly: true });
     });
 
-    await user.click(screen.getByRole("switch", { name: "Shortlist: On" }));
+    await user.click(
+      screen.getByRole("switch", { name: "Shortlist", checked: true }),
+    );
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
+      await screen.findByRole("switch", { name: "Shortlist", checked: false }),
+    ).not.toBeChecked();
     expect(router.state.location.search.shortlistOnly).toBeUndefined();
     // Off restores the plain search-results view; the revisit is
     // cache-served inside the query client's 60s stale window, so no new
@@ -1055,8 +1057,8 @@ describe("staff route", () => {
     renderStaffRoute("/staff?shortlistOnly=maybe");
 
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: Off" }),
-    ).toHaveAttribute("aria-checked", "false");
+      await screen.findByRole("switch", { name: "Shortlist", checked: false }),
+    ).not.toBeChecked();
     expect(
       await screen.findByRole("table", { name: "Staff search results" }),
     ).toBeInTheDocument();
@@ -1183,8 +1185,8 @@ describe("staff route", () => {
     );
     expect(screen.queryByRole("button", { name: "Upload CSV" })).toBeNull();
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
-    ).toHaveAttribute("aria-checked", "true");
+      await screen.findByRole("switch", { name: "Shortlist", checked: true }),
+    ).toBeChecked();
 
     const optimize = screen.getByRole("button", {
       name: "Optimize assignments",
@@ -1219,10 +1221,12 @@ describe("staff route", () => {
       screen.getByText("Clear filters to see more staff."),
     ).toBeInTheDocument();
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
-    ).toHaveAttribute("aria-checked", "true");
+      await screen.findByRole("switch", { name: "Shortlist", checked: true }),
+    ).toBeChecked();
 
-    await user.click(screen.getByRole("switch", { name: "Shortlist: On" }));
+    await user.click(
+      screen.getByRole("switch", { name: "Shortlist", checked: true }),
+    );
     await waitFor(() => {
       expect(router.state.location.search.shortlistOnly).toBeUndefined();
     });
@@ -1303,9 +1307,9 @@ describe("staff route", () => {
     // Present save defaults the filter on; switch it off before exercising
     // Review shortlist so the recovery visibly re-enables it.
     await user.click(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
+      await screen.findByRole("switch", { name: "Shortlist", checked: true }),
     );
-    await screen.findByRole("switch", { name: "Shortlist: Off" });
+    await screen.findByRole("switch", { name: "Shortlist", checked: false });
 
     await user.click(
       await screen.findByRole("button", { name: "Optimize assignments" }),
@@ -1315,8 +1319,8 @@ describe("staff route", () => {
     );
 
     expect(
-      await screen.findByRole("switch", { name: "Shortlist: On" }),
-    ).toHaveAttribute("aria-checked", "true");
+      await screen.findByRole("switch", { name: "Shortlist", checked: true }),
+    ).toBeChecked();
     expect(router.state.location.search.shortlistOnly).toBeUndefined();
     expect(getLastStaffAssignmentOptimizerIpcArgs()).toEqual({
       expectedSaveContextToken: "save-token-1",
@@ -1854,7 +1858,9 @@ describe("staff route", () => {
     await screen.findByRole("table", { name: "Staff search results" });
     const held = holdNamedStaffSearchRequests();
 
-    await user.click(screen.getByRole("switch", { name: "Shortlist: Off" }));
+    await user.click(
+      screen.getByRole("switch", { name: "Shortlist", checked: false }),
+    );
 
     await waitFor(() => expect(held).toHaveLength(1));
     expect(
@@ -1908,7 +1914,10 @@ describe("staff route", () => {
       renderStaffRoute("/staff");
 
       expect(
-        await screen.findByRole("switch", { name: "Shortlist: Off" }),
+        await screen.findByRole("switch", {
+          name: "Shortlist",
+          checked: false,
+        }),
       ).toBeInTheDocument();
       expect(screen.getByRole("status")).toHaveTextContent(
         "Loading staff results…",
@@ -1967,7 +1976,10 @@ describe("staff route", () => {
         within(toolbar).getByRole("button", { name: "Columns" }),
       ).toBeInTheDocument();
       expect(
-        within(toolbar).getByRole("switch", { name: "Shortlist: Off" }),
+        within(toolbar).getByRole("switch", {
+          name: "Shortlist",
+          checked: false,
+        }),
       ).toBeInTheDocument();
       const table = screen.getByRole("table", {
         name: "Staff search results",
@@ -2073,13 +2085,16 @@ describe("staff route", () => {
         name: "Staff results toolbar",
       });
       expect(
-        within(toolbar).getByRole("switch", { name: "Shortlist: On" }),
+        within(toolbar).getByRole("switch", {
+          name: "Shortlist",
+          checked: true,
+        }),
       ).toBeInTheDocument();
       expect(
         within(toolbar).getByRole("combobox", { name: "Preferred Job" }),
       ).toBeInTheDocument();
       expect(
-        within(toolbar).getByRole("checkbox", { name: "Only unemployed" }),
+        within(toolbar).getByRole("switch", { name: "Only unemployed" }),
       ).toBeInTheDocument();
       expect(
         within(toolbar).getByRole("button", { name: "Columns" }),
