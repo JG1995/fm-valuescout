@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-11-26
+
+### Added
+
+- **Development slots.** Each player at your club up to an age limit, 23 by default, now has a development slot: the slot of your tactic where his potential compares best with the other players in the save. On **Training**, a **Develops as** column names it by position and in-possession role, and you can choose another, including a position he has yet to learn. A **Developing towards** strip counts the players growing into each slot and marks the slots nobody is growing into. **Develop players aged up to** sets the age limit. Training has its own **Position familiarity** switch, kept with the save, which decides whether a slot is suggested only among the positions a player can play or in any position.
+- **Train for a development slot.** **Train for** on Training switches the save between **Planner slot**, as before, and **Development slot**, where each developing player trains the roles of his development slot, a developing player in no squad included, and older players train the slot they play. Squad's Suggested Training follows the same choice.
+- **Optimize for development.** **Optimize for** in the Planner chooses **Strongest**, as before, or **Development**, which places a developing player only in his development slot and says what the starters give up. The board marks a developing player who plays away from his slot.
+
+### Changed
+
+- **A quieter interface.** Most explanatory text is gone from the screens. An explanation now sits in a tooltip on the control it explains, a finished action shows a tick on its button, and a clean Load Data result is one line with the rest behind **Details**. Errors, warnings, and anything that cannot be undone stay visible.
+- **Controls in the app's own style.** Checkboxes, drop-down lists, the tactic's weight slider, progress bars, and number and search fields no longer use the system's look. On/off options such as **Position familiarity**, **Season stats**, **Only realistic signings**, **Shortlist**, and **Only unemployed** are switches. Icon buttons show their name in the app's own tooltip.
+- **Less memory and a faster start.** On a 10 GB database with a large graphics pack, the app at rest uses about 210 MB where it used about 750 MB. It reaches a loaded Dashboard in about 4.5 seconds where it took about 8, and in about 11 seconds where it took 26 when Windows has not read the database recently. After 30 seconds without activity the app frees the memory it is not using.
+- **A smaller database and faster season statistics.** Season statistics are stored more compactly: a 9.7 GB database shrank to 5.5 GB, and sorting Search by a statistic takes less than half as long. The first start after this update takes several minutes, because the app first converts the stored statistics and then shrinks the database file. The window stays blank and Windows may mark it "Not Responding" until both steps finish, so leave it running. If the app is closed during the conversion, the conversion runs again on the next start. If it is closed while the file is shrinking, or the disk has less free space than about twice the size of the shrunken database, the data is safe but the file keeps its old size for good.
+
 ## [0.37.0] - 2026-11-24
 
 ### Added
