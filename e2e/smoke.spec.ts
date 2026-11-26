@@ -3114,7 +3114,7 @@ test.describe("application smoke", () => {
     await expect(
       editor.getByRole("combobox", { name: "Operator" }),
     ).toHaveAccessibleDescription(
-      /rated 16 or higher in the position families of this slot/,
+      /rated 15 or higher in the position families of this slot/,
     );
     // The editor opens beside its button and stays inside the window.
     const editorBox = await editor.boundingBox();

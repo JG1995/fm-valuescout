@@ -164,7 +164,7 @@ function ComparisonSummary({
           <span>Percentiles vs {label.toLowerCase()}</span>
         )}
         <Tooltip
-          content={`Players with ${minimumMinutes}+ minutes this season rated 16 or higher at the family's positions.`}
+          content={`Players with ${minimumMinutes}+ minutes this season rated 15 or higher at the family's positions.`}
           focusable
         >
           <span>· {peers}</span>

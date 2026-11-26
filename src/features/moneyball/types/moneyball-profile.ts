@@ -23,7 +23,7 @@ export type MoneyballRoleScore = {
 
 /**
  * The player's percentiles among one position family's peers: the players
- * with `minimumMinutes` this season rated 16 or higher at its positions.
+ * with `minimumMinutes` this season rated 15 or higher at its positions.
  */
 export type MoneyballFamilyComparison = {
   /** A role catalog position family ID. */

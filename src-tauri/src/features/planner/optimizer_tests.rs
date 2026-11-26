@@ -104,7 +104,7 @@ fn matcher_breaks_equal_scores_by_lowest_uid_in_lane_order() {
 }
 
 #[test]
-fn optimizer_penalizes_sub_16_familiarity_without_excluding_eligible_players() {
+fn optimizer_penalizes_sub_15_familiarity_without_excluding_eligible_players() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     clear_current_scores_except(
@@ -115,19 +115,19 @@ fn optimizer_penalizes_sub_16_familiarity_without_excluding_eligible_players() {
     );
     set_right_winger_scores(&conn, save_id, 77, Some(100));
     set_right_winger_scores(&conn, save_id, 78, Some(98));
-    set_player_positions(&conn, save_id, 77, r#"{"AMR": 16, "MR": 15}"#);
-    set_player_positions(&conn, save_id, 78, r#"{"AMR": 16, "MR": 16}"#);
+    set_player_positions(&conn, save_id, 77, r#"{"AMR": 15, "MR": 14}"#);
+    set_player_positions(&conn, save_id, 78, r#"{"AMR": 15, "MR": 15}"#);
 
-    let one_below = optimize_depth(&conn, save_id).expect("optimize one sub-16 position");
+    let one_below = optimize_depth(&conn, save_id).expect("optimize one sub-15 position");
     assert_eq!(
         assigned_player_uid(&one_below, PlannerTeam::Senior, "right_winger"),
         Some(78)
     );
 
     set_right_winger_scores(&conn, save_id, 78, Some(91));
-    set_player_positions(&conn, save_id, 77, r#"{"AMR": 15, "MR": 15}"#);
+    set_player_positions(&conn, save_id, 77, r#"{"AMR": 14, "MR": 14}"#);
 
-    let both_below = optimize_depth(&conn, save_id).expect("optimize two sub-16 positions");
+    let both_below = optimize_depth(&conn, save_id).expect("optimize two sub-15 positions");
     assert_eq!(
         assigned_player_uid(&both_below, PlannerTeam::Senior, "right_winger"),
         Some(78)

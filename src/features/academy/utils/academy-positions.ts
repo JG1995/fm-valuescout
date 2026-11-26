@@ -1,6 +1,5 @@
 import { comparePositions } from "@/utils/position-order";
-
-const ACADEMY_PLAYABLE_POSITION_FAMILIARITY = 16;
+import { PLAYABLE_POSITION_FAMILIARITY } from "@/utils/profile-position-roles";
 
 /** Return positions the player can play in the Youth Academy. */
 export function playableAcademyPositions(
@@ -11,7 +10,7 @@ export function playableAcademyPositions(
       (entry): entry is [string, number] =>
         typeof entry[1] === "number" &&
         Number.isFinite(entry[1]) &&
-        entry[1] >= ACADEMY_PLAYABLE_POSITION_FAMILIARITY,
+        entry[1] >= PLAYABLE_POSITION_FAMILIARITY,
     )
     .sort(([leftPosition, leftValue], [rightPosition, rightValue]) => {
       const familiarity = rightValue - leftValue;

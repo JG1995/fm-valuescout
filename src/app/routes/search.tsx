@@ -643,7 +643,7 @@ function SearchPageContent() {
           snapshotGameDate={resultContext.snapshot.gameDate}
         />
       ) : null}
-      <Tooltip content="Percentiles rank each player among this group's players with 450+ minutes rated 16 or higher there. Role and tactic scores always rank within their own positions.">
+      <Tooltip content="Percentiles rank each player among this group's players with 450+ minutes rated 15 or higher there. Role and tactic scores always rank within their own positions.">
         {(tooltipId) => (
           <label className="flex items-center gap-2 text-body-md text-on-surface">
             Percentiles vs

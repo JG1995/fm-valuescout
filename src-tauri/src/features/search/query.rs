@@ -15,7 +15,7 @@ use crate::features::moneyball::kept_stats::{
     kept_stats_snapshots, stats_join_sql, KeptStats, STATS_DIVISION_SQL,
 };
 use crate::features::moneyball::role_catalog::{builtin_catalog, RoleDefinition};
-use crate::features::planner::fit::lane_statistic_keys;
+use crate::features::planner::fit::{lane_statistic_keys, FULL_FAMILIARITY};
 use crate::features::planner::tactic::{base_position, read_tactic, TacticLane};
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
@@ -1242,8 +1242,8 @@ fn tactic_sql_expression(lane: &TacticLane, group: TacticGroup, player_alias: &s
         )
     };
     let foot_soft_penalty = format!("CASE WHEN {foot_mismatch} THEN 5 ELSE 0 END");
-    let ip_fam_penalty = format!("CASE WHEN {fam_ip} < 16 THEN 5 ELSE 0 END");
-    let oop_fam_penalty = format!("CASE WHEN {fam_oop} < 16 THEN 5 ELSE 0 END");
+    let ip_fam_penalty = format!("CASE WHEN {fam_ip} < {FULL_FAMILIARITY} THEN 5 ELSE 0 END");
+    let oop_fam_penalty = format!("CASE WHEN {fam_oop} < {FULL_FAMILIARITY} THEN 5 ELSE 0 END");
     let penalty = format!("({foot_soft_penalty} + {ip_fam_penalty} + {oop_fam_penalty})");
     format!(
         "CASE WHEN ({fam_ip} IS NULL OR {fam_ip} < 12 OR {fam_oop} IS NULL OR {fam_oop} < 12) THEN NULL WHEN ({strict_mismatch}) THEN NULL WHEN ({ip_expr} IS NULL OR {oop_expr} IS NULL) THEN NULL ELSE CASE WHEN (({blended}) - ({penalty}) < 0) THEN 0 ELSE CAST((({blended}) - ({penalty})) AS INTEGER) END END"
@@ -3745,7 +3745,7 @@ mod tests {
                     140,
                     DeepPlayerFields {
                         nationalities: json!(["ENG"]),
-                        positions: json!({ "MC": 15, "ST": 18 }),
+                        positions: json!({ "MC": 14, "ST": 18 }),
                         attributes: json!({ "Acceleration": 10 }),
                         hidden: json!({ "Consistency": 10 }),
                         personality: json!({ "Ambition": 10 }),
@@ -3781,7 +3781,7 @@ mod tests {
                     145,
                     DeepPlayerFields {
                         nationalities: json!(["ENG"]),
-                        positions: json!({ "MC": 16, "ST": 1 }),
+                        positions: json!({ "MC": 15, "ST": 1 }),
                         attributes: json!({ "Acceleration": 10 }),
                         hidden: json!({ "Consistency": 10 }),
                         personality: json!({ "Ambition": 10 }),
@@ -3802,7 +3802,7 @@ mod tests {
             ],
         );
 
-        // FM rates every position from 1, so a Position rule only counts familiarity 16+.
+        // FM rates every position from 1, so a Position rule only counts familiarity 15+.
         let presence = search_with_filters(
             &conn,
             0,
@@ -3887,7 +3887,7 @@ mod tests {
                     .collect(),
             )
         };
-        // Any of: familiarity 16+ at either key; DM 12 does not count.
+        // Any of: familiarity 15+ at either key; DM 12 does not count.
         assert_eq!(
             names(vec![filter_rule(
                 "position",
@@ -3904,7 +3904,7 @@ mod tests {
             names(vec![filter_rule(
                 "pos.MC",
                 "between",
-                FilterValue::List(vec![FilterValue::Integer(15), FilterValue::Integer(16)])
+                FilterValue::List(vec![FilterValue::Integer(14), FilterValue::Integer(15)])
             )]),
             vec!["Cutoff MC", "Fringe MC"]
         );
@@ -6036,7 +6036,7 @@ mod tests {
         };
         let field = "tactic_moneyball.goalkeeper";
 
-        // The slot ranks among keepers rated 16 or more: UIDs 1, 4, and 5. Their save
+        // The slot ranks among keepers rated 15 or more: UIDs 1, 4, and 5. Their save
         // ratios of 0.5, 0.9, and 0.5 put UIDs 1 and 5 at 0, and UID 3's 0.95 above them
         // all; their goals conceded of 1.0 and 2.0 put UID 1 at 100 and UID 5 at 0, and
         // UID 3's 3.0 below both. UID 3 averages 50, minus 10 for GK 14. Nulls stay last.
@@ -6109,15 +6109,15 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("tactic-parity.db"));
         // Player at half-round boundary: ip 81, oop 82, weight 0.5 => 81.5 => 82
-        // Familiarity tests: 12..15 penalized, 16 not; soft foot -5; saturation at 0; missing score -> None
+        // Familiarity tests: 12..14 penalized, 15 not; soft foot -5; saturation at 0; missing score -> None
         let mut p_half = player_template(1, "HalfRound", 150);
         p_half["age"] = serde_json::json!(26);
         p_half["preferredFoot"] = serde_json::json!("right");
-        p_half["positions"] = serde_json::json!({"GK": 16});
-        let mut p_fam15 = player_template(2, "Fam15", 150);
-        p_fam15["age"] = serde_json::json!(26);
-        p_fam15["preferredFoot"] = serde_json::json!("right");
-        p_fam15["positions"] = serde_json::json!({"GK": 15});
+        p_half["positions"] = serde_json::json!({"GK": 15});
+        let mut p_fam14 = player_template(2, "Fam14", 150);
+        p_fam14["age"] = serde_json::json!(26);
+        p_fam14["preferredFoot"] = serde_json::json!("right");
+        p_fam14["positions"] = serde_json::json!({"GK": 14});
         let mut p_fam12 = player_template(3, "Fam12", 150);
         p_fam12["age"] = serde_json::json!(26);
         p_fam12["preferredFoot"] = serde_json::json!("right");
@@ -6125,7 +6125,7 @@ mod tests {
         let mut p_soft = player_template(4, "SoftFoot", 150);
         p_soft["age"] = serde_json::json!(26);
         p_soft["preferredFoot"] = serde_json::json!("left");
-        p_soft["positions"] = serde_json::json!({"GK": 15});
+        p_soft["positions"] = serde_json::json!({"GK": 14});
         let mut p_saturate = player_template(5, "Saturate", 150);
         p_saturate["age"] = serde_json::json!(26);
         p_saturate["preferredFoot"] = serde_json::json!("left");
@@ -6136,7 +6136,7 @@ mod tests {
         p_missing["positions"] = serde_json::json!({"GK": 18});
         ingest_players(
             &mut conn,
-            vec![p_half, p_fam15, p_fam12, p_soft, p_saturate, p_missing],
+            vec![p_half, p_fam14, p_fam12, p_soft, p_saturate, p_missing],
         );
         let snapshot_id = current_snapshot_id(&conn);
         let save_id: i64 = conn
@@ -6170,29 +6170,29 @@ mod tests {
             Some(82),
             0.5,
             "right",
-            &std::collections::BTreeMap::from([("GK".to_string(), Some(16))]),
+            &std::collections::BTreeMap::from([("GK".to_string(), Some(15))]),
             &lane,
         );
         assert_eq!(expected_half, Some(82));
-        // Fam15: familiarity 15 both phases -> -10, 70 blended -> 60
-        let expected_fam15 = crate::features::planner::fit::tactic_adjusted_score(
+        // Fam14: familiarity 14 both phases -> -10, 70 blended -> 60
+        let expected_fam14 = crate::features::planner::fit::tactic_adjusted_score(
             Some(70),
             Some(70),
             0.5,
             "right",
-            &std::collections::BTreeMap::from([("GK".to_string(), Some(15))]),
+            &std::collections::BTreeMap::from([("GK".to_string(), Some(14))]),
             &lane,
         );
-        assert_eq!(expected_fam15, Some(60));
-        // Soft foot with 15: -10 fam + -5 foot = -15 => 55
+        assert_eq!(expected_fam14, Some(60));
+        // Soft foot with 14: -10 fam + -5 foot = -15 => 55
         // But lane uses same GK for both IP/OOP, so familiarity penalty counted twice (once per phase) + soft foot once
-        // For p_soft: GK 15 => -5 per phase => -10 + soft -5 => -15 => 55
+        // For p_soft: GK 14 => -5 per phase => -10 + soft -5 => -15 => 55
         let expected_soft = crate::features::planner::fit::tactic_adjusted_score(
             Some(70),
             Some(70),
             0.5,
             "left",
-            &std::collections::BTreeMap::from([("GK".to_string(), Some(15))]),
+            &std::collections::BTreeMap::from([("GK".to_string(), Some(14))]),
             &lane,
         );
         assert_eq!(expected_soft, Some(55));

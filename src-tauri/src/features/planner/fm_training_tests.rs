@@ -353,13 +353,13 @@ fn a_player_trains_the_slot_position_he_is_not_fully_familiar_with() {
     let at_oop_position = roles("MR", "Winger", "Tracking Wide Midfielder");
 
     assert_eq!(
-        winger_training(&conn, save_id, r#"{"AMR": 20, "MR": 16}"#),
+        winger_training(&conn, save_id, r#"{"AMR": 20, "MR": 15}"#),
         (slot_roles.clone(), None),
-        "16 is fully familiar"
+        "15 is fully familiar"
     );
     assert_eq!(
-        winger_training(&conn, save_id, r#"{"AMR": 20, "MR": 15}"#),
-        (at_oop_position.clone(), learning("MR", 15))
+        winger_training(&conn, save_id, r#"{"AMR": 20, "MR": 14}"#),
+        (at_oop_position.clone(), learning("MR", 14))
     );
     assert_eq!(
         winger_training(&conn, save_id, r#"{"AMR": 16, "MR": null}"#),
@@ -367,8 +367,8 @@ fn a_player_trains_the_slot_position_he_is_not_fully_familiar_with() {
         "a position he has never played"
     );
     assert_eq!(
-        winger_training(&conn, save_id, r#"{"AMR": 15, "MR": 20}"#),
-        (slot_roles.clone(), learning("AMR", 15))
+        winger_training(&conn, save_id, r#"{"AMR": 14, "MR": 20}"#),
+        (slot_roles.clone(), learning("AMR", 14))
     );
     assert_eq!(
         winger_training(&conn, save_id, r#"{"AMR": 10, "MR": 9}"#),

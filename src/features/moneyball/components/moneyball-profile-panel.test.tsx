@@ -41,7 +41,7 @@ describe("MoneyballProfilePanel", () => {
       screen.getByRole("combobox", { name: "Percentiles vs" }),
     ).toHaveValue("winger");
     expect(screen.getByText("· 24 peers")).toHaveAccessibleDescription(
-      "Players with 450+ minutes this season rated 16 or higher at the family's positions.",
+      "Players with 450+ minutes this season rated 15 or higher at the family's positions.",
     );
     expect(screen.getByText("xGP")).toBeInTheDocument();
     expect(screen.getByText("xG Overperformance")).toBeInTheDocument();

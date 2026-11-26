@@ -12,7 +12,7 @@ fn positions(entries: &[(&str, i64)]) -> BTreeMap<String, Option<i64>> {
 
 #[test]
 fn phase_fit_uses_the_existing_familiarity_thresholds() {
-    for (familiarity, expected) in [(11, None), (12, Some(45)), (15, Some(45)), (16, Some(50))] {
+    for (familiarity, expected) in [(11, None), (12, Some(45)), (14, Some(45)), (15, Some(50))] {
         assert_eq!(
             phase_fit_score(
                 Some(50),
@@ -34,7 +34,7 @@ fn phase_fit_normalizes_qualified_positions_to_their_base_position() {
         phase_fit_score(
             Some(50),
             "right",
-            &positions(&[("MC", 15)]),
+            &positions(&[("MC", 14)]),
             "MCR",
             "any",
             "preferred",
@@ -93,7 +93,7 @@ fn linked_lane_counts_familiarity_penalties_for_both_repeated_positions() {
     let lane = default_tactic().lanes[6].clone();
 
     assert_eq!(
-        lane_fit_score(Some(50), "right", &positions(&[("MC", 15)]), &lane,),
+        lane_fit_score(Some(50), "right", &positions(&[("MC", 14)]), &lane,),
         Some(40),
     );
 }

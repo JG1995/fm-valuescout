@@ -887,7 +887,7 @@ fn compile_position_presence_rule(
     value: &FilterValue,
 ) -> Result<(String, Vec<Value>), String> {
     // Position filters are exact key matches — never substring LIKE (MC must not match AMC).
-    // FM rates every position from 1, so only familiarity 16+ counts; lower, null, and
+    // FM rates every position from 1, so only familiarity 15+ counts; lower, null, and
     // missing values do not.
     let present = |text: &str| -> Result<String, String> {
         let Some(canonical) = POSITION_KEYS
@@ -899,7 +899,7 @@ fn compile_position_presence_rule(
         };
         let extract = json_extract_expr("positions_json", canonical);
         Ok(format!(
-            "COALESCE(json_type(positions_json, '$.{canonical}') = 'integer' AND {extract} >= 16, 0)"
+            "COALESCE(json_type(positions_json, '$.{canonical}') = 'integer' AND {extract} >= 15, 0)"
         ))
     };
     let clause = match op {
@@ -1646,7 +1646,7 @@ mod tests {
             presence
                 .sql
                 .contains("json_extract(positions_json, '$.MC')")
-                && presence.sql.contains(">= 16")
+                && presence.sql.contains(">= 15")
                 && presence.sql.contains("COALESCE"),
             "expected positions presence SQL, got {}",
             presence.sql

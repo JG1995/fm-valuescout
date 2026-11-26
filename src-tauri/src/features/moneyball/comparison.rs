@@ -28,7 +28,7 @@ use crate::db::result_cache::ResultCache;
 pub(crate) const MIN_SEASON_MINUTES: i64 = 450;
 
 /// The lowest familiarity at a family's position that makes a player one of its peers.
-pub(crate) const PEER_FAMILIARITY: i64 = 16;
+pub(crate) const PEER_FAMILIARITY: i64 = 15;
 
 /// The position families the Moneyball role catalog defines its roles for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -764,9 +764,9 @@ mod tests {
     }
 
     #[test]
-    fn a_player_belongs_to_his_best_family_and_is_a_peer_where_rated_sixteen() {
+    fn a_player_belongs_to_his_best_family_and_is_a_peer_where_rated_fifteen() {
         let (own, peer_of) =
-            scan_positions(r#"{"GK":1,"DC":16,"DM":18,"MC":18,"ST":15,"SW":20}"#).unwrap();
+            scan_positions(r#"{"GK":1,"DC":15,"DM":18,"MC":18,"ST":14,"SW":20}"#).unwrap();
         assert_eq!(own, Some(PositionFamily::DefensiveMidfielder));
         assert_eq!(
             ComparisonGroup(peer_of).families().collect::<Vec<_>>(),

@@ -330,7 +330,7 @@ fn role_reference_rejects_wrong_version_potential_role_for_both_bases_without_wr
 #[test]
 fn familiarity_and_strict_foot_rules_are_applied_to_reference_scores() {
     let (_temp_dir, conn, save_id) = seeded_snapshot();
-    set_player_positions(&conn, save_id, 77, r#"{"AMR":15}"#);
+    set_player_positions(&conn, save_id, 77, r#"{"AMR":14}"#);
     set_right_winger_scores(&conn, save_id, 77, Some(80));
 
     let familiar = get_role_reference(

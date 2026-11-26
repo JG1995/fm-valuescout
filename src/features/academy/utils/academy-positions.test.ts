@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { playableAcademyPositions } from "./academy-positions";
 
 describe("Academy playable positions", () => {
-  it("lists familiarity 16 or higher strongest-first", () => {
+  it("lists familiarity 15 or higher strongest-first", () => {
     expect(
       playableAcademyPositions({
         AMR: 20,
         MR: 17,
-        MC: 16,
-        AMC: 15,
+        MC: 15,
+        AMC: 14,
         GK: 0,
         SW: null,
       }),

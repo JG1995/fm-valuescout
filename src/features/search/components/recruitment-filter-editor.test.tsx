@@ -27,7 +27,7 @@ describe("RecruitmentFilterEditor", () => {
     expect(
       screen.getByRole("combobox", { name: "Operator" }),
     ).toHaveAccessibleDescription(
-      /^Ranked among players with 450\+ minutes rated 16 or higher in the position families/,
+      /^Ranked among players with 450\+ minutes rated 15 or higher in the position families/,
     );
     const value = screen.getByLabelText("Value");
     await user.clear(value);
