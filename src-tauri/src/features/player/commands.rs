@@ -659,7 +659,7 @@ mod tests {
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service as snapshot_service;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v10.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v11.json");
     fn seeded_db() -> (tempfile::TempDir, Db) {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("player-boost-command.db");

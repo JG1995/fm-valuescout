@@ -22,6 +22,12 @@ public sealed class DumpPlayer
     /// <summary>Closed person gender value: unknown, male, or female.</summary>
     public string Gender { get; init; } = PlayerGenderValues.Unknown;
 
+    /// <summary>
+    /// Raw appearance bytes in the order ethnicity, skin tone, hair length, hair colour, facial hair,
+    /// hair registry version, keeps grey hair (0 or 1); null unless FM generated the appearance.
+    /// </summary>
+    public IReadOnlyList<int>? Appearance { get; init; }
+
     public int? HeightCm { get; init; }
 
     public string PreferredFoot { get; init; } = "";

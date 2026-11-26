@@ -9,7 +9,7 @@ namespace FmDataBridge.Tests;
 public sealed class DumpWriterStreamingTests
 {
     [Fact]
-    public void Dump_writer_emits_compact_schema_v10_json()
+    public void Dump_writer_emits_compact_schema_v11_json()
     {
         var document = MinimalDocument(playerCount: 2);
         var json = DumpWriter.Serialize(document);
@@ -19,7 +19,7 @@ public sealed class DumpWriterStreamingTests
 
         using var parsed = JsonDocument.Parse(json);
         var root = parsed.RootElement;
-        Assert.Equal(10, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(11, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("2026-07-30T00:00:00+00:00", root.GetProperty("generatedAtUtc").GetString());
         Assert.Equal("27.0", root.GetProperty("gameVersion").GetString());
         Assert.Equal("27.0", root.GetProperty("supportedGameVersion").GetString());

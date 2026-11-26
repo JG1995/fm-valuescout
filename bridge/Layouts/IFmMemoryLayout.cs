@@ -67,6 +67,33 @@ public interface IFmMemoryLayout
     /// <summary>Packed FM date of birth (u32) relative to person.</summary>
     int DobOffset { get; }
 
+    /// <summary>Person flag byte that marks an appearance FM generated (verified on FM 27.1, 2026-11-26).</summary>
+    int AppearanceFlagsOffset { get; }
+
+    /// <summary>Bit set in <see cref="AppearanceFlagsOffset"/> when FM generated the appearance (newgens).</summary>
+    byte GeneratedAppearanceBit { get; }
+
+    /// <summary>Bit set in <see cref="GenderOffset"/> when FM keeps a young person's grey hair.</summary>
+    byte KeepsGreyHairBit { get; }
+
+    /// <summary>Ethnicity byte (0-10) relative to person (verified on FM 27.1, 2026-11-26).</summary>
+    int EthnicityOffset { get; }
+
+    /// <summary>Hair colour byte, database scale 0-18, relative to person.</summary>
+    int HairColourOffset { get; }
+
+    /// <summary>Hair length byte relative to person.</summary>
+    int HairLengthOffset { get; }
+
+    /// <summary>Skin tone byte relative to person.</summary>
+    int SkinToneOffset { get; }
+
+    /// <summary>Facial hair byte (0-3) relative to person.</summary>
+    int FacialHairOffset { get; }
+
+    /// <summary>Hair registry version byte (1 or 2) relative to person.</summary>
+    int HairRegistryVersionOffset { get; }
+
     /// <summary>Height in cm (u16) relative to player block base.</summary>
     int HeightOffset { get; }
 

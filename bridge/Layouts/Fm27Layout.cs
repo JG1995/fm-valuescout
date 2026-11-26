@@ -101,6 +101,25 @@ public sealed class Fm27Layout : IFmMemoryLayout
 
     public int DobOffset => 0x88;
 
+    // Appearance bytes verified on FM 27.1, 2026-11-26.
+    public int AppearanceFlagsOffset => 0x18;
+
+    public byte GeneratedAppearanceBit => 0x08;
+
+    public byte KeepsGreyHairBit => 0x08;
+
+    public int EthnicityOffset => 0x8D;
+
+    public int HairColourOffset => 0x8E;
+
+    public int HairLengthOffset => 0x8F;
+
+    public int SkinToneOffset => 0x90;
+
+    public int FacialHairOffset => 0x91;
+
+    public int HairRegistryVersionOffset => 0x95;
+
     public int HeightOffset => 0x22E;
 
     public int PositionsOffset => 0x150;

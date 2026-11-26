@@ -158,6 +158,49 @@ public sealed class CapADumpTests
     }
 
     [Fact]
+    public void Pipeline_writes_appearance_for_generated_players_and_null_for_others()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var reader = new FakeMemoryReader();
+            PlacePlayers(reader, count: 120, startUid: 1);
+            var newgen = PlayerBlockBase + (ulong)PlayerClassOffset;
+            reader.AddBytes(newgen + 0x18, new byte[] { 0x08, 0x02 });
+            reader.AddBytes(
+                newgen + 0x8C,
+                new byte[] { 0xff, 0x00, 0x0b, 0x02, 0x03, 0x00, 0x06, 0x00, 0x04, 0x02, 0x00, 0x00 });
+
+            var result = new CapADumpPipeline().Run(
+                reader,
+                bridgeDir,
+                gameVersion: "27.1",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.True(result.Success, result.Error);
+            using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
+            Assert.Equal(11, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+            var players = doc.RootElement.GetProperty("players").EnumerateArray().ToList();
+            var generated = players.Single(player => player.GetProperty("uid").GetUInt32() == 1);
+            Assert.Equal(
+                new[] { 0, 3, 2, 11, 0, 2, 0 },
+                generated.GetProperty("appearance").EnumerateArray().Select(value => value.GetInt32()));
+            Assert.Equal("male", generated.GetProperty("gender").GetString());
+            var real = players.Single(player => player.GetProperty("uid").GetUInt32() == 2);
+            Assert.Equal(JsonValueKind.Null, real.GetProperty("appearance").ValueKind);
+            Assert.All(players, player => Assert.True(player.TryGetProperty("appearance", out _)));
+            Assert.All(
+                doc.RootElement.GetProperty("staff").EnumerateArray(),
+                staff => Assert.False(staff.TryGetProperty("appearance", out _)));
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Unsupported_version_writes_diagnostics_and_preserves_existing_dump()
     {
         var bridgeDir = CreateTempBridgeDir();

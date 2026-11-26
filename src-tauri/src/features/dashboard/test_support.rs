@@ -59,7 +59,7 @@ pub(super) fn open_with_players(players: &[PlayerSpec]) -> Fixture {
     let save_id = snapshot::service::active_save_id(&conn).expect("active save");
 
     let mut dump: serde_json::Value =
-        serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v10.json"))
+        serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v11.json"))
             .expect("parse golden dump");
     let template = dump["players"][0].clone();
     let records = players

@@ -22,6 +22,8 @@ pub struct GraphicsStatus {
     pub rebuilding: bool,
     pub candidate: CandidateState,
     pub summary: GraphicsSummaryDto,
+    /// Whether FM's own faces are served for generated players; the commands fill it in.
+    pub game_faces: bool,
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -361,6 +363,7 @@ impl GraphicsRuntime {
             rebuilding: s.in_flight.is_some(),
             candidate: s.candidate.clone(),
             summary: s.summary.clone(),
+            game_faces: false,
         }
     }
     fn reserve_locked(s: &mut State, root: Option<PathBuf>) -> Target {
@@ -1036,6 +1039,37 @@ mod tests {
     }
 
     #[test]
+    fn game_face_requests_go_to_the_bundle_and_others_to_the_graphics_folder() {
+        use crate::features::graphics::commands::respond;
+        use crate::features::graphics::faces::tests::{first_pixel, sample_faces, snapshot};
+
+        let runtime = test_runtime();
+        let (_bundle_dir, _path, faces) = sample_faces();
+        let (_dir, db, snapshot_id) = snapshot(Some([0, 3, 2, 11, 0, 2, 0]), "male");
+        let get = |uri: String| {
+            let request = http::Request::builder().uri(uri).body(Vec::new()).unwrap();
+            respond(request, &runtime, &faces, &db)
+        };
+
+        let face = get(format!("graphics://localhost/{snapshot_id}/gameFace/77"));
+        assert_eq!(face.status(), http::StatusCode::OK);
+        assert_eq!(face.headers()[http::header::CONTENT_TYPE], "image/png");
+        assert_eq!(face.headers()[http::header::CACHE_CONTROL], "no-store");
+        let image = ImageLookupResult::Available {
+            bytes: face.into_body(),
+            mime: "image/png",
+        };
+        assert_eq!(first_pixel(image), Some([255, 0, 0, 255]));
+
+        let no_face = get(format!("graphics://localhost/{snapshot_id}/gameFace/78"));
+        assert_eq!(no_face.status(), http::StatusCode::NOT_FOUND);
+        let folder = get("graphics://localhost/0/personPortrait/77".to_string());
+        assert_eq!(folder.status(), http::StatusCode::NOT_FOUND);
+        let escape = get("graphics://localhost/0/gameFace/../77".to_string());
+        assert_eq!(escape.status(), http::StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
     fn serialized_status_contains_no_filesystem_identity() {
         let status = GraphicsStatus {
             generation: 4,
@@ -1046,6 +1080,7 @@ mod tests {
                 source: "absent",
             },
             summary: GraphicsSummaryDto::default(),
+            game_faces: true,
         };
         let json = serde_json::to_string(&status).unwrap();
         assert!(!json.contains('/') && !json.contains('\\'));

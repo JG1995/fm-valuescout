@@ -20,10 +20,13 @@ public static class PlayerGenderReader
             return PlayerGender.Unknown;
         }
 
-        return (raw & layout.FemaleGenderBit) != 0
+        return Decode(raw, layout);
+    }
+
+    public static PlayerGender Decode(byte raw, IFmMemoryLayout layout) =>
+        (raw & layout.FemaleGenderBit) != 0
             ? PlayerGender.Female
             : PlayerGender.Male;
-    }
 
     private static bool TryAdd(ulong address, int offset, out ulong result)
     {

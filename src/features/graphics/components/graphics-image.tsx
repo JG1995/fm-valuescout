@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useContext, useState } from "react";
 import { graphicsStatusQueryOptions } from "../api/graphics-query-options";
 import type { GraphicsKind } from "../types/graphics";
+import { GameFaceSnapshotContext } from "./game-face-snapshot";
 
 export type GraphicsImageSlot = {
   alt: string;
@@ -39,18 +40,32 @@ function retainLoadedImage(source: string) {
 
 export function GraphicsImage({ kind, uid, slot }: GraphicsImageProps) {
   const { data: status } = useQuery(graphicsStatusQueryOptions);
-  const [failedSource, setFailedSource] = useState<string | null>(null);
-  const generation = status?.generation;
-  const source = `http://graphics.localhost/${generation}/${kind}/${uid}`;
+  const gameFaceSnapshotId = useContext(GameFaceSnapshotContext);
+  const [failedSources, setFailedSources] = useState<readonly string[]>([]);
 
-  if (
-    !status?.selected ||
-    status.rebuilding ||
-    generation === undefined ||
-    !Number.isInteger(uid) ||
-    uid <= 0 ||
-    failedSource === source
-  ) {
+  // The graphics folder's image first, then FM's own face for a generated player.
+  const sources: string[] = [];
+  if (status && Number.isInteger(uid) && uid > 0) {
+    if (status.selected && !status.rebuilding) {
+      sources.push(
+        `http://graphics.localhost/${status.generation}/${kind}/${uid}`,
+      );
+    }
+    if (
+      kind === "personPortrait" &&
+      status.gameFaces &&
+      gameFaceSnapshotId !== null
+    ) {
+      sources.push(
+        `http://graphics.localhost/${gameFaceSnapshotId}/gameFace/${uid}`,
+      );
+    }
+  }
+  const source = sources.find(
+    (candidate) => !failedSources.includes(candidate),
+  );
+
+  if (source === undefined) {
     return slot.fallback ?? null;
   }
 
@@ -63,7 +78,12 @@ export function GraphicsImage({ kind, uid, slot }: GraphicsImageProps) {
       loading="lazy"
       decoding="async"
       onLoad={() => retainLoadedImage(source)}
-      onError={() => setFailedSource(source)}
+      onError={() =>
+        setFailedSources((failed) => [
+          ...failed.filter((candidate) => sources.includes(candidate)),
+          source,
+        ])
+      }
     />
   );
 }
