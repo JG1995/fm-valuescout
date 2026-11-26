@@ -1,0 +1,4 @@
+[env]
+# Lets SQLite map database files larger than its 2 GiB default; `MMAP_SIZE_BYTES` in
+# `src/db/mod.rs` asks for this much.
+LIBSQLITE3_FLAGS = "-DSQLITE_MAX_MMAP_SIZE=68719476736"

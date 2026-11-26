@@ -179,6 +179,8 @@ struct State {
     summary: GraphicsSummaryDto,
     candidate: CandidateState,
     caches: [Lru; 3],
+    /// When an image was last requested, until `release_idle_images` has acted on it.
+    last_image_request: Option<std::time::Instant>,
 }
 type Scanner = Arc<dyn Fn(Option<&std::path::Path>) -> GraphicsIndex + Send + Sync>;
 
@@ -245,6 +247,7 @@ impl GraphicsRuntime {
                 summary: GraphicsSummaryDto::default(),
                 candidate,
                 caches: [Lru::new(), Lru::new(), Lru::new()],
+                last_image_request: None,
             })),
             transition_gate: Arc::new(Mutex::new(())),
             scanner,
@@ -334,6 +337,21 @@ impl GraphicsRuntime {
             .expect("graphics worker state poisoned");
         w.pending = None;
         self.wake_worker();
+    }
+    /// Drops the image results kept for repeated requests, once no image has been requested
+    /// for `idle_for`. A later request reads its file again.
+    pub fn release_idle_images(&self, idle_for: std::time::Duration) {
+        let mut s = self.state();
+        if !s
+            .last_image_request
+            .is_some_and(|requested| requested.elapsed() >= idle_for)
+        {
+            return;
+        }
+        s.last_image_request = None;
+        for cache in &mut s.caches {
+            cache.clear();
+        }
     }
     pub fn status(&self) -> GraphicsStatus {
         let s = self.state();
@@ -555,6 +573,7 @@ impl GraphicsRuntime {
             {
                 return ImageLookupResult::Missing;
             }
+            s.last_image_request = Some(std::time::Instant::now());
             let cached = s.caches[kind as usize].get(uid);
             let locator = if cached.is_none() {
                 s.index
@@ -1071,6 +1090,34 @@ mod tests {
         assert_eq!(response.status(), http::StatusCode::OK);
         assert_eq!(response.body(), b"\x89PNG\r\n\x1a\n");
         assert_eq!(response.headers()[http::header::CONTENT_TYPE], "image/png");
+    }
+
+    #[test]
+    fn idle_image_results_are_released_and_read_again_on_request() {
+        let root = root_with_image("portrait.png", 101, b"\x89PNG\r\n\x1a\n");
+        let runtime = test_runtime_with_root(Some(root.path().to_path_buf()));
+        assert!(runtime.scan_reserved(0, Some(root.path().to_path_buf())));
+        let kept = || {
+            runtime.state().caches[GraphicsKind::PersonPortrait as usize]
+                .available
+                .len()
+        };
+        let available = || {
+            matches!(
+                runtime.resolve(GraphicsKind::PersonPortrait, 101),
+                ImageLookupResult::Available { .. }
+            )
+        };
+        assert!(available());
+        assert_eq!(kept(), 1);
+
+        // The request that just ended is too recent for a long wait.
+        runtime.release_idle_images(std::time::Duration::from_secs(3600));
+        assert_eq!(kept(), 1);
+
+        runtime.release_idle_images(std::time::Duration::ZERO);
+        assert_eq!(kept(), 0);
+        assert!(available());
     }
 
     #[test]

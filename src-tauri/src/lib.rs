@@ -16,7 +16,10 @@ pub fn run() {
     tauri::Builder::default()
         .register_asynchronous_uri_scheme_protocol("graphics", |_ctx, request, responder| {
             let app_handle = _ctx.app_handle().clone();
-            std::thread::spawn(move || {
+            // On the blocking pool, whose threads outlive a request: a scrolling table asks
+            // for dozens of images a second, and a thread started for each one costs more
+            // than reading the image.
+            tauri::async_runtime::spawn_blocking(move || {
                 let runtime = app_handle.state::<features::graphics::runtime::GraphicsRuntime>();
                 let response =
                     features::graphics::commands::graphics_protocol_response(request, &runtime);
@@ -69,6 +72,7 @@ pub fn run() {
             app.manage(graphics_runtime);
             app.state::<features::graphics::runtime::GraphicsRuntime>()
                 .start_worker();
+            start_idle_release(app.handle());
 
             log::info!("FM ValueScout startup complete");
 
@@ -168,6 +172,24 @@ pub fn run() {
                 checkpoint_database_at_exit(&app.state::<db::Db>());
             }
         });
+}
+
+/// How long the app must have run no read request before it gives back what only a busy app
+/// needs, and how often it looks.
+const IDLE_RELEASE_AFTER: std::time::Duration = std::time::Duration::from_secs(30);
+const IDLE_RELEASE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Starts the thread that, once the app has been idle for a while, closes the idle database
+/// readers, which unmaps the database file from them, and drops the image bytes kept for
+/// repeated requests. The next requests open, map, and read again.
+fn start_idle_release(app: &tauri::AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(IDLE_RELEASE_CHECK_INTERVAL);
+        app.state::<db::Db>().close_idle_readers(IDLE_RELEASE_AFTER);
+        app.state::<features::graphics::runtime::GraphicsRuntime>()
+            .release_idle_images(IDLE_RELEASE_AFTER);
+    });
 }
 
 /// How long the exit waits for read requests that are still running.
